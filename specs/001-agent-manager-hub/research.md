@@ -197,21 +197,48 @@ than the problem).
 
 ---
 
-## R6. Dex device-flow parity
+## R6. Local IdP device-flow and groups parity — RESOLVED BY MEASUREMENT
 
-**Decision**: Dex is the local IdP. It implements the OAuth 2.0 device authorisation grant
-and can emit a `groups` claim from its connectors, including the static-password connector
-used for local development. Local config ships two users in two groups so the group→role
-mapping screen is exercisable offline.
+**Original decision**: Dex, with verification owed on two points — that the device
+authorisation grant is enabled, and that `groups` appears in the ID token for a
+*static-password* user, since a static connector's claim support has historically lagged its
+OIDC connector.
 
-**Verification owed before the auth tasks start**: confirm the device grant is enabled in
-the shipped Dex version's config and that `groups` appears in the ID token for a static
-user, since a static connector's claim support has historically lagged its OIDC connector.
-If it does not, the fallback is Keycloak — heavier, but unambiguous on both counts.
+**Measured 2026-08-27 against real containers. Dex fails the second point, so the stated
+fallback is taken: the local IdP is Keycloak.**
 
-**Rationale**: FR-056 requires the device flow to work with no external account. Testing
-the CLI path against a mocked token endpoint would leave the real path unexercised until
-staging.
+| | Dex v2.44.0 | Keycloak 26.5 |
+| --- | --- | --- |
+| `device_authorization_endpoint` advertised | yes | yes |
+| `device_code` in `grant_types_supported` | yes | yes |
+| `groups` in `scopes_supported` | yes | — |
+| **`groups` claim in the ID token, static/local user** | **no** | **yes** |
+| **`groups` differs per user** | n/a | yes — `['eng-platform']` vs `['eng-security']` |
+| Startup to a live discovery document | ~2 s | 9 s |
+
+Dex's `staticPasswords` entries carry `email`, `hash`, `username` and `userID` and no groups
+field. Adding `groups: [...]` is accepted without warning and **silently ignored** — Dex logs
+nothing and starts normally, so it fails as a missing claim at run time rather than as a
+config error at boot. Requesting `scope=openid email groups profile` returns an ID token with
+`iss/sub/aud/exp/iat/at_hash/email/email_verified/name` and no `groups`.
+
+That makes FR-037's group→role mapping and the quickstart's "log in as anowak and step 4
+returns a different set" impossible to demonstrate locally, because the claim is the input to
+`group_role_map`. 9 seconds is well inside SC-001's five-minute budget, and Keycloak needs one
+realm-import JSON, no cloud account and no credential anyone has to obtain — so SC-001 still
+holds in full and the concern that made Dex attractive does not materialise.
+
+**Consequence for the code**: Keycloak's frontchannel URLs (`issuer`, authorisation, device)
+must be browser-reachable and its backchannel URLs (token, JWKS) container-reachable, and one
+`KC_HOSTNAME` cannot be both. `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true` derives the backchannel
+URLs from the request's Host header and leaves `issuer` alone; go-oidc then needs
+`oidc.InsecureIssuerURLContext` because it otherwise refuses a document whose `issuer`
+differs from the URL it was fetched from. Hence `AGENT_MANAGER_OIDC_DISCOVERY_URL`, and the
+`iss` claim is still checked against `AGENT_MANAGER_OIDC_ISSUER`.
+
+**Rationale unchanged**: FR-056 requires the device flow to work with no external account.
+Testing the CLI path against a mocked token endpoint would leave the real path unexercised
+until staging.
 
 **Alternatives rejected**: Keycloak by default (slow start, heavy image, more config for the
 same coverage); a hand-rolled OIDC stub (tests our own bugs, not the protocol).

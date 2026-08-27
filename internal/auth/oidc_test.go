@@ -33,7 +33,12 @@ type provider struct {
 	kid    string
 }
 
-func newProvider(t *testing.T) *provider {
+func newProvider(t *testing.T) *provider { return newProviderWithIssuer(t, "") }
+
+// newProviderWithIssuer mints an IdP whose discovery document advertises issuer
+// rather than its own URL. Empty means the two are the same, which is the
+// ordinary case.
+func newProviderWithIssuer(t *testing.T, issuer string) *provider {
 	t.Helper()
 
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -46,8 +51,12 @@ func newProvider(t *testing.T) *provider {
 
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		advertised := issuer
+		if advertised == "" {
+			advertised = p.server.URL
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"issuer":                                p.server.URL,
+			"issuer":                                advertised,
 			"authorization_endpoint":                p.server.URL + "/auth",
 			"token_endpoint":                        p.server.URL + "/token",
 			"device_authorization_endpoint":         p.server.URL + "/device",
@@ -100,7 +109,11 @@ func TestVerifierAcceptsAnIDTokenAndReadsTheGroupsClaim(t *testing.T) {
 	idp := newProvider(t)
 	ctx := context.Background()
 
-	verifier, err := auth.NewVerifier(ctx, idp.server.URL, "agent-manager", idp.server.Client())
+	verifier, err := auth.NewVerifier(ctx, auth.VerifierConfig{
+		Issuer:     idp.server.URL,
+		ClientID:   "agent-manager",
+		HTTPClient: idp.server.Client(),
+	})
 	require.NoError(t, err)
 
 	other, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -187,7 +200,10 @@ func TestVerifierRefusesAnUnreachableOrUnnamedIssuer(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			_, err := auth.NewVerifier(ctx, tc.issuer, tc.clientID, nil)
+			_, err := auth.NewVerifier(ctx, auth.VerifierConfig{
+				Issuer:   tc.issuer,
+				ClientID: tc.clientID,
+			})
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tc.wantErr)
 		})
@@ -209,4 +225,57 @@ func TestClaimsDisplayNameFallsBackInOrder(t *testing.T) {
 			require.Equal(t, tc.want, tc.claims.DisplayName())
 		})
 	}
+}
+
+// The compose stack fetches the discovery document from a host the browser
+// cannot reach and trusts an `iss` this process cannot reach. Both halves of
+// that are load-bearing (R6), and go-oidc refuses the combination by default, so
+// the split has its own test rather than only a comment.
+func TestDiscoveryMayBeFetchedFromAHostThatIsNotTheIssuer(t *testing.T) {
+	ctx := context.Background()
+
+	// browserIssuer is what the token says and what the operator's browser would
+	// reach. Nothing in this test can dial it, which is exactly the situation.
+	const browserIssuer = "http://localhost:65535/realms/agent-manager"
+
+	idp := newProviderWithIssuer(t, browserIssuer)
+
+	t.Run("without the split, discovery is refused", func(t *testing.T) {
+		_, err := auth.NewVerifier(ctx, auth.VerifierConfig{
+			Issuer:     idp.server.URL,
+			ClientID:   "agent-manager",
+			HTTPClient: idp.server.Client(),
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "did not match the issuer URL returned by provider")
+	})
+
+	verifier, err := auth.NewVerifier(ctx, auth.VerifierConfig{
+		Issuer:       browserIssuer,
+		DiscoveryURL: idp.server.URL,
+		ClientID:     "agent-manager",
+		HTTPClient:   idp.server.Client(),
+	})
+	require.NoError(t, err)
+
+	t.Run("a token from the trusted issuer verifies", func(t *testing.T) {
+		claims := idp.claims("agent-manager", map[string]any{"groups": []string{"eng-platform"}})
+		claims["iss"] = browserIssuer
+
+		got, err := verifier.Verify(ctx, idp.sign(t, idp.key, claims))
+		require.NoError(t, err)
+		require.Equal(t, []string{"eng-platform"}, got.Groups)
+	})
+
+	t.Run("a token from the discovery host is still rejected", func(t *testing.T) {
+		// The whole risk of the override is that `iss` stops being checked. It does
+		// not: the discovery host is not the issuer, so its own tokens fail.
+		claims := idp.claims("agent-manager", nil)
+		claims["iss"] = idp.server.URL
+
+		_, err := verifier.Verify(ctx, idp.sign(t, idp.key, claims))
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "id token issued by a different provider")
+		require.Contains(t, err.Error(), browserIssuer)
+	})
 }

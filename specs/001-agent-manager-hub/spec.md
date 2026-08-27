@@ -648,7 +648,8 @@ correspondingly-typed audit row appears with the right actor and source.
 - **Single organisation per deployment.** Multi-tenancy is not modelled; `Organization` is
   a singleton settings object, not a scoping dimension.
 - **Identity provider**: any OIDC provider supporting the device authorisation grant and a
-  groups claim. Okta is the design's example; Dex is the local substitute. Neither is
+  groups claim. Okta is the design's example; Keycloak is the local substitute (Dex was the
+  original choice and does not emit `groups` for a static user — see research R6). Neither is
   hard-coded.
 - **Object storage**: any S3-compatible endpoint. Object lock, SSE-KMS and lifecycle
   retention are *configured and surfaced* by this system but *enforced* by the storage

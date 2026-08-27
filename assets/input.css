@@ -1,0 +1,850 @@
+/* Tailwind v4 source for internal/web/static/app.css. Regenerate with
+   `task gen:css`, which downloads the standalone binary to .bin/. No Node.
+
+   Vendored assets served from internal/web/static/, with provenance:
+
+   Fonts — internal/web/static/fonts/*.woff2
+     Space Grotesk (variable, weight axis 300..700), licence OFL-1.1,
+       https://fonts.google.com/specimen/Space+Grotesk
+       subsets latin + latin-ext, as served by https://fonts.googleapis.com/css2
+       and fetched from https://fonts.gstatic.com
+       sha256 space-grotesk-latin.woff2
+         0640890476fc1198ab4de571fb658de443c4d85b66466ec09534a8737ab1ce9d
+       sha256 space-grotesk-latin-ext.woff2
+         952dddb45d2f96f71cbf3b7f510b24379afc3c89ea02fcf89d377b45d62c0166
+     IBM Plex Mono (400 and 500), licence OFL-1.1,
+       https://fonts.google.com/specimen/IBM+Plex+Mono
+       same source and subsets
+       sha256 ibm-plex-mono-400-latin.woff2
+         08949f728dc52d528e69b1667d15c89a5686a4ee9a296ff90983985f99c380f7
+       sha256 ibm-plex-mono-400-latin-ext.woff2
+         6bc0f226a5b7884a8170e3f62c63d7675609d4631bdc5931b5cdab81821f00eb
+       sha256 ibm-plex-mono-500-latin.woff2
+         01d285447409c8a588692162439a038b8cbd7871309ee20267b0d2d91c6e8e22
+       sha256 ibm-plex-mono-500-latin-ext.woff2
+         6bb06407c97584b0867a959e05e8874693bfeb8c317de190811c51598f2d99ea
+
+   Script — internal/web/static/vendor/datastar.js
+     datastar v1.0.3, licence MIT, https://github.com/starfederation/datastar
+     sha256 5d6b7794a50a83d82da962aec5e382f5ae83ac7afbc751f903f7a9c6bd433c65
+
+   Everything is served from this origin. There is no CDN reference in any
+   rendered page: the image is distroless and the quickstart must work offline. */
+
+@import "tailwindcss";
+
+@source "../internal/web/*.go";
+@source "../internal/web/components/*.templ";
+@source "../internal/web/components/*_templ.go";
+
+/* The design's palette (docs/design/agent-manager.dc.html lines 15-16). Light on
+   bare :root so a viewer with no stored choice gets it, dark under the attribute
+   the server writes from the cookie (FR-054).
+
+   ONE divergence from the design, and it is deliberate: --fg3 is darkened in light
+   and lightened in dark. The design's #8b929c reaches 3.14:1 on --surface and
+   2.70:1 on --sel, and its #7d838b reaches 4.42:1 and 3.87:1 — but --fg3 carries
+   package ids, result counts, nav badges and option counts, all small text, so
+   SC-009 needs 4.5:1. Hue and saturation are unchanged; only HSL lightness moves,
+   by the smallest step that clears 4.5:1 on all four surfaces. contrast_test.go
+   holds the whole palette to it. Every other pair in the design already passes. */
+:root {
+  --bg: #f6f6f4;
+  --surface: #ffffff;
+  --surface2: #fbfbf9;
+  --bd: #e4e3de;
+  --fg: #1f2933;
+  --fg2: #5b6470;
+  --fg3: #656d77; /* design #8b929c: 3.14:1 on --surface, below AA */
+  --sel: #eeeeea;
+  --ok: #0f7b6c;
+  --okbg: #e8f3f0;
+  --warn: #b45309;
+  --warnbg: #fdf1e3;
+  --dan: #b42318;
+  --danbg: #fdeceb;
+}
+
+:root[data-sm-theme="dark"] {
+  --bg: #131416;
+  --surface: #1b1d20;
+  --surface2: #202326;
+  --bd: #2c2f34;
+  --fg: #ecebe7;
+  --fg2: #a5aab1;
+  --fg3: #898f96; /* design #7d838b: 4.42:1 on --surface, below AA */
+  --sel: #25282c;
+  --ok: #46bda8;
+  --okbg: #16302c;
+  --warn: #d69b4d;
+  --warnbg: #332617;
+  --dan: #e2766c;
+  --danbg: #331c1a;
+}
+
+/* The same palette as Tailwind tokens, so `bg-surface` and `text-fg2` resolve to
+   the theme in force rather than to a second copy of the hex values. */
+@theme {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface2: var(--surface2);
+  --color-bd: var(--bd);
+  --color-fg: var(--fg);
+  --color-fg2: var(--fg2);
+  --color-fg3: var(--fg3);
+  --color-sel: var(--sel);
+  --color-ok: var(--ok);
+  --color-okbg: var(--okbg);
+  --color-warn: var(--warn);
+  --color-warnbg: var(--warnbg);
+  --color-dan: var(--dan);
+  --color-danbg: var(--danbg);
+
+  --font-ui: "Space Grotesk", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url("/static/fonts/space-grotesk-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308,
+    U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113,
+    U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url("/static/fonts/space-grotesk-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/static/fonts/ibm-plex-mono-400-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308,
+    U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113,
+    U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/static/fonts/ibm-plex-mono-400-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/static/fonts/ibm-plex-mono-500-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308,
+    U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113,
+    U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/static/fonts/ibm-plex-mono-500-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-ui);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a {
+    color: var(--fg);
+    text-decoration: none;
+  }
+
+  a:hover {
+    color: var(--fg2);
+  }
+
+  input,
+  button,
+  select {
+    font-family: inherit;
+  }
+}
+
+@layer components {
+  .am-mono {
+    font-family: var(--font-mono);
+  }
+
+  /* Shell ---------------------------------------------------------------- */
+
+  .am-page {
+    display: flex;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--fg);
+  }
+
+  .am-sidebar {
+    width: 250px;
+    flex: 0 0 250px;
+    border-right: 1px solid var(--bd);
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+  }
+
+  .am-brand {
+    padding: 22px 20px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .am-brand-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .am-brand-mark {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    background: var(--fg);
+  }
+
+  .am-brand-name {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  .am-brand-host {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg3);
+    padding-left: 32px;
+  }
+
+  .am-nav {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    padding: 6px 12px;
+    min-width: 0;
+    overflow: auto;
+  }
+
+  .am-nav-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .am-nav-label {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--fg3);
+    padding: 0 10px 6px;
+  }
+
+  .am-nav-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 7px;
+    font-size: 13.5px;
+    cursor: pointer;
+    color: var(--fg2);
+    font-weight: 400;
+  }
+
+  .am-nav-item:hover {
+    background: var(--sel);
+    color: var(--fg2);
+  }
+
+  .am-nav-item[aria-current="page"] {
+    background: var(--sel);
+    color: var(--fg);
+    font-weight: 500;
+  }
+
+  .am-nav-badge {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--fg3);
+  }
+
+  .am-nav-badge-alert {
+    color: var(--dan);
+  }
+
+  .am-viewer {
+    border-top: 1px solid var(--bd);
+    padding: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .am-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--sel);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--fg2);
+  }
+
+  .am-viewer-id {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .am-viewer-name {
+    font-size: 12.5px;
+    font-weight: 500;
+  }
+
+  .am-viewer-role {
+    font-size: 11px;
+    color: var(--fg3);
+  }
+
+  .am-theme-toggle {
+    width: 26px;
+    height: 26px;
+    border: 1px solid var(--bd);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--fg2);
+    background: transparent;
+    padding: 0;
+  }
+
+  .am-theme-toggle:hover {
+    background: var(--sel);
+  }
+
+  .am-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Screen header -------------------------------------------------------- */
+
+  .am-header {
+    padding: 34px 44px 22px;
+    border-bottom: 1px solid var(--bd);
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+  }
+
+  .am-header-text {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .am-h1 {
+    margin: 0;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .am-lede {
+    margin: 0;
+    font-size: 14px;
+    color: var(--fg2);
+    max-width: 560px;
+  }
+
+  .am-actions {
+    display: flex;
+    gap: 10px;
+  }
+
+  .am-btn {
+    padding: 9px 14px;
+    border: 1px solid var(--bd);
+    background: var(--surface);
+    color: var(--fg);
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .am-btn:hover {
+    background: var(--sel);
+  }
+
+  .am-btn-primary {
+    border-color: var(--fg);
+    background: var(--fg);
+    color: var(--bg);
+    font-weight: 500;
+  }
+
+  .am-btn-primary:hover {
+    opacity: 0.88;
+    background: var(--fg);
+  }
+
+  /* Catalog controls ----------------------------------------------------- */
+
+  .am-controls {
+    padding: 18px 44px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .am-search {
+    flex: 1;
+    min-width: 240px;
+    padding: 9px 12px;
+    border: 1px solid var(--bd);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--fg);
+    font-size: 13.5px;
+    outline: none;
+  }
+
+  .am-chips {
+    display: flex;
+    gap: 6px;
+  }
+
+  .am-chip {
+    padding: 8px 12px;
+    border-radius: 7px;
+    font-size: 12.5px;
+    cursor: pointer;
+    border: 1px solid var(--bd);
+    background: var(--surface);
+    color: var(--fg2);
+  }
+
+  .am-chip-on {
+    border-color: var(--fg);
+    background: var(--fg);
+    color: var(--bg);
+  }
+
+  .am-facets {
+    padding: 0 44px 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .am-spacer {
+    flex: 1;
+  }
+
+  .am-count {
+    font-size: 12.5px;
+    color: var(--fg3);
+  }
+
+  .am-reset {
+    font-size: 12px;
+    color: var(--fg3);
+    cursor: pointer;
+    padding: 8px 4px;
+    background: none;
+    border: 0;
+  }
+
+  /* Facet menu ----------------------------------------------------------- */
+
+  .am-facet {
+    position: relative;
+  }
+
+  .am-facet-trigger {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--bd);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--fg2);
+    font-size: 12.5px;
+    cursor: pointer;
+  }
+
+  .am-facet-trigger:hover,
+  .am-facet-trigger[aria-expanded="true"] {
+    border-color: var(--fg3);
+  }
+
+  .am-facet-trigger[aria-expanded="true"] {
+    background: var(--sel);
+  }
+
+  .am-facet-summary {
+    color: var(--fg3);
+  }
+
+  .am-facet-summary-on {
+    color: var(--fg);
+  }
+
+  .am-facet-caret {
+    font-size: 9px;
+    color: var(--fg3);
+  }
+
+  .am-facet-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 20;
+    width: 290px;
+    border: 1px solid var(--bd);
+    border-radius: 10px;
+    background: var(--surface);
+    box-shadow: 0 14px 34px rgb(0 0 0 / 0.14);
+    overflow: hidden;
+  }
+
+  .am-facet-filter {
+    padding: 10px;
+    border-bottom: 1px solid var(--bd);
+  }
+
+  .am-facet-filter input {
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid var(--bd);
+    border-radius: 7px;
+    background: var(--surface2);
+    color: var(--fg);
+    font-size: 12.5px;
+    outline: none;
+  }
+
+  .am-facet-list {
+    max-height: 236px;
+    overflow: auto;
+  }
+
+  .am-facet-foot {
+    padding: 9px 12px;
+    border-top: 1px solid var(--bd);
+    background: var(--surface2);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+  }
+
+  .am-facet-clear {
+    color: var(--fg3);
+    cursor: pointer;
+    background: none;
+    border: 0;
+    font-size: 12px;
+    padding: 0;
+  }
+
+  .am-facet-done {
+    color: var(--fg2);
+    cursor: pointer;
+    background: none;
+    border: 0;
+    font-size: 12px;
+    padding: 0;
+  }
+
+  .am-opt {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+
+  .am-opt:hover {
+    background: var(--surface2);
+  }
+
+  .am-check {
+    width: 15px;
+    height: 15px;
+    flex: 0 0 15px;
+    border-radius: 4px;
+    border: 1px solid var(--bd);
+    background: var(--surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    color: var(--bg);
+  }
+
+  .am-opt-on .am-check {
+    border-color: var(--fg);
+    background: var(--fg);
+  }
+
+  .am-opt-on .am-check::after {
+    content: "✓";
+  }
+
+  .am-opt-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .am-opt-count {
+    flex: 0 0 auto;
+    font-size: 11.5px;
+    color: var(--fg3);
+  }
+
+  .am-opt-none {
+    padding: 20px 12px;
+    text-align: center;
+    font-size: 12.5px;
+    color: var(--fg3);
+  }
+
+  /* Backdrop that closes an open menu on an outside click. */
+  .am-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+  }
+
+  /* Results table -------------------------------------------------------- */
+
+  .am-card {
+    margin: 0 44px 44px;
+    border: 1px solid var(--bd);
+    border-radius: 12px;
+    background: var(--surface);
+    overflow: hidden;
+  }
+
+  .am-row {
+    display: grid;
+    grid-template-columns:
+      minmax(90px, 2.2fr) 56px minmax(60px, 1fr) minmax(44px, 0.6fr)
+      minmax(64px, 0.8fr) minmax(38px, 0.5fr) minmax(52px, 0.9fr);
+    gap: 10px;
+    padding: 15px 20px;
+    border-top: 1px solid var(--bd);
+    align-items: center;
+    cursor: pointer;
+  }
+
+  .am-row:hover {
+    background: var(--surface2);
+  }
+
+  .am-row-head {
+    padding: 11px 20px;
+    background: var(--surface2);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--fg3);
+    border-top: 0;
+    cursor: default;
+  }
+
+  .am-sort {
+    cursor: pointer;
+    color: var(--fg3);
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    text-align: left;
+  }
+
+  .am-sort-on {
+    color: var(--fg);
+  }
+
+  .am-cell-name {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .am-name {
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .am-id {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--fg3);
+  }
+
+  .am-cell-text {
+    font-size: 12.5px;
+    color: var(--fg2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .am-cell-mono {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--fg2);
+  }
+
+  .am-cell-dim {
+    font-size: 12.5px;
+    color: var(--fg3);
+  }
+
+  .am-kind {
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 500;
+    background: transparent;
+    color: var(--fg2);
+  }
+
+  .am-kind-plugin {
+    background: var(--sel);
+    color: var(--fg);
+  }
+
+  .am-scan {
+    padding: 4px 9px;
+    border-radius: 20px;
+    font-size: 11.5px;
+    font-weight: 500;
+  }
+
+  .am-scan-ok {
+    background: var(--okbg);
+    color: var(--ok);
+  }
+
+  .am-scan-warn {
+    background: var(--warnbg);
+    color: var(--warn);
+  }
+
+  .am-scan-dan {
+    background: var(--danbg);
+    color: var(--dan);
+  }
+
+  .am-empty {
+    padding: 34px 20px;
+    border-top: 1px solid var(--bd);
+    text-align: center;
+    font-size: 13.5px;
+    color: var(--fg3);
+  }
+
+  .am-pager {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 12px 20px;
+    border-top: 1px solid var(--bd);
+    background: var(--surface2);
+    font-size: 12.5px;
+    color: var(--fg3);
+  }
+
+  .am-pager button {
+    padding: 5px 10px;
+    border: 1px solid var(--bd);
+    border-radius: 7px;
+    background: var(--surface);
+    color: var(--fg2);
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .am-pager button:disabled {
+    color: var(--fg3);
+    cursor: default;
+    opacity: 0.55;
+  }
+
+  /* Placeholder for the screens later layers own. */
+  .am-placeholder {
+    margin: 0 44px 44px;
+    border: 1px dashed var(--bd);
+    border-radius: 12px;
+    background: var(--surface);
+    padding: 22px;
+    font-size: 13.5px;
+    color: var(--fg2);
+  }
+}

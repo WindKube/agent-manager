@@ -13,6 +13,8 @@ import (
 	"agent-manager/internal/config"
 	"agent-manager/internal/logging"
 	"agent-manager/internal/outbox"
+	"agent-manager/internal/web"
+	"agent-manager/internal/web/fixture"
 	"agent-manager/internal/worker"
 )
 
@@ -21,8 +23,33 @@ import (
 // starts, reports itself and exits 0 so the compose topology can be wired ahead
 // of the code. `serve api` is real: see serve.go.
 
-func runWeb(context.Context) error  { return notYet("serve web") }
 func runSeed(context.Context) error { return notYet("seed") }
+
+// runWeb is the web role's bootstrap. Compare it with runAPI: there is no
+// store.Open and no blob.Open here, and config.Web has no field that would let
+// there be. That absence is the credential boundary (constitution principle II,
+// SC-006), so the catalog arrives through a source the role is handed rather than
+// through a connection it opens.
+func runWeb(ctx context.Context) error {
+	cfg, err := config.Load[config.Web]()
+	if err != nil {
+		return err
+	}
+	log := logging.New("web", cfg.LogLevel, cfg.LogFormat)
+
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// The api has no catalog operation yet, so this layer serves the design's
+	// dataset from process memory. The US2 layer replaces it with an
+	// internal/apiclient-backed source pointed at cfg.APIBaseURL.
+	server := web.New(web.Deps{
+		Catalog: fixture.New(),
+		Log:     log,
+	}, web.Options{Addr: cfg.Addr})
+
+	return server.Run(ctx)
+}
 
 // runWorker resolves the name against the registry and hands over. Nothing here
 // names a role: adding one is a line in internal/worker/registry.go and nothing

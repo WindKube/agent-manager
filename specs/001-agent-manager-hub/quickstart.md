@@ -19,13 +19,13 @@ Then:
 
 | What | Where | Credentials |
 | --- | --- | --- |
-| Web UI | http://localhost:8080 | `kwiatrzyk@example.com` / `password` (Dex static user, catalog admin) |
+| Web UI | http://localhost:8080 | `kwiatrzyk@example.com` / `password` (Keycloak realm user, catalog admin) |
 | API + OpenAPI | http://localhost:8081/v1 · `/v1/openapi.json` | Bearer token from the device flow below |
 | MinIO console | http://localhost:9001 | `minioadmin` / `minioadmin` |
-| Dex | http://localhost:5556/dex/.well-known/openid-configuration | — |
+| Keycloak | http://localhost:8083/realms/agent-manager/.well-known/openid-configuration | `admin` / `admin` for the console |
 | River UI (optional) | http://localhost:8082 | `docker compose --profile queue-ui up` |
 
-A second Dex user, `anowak@example.com` / `password`, is in the `eng-security` group and
+A second realm user, `anowak@example.com` / `password`, is in the `eng-security` group and
 therefore a scanner reviewer — use it to exercise the approve/reject path and see the group
 → role mapping do something real.
 
@@ -35,7 +35,7 @@ therefore a scanner reviewer — use it to exercise the approve/reject path and 
 postgres ──┬─ agent_manager   (app schema + outbox)
            └─ river           (queue only — no app tables, by construction)
 minio ─────── bucket: agent-manager-local
-dex ───────── OIDC + device grant, two static users in two groups
+keycloak ──── OIDC + device grant, two realm users in two groups
    │
    ├─ migrate-schema   arigaio/atlas — atlas migrate apply    (runs to completion)
    └─ migrate-queue    agent-manager migrate queue            (runs to completion)
@@ -83,7 +83,7 @@ curl -s localhost:8081/v1/device/authorize \
   -H 'content-type: application/json' \
   -d '{"client_id":"agent-manager-cli","host":"'"$(hostname)"'"}' | tee /tmp/da.json
 
-# 2. Open verification_uri_complete in a browser, log in as the Dex user, approve.
+# 2. Open verification_uri_complete in a browser, log in as the realm user, approve.
 
 # 3. Poll. Returns authorization_pending until approved, then a short-lived token.
 curl -s localhost:8081/v1/device/token \
@@ -111,7 +111,7 @@ task gen              # templ + tailwind + oapi-codegen client
 task migrate:diff     # Atlas: diff Bun models -> versioned SQL
 task migrate:apply    # apply locally (compose does this for you)
 task test             # unit tests (memblob, no containers)
-task test:integration # testcontainers: postgres, minio, dex
+task test:integration # testcontainers: postgres, minio, keycloak
 task lint             # golangci-lint + the role-import rule
 ```
 
@@ -135,14 +135,54 @@ changing `compose.yaml`:
 | `RIVER_DATABASE_URL` | ✓ | — | ✓ | ✓ |
 | `API_BASE_URL` | — | ✓ | — | — |
 | `BLOB_URL` | read | **absent** | **read+write** | read |
-| `OIDC_ISSUER` / `_CLIENT_ID` / `_CLIENT_SECRET` | ✓ | ✓ | — | — |
+| `OIDC_ISSUER` / `_DISCOVERY_URL` / `_CLIENT_ID` / `_CLIENT_SECRET` | ✓ | ✓ | — | — |
 | `RULEPACK_DIR` | — | — | — | ✓ |
 
 `web` has no `DATABASE_URL` and no `BLOB_URL`. That is not an oversight to tidy up later —
 it is the boundary, and a test boots each role with only its own environment to prove the
 role still works and cannot reach past it.
 
+The object-store keys are two, not one: `am-fetcher` can write the bucket and `am-reader`
+cannot. `internal/blob` already hands the scanner a `blob.Reader` with no write method, but a
+type boundary is only worth the credential behind it — with a single root key, code that
+bypassed the interface would still succeed.
+
+### `OIDC_DISCOVERY_URL`, and why it exists
+
+Keycloak's `iss` claim and its authorisation and device endpoints have to be reachable from
+the operator's **browser** (`http://localhost:8083`). Its token and JWKS endpoints have to be
+reachable from the **api and web containers** (`http://keycloak:8083`). One hostname cannot be
+both, so compose sets `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true`: Keycloak then derives the
+backchannel URLs from the request's Host header and leaves `issuer` alone. Measured, the same
+discovery document reads:
+
+| | fetched from the host | fetched from the compose network |
+| --- | --- | --- |
+| `issuer`, `authorization_endpoint` | `localhost:8083` | `localhost:8083` |
+| `token_endpoint`, `jwks_uri` | `localhost:8083` | **`keycloak:8083`** |
+
+go-oidc refuses a document whose `issuer` differs from the URL it was fetched from, which is
+exactly this case, so `auth.NewVerifier` passes `oidc.InsecureIssuerURLContext` when the two
+URLs differ. That disables one string comparison between two values the operator supplied.
+Signature, audience and expiry verification are untouched, and the `iss` claim is still
+checked against `AGENT_MANAGER_OIDC_ISSUER`.
+
+Against a real IdP the two URLs are the same, `DISCOVERY_URL` is left unset, and the strict
+check runs as normal.
+
+`AGENT_MANAGER_OIDC_SCOPES` is `openid profile email` locally and
+`openid profile email groups` by default. The local realm attaches the group-membership
+mapper to the client rather than to a requestable scope, because a realm import that declares
+`clientScopes` **replaces** Keycloak's built-in set — `profile`, `email`, `roles` and friends
+all vanish and every token request fails with `invalid_scope`. A real IdP wants the scope
+requested, which is why the code's default includes it.
+
 ## Troubleshooting
+
+**Keycloak says "Account is not fully set up"** — one message, three causes, and the real
+one appears only in the container log as `error="resolve_required_actions"`: a credential
+imported without `"temporary": false`, a user missing `firstName`/`lastName`, or the
+`VERIFY_PROFILE` required action left enabled. The shipped realm handles all three.
 
 **`migrate-schema` exits non-zero on first run** — check `atlas.sum` is committed and
 matches the migration files. Atlas refuses a directory whose integrity hash does not match,

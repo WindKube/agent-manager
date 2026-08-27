@@ -76,7 +76,7 @@ adjudicates and is browsable. US5–US8 are increments on top.
 - [ ] T031 `internal/web/` — templ + datastar skeleton, `assets/input.css` carrying the design's CSS-variable palette as Tailwind tokens, light/dark from `data-sm-theme`, shell + sidebar nav.
 - [ ] T032 **[R7 GATE]** Spike the catalog's typeahead-filtered multi-select facet with live counts in datastar. Exit criterion: instant typing at 50 options, table update < 300 ms. **If it fails, stop and adopt the Alpine.js fallback before building any other screen.**
 - [ ] T033 [P] Lint rule enforcing the role import boundary: only `internal/api` may import `internal/store` or `internal/blob`; `internal/web` may import only `internal/apiclient` and `internal/domain`.
-- [ ] T034 `compose.yaml` — postgres (two databases), minio + bucket init, dex (2 users, 2 groups, device grant), `migrate-schema` → `migrate-queue` chained on `service_completed_successfully`, api, web, fetcher, scanner, seed one-shot, `queue-ui` profile. Env per the quickstart table; `web` gets **no** DSN and **no** blob URL.
+- [ ] T034 `compose.yaml` — postgres (two databases), minio + bucket init, keycloak (2 users, 2 groups, device grant — Dex was measured and rejected, see R6), `migrate-schema` → `migrate-queue` chained on `service_completed_successfully`, api, web, fetcher, scanner, seed one-shot, `queue-ui` profile. Env per the quickstart table; `web` gets **no** DSN and **no** blob URL.
 - [ ] T035 [P] Test booting each role with **only** its own environment — proves SC-006 and that no role silently depends on a credential it should not have.
 
 **Checkpoint**: `docker compose up` starts everything, all health checks green, no screens yet.
@@ -173,7 +173,7 @@ adjudicates and is browsable. US5–US8 are increments on top.
 
 - [ ] T088 [US6] `POST /v1/device/authorize` — Crockford base32 user code (ambiguous glyphs excluded), device code **hashed at rest**, host bound, expiry.
 - [ ] T089 [US6] `POST /v1/device/token` — RFC 8628 polling with `authorization_pending` / `slow_down` / `expired_token`. Single-use via the `pending → approved → consumed` transition in one transaction.
-- [ ] T090 [US6] Browser approval flow through Dex, `login` audit row naming the host.
+- [ ] T090 [US6] Browser approval flow through the OIDC provider, `login` audit row naming the host.
 - [ ] T091 [P] [US6] Refusal tests: expired code, replayed code, approval by a different identity than the requester (FR-042).
 - [ ] T092 [P] [US6] `GET /v1/profiles` — exactly the readable set, enumerated not filtered (FR-044).
 - [ ] T093 [P] [US6] `GET /v1/profiles/{slug}/revisions/{revision}` and `GET /v1/bundles/...` with the `Digest` header.

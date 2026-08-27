@@ -23,7 +23,12 @@ type Observability struct {
 
 // OIDC is held only by roles that authenticate people: api and web.
 type OIDC struct {
-	Issuer       string   `env:"OIDC_ISSUER"`
+	Issuer string `env:"OIDC_ISSUER"`
+	// DiscoveryURL is where the discovery document is fetched from when that is
+	// not the issuer — a container reaching a browser-facing issuer over the
+	// compose network. Empty means the two are the same, which is the ordinary
+	// case and the one a real IdP presents. See quickstart.md.
+	DiscoveryURL string   `env:"OIDC_DISCOVERY_URL"`
 	ClientID     string   `env:"OIDC_CLIENT_ID"`
 	ClientSecret string   `env:"OIDC_CLIENT_SECRET"`
 	RedirectURL  string   `env:"OIDC_REDIRECT_URL"`

@@ -31,11 +31,20 @@
    Everything is served from this origin. There is no CDN reference in any
    rendered page: the image is distroless and the quickstart must work offline. */
 
-@import "tailwindcss";
+/* source(none) turns off Tailwind v4's automatic content detection. Left on, the
+   explicit @source globs below are ADDITIVE to a scan of the whole repository, and
+   the utility layer becomes a function of every file in it: the word "collapse" in
+   a Go comment in internal/domain/pkgspec/layout.go and "shrink" in one in
+   internal/fetch/source.go each added a rule to the shipped stylesheet, which made
+   `task gen:check` fail on a branch that never touched the web tree. All 31
+   utilities it had harvested that way were false positives - the design uses
+   hand-written am-* classes and inline custom properties, not Tailwind utilities. */
+@import "tailwindcss" source(none);
 
-@source "../internal/web/*.go";
+/* Class attributes only ever appear in the templ sources. The generated _templ.go
+   files carry the same strings, and everything else under internal/web builds
+   inline style declarations rather than class lists. */
 @source "../internal/web/components/*.templ";
-@source "../internal/web/components/*_templ.go";
 
 /* The design's palette (docs/design/agent-manager.dc.html lines 15-16). Light on
    bare :root so a viewer with no stored choice gets it, dark under the attribute

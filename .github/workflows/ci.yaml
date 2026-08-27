@@ -128,6 +128,8 @@ jobs:
       # real Postgres via testcontainers. The unit suite cannot reach them, so without
       # this job the credential boundary is unverified.
       - name: go test -tags=integration
+        env:
+          CGO_ENABLED: "1" # -race requires cgo
         run: go test -race -tags=integration -timeout=20m ./...
 
   vuln:

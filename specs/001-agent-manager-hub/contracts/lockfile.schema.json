@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-manager.dev/schemas/1.0.0/lockfile.schema.json",
+  "title": "Agent Manager resolved profile revision",
+  "description": "Written to profiles/<slug>/r<seq>.json. Immutable once published (FR-033/FR-034). Consumed by the CLI to decide exactly what to sync.",
+  "type": "object",
+  "required": ["schemaVersion", "profile", "revision", "resolvedAt", "gate", "entries", "skipped", "targets"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "profile": {
+      "type": "object",
+      "required": ["slug", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "slug": { "type": "string" },
+        "name": { "type": "string" },
+        "visibility": { "enum": ["organisation", "shared", "private"] }
+      }
+    },
+    "revision": { "type": "integer", "minimum": 1, "description": "Sequential per profile, no gaps." },
+    "note": { "type": "string" },
+    "resolvedAt": { "type": "string", "format": "date-time" },
+    "gate": {
+      "enum": ["block", "approval", "warn-with-override"],
+      "description": "The org scan gate in force at resolution. Recorded so a lockfile explains itself later."
+    },
+    "defaultPolicy": { "enum": ["floating-latest", "pinned", "range"] },
+    "entries": {
+      "type": "array",
+      "description": "Packages this revision resolves to an exact version.",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "version", "digest", "objectKey", "resolution", "verdict"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "description": "publisher/name" },
+          "kind": { "enum": ["plugin", "skill"] },
+          "version": { "type": "string" },
+          "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+          "objectKey": { "type": "string" },
+          "resolution": { "enum": ["latest", "pinned", "range"] },
+          "verdict": { "enum": ["clean", "flagged"] },
+          "override": {
+            "type": "object",
+            "description": "Present only when a flagged version resolved under warn-with-override.",
+            "required": ["reviewer", "note", "expiresAt"],
+            "additionalProperties": false,
+            "properties": {
+              "reviewer": { "type": "string" },
+              "note": { "type": "string" },
+              "expiresAt": { "type": "string", "format": "date-time" }
+            }
+          },
+          "signature": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "ref": { "type": "string" },
+              "verified": { "type": "boolean", "description": "False until Sigstore verification ships (FR-048a). Never render a false value as a pass." }
+            }
+          }
+        }
+      }
+    },
+    "skipped": {
+      "type": "array",
+      "description": "FR-036: an excluded package is reported with its reason, never silently omitted.",
+      "items": {
+        "type": "object",
+        "required": ["id", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string" },
+          "reason": {
+            "enum": [
+              "flagged-blocked-by-gate",
+              "flagged-awaiting-approval",
+              "version-rejected",
+              "no-clean-version-available",
+              "pin-target-missing",
+              "unsigned-and-signatures-required"
+            ]
+          },
+          "detail": { "type": "string" },
+          "wouldHaveResolvedTo": { "type": "string" }
+        }
+      }
+    },
+    "targets": {
+      "type": "array",
+      "description": "Which agent directories the CLI should write. Advisory to the client; the server stores nothing per target (FR-039).",
+      "items": { "enum": ["claude-code", "agents-md", "codex"] }
+    }
+  }
+}

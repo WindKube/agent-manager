@@ -1,0 +1,298 @@
+openapi: 3.1.0
+
+# ---------------------------------------------------------------------------
+# SCOPE NOTE — read before editing.
+#
+# Constitution principle V: the served OpenAPI document is EMITTED from the huma
+# operation definitions in internal/api. This file is not that document and must never
+# be hand-maintained into a copy of it.
+#
+# What this file is: the FROZEN MACHINE-FACING SURFACE. These operations are consumed by
+# the CLI (spec User Story 6), which ships separately and cannot be redeployed in step
+# with the hub. They are specified here, before implementation, so the contract is fixed
+# and the "Connect the CLI" screen is truthful about a real API rather than a mockup.
+#
+# The web-facing operations are inventoried at the bottom for completeness. Their schemas
+# come from the generated document; do not duplicate them here.
+#
+# CI check: the generated document MUST remain a superset of this file, and no operation
+# named here may change shape without a version bump. That test is the point of the file.
+# ---------------------------------------------------------------------------
+
+info:
+  title: Agent Manager — machine-facing API
+  version: 1.0.0
+  description: |
+    The subset of the Agent Manager API consumed by machine clients. Authentication is the
+    OAuth 2.0 device authorisation grant (RFC 8628) against the organisation's identity
+    provider, brokered by the hub.
+  license:
+    name: Apache-2.0
+
+servers:
+  - url: https://hub.example.dev
+    description: The organisation's hub
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: device
+    description: RFC 8628 device authorisation. Unauthenticated by definition.
+  - name: profiles
+    description: What this identity may read, and how it resolves.
+  - name: bundles
+    description: Immutable version content.
+
+paths:
+
+  /v1/device/authorize:
+    post:
+      tags: [device]
+      summary: Begin device authorisation
+      operationId: deviceAuthorize
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [client_id, host]
+              properties:
+                client_id: { type: string }
+                host:
+                  type: string
+                  description: |
+                    Hostname of the requesting machine. Bound to the authorisation and
+                    displayed to the approving human (FR-041), so approval is an informed act.
+                scope: { type: string }
+      responses:
+        "200":
+          description: Authorisation pending
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [device_code, user_code, verification_uri, expires_in, interval]
+                properties:
+                  device_code:
+                    type: string
+                    description: Bearer credential. Stored hashed server-side; never logged.
+                  user_code:
+                    type: string
+                    pattern: "^[0-9A-HJ-NP-TV-Z]{4}-[0-9A-HJ-NP-TV-Z]{4}$"
+                    description: Crockford base32, ambiguous glyphs excluded. Shape "HKQ2-9FTL".
+                  verification_uri: { type: string, format: uri }
+                  verification_uri_complete: { type: string, format: uri }
+                  expires_in: { type: integer, description: Seconds. }
+                  interval: { type: integer, description: Minimum poll interval, seconds. }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/device/token:
+    post:
+      tags: [device]
+      summary: Poll for the issued token
+      operationId: deviceToken
+      security: []
+      description: |
+        Standard RFC 8628 polling. A code that has expired, been consumed, or been approved
+        by an identity other than the requester is refused and no token is issued (FR-042).
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [grant_type, device_code, client_id]
+              properties:
+                grant_type:
+                  const: urn:ietf:params:oauth:grant-type:device_code
+                device_code: { type: string }
+                client_id: { type: string }
+      responses:
+        "200":
+          description: Approved; short-lived token issued (FR-043)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [access_token, token_type, expires_in]
+                properties:
+                  access_token: { type: string }
+                  token_type: { const: Bearer }
+                  expires_in: { type: integer }
+                  refresh_token: { type: string }
+        "400":
+          description: RFC 8628 error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    enum: [authorization_pending, slow_down, access_denied, expired_token, invalid_grant]
+
+  /v1/profiles:
+    get:
+      tags: [profiles]
+      summary: Profiles readable by this identity
+      operationId: listProfiles
+      description: |
+        Returns exactly the profiles this identity may read via direct membership or group
+        mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable
+        profiles are not enumerated at all.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [profiles]
+                properties:
+                  profiles:
+                    type: array
+                    items:
+                      type: object
+                      required: [slug, name, packageCount, headRevision]
+                      properties:
+                        slug: { type: string }
+                        name: { type: string }
+                        visibility: { enum: [organisation, shared, private] }
+                        packageCount: { type: integer }
+                        headRevision: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/profiles/{slug}/revisions/{revision}:
+    get:
+      tags: [profiles]
+      summary: Fetch a resolved revision lockfile
+      operationId: getRevision
+      description: |
+        `revision` accepts `head` or an integer. The response body conforms to
+        lockfile.schema.json, including the `skipped` array — a gate-excluded package is
+        reported with its reason, never silently omitted (FR-036).
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+        - { name: revision, in: path, required: true, schema: { type: string, pattern: "^(head|[0-9]+)$" } }
+      responses:
+        "200":
+          description: The immutable resolved lockfile
+          content:
+            application/json:
+              schema:
+                $ref: "https://agent-manager.dev/schemas/1.0.0/lockfile.schema.json"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: No such profile or revision, or not readable by this identity.
+
+  /v1/bundles/{publisher}/{name}/{version}:
+    get:
+      tags: [bundles]
+      summary: Download an immutable version bundle
+      operationId: getBundle
+      description: |
+        Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The
+        `Digest` header carries the sha256 the client MUST verify before writing anything to
+        disk. A rejected version is never served regardless of gate (FR-029).
+      parameters:
+        - { name: publisher, in: path, required: true, schema: { type: string } }
+        - { name: name, in: path, required: true, schema: { type: string } }
+        - { name: version, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Bundle bytes
+          headers:
+            Digest:
+              schema: { type: string, pattern: "^sha-256=[A-Za-z0-9+/=]+$" }
+            ETag:
+              schema: { type: string }
+          content:
+            application/zstd:
+              schema: { type: string, format: binary }
+        "307":
+          description: Redirect to a short-lived pre-signed object-store URL.
+        "403":
+          description: Version rejected or not distributable under the current gate.
+        "404": { description: No such version. }
+
+  /v1/sync:
+    post:
+      tags: [profiles]
+      summary: Report a completed sync
+      operationId: reportSync
+      description: |
+        Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per
+        sync, not per package — install counts are aggregated server-side from the
+        revision's contents.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [profile, revision, host, targets]
+              properties:
+                profile: { type: string }
+                revision: { type: integer }
+                host: { type: string }
+                targets:
+                  type: array
+                  items: { enum: [claude-code, agents-md, codex] }
+                skipped:
+                  type: array
+                  items: { type: string }
+      responses:
+        "204": { description: Recorded. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/health:
+    get:
+      summary: Liveness and readiness
+      operationId: health
+      security: []
+      responses:
+        "200": { description: Serving. }
+        "503": { description: Not ready — a dependency is unreachable. }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    Unauthorized:
+      description: Missing, expired or invalid token.
+    RateLimited:
+      description: Too many requests.
+      headers:
+        Retry-After:
+          schema: { type: integer }
+
+# ---------------------------------------------------------------------------
+# WEB-FACING OPERATIONS — inventory only. Schemas come from the generated document.
+#
+#  Catalog     GET    /v1/packages                 list + search + facets (US2)
+#              GET    /v1/packages/facets          counts per category and tag (R4)
+#              GET    /v1/packages/{id}            detail (US3)
+#              POST   /v1/packages                 register from URL or upload (US1)
+#              POST   /v1/packages/preview         pre-submit archive entry validation
+#  Scanner     GET    /v1/findings                 open findings + stats (US4)
+#              GET    /v1/findings/{id}            detail incl. checks-run matrix
+#              POST   /v1/findings/{id}/approve    override with note and expiry
+#              POST   /v1/findings/{id}/reject     quarantine permanently
+#  Profiles    GET    /v1/profiles/{slug}          detail with entries and resolution (US5)
+#              PUT    /v1/profiles/{slug}/entries  pin / unpin / reorder
+#              POST   /v1/profiles/{slug}/revisions publish
+#              PUT    /v1/profiles/{slug}/members  sharing
+#              PUT    /v1/profiles/{slug}/targets  sync targets
+#  Org         GET    /v1/org/policy               (US7)
+#              PUT    /v1/org/policy
+#              GET    /v1/org/categories
+#              PUT    /v1/org/group-roles
+#  Storage     GET    /v1/storage                  stats, key layout, bucket settings (US8)
+#  Audit       GET    /v1/audit                    paged log
+#              GET    /v1/audit.csv                full export of the current scope
+# ---------------------------------------------------------------------------

@@ -169,12 +169,27 @@ reverse-domain directories → ext.
 | --- | --- | --- |
 | `version_id` | uuid fk → version | |
 | `name` | text | `filesystem.read`, `network`, `shell` |
-| `source` | enum `inferred \| expected` | **The R1 inversion.** `inferred` written by the scanner; `expected` from `extensions["dev.agent-manager"]` |
+| `source` | enum `inferred \| expected` | **The R1 inversion.** Both sets are written by the scanner: `inferred` from what it finds in the bundle, `expected` transcribed from `extensions["dev.agent-manager"]` in `version.manifest` at the same time |
 | `detail` | jsonb | Hosts, path globs, command names |
 | `level` | enum `scoped \| allowlisted \| review` | A `shell` capability is never below `review` (FR-018) |
 
 A finding is raised where `inferred` exceeds `expected` (FR-027). Where no `expected` row
 exists, every `inferred` capability is surfaced for review rather than passing silently.
+
+**One writer, not two.** The scanner writes the `expected` rows as well as the `inferred`
+ones, in the transaction that records the scan. It holds `SELECT` on `version`, so it reads
+the declaration out of `version.manifest` itself.
+
+The fetcher is the obvious alternative — it already parses that manifest — and it is
+refused on exposure, not on layering. The fetcher is the role that pulls
+attacker-supplied archives over the network and unpacks them; the scanner runs offline,
+holds no outbound client, and already holds `INSERT` on `capability` for the `inferred`
+set. A write the most exposed role in the system can do without is a write it does not get.
+`store_test.go` asserts the refusal against a live Postgres.
+
+The consequence is that a version has no capability rows until it has been scanned, which
+is correct: until then the detail screen has nothing to compare a declaration against and
+says so.
 
 ### `signature`
 | `version_id` uuid pk fk → version | `ref` text | `kind` enum `none \| cosign-bundle` | `verified_at` timestamptz null | `verified_by` text null | `result` enum null |
@@ -523,7 +538,7 @@ will reach for by neighbourhood, so each carries the reason it stays withheld.
 | `DELETE` on `device_authorization` from `am_api` | Expiring a code looks like a delete | The `state` enum already contains `expired` — expiry is a transition (FR-042), not a removal, and the row is the evidence a code was issued |
 | `DELETE` on `revision` from `am_api` | Tidying old revisions looks like housekeeping | FR-034 forbids it outright |
 | `DELETE`/`UPDATE`/`TRUNCATE` on `audit_event` from **every** role | `am_api` writes audit rows, so it looks like it owns them | FR-052. The revoke is the entire enforcement — no trigger, no ORM hook |
-| `INSERT` on `capability` from `am_fetcher` | It parses the manifest the `expected` set comes from | The `expected` set is read out of `extensions["dev.agent-manager"]` by the API when the detail page is assembled (T057) and the `inferred` set is the scanner's. The fetcher transcribes the manifest into `version.manifest` and stops, so no role writes a capability row it did not derive itself |
+| `INSERT` on `capability` from `am_fetcher` | It parses the manifest the `expected` set comes from | Both capability sets have one writer, the scanner, which reads the declaration back out of `version.manifest` when it records the scan. The fetcher transcribes the manifest into `version.manifest` and stops. Adding a second writer here would buy nothing and cost a grant |
 | `UPDATE` on `version.digest`, `object_key`, `size_bytes`, `manifest`, `visible` from `am_scanner` | It already holds `UPDATE` on `version` | The scanner does not produce bundle bytes. The column-level grant says so as well as the Go type does, and it survives a hand-written SQL statement, which the Go type does not |
 | `UPDATE` on `finding_evidence` from `am_scanner` | It holds `UPDATE` on `finding`, `scan`, `scan_check` and `capability` | An evidence row quotes the bundle's bytes at the instant they were scanned. A rescan produces a new scan and new findings rather than editing old ones, so nothing needs to rewrite one — and a row that cannot be rewritten is one an operator can still trust after the fact |
 | `INSERT`, `UPDATE` on `finding_evidence` from `am_api` | `am_api` otherwise holds `SELECT`/`INSERT`/`UPDATE` on every table | `api` does not run checks: findings and their evidence are the scanner's whole output (`contracts/worker.md`). The one thing a reviewer does to a finding is approve or reject it, which writes `override` and `finding.state` |

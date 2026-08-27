@@ -23,6 +23,7 @@ import (
 func (s *Server) register() {
 	s.registerHealth()
 	s.registerDevice()
+	s.registerPackages()
 	s.registerProfiles()
 	s.registerBundles()
 	s.registerSync()
@@ -108,6 +109,56 @@ func (s *Server) registerDevice() {
 	s.declareRequestBody(http.MethodPost, "/v1/device/token", "application/x-www-form-urlencoded",
 		"The RFC 8628 token request, form-encoded as the RFC requires.",
 		s.schemaOf(contract.DeviceTokenRequest{}, "DeviceTokenRequest"))
+}
+
+func (s *Server) registerPackages() {
+	huma.Register(s.api, huma.Operation{
+		OperationID: "previewPackage",
+		Method:      http.MethodPost,
+		Path:        "/v1/packages/preview",
+		Tags:        []string{"packages"},
+		Summary:     "Validate an archive before registering it",
+		Description: "FR-005's pre-submit answer: every entry with a validation mark, the discarded paths " +
+			"named, the components the FILE TREE reveals, and — when a manifest fails — the " +
+			"schema path that refused it. Writes nothing, and runs the same validation the " +
+			"fetcher runs, so the panel a user approves is the tree that gets stored.",
+		MaxBodyBytes: maxUploadBytes,
+		Responses: map[string]*huma.Response{
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"413": s.errorResponse("The archive is larger than this hub accepts."),
+			"422": s.errorResponse("No archive was attached, or it could not be read."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.previewPackage)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID:   "registerPackage",
+		Method:        http.MethodPost,
+		Path:          "/v1/packages",
+		Tags:          []string{"packages"},
+		Summary:       "Register a package from a URL or an upload",
+		DefaultStatus: http.StatusAccepted,
+		Description: "Creates the publisher, the package and an invisible version, enqueues the fetch and " +
+			"writes the audit row, in one transaction. The response is an acknowledgement and not " +
+			"a published version: the bytes are fetched, validated, packed and committed by " +
+			"`worker fetcher`, which is the only role that may write them. A version becomes " +
+			"visible only once all of that has landed (FR-008).",
+		MaxBodyBytes: maxUploadBytes,
+		Responses: map[string]*huma.Response{
+			"202": {
+				Description: "Registered. The fetch is queued.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.PackageRegistered{}, "PackageRegistered")},
+				},
+			},
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"403": s.errorResponse("This identity may not register a package."),
+			"409": s.errorResponse("FR-007: this publisher/name@version is already published and its bytes are immutable."),
+			"413": s.errorResponse("The archive is larger than this hub accepts."),
+			"422": s.errorResponse("The registration is incomplete, or the uploaded archive was refused."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.registerPackage)
 }
 
 func (s *Server) registerProfiles() {

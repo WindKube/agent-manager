@@ -26,6 +26,10 @@ func (s *Server) catalog(c *gin.Context) {
 		// interaction the same shape at ten options and at ten thousand.
 		Category: categoryFacet(page, false),
 		Tags:     tagFacet(page, false),
+		// The modal's category list IS shipped on the first render, unlike the facet
+		// option lists: it is the admin-curated vocabulary (FR-049), a select rather
+		// than a searchable menu, and a registration can only choose from it.
+		Import: components.Import{Categories: categoryNames(page)},
 	}))
 }
 
@@ -101,6 +105,15 @@ func (s *Server) load(c *gin.Context, q view.CatalogQuery) (view.CatalogPage, bo
 		return view.CatalogPage{}, false
 	}
 	return page, true
+}
+
+// categoryNames is the curated vocabulary as the modal's select needs it.
+func categoryNames(page view.CatalogPage) []string {
+	out := make([]string, 0, len(page.Categories))
+	for _, option := range page.Categories {
+		out = append(out, option.Label)
+	}
+	return out
 }
 
 func categoryFacet(page view.CatalogPage, withOptions bool) components.Facet {

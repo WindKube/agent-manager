@@ -562,6 +562,328 @@
         ],
         "type": "object"
       },
+      "PackagePreview": {
+        "additionalProperties": false,
+        "properties": {
+          "components": {
+            "description": "Derived from the file tree. No manifest field enumerates components.",
+            "items": {
+              "$ref": "#/components/schemas/PreviewComponent"
+            },
+            "type": "array"
+          },
+          "dropped": {
+            "description": "Every discarded path in full. The entries above group them for display.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "entries": {
+            "description": "One row per top-level entry, in the order the pre-submit panel shows them.",
+            "items": {
+              "$ref": "#/components/schemas/PreviewEntry"
+            },
+            "type": "array"
+          },
+          "expectedCapabilities": {
+            "description": "The publisher's declared expectations, read from extensions[\"dev.agent-manager\"] and from nowhere else.",
+            "items": {
+              "$ref": "#/components/schemas/PreviewCapability"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "description": "Decided by which manifest is at the tree root, never by a manifest field.",
+            "enum": [
+              "plugin",
+              "skill"
+            ],
+            "examples": [
+              "plugin"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "description": "The manifest's name, which becomes the catalog's package name.",
+            "examples": [
+              "platform-toolkit"
+            ],
+            "type": "string"
+          },
+          "problems": {
+            "description": "Why the tree was refused. Empty when valid.",
+            "items": {
+              "$ref": "#/components/schemas/PreviewProblem"
+            },
+            "type": "array"
+          },
+          "tags": {
+            "description": "The manifest's keywords, which become the version's tags.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "valid": {
+            "description": "Whether this tree would be accepted for registration.",
+            "type": "boolean"
+          },
+          "version": {
+            "examples": [
+              "1.3.0"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "valid",
+          "entries",
+          "components",
+          "expectedCapabilities",
+          "tags",
+          "dropped",
+          "problems"
+        ],
+        "type": "object"
+      },
+      "PackageRegistered": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "plugin",
+              "skill"
+            ],
+            "examples": [
+              "plugin"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "examples": [
+              "platform-toolkit"
+            ],
+            "type": "string"
+          },
+          "objectKey": {
+            "examples": [
+              "skills/example/platform-toolkit/1.3.0/bundle.tar.zst"
+            ],
+            "type": "string"
+          },
+          "packageId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "preview": {
+            "$ref": "#/components/schemas/PackagePreview",
+            "description": "Present for an upload, where the archive was inspected in-process before the version row was written."
+          },
+          "publisher": {
+            "examples": [
+              "example"
+            ],
+            "type": "string"
+          },
+          "verdict": {
+            "description": "Always scanning here: the scan has not run.",
+            "enum": [
+              "scanning",
+              "clean",
+              "flagged",
+              "rejected"
+            ],
+            "examples": [
+              "scanning"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "examples": [
+              "1.3.0"
+            ],
+            "type": "string"
+          },
+          "versionId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "visible": {
+            "description": "Always false here. Commit-last (FR-008): the fetcher flips it.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "packageId",
+          "versionId",
+          "publisher",
+          "name",
+          "version",
+          "kind",
+          "objectKey",
+          "verdict",
+          "visible"
+        ],
+        "type": "object"
+      },
+      "PreviewCapability": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "description": "The publisher's scoping, e.g. hosts for network.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "level": {
+            "enum": [
+              "scoped",
+              "allowlisted",
+              "review"
+            ],
+            "examples": [
+              "allowlisted"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "examples": [
+              "network"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "PreviewComponent": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "skill",
+              "mcp",
+              "ext"
+            ],
+            "examples": [
+              "skill"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "examples": [
+              "terraform-review"
+            ],
+            "type": "string"
+          },
+          "note": {
+            "examples": [
+              "SKILL.md + scripts/"
+            ],
+            "type": "string"
+          },
+          "path": {
+            "examples": [
+              "skills/terraform-review/SKILL.md"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "path"
+        ],
+        "type": "object"
+      },
+      "PreviewEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "kept": {
+            "description": "False for a path outside the spec layout, which is not stored.",
+            "type": "boolean"
+          },
+          "mark": {
+            "enum": [
+              "kept",
+              "dropped",
+              "invalid"
+            ],
+            "examples": [
+              "kept"
+            ],
+            "type": "string"
+          },
+          "note": {
+            "description": "What was found there.",
+            "examples": [
+              "4 skills"
+            ],
+            "type": "string"
+          },
+          "path": {
+            "description": "A file, a directory, or a comma-joined group of dropped paths.",
+            "examples": [
+              "skills/"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "note",
+          "kept",
+          "mark"
+        ],
+        "type": "object"
+      },
+      "PreviewProblem": {
+        "additionalProperties": false,
+        "properties": {
+          "instancePath": {
+            "description": "Where in the manifest the offending value sits.",
+            "examples": [
+              "/repository"
+            ],
+            "type": "string"
+          },
+          "manifest": {
+            "description": "Which manifest failed.",
+            "examples": [
+              "plugin.json"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "examples": [
+              "additionalProperties 'repository' not allowed"
+            ],
+            "type": "string"
+          },
+          "schemaId": {
+            "description": "The $id of the schema it was checked against.",
+            "examples": [
+              "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
+            ],
+            "type": "string"
+          },
+          "schemaPath": {
+            "description": "The keyword location that refused it.",
+            "examples": [
+              "/additionalProperties"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
       "Profile": {
         "additionalProperties": false,
         "properties": {
@@ -972,6 +1294,316 @@
         "summary": "Liveness and readiness",
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/v1/packages": {
+      "post": {
+        "description": "Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed (FR-008).",
+        "operationId": "registerPackage",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "encoding": {
+                "archive": {
+                  "contentType": "application/zip,application/gzip,application/x-gzip,application/x-tar,application/octet-stream"
+                },
+                "category": {
+                  "contentType": "text/plain"
+                },
+                "kind": {
+                  "contentType": "text/plain"
+                },
+                "name": {
+                  "contentType": "text/plain"
+                },
+                "publisher": {
+                  "contentType": "text/plain"
+                },
+                "ref": {
+                  "contentType": "text/plain"
+                },
+                "source": {
+                  "contentType": "text/plain"
+                },
+                "subdirectory": {
+                  "contentType": "text/plain"
+                },
+                "url": {
+                  "contentType": "text/plain"
+                },
+                "version": {
+                  "contentType": "text/plain"
+                },
+                "visibility": {
+                  "contentType": "text/plain"
+                }
+              },
+              "schema": {
+                "properties": {
+                  "archive": {
+                    "contentEncoding": "binary",
+                    "contentMediaType": "application/octet-stream",
+                    "description": "Required when source is upload, and refused otherwise. huma treats a form field as required unless told otherwise, which is what required:\"false\" is doing on every optional field here.",
+                    "format": "binary",
+                    "type": "string"
+                  },
+                  "category": {
+                    "description": "A category name or slug from the admin-curated vocabulary (FR-049).",
+                    "examples": [
+                      "Infrastructure"
+                    ],
+                    "type": "string"
+                  },
+                  "kind": {
+                    "description": "Provisional only. Kind is decided by which manifest is at the tree root, so the fetcher overwrites this once it has the bytes.",
+                    "enum": [
+                      "plugin",
+                      "skill"
+                    ],
+                    "examples": [
+                      "plugin"
+                    ],
+                    "type": "string"
+                  },
+                  "name": {
+                    "description": "The package name. Derived from the repository name when omitted, and always checked against the manifest.",
+                    "examples": [
+                      "platform-toolkit"
+                    ],
+                    "type": "string"
+                  },
+                  "publisher": {
+                    "description": "The publishing namespace. Required: no source carries one.",
+                    "examples": [
+                      "example"
+                    ],
+                    "type": "string"
+                  },
+                  "ref": {
+                    "description": "Branch, tag or commit. Defaults to the remote's HEAD.",
+                    "examples": [
+                      "v1.3.0"
+                    ],
+                    "type": "string"
+                  },
+                  "source": {
+                    "description": "Which of FR-001's three shapes this is.",
+                    "enum": [
+                      "upload",
+                      "git",
+                      "archive-url"
+                    ],
+                    "examples": [
+                      "git"
+                    ],
+                    "type": "string"
+                  },
+                  "subdirectory": {
+                    "description": "Path inside the tree holding the manifest.",
+                    "examples": [
+                      "plugins/platform-toolkit"
+                    ],
+                    "type": "string"
+                  },
+                  "url": {
+                    "description": "Repository or archive URL. Required unless source is upload.",
+                    "examples": [
+                      "https://github.com/org/plugin"
+                    ],
+                    "type": "string"
+                  },
+                  "version": {
+                    "description": "The exact version. Derived from the ref when omitted.",
+                    "examples": [
+                      "1.3.0"
+                    ],
+                    "type": "string"
+                  },
+                  "visibility": {
+                    "description": "Who may see the package in the catalog.",
+                    "enum": [
+                      "organisation",
+                      "team",
+                      "private"
+                    ],
+                    "examples": [
+                      "organisation"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "publisher"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageRegistered"
+                }
+              }
+            },
+            "description": "Registered. The fetch is queued."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity may not register a package."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "FR-007: this publisher/name@version is already published and its bytes are immutable."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The archive is larger than this hub accepts."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The registration is incomplete, or the uploaded archive was refused."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Register a package from a URL or an upload",
+        "tags": [
+          "packages"
+        ]
+      }
+    },
+    "/v1/packages/preview": {
+      "post": {
+        "description": "FR-005's pre-submit answer: every entry with a validation mark, the discarded paths named, the components the FILE TREE reveals, and — when a manifest fails — the schema path that refused it. Writes nothing, and runs the same validation the fetcher runs, so the panel a user approves is the tree that gets stored.",
+        "operationId": "previewPackage",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "encoding": {
+                "archive": {
+                  "contentType": "application/zip,application/gzip,application/x-gzip,application/x-tar,application/octet-stream"
+                }
+              },
+              "schema": {
+                "properties": {
+                  "archive": {
+                    "contentEncoding": "binary",
+                    "contentMediaType": "application/octet-stream",
+                    "description": "A .zip or .tar.gz of the whole tree, with the manifest at its root.",
+                    "format": "binary",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "archive"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackagePreview"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The archive is larger than this hub accepts."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No archive was attached, or it could not be read."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Validate an archive before registering it",
+        "tags": [
+          "packages"
         ]
       }
     },

@@ -16,6 +16,7 @@ import (
 	"agent-manager/internal/web"
 	"agent-manager/internal/web/fixture"
 	"agent-manager/internal/worker"
+	"agent-manager/internal/worker/roles"
 )
 
 // The remaining serving roles land in later layers of this stack. Each is
@@ -52,10 +53,10 @@ func runWeb(ctx context.Context) error {
 }
 
 // runWorker resolves the name against the registry and hands over. Nothing here
-// names a role: adding one is a line in internal/worker/registry.go and nothing
-// else (constitution principle VII).
+// names a role: adding one is a line in internal/worker/roles and nothing else
+// (constitution principle VII).
 func runWorker(ctx context.Context, name string) error {
-	def, err := worker.Lookup(name)
+	def, err := roles.Lookup(name)
 	if err != nil {
 		return err
 	}
@@ -74,7 +75,7 @@ func runWorker(ctx context.Context, name string) error {
 	return worker.Run(ctx, def, cfg)
 }
 
-func listWorkers(w io.Writer) error { return worker.List(w) }
+func listWorkers(w io.Writer) error { return roles.List(w) }
 
 // runMigrateQueue applies River's own migrations to the queue database. It reads
 // only AGENT_MANAGER_RIVER_DATABASE_URL: the application database has its own

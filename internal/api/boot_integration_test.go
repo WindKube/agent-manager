@@ -158,6 +158,48 @@ func TestEachRoleBootsWithOnlyItsOwnEnvironment(t *testing.T) {
 		require.NoError(t, cmd.Process.Signal(syscall.SIGTERM))
 		require.NoError(t, stop(), "a SIGTERM must drain and exit 0")
 	})
+
+	// The fetcher is booted as am_fetcher, the credential it actually runs as.
+	// Nothing cheaper reaches this path: internal/worker's own tests build against
+	// memblob with DB: AccessNone, so Build refusing a declared need with no
+	// credential behind it, River's client opening the queue database, and the
+	// role's Register constructing the handler are all first exercised here.
+	t.Run("worker run fetcher boots with the fetcher role's environment", func(t *testing.T) {
+		const fetcherRolePassword = "fetcher-password-set-by-this-test-not-a-secret"
+		_, alterErr := pool.Exec(ctx,
+			fmt.Sprintf("alter role am_fetcher password %s", quoteLiteral(fetcherRolePassword)))
+		require.NoError(t, alterErr)
+
+		cmd, log, stop := startRoleWithLog(t, []string{"worker", "run", "fetcher"}, map[string]string{
+			"AGENT_MANAGER_DATABASE_URL":       roleDSN(t, "am_fetcher", fetcherRolePassword, "agent_manager"),
+			"AGENT_MANAGER_RIVER_DATABASE_URL": queueURL,
+			// The only role handed a writable object store (principle II). compose
+			// gives it the am-fetcher MinIO key; mem:// is the same capability
+			// without the container.
+			"AGENT_MANAGER_BLOB_URL": "mem://",
+			// json, not the console format the subtests above use: the console
+			// writer colours each field, so `blob=read-write` is not a substring of
+			// its own output and an assertion on it would pass only by accident.
+			"AGENT_MANAGER_LOG_FORMAT": "json",
+		})
+
+		// The role has no endpoint to probe, so its own startup line is the signal.
+		// It is written after Build, after Register and after River's client is
+		// constructed, which is every part of the bootstrap this test is here for.
+		requireLogged(t, log, `"message":"worker starting"`)
+
+		// Not decoration: this is the bootstrap honouring the Needs declaration in
+		// a real process rather than in a unit test's fake. read-write on the blob
+		// is what makes the fetcher the only role holding a blob.Writer.
+		require.Contains(t, log.String(), `"blob":"read-write"`)
+		require.Contains(t, log.String(), `"outbound":true`)
+
+		require.NoError(t, cmd.Process.Signal(syscall.SIGTERM))
+		require.NoError(t, stop(), "a SIGTERM must drain and exit 0")
+		// River was started, not merely constructed: Stop is only reached past
+		// client.Start, and this line is only written past Stop.
+		require.Contains(t, log.String(), `"message":"worker stopped"`)
+	})
 }
 
 // The other half of SC-006: the web role's environment alone cannot reach a
@@ -254,6 +296,15 @@ func runRole(t *testing.T, args []string, env map[string]string, timeout time.Du
 func startRole(t *testing.T, args []string, env map[string]string) (cmd *exec.Cmd, wait func() error) {
 	t.Helper()
 
+	cmd, _, wait = startRoleWithLog(t, args, env)
+	return cmd, wait
+}
+
+// startRoleWithLog is startRole for a role with no endpoint to probe. The log is
+// the only readiness signal such a role has.
+func startRoleWithLog(t *testing.T, args []string, env map[string]string) (cmd *exec.Cmd, log *output, wait func() error) {
+	t.Helper()
+
 	cmd, out := command(t, args, env)
 	require.NoError(t, cmd.Start())
 
@@ -262,7 +313,7 @@ func startRole(t *testing.T, args []string, env map[string]string) (cmd *exec.Cm
 
 	t.Cleanup(func() { _ = cmd.Process.Kill() })
 
-	return cmd, func() error {
+	return cmd, out, func() error {
 		select {
 		case err := <-done:
 			if err != nil {
@@ -273,6 +324,22 @@ func startRole(t *testing.T, args []string, env map[string]string) (cmd *exec.Cm
 			return fmt.Errorf("%v did not exit on SIGTERM\n%s", args, out.String())
 		}
 	}
+}
+
+// requireLogged waits for a line the role writes once it has got somewhere. A
+// sleep would pass just as well for a process that had already died.
+func requireLogged(t *testing.T, log *output, want string) {
+	t.Helper()
+
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		if strings.Contains(log.String(), want) {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	require.FailNowf(t, "the role never logged what it logs on startup",
+		"waited 30s for %q\n%s", want, log.String())
 }
 
 // call drives the live process over HTTP and returns the status.

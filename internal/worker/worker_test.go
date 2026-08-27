@@ -6,7 +6,6 @@ package worker_test
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -152,37 +151,6 @@ func TestBuildFailsFastWhenConfigLacksADeclaredCredential(t *testing.T) {
 func TestBuildRejectsANamelessDefinition(t *testing.T) {
 	_, err := worker.Build(context.Background(), worker.Definition{}, worker.Config{}, zerolog.Nop())
 	require.Error(t, err)
-}
-
-// ---------------------------------------------------------------------------
-// Principle VII — registry.go is the only file a new role touches
-// ---------------------------------------------------------------------------
-
-func TestTheRegistryIsTheOnlyPlaceARoleIsNamed(t *testing.T) {
-	// fetcher and scanner arrive with their own layers, so the shipped registry is
-	// empty. What must hold now is that the lookup and the listing read the list
-	// rather than a second copy of the names.
-	require.Equal(t, len(worker.Definitions()), len(worker.Names()))
-
-	for _, def := range worker.Definitions() {
-		found, err := worker.Lookup(def.Name)
-		require.NoError(t, err)
-		require.Equal(t, def.Name, found.Name)
-	}
-
-	_, err := worker.Lookup("no-such-worker")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), `unknown worker "no-such-worker"`)
-
-	var out strings.Builder
-	require.NoError(t, worker.List(&out))
-	if len(worker.Definitions()) == 0 {
-		require.Equal(t, "no workers registered yet\n", out.String())
-		return
-	}
-	for _, name := range worker.Names() {
-		require.Contains(t, out.String(), name)
-	}
 }
 
 func TestRunRefusesADefinitionThatCouldNeverWorkAJob(t *testing.T) {

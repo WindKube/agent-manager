@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // Defines values for DeviceTokenTokenType.
@@ -172,16 +173,16 @@ func (e LockfileTargets) Valid() bool {
 
 // Defines values for LockfileEntryKind.
 const (
-	Plugin LockfileEntryKind = "plugin"
-	Skill  LockfileEntryKind = "skill"
+	LockfileEntryKindPlugin LockfileEntryKind = "plugin"
+	LockfileEntryKindSkill  LockfileEntryKind = "skill"
 )
 
 // Valid indicates whether the value is a known member of the LockfileEntryKind enum.
 func (e LockfileEntryKind) Valid() bool {
 	switch e {
-	case Plugin:
+	case LockfileEntryKindPlugin:
 		return true
-	case Skill:
+	case LockfileEntryKindSkill:
 		return true
 	default:
 		return false
@@ -211,16 +212,16 @@ func (e LockfileEntryResolution) Valid() bool {
 
 // Defines values for LockfileEntryVerdict.
 const (
-	Clean   LockfileEntryVerdict = "clean"
-	Flagged LockfileEntryVerdict = "flagged"
+	LockfileEntryVerdictClean   LockfileEntryVerdict = "clean"
+	LockfileEntryVerdictFlagged LockfileEntryVerdict = "flagged"
 )
 
 // Valid indicates whether the value is a known member of the LockfileEntryVerdict enum.
 func (e LockfileEntryVerdict) Valid() bool {
 	switch e {
-	case Clean:
+	case LockfileEntryVerdictClean:
 		return true
-	case Flagged:
+	case LockfileEntryVerdictFlagged:
 		return true
 	default:
 		return false
@@ -278,6 +279,129 @@ func (e LockfileSkipReason) Valid() bool {
 	}
 }
 
+// Defines values for PackagePreviewKind.
+const (
+	PackagePreviewKindPlugin PackagePreviewKind = "plugin"
+	PackagePreviewKindSkill  PackagePreviewKind = "skill"
+)
+
+// Valid indicates whether the value is a known member of the PackagePreviewKind enum.
+func (e PackagePreviewKind) Valid() bool {
+	switch e {
+	case PackagePreviewKindPlugin:
+		return true
+	case PackagePreviewKindSkill:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PackageRegisteredKind.
+const (
+	PackageRegisteredKindPlugin PackageRegisteredKind = "plugin"
+	PackageRegisteredKindSkill  PackageRegisteredKind = "skill"
+)
+
+// Valid indicates whether the value is a known member of the PackageRegisteredKind enum.
+func (e PackageRegisteredKind) Valid() bool {
+	switch e {
+	case PackageRegisteredKindPlugin:
+		return true
+	case PackageRegisteredKindSkill:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PackageRegisteredVerdict.
+const (
+	PackageRegisteredVerdictClean    PackageRegisteredVerdict = "clean"
+	PackageRegisteredVerdictFlagged  PackageRegisteredVerdict = "flagged"
+	PackageRegisteredVerdictRejected PackageRegisteredVerdict = "rejected"
+	PackageRegisteredVerdictScanning PackageRegisteredVerdict = "scanning"
+)
+
+// Valid indicates whether the value is a known member of the PackageRegisteredVerdict enum.
+func (e PackageRegisteredVerdict) Valid() bool {
+	switch e {
+	case PackageRegisteredVerdictClean:
+		return true
+	case PackageRegisteredVerdictFlagged:
+		return true
+	case PackageRegisteredVerdictRejected:
+		return true
+	case PackageRegisteredVerdictScanning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PreviewCapabilityLevel.
+const (
+	Allowlisted PreviewCapabilityLevel = "allowlisted"
+	Review      PreviewCapabilityLevel = "review"
+	Scoped      PreviewCapabilityLevel = "scoped"
+)
+
+// Valid indicates whether the value is a known member of the PreviewCapabilityLevel enum.
+func (e PreviewCapabilityLevel) Valid() bool {
+	switch e {
+	case Allowlisted:
+		return true
+	case Review:
+		return true
+	case Scoped:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PreviewComponentKind.
+const (
+	PreviewComponentKindExt   PreviewComponentKind = "ext"
+	PreviewComponentKindMcp   PreviewComponentKind = "mcp"
+	PreviewComponentKindSkill PreviewComponentKind = "skill"
+)
+
+// Valid indicates whether the value is a known member of the PreviewComponentKind enum.
+func (e PreviewComponentKind) Valid() bool {
+	switch e {
+	case PreviewComponentKindExt:
+		return true
+	case PreviewComponentKindMcp:
+		return true
+	case PreviewComponentKindSkill:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PreviewEntryMark.
+const (
+	Dropped PreviewEntryMark = "dropped"
+	Invalid PreviewEntryMark = "invalid"
+	Kept    PreviewEntryMark = "kept"
+)
+
+// Valid indicates whether the value is a known member of the PreviewEntryMark enum.
+func (e PreviewEntryMark) Valid() bool {
+	switch e {
+	case Dropped:
+		return true
+	case Invalid:
+		return true
+	case Kept:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ProfileVisibility.
 const (
 	ProfileVisibilityOrganisation ProfileVisibility = "organisation"
@@ -314,6 +438,66 @@ func (e SyncReportTargets) Valid() bool {
 	case SyncReportTargetsClaudeCode:
 		return true
 	case SyncReportTargetsCodex:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RegisterPackageMultipartBodyKind.
+const (
+	RegisterPackageMultipartBodyKindPlugin RegisterPackageMultipartBodyKind = "plugin"
+	RegisterPackageMultipartBodyKindSkill  RegisterPackageMultipartBodyKind = "skill"
+)
+
+// Valid indicates whether the value is a known member of the RegisterPackageMultipartBodyKind enum.
+func (e RegisterPackageMultipartBodyKind) Valid() bool {
+	switch e {
+	case RegisterPackageMultipartBodyKindPlugin:
+		return true
+	case RegisterPackageMultipartBodyKindSkill:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RegisterPackageMultipartBodySource.
+const (
+	ArchiveUrl RegisterPackageMultipartBodySource = "archive-url"
+	Git        RegisterPackageMultipartBodySource = "git"
+	Upload     RegisterPackageMultipartBodySource = "upload"
+)
+
+// Valid indicates whether the value is a known member of the RegisterPackageMultipartBodySource enum.
+func (e RegisterPackageMultipartBodySource) Valid() bool {
+	switch e {
+	case ArchiveUrl:
+		return true
+	case Git:
+		return true
+	case Upload:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RegisterPackageMultipartBodyVisibility.
+const (
+	RegisterPackageMultipartBodyVisibilityOrganisation RegisterPackageMultipartBodyVisibility = "organisation"
+	RegisterPackageMultipartBodyVisibilityPrivate      RegisterPackageMultipartBodyVisibility = "private"
+	RegisterPackageMultipartBodyVisibilityTeam         RegisterPackageMultipartBodyVisibility = "team"
+)
+
+// Valid indicates whether the value is a known member of the RegisterPackageMultipartBodyVisibility enum.
+func (e RegisterPackageMultipartBodyVisibility) Valid() bool {
+	switch e {
+	case RegisterPackageMultipartBodyVisibilityOrganisation:
+		return true
+	case RegisterPackageMultipartBodyVisibilityPrivate:
+		return true
+	case RegisterPackageMultipartBodyVisibilityTeam:
 		return true
 	default:
 		return false
@@ -614,6 +798,168 @@ type LockfileSkip struct {
 // LockfileSkipReason Examples: flagged-awaiting-approval
 type LockfileSkipReason string
 
+// PackagePreview defines model for PackagePreview.
+type PackagePreview struct {
+	// Components Derived from the file tree. No manifest field enumerates components.
+	Components []PreviewComponent `json:"components"`
+
+	// Dropped Every discarded path in full. The entries above group them for display.
+	Dropped []string `json:"dropped"`
+
+	// Entries One row per top-level entry, in the order the pre-submit panel shows them.
+	Entries []PreviewEntry `json:"entries"`
+
+	// ExpectedCapabilities The publisher's declared expectations, read from extensions["dev.agent-manager"] and from nowhere else.
+	ExpectedCapabilities []PreviewCapability `json:"expectedCapabilities"`
+
+	// Kind Decided by which manifest is at the tree root, never by a manifest field.
+	//
+	// Examples: plugin
+	Kind *PackagePreviewKind `json:"kind,omitempty"`
+
+	// Name The manifest's name, which becomes the catalog's package name.
+	//
+	// Examples: platform-toolkit
+	Name *string `json:"name,omitempty"`
+
+	// Problems Why the tree was refused. Empty when valid.
+	Problems []PreviewProblem `json:"problems"`
+
+	// Tags The manifest's keywords, which become the version's tags.
+	Tags []string `json:"tags"`
+
+	// Valid Whether this tree would be accepted for registration.
+	Valid bool `json:"valid"`
+
+	// Version Examples: 1.3.0
+	Version *string `json:"version,omitempty"`
+}
+
+// PackagePreviewKind Decided by which manifest is at the tree root, never by a manifest field.
+//
+// Examples: plugin
+type PackagePreviewKind string
+
+// PackageRegistered defines model for PackageRegistered.
+type PackageRegistered struct {
+	// Kind Examples: plugin
+	Kind PackageRegisteredKind `json:"kind"`
+
+	// Name Examples: platform-toolkit
+	Name string `json:"name"`
+
+	// ObjectKey Examples: skills/example/platform-toolkit/1.3.0/bundle.tar.zst
+	ObjectKey string             `json:"objectKey"`
+	PackageId openapi_types.UUID `json:"packageId"`
+
+	// Preview Present for an upload, where the archive was inspected in-process before the version row was written.
+	Preview *PackagePreview `json:"preview,omitempty"`
+
+	// Publisher Examples: example
+	Publisher string `json:"publisher"`
+
+	// Verdict Always scanning here: the scan has not run.
+	//
+	// Examples: scanning
+	Verdict PackageRegisteredVerdict `json:"verdict"`
+
+	// Version Examples: 1.3.0
+	Version   string             `json:"version"`
+	VersionId openapi_types.UUID `json:"versionId"`
+
+	// Visible Always false here. Commit-last (FR-008): the fetcher flips it.
+	Visible bool `json:"visible"`
+}
+
+// PackageRegisteredKind Examples: plugin
+type PackageRegisteredKind string
+
+// PackageRegisteredVerdict Always scanning here: the scan has not run.
+//
+// Examples: scanning
+type PackageRegisteredVerdict string
+
+// PreviewCapability defines model for PreviewCapability.
+type PreviewCapability struct {
+	// Detail The publisher's scoping, e.g. hosts for network.
+	Detail *[]string `json:"detail,omitempty"`
+
+	// Level Examples: allowlisted
+	Level *PreviewCapabilityLevel `json:"level,omitempty"`
+
+	// Name Examples: network
+	Name string `json:"name"`
+}
+
+// PreviewCapabilityLevel Examples: allowlisted
+type PreviewCapabilityLevel string
+
+// PreviewComponent defines model for PreviewComponent.
+type PreviewComponent struct {
+	// Kind Examples: skill
+	Kind PreviewComponentKind `json:"kind"`
+
+	// Name Examples: terraform-review
+	Name string `json:"name"`
+
+	// Note Examples: SKILL.md + scripts/
+	Note *string `json:"note,omitempty"`
+
+	// Path Examples: skills/terraform-review/SKILL.md
+	Path string `json:"path"`
+}
+
+// PreviewComponentKind Examples: skill
+type PreviewComponentKind string
+
+// PreviewEntry defines model for PreviewEntry.
+type PreviewEntry struct {
+	// Kept False for a path outside the spec layout, which is not stored.
+	Kept bool `json:"kept"`
+
+	// Mark Examples: kept
+	Mark PreviewEntryMark `json:"mark"`
+
+	// Note What was found there.
+	//
+	// Examples: 4 skills
+	Note string `json:"note"`
+
+	// Path A file, a directory, or a comma-joined group of dropped paths.
+	//
+	// Examples: skills/
+	Path string `json:"path"`
+}
+
+// PreviewEntryMark Examples: kept
+type PreviewEntryMark string
+
+// PreviewProblem defines model for PreviewProblem.
+type PreviewProblem struct {
+	// InstancePath Where in the manifest the offending value sits.
+	//
+	// Examples: /repository
+	InstancePath *string `json:"instancePath,omitempty"`
+
+	// Manifest Which manifest failed.
+	//
+	// Examples: plugin.json
+	Manifest *string `json:"manifest,omitempty"`
+
+	// Message Examples: additionalProperties 'repository' not allowed
+	Message string `json:"message"`
+
+	// SchemaId The $id of the schema it was checked against.
+	//
+	// Examples: https://agent-plugins.org/schemas/1.0.0/plugin.schema.json
+	SchemaId *string `json:"schemaId,omitempty"`
+
+	// SchemaPath The keyword location that refused it.
+	//
+	// Examples: /additionalProperties
+	SchemaPath *string `json:"schemaPath,omitempty"`
+}
+
 // Profile defines model for Profile.
 type Profile struct {
 	// HeadRevision The most recent published revision number.
@@ -680,11 +1026,88 @@ type SyncReport struct {
 // SyncReportTargets defines model for SyncReport.Targets.
 type SyncReportTargets string
 
+// RegisterPackageMultipartBody defines parameters for RegisterPackage.
+type RegisterPackageMultipartBody struct {
+	// Archive Required when source is upload, and refused otherwise. huma treats a form field as required unless told otherwise, which is what required:"false" is doing on every optional field here.
+	Archive *openapi_types.File `json:"archive,omitempty"`
+
+	// Category A category name or slug from the admin-curated vocabulary (FR-049).
+	//
+	// Examples: Infrastructure
+	Category *string `json:"category,omitempty"`
+
+	// Kind Provisional only. Kind is decided by which manifest is at the tree root, so the fetcher overwrites this once it has the bytes.
+	//
+	// Examples: plugin
+	Kind *RegisterPackageMultipartBodyKind `json:"kind,omitempty"`
+
+	// Name The package name. Derived from the repository name when omitted, and always checked against the manifest.
+	//
+	// Examples: platform-toolkit
+	Name *string `json:"name,omitempty"`
+
+	// Publisher The publishing namespace. Required: no source carries one.
+	//
+	// Examples: example
+	Publisher string `json:"publisher"`
+
+	// Ref Branch, tag or commit. Defaults to the remote's HEAD.
+	//
+	// Examples: v1.3.0
+	Ref *string `json:"ref,omitempty"`
+
+	// Source Which of FR-001's three shapes this is.
+	//
+	// Examples: git
+	Source *RegisterPackageMultipartBodySource `json:"source,omitempty"`
+
+	// Subdirectory Path inside the tree holding the manifest.
+	//
+	// Examples: plugins/platform-toolkit
+	Subdirectory *string `json:"subdirectory,omitempty"`
+
+	// Url Repository or archive URL. Required unless source is upload.
+	//
+	// Examples: https://github.com/org/plugin
+	Url *string `json:"url,omitempty"`
+
+	// Version The exact version. Derived from the ref when omitted.
+	//
+	// Examples: 1.3.0
+	Version *string `json:"version,omitempty"`
+
+	// Visibility Who may see the package in the catalog.
+	//
+	// Examples: organisation
+	Visibility *RegisterPackageMultipartBodyVisibility `json:"visibility,omitempty"`
+}
+
+// RegisterPackageMultipartBodyKind defines parameters for RegisterPackage.
+type RegisterPackageMultipartBodyKind string
+
+// RegisterPackageMultipartBodySource defines parameters for RegisterPackage.
+type RegisterPackageMultipartBodySource string
+
+// RegisterPackageMultipartBodyVisibility defines parameters for RegisterPackage.
+type RegisterPackageMultipartBodyVisibility string
+
+// PreviewPackageMultipartBody defines parameters for PreviewPackage.
+type PreviewPackageMultipartBody struct {
+	// Archive A .zip or .tar.gz of the whole tree, with the manifest at its root.
+	Archive openapi_types.File `json:"archive"`
+}
+
 // DeviceAuthorizeJSONRequestBody defines body for DeviceAuthorize for application/json ContentType.
 type DeviceAuthorizeJSONRequestBody = DeviceAuthorizeRequest
 
 // DeviceTokenFormdataRequestBody defines body for DeviceToken for application/x-www-form-urlencoded ContentType.
 type DeviceTokenFormdataRequestBody = DeviceTokenRequest
+
+// RegisterPackageMultipartRequestBody defines body for RegisterPackage for multipart/form-data ContentType.
+type RegisterPackageMultipartRequestBody RegisterPackageMultipartBody
+
+// PreviewPackageMultipartRequestBody defines body for PreviewPackage for multipart/form-data ContentType.
+type PreviewPackageMultipartRequestBody PreviewPackageMultipartBody
 
 // ReportSyncJSONRequestBody defines body for ReportSync for application/json ContentType.
 type ReportSyncJSONRequestBody = SyncReport
@@ -812,6 +1235,24 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /v1/health (the `Health` operationId).
 	Health(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RegisterPackageWithBody Register a package from a URL or an upload
+	//
+	// Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed (FR-008).
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/packages (the `RegisterPackage` operationId).
+	RegisterPackageWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PreviewPackageWithBody Validate an archive before registering it
+	//
+	// FR-005's pre-submit answer: every entry with a validation mark, the discarded paths named, the components the FILE TREE reveals, and — when a manifest fails — the schema path that refused it. Writes nothing, and runs the same validation the fetcher runs, so the panel a user approves is the tree that gets stored.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/packages/preview (the `PreviewPackage` operationId).
+	PreviewPackageWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListProfiles Profiles readable by this identity
 	//
@@ -946,6 +1387,44 @@ func (c *Client) DeviceTokenWithFormdataBody(ctx context.Context, body DeviceTok
 // Corresponds with GET /v1/health (the `Health` operationId).
 func (c *Client) Health(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewHealthRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RegisterPackageWithBody Register a package from a URL or an upload
+//
+// Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed (FR-008).
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/packages (the `RegisterPackage` operationId).
+func (c *Client) RegisterPackageWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRegisterPackageRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PreviewPackageWithBody Validate an archive before registering it
+//
+// FR-005's pre-submit answer: every entry with a validation mark, the discarded paths named, the components the FILE TREE reveals, and — when a manifest fails — the schema path that refused it. Writes nothing, and runs the same validation the fetcher runs, so the panel a user approves is the tree that gets stored.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/packages/preview (the `PreviewPackage` operationId).
+func (c *Client) PreviewPackageWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewPackageRequestWithBody(c.Server, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1183,6 +1662,64 @@ func NewHealthRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewRegisterPackageRequestWithBody constructs an http.Request for the RegisterPackage method, with any body, and a specified content type
+func NewRegisterPackageRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/packages")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPreviewPackageRequestWithBody constructs an http.Request for the PreviewPackage method, with any body, and a specified content type
+func NewPreviewPackageRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/packages/preview")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListProfilesRequest constructs an http.Request for the ListProfiles method
 func NewListProfilesRequest(server string) (*http.Request, error) {
 	var err error
@@ -1388,6 +1925,24 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /v1/health (the `Health` operationId).
 	HealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthResponse, error)
+
+	// RegisterPackageWithBodyWithResponse Register a package from a URL or an upload
+	//
+	// Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed (FR-008).
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/packages (the `RegisterPackage` operationId).
+	RegisterPackageWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RegisterPackageResponse, error)
+
+	// PreviewPackageWithBodyWithResponse Validate an archive before registering it
+	//
+	// FR-005's pre-submit answer: every entry with a validation mark, the discarded paths named, the components the FILE TREE reveals, and — when a manifest fails — the schema path that refused it. Writes nothing, and runs the same validation the fetcher runs, so the panel a user approves is the tree that gets stored.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/packages/preview (the `PreviewPackage` operationId).
+	PreviewPackageWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewPackageResponse, error)
 
 	// ListProfilesWithResponse Profiles readable by this identity
 	//
@@ -1655,6 +2210,158 @@ func (r HealthResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r HealthResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RegisterPackageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON202 the response for an HTTP 202 `application/json` response
+	JSON202 *PackageRegistered
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Error
+	// ApplicationproblemJSON413 the response for an HTTP 413 `application/problem+json` response
+	ApplicationproblemJSON413 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON202 returns the response for an HTTP 202 `application/json` response
+func (r RegisterPackageResponse) GetJSON202() *PackageRegistered {
+	return r.JSON202
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r RegisterPackageResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r RegisterPackageResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r RegisterPackageResponse) GetApplicationproblemJSON409() *Error {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON413 returns the response for an HTTP 413 `application/problem+json` response
+func (r RegisterPackageResponse) GetApplicationproblemJSON413() *Error {
+	return r.ApplicationproblemJSON413
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r RegisterPackageResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r RegisterPackageResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r RegisterPackageResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RegisterPackageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RegisterPackageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RegisterPackageResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PreviewPackageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PackagePreview
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON413 the response for an HTTP 413 `application/problem+json` response
+	ApplicationproblemJSON413 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PreviewPackageResponse) GetJSON200() *PackagePreview {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r PreviewPackageResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON413 returns the response for an HTTP 413 `application/problem+json` response
+func (r PreviewPackageResponse) GetApplicationproblemJSON413() *Error {
+	return r.ApplicationproblemJSON413
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r PreviewPackageResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r PreviewPackageResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r PreviewPackageResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PreviewPackageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PreviewPackageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PreviewPackageResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -1937,6 +2644,36 @@ func (c *ClientWithResponses) HealthWithResponse(ctx context.Context, reqEditors
 	return ParseHealthResponse(rsp)
 }
 
+// RegisterPackageWithBodyWithResponse Register a package from a URL or an upload
+//
+// Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed (FR-008).
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/packages (the `RegisterPackage` operationId).
+func (c *ClientWithResponses) RegisterPackageWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RegisterPackageResponse, error) {
+	rsp, err := c.RegisterPackageWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRegisterPackageResponse(rsp)
+}
+
+// PreviewPackageWithBodyWithResponse Validate an archive before registering it
+//
+// FR-005's pre-submit answer: every entry with a validation mark, the discarded paths named, the components the FILE TREE reveals, and — when a manifest fails — the schema path that refused it. Writes nothing, and runs the same validation the fetcher runs, so the panel a user approves is the tree that gets stored.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/packages/preview (the `PreviewPackage` operationId).
+func (c *ClientWithResponses) PreviewPackageWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewPackageResponse, error) {
+	rsp, err := c.PreviewPackageWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewPackageResponse(rsp)
+}
+
 // ListProfilesWithResponse Profiles readable by this identity
 //
 // Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all.
@@ -2190,6 +2927,128 @@ func ParseHealthResponse(rsp *http.Response) (*HealthResponse, error) {
 			return nil, err
 		}
 		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRegisterPackageResponse parses an HTTP response from a RegisterPackageWithResponse call
+func ParseRegisterPackageResponse(rsp *http.Response) (*RegisterPackageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RegisterPackageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest PackageRegistered
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePreviewPackageResponse parses an HTTP response from a PreviewPackageWithResponse call
+func ParsePreviewPackageResponse(rsp *http.Response) (*PreviewPackageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PreviewPackageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PackagePreview
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
 
 	}
 

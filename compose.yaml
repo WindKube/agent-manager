@@ -208,13 +208,8 @@ services:
       - "8080:8080"
     restart: unless-stopped
 
-  # internal/worker/registry.go ships empty, so `worker run fetcher` exits with
-  # "unknown worker" until T043 registers it. Kept behind a profile so
-  # `docker compose up` is green now and the topology is already wired: the US1
-  # layer deletes the profiles line. Until then: `--profile workers`.
   fetcher:
     <<: *app-image
-    profiles: ["workers"]
     depends_on:
       migrate-queue:
         condition: service_completed_successfully
@@ -232,10 +227,11 @@ services:
       disable: true
     restart: unless-stopped
 
-  # internal/worker/registry.go ships empty, so `worker run scanner` exits with
-  # "unknown worker" until T071 registers it. Kept behind a profile so
-  # `docker compose up` is green now and the topology is already wired: the US4
-  # layer deletes the profiles line. Until then: `--profile workers`.
+  # The registry (internal/worker/roles) has no scanner yet, so `worker run
+  # scanner` exits with "unknown worker" until T071 registers it. Kept behind a
+  # profile so `docker compose up` is green now and the topology is already
+  # wired: the US4 layer deletes the profiles line. Until then:
+  # `--profile workers`.
   scanner:
     <<: *app-image
     profiles: ["workers"]

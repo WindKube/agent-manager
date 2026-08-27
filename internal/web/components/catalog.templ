@@ -20,8 +20,16 @@ templ CatalogScreen(c Catalog) {
 				</p>
 			</div>
 			<div class="am-actions">
-				<button type="button" class="am-btn">Upload package</button>
-				<button type="button" class="am-btn am-btn-primary">Add source</button>
+				<button
+					type="button"
+					class="am-btn"
+					data-on:click="$_importOpen = true; $_importTab = 'upload'"
+				>Upload package</button>
+				<button
+					type="button"
+					class="am-btn am-btn-primary"
+					data-on:click="$_importOpen = true; $_importTab = 'url'"
+				>Add source</button>
 			</div>
 		</div>
 		<div class="am-controls">
@@ -83,6 +91,7 @@ templ CatalogScreen(c Catalog) {
 			data-on-signal-patch-filter="{include: /^(q|kind|status|cats|tags|sort|dir|page)$/}"
 			data-on-signal-patch__debounce.150ms="@get('/catalog/results')"
 		></div>
+		@ImportModal(c.Import)
 	</div>
 }
 

@@ -115,6 +115,7 @@ type Catalog struct {
 	Page     view.CatalogPage
 	Category Facet
 	Tags     Facet
+	Import   Import
 }
 
 // Signals is the initial datastar signal state, JSON so it is both a valid
@@ -137,6 +138,16 @@ func (c Catalog) Signals() string {
 		// filter box.
 		"_catQuery": "",
 		"_tagQuery": "",
+		// The registration modal's whole state, for the same reason: opening it,
+		// switching tabs and attaching a file are client-side, so none of it is ever
+		// sent and none of it can trigger the debounced round trip.
+		"_importOpen":      false,
+		"_importTab":       string(view.ImportUpload),
+		"_importFile":      "",
+		"_importURL":       "",
+		"_importRef":       "",
+		"_importSubdir":    "",
+		"_importPublisher": "",
 	}
 	encoded, err := json.Marshal(state)
 	if err != nil {
@@ -245,4 +256,36 @@ func KindClass(kind view.Kind) string {
 
 func ScanClass(scan view.Scan) string {
 	return "am-scan am-scan-" + scan.Tone()
+}
+
+// ---- the registration modal --------------------------------------------------
+
+// Import is the modal's props. It is a distinct type from view.Import so a
+// component signature never becomes the place a new field is added silently.
+type Import struct {
+	Categories []string
+	Preview    *view.ImportPreview
+}
+
+// ImportTabExpr selects a tab. It touches one signal and that signal is
+// underscore-prefixed, so switching tabs costs no round trip. The tab id is a
+// constant from view, never user text, which is why it is quoted the same way
+// ChipExpr quotes a filter value.
+func ImportTabExpr(tab view.ImportTab) string {
+	return "$_importTab = '" + string(tab) + "'"
+}
+
+func ImportTabClassExpr(tab view.ImportTab) string {
+	return "{'am-chip-on': $_importTab === '" + string(tab) + "'}"
+}
+
+func ImportTabSelectedExpr(tab view.ImportTab) string {
+	return "$_importTab === '" + string(tab) + "' ? 'true' : 'false'"
+}
+
+// ImportMarkStyle is the mark column's colour. The tone comes from the entry
+// rather than from the caller so a kept file and a dropped one cannot be given
+// the same glyph and different colours.
+func ImportMarkStyle(entry view.ImportEntry) string {
+	return "width:12px;flex:0 0 12px;font-size:11px;color:var(--" + entry.Tone() + ")"
 }

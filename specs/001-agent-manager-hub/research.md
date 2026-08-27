@@ -26,8 +26,11 @@ additionalProperties: false
 
 Ten fields, closed set. `extensions` is keyed by reverse-domain namespace and the spec
 states it "assigns no semantics to namespace object contents". Schema 1.1.0 has an
-**identical** plugin field set; only `mcp.json` changed (now `{$schema, mcpServers}`, both
-required).
+**identical** plugin field set, and — corrected by diffing the vendored copies — an
+**identical** `mcp.json` too: both files differ between the two versions only in the `$id`,
+the `const` on `$schema` and the version named in the prose `description`, and 1.0.0's
+`mcp.schema.json` already requires `{$schema, mcpServers}`. See
+`internal/domain/pkgspec/schemas/PROVENANCE.md`.
 
 Agent Skills (`agentskills.io`) defines `SKILL.md` frontmatter with required `name` and
 `description`, optional `license`, `metadata`, `compatibility`, and an **experimental**

@@ -16,11 +16,11 @@ import (
 	"agent-manager/internal/worker"
 )
 
-// The serving roles land in later layers of this stack. Each is replaced by a
-// real bootstrap in the layer that owns it; until then a role starts, reports
-// itself and exits 0 so the compose topology can be wired ahead of the code.
+// The remaining serving roles land in later layers of this stack. Each is
+// replaced by a real bootstrap in the layer that owns it; until then a role
+// starts, reports itself and exits 0 so the compose topology can be wired ahead
+// of the code. `serve api` is real: see serve.go.
 
-func runAPI(context.Context) error  { return notYet("serve api") }
 func runWeb(context.Context) error  { return notYet("serve web") }
 func runSeed(context.Context) error { return notYet("seed") }
 

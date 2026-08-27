@@ -56,9 +56,18 @@ tasks:
 
   gen:client:
     desc: oapi-codegen -> internal/apiclient (the web role's only door to data)
-    status:
-      - test ! -f internal/apiclient/oapi-codegen.yaml
     cmds:
+      # Two halves, in this order. The document is EMITTED from the huma operation
+      # definitions first (constitution principle V), and only then is the client
+      # generated from it. Generating from
+      # specs/001-agent-manager-hub/contracts/openapi.yaml instead would give the web
+      # role a client for the frozen machine-facing subset and nothing else.
+      #
+      # The status guard this task used to carry - "skip unless
+      # internal/apiclient/oapi-codegen.yaml exists" - made a missing config a silent
+      # skip rather than a failure. It is gone: if the config is missing, this must
+      # fail loudly.
+      - go run ./internal/api/cmd/openapigen -out internal/apiclient/openapi.json
       - go tool oapi-codegen -config internal/apiclient/oapi-codegen.yaml internal/apiclient/openapi.json
 
   gen:check:

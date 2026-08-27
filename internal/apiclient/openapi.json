@@ -1,0 +1,1194 @@
+{
+  "components": {
+    "schemas": {
+      "DeviceAuthorization": {
+        "additionalProperties": false,
+        "properties": {
+          "device_code": {
+            "description": "Bearer credential. Stored hashed server-side; never logged.",
+            "type": "string"
+          },
+          "expires_in": {
+            "description": "Seconds until the device code expires and polling must stop.",
+            "examples": [
+              900
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "interval": {
+            "description": "Minimum seconds between polls of /v1/device/token.",
+            "examples": [
+              5
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "user_code": {
+            "description": "Crockford base32, ambiguous glyphs excluded. Shape \"HKQ2-9FTL\".",
+            "examples": [
+              "HKQ2-9FTL"
+            ],
+            "pattern": "^[0-9A-HJ-NP-TV-Z]{4}-[0-9A-HJ-NP-TV-Z]{4}$",
+            "type": "string"
+          },
+          "verification_uri": {
+            "description": "The page the human opens to type the user code in.",
+            "format": "uri",
+            "type": "string"
+          },
+          "verification_uri_complete": {
+            "description": "The same page with the code pre-filled, for a QR code or a click.",
+            "format": "uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_code",
+          "user_code",
+          "verification_uri",
+          "expires_in",
+          "interval"
+        ],
+        "type": "object"
+      },
+      "DeviceAuthorizeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "client_id": {
+            "description": "The CLI's registered OAuth client identifier.",
+            "examples": [
+              "agent-manager-cli"
+            ],
+            "type": "string"
+          },
+          "host": {
+            "description": "Hostname of the requesting machine. Bound to the authorisation and displayed to the approving human (FR-041), so approval is an informed act.",
+            "examples": [
+              "dev-laptop-01"
+            ],
+            "type": "string"
+          },
+          "scope": {
+            "description": "Space-delimited scopes. Omitted means the client's default scope.",
+            "examples": [
+              "profiles:read bundles:read"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_id",
+          "host"
+        ],
+        "type": "object"
+      },
+      "DeviceToken": {
+        "additionalProperties": false,
+        "properties": {
+          "access_token": {
+            "description": "Bearer token for every other operation here. Never logged.",
+            "type": "string"
+          },
+          "expires_in": {
+            "description": "Seconds until the access token expires.",
+            "examples": [
+              3600
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "refresh_token": {
+            "description": "Present only when the client may refresh without a second human approval.",
+            "type": "string"
+          },
+          "token_type": {
+            "const": "Bearer",
+            "description": "Always Bearer.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "token_type",
+          "expires_in"
+        ],
+        "type": "object"
+      },
+      "DeviceTokenError": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "description": "authorization_pending means keep polling at the advertised interval; slow_down means back off and widen it. The rest are final - stop.",
+            "enum": [
+              "authorization_pending",
+              "slow_down",
+              "access_denied",
+              "expired_token",
+              "invalid_grant"
+            ],
+            "examples": [
+              "authorization_pending"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "DeviceTokenRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "client_id": {
+            "description": "Must be the same client_id that opened the authorisation.",
+            "examples": [
+              "agent-manager-cli"
+            ],
+            "type": "string"
+          },
+          "device_code": {
+            "description": "The device_code handed back by /v1/device/authorize.",
+            "type": "string"
+          },
+          "grant_type": {
+            "const": "urn:ietf:params:oauth:grant-type:device_code",
+            "description": "Fixed by RFC 8628 3.4. No other grant type is accepted here.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "grant_type",
+          "device_code",
+          "client_id"
+        ],
+        "type": "object"
+      },
+      "Error": {
+        "additionalProperties": false,
+        "properties": {
+          "correlation_id": {
+            "description": "The request's correlation id, as also returned in the X-Correlation-ID header.",
+            "type": "string"
+          },
+          "detail": {
+            "description": "Explanation specific to this occurrence.",
+            "type": "string"
+          },
+          "errors": {
+            "description": "Per-field detail, when the failure was a validation failure.",
+            "items": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "type": "array"
+          },
+          "status": {
+            "description": "HTTP status code, repeated for client convenience.",
+            "examples": [
+              404
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "title": {
+            "description": "Short, static summary of the problem type.",
+            "examples": [
+              "Not Found"
+            ],
+            "type": "string"
+          },
+          "type": {
+            "description": "A URI reference to documentation for this error type.",
+            "format": "uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "status"
+        ],
+        "type": "object"
+      },
+      "ErrorDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "location": {
+            "description": "Where it is wrong, e.g. body.targets[0] or path.revision.",
+            "type": "string"
+          },
+          "message": {
+            "description": "What is wrong.",
+            "type": "string"
+          },
+          "value": {
+            "description": "The offending value, echoed back."
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "Health": {
+        "additionalProperties": false,
+        "properties": {
+          "checks": {
+            "description": "One entry per dependency this role needs.",
+            "items": {
+              "$ref": "#/components/schemas/HealthCheck"
+            },
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "unavailable"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "checks"
+        ],
+        "type": "object"
+      },
+      "HealthCheck": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "description": "Fixed text when the dependency is unreachable. The driver's message goes to the log, never to this unauthenticated body, because it can carry a host or a DSN.",
+            "type": "string"
+          },
+          "name": {
+            "examples": [
+              "database"
+            ],
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "ok"
+        ],
+        "type": "object"
+      },
+      "Lockfile": {
+        "additionalProperties": false,
+        "properties": {
+          "defaultPolicy": {
+            "enum": [
+              "floating-latest",
+              "pinned",
+              "range"
+            ],
+            "examples": [
+              "pinned"
+            ],
+            "type": "string"
+          },
+          "entries": {
+            "description": "Packages this revision resolves to an exact version.",
+            "items": {
+              "$ref": "#/components/schemas/LockfileEntry"
+            },
+            "type": "array"
+          },
+          "gate": {
+            "description": "The org scan gate in force at resolution. Recorded so a lockfile explains itself later.",
+            "enum": [
+              "block",
+              "approval",
+              "warn-with-override"
+            ],
+            "examples": [
+              "approval"
+            ],
+            "type": "string"
+          },
+          "note": {
+            "description": "The publisher's note on this revision.",
+            "examples": [
+              "Quarterly refresh"
+            ],
+            "type": "string"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/LockfileProfile",
+            "description": "Identifies the profile this revision belongs to."
+          },
+          "resolvedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "revision": {
+            "description": "Sequential per profile, no gaps.",
+            "examples": [
+              7
+            ],
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "schemaVersion": {
+            "const": "1.0.0",
+            "type": "string"
+          },
+          "skipped": {
+            "description": "FR-036: an excluded package is reported with its reason, never silently omitted.",
+            "items": {
+              "$ref": "#/components/schemas/LockfileSkip"
+            },
+            "type": "array"
+          },
+          "targets": {
+            "description": "Which agent directories the CLI should write. Advisory to the client; the server stores nothing per target (FR-039).",
+            "items": {
+              "enum": [
+                "claude-code",
+                "agents-md",
+                "codex"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "profile",
+          "revision",
+          "resolvedAt",
+          "gate",
+          "entries",
+          "skipped",
+          "targets"
+        ],
+        "type": "object"
+      },
+      "LockfileEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "id": {
+            "description": "publisher/name",
+            "examples": [
+              "acme/code-review"
+            ],
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "plugin",
+              "skill"
+            ],
+            "examples": [
+              "skill"
+            ],
+            "type": "string"
+          },
+          "objectKey": {
+            "examples": [
+              "bundles/acme/code-review/2.4.1/bundle.tar.zst"
+            ],
+            "type": "string"
+          },
+          "override": {
+            "$ref": "#/components/schemas/LockfileOverride",
+            "description": "Present only when a flagged version resolved under warn-with-override."
+          },
+          "resolution": {
+            "enum": [
+              "latest",
+              "pinned",
+              "range"
+            ],
+            "examples": [
+              "pinned"
+            ],
+            "type": "string"
+          },
+          "signature": {
+            "$ref": "#/components/schemas/LockfileSignature",
+            "description": "Signature provenance, when the source carried one."
+          },
+          "verdict": {
+            "enum": [
+              "clean",
+              "flagged"
+            ],
+            "examples": [
+              "clean"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "examples": [
+              "2.4.1"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "version",
+          "digest",
+          "objectKey",
+          "resolution",
+          "verdict"
+        ],
+        "type": "object"
+      },
+      "LockfileOverride": {
+        "additionalProperties": false,
+        "properties": {
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "note": {
+            "examples": [
+              "Network call is to our own registry"
+            ],
+            "type": "string"
+          },
+          "reviewer": {
+            "examples": [
+              "security-lead@example.dev"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "reviewer",
+          "note",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "LockfileProfile": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "examples": [
+              "Platform baseline"
+            ],
+            "type": "string"
+          },
+          "slug": {
+            "examples": [
+              "platform-baseline"
+            ],
+            "type": "string"
+          },
+          "visibility": {
+            "enum": [
+              "organisation",
+              "shared",
+              "private"
+            ],
+            "examples": [
+              "organisation"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name"
+        ],
+        "type": "object"
+      },
+      "LockfileSignature": {
+        "additionalProperties": false,
+        "properties": {
+          "ref": {
+            "examples": [
+              "sigstore:acme/code-review@2.4.1"
+            ],
+            "type": "string"
+          },
+          "verified": {
+            "description": "False until Sigstore verification ships (FR-048a). Never render a false value as a pass.",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "LockfileSkip": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "examples": [
+              "SH-NET-002 in postinstall.sh"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "examples": [
+              "acme/legacy-helper"
+            ],
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "flagged-blocked-by-gate",
+              "flagged-awaiting-approval",
+              "version-rejected",
+              "no-clean-version-available",
+              "pin-target-missing",
+              "unsigned-and-signatures-required"
+            ],
+            "examples": [
+              "flagged-awaiting-approval"
+            ],
+            "type": "string"
+          },
+          "wouldHaveResolvedTo": {
+            "examples": [
+              "1.9.0"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "Profile": {
+        "additionalProperties": false,
+        "properties": {
+          "headRevision": {
+            "description": "The most recent published revision number.",
+            "examples": [
+              7
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "description": "Human-readable name as shown in the web UI.",
+            "examples": [
+              "Platform baseline"
+            ],
+            "type": "string"
+          },
+          "packageCount": {
+            "description": "Packages in the head revision, excluding skipped entries.",
+            "examples": [
+              12
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "slug": {
+            "description": "URL-safe identifier, unique within the organisation.",
+            "examples": [
+              "platform-baseline"
+            ],
+            "type": "string"
+          },
+          "visibility": {
+            "description": "How this profile came to be readable by this identity.",
+            "enum": [
+              "organisation",
+              "shared",
+              "private"
+            ],
+            "examples": [
+              "organisation"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "packageCount",
+          "headRevision"
+        ],
+        "type": "object"
+      },
+      "ProfileList": {
+        "additionalProperties": false,
+        "properties": {
+          "profiles": {
+            "description": "Readable profiles. Order is not part of the contract.",
+            "items": {
+              "$ref": "#/components/schemas/Profile"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "profiles"
+        ],
+        "type": "object"
+      },
+      "SyncReport": {
+        "additionalProperties": false,
+        "properties": {
+          "host": {
+            "description": "Hostname the sync landed on, for the audit row.",
+            "examples": [
+              "dev-laptop-01"
+            ],
+            "type": "string"
+          },
+          "profile": {
+            "description": "Slug of the profile that was synced.",
+            "examples": [
+              "platform-baseline"
+            ],
+            "type": "string"
+          },
+          "revision": {
+            "description": "The exact revision the client resolved against.",
+            "examples": [
+              7
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "skipped": {
+            "description": "Entry ids the client skipped locally, if any.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "targets": {
+            "description": "Agent directories the client actually wrote.",
+            "items": {
+              "enum": [
+                "claude-code",
+                "agents-md",
+                "codex"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "profile",
+          "revision",
+          "host",
+          "targets"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "bearerFormat": "JWT",
+        "description": "The `access_token` issued by /v1/device/token, or a web session token, sent as `Authorization: Bearer \u003ctoken\u003e`.",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "contact": {
+      "name": "Agent Manager maintainers",
+      "url": "https://github.com/WindKube/agent-manager"
+    },
+    "description": "Self-hosted registry for AI agent plugins and skills. This document is emitted from the huma operation definitions in internal/api (constitution principle V) and is the source every generated client is built from.",
+    "license": {
+      "identifier": "Apache-2.0",
+      "name": "Apache-2.0"
+    },
+    "title": "Agent Manager",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/bundles/{publisher}/{name}/{version}": {
+      "get": {
+        "description": "Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate (FR-029).",
+        "operationId": "getBundle",
+        "parameters": [
+          {
+            "description": "The publishing namespace, as it appears in the catalog.",
+            "in": "path",
+            "name": "publisher",
+            "required": true,
+            "schema": {
+              "description": "The publishing namespace, as it appears in the catalog.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The package name within that publisher.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "The package name within that publisher.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "An exact version. Ranges and dist-tags are resolved before this call.",
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "description": "An exact version. Ranges and dist-tags are resolved before this call.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/zstd": {
+                "schema": {
+                  "contentMediaType": "application/octet-stream",
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Bundle bytes",
+            "headers": {
+              "Digest": {
+                "schema": {
+                  "description": "RFC 3230 digest of the body. Verify before writing to disk.",
+                  "pattern": "^sha-256=[A-Za-z0-9+/=]+$",
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "schema": {
+                  "description": "The immutable version's entity tag. Safe to cache forever.",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "307": {
+            "description": "Redirect to a short-lived pre-signed object-store URL."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Version rejected or not distributable under the current gate."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such version."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Download an immutable version bundle",
+        "tags": [
+          "bundles"
+        ]
+      }
+    },
+    "/v1/device/authorize": {
+      "post": {
+        "description": "Opens an RFC 8628 device authorisation. Returns a user code for the human to type on the hub's verification page and a device code for the client to poll with. Nothing is authorised until a human approves that user code, so the response is not a credential grant — it is a pending request.",
+        "operationId": "deviceAuthorize",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceAuthorizeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceAuthorization"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is not a valid authorisation request."
+          },
+          "429": {
+            "description": "Too many requests.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "501": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not implemented in this build."
+          }
+        },
+        "security": [],
+        "summary": "Begin device authorisation",
+        "tags": [
+          "device"
+        ]
+      }
+    },
+    "/v1/device/token": {
+      "post": {
+        "description": "Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042).",
+        "operationId": "deviceToken",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceTokenRequest"
+              }
+            }
+          },
+          "description": "The RFC 8628 token request, form-encoded as the RFC requires.",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceToken"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceTokenError"
+                }
+              }
+            },
+            "description": "RFC 8628 error"
+          },
+          "501": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not implemented in this build."
+          }
+        },
+        "security": [],
+        "summary": "Poll for the issued token",
+        "tags": [
+          "device"
+        ]
+      }
+    },
+    "/v1/health": {
+      "get": {
+        "description": "Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case (FR-058).",
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "Serving."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "Not ready — a dependency is unreachable."
+          }
+        },
+        "security": [],
+        "summary": "Liveness and readiness",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/v1/profiles": {
+      "get": {
+        "description": "Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all.",
+        "operationId": "listProfiles",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Profiles readable by this identity",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/v1/profiles/{slug}/revisions/{revision}": {
+      "get": {
+        "description": "`revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted (FR-036).",
+        "operationId": "getRevision",
+        "parameters": [
+          {
+            "description": "The profile's URL-safe identifier.",
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "description": "The profile's URL-safe identifier.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Either head, for the latest published revision, or an exact revision number.",
+            "in": "path",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "description": "Either head, for the latest published revision, or an exact revision number.",
+              "pattern": "^(head|[0-9]+)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Lockfile"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such profile or revision, or not readable by this identity."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "`revision` is neither `head` nor an integer."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Fetch a resolved revision lockfile",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/v1/sync": {
+      "post": {
+        "description": "Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.",
+        "operationId": "reportSync",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncReport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Recorded."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such profile or revision, or not readable by this identity."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is not a valid sync report."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Report a completed sync",
+        "tags": [
+          "profiles"
+        ]
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "description": "Immutable version content.",
+      "name": "bundles"
+    },
+    {
+      "description": "RFC 8628 device authorisation. Unauthenticated by definition.",
+      "name": "device"
+    },
+    {
+      "description": "What this identity may read, and how it resolves.",
+      "name": "profiles"
+    },
+    {
+      "description": "Probes a supervisor calls. Unauthenticated.",
+      "name": "system"
+    }
+  ]
+}

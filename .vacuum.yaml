@@ -1,0 +1,16 @@
+# vacuum ruleset for the machine-facing contract. Run via `task openapi:lint:vacuum`.
+#
+# `recommended` is the baseline. Two rules are raised to error because the whole point of
+# specs/001-agent-manager-hub/contracts/openapi.yaml is that a separately-shipped CLI can
+# be generated from it: an unresolvable $ref or an operation without an operationId makes
+# the document ungeneratable, which is a defect and not a matter of taste.
+#
+# The RFC 8628 snake_case exemptions live in .vacuum-ignore.yaml, because
+# camel-case-properties walks every schema in the document and cannot be scoped by the
+# `given` JSONPath the way a normal rule can.
+extends: [[vacuum:oas, recommended]]
+
+rules:
+  resolving-references: error
+  operation-operationId: error
+  oas3-unused-component: error

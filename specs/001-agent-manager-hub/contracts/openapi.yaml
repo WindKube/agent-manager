@@ -18,6 +18,10 @@ openapi: 3.1.0
 # CI check: the generated document MUST remain a superset of this file, and no operation
 # named here may change shape without a version bump. That test is the point of the file.
 # ---------------------------------------------------------------------------
+#
+# Every credential-shaped example below is a prose placeholder, never a token-shaped
+# string. gitleaks scans this tree and a realistic-looking `access_token` example is
+# indistinguishable to it from a leaked one.
 
 info:
   title: Agent Manager — machine-facing API
@@ -26,8 +30,12 @@ info:
     The subset of the Agent Manager API consumed by machine clients. Authentication is the
     OAuth 2.0 device authorisation grant (RFC 8628) against the organisation's identity
     provider, brokered by the hub.
+  contact:
+    name: Agent Manager maintainers
+    url: https://github.com/WindKube/agent-manager
   license:
     name: Apache-2.0
+    identifier: Apache-2.0
 
 servers:
   - url: https://hub.example.dev
@@ -37,12 +45,14 @@ security:
   - bearerAuth: []
 
 tags:
+  - name: bundles
+    description: Immutable version content.
   - name: device
     description: RFC 8628 device authorisation. Unauthenticated by definition.
   - name: profiles
     description: What this identity may read, and how it resolves.
-  - name: bundles
-    description: Immutable version content.
+  - name: system
+    description: Probes a supervisor calls. Unauthenticated.
 
 paths:
 
@@ -52,21 +62,34 @@ paths:
       summary: Begin device authorisation
       operationId: deviceAuthorize
       security: []
+      description: |
+        Opens an RFC 8628 device authorisation. Returns a user code for the human to type on
+        the hub's verification page and a device code for the client to poll with. Nothing is
+        authorised until a human approves that user code, so the response is not a credential
+        grant — it is a pending request.
       requestBody:
         required: true
+        description: The client asking for authorisation, and the machine the grant is bound to.
         content:
           application/json:
             schema:
               type: object
               required: [client_id, host]
               properties:
-                client_id: { type: string }
+                client_id:
+                  type: string
+                  description: The CLI's registered OAuth client identifier.
+                  examples: [agent-manager-cli]
                 host:
                   type: string
                   description: |
                     Hostname of the requesting machine. Bound to the authorisation and
                     displayed to the approving human (FR-041), so approval is an informed act.
-                scope: { type: string }
+                  examples: [dev-laptop-01]
+                scope:
+                  type: string
+                  description: Space-delimited scopes. Omitted means the client's default scope.
+                  examples: ["profiles:read bundles:read"]
       responses:
         "200":
           description: Authorisation pending
@@ -79,14 +102,30 @@ paths:
                   device_code:
                     type: string
                     description: Bearer credential. Stored hashed server-side; never logged.
+                    examples: [example-device-code-not-a-real-credential]
                   user_code:
                     type: string
                     pattern: "^[0-9A-HJ-NP-TV-Z]{4}-[0-9A-HJ-NP-TV-Z]{4}$"
                     description: Crockford base32, ambiguous glyphs excluded. Shape "HKQ2-9FTL".
-                  verification_uri: { type: string, format: uri }
-                  verification_uri_complete: { type: string, format: uri }
-                  expires_in: { type: integer, description: Seconds. }
-                  interval: { type: integer, description: Minimum poll interval, seconds. }
+                    examples: [HKQ2-9FTL]
+                  verification_uri:
+                    type: string
+                    format: uri
+                    description: The page the human opens to type the user code in.
+                    examples: ["https://hub.example.dev/device"]
+                  verification_uri_complete:
+                    type: string
+                    format: uri
+                    description: The same page with the code pre-filled, for a QR code or a click.
+                    examples: ["https://hub.example.dev/device?user_code=HKQ2-9FTL"]
+                  expires_in:
+                    type: integer
+                    description: Seconds until the device code expires and polling must stop.
+                    examples: [900]
+                  interval:
+                    type: integer
+                    description: Minimum seconds between polls of /v1/device/token.
+                    examples: [5]
         "429": { $ref: "#/components/responses/RateLimited" }
 
   /v1/device/token:
@@ -100,6 +139,7 @@ paths:
         by an identity other than the requester is refused and no token is issued (FR-042).
       requestBody:
         required: true
+        description: The RFC 8628 token request, form-encoded as the RFC requires.
         content:
           application/x-www-form-urlencoded:
             schema:
@@ -107,9 +147,18 @@ paths:
               required: [grant_type, device_code, client_id]
               properties:
                 grant_type:
+                  type: string
                   const: urn:ietf:params:oauth:grant-type:device_code
-                device_code: { type: string }
-                client_id: { type: string }
+                  description: Fixed by RFC 8628 §3.4. No other grant type is accepted here.
+                  examples: [urn:ietf:params:oauth:grant-type:device_code]
+                device_code:
+                  type: string
+                  description: The `device_code` handed back by /v1/device/authorize.
+                  examples: [example-device-code-not-a-real-credential]
+                client_id:
+                  type: string
+                  description: Must be the same client_id that opened the authorisation.
+                  examples: [agent-manager-cli]
       responses:
         "200":
           description: Approved; short-lived token issued (FR-043)
@@ -119,19 +168,39 @@ paths:
                 type: object
                 required: [access_token, token_type, expires_in]
                 properties:
-                  access_token: { type: string }
-                  token_type: { const: Bearer }
-                  expires_in: { type: integer }
-                  refresh_token: { type: string }
+                  access_token:
+                    type: string
+                    description: Bearer token for every other operation here. Never logged.
+                    examples: [example-access-token-not-a-real-credential]
+                  token_type:
+                    type: string
+                    const: Bearer
+                    description: Always `Bearer`.
+                    examples: [Bearer]
+                  expires_in:
+                    type: integer
+                    description: Seconds until the access token expires.
+                    examples: [3600]
+                  refresh_token:
+                    type: string
+                    description: |
+                      Present only when the client may refresh without a second human approval.
+                    examples: [example-refresh-token-not-a-real-credential]
         "400":
           description: RFC 8628 error
           content:
             application/json:
               schema:
                 type: object
+                description: The RFC 8628 error envelope.
                 properties:
                   error:
+                    type: string
                     enum: [authorization_pending, slow_down, access_denied, expired_token, invalid_grant]
+                    description: |
+                      `authorization_pending` means keep polling at the advertised interval;
+                      `slow_down` means back off and widen it. The rest are final — stop.
+                    examples: [authorization_pending]
 
   /v1/profiles:
     get:
@@ -153,15 +222,38 @@ paths:
                 properties:
                   profiles:
                     type: array
+                    description: Readable profiles. Order is not part of the contract.
+                    examples:
+                      - - slug: platform-baseline
+                          name: Platform baseline
+                          visibility: organisation
+                          packageCount: 12
+                          headRevision: 7
                     items:
                       type: object
                       required: [slug, name, packageCount, headRevision]
                       properties:
-                        slug: { type: string }
-                        name: { type: string }
-                        visibility: { enum: [organisation, shared, private] }
-                        packageCount: { type: integer }
-                        headRevision: { type: integer }
+                        slug:
+                          type: string
+                          description: URL-safe identifier, unique within the organisation.
+                          examples: [platform-baseline]
+                        name:
+                          type: string
+                          description: Human-readable name as shown in the web UI.
+                          examples: [Platform baseline]
+                        visibility:
+                          type: string
+                          enum: [organisation, shared, private]
+                          description: How this profile came to be readable by this identity.
+                          examples: [organisation]
+                        packageCount:
+                          type: integer
+                          description: Packages in the head revision, excluding skipped entries.
+                          examples: [12]
+                        headRevision:
+                          type: integer
+                          description: The most recent published revision number.
+                          examples: [7]
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /v1/profiles/{slug}/revisions/{revision}:
@@ -174,15 +266,25 @@ paths:
         lockfile.schema.json, including the `skipped` array — a gate-excluded package is
         reported with its reason, never silently omitted (FR-036).
       parameters:
-        - { name: slug, in: path, required: true, schema: { type: string } }
-        - { name: revision, in: path, required: true, schema: { type: string, pattern: "^(head|[0-9]+)$" } }
+        - name: slug
+          in: path
+          required: true
+          description: The profile's URL-safe identifier.
+          schema: { type: string }
+        - name: revision
+          in: path
+          required: true
+          description: "`head` for the latest published revision, or an exact revision number."
+          schema: { type: string, pattern: "^(head|[0-9]+)$" }
       responses:
         "200":
           description: The immutable resolved lockfile
           content:
             application/json:
+              # Located relatively; the schema's own $id keeps the canonical URL. The
+              # absolute $id is a name, not an address — it does not resolve over HTTP.
               schema:
-                $ref: "https://agent-manager.dev/schemas/1.0.0/lockfile.schema.json"
+                $ref: "./lockfile.schema.json"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
           description: No such profile or revision, or not readable by this identity.
@@ -197,16 +299,30 @@ paths:
         `Digest` header carries the sha256 the client MUST verify before writing anything to
         disk. A rejected version is never served regardless of gate (FR-029).
       parameters:
-        - { name: publisher, in: path, required: true, schema: { type: string } }
-        - { name: name, in: path, required: true, schema: { type: string } }
-        - { name: version, in: path, required: true, schema: { type: string } }
+        - name: publisher
+          in: path
+          required: true
+          description: The publishing namespace, as it appears in the catalog.
+          schema: { type: string }
+        - name: name
+          in: path
+          required: true
+          description: The package name within that publisher.
+          schema: { type: string }
+        - name: version
+          in: path
+          required: true
+          description: An exact version. Ranges and `latest` are resolved before this call.
+          schema: { type: string }
       responses:
         "200":
           description: Bundle bytes
           headers:
             Digest:
+              description: RFC 3230 digest of the body. Verify before writing to disk.
               schema: { type: string, pattern: "^sha-256=[A-Za-z0-9+/=]+$" }
             ETag:
+              description: The immutable version's entity tag. Safe to cache forever.
               schema: { type: string }
           content:
             application/zstd:
@@ -228,20 +344,34 @@ paths:
         revision's contents.
       requestBody:
         required: true
+        description: What was synced, where, and what the client chose not to write.
         content:
           application/json:
             schema:
               type: object
               required: [profile, revision, host, targets]
               properties:
-                profile: { type: string }
-                revision: { type: integer }
-                host: { type: string }
+                profile:
+                  type: string
+                  description: Slug of the profile that was synced.
+                  examples: [platform-baseline]
+                revision:
+                  type: integer
+                  description: The exact revision the client resolved against.
+                  examples: [7]
+                host:
+                  type: string
+                  description: Hostname the sync landed on, for the audit row.
+                  examples: [dev-laptop-01]
                 targets:
                   type: array
-                  items: { enum: [claude-code, agents-md, codex] }
+                  description: Agent directories the client actually wrote.
+                  examples: [[claude-code, agents-md]]
+                  items: { type: string, enum: [claude-code, agents-md, codex] }
                 skipped:
                   type: array
+                  description: Entry ids the client skipped locally, if any.
+                  examples: [[acme/legacy-helper]]
                   items: { type: string }
       responses:
         "204": { description: Recorded. }
@@ -249,9 +379,13 @@ paths:
 
   /v1/health:
     get:
+      tags: [system]
       summary: Liveness and readiness
       operationId: health
       security: []
+      description: |
+        Liveness and readiness in one probe: 200 when every dependency this role needs is
+        reachable, 503 otherwise. Has no authenticated variant and no client error case.
       responses:
         "200": { description: Serving. }
         "503": { description: Not ready — a dependency is unreachable. }
@@ -262,6 +396,8 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      description: |
+        The `access_token` issued by /v1/device/token, sent as `Authorization: Bearer <token>`.
   responses:
     Unauthorized:
       description: Missing, expired or invalid token.
@@ -269,6 +405,7 @@ components:
       description: Too many requests.
       headers:
         Retry-After:
+          description: Seconds to wait before retrying.
           schema: { type: integer }
 
 # ---------------------------------------------------------------------------

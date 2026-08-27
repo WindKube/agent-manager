@@ -1,0 +1,32 @@
+# Spectral ruleset for the machine-facing contract. Run via `task openapi:lint:spectral`.
+#
+# spectral:oas `recommended` is the baseline. The one added rule mirrors vacuum's
+# camel-case-properties, and is not redundant with it: vacuum does not walk into the
+# external `./lockfile.schema.json` the revision response $refs, so spectral is the only
+# one of the two that sees a badly-named field in the largest schema in the contract.
+extends: [[spectral:oas, recommended]]
+
+rules:
+  camel-case-properties:
+    description: Schema property names are camelCase.
+    message: "property `{{property}}` is not camelCase"
+    severity: warn
+    given: $..properties
+    then:
+      field: "@key"
+      function: casing
+      functionOptions:
+        type: camel
+
+# RFC 8628 (OAuth 2.0 Device Authorization Grant) fixes the member names on these two
+# operations: §3.1 client_id, §3.2 device_code / user_code / verification_uri /
+# verification_uri_complete / expires_in, §3.4 grant_type, and RFC 6749 §5.1 access_token /
+# token_type / refresh_token. Renaming them would make the hub non-conformant and break
+# every off-the-shelf device-flow client, so the rule is switched off for these two paths
+# only — everywhere else a snake_case field is still a finding.
+overrides:
+  - files:
+      - "**#/paths/~1v1~1device~1authorize"
+      - "**#/paths/~1v1~1device~1token"
+    rules:
+      camel-case-properties: "off"

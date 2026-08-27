@@ -1,5 +1,12 @@
 version: "3"
 
+# The OpenAPI contract tooling is a standalone taskfile so it can be run on its own
+# (`task -t Taskfile.openapi.yaml lint`); this makes the same tasks reachable as
+# `task openapi:<task>`.
+includes:
+  openapi:
+    taskfile: Taskfile.openapi.yaml
+
 vars:
   BIN: "{{.ROOT_DIR}}/.bin"
   TAILWIND_VERSION: v4.1.18

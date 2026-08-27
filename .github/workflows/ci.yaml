@@ -113,6 +113,79 @@ jobs:
       - name: Regenerate and fail on a diff
         run: task gen:check
 
+  openapi:
+    name: OpenAPI contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          # The breaking-change gate compares the contract against the PR's merge base,
+          # which is not in a shallow clone.
+          fetch-depth: 0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      # spectral and redocly are npm-only and have no Go equivalent. Node here is not the
+      # "No Node.js in any image" the constitution forbids: that governs the shipped
+      # container, which has none and gets its CSS from the Tailwind standalone binary.
+      # Nothing in this job reaches an image or a run-time process.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+      - uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      # vacuum and wiretap are ~110MB of release tarball and openapi-changes is a Go
+      # build, so the tools are cached. The key includes Taskfile.openapi.yaml because the
+      # install tasks are guarded on existence, not on version — without the hash a
+      # version bump would keep restoring the old binary.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .bin
+          key: openapi-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Taskfile.openapi.yaml') }}
+      - name: Install the contract tooling
+        run: task openapi:tools
+      - name: Lint the contract (vacuum, spectral, redocly)
+        run: task openapi:lint
+      - name: Publish the vacuum quality score
+        if: always()
+        run: task --silent openapi:score >> "$GITHUB_STEP_SUMMARY"
+      - name: Build the Redoc docs and the vacuum quality report
+        if: always()
+        run: |
+          task openapi:docs
+          task openapi:report
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: openapi-docs
+          path: |
+            docs/api/index.html
+            docs/api/quality.html
+          if-no-files-found: error
+      # Last, so a breaking change does not cost the docs and the score above. The CLI
+      # ships separately and cannot be redeployed in step with the hub, so an incompatible
+      # change to contracts/openapi.yaml has to fail the build rather than land quietly.
+      - name: Breaking-change gate against the merge base
+        if: ${{ !cancelled() }}
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -eu
+          if [ -n "${BASE_REF:-}" ]; then
+            base="$(git merge-base "origin/${BASE_REF}" HEAD)"
+          elif git rev-parse -q --verify HEAD~1 >/dev/null; then
+            base=HEAD~1
+          else
+            echo "no earlier revision of the contract to compare against"
+            exit 0
+          fi
+          echo "comparing the contract against ${base}"
+          task openapi:breaking BASE="${base}"
+
   integration:
     name: Integration tests
     runs-on: ubuntu-latest

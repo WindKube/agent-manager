@@ -1,0 +1,380 @@
+# OpenAPI contract tooling. Standalone (`task -t Taskfile.openapi.yaml lint`) and included
+# from Taskfile.yaml under the `openapi:` namespace (`task openapi:lint`). Both work: every
+# path here is anchored on {{.ROOT_DIR}}, which is the repo root either way.
+#
+# Constitution principle V makes the HTTP contract the thing the CLI and the web client are
+# generated from, so it gets its own gate rather than riding along on `task lint`.
+version: "3"
+
+vars:
+  BIN: "{{.ROOT_DIR}}/.bin"
+
+  # The frozen machine-facing surface today; override once `serve api` emits the real
+  # document, e.g. `task openapi:lint SPEC=internal/apiclient/openapi.json`.
+  SPEC: '{{.SPEC | default "specs/001-agent-manager-hub/contracts/openapi.yaml"}}'
+  OUT: '{{.OUT | default "docs/api"}}'
+
+  # Revision the diff and breaking tasks compare against. CI passes the PR merge base.
+  BASE: '{{.BASE | default "HEAD"}}'
+
+  # No "v": these two are the goreleaser asset versions; the git tag adds the v.
+  VACUUM_VERSION: 0.30.1
+  WIRETAP_VERSION: 0.7.3
+  OPENAPI_CHANGES_VERSION: v0.2.11
+
+  # spectral and redocly are npm-only; there is no Go equivalent of either. Running them
+  # through npx is NOT a breach of the constitution's "No Node.js in any image" — that
+  # constraint governs what ships in the container (hence the Tailwind standalone binary
+  # and templ instead of a JS toolchain). Nothing below runs in a Dockerfile or at run
+  # time; it runs in a developer shell and in the `openapi` CI job. Pinned exactly, so a
+  # local run and a CI run agree on what a finding is.
+  SPECTRAL_VERSION: 6.16.3
+  REDOCLY_VERSION: 2.49.0
+
+  DOCS_PORT: '{{.DOCS_PORT | default "8087"}}'
+  MOCK_PORT: '{{.MOCK_PORT | default "8088"}}'
+  VALIDATE_PORT: '{{.VALIDATE_PORT | default "8089"}}'
+  # `serve api`'s default addr (internal/config.API.Addr). wiretap sits in front of it.
+  API_URL: '{{.API_URL | default "http://localhost:8081"}}'
+
+tasks:
+  default:
+    cmds:
+      - task: lint
+
+  tools:
+    desc: Install vacuum, openapi-changes and wiretap into .bin/
+    cmds:
+      - task: tools:vacuum
+      - task: tools:openapi-changes
+      - task: tools:wiretap
+
+  tools:vacuum:
+    internal: true
+    status:
+      - test -x {{.BIN}}/vacuum
+    cmds:
+      # Release tarball rather than `go install`, which is otherwise the obvious choice
+      # here: a go-installed vacuum refuses `html-report` with "html-report support is not
+      # included in this build" because the report UI is embedded from assets that are not
+      # in the Go module. The official binary carries them, and `task openapi:report` is
+      # one of this layer's deliverables.
+      - task: release:install
+        vars:
+          TOOL: vacuum
+          REPO: daveshanley/vacuum
+          VERSION: "{{.VACUUM_VERSION}}"
+
+  tools:openapi-changes:
+    internal: true
+    status:
+      - test -x {{.BIN}}/openapi-changes
+    cmds:
+      - task: go:install
+        vars:
+          MODULE: github.com/pb33f/openapi-changes
+          VERSION: "{{.OPENAPI_CHANGES_VERSION}}"
+
+  go:install:
+    internal: true
+    label: "go install {{.MODULE}}@{{.VERSION}}"
+    cmds:
+      - mkdir -p {{.BIN}}
+      - |
+        set -eu
+        # `go install pkg@version` is already module-agnostic, but this runs from a
+        # throwaway directory so there is no argument about it: go.mod and go.sum are
+        # shared with parallel work and a tool is not a dependency of the module.
+        tmp="$(mktemp -d)"
+        trap 'rm -rf "$tmp"' EXIT
+        cd "$tmp"
+        GOBIN='{{.BIN}}' GOFLAGS= go install '{{.MODULE}}@{{.VERSION}}'
+
+  tools:wiretap:
+    internal: true
+    status:
+      - test -x {{.BIN}}/wiretap
+    cmds:
+      # wiretap cannot be `go install`ed at any version either: the module embeds
+      # `ui/dist`, which is not shipped inside the Go module, so the build dies with
+      # "pattern ui/dist: no matching files found".
+      - task: release:install
+        vars:
+          TOOL: wiretap
+          REPO: pb33f/wiretap
+          VERSION: "{{.WIRETAP_VERSION}}"
+
+  release:install:
+    internal: true
+    label: "install {{.TOOL}} {{.VERSION}} from {{.REPO}}"
+    cmds:
+      - mkdir -p {{.BIN}}
+      - |
+        set -eu
+        # Same shape as tailwind:install in the root Taskfile. Both tools ship goreleaser
+        # tarballs with a checksums.txt, which is verified rather than trusted — these
+        # binaries run over a document that defines the CLI's whole surface.
+        case "$(uname -s)-$(uname -m)" in
+          Linux-x86_64)  arch=linux_x86_64 ;;
+          Linux-aarch64) arch=linux_arm64 ;;
+          Darwin-arm64)  arch=darwin_arm64 ;;
+          Darwin-x86_64) arch=darwin_x86_64 ;;
+          *) echo "unsupported platform for the {{.TOOL}} release tarball" >&2; exit 1 ;;
+        esac
+        asset="{{.TOOL}}_{{.VERSION}}_${arch}.tar.gz"
+        tmp="$(mktemp -d)"
+        trap 'rm -rf "$tmp"' EXIT
+        base="https://github.com/{{.REPO}}/releases/download/v{{.VERSION}}"
+        curl -fsSL -o "$tmp/$asset" "$base/$asset"
+        curl -fsSL -o "$tmp/checksums.txt" "$base/checksums.txt"
+        sums="sha256sum"
+        command -v sha256sum >/dev/null 2>&1 || sums="shasum -a 256"
+        (cd "$tmp" && grep " ${asset}\$" checksums.txt | $sums -c -)
+        tar -xzf "$tmp/$asset" -C "$tmp" '{{.TOOL}}'
+        install -m 0755 "$tmp/{{.TOOL}}" '{{.BIN}}/{{.TOOL}}'
+
+  lint:
+    desc: All three contract linters — the aggregate gate
+    cmds:
+      - task: lint:vacuum
+      - task: lint:spectral
+      - task: lint:redocly
+
+  lint:vacuum:
+    desc: "vacuum (project ruleset; warnings are failures)"
+    deps: [tools:vacuum]
+    cmds:
+      # -n warn, not the default -n error: every finding vacuum reports on this document
+      # is either fixed or listed by path in .vacuum-ignore.yaml, so a new warning means
+      # something actually regressed.
+      - >-
+        {{.BIN}}/vacuum lint -d --no-clip -n warn --no-update-check
+        -r .vacuum.yaml --ignore-file .vacuum-ignore.yaml {{.SPEC}}
+
+  lint:spectral:
+    desc: "spectral (spectral:oas recommended + the shared casing rule)"
+    cmds:
+      - >-
+        npx -y @stoplight/spectral-cli@{{.SPECTRAL_VERSION}} lint
+        --fail-severity=warn --ruleset .spectral.yaml {{.SPEC}}
+
+  lint:redocly:
+    desc: "redocly (recommended-strict ruleset, structural validation)"
+    cmds:
+      - npx -y @redocly/cli@{{.REDOCLY_VERSION}} lint --format=stylish {{.SPEC}}
+
+  report:
+    desc: "vacuum quality report -> {{.OUT}}/quality.html"
+    deps: [tools:vacuum]
+    cmds:
+      - mkdir -p {{.OUT}}
+      - |
+        set -eu
+        # -d drops the generated timestamp so re-running does not churn the file.
+        {{.BIN}}/vacuum html-report -b -d --no-update-check \
+          -r .vacuum.yaml --ignore-file .vacuum-ignore.yaml {{.SPEC}} {{.OUT}}/quality.html
+        # vacuum exits 0 even when it printed "html-report support is not included in this
+        # build", which is what a go-installed binary does. Check for the file, not the
+        # status, or a stale .bin/vacuum turns this into a silent no-op.
+        test -s '{{.OUT}}/quality.html'
+
+  score:
+    desc: "Print the vacuum quality score as markdown (CI step summary)"
+    deps: [tools:vacuum]
+    # silent, because the output is redirected straight into $GITHUB_STEP_SUMMARY and
+    # task's command echo would land in the rendered markdown.
+    silent: true
+    cmds:
+      # -n none: this task reports, it does not gate. `lint` is the gate, and a score step
+      # that also fails would report the same regression twice.
+      - >-
+        {{.BIN}}/vacuum lint -q -b --pipeline-output -n none --no-update-check
+        -r .vacuum.yaml --ignore-file .vacuum-ignore.yaml {{.SPEC}}
+
+  docs:
+    desc: "Static Redoc docs -> {{.OUT}}/index.html (self-contained, no CDN)"
+    cmds:
+      - mkdir -p {{.OUT}}
+      - >-
+        npx -y @redocly/cli@{{.REDOCLY_VERSION}} build-docs {{.SPEC}}
+        -o {{.OUT}}/index.html --disableGoogleFont --title "Agent Manager — machine-facing API"
+      - |
+        set -eu
+        # redocly's page loads Redoc from cdn.redocly.com. Inline it instead, so the docs
+        # open from a file:// URL, from an offline machine, and from a CI artifact — which
+        # is the only reason to build a static page rather than serve the spec. The bundle
+        # is fetched from the exact URL redocly named and checked against the SRI digest
+        # redocly itself embedded, so nothing here trusts the CDN more than the generator
+        # already does.
+        html='{{.OUT}}/index.html'
+        tag="$(grep -o '<script src="https://cdn\.redocly\.com[^>]*></script>' "$html")"
+        url="$(printf '%s' "$tag" | sed -n 's/.*src="\([^"]*\)".*/\1/p')"
+        sri="$(printf '%s' "$tag" | sed -n 's/.*integrity="sha384-\([^"]*\)".*/\1/p')"
+        bundle='{{.BIN}}/redoc.standalone.js'
+        if [ ! -f "$bundle" ] || \
+           [ "$(openssl dgst -sha384 -binary "$bundle" | openssl base64 -A)" != "$sri" ]; then
+          curl -fsSL -o "$bundle" "$url"
+          got="$(openssl dgst -sha384 -binary "$bundle" | openssl base64 -A)"
+          if [ "$got" != "$sri" ]; then
+            echo "redoc bundle digest mismatch: want $sri, got $got" >&2
+            rm -f "$bundle"
+            exit 1
+          fi
+        fi
+        # Inlining raw is only safe while the bundle contains no `</script`, which would
+        # close the tag early. Assert it rather than hope.
+        if grep -q '</script' "$bundle"; then
+          echo "redoc bundle contains </script and cannot be inlined verbatim" >&2
+          exit 1
+        fi
+        awk -v tag="$tag" -v bundle="$bundle" '
+          !done { i = index($0, tag) }
+          !done && i > 0 {
+            printf "%s<script>\n", substr($0, 1, i - 1)
+            while ((getline line < bundle) > 0) print line
+            printf "</script>%s\n", substr($0, i + length(tag))
+            done = 1
+            next
+          }
+          { print }
+        ' "$html" > "$html.tmp"
+        mv "$html.tmp" "$html"
+        if grep -qE 'src="https?://|<link[^>]*href="https?://' "$html"; then
+          echo "docs still load an external asset:" >&2
+          grep -oE '(src|href)="https?://[^"]*"' "$html" | sort -u >&2
+          exit 1
+        fi
+        echo "built $html ($(wc -c < "$html") bytes, no external assets)"
+
+  docs:serve:
+    desc: "Serve the built Redoc docs on :{{.DOCS_PORT}} — nothing else has to be running"
+    deps: [docs]
+    cmds:
+      - |
+        set -eu
+        # A plain static file server: the built page is one self-contained HTML file, so
+        # there is nothing to proxy and no api to bring up.
+        #
+        # python3 first because it needs no install, npx second because node is already
+        # required by lint:spectral and lint:redocly. Between them this task depends on
+        # nothing that is not already declared in mise.toml.
+        echo "Redoc docs on http://127.0.0.1:{{.DOCS_PORT}}/ (ctrl-c to stop)"
+        if command -v python3 >/dev/null 2>&1; then
+          exec python3 -m http.server '{{.DOCS_PORT}}' --bind 127.0.0.1 --directory '{{.OUT}}'
+        fi
+        exec npx -y serve@14.2.4 --listen 'tcp://127.0.0.1:{{.DOCS_PORT}}' --single '{{.OUT}}'
+
+  diff:
+    desc: "What changed in the contract between {{.BASE}} and the working tree"
+    deps: [tools:openapi-changes]
+    cmds:
+      # openapi-changes exits non-zero of its own accord once a change is breaking, so
+      # this reads as a gate too. `breaking` is still the one CI runs: it distinguishes
+      # "no breaking changes" from "the base could not be modelled", which this cannot.
+      - '{{.BIN}}/openapi-changes summary -b "{{.BASE}}:{{.SPEC}}" "{{.SPEC}}"'
+
+  diff:html:
+    desc: "Visual changelog -> {{.OUT}}/changelog.html"
+    deps: [tools:openapi-changes]
+    cmds:
+      - mkdir -p {{.OUT}}
+      - >-
+        {{.BIN}}/openapi-changes html-report -b --report-file {{.OUT}}/changelog.html
+        "{{.BASE}}:{{.SPEC}}" "{{.SPEC}}"
+
+  breaking:
+    desc: "Fail if the contract broke against {{.BASE}} — the CI gate"
+    deps: [tools:openapi-changes]
+    cmds:
+      - |
+        set -eu
+        # The CLI ships separately and cannot be redeployed in step with the hub, so a
+        # breaking change to this document is a release event, not a commit. Any other
+        # change is fine and must not fail the build, which is why this counts breaking
+        # changes rather than using --error-on-diff.
+        #
+        # jq is checked rather than assumed: the report is read with it, and without it
+        # every branch below would fall through to "the gate did not run" and pass.
+        command -v jq >/dev/null 2>&1 || {
+          echo "openapi:breaking needs jq to read the change report" >&2
+          exit 1
+        }
+        if ! git cat-file -e '{{.BASE}}:{{.SPEC}}' 2>/dev/null; then
+          echo "openapi:breaking: {{.SPEC}} does not exist at {{.BASE}} — nothing to compare"
+          exit 0
+        fi
+        tmp="$(mktemp -d)"
+        trap 'rm -rf "$tmp"' EXIT
+        # Model the working-tree document against itself first, which splits the two very
+        # different ways the real comparison can fail. A base revision that cannot be
+        # modelled is neither safe nor breaking, so the gate says plainly that it did not
+        # run rather than reporting a pass it did not earn; a working-tree document that
+        # cannot be modelled is this branch's own defect and fails.
+        if ! {{.BIN}}/openapi-changes report -b --reproducible '{{.SPEC}}' '{{.SPEC}}' \
+             >/dev/null 2>"$tmp/self"; then
+          echo "openapi:breaking: {{.SPEC}} cannot be modelled — run 'task openapi:lint'" >&2
+          tail -3 "$tmp/self" >&2
+          exit 1
+        fi
+        if ! {{.BIN}}/openapi-changes report -b --reproducible \
+              '{{.BASE}}:{{.SPEC}}' '{{.SPEC}}' >"$tmp/report.json" 2>"$tmp/err"; then
+          echo "openapi:breaking: WARNING - the gate did NOT run: could not model {{.BASE}}:{{.SPEC}}" >&2
+          tail -3 "$tmp/err" >&2
+          exit 0
+        fi
+        # openapi-changes writes its log to stdout as well as stderr when it fails, so a
+        # zero status is not proof the report is a report. Unreadable output fails: it is
+        # the gate's own machinery being broken, not a statement about the contract.
+        if ! jq -e . >/dev/null 2>&1 <"$tmp/report.json"; then
+          echo "openapi:breaking: the change report is not readable JSON" >&2
+          head -3 "$tmp/report.json" >&2
+          exit 1
+        fi
+        breaking="$(jq '[.changes[]? | select(.breaking)] | length' <"$tmp/report.json")"
+        total="$(jq '[.changes[]?] | length' <"$tmp/report.json")"
+        echo "openapi:breaking: $total change(s) against {{.BASE}}, $breaking breaking"
+        if [ "$breaking" -gt 0 ]; then
+          jq -r '.changes[] | select(.breaking)
+                 | "  BREAKING \(.changeText) at \(.path // "?"): \(.original // "-") -> \(.new // "-")"' \
+            <"$tmp/report.json" >&2
+          echo "openapi:breaking: the frozen machine-facing surface changed incompatibly" >&2
+          exit 1
+        fi
+
+  mock:
+    desc: "wiretap in mock mode on :{{.MOCK_PORT}} — responses come from the contract's examples"
+    deps: [tools:wiretap]
+    cmds:
+      # Mock mode sends nothing to a target, so no api has to be running. wiretap applies
+      # the document's root `security` to every operation and does not honour the
+      # per-operation `security: []` overrides, so even /v1/health wants an Authorization
+      # header here; any bearer value satisfies it.
+      - mkdir -p {{.OUT}}
+      # -f keeps wiretap's report out of the repo root; it creates the file whether or not
+      # anything is streamed to it.
+      - >-
+        {{.BIN}}/wiretap --mock-mode -s {{.SPEC}} -p {{.MOCK_PORT}}
+        -m 9088 -w 9089 -f {{.OUT}}/wiretap-mock-report.jsonl
+
+  validate:
+    desc: "wiretap as a validating proxy: :{{.VALIDATE_PORT}} -> {{.API_URL}}"
+    deps: [tools:wiretap]
+    cmds:
+      # Point a client at :{{.VALIDATE_PORT}} instead of the api and every request and
+      # response is checked against the contract as it passes through. --hard-validation
+      # turns a violation into an HTTP error (RFC 9457 problem+json) rather than a log
+      # line, so a contract drift fails the caller instead of being missed; --strict-mode
+      # also catches undeclared properties, parameters and headers.
+      - mkdir -p {{.OUT}}
+      - >-
+        {{.BIN}}/wiretap -s {{.SPEC}} -u {{.API_URL}} -p {{.VALIDATE_PORT}}
+        -m 9090 -w 9091 --hard-validation --hard-error-return-problem --strict-mode
+        -f {{.OUT}}/wiretap-validate-report.jsonl
+
+  bundle:
+    desc: "Single resolved document -> {{.OUT}}/openapi.bundle.yaml"
+    cmds:
+      - mkdir -p {{.OUT}}
+      - >-
+        npx -y @redocly/cli@{{.REDOCLY_VERSION}} bundle {{.SPEC}}
+        -o {{.OUT}}/openapi.bundle.yaml --ext yaml

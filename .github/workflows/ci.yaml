@@ -15,6 +15,8 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# A statically linked binary is the point of the distroless image, so this is the
+# default. The two test jobs override it, because -race requires cgo.
 env:
   CGO_ENABLED: "0"
 
@@ -48,7 +50,10 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - run: go test -race -shuffle=on -coverprofile=coverage.out -covermode=atomic ./...
+      - name: go test -race
+        env:
+          CGO_ENABLED: "1" # -race requires cgo
+        run: go test -race -shuffle=on -coverprofile=coverage.out -covermode=atomic ./...
       - name: Coverage summary
         run: go tool cover -func=coverage.out | tail -1 >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

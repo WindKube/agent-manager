@@ -5,7 +5,7 @@
 # this build needs neither templ nor the Tailwind binary and therefore no Node.
 # CI regenerates and fails on a diff, which is what keeps the committed output honest.
 
-FROM golang:1.26.5-alpine AS build
+FROM golang:1.26.6-alpine AS build
 
 ARG VERSION=dev
 ARG COMMIT=none

@@ -1,0 +1,147 @@
+version: "3"
+
+vars:
+  BIN: "{{.ROOT_DIR}}/.bin"
+  TAILWIND_VERSION: v4.1.18
+  ATLAS_VERSION: latest
+  LDFLAGS: >-
+    -s -w
+    -X agent-manager/internal/cli.Version={{.VERSION | default "dev"}}
+    -X agent-manager/internal/cli.Commit={{.COMMIT | default "none"}}
+
+env:
+  CGO_ENABLED: "0"
+
+tasks:
+  default:
+    cmds:
+      - task: gen
+      - task: lint
+      - task: test
+
+  gen:
+    desc: Generate everything that is generated
+    cmds:
+      - task: gen:templ
+      - task: gen:css
+      - task: gen:client
+
+  gen:templ:
+    desc: templ components -> _templ.go
+    cmds:
+      - go tool templ generate
+
+  gen:css:
+    desc: Tailwind standalone -> internal/web/static/app.css (no Node)
+    status:
+      - test ! -f assets/input.css
+    cmds:
+      - task: tailwind:install
+      - mkdir -p internal/web/static
+      - "{{.BIN}}/tailwindcss -i assets/input.css -o internal/web/static/app.css --minify"
+
+  gen:client:
+    desc: oapi-codegen -> internal/apiclient (the web role's only door to data)
+    status:
+      - test ! -f internal/apiclient/oapi-codegen.yaml
+    cmds:
+      - go tool oapi-codegen -config internal/apiclient/oapi-codegen.yaml internal/apiclient/openapi.json
+
+  gen:check:
+    desc: Fail if generated output is stale (constitution principle V)
+    cmds:
+      - task: gen
+      - |
+        if ! git diff --quiet; then
+          echo "generated output is stale — run 'task gen' and commit the result" >&2
+          git --no-pager diff --stat >&2
+          exit 1
+        fi
+
+  tailwind:install:
+    internal: true
+    status:
+      - test -x {{.BIN}}/tailwindcss
+    cmds:
+      - mkdir -p {{.BIN}}
+      - |
+        set -eu
+        case "$(uname -s)-$(uname -m)" in
+          Linux-x86_64)  asset=tailwindcss-linux-x64 ;;
+          Linux-aarch64) asset=tailwindcss-linux-arm64 ;;
+          Darwin-arm64)  asset=tailwindcss-macos-arm64 ;;
+          Darwin-x86_64) asset=tailwindcss-macos-x64 ;;
+          *) echo "unsupported platform for the tailwind standalone binary" >&2; exit 1 ;;
+        esac
+        curl -fsSL -o {{.BIN}}/tailwindcss \
+          "https://github.com/tailwindlabs/tailwindcss/releases/download/{{.TAILWIND_VERSION}}/${asset}"
+        chmod +x {{.BIN}}/tailwindcss
+
+  atlas:install:
+    internal: true
+    status:
+      - command -v atlas
+    cmds:
+      - curl -fsSL https://atlasgo.sh | sh
+
+  migrate:diff:
+    desc: "Diff the Bun models into versioned SQL (needs a Docker socket)"
+    deps: [atlas:install]
+    cmds:
+      - atlas migrate diff {{.CLI_ARGS | default "change"}} --env bun
+
+  migrate:apply:
+    desc: Apply migrations locally
+    deps: [atlas:install]
+    cmds:
+      - atlas migrate apply --env bun --url "{{.AGENT_MANAGER_DATABASE_URL}}"
+
+  migrate:hash:
+    desc: Recompute atlas.sum
+    deps: [atlas:install]
+    cmds:
+      - atlas migrate hash --env bun
+
+  build:
+    desc: Build the single binary
+    cmds:
+      - go build -trimpath -ldflags '{{.LDFLAGS}}' -o {{.BIN}}/agent-manager ./cmd/agent-manager
+
+  test:
+    desc: Unit tests (memblob, no containers)
+    cmds:
+      - go test -race -shuffle=on ./...
+
+  test:integration:
+    desc: testcontainers — postgres, minio, dex
+    cmds:
+      - go test -race -tags=integration -timeout=20m ./...
+
+  test:cover:
+    cmds:
+      - go test -race -coverprofile=coverage.out -covermode=atomic ./...
+      - go tool cover -func=coverage.out | tail -1
+
+  lint:
+    desc: golangci-lint plus the role-import boundary check
+    cmds:
+      - golangci-lint run ./...
+      - go test ./internal/archcheck/...
+
+  fmt:
+    cmds:
+      - golangci-lint fmt ./...
+
+  vuln:
+    desc: govulncheck
+    cmds:
+      - go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  up:
+    desc: The whole stack
+    cmds:
+      - docker compose up --build
+
+  down:
+    cmds:
+      - docker compose down -v

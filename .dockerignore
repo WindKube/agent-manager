@@ -1,0 +1,13 @@
+.git
+.github
+.bin
+.task
+dist
+docs/design
+specs
+*.md
+!README.md
+coverage.*
+*.out
+.claude
+.specify

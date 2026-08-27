@@ -5,8 +5,11 @@ vars:
   TAILWIND_VERSION: v4.1.18
   # Must match the binary that produced internal/store/migrations/atlas.sum. A
   # floating "latest" that drifts past it makes `migrate apply` fail the directory
-  # checksum on a clean checkout.
-  ATLAS_VERSION: v0.36.0
+  # checksum on a clean checkout. Atlas enforces a supported-version policy and
+  # withdraws old downloads, so an expired pin breaks a clean checkout too — 1.3.2
+  # computes a byte-identical atlas.sum and reports the directory synced, which is
+  # what makes this a pin bump rather than a migration change.
+  ATLAS_VERSION: v1.3.2
   LDFLAGS: >-
     -s -w
     -X agent-manager/internal/cli.Version={{.VERSION | default "dev"}}

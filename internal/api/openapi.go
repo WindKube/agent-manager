@@ -61,6 +61,7 @@ func humaConfig(opts Options) huma.Config {
 			Security: []map[string][]string{{BearerScheme: {}}},
 			Tags: []*huma.Tag{
 				{Name: "bundles", Description: "Immutable version content."},
+				{Name: "catalog", Description: "Browsing what is registered. Readable without a token."},
 				{Name: "device", Description: "RFC 8628 device authorisation. Unauthenticated by definition."},
 				{Name: "profiles", Description: "What this identity may read, and how it resolves."},
 				{Name: "system", Description: "Probes a supervisor calls. Unauthenticated."},

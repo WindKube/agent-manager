@@ -44,19 +44,33 @@ var correlationIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 
 // CatalogSource is the web role's door to catalog data.
 //
-// The api exposes no catalog operation yet — only the seven frozen CLI-facing
-// ones — so this layer wires internal/web/fixture behind it. The US2 layer swaps
-// the fixture for an internal/apiclient-backed implementation and nothing else in
-// this package changes.
+// internal/web/hub implements it over the generated client; internal/web/fixture
+// still implements it for the screen tests, which need the design's ten rows
+// without a hub behind them. A source reporting view.ErrSignedOut is stating a
+// fact about the caller, not failing: see load.
 type CatalogSource interface {
 	Catalog(ctx context.Context, q view.CatalogQuery) (view.CatalogPage, error)
+}
+
+// Registrar is the modal's door to the two registration operations.
+//
+// It is a second interface rather than two more methods on CatalogSource because
+// internal/web/fixture implements one and must not implement the other: a
+// fixture that could accept a registration would be claiming something it cannot
+// do, and every screen test would then be exercising the claim.
+type Registrar interface {
+	Preview(ctx context.Context, archive view.Archive) (view.ImportPreview, error)
+	Register(ctx context.Context, registration view.Registration) (view.ImportResult, error)
 }
 
 // Deps is what the role is handed. Every field is narrow on purpose: there is no
 // database handle and no bucket to reach for.
 type Deps struct {
 	Catalog CatalogSource
-	Log     zerolog.Logger
+	// Registrar is optional. Nil means the modal renders and refuses to submit,
+	// which is what a screen test wants and is not a state a deployment is in.
+	Registrar Registrar
+	Log       zerolog.Logger
 }
 
 // Options is the run-time configuration of the surface itself.
@@ -97,6 +111,8 @@ func (s *Server) register() {
 	s.engine.GET("/catalog", s.catalog)
 	s.engine.GET("/catalog/results", s.catalogResults)
 	s.engine.GET("/catalog/facet/:name", s.catalogFacet)
+	s.engine.POST("/catalog/import/preview", s.importPreview)
+	s.engine.POST("/catalog/import", s.importRegister)
 
 	s.engine.POST("/theme", s.setTheme)
 

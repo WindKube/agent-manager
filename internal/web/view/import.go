@@ -1,5 +1,7 @@
 package view
 
+import "io"
+
 // The registration modal's view model (US1, FR-005).
 //
 // It is deliberately a plain value with no behaviour: the web role holds no
@@ -26,14 +28,29 @@ var ImportTabs = []struct {
 	{ImportURL, "Fetch from URL"},
 }
 
-// ImportVisibilities is the package_visibility vocabulary as the modal shows it.
+// ImportVisibilities is the part of the package_visibility vocabulary the modal
+// may offer, which is currently one value of three.
+//
+// `team` and `private` are omitted because nothing can honour them. `profile` has
+// an `owner_team` column and `package` has no owner column at all — that
+// asymmetry is the whole reason one can be scoped and the other cannot, and it is
+// a MISSING COLUMN rather than a missing predicate. Until `package` grows an
+// owner there is nobody to compare a reader to, so the catalog fails closed and
+// shows neither (see queries.CatalogFilter.baseFilters).
+//
+// Offering them anyway would be worse than omitting them: a person picks
+// "Private", the registration succeeds, and their package is invisible to
+// everyone including themselves with nothing on screen to explain it. A control
+// whose only effect is to lose your own work is not a feature.
+//
+// These two lists move together. A test binds this vocabulary to what the live
+// catalog actually returns, so adding an option here without a predicate behind
+// it — or widening the predicate without an option — fails.
 var ImportVisibilities = []struct {
 	Value string
 	Label string
 }{
 	{"organisation", "Organisation"},
-	{"team", "Private to my team"},
-	{"private", "Private"},
 }
 
 // Import is everything the modal renders.
@@ -116,4 +133,50 @@ func (p ImportProblem) Where() string {
 	default:
 		return p.SchemaPath
 	}
+}
+
+// ---- what the modal submits --------------------------------------------------
+
+// Registration is the modal's form, on its way to POST /v1/packages.
+//
+// It carries the archive as a reader rather than as bytes: the cap is 25 MB and
+// the web role is a hop, so buffering the whole upload here would double the
+// memory the api already spends on it for no gain.
+type Registration struct {
+	Tab ImportTab
+
+	URL          string
+	Ref          string
+	Subdirectory string
+
+	Publisher string
+	Name      string
+	Version   string
+
+	Category   string
+	Visibility string
+
+	Archive *Archive
+}
+
+// Archive is one uploaded file.
+type Archive struct {
+	Filename string
+	Size     int64
+	Content  io.Reader
+}
+
+// ImportResult is what came back. A refusal is a result and not an error: the
+// api's problem detail is something the modal shows the person who submitted,
+// while an error is something only the log should see.
+type ImportResult struct {
+	Registered bool
+	// ID and Version identify what was accepted, for the confirmation line.
+	ID      string
+	Version string
+	// Message is the api's problem detail when the registration was refused.
+	Message string
+	// Preview is the pre-submit report, when the api produced one. FR-005: a
+	// refusal names the entries and the schema path that refused them.
+	Preview *ImportPreview
 }

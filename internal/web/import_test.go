@@ -51,12 +51,26 @@ func TestTheImportModalIsOnTheCatalogAndCostsNoRoundTrip(t *testing.T) {
 		require.Equal(t, "{include: /^(q|kind|status|cats|tags|sort|dir|page)$/}", filter)
 	})
 
-	t.Run("it adds no fetch site of its own", func(t *testing.T) {
-		// One fetch site on the page, so the interaction budget stays auditable by
-		// reading it. The modal does not submit: the web role's door to the api is
-		// internal/apiclient and it is not wired here yet.
+	t.Run("its fetch sites are all deliberate acts, never signal-driven", func(t *testing.T) {
+		// The modal submits now, so the claim is no longer "it cannot fetch" — it is
+		// that nothing it fetches is reachable from a signal patch. One debounced
+		// site on the page, and every @post here hangs off a click or a file being
+		// attached.
 		require.Equal(t, 1, strings.Count(body, "/catalog/results"))
-		require.NotContains(t, body, "@post(")
+
+		for _, site := range []string{"/catalog/import/preview", "/catalog/import"} {
+			at := strings.Index(body, "@post(&#39;"+site+"&#39;")
+			require.GreaterOrEqualf(t, at, 0, "%s is not posted to", site)
+			// The nearest preceding data-on: attribute is the one that fires it. An
+			// attribute name is the claim being tested, so it is read out of the
+			// markup rather than assumed from where the templ source puts it.
+			handler := body[strings.LastIndex(body[:at], "data-on:"):]
+			handler = handler[:strings.IndexByte(handler, '=')]
+			require.Containsf(t, []string{"data-on:click", "data-on:change", "data-on:submit"}, handler,
+				"%s is posted from %s, which is not a deliberate act", site, handler)
+		}
+
+		// And the browser still never addresses the api: the web role is the hop.
 		require.NotContains(t, body, "/v1/packages")
 	})
 

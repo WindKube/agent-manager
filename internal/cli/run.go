@@ -14,7 +14,7 @@ import (
 	"agent-manager/internal/logging"
 	"agent-manager/internal/outbox"
 	"agent-manager/internal/web"
-	"agent-manager/internal/web/fixture"
+	"agent-manager/internal/web/hub"
 	"agent-manager/internal/worker"
 	"agent-manager/internal/worker/roles"
 )
@@ -41,12 +41,20 @@ func runWeb(ctx context.Context) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// The api has no catalog operation yet, so this layer serves the design's
-	// dataset from process memory. The US2 layer replaces it with an
-	// internal/apiclient-backed source pointed at cfg.APIBaseURL.
+	// The role's whole door to data, and the reason it needs no credential: an
+	// api base URL and the GENERATED client over it (principle V). The fixture it
+	// replaced is still there, still driving internal/web's own screen tests,
+	// because a test that needs a running api to render a page is not a screen
+	// test.
+	client, err := hub.New(cfg.APIBaseURL)
+	if err != nil {
+		return err
+	}
+
 	server := web.New(web.Deps{
-		Catalog: fixture.New(),
-		Log:     log,
+		Catalog:   client,
+		Registrar: client,
+		Log:       log,
 	}, web.Options{Addr: cfg.Addr})
 
 	return server.Run(ctx)

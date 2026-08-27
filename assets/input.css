@@ -810,12 +810,41 @@
     color: var(--dan);
   }
 
+  /* The registration modal's outcome banner. Both tones reuse the palette's
+     semantic pairs, which internal/web/contrast_test.go already holds to
+     WCAG AA in both themes (SC-009). */
+  .am-import-note {
+    margin: 18px 24px 0;
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-size: 12.5px;
+    line-height: 1.6;
+  }
+
+  .am-import-note-warn {
+    background: var(--warnbg);
+    color: var(--warn);
+  }
+
+  .am-import-note-dan {
+    background: var(--danbg);
+    color: var(--dan);
+  }
+
   .am-empty {
     padding: 34px 20px;
     border-top: 1px solid var(--bd);
     text-align: center;
     font-size: 13.5px;
     color: var(--fg3);
+  }
+
+  /* The signed-out state, not a variant of "no results": same layout, its own
+     colour, so nothing renders an outage or a login as an empty hub. --fg2 on
+     --surface is already in the palette sweep. */
+  .am-empty-auth {
+    color: var(--fg2);
+    font-weight: 500;
   }
 
   .am-pager {

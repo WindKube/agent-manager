@@ -183,7 +183,13 @@ templ CatalogTable(page view.CatalogPage) {
 			<div class="am-cell-dim">{ row.Updated }</div>
 		</a>
 	}
-	if page.Empty() {
+	if page.SignedOut {
+		// Distinct copy AND a distinct class, because the whole risk here is a
+		// reader — or a test — mistaking this for a catalog that has no packages.
+		<div class="am-empty am-empty-auth" id="catalog-signed-out">
+			Sign in to browse the catalog. The hub has no anonymous view.
+		</div>
+	} else if page.Empty() {
 		<div class="am-empty">Nothing matches these filters. Clear a tag or widen the category.</div>
 	}
 	if page.Pages() > 1 {

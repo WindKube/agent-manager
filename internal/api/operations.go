@@ -113,6 +113,25 @@ func (s *Server) registerDevice() {
 
 func (s *Server) registerPackages() {
 	huma.Register(s.api, huma.Operation{
+		OperationID: "listPackages",
+		Method:      http.MethodGet,
+		Path:        "/v1/packages",
+		Tags:        []string{"catalog"},
+		Summary:     "Browse, search and facet the catalog",
+		Description: "One page of the catalog with both facet option sets and the live total, from two " +
+			"statements issued concurrently (R4). The two facets count differently, and the " +
+			"asymmetry is FR-013's: CATEGORIES are disjunctive, so each option is counted with " +
+			"the category filter removed; TAGS are conjunctive, so each option is counted " +
+			"against the current results — the number selecting it actually yields. " +
+			"Browsing requires a session: public anonymous browsing is out of scope (spec.md).",
+		Responses: map[string]*huma.Response{
+			"401": s.errorResponse("No usable session. The caller must sign in; there is no anonymous view."),
+			"422": s.errorResponse("A filter value is outside its vocabulary."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.listPackages)
+
+	huma.Register(s.api, huma.Operation{
 		OperationID: "previewPackage",
 		Method:      http.MethodPost,
 		Path:        "/v1/packages/preview",

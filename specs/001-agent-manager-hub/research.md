@@ -153,14 +153,34 @@ extracting to a temp dir and measuring after (the bomb has already landed).
 
 ## R4. Catalog query shape
 
-**Decision**: two round trips against the `catalog_entry` projection, issued concurrently —
-one for the filtered page, one for the facet counts. Indexes: GIN on `tags text[]`, GIN on
-the `tsvector` search column, btree on `(category)`, `(verdict)`, `(uses DESC)`,
-`(updated_at DESC)`.
+**Decision**: two round trips issued concurrently — one for the filtered page, one for the
+facet counts. Indexes: GIN on `tags text[]`, GIN on the `tsvector` search column, btree on
+`(category)`, `(verdict)`, `(uses DESC)`, `(updated_at DESC)`.
 
-Facet counts are computed **over the result set with that facet's own filter removed** —
-the standard faceted-search semantic, and what makes the design's per-option counts
-meaningful rather than misleading.
+The two queries run against the **base tables**, not against `catalog_entry`. R12 makes that
+projection conditional on a measurement, and the measurement passed without it: p95 14.2 ms
+at 10,000 packages / 50,000 versions against SC-003's 300 ms budget. `catalog_entry` does not
+exist and principle VIII's single-projection allowance is unspent. Two of the indexes above
+also turn out not to be reached at that size — see the note in
+`internal/api/queries/catalog_bench_integration_test.go` on why the planner is right to
+seq-scan `version` for a tag filter.
+
+Facet counts follow the way each facet **combines**, and the two facets combine differently
+(FR-013), so one blanket rule is wrong for one of them:
+
+- **Categories are disjunctive (OR).** Each option is counted with the **category filter
+  removed** and every other filter kept — the standard disjunctive-facet semantic. Selecting
+  a second category can only widen the result set, so a count that ignored the current
+  category selection is exactly what the reader will get by clicking.
+- **Tags are conjunctive (AND).** Each option is counted **against the current result set**,
+  filters and all — a drill-down count. Removing the tag facet's own filter here would
+  overstate every option by the intersection the reader is about to lose: with `aws`
+  selected, `terraform` would advertise every package carrying `terraform` rather than the
+  ones carrying both, and clicking it would return fewer rows than the menu promised.
+
+The rule for both is therefore "count what selecting this option would actually yield". For a
+disjunctive facet that means dropping its own filter; for a conjunctive one it means keeping
+it. This was originally written as own-filter-removed for both; the tags half was wrong.
 
 **Rationale**: one round trip forces either a `GROUPING SETS` monster or counting in Go over
 a full scan. Two concurrent queries are simpler, independently cacheable, and the latency
@@ -277,8 +297,12 @@ avoid).
 
 **Decision**: two distinct numbers, both derived, neither self-reported.
 
-- **Uses** = `count(distinct profile)` containing the package, plus a people count via
-  profile membership. Computed by the `catalog_entry` projection refresh, not per request.
+- **Uses** = `count(distinct profile)` containing the package. There is no people count
+  beside it: a membership row can name a group, and neither the schema nor the OIDC claims
+  record a group's size, so the design's "42 people across 4 profiles" cannot be produced
+  from anything this system stores. Profiles is the number, and FR-009 says so.
+  Aggregated per request in the catalog query — R12's measurement removed the
+  `catalog_entry` refresh this line assumed.
 - **Installs** = count of `sync_event` rows, written when a client fetches a resolved
   revision that contains the package. Aggregated by a nightly River job into a counter
   column.

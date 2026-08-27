@@ -1,0 +1,212 @@
+// Package hub is the web role's door to the api, and the only one it has.
+//
+// Constitution principle II and V: `serve web` holds no datastore credential, so
+// everything it renders arrives over HTTP through internal/apiclient, which is
+// GENERATED from the document internal/api emits. internal/archcheck fails the
+// build if anything under internal/web imports the store, the bucket or a
+// database driver, and this package is what makes that boundary survivable.
+//
+// Nothing here decides what the catalog means. The filters, the facet semantics
+// and the sort all live in internal/api/queries; this package translates the
+// screen's vocabulary into the operation's and back.
+package hub
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"time"
+
+	"agent-manager/internal/apiclient"
+	"agent-manager/internal/web/view"
+)
+
+// Client is an api base URL plus the generated client over it.
+type Client struct {
+	api *apiclient.ClientWithResponses
+	now func() time.Time
+}
+
+// Option tunes the client. There is one, and it exists for the tests: the
+// relative dates the catalog renders are a function of the clock.
+type Option func(*Client)
+
+// WithClock fixes the clock the Updated column is rendered against.
+func WithClock(now func() time.Time) Option {
+	return func(c *Client) { c.now = now }
+}
+
+// New builds the client. It performs no I/O and does not reach the api, so a
+// hub whose api is not up yet still starts — the failure surfaces per request,
+// where it can be rendered, rather than at boot.
+func New(baseURL string, opts ...Option) (*Client, error) {
+	api, err := apiclient.NewClientWithResponses(baseURL, apiclient.WithHTTPClient(&http.Client{
+		// The web role's budget is one internal hop (spec Assumptions). A hop with
+		// no timeout is how a slow api turns into a web role with no free workers.
+		Timeout: 15 * time.Second,
+	}), apiclient.WithRequestEditorFn(bearer))
+	if err != nil {
+		return nil, fmt.Errorf("build the api client for %s: %w", baseURL, err)
+	}
+
+	client := &Client{api: api, now: func() time.Time { return time.Now().UTC() }}
+	for _, opt := range opts {
+		opt(client)
+	}
+	return client, nil
+}
+
+// Catalog implements web.CatalogSource against GET /v1/packages.
+func (c *Client) Catalog(ctx context.Context, q view.CatalogQuery) (view.CatalogPage, error) {
+	q = q.Normalise()
+
+	params := &apiclient.ListPackagesParams{
+		Page:     ptr(int64(q.Page)),
+		PageSize: ptr(int64(view.DefaultPageSize)),
+		Sort:     ptr(apiclient.ListPackagesParamsSort(q.Sort)),
+		Dir:      ptr(apiclient.ListPackagesParamsDir(q.Dir)),
+		Kind:     ptr(apiclient.ListPackagesParamsKind(kindParam(q.Kind))),
+		Status:   ptr(apiclient.ListPackagesParamsStatus(statusParam(q.Status))),
+	}
+	if q.Text != "" {
+		params.Q = &q.Text
+	}
+	if len(q.Categories) > 0 {
+		params.Category = &q.Categories
+	}
+	if len(q.Tags) > 0 {
+		params.Tag = &q.Tags
+	}
+
+	resp, err := c.api.ListPackagesWithResponse(ctx, params)
+	if err != nil {
+		return view.CatalogPage{}, fmt.Errorf("list packages: %w", err)
+	}
+	if resp.JSON200 == nil {
+		return view.CatalogPage{}, fmt.Errorf("list packages: %w", statusError(resp.HTTPResponse, resp.Body))
+	}
+
+	body := resp.JSON200
+	page := view.CatalogPage{
+		Query:      q,
+		Rows:       make([]view.Row, 0, len(body.Packages)),
+		Total:      int(body.Total),
+		Page:       int(body.Page),
+		PageSize:   int(body.PageSize),
+		Categories: options(body.Categories, q.Categories),
+		Tags:       options(body.Tags, q.Tags),
+	}
+	now := c.now()
+	for i := range body.Packages {
+		page.Rows = append(page.Rows, row(&body.Packages[i], now))
+	}
+	return page, nil
+}
+
+func row(entry *apiclient.CatalogPackage, now time.Time) view.Row {
+	out := view.Row{
+		Key:       entry.Id,
+		ID:        entry.Id,
+		Name:      view.Title(entry.Name),
+		Publisher: entry.Publisher,
+		Version:   entry.Version,
+		Updated:   view.Relative(entry.UpdatedAt, now),
+		Kind:      view.Kind(entry.Kind),
+		Scan:      scanOf(string(entry.Verdict)),
+		Uses:      int(entry.Uses),
+		Tags:      entry.Tags,
+	}
+	if entry.Category != nil {
+		out.Category = *entry.Category
+	}
+	if out.Tags == nil {
+		out.Tags = []string{}
+	}
+	return out
+}
+
+// scanOf collapses four verdicts onto the design's three pills. `rejected` is
+// shown as Flagged rather than as a fourth state: the catalog's job here is to
+// say "do not adopt this without reading the finding", and a rejected version is
+// the strongest case of exactly that.
+func scanOf(verdict string) view.Scan {
+	switch verdict {
+	case "clean":
+		return view.ScanClean
+	case "flagged", "rejected":
+		return view.ScanFlagged
+	default:
+		return view.ScanPending
+	}
+}
+
+func options(counts []apiclient.CatalogFacetOption, selected []string) []view.FacetOption {
+	chosen := make(map[string]struct{}, len(selected))
+	for _, value := range selected {
+		chosen[value] = struct{}{}
+	}
+
+	out := make([]view.FacetOption, 0, len(counts))
+	for _, count := range counts {
+		_, on := chosen[count.Value]
+		out = append(out, view.FacetOption{Label: count.Value, Count: int(count.Count), Selected: on})
+	}
+	return out
+}
+
+// kindParam and statusParam translate the design's chip labels into the
+// operation's vocabulary. The screen says "Plugins"; the API says "plugin".
+func kindParam(kind string) string {
+	switch kind {
+	case view.KindFilterPlugins:
+		return "plugin"
+	case view.KindFilterSkills:
+		return "skill"
+	default:
+		return "all"
+	}
+}
+
+func statusParam(status string) string {
+	switch status {
+	case view.StatusVerified:
+		return "verified"
+	case view.StatusCommunity:
+		return "community"
+	case view.StatusFlagged:
+		return "flagged"
+	default:
+		return "all"
+	}
+}
+
+func ptr[T any](v T) *T { return &v }
+
+// bearer forwards the caller's own session token, and only ever theirs. A
+// request made outside a signed-in browser request carries no Authorization
+// header at all, which the api answers with 401 — the web role has nothing to
+// fall back to and must not appear to.
+func bearer(ctx context.Context, req *http.Request) error {
+	if token := view.TokenFrom(ctx); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	return nil
+}
+
+// statusError turns a response the client could not decode into something a log
+// line can carry. The body is deliberately NOT included: it is an api response
+// travelling into a web-role log, and the api's problem detail already reached
+// the caller through ImportResult where it belongs.
+//
+// A 401 is the exception, and it is not an error the way the others are: it is
+// the signed-out state, and the caller renders it as a screen.
+func statusError(resp *http.Response, body []byte) error {
+	if resp == nil {
+		return errors.New("no response")
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		return view.ErrSignedOut
+	}
+	return fmt.Errorf("api answered %d with %d bytes", resp.StatusCode, len(body))
+}

@@ -73,7 +73,8 @@ func CorrelationFrom(ctx context.Context) string {
 }
 
 // PrincipalFrom returns the authenticated caller. The second result is false on a
-// public operation, which is the only place a handler may run without one.
+// public operation, which is the only place a handler may run without one — the
+// catalog is not one of them: public anonymous browsing is out of scope (spec.md).
 func PrincipalFrom(ctx context.Context) (auth.Principal, bool) {
 	p, ok := ctx.Value(principalKey{}).(auth.Principal)
 	return p, ok

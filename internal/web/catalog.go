@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -97,9 +98,18 @@ func (s *Server) patchFacet(c *gin.Context, sse *datastar.ServerSentEventGenerat
 	}
 }
 
+// load fetches a page, and turns the three outcomes into the three things the
+// screen must do. Signed out is a 200 with a screen that says so, because the
+// person can act on it; an unreachable api is a 502, because they cannot. The
+// pair collapsing into one is the bug worth guarding: a 200 with no rows would
+// render an outage as a hub that happens to be empty, and nobody reports that.
 func (s *Server) load(c *gin.Context, q view.CatalogQuery) (view.CatalogPage, bool) {
-	page, err := s.deps.Catalog.Catalog(c.Request.Context(), q)
-	if err != nil {
+	page, err := s.deps.Catalog.Catalog(session(c), q)
+	switch {
+	case errors.Is(err, view.ErrSignedOut):
+		logFrom(c).Debug().Msg("catalog requested without a session")
+		return view.CatalogPage{Query: q, SignedOut: true}, true
+	case err != nil:
 		logFrom(c).Error().Err(err).Msg("load catalog")
 		c.Status(http.StatusBadGateway)
 		return view.CatalogPage{}, false

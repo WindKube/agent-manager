@@ -7,10 +7,15 @@
 package view
 
 import (
+	"context"
+	"errors"
 	"net/url"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // Kind separates a portable plugin from a standalone skill (US3 scenarios 1-2).
@@ -198,6 +203,11 @@ type CatalogPage struct {
 	PageSize   int
 	Categories []FacetOption
 	Tags       []FacetOption
+
+	// SignedOut is the third outcome, and it is neither of the other two. An
+	// empty catalog is an answer; an unreachable api is a 502; this is a screen
+	// that renders because the screen is not the secret — only the rows are.
+	SignedOut bool
 }
 
 // Pages is the page count, at least one so the pager always has a current page.
@@ -212,12 +222,17 @@ func (p CatalogPage) Pages() int {
 	return (p.Total + size - 1) / size
 }
 
-// ResultCount is the design's live count line.
+// ResultCount is the design's live count line. Signed out it counts nothing
+// rather than saying "0 results", which would be a claim about the catalog.
 func (p CatalogPage) ResultCount() string {
-	if p.Total == 1 {
+	switch {
+	case p.SignedOut:
+		return "Signed out"
+	case p.Total == 1:
 		return "1 result"
+	default:
+		return strconv.Itoa(p.Total) + " results"
 	}
-	return strconv.Itoa(p.Total) + " results"
 }
 
 // Empty backs the distinct empty state of FR-015.
@@ -265,4 +280,91 @@ func cleaned(in []string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// Title is the display name of a package.
+//
+// It is DERIVED, and it has to be: `package.name` is the manifest name and
+// matches `^[a-z0-9][a-z0-9.-]*$`, no column carries a human title, and neither
+// Agent Plugins 1.0.0 nor Agent Skills defines one. Title-casing the hyphenated
+// name recovers "Platform Toolkit" from "platform-toolkit"; it cannot recover an
+// acronym, so the design's "PII Redactor" and "ADR Writer" render as "Pii
+// Redactor" and "Adr Writer" until `package` grows a display name.
+func Title(name string) string {
+	words := strings.FieldsFunc(name, func(r rune) bool { return r == '-' || r == '_' })
+	for i, word := range words {
+		// By rune, not by byte: the manifest name is untrusted input (principle III)
+		// and word[:1] on a multi-byte first character renders as U+FFFD.
+		first, size := utf8.DecodeRuneInString(word)
+		words[i] = string(unicode.ToUpper(first)) + word[size:]
+	}
+	if len(words) == 0 {
+		return name
+	}
+	return strings.Join(words, " ")
+}
+
+// Relative renders a timestamp the way the design's Updated column reads.
+//
+// The API returns an instant, not a phrase: which words express an age is a
+// rendering decision, and a relative string is wrong the moment anything caches
+// it. A future timestamp reads as "just now" rather than as a negative age —
+// clock skew between the hub and a publisher is not something to render.
+func Relative(at, now time.Time) string {
+	switch age := now.Sub(at); {
+	case age < time.Minute:
+		return "just now"
+	case age < time.Hour:
+		return plural(int(age.Minutes()), "minute")
+	case age < 24*time.Hour:
+		return plural(int(age.Hours()), "hour")
+	case age < 48*time.Hour:
+		return "yesterday"
+	case age < 7*24*time.Hour:
+		return plural(int(age.Hours()/24), "day")
+	case age < 30*24*time.Hour:
+		return plural(int(age.Hours()/(24*7)), "week")
+	case age < 365*24*time.Hour:
+		return plural(int(age.Hours()/(24*30)), "month")
+	default:
+		return plural(int(age.Hours()/(24*365)), "year")
+	}
+}
+
+func plural(n int, unit string) string {
+	if n == 1 {
+		return "1 " + unit + " ago"
+	}
+	return strconv.Itoa(n) + " " + unit + "s ago"
+}
+
+// ErrSignedOut is a CatalogSource reporting that the caller has no usable
+// session, and it is a state to render rather than a failure to log.
+//
+// It lives here, beside the types the source's methods already speak, because
+// both sides of that interface import this package and neither imports the
+// other: internal/web declares the interface and internal/web/hub implements it
+// over the generated client.
+var ErrSignedOut = errors.New("no usable session")
+
+// tokenKey carries the browser's session token from the request into the source.
+type tokenKey struct{}
+
+// WithToken puts the caller's own session token in the context.
+//
+// Constitution principle II: the web role holds no credential of its own, and
+// there is none it could hold — auth.Sessions.Resolve is a lookup in the session
+// table by hashed token, so a token exists only because a person signed in. Every
+// api call the web role makes is therefore made AS the person, or not at all.
+func WithToken(ctx context.Context, token string) context.Context {
+	if token == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, tokenKey{}, token)
+}
+
+// TokenFrom returns the caller's session token, or "" when there is none.
+func TokenFrom(ctx context.Context) string {
+	token, _ := ctx.Value(tokenKey{}).(string)
+	return token
 }

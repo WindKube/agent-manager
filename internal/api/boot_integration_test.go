@@ -17,6 +17,7 @@ package api_test
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -133,9 +134,23 @@ func TestEachRoleBootsWithOnlyItsOwnEnvironment(t *testing.T) {
 	})
 
 	t.Run("serve web serves with no datastore credential at all", func(t *testing.T) {
+		// An api of its own, because the subtest above deliberately kills the one it
+		// started. Two processes are the point: the catalog this renders crosses a
+		// real HTTP hop through the GENERATED client, and the credential that read
+		// it belongs to the other process.
+		apiPort := freePort(t)
+		apiCmd, stopAPI := startRole(t, []string{"serve", "api"}, map[string]string{
+			"AGENT_MANAGER_DATABASE_URL":       apiDSN,
+			"AGENT_MANAGER_RIVER_DATABASE_URL": queueURL,
+			"AGENT_MANAGER_BLOB_URL":           "mem://",
+			"AGENT_MANAGER_API_ADDR":           fmt.Sprintf("127.0.0.1:%d", apiPort),
+			"AGENT_MANAGER_LOG_FORMAT":         "console",
+		})
+		requireHealthy(t, fmt.Sprintf("http://127.0.0.1:%d/v1/health", apiPort))
+
 		webPort := freePort(t)
 		env := map[string]string{
-			"AGENT_MANAGER_API_BASE_URL": fmt.Sprintf("http://127.0.0.1:%d", port),
+			"AGENT_MANAGER_API_BASE_URL": fmt.Sprintf("http://127.0.0.1:%d", apiPort),
 			"AGENT_MANAGER_WEB_ADDR":     fmt.Sprintf("127.0.0.1:%d", webPort),
 			"AGENT_MANAGER_LOG_FORMAT":   "console",
 		}
@@ -152,8 +167,29 @@ func TestEachRoleBootsWithOnlyItsOwnEnvironment(t *testing.T) {
 		// Serving a screen, not merely listening. The claim SC-006 makes is that
 		// the role still WORKS with what it is given, and the web role's whole
 		// premise is that a screen renders without a datastore.
-		require.Equal(t, http.StatusOK, call(t, http.MethodGet, base+"/catalog", "", ""),
+		//
+		// It renders SIGNED OUT, and that is the point rather than a shortfall.
+		// There is no browser session until T090, the api refuses an anonymous read
+		// because public anonymous browsing is out of scope, and the web role holds
+		// no credential it could substitute — so a page that renders and says why is
+		// exactly what a correct hub does here. Two processes, one hop, one 401
+		// turned into a screen.
+		status, body := fetch(t, base+"/catalog")
+		require.Equal(t, http.StatusOK, status,
 			"the web role must render a screen with no database and no bucket")
+		require.Contains(t, body, "Sign in to browse the catalog",
+			"and the screen must say why it has no rows")
+
+		// The negative control for the assertion above. With the api gone the same
+		// request must fail loudly rather than rendering the same rowless page: an
+		// outage dressed as a login is one nobody reports, and one dressed as an
+		// empty hub is worse.
+		require.NoError(t, apiCmd.Process.Signal(syscall.SIGTERM))
+		require.NoError(t, stopAPI(), "a SIGTERM must drain and exit 0")
+		status, body = fetch(t, base+"/catalog")
+		require.Equal(t, http.StatusBadGateway, status,
+			"an unreachable api must never render as a catalog of any kind")
+		require.NotContains(t, body, "Sign in to browse the catalog")
 
 		require.NoError(t, cmd.Process.Signal(syscall.SIGTERM))
 		require.NoError(t, stop(), "a SIGTERM must drain and exit 0")
@@ -365,6 +401,23 @@ func call(t *testing.T, method, url, token, body string) int {
 		t.Logf("%s %s -> %d: %s", method, url, resp.StatusCode, payload[:n])
 	}
 	return resp.StatusCode
+}
+
+// fetch is call() when the body matters: three outcomes of a catalog read look
+// identical by status alone if any two of them ever collapse.
+func fetch(t *testing.T, url string) (status int, body string) {
+	t.Helper()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, http.NoBody)
+	require.NoError(t, err)
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	payload, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	return resp.StatusCode, string(payload)
 }
 
 func requireHealthy(t *testing.T, url string) {

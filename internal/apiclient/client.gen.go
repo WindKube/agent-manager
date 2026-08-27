@@ -18,6 +18,48 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for CatalogPackageKind.
+const (
+	CatalogPackageKindPlugin CatalogPackageKind = "plugin"
+	CatalogPackageKindSkill  CatalogPackageKind = "skill"
+)
+
+// Valid indicates whether the value is a known member of the CatalogPackageKind enum.
+func (e CatalogPackageKind) Valid() bool {
+	switch e {
+	case CatalogPackageKindPlugin:
+		return true
+	case CatalogPackageKindSkill:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CatalogPackageVerdict.
+const (
+	CatalogPackageVerdictClean    CatalogPackageVerdict = "clean"
+	CatalogPackageVerdictFlagged  CatalogPackageVerdict = "flagged"
+	CatalogPackageVerdictRejected CatalogPackageVerdict = "rejected"
+	CatalogPackageVerdictScanning CatalogPackageVerdict = "scanning"
+)
+
+// Valid indicates whether the value is a known member of the CatalogPackageVerdict enum.
+func (e CatalogPackageVerdict) Valid() bool {
+	switch e {
+	case CatalogPackageVerdictClean:
+		return true
+	case CatalogPackageVerdictFlagged:
+		return true
+	case CatalogPackageVerdictRejected:
+		return true
+	case CatalogPackageVerdictScanning:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DeviceTokenTokenType.
 const (
 	Bearer DeviceTokenTokenType = "Bearer"
@@ -444,6 +486,90 @@ func (e SyncReportTargets) Valid() bool {
 	}
 }
 
+// Defines values for ListPackagesParamsKind.
+const (
+	ListPackagesParamsKindAll    ListPackagesParamsKind = "all"
+	ListPackagesParamsKindPlugin ListPackagesParamsKind = "plugin"
+	ListPackagesParamsKindSkill  ListPackagesParamsKind = "skill"
+)
+
+// Valid indicates whether the value is a known member of the ListPackagesParamsKind enum.
+func (e ListPackagesParamsKind) Valid() bool {
+	switch e {
+	case ListPackagesParamsKindAll:
+		return true
+	case ListPackagesParamsKindPlugin:
+		return true
+	case ListPackagesParamsKindSkill:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListPackagesParamsStatus.
+const (
+	ListPackagesParamsStatusAll       ListPackagesParamsStatus = "all"
+	ListPackagesParamsStatusCommunity ListPackagesParamsStatus = "community"
+	ListPackagesParamsStatusFlagged   ListPackagesParamsStatus = "flagged"
+	ListPackagesParamsStatusVerified  ListPackagesParamsStatus = "verified"
+)
+
+// Valid indicates whether the value is a known member of the ListPackagesParamsStatus enum.
+func (e ListPackagesParamsStatus) Valid() bool {
+	switch e {
+	case ListPackagesParamsStatusAll:
+		return true
+	case ListPackagesParamsStatusCommunity:
+		return true
+	case ListPackagesParamsStatusFlagged:
+		return true
+	case ListPackagesParamsStatusVerified:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListPackagesParamsSort.
+const (
+	Name    ListPackagesParamsSort = "name"
+	Updated ListPackagesParamsSort = "updated"
+	Uses    ListPackagesParamsSort = "uses"
+)
+
+// Valid indicates whether the value is a known member of the ListPackagesParamsSort enum.
+func (e ListPackagesParamsSort) Valid() bool {
+	switch e {
+	case Name:
+		return true
+	case Updated:
+		return true
+	case Uses:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListPackagesParamsDir.
+const (
+	Asc  ListPackagesParamsDir = "asc"
+	Desc ListPackagesParamsDir = "desc"
+)
+
+// Valid indicates whether the value is a known member of the ListPackagesParamsDir enum.
+func (e ListPackagesParamsDir) Valid() bool {
+	switch e {
+	case Asc:
+		return true
+	case Desc:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RegisterPackageMultipartBodyKind.
 const (
 	RegisterPackageMultipartBodyKindPlugin RegisterPackageMultipartBodyKind = "plugin"
@@ -502,6 +628,97 @@ func (e RegisterPackageMultipartBodyVisibility) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// CatalogFacetOption defines model for CatalogFacetOption.
+type CatalogFacetOption struct {
+	// Count Packages this option yields under the other filters. See the operation's description for what 'the other filters' means for each facet.
+	//
+	// Examples: 4
+	Count int64 `json:"count"`
+
+	// Value Examples: Infrastructure
+	Value string `json:"value"`
+}
+
+// CatalogPackage defines model for CatalogPackage.
+type CatalogPackage struct {
+	// Category The admin-curated category (FR-049). Empty when none was chosen.
+	//
+	// Examples: Infrastructure
+	Category *string `json:"category,omitempty"`
+
+	// Id namespace/name — the first segment of the publisher slug, not the whole slug.
+	//
+	// Examples: example/platform-toolkit
+	Id string `json:"id"`
+
+	// Kind Examples: plugin
+	Kind CatalogPackageKind `json:"kind"`
+
+	// Name The manifest name, not a display title — no manifest field and no column carries one.
+	//
+	// Examples: platform-toolkit
+	Name string `json:"name"`
+
+	// Publisher The owning publisher's full slug. A different string from the id's namespace: example/security publishes example/pii-redactor.
+	//
+	// Examples: example/platform
+	Publisher string `json:"publisher"`
+
+	// Tags The latest version's manifest keywords. Tags belong to the version, not the package.
+	Tags []string `json:"tags"`
+
+	// UpdatedAt When the latest visible version was published.
+	UpdatedAt time.Time `json:"updatedAt"`
+
+	// Uses Profiles containing this package, derived at query time and never self-reported (R8).
+	//
+	// Examples: 42
+	Uses int64 `json:"uses"`
+
+	// Verdict The latest version's scan verdict.
+	//
+	// Examples: clean
+	Verdict CatalogPackageVerdict `json:"verdict"`
+
+	// Version The latest visible version's semver.
+	//
+	// Examples: 1.3.0
+	Version string `json:"version"`
+}
+
+// CatalogPackageKind Examples: plugin
+type CatalogPackageKind string
+
+// CatalogPackageVerdict The latest version's scan verdict.
+//
+// Examples: clean
+type CatalogPackageVerdict string
+
+// CatalogPage defines model for CatalogPage.
+type CatalogPage struct {
+	// Categories The whole admin-curated vocabulary, in curated order, including options that currently match nothing.
+	Categories []CatalogFacetOption `json:"categories"`
+
+	// Packages The requested page of results, already sorted.
+	Packages []CatalogPackage `json:"packages"`
+
+	// Page The page actually returned, which is clamped into range.
+	//
+	// Examples: 1
+	Page int64 `json:"page"`
+
+	// PageSize Examples: 10
+	PageSize int64 `json:"pageSize"`
+
+	// Tags Tags reachable from the current result set, alphabetically.
+	Tags []CatalogFacetOption `json:"tags"`
+
+	// Total Packages matching every filter, across all pages. This is FR-015's live count.
+	//
+	// Examples: 10
+	Total int64 `json:"total"`
 }
 
 // DeviceAuthorization defines model for DeviceAuthorization.
@@ -1026,6 +1243,44 @@ type SyncReport struct {
 // SyncReportTargets defines model for SyncReport.Targets.
 type SyncReportTargets string
 
+// ListPackagesParams defines parameters for ListPackages.
+type ListPackagesParams struct {
+	// Q Case-insensitive substring, matched against name, id, publisher and tags (FR-010).
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Kind Mutually exclusive single selection (FR-011).
+	Kind *ListPackagesParamsKind `form:"kind,omitempty" json:"kind,omitempty"`
+
+	// Status Mutually exclusive single selection. Verified means a verified publisher AND a clean verdict, both.
+	Status *ListPackagesParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// Category Repeatable. Selected categories narrow DISJUNCTIVELY (FR-013).
+	Category *[]string `form:"category,omitempty" json:"category,omitempty"`
+
+	// Tag Repeatable. Selected tags narrow CONJUNCTIVELY (FR-013).
+	Tag  *[]string               `form:"tag,omitempty" json:"tag,omitempty"`
+	Sort *ListPackagesParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Dir Descending first, ascending on a second click (FR-014).
+	Dir *ListPackagesParamsDir `form:"dir,omitempty" json:"dir,omitempty"`
+
+	// Page Clamped into range: a page past the end returns the last one.
+	Page     *int64 `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int64 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
+// ListPackagesParamsKind defines parameters for ListPackages.
+type ListPackagesParamsKind string
+
+// ListPackagesParamsStatus defines parameters for ListPackages.
+type ListPackagesParamsStatus string
+
+// ListPackagesParamsSort defines parameters for ListPackages.
+type ListPackagesParamsSort string
+
+// ListPackagesParamsDir defines parameters for ListPackages.
+type ListPackagesParamsDir string
+
 // RegisterPackageMultipartBody defines parameters for RegisterPackage.
 type RegisterPackageMultipartBody struct {
 	// Archive Required when source is upload, and refused otherwise. huma treats a form field as required unless told otherwise, which is what required:"false" is doing on every optional field here.
@@ -1236,6 +1491,13 @@ type ClientInterface interface {
 	// Corresponds with GET /v1/health (the `Health` operationId).
 	Health(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListPackages Browse, search and facet the catalog
+	//
+	// One page of the catalog with both facet option sets and the live total, from two statements issued concurrently (R4). The two facets count differently, and the asymmetry is FR-013's: CATEGORIES are disjunctive, so each option is counted with the category filter removed; TAGS are conjunctive, so each option is counted against the current results — the number selecting it actually yields. Browsing requires a session: public anonymous browsing is out of scope (spec.md).
+	//
+	// Corresponds with GET /v1/packages (the `ListPackages` operationId).
+	ListPackages(ctx context.Context, params *ListPackagesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// RegisterPackageWithBody Register a package from a URL or an upload
 	//
 	// Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed (FR-008).
@@ -1387,6 +1649,23 @@ func (c *Client) DeviceTokenWithFormdataBody(ctx context.Context, body DeviceTok
 // Corresponds with GET /v1/health (the `Health` operationId).
 func (c *Client) Health(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewHealthRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListPackages Browse, search and facet the catalog
+//
+// One page of the catalog with both facet option sets and the live total, from two statements issued concurrently (R4). The two facets count differently, and the asymmetry is FR-013's: CATEGORIES are disjunctive, so each option is counted with the category filter removed; TAGS are conjunctive, so each option is counted against the current results — the number selecting it actually yields. Browsing requires a session: public anonymous browsing is out of scope (spec.md).
+//
+// Corresponds with GET /v1/packages (the `ListPackages` operationId).
+func (c *Client) ListPackages(ctx context.Context, params *ListPackagesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListPackagesRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -1662,6 +1941,156 @@ func NewHealthRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewListPackagesRequest constructs an http.Request for the ListPackages method
+func NewListPackagesRequest(server string, params *ListPackagesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/packages")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Kind != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "kind", *params.Kind, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Status != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "status", *params.Status, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Category != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "category", *params.Category, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "array", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Tag != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "tag", *params.Tag, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "array", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Sort != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "sort", *params.Sort, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Dir != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "dir", *params.Dir, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "page", *params.Page, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.PageSize != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "pageSize", *params.PageSize, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewRegisterPackageRequestWithBody constructs an http.Request for the RegisterPackage method, with any body, and a specified content type
 func NewRegisterPackageRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
@@ -1925,6 +2354,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /v1/health (the `Health` operationId).
 	HealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthResponse, error)
+
+	// ListPackagesWithResponse Browse, search and facet the catalog
+	//
+	// One page of the catalog with both facet option sets and the live total, from two statements issued concurrently (R4). The two facets count differently, and the asymmetry is FR-013's: CATEGORIES are disjunctive, so each option is counted with the category filter removed; TAGS are conjunctive, so each option is counted against the current results — the number selecting it actually yields. Browsing requires a session: public anonymous browsing is out of scope (spec.md).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/packages (the `ListPackages` operationId).
+	ListPackagesWithResponse(ctx context.Context, params *ListPackagesParams, reqEditors ...RequestEditorFn) (*ListPackagesResponse, error)
 
 	// RegisterPackageWithBodyWithResponse Register a package from a URL or an upload
 	//
@@ -2210,6 +2648,68 @@ func (r HealthResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r HealthResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListPackagesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *CatalogPage
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListPackagesResponse) GetJSON200() *CatalogPage {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListPackagesResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r ListPackagesResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ListPackagesResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListPackagesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListPackagesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListPackagesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListPackagesResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -2644,6 +3144,21 @@ func (c *ClientWithResponses) HealthWithResponse(ctx context.Context, reqEditors
 	return ParseHealthResponse(rsp)
 }
 
+// ListPackagesWithResponse Browse, search and facet the catalog
+//
+// One page of the catalog with both facet option sets and the live total, from two statements issued concurrently (R4). The two facets count differently, and the asymmetry is FR-013's: CATEGORIES are disjunctive, so each option is counted with the category filter removed; TAGS are conjunctive, so each option is counted against the current results — the number selecting it actually yields. Browsing requires a session: public anonymous browsing is out of scope (spec.md).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/packages (the `ListPackages` operationId).
+func (c *ClientWithResponses) ListPackagesWithResponse(ctx context.Context, params *ListPackagesParams, reqEditors ...RequestEditorFn) (*ListPackagesResponse, error) {
+	rsp, err := c.ListPackages(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListPackagesResponse(rsp)
+}
+
 // RegisterPackageWithBodyWithResponse Register a package from a URL or an upload
 //
 // Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed (FR-008).
@@ -2927,6 +3442,53 @@ func ParseHealthResponse(rsp *http.Response) (*HealthResponse, error) {
 			return nil, err
 		}
 		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListPackagesResponse parses an HTTP response from a ListPackagesWithResponse call
+func ParseListPackagesResponse(rsp *http.Response) (*ListPackagesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListPackagesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest CatalogPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
 
 	}
 

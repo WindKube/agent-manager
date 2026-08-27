@@ -136,14 +136,25 @@ func matches(row *view.Row, q view.CatalogQuery) bool {
 		matchTags(row, q.Tags)
 }
 
-// matchText is a case-insensitive substring match over name, id, publisher and
-// tags (FR-010).
+// matchText is a case-insensitive substring match against name, id, publisher or
+// a single tag (FR-010).
+//
+// Per field, matching internal/api/queries. Joining them into one string first
+// matches across the gaps between them — "redactor example" would find
+// example/pii-redactor — and the fixture and the api must answer the same screen
+// the same way or the screen tests stop being evidence about the real one.
 func matchText(row *view.Row, text string) bool {
 	if text == "" {
 		return true
 	}
-	hay := strings.ToLower(strings.Join([]string{row.Name, row.ID, row.Publisher, strings.Join(row.Tags, " ")}, " "))
-	return strings.Contains(hay, strings.ToLower(text))
+
+	needle := strings.ToLower(text)
+	for _, field := range append([]string{row.Name, row.ID, row.Publisher}, row.Tags...) {
+		if strings.Contains(strings.ToLower(field), needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func matchKind(row *view.Row, kind string) bool {

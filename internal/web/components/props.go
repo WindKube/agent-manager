@@ -265,6 +265,47 @@ func ScanClass(scan view.Scan) string {
 type Import struct {
 	Categories []string
 	Preview    *view.ImportPreview
+	// Result is the outcome of a submission, when there has been one.
+	Result *view.ImportResult
+}
+
+// The modal's two round trips. Both are user-initiated — attaching a file and
+// pressing the button — so neither is reachable from a signal patch, which is
+// what keeps the R7 budget the underscore-prefixed signals establish.
+//
+// `contentType: 'form'` is what makes datastar send a FormData body rather than
+// the signal JSON, and the selector names the form rather than relying on
+// closest(): the submit control is a sibling of the fields, not a descendant of
+// anything that would make closest() obvious.
+const importFormSelector = "#import-form"
+
+// ImportAttachExpr previews the attached archive. The guard matters: clearing a
+// file picker also fires change, and posting an empty archive would answer FR-005
+// with a report about nothing.
+func ImportAttachExpr() string {
+	return "$_importFile = el.files.length ? el.files[0].name : ''; " +
+		"if (el.files.length) @post('/catalog/import/preview', {contentType: 'form', selector: '" +
+		importFormSelector + "'})"
+}
+
+func ImportSubmitExpr() string {
+	return "@post('/catalog/import', {contentType: 'form', selector: '" + importFormSelector + "'})"
+}
+
+// ImportSubmitDisabledExpr is T046's disabled-until-attached submit. It applies
+// to the upload tab only: the URL tab has nothing to attach.
+func ImportSubmitDisabledExpr() string {
+	return "$_importTab === '" + string(view.ImportUpload) + "' && $_importFile === '' ? 'disabled' : null"
+}
+
+// ImportResultClass tones the outcome banner. A refusal is --dan and an
+// acknowledgement is --warn, not --ok: a 202 means the fetch is queued, and
+// nothing has been scanned yet (FR-008).
+func ImportResultClass(result view.ImportResult) string {
+	if result.Registered {
+		return "am-import-note am-import-note-warn"
+	}
+	return "am-import-note am-import-note-dan"
 }
 
 // ImportTabExpr selects a tab. It touches one signal and that signal is

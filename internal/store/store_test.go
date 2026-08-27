@@ -1013,9 +1013,10 @@ func TestFetcherCanPerformTheWholeIngestionWriteInOneTransaction(t *testing.T) {
 	})
 }
 
-// capability is the table the fetcher must NOT have: `expected` is derived from
-// the manifest by the API and `inferred` is the scanner's, so no role writes a
-// capability row it did not itself derive.
+// capability is the table the fetcher must NOT have. It could derive the `expected`
+// set — it already parses the manifest — but it is the most exposed role here, the
+// one fetching attacker-supplied archives over the network and unpacking them. The
+// scanner runs offline with no outbound client and writes both sources instead.
 func TestFetcherCannotWriteCapabilitiesOrReachPastItsTables(t *testing.T) {
 	ctx := context.Background()
 	pkgID := seedPackage(t, ctx)

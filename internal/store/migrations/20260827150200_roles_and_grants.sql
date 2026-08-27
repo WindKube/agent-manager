@@ -79,9 +79,18 @@ grant delete on table outbox to am_api;
 -- that transaction uncommittable. publisher is here because registering the first
 -- package under a new publisher has to create the publisher row first.
 --
--- capability is deliberately absent. The `expected` set is derived from the manifest
--- by the API and the `inferred` set is the scanner's; the fetcher transcribes the
--- manifest into version.manifest and derives no capability of its own.
+-- capability is deliberately absent, for BOTH of its sources. am_scanner writes the
+-- `inferred` rows and the `expected` ones alike -- it holds select on version, so it
+-- reads the declaration back out of version.manifest when it records the scan.
+--
+-- The fetcher could derive `expected` itself; it already parses the manifest. It does
+-- not get the grant because it is the most exposed role in this system: it is the one
+-- that fetches attacker-supplied archives over the network and unpacks them. The
+-- scanner runs offline, holds no outbound client, and already holds this grant. A
+-- write the fetcher can do without is a write it does not get (principle II).
+--
+-- store_test.go asserts the refusal directly, so this is enforced rather than
+-- described.
 grant select, insert, update
   on table publisher, package, version, version_tag, component, signature
   to am_fetcher;

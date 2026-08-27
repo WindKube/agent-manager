@@ -64,8 +64,13 @@ type Fetcher struct {
 	RiverDatabaseURL string        `env:"RIVER_DATABASE_URL,required,notEmpty"`
 	BlobURL          string        `env:"BLOB_URL,required,notEmpty"`
 	FetchTimeout     time.Duration `env:"FETCH_TIMEOUT" envDefault:"60s"`
-	MaxUploadBytes   int64         `env:"MAX_UPLOAD_BYTES" envDefault:"26214400"`
-	GitHubToken      string        `env:"GITHUB_TOKEN"`
+	// OutboundAllowlist exempts specific addresses from the reserved-range and
+	// port rules. Entries are addresses only — `ip`, `ip:port` or CIDR. A
+	// hostname is refused, because allowlisting a name reopens the DNS-rebinding
+	// hole internal/fetch exists to close.
+	OutboundAllowlist []string `env:"OUTBOUND_ALLOWLIST" envSeparator:","`
+	MaxUploadBytes    int64    `env:"MAX_UPLOAD_BYTES" envDefault:"26214400"`
+	GitHubToken       string   `env:"GITHUB_TOKEN"`
 }
 
 // Scanner reads bytes and writes verdicts. It never writes bundle bytes.

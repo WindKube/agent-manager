@@ -273,8 +273,12 @@ independently demonstrable on the seeded stack.
 
 ## Complexity Tracking
 
-> No constitution violations. Nothing to justify.
+> One deviation from the Technology Constraints table, taken on the evidence R10 demanded.
 
 | Violation | Why Needed | Simpler Alternative Rejected Because |
 |-----------|------------|-------------------------------------|
-| — | — | — |
+| The outbound SSRF client is owned by this project (`internal/fetch`, `net.Dialer.Control`) rather than `doyensec/safeurl`, which the constitution's Technology Constraints table names. | R10 made adoption conditional on a six-case suite this project owns, and safeurl **fails case 2**. Its only control is a `Dialer.Control` hook that fires per connect attempt, so a name answering with both a public and a private address has the private attempt refused and then connects over the public one — probed against v0.2.5 with a real resolver, debug log captured in the T009 commit message. It also cannot express "permit exactly this one loopback origin", so cases 2 and 4 could not be tested hermetically against it at all. | Adopting safeurl anyway was rejected because an SSRF control that does not fire looks identical to one that does — that is precisely why R10 required the proof rather than the README. `tasks.md` already carried this outcome: "T008/T009 (R10) — Build the owned `Dialer.Control` client." The owned client refuses the whole address set when any member is non-public, re-resolves at connect time, and keeps `Control` as defence in depth; all six cases pass and each was mutation-tested to prove it can fail. |
+
+**Consequence for the constitution**: the Technology Constraints table's `doyensec/safeurl` entry is
+now stale for this project. It should read "a project-owned SSRF-hardened client, proven by
+`internal/fetch/safe_test.go`" at the next amendment. The dependency is dropped from `go.mod`.

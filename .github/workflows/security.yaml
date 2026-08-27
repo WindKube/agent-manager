@@ -1,0 +1,57 @@
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Both audits look at things that rot without the repo changing: a pinned
+    # action can be yanked, and a secret can be committed to a branch that never
+    # opens a PR. A weekly run catches those.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read # zizmor: the checkout, nothing more
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  actions:
+    name: GitHub Actions audit (zizmor)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # zizmor: read the workflows being audited
+      security-events: write # upload SARIF to code scanning so findings survive as alerts
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      # The workflows in this repo are clean at the `pedantic` persona, so that is
+      # the gate. `regular` would hide an excessive-permissions finding that was
+      # real when this was set up.
+      - uses: zizmorcore/zizmor-action@3dc1ecc9bcb9e94e9b2c709687979e1298497054 # v0.6.2
+        with:
+          persona: pedantic
+          advanced-security: ${{ github.repository_owner == 'WindKube' }}
+          inputs: .github/workflows/
+
+  secrets:
+    name: Secret scan (TruffleHog)
+    runs-on: ubuntu-latest
+    steps:
+      # TruffleHog diffs a commit range, so it needs history. Shallow clones make
+      # it silently scan almost nothing.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # --only-verified: an unverified hit is a string that looks like a key. Gating
+      # on those trains people to pass `--no-verify`, which is worse than no gate.
+      - uses: trufflesecurity/trufflehog@20652fbbdefffcdaa493a5bf57ab2ac6b1db715b # v3.97.1
+        with:
+          extra_args: --only-verified --results=verified

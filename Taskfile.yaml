@@ -125,8 +125,48 @@ tasks:
   lint:
     desc: golangci-lint plus the role-import boundary check
     cmds:
-      - golangci-lint run ./...
+      # The integration-tagged files hold every grant and constraint assertion and
+      # are invisible to an untagged build, so lint them explicitly.
+      - golangci-lint run --build-tags=integration ./...
       - go test ./internal/archcheck/...
+
+  lint:actions:
+    desc: "GitHub Actions supply-chain audit (zizmor) + syntax (actionlint)"
+    cmds:
+      # pedantic, not the default regular: regular hides the excessive-permissions
+      # class, which was a real finding here (packages:write at workflow scope).
+      - zizmor --persona=pedantic .github/workflows/
+      - actionlint .github/workflows/*.yaml
+
+  lint:secrets:
+    desc: "Secret scan of the working tree and full history (gitleaks)"
+    cmds:
+      - gitleaks dir . --redact --verbose
+      # `git` mode walks every commit, which is the only way to catch something
+      # that was committed and then removed in a later commit.
+      - gitleaks git . --redact
+
+  lint:yaml:
+    desc: yamllint
+    cmds:
+      - pre-commit run yamllint --all-files
+
+  lint:all:
+    desc: Every hook against every file — what CI approximates
+    cmds:
+      - pre-commit run --all-files
+
+  hooks:install:
+    desc: Install the git hooks (pre-commit, commit-msg, pre-push)
+    cmds:
+      - pre-commit install --install-hooks
+      - pre-commit install --hook-type commit-msg
+
+  hooks:update:
+    desc: Bump the pinned hook revisions, then run them
+    cmds:
+      - pre-commit autoupdate
+      - pre-commit run --all-files
 
   fmt:
     cmds:

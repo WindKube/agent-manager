@@ -1,0 +1,132 @@
+# Local gate for the same things CI checks, so a push is not the first place a
+# failure shows up. Install with `task hooks:install`.
+#
+# Every rev is pinned. `pre-commit autoupdate` moves them; run the hooks after it.
+minimum_pre_commit_version: "4.0.0"
+
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        args: [--maxkb=512]
+        # The Tailwind and Atlas binaries land in .bin/ and the generated CSS is
+        # allowed to be big; neither is committed.
+        exclude: ^(\.bin/|internal/web/static/)
+      - id: check-case-conflict
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-symlinks
+      - id: check-toml
+      - id: check-yaml
+        # The compose file and the workflows use no custom tags, but multi-document
+        # YAML is allowed so this does not become a reason to disable the hook.
+        args: [--allow-multiple-documents]
+      - id: check-vcs-permalinks
+      - id: destroyed-symlinks
+      - id: detect-private-key
+      - id: end-of-file-fixer
+        exclude: ^(internal/store/migrations/atlas\.sum|.*_templ\.go|internal/web/static/)
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: trailing-whitespace
+        exclude: ^(.*_templ\.go|internal/web/static/)
+      - id: forbid-submodules
+
+  # --- secrets -------------------------------------------------------------
+  # Staged-diff scan. CI runs TruffleHog over the full history as well, because a
+  # hook only ever sees the commits made on a machine that had it installed.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  # --- YAML ----------------------------------------------------------------
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+        args: [--strict, -c, .yamllint.yaml]
+
+  # --- GitHub Actions ------------------------------------------------------
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint-system
+
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.29.0
+    hooks:
+      - id: zizmor
+        # Matches the CI gate. `regular` hides an excessive-permissions class that
+        # was a real finding in this repo.
+        args: [--no-progress, --persona=pedantic]
+
+  # --- Go ------------------------------------------------------------------
+  # language: system throughout. The Go toolchain is already a hard requirement
+  # here and its versions are pinned in mise.toml and go.mod, so building a
+  # second copy of each linter inside pre-commit's own environment would only add
+  # a way for the two to disagree.
+  - repo: local
+    hooks:
+      - id: gofmt
+        name: gofmt
+        entry: gofmt -l -w
+        language: system
+        types: [go]
+        exclude: _templ\.go$
+
+      - id: go-mod-tidy
+        name: go mod tidy is current
+        entry: >-
+          bash -c 'cp go.mod go.mod.pre && cp go.sum go.sum.pre &&
+          go mod tidy &&
+          if ! cmp -s go.mod go.mod.pre || ! cmp -s go.sum go.sum.pre; then
+            rm -f go.mod.pre go.sum.pre;
+            echo "go.mod or go.sum changed - stage the result"; exit 1;
+          fi; rm -f go.mod.pre go.sum.pre'
+        language: system
+        files: ^(go\.mod|go\.sum|.*\.go)$
+        pass_filenames: false
+
+      - id: go-vet
+        name: go vet
+        entry: go vet ./...
+        language: system
+        types: [go]
+        pass_filenames: false
+
+      # The integration-tagged files are the only place the grants and constraints
+      # are asserted, and they are excluded from an untagged build, so lint them
+      # explicitly or they rot.
+      - id: golangci-lint
+        name: golangci-lint
+        entry: golangci-lint run --build-tags=integration
+        language: system
+        types: [go]
+        pass_filenames: false
+
+      # Enforces the credential boundary (constitution principle II) by walking the
+      # real import graph. Cheap, and the thing most likely to be broken by an
+      # innocent-looking import.
+      - id: archcheck
+        name: role import boundaries
+        entry: go test ./internal/archcheck/...
+        language: system
+        types: [go]
+        pass_filenames: false
+
+  # --- commit messages -----------------------------------------------------
+  - repo: local
+    hooks:
+      - id: no-ai-attribution-in-subject
+        name: commit subject is a sentence, not a changelog entry
+        entry: >-
+          bash -c 'subject=$(head -1 "$1");
+          if [ ${#subject} -gt 72 ]; then
+            echo "subject is ${#subject} chars; keep it under 72"; exit 1;
+          fi' --
+        language: system
+        stages: [commit-msg]

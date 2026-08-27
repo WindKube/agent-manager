@@ -664,47 +664,34 @@ func TestIndexDefinitionsAreExactlyAsSpecified(t *testing.T) {
 	}
 }
 
-// TestEveryForeignKeyIsPresent asserts the whole set. Eleven of these cannot come
-// from the Bun models — ten because the base column is part of the primary key,
-// which is a shape data-model.md mandates for signature and override, and
-// package.latest_version_id because a second belongs-to between package and
-// version makes the Atlas loader's topological sort a cycle. They are added by
-// internal/store/schema/03-constraints.sql, so nothing in Go fails if a statement
-// is lost from that file. This does.
+// pgDeleteActions is pg_constraint.confdeltype's whole alphabet. It is a single
+// char there, which is why this reads pg_constraint rather than
+// information_schema, where the delete action is a join away instead of a column.
+var pgDeleteActions = map[string]string{
+	"a": "no action",
+	"r": "restrict",
+	"c": "cascade",
+	"n": "set null",
+	"d": "set default",
+}
+
+// TestEveryForeignKeyIsPresent asserts the whole set, each entry carrying its
+// delete action, and asserts it by exact equality: a missing foreign key and an
+// unexpected extra one both fail.
+//
+// The delete action is here because existence alone is not the guarantee anyone
+// wants. Every one of these is NO ACTION, uniformly: the catalog is append-only,
+// no role holds DELETE on the tables these point at, and a delete that would
+// cascade is a bug to surface rather than to propagate. An FK created ON DELETE
+// CASCADE satisfies every other check in this repo — the models, the generated
+// SQL, the design — and then quietly deletes rows nobody asked it to, so it is
+// pinned per foreign key here.
 func TestEveryForeignKeyIsPresent(t *testing.T) {
 	ctx := context.Background()
 
-	want := []string{
-		// The eleven the loader cannot emit.
-		"capability(version_id) -> version",
-		"component(version_id) -> version",
-		"membership(profile_id) -> profile",
-		"override(finding_id) -> finding",
-		"package(latest_version_id) -> version",
-		"profile_entry(package_id) -> package",
-		"profile_entry(profile_id) -> profile",
-		"scan_check(scan_id) -> scan",
-		"signature(version_id) -> version",
-		"sync_target(profile_id) -> profile",
-		"version_tag(version_id) -> version",
-		// The sixteen the loader does emit, listed so an accidental loss on the
-		// generated side fails here too.
-		"device_authorization(approved_by_identity_id) -> identity",
-		"finding(scan_id) -> scan",
-		"finding(version_id) -> version",
-		"override(reviewer_identity_id) -> identity",
-		"package(category_id) -> category",
-		"package(parent_package_id) -> package",
-		"package(publisher_id) -> publisher",
-		"profile(forked_from_id) -> profile",
-		"profile_entry(pinned_version_id) -> version",
-		"revision(profile_id) -> profile",
-		"scan(version_id) -> version",
-		"session(identity_id) -> identity",
-		"sync_event(identity_id) -> identity",
-		"sync_event(profile_id) -> profile",
-		"sync_event(revision_id) -> revision",
-		"version(package_id) -> package",
+	want := make([]string, 0, len(wantForeignKeys))
+	for _, fk := range wantForeignKeys {
+		want = append(want, fk+" on delete no action")
 	}
 	sort.Strings(want)
 
@@ -713,7 +700,8 @@ func TestEveryForeignKeyIsPresent(t *testing.T) {
 		       (select string_agg(a.attname, ',' order by k.ord)
 		          from unnest(c.conkey) with ordinality k(att, ord)
 		          join pg_attribute a on a.attrelid = c.conrelid and a.attnum = k.att) ||
-		       ') -> ' || confrelid::regclass::text
+		       ') -> ' || confrelid::regclass::text,
+		       c.confdeltype::text
 		from pg_constraint c
 		where contype = 'f' and connamespace = 'public'::regnamespace`)
 	require.NoError(t, err)
@@ -721,9 +709,12 @@ func TestEveryForeignKeyIsPresent(t *testing.T) {
 
 	var got []string
 	for rows.Next() {
-		var fk string
-		require.NoError(t, rows.Scan(&fk))
-		got = append(got, fk)
+		var fk, delType string
+		require.NoError(t, rows.Scan(&fk, &delType))
+
+		action, ok := pgDeleteActions[delType]
+		require.True(t, ok, "unknown confdeltype %q on %s", delType, fk)
+		got = append(got, fk+" on delete "+action)
 	}
 	require.NoError(t, rows.Err())
 	sort.Strings(got)
@@ -1056,4 +1047,221 @@ func semverSort(t *testing.T, semver string) string {
 	key, err := models.SemverSort(semver)
 	require.NoError(t, err)
 	return key
+}
+
+// ---------------------------------------------------------------------------
+// Principle IX — the outbox relay, whose write set no handler-shaped test reaches
+// ---------------------------------------------------------------------------
+
+// A role's write set is the union of its handlers AND its goroutines. The relay
+// (T022) is hosted in api and is a goroutine, so every handler-shaped test in
+// this suite misses it. Its loop is three statements and only the third needs a
+// privilege nothing else asks for, which is why this drives all three rather than
+// asserting the grant exists: claim and mark pass under the blanket
+// select/insert/update grant, so a missing DELETE leaves the relay delivering
+// every job while the table grows forever. A leak, never an error.
+func TestAPIRoleCanRunTheWholeOutboxRelayLoopIncludingThePrune(t *testing.T) {
+	ctx := context.Background()
+
+	claimable := seedOutboxRow(t, ctx, "pending", "")
+	unclaimed := seedOutboxRow(t, ctx, "pending", "")
+	stale := seedOutboxRow(t, ctx, "delivered", "48 hours")
+	fresh := seedOutboxRow(t, ctx, "delivered", "1 hour")
+
+	asRole(t, "am_api", func(ctx context.Context, conn *pgxpool.Conn) {
+		tx, err := conn.Begin(ctx)
+		require.NoError(t, err)
+		defer func() { _ = tx.Rollback(ctx) }()
+
+		// Claim. The relay's own statement carries no id filter; this one is scoped
+		// to the row seeded above so that a pending row left by another test cannot
+		// be the row claimed here. The privileges exercised are the same.
+		var claimed uuid.UUID
+		require.NoError(t, tx.QueryRow(ctx, `select id from outbox
+			where state = 'pending' and id = any($1)
+			order by id
+			for update skip locked
+			limit 1`, []uuid.UUID{claimable}).Scan(&claimed), "claim")
+		require.Equal(t, claimable, claimed)
+
+		// Mark.
+		_, err = tx.Exec(ctx,
+			`update outbox set state = 'delivered', delivered_at = now() where id = $1`, claimed)
+		require.NoError(t, err, "mark")
+		require.NoError(t, tx.Commit(ctx))
+
+		// Prune — the statement the grant exists for, verbatim.
+		tag, err := conn.Exec(ctx, `delete from outbox
+			where state = 'delivered' and delivered_at < now() - interval '24 hours'`)
+		require.NoError(t, err,
+			"am_api must be able to prune the outbox: data-model.md specifies delivered rows pruned after 24 h and the relay doing it runs inside api")
+
+		// Exactly one: this is the only test that marks a row delivered, and the
+		// other three seeded rows are either inside the window or still pending. A
+		// prune that removed more would be reaching rows the relay must not touch.
+		require.EqualValues(t, 1, tag.RowsAffected())
+	})
+
+	_, exists := outboxStateOf(t, ctx, stale)
+	require.False(t, exists, "a delivered row older than 24 h must be gone")
+
+	state, exists := outboxStateOf(t, ctx, fresh)
+	require.True(t, exists, "a delivered row inside the 24 h window must survive")
+	require.Equal(t, "delivered", state)
+
+	state, exists = outboxStateOf(t, ctx, unclaimed)
+	require.True(t, exists, "a pending row must survive: the prune is keyed on state as well as age")
+	require.Equal(t, "pending", state)
+
+	state, exists = outboxStateOf(t, ctx, claimable)
+	require.True(t, exists, "the row just delivered must survive its own prune")
+	require.Equal(t, "delivered", state)
+}
+
+// TestAPIRoleCannotDeleteWhereDeletionIsUnspecified is the other half of the
+// outbox decision: that grant is exactly one table wide. Every table here is a
+// plausible candidate somebody will widen to by neighbourhood, so each case
+// carries the reason it was withheld — the same reasons as the withheld-grant list
+// in data-model.md.
+//
+// Each case asserts sqlstate 42501 and not merely `err != nil`. A negative case
+// that accepts any error stops testing the privilege the moment the statement
+// acquires a defect: a mistyped column (42703) or an invalid enum literal (22P02)
+// would read as a pass forever. So every statement runs again as the owner and
+// must remove exactly one row, which proves it was valid apart from the privilege
+// and had a real row to aim at.
+func TestAPIRoleCannotDeleteWhereDeletionIsUnspecified(t *testing.T) {
+	ctx := context.Background()
+
+	entryProfile, entryPackage := seedProfile(t, ctx), seedPackage(t, ctx)
+	_, err := pool.Exec(ctx,
+		`insert into profile_entry (profile_id, package_id, mode, position) values ($1, $2, 'latest', 1)`,
+		entryProfile, entryPackage)
+	require.NoError(t, err)
+
+	memberProfile := seedProfile(t, ctx)
+	_, err = pool.Exec(ctx,
+		`insert into membership (profile_id, subject_kind, subject_ref, role) values ($1, 'user', 'a@example.com', 'owner')`,
+		memberProfile)
+	require.NoError(t, err)
+
+	sessionID, identityID := models.NewID(), seedIdentity(t, ctx)
+	_, err = pool.Exec(ctx,
+		`insert into session (id, token_hash, identity_id, expires_at) values ($1, $2, $3, now() + interval '1 hour')`,
+		sessionID, sessionID[:], identityID)
+	require.NoError(t, err)
+
+	deviceID := models.NewID()
+	_, err = pool.Exec(ctx, `insert into device_authorization
+		(id, device_code_hash, user_code, requesting_host, state, expires_at)
+		values ($1, $2, $3, 'laptop.example.com', 'pending', now() + interval '10 minutes')`,
+		deviceID, deviceID[:], "code-"+deviceID.String())
+	require.NoError(t, err)
+
+	revisionProfile, revisionID := seedProfile(t, ctx), models.NewID()
+	_, err = pool.Exec(ctx, `insert into revision (id, profile_id, seq, lockfile, object_key, created_by)
+		values ($1, $2, 1, '{}', $3, 'a@example.com')`,
+		revisionID, revisionProfile, "profiles/"+revisionProfile.String()+"/r1.json")
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		name, stmt string
+		args       []any
+	}{
+		{
+			// FR-032's per-package policy and the openapi inventory's pin / unpin /
+			// reorder are all update-shaped: "unpin" is mode pinned -> latest, an
+			// UPDATE. Removing a package from a profile is unspecified, and the design
+			// screens contain no removal affordance at all.
+			name: "profile_entry, where pin, unpin and reorder are all updates",
+			stmt: `delete from profile_entry where profile_id = $1 and package_id = $2`,
+			args: []any{entryProfile, entryPackage},
+		},
+		{
+			// FR-037 is about per-member and per-group roles; changing or demoting a
+			// member is an UPDATE of `role`.
+			name: "membership, where a role change is an update",
+			stmt: `delete from membership where profile_id = $1`,
+			args: []any{memberProfile},
+		},
+		{
+			// The row carries expires_at. No requirement says signing out deletes it,
+			// and an expired session is one whose expiry has passed.
+			name: "session, which expires rather than being removed",
+			stmt: `delete from session where id = $1`,
+			args: []any{sessionID},
+		},
+		{
+			// device_auth_state contains `expired`, so expiry is a state transition
+			// the flow already models (FR-042). A delete would also destroy the
+			// evidence of a code that was issued.
+			name: "device_authorization, whose state enum already contains expired",
+			stmt: `delete from device_authorization where id = $1`,
+			args: []any{deviceID},
+		},
+		{
+			// FR-034 forbids it outright: previously published revisions must remain
+			// readable after a new one is published.
+			name: "revision, which FR-034 forbids deleting",
+			stmt: `delete from revision where id = $1`,
+			args: []any{revisionID},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			asRole(t, "am_api", func(ctx context.Context, conn *pgxpool.Conn) {
+				_, err := conn.Exec(ctx, tc.stmt, tc.args...)
+				requirePgError(t, err, "42501", "")
+			})
+
+			tag, err := pool.Exec(ctx, tc.stmt, tc.args...)
+			require.NoError(t, err,
+				"the same statement must succeed as the owner, or the denial above was about something other than the privilege")
+			require.EqualValues(t, 1, tag.RowsAffected(),
+				"the denied statement must have had exactly one real row to delete")
+		})
+	}
+}
+
+func seedIdentity(t *testing.T, ctx context.Context) uuid.UUID {
+	t.Helper()
+
+	id := models.NewID()
+	_, err := pool.Exec(ctx,
+		`insert into identity (id, subject, email) values ($1, $2, 'a@example.com')`,
+		id, "oidc|"+id.String())
+	require.NoError(t, err)
+
+	return id
+}
+
+// seedOutboxRow computes delivered_at in Postgres rather than in Go: the prune
+// compares it against the server's now(), so a client clock must not be able to
+// move the boundary the test is about. deliveredAgo is "" for a row that has not
+// been delivered.
+func seedOutboxRow(t *testing.T, ctx context.Context, state, deliveredAgo string) uuid.UUID {
+	t.Helper()
+
+	id := models.NewID()
+	_, err := pool.Exec(ctx, `insert into outbox (id, job_kind, payload, idempotency_key, state, delivered_at)
+		values ($1, 'scan', '{}', $2, $3::outbox_state,
+		        case when $4 = '' then null else now() - $4::interval end)`,
+		id, "relay:"+id.String(), state, deliveredAgo)
+	require.NoError(t, err)
+
+	return id
+}
+
+// outboxStateOf reads a row's state through a scalar subquery, so a pruned row
+// comes back as "not there" rather than as no rows to scan.
+func outboxStateOf(t *testing.T, ctx context.Context, id uuid.UUID) (string, bool) {
+	t.Helper()
+
+	var state *string
+	require.NoError(t, pool.QueryRow(ctx,
+		`select (select state::text from outbox where id = $1)`, id).Scan(&state))
+	if state == nil {
+		return "", false
+	}
+
+	return *state, true
 }

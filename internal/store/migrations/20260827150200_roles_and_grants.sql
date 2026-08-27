@@ -49,12 +49,27 @@ grant all on schema public to am_migrate;
 grant all on all tables in schema public to am_migrate;
 
 -- ---------------------------------------------------------------------------
--- am_api — the request path
+-- am_api — the request path, and the outbox relay that runs beside it
 -- ---------------------------------------------------------------------------
--- select/insert/update on every application table. No delete anywhere: the
--- catalog is append-only by design and data-model.md's grant table lists no
--- delete for any role.
+-- select/insert/update on every application table. The catalog is append-only by
+-- design, so the only delete granted anywhere in this file is the one below.
 grant select, insert, update on all tables in schema public to am_api;
+
+-- The outbox relay's prune. data-model.md specifies "delivered rows pruned after
+-- 24 h" and the relay is a goroutine hosted inside api (T022; quickstart.md:43),
+-- not a request handler — a role's write set is the union of its handlers AND its
+-- goroutines, and this half of the union is what no handler-shaped test reaches.
+--
+-- Claim (`for update skip locked`) and mark (`update ... set state = 'delivered'`)
+-- are already covered by the grant above, so without this the relay runs,
+-- delivers every job, and leaks every delivered row forever. A table that grows
+-- without bound and never raises an error is the failure this line prevents.
+--
+-- DELETE on outbox and nowhere else. It is withheld from profile_entry,
+-- membership, session, device_authorization and revision on purpose; the reason
+-- for each is in the withheld-grant list in data-model.md, which is where a
+-- widening gets argued before it gets granted.
+grant delete on table outbox to am_api;
 
 -- ---------------------------------------------------------------------------
 -- am_fetcher — the bundle pipeline

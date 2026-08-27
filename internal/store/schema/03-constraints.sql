@@ -17,43 +17,53 @@
 
 alter table "capability"
   add constraint "capability_version_id_fkey"
-  foreign key ("version_id") references "version" ("id");
+  foreign key ("version_id") references "version" ("id")
+  on update no action on delete no action;
 
 alter table "component"
   add constraint "component_version_id_fkey"
-  foreign key ("version_id") references "version" ("id");
+  foreign key ("version_id") references "version" ("id")
+  on update no action on delete no action;
 
 alter table "version_tag"
   add constraint "version_tag_version_id_fkey"
-  foreign key ("version_id") references "version" ("id");
+  foreign key ("version_id") references "version" ("id")
+  on update no action on delete no action;
 
 alter table "signature"
   add constraint "signature_version_id_fkey"
-  foreign key ("version_id") references "version" ("id");
+  foreign key ("version_id") references "version" ("id")
+  on update no action on delete no action;
 
 alter table "scan_check"
   add constraint "scan_check_scan_id_fkey"
-  foreign key ("scan_id") references "scan" ("id");
+  foreign key ("scan_id") references "scan" ("id")
+  on update no action on delete no action;
 
 alter table "override"
   add constraint "override_finding_id_fkey"
-  foreign key ("finding_id") references "finding" ("id");
+  foreign key ("finding_id") references "finding" ("id")
+  on update no action on delete no action;
 
 alter table "profile_entry"
   add constraint "profile_entry_profile_id_fkey"
-  foreign key ("profile_id") references "profile" ("id");
+  foreign key ("profile_id") references "profile" ("id")
+  on update no action on delete no action;
 
 alter table "profile_entry"
   add constraint "profile_entry_package_id_fkey"
-  foreign key ("package_id") references "package" ("id");
+  foreign key ("package_id") references "package" ("id")
+  on update no action on delete no action;
 
 alter table "membership"
   add constraint "membership_profile_id_fkey"
-  foreign key ("profile_id") references "profile" ("id");
+  foreign key ("profile_id") references "profile" ("id")
+  on update no action on delete no action;
 
 alter table "sync_target"
   add constraint "sync_target_profile_id_fkey"
-  foreign key ("profile_id") references "profile" ("id");
+  foreign key ("profile_id") references "profile" ("id")
+  on update no action on delete no action;
 
 -- package.latest_version_id carries no bun relation at all. Adding one is not an
 -- option: a second belongs-to between package and version makes the loader abort

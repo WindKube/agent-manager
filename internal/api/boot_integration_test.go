@@ -132,10 +132,11 @@ func TestEachRoleBootsWithOnlyItsOwnEnvironment(t *testing.T) {
 		require.Error(t, dialErr, "the port must refuse once the role has stopped")
 	})
 
-	t.Run("serve web boots with no datastore credential at all", func(t *testing.T) {
+	t.Run("serve web serves with no datastore credential at all", func(t *testing.T) {
+		webPort := freePort(t)
 		env := map[string]string{
 			"AGENT_MANAGER_API_BASE_URL": fmt.Sprintf("http://127.0.0.1:%d", port),
-			"AGENT_MANAGER_WEB_ADDR":     fmt.Sprintf("127.0.0.1:%d", freePort(t)),
+			"AGENT_MANAGER_WEB_ADDR":     fmt.Sprintf("127.0.0.1:%d", webPort),
 			"AGENT_MANAGER_LOG_FORMAT":   "console",
 		}
 		for _, name := range datastoreVars {
@@ -143,11 +144,19 @@ func TestEachRoleBootsWithOnlyItsOwnEnvironment(t *testing.T) {
 			require.Falsef(t, present, "the web role's environment must not carry %s", name)
 		}
 
-		// The web role is a stub until the layer that owns internal/web lands; what
-		// this asserts today is that it starts and exits cleanly with an
-		// environment holding no datastore credential.
-		out, err := runRole(t, []string{"serve", "web"}, env, 30*time.Second)
-		require.NoError(t, err, out)
+		cmd, stop := startRole(t, []string{"serve", "web"}, env)
+
+		base := fmt.Sprintf("http://127.0.0.1:%d", webPort)
+		requireHealthy(t, base+"/healthz")
+
+		// Serving a screen, not merely listening. The claim SC-006 makes is that
+		// the role still WORKS with what it is given, and the web role's whole
+		// premise is that a screen renders without a datastore.
+		require.Equal(t, http.StatusOK, call(t, http.MethodGet, base+"/catalog", "", ""),
+			"the web role must render a screen with no database and no bucket")
+
+		require.NoError(t, cmd.Process.Signal(syscall.SIGTERM))
+		require.NoError(t, stop(), "a SIGTERM must drain and exit 0")
 	})
 }
 
@@ -185,7 +194,28 @@ func TestARoleRefusesOneDatabaseForBothSchemas(t *testing.T) {
 
 // ---- process helpers ---------------------------------------------------------
 
-func command(t *testing.T, args []string, env map[string]string) (*exec.Cmd, *strings.Builder) {
+// output collects a child process's combined output. os/exec copies into it from
+// its own goroutine while the test reads it to build a failure message, so the
+// lock is load-bearing rather than defensive: a plain strings.Builder here is a
+// data race that -race fails the whole package on.
+type output struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
+func (o *output) Write(p []byte) (int, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.buf.Write(p)
+}
+
+func (o *output) String() string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.buf.String()
+}
+
+func command(t *testing.T, args []string, env map[string]string) (*exec.Cmd, *output) {
 	t.Helper()
 
 	cmd := exec.Command(binary(t), args...)
@@ -197,10 +227,10 @@ func command(t *testing.T, args []string, env map[string]string) (*exec.Cmd, *st
 		cmd.Env = append(cmd.Env, name+"="+value)
 	}
 
-	var out strings.Builder
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	return cmd, &out
+	out := &output{}
+	cmd.Stdout = out
+	cmd.Stderr = out
+	return cmd, out
 }
 
 func runRole(t *testing.T, args []string, env map[string]string, timeout time.Duration) (string, error) {

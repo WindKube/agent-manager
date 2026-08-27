@@ -32,6 +32,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      # golangci-lint type-checks, so it needs the whole module graph on disk. Left
+      # to the linter's own lazy fetches a single flaky proxy read surfaces as a
+      # bogus `typecheck` finding on our source, which is indistinguishable from a
+      # real one.
+      - name: go mod download
+        run: go mod download
       - name: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:

@@ -104,15 +104,29 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Regenerate
-        run: go tool templ generate
-      - name: Fail on a diff
-        run: |
-          if ! git diff --quiet; then
-            echo "::error::generated output is stale — run 'task gen' and commit the result"
-            git --no-pager diff --stat
-            exit 1
-          fi
+      - uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      # Runs every generator, not just templ: internal/store/schema/02-tables.sql is
+      # emitted from the Bun models, so a templ-only check cannot see model drift.
+      - name: Regenerate and fail on a diff
+        run: task gen:check
+
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      # The per-role grants and every load-bearing constraint are asserted against a
+      # real Postgres via testcontainers. The unit suite cannot reach them, so without
+      # this job the credential boundary is unverified.
+      - name: go test -tags=integration
+        run: go test -race -tags=integration -timeout=20m ./...
 
   vuln:
     name: Vulnerability scan

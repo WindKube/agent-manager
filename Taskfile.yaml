@@ -3,7 +3,10 @@ version: "3"
 vars:
   BIN: "{{.ROOT_DIR}}/.bin"
   TAILWIND_VERSION: v4.1.18
-  ATLAS_VERSION: latest
+  # Must match the binary that produced internal/store/migrations/atlas.sum. A
+  # floating "latest" that drifts past it makes `migrate apply` fail the directory
+  # checksum on a clean checkout.
+  ATLAS_VERSION: v0.36.0
   LDFLAGS: >-
     -s -w
     -X agent-manager/internal/cli.Version={{.VERSION | default "dev"}}
@@ -25,6 +28,7 @@ tasks:
       - task: gen:templ
       - task: gen:css
       - task: gen:client
+      - task: migrate:schema
 
   gen:templ:
     desc: templ components -> _templ.go
@@ -88,27 +92,96 @@ tasks:
   atlas:install:
     internal: true
     status:
-      - command -v atlas
+      - test -x {{.BIN}}/atlas
     cmds:
-      - curl -fsSL https://atlasgo.sh | sh
+      - mkdir -p {{.BIN}}
+      - |
+        set -eu
+        case "$(uname -s)-$(uname -m)" in
+          Linux-x86_64)  asset=atlas-community-linux-amd64 ;;
+          Linux-aarch64) asset=atlas-community-linux-arm64 ;;
+          Darwin-arm64)  asset=atlas-community-darwin-arm64 ;;
+          Darwin-x86_64) asset=atlas-community-darwin-amd64 ;;
+          *) echo "unsupported platform for the atlas community binary" >&2; exit 1 ;;
+        esac
+        curl -fsSL -o {{.BIN}}/atlas \
+          "https://release.ariga.io/atlas/${asset}-{{.ATLAS_VERSION}}"
+        chmod +x {{.BIN}}/atlas
+
+  migrate:schema:
+    desc: "Bun models -> internal/store/schema/02-tables.sql (layer 2 of the desired state)"
+    cmds:
+      # The community Atlas build rejects the `external_schema` data source, so the
+      # loader cannot be invoked from atlas.hcl and its output is a checked-in file
+      # instead. Two things are normalised here and both are load-bearing for
+      # gen:check: the `-- atlas:pos` directives are dropped because they embed
+      # absolute developer paths, and the statements are sorted because the loader
+      # breaks topological-sort ties by Go map order — roughly one run in ten emits
+      # a different table order, which would make the staleness guard flap. Sorting
+      # is only safe once the inline FOREIGN KEY clauses are lifted into ALTER TABLE
+      # statements that run after every CREATE TABLE, which is what the awk does.
+      # Postgres names an FK added by ALTER exactly as it names an inline one, so the
+      # resulting schema is byte-identical either way.
+      - |
+        set -eu
+        set -o pipefail
+        {
+          cat <<'HDR'
+        -- Layer 2 of the desired state (see atlas.hcl). GENERATED - do not edit.
+        -- Regenerate with 'task migrate:schema' after any change to
+        -- internal/store/models. The Bun models are the source of truth; this file
+        -- only exists because the community Atlas build cannot run the loader.
+        --
+        -- Sorted, and with foreign keys lifted out of the CREATE TABLE statements, so
+        -- the output is byte-stable across runs. See the migrate:schema task.
+        HDR
+          echo
+          go tool atlas-provider-bun load --path ./internal/store/models --dialect postgres \
+            | grep -v '^-- atlas:pos' \
+            | awk '
+                /^[[:space:]]*$/ || /^--/ { next }
+                !/^CREATE TABLE "/ {
+                  printf "migrate:schema: unexpected loader output: %s\n", $0 > "/dev/stderr"
+                  bad = 1; next
+                }
+                {
+                  line = $0
+                  match(line, /^CREATE TABLE "[^"]+"/)
+                  tbl = substr(line, RSTART + 14, RLENGTH - 15)
+                  while (match(line, /, FOREIGN KEY \("[^)]+"\) REFERENCES "[^"]+" \("[^)]+"\) ON UPDATE NO ACTION ON DELETE NO ACTION/)) {
+                    print "2\tALTER TABLE \"" tbl "\" ADD " substr(line, RSTART + 2, RLENGTH - 2) ";"
+                    line = substr(line, 1, RSTART - 1) substr(line, RSTART + RLENGTH)
+                  }
+                  if (line ~ /FOREIGN KEY/) {
+                    printf "migrate:schema: unextracted FOREIGN KEY in %s\n", tbl > "/dev/stderr"
+                    bad = 1
+                  }
+                  print "1\t" line
+                }
+                END { if (bad) exit 1 }
+              ' \
+            | LC_ALL=C sort -t "$(printf '\t')" -k1,1 -k2,2 \
+            | cut -f2-
+        } > internal/store/schema/02-tables.sql
 
   migrate:diff:
-    desc: "Diff the Bun models into versioned SQL (needs a Docker socket)"
+    desc: "Diff the desired state into versioned SQL (needs a Docker socket)"
     deps: [atlas:install]
     cmds:
-      - atlas migrate diff {{.CLI_ARGS | default "change"}} --env bun
+      - task: migrate:schema
+      - "{{.BIN}}/atlas migrate diff {{.CLI_ARGS | default \"change\"}} --env bun"
 
   migrate:apply:
     desc: Apply migrations locally
     deps: [atlas:install]
     cmds:
-      - atlas migrate apply --env bun --url "{{.AGENT_MANAGER_DATABASE_URL}}"
+      - '{{.BIN}}/atlas migrate apply --env bun --url "$AGENT_MANAGER_DATABASE_URL"'
 
   migrate:hash:
     desc: Recompute atlas.sum
     deps: [atlas:install]
     cmds:
-      - atlas migrate hash --env bun
+      - "{{.BIN}}/atlas migrate hash --env bun"
 
   build:
     desc: Build the single binary

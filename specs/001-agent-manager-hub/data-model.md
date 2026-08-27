@@ -328,10 +328,21 @@ The credential half of principle II — what Go interfaces cannot express (see
 | Role | Grants |
 | --- | --- |
 | `am_api` | `SELECT/INSERT/UPDATE` on all app tables; **no `UPDATE`/`DELETE` on `audit_event`**; `INSERT` on `outbox` |
-| `am_fetcher` | `SELECT/INSERT/UPDATE` on `version`, `component`, `signature`, `package`; `INSERT` on `audit_event`, `outbox` |
+| `am_fetcher` | `SELECT/INSERT/UPDATE` on `version`, `version_tag`, `component`, `signature`, `package`, `publisher`; `INSERT` on `audit_event`, `outbox` |
 | `am_scanner` | `SELECT` broadly; `INSERT/UPDATE` on `scan`, `scan_check`, `finding`, `capability`; `UPDATE (verdict)` on `version`; `INSERT` on `audit_event` |
 | `am_web` | **none — no grant, no connection.** The web role has no DSN at all |
 | `am_migrate` | DDL owner, used only by the Atlas init container |
 
 `am_scanner` cannot write `object_key` or `digest`: the scanner does not produce bundle
 bytes, and the grant says so as well as the Go type does.
+
+`am_fetcher` needs `version_tag` because `version.tags` is a denormalisation of it and the
+two are written in the same transaction — granting one without the other makes the
+transaction unable to commit. It needs `publisher` because registering the first package
+under a new publisher creates the publisher row, and `package.publisher_id` is `NOT NULL`.
+
+Nothing grants `INSERT` on `capability` to `am_fetcher`, and that is deliberate: the
+`expected` set is read out of `extensions["dev.agent-manager"]` by the API when the detail
+page is assembled (T057), and the `inferred` set is the scanner's. The fetcher transcribes
+the manifest into `version.manifest` and stops there, so no role writes a capability row it
+did not itself derive.

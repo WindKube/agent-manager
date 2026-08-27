@@ -139,6 +139,12 @@ tasks:
           go tool atlas-provider-bun load --path ./internal/store/models --dialect postgres \
             | grep -v '^-- atlas:pos' \
             | awk '
+                BEGIN {
+                  # A dynamic regex rather than a literal, because an awk regex
+                  # literal cannot be wrapped and this one does not fit a line.
+                  fk = ", FOREIGN KEY \\(\"[^)]+\"\\) REFERENCES \"[^\"]+\" \\(\"[^)]+\"\\)"
+                  fk = fk " ON UPDATE NO ACTION ON DELETE NO ACTION"
+                }
                 /^[[:space:]]*$/ || /^--/ { next }
                 !/^CREATE TABLE "/ {
                   printf "migrate:schema: unexpected loader output: %s\n", $0 > "/dev/stderr"
@@ -148,7 +154,7 @@ tasks:
                   line = $0
                   match(line, /^CREATE TABLE "[^"]+"/)
                   tbl = substr(line, RSTART + 14, RLENGTH - 15)
-                  while (match(line, /, FOREIGN KEY \("[^)]+"\) REFERENCES "[^"]+" \("[^)]+"\) ON UPDATE NO ACTION ON DELETE NO ACTION/)) {
+                  while (match(line, fk)) {
                     print "2\tALTER TABLE \"" tbl "\" ADD " substr(line, RSTART + 2, RLENGTH - 2) ";"
                     line = substr(line, 1, RSTART - 1) substr(line, RSTART + RLENGTH)
                   }

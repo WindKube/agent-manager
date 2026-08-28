@@ -27,7 +27,10 @@ type ScanRequest struct {
 	VersionID uuid.UUID `json:"versionId"`
 	PackageID uuid.UUID `json:"packageId"`
 
-	Publisher string `json:"publisher"`
+	// Namespace, not the publisher slug: it is the first object-key segment and
+	// the first half of the rendered package id, and the fetcher needs no other
+	// part of the publisher — the package row is reached by PackageID.
+	Namespace string `json:"namespace"`
 	Name      string `json:"name"`
 	Semver    string `json:"semver"`
 
@@ -117,19 +120,19 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 			                 where v.package_id = p.id and v.id <> ? and v.digest is not null)
 			   from package p where p.id = ?`,
 			job.VersionID, job.PackageID).Scan(&currentKind, &otherPublished); kindErr != nil {
-			return fmt.Errorf("read the kind of %s/%s: %w", job.Publisher, job.Name, kindErr)
+			return fmt.Errorf("read the kind of %s/%s: %w", job.Namespace, job.Name, kindErr)
 		}
 		switch {
 		case otherPublished && currentKind != derived:
 			return fmt.Errorf("%w: %s/%s is registered as a %s and this tree is a %s",
-				pkgspec.ErrManifestInvalid, job.Publisher, job.Name, currentKind, derived)
+				pkgspec.ErrManifestInvalid, job.Namespace, job.Name, currentKind, derived)
 		case currentKind != derived:
 			if _, kindErr := tx.NewUpdate().Model((*models.Package)(nil)).
 				Set("kind = ?", derived).
 				Set("updated_at = now()").
 				Where("id = ?", job.PackageID).
 				Exec(ctx); kindErr != nil {
-				return fmt.Errorf("set the kind of %s/%s: %w", job.Publisher, job.Name, kindErr)
+				return fmt.Errorf("set the kind of %s/%s: %w", job.Namespace, job.Name, kindErr)
 			}
 		}
 
@@ -143,7 +146,7 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 				Set("dist_tag = ?", models.DistTagNone).
 				Where("package_id = ? and id <> ? and dist_tag = ?", job.PackageID, job.VersionID, models.DistTagLatest).
 				Exec(ctx); demoteErr != nil {
-				return fmt.Errorf("demote the previous latest version of %s/%s: %w", job.Publisher, job.Name, demoteErr)
+				return fmt.Errorf("demote the previous latest version of %s/%s: %w", job.Namespace, job.Name, demoteErr)
 			}
 		}
 
@@ -200,7 +203,7 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 				Set("updated_at = now()").
 				Where("id = ?", job.PackageID).
 				Exec(ctx); pointErr != nil {
-				return fmt.Errorf("point %s/%s at its latest version: %w", job.Publisher, job.Name, pointErr)
+				return fmt.Errorf("point %s/%s at its latest version: %w", job.Namespace, job.Name, pointErr)
 			}
 		}
 
@@ -215,7 +218,7 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 		payload, encodeErr := json.Marshal(ScanRequest{
 			VersionID: job.VersionID,
 			PackageID: job.PackageID,
-			Publisher: job.Publisher,
+			Namespace: job.Namespace,
 			Name:      job.Name,
 			Semver:    job.Semver,
 			ObjectKey: commit.Bundle.Key,

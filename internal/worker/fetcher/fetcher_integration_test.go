@@ -336,7 +336,7 @@ func TestAGitRegistrationBecomesAStoredVisibleVersionWithAQueuedScan(t *testing.
 		Source:    fetch.SourceGit,
 		URL:       base + "/org/plugin",
 		Ref:       "v1.3.0",
-		Publisher: "example",
+		Publisher: "example/team",
 		// The manifest is the authority on the name; the repository is only where
 		// the modal gets its default. Registering under the repository name here
 		// would be a manifest disagreement, which is a manifest failure.
@@ -451,7 +451,7 @@ func TestTheFetcherSettlesThePackageKindFromWhichManifestIsAtTheRoot(t *testing.
 		Source:    fetch.SourceGit,
 		URL:       base + "/org/plugin",
 		Ref:       "v1.3.0",
-		Publisher: "kinds",
+		Publisher: "kinds/team",
 		Name:      "standalone-skill",
 	})
 
@@ -493,7 +493,7 @@ func TestARedeliveredFetchForAVersionWithCommittedBytesChangesNothing(t *testing
 		Source:    fetch.SourceGit,
 		URL:       base + "/org/plugin",
 		Ref:       "v1.3.0",
-		Publisher: "redelivery",
+		Publisher: "redelivery/team",
 		// The manifest is the authority on the name; the repository is only where
 		// the modal gets its default. Registering under the repository name here
 		// would be a manifest disagreement, which is a manifest failure.
@@ -549,7 +549,7 @@ func TestRepublishingAVersionIsRefusedAndTheStoredBytesAreUntouched(t *testing.T
 		Source:    fetch.SourceGit,
 		URL:       base + "/org/plugin",
 		Ref:       "v1.3.0",
-		Publisher: "immutable",
+		Publisher: "immutable/team",
 		// The manifest is the authority on the name; the repository is only where
 		// the modal gets its default. Registering under the repository name here
 		// would be a manifest disagreement, which is a manifest failure.
@@ -574,7 +574,7 @@ func TestRepublishingAVersionIsRefusedAndTheStoredBytesAreUntouched(t *testing.T
 		Source:    fetch.SourceGit,
 		URL:       otherBase + "/org/plugin",
 		Ref:       "v1.3.0",
-		Publisher: "immutable",
+		Publisher: "immutable/team",
 		Name:      "platform-toolkit",
 	})
 	require.ErrorIs(t, err, commands.ErrImmutable)
@@ -605,7 +605,7 @@ func TestRepublishingAVersionIsRefusedAndTheStoredBytesAreUntouched(t *testing.T
 		Source:    fetch.SourceGit,
 		URL:       nextBase + "/org/plugin",
 		Ref:       "v1.4.0",
-		Publisher: "immutable",
+		Publisher: "immutable/team",
 		Name:      "platform-toolkit",
 		Version:   "1.4.0",
 	})
@@ -631,7 +631,7 @@ func TestASSRFRefusalIsRecordedAsAFetchErrorAndNeverAsAFinding(t *testing.T) {
 		Source:    fetch.SourceGit,
 		URL:       base + "/org/plugin",
 		Ref:       "v1.3.0",
-		Publisher: "refused",
+		Publisher: "refused/team",
 		// The manifest is the authority on the name; the repository is only where
 		// the modal gets its default. Registering under the repository name here
 		// would be a manifest disagreement, which is a manifest failure.
@@ -677,7 +677,7 @@ func TestAMissingRefIsAFetchErrorAndNotAManifestFailure(t *testing.T) {
 		Source:    fetch.SourceGit,
 		URL:       base + "/org/plugin",
 		Ref:       "v9.9.9",
-		Publisher: "missing-ref",
+		Publisher: "missing-ref/team",
 		Name:      "platform-toolkit",
 		Version:   "9.9.9",
 	})
@@ -701,7 +701,7 @@ func TestAnUploadedArchiveTravelsThroughTheOutboxAndIsStoredTheSameWay(t *testin
 
 	versionID, job := register(t, commands.Registration{
 		Source:      fetch.SourceUpload,
-		Publisher:   "uploaded",
+		Publisher:   "uploaded/team",
 		Name:        "platform-toolkit",
 		Version:     "1.3.0",
 		Kind:        models.PackageKindPlugin,
@@ -741,7 +741,7 @@ func TestARegistrationCommitsItsVersionItsFetchJobAndItsAuditRowTogether(t *test
 		Source:    fetch.SourceGit,
 		URL:       "https://github.com/org/plugin",
 		Ref:       "v2.0.0",
-		Publisher: "atomic",
+		Publisher: "atomic/team",
 	})
 	require.NoError(t, err)
 	require.Equal(t, "plugin", registered.Name, "the repository name is the default the modal shows")
@@ -769,7 +769,7 @@ func TestARegistrationCommitsItsVersionItsFetchJobAndItsAuditRowTogether(t *test
 		Source:    fetch.SourceGit,
 		URL:       "https://github.com/org/plugin",
 		Ref:       "v2.1.0",
-		Publisher: "atomic",
+		Publisher: "atomic/team",
 		Category:  "No Such Category",
 	})
 	require.ErrorIs(t, err, commands.ErrRegistration)
@@ -795,18 +795,18 @@ func TestARegistrationRefusesWhatItCannotName(t *testing.T) {
 		{
 			name: "a ref that is not a version and no explicit one",
 			in: commands.Registration{Source: fetch.SourceGit, URL: "https://github.com/org/plugin",
-				Ref: "main", Publisher: "example"},
+				Ref: "main", Publisher: "example/platform"},
 			want: "needs a version",
 		},
 		{
 			name: "a name the object key could not carry",
 			in: commands.Registration{Source: fetch.SourceGit, URL: "https://github.com/org/plugin",
-				Ref: "v1.0.0", Publisher: "example", Name: "Not A Name"},
+				Ref: "v1.0.0", Publisher: "example/platform", Name: "Not A Name"},
 			want: "is not a valid package name",
 		},
 		{
 			name: "a source kind nothing can fetch",
-			in:   commands.Registration{Source: "oci", URL: "oci://ghcr.io/org/plugin", Publisher: "example"},
+			in:   commands.Registration{Source: "oci", URL: "oci://ghcr.io/org/plugin", Publisher: "example/platform"},
 			want: "unknown source kind",
 		},
 	} {

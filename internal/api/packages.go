@@ -45,7 +45,7 @@ type registrationForm struct {
 	Ref          string `form:"ref" required:"false" doc:"Branch, tag or commit. Defaults to the remote's HEAD." example:"v1.3.0"`
 	Subdirectory string `form:"subdirectory" required:"false" doc:"Path inside the tree holding the manifest." example:"plugins/platform-toolkit"`
 
-	Publisher string `form:"publisher" required:"true" doc:"The publishing namespace. Required: no source carries one." example:"example"`
+	Publisher string `form:"publisher" required:"true" doc:"The publisher, as <namespace>/<team>. Required: no source carries one — a repository has an owner and an archive URL has a host, and neither is a namespace this hub chose. The namespace is the first segment, and it is what the object key and the package id are built from." example:"example/platform"`
 	Name      string `form:"name" required:"false" doc:"The package name. Derived from the repository name when omitted, and always checked against the manifest." example:"platform-toolkit"`
 	Version   string `form:"version" required:"false" doc:"The exact version. Derived from the ref when omitted." example:"1.3.0"`
 

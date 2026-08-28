@@ -202,7 +202,7 @@ func TestTheAuditRowNamesTheStoredVersionAndNeverACredential(t *testing.T) {
 	job := Job{
 		VersionID: uuid.New(),
 		PackageID: uuid.New(),
-		Publisher: "example",
+		Namespace: "example",
 		Name:      "platform-toolkit",
 		Semver:    "1.3.0",
 		Source: JobSource{
@@ -257,7 +257,7 @@ func TestAFetchJobIsRefusedBeforeItReachesTheQueue(t *testing.T) {
 	valid := Job{
 		VersionID: uuid.New(),
 		PackageID: uuid.New(),
-		Publisher: "example",
+		Namespace: "example",
 		Name:      "platform-toolkit",
 		Semver:    "1.3.0",
 		Source:    JobSource{Kind: fetch.SourceGit, URL: "https://github.com/org/plugin"},
@@ -303,7 +303,7 @@ func TestTheFetchJobsIdempotencyKeyIsTheVersionsOwnIdentity(t *testing.T) {
 	job := Job{
 		VersionID: versionID,
 		PackageID: uuid.New(),
-		Publisher: "example",
+		Namespace: "example",
 		Name:      "platform-toolkit",
 		Semver:    "1.3.0",
 		Source:    JobSource{Kind: fetch.SourceGit, URL: "https://github.com/org/plugin"},
@@ -320,7 +320,7 @@ func TestTheFetchJobsIdempotencyKeyIsTheVersionsOwnIdentity(t *testing.T) {
 	// registers against a single value and the relay needs no mapping.
 	require.Equal(t, string(outbox.KindFetch), job.Kind())
 
-	require.Equal(t, blob.VersionRef{Publisher: "example", Name: "platform-toolkit", Semver: "1.3.0"},
+	require.Equal(t, blob.VersionRef{Namespace: "example", Name: "platform-toolkit", Semver: "1.3.0"},
 		job.VersionRef())
 	require.Equal(t, "skills/example/platform-toolkit/1.3.0/bundle.tar.zst", job.VersionRef().BundleKey())
 }

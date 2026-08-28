@@ -27,7 +27,10 @@ type Job struct {
 	VersionID uuid.UUID `json:"versionId"`
 	PackageID uuid.UUID `json:"packageId"`
 
-	Publisher string `json:"publisher"`
+	// Namespace, not the publisher slug: it is the first object-key segment and
+	// the first half of the rendered package id, and the fetcher needs no other
+	// part of the publisher — the package row is reached by PackageID.
+	Namespace string `json:"namespace"`
 	Name      string `json:"name"`
 	Semver    string `json:"semver"`
 
@@ -74,7 +77,7 @@ func (j Job) Validate() error {
 		return errors.New("fetch job names no version")
 	case j.PackageID == uuid.Nil:
 		return errors.New("fetch job names no package")
-	case j.Publisher == "" || j.Name == "" || j.Semver == "":
+	case j.Namespace == "" || j.Name == "" || j.Semver == "":
 		return errors.New("fetch job names no publisher, name or semver")
 	}
 	if err := j.VersionRef().Validate(); err != nil {
@@ -98,7 +101,7 @@ func (j Job) Validate() error {
 
 // VersionRef is where this version's objects live (FR-006).
 func (j Job) VersionRef() blob.VersionRef {
-	return blob.VersionRef{Publisher: j.Publisher, Name: j.Name, Semver: j.Semver}
+	return blob.VersionRef{Namespace: j.Namespace, Name: j.Name, Semver: j.Semver}
 }
 
 // OutboxJob renders the enqueue the registration command performs. The
@@ -132,4 +135,4 @@ func (j Job) SourceRef() fetch.SourceRef {
 }
 
 // String is how the job appears in a log line and an audit row.
-func (j Job) String() string { return j.Publisher + "/" + j.Name + "@" + j.Semver }
+func (j Job) String() string { return j.Namespace + "/" + j.Name + "@" + j.Semver }

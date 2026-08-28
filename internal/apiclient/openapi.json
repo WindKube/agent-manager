@@ -682,7 +682,7 @@
           },
           "publisher": {
             "examples": [
-              "example"
+              "example/platform"
             ],
             "type": "string"
           },
@@ -1374,9 +1374,9 @@
                     "type": "string"
                   },
                   "publisher": {
-                    "description": "The publishing namespace. Required: no source carries one.",
+                    "description": "The publisher, as \u003cnamespace\u003e/\u003cteam\u003e. Required: no source carries one — a repository has an owner and an archive URL has a host, and neither is a namespace this hub chose. The namespace is the first segment, and it is what the object key and the package id are built from.",
                     "examples": [
-                      "example"
+                      "example/platform"
                     ],
                     "type": "string"
                   },

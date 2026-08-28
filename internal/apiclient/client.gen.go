@@ -855,7 +855,7 @@ type PackageRegistered struct {
 	// Preview Present for an upload, where the archive was inspected in-process before the version row was written.
 	Preview *PackagePreview `json:"preview,omitempty"`
 
-	// Publisher Examples: example
+	// Publisher Examples: example/platform
 	Publisher string `json:"publisher"`
 
 	// Verdict Always scanning here: the scan has not run.
@@ -1046,9 +1046,9 @@ type RegisterPackageMultipartBody struct {
 	// Examples: platform-toolkit
 	Name *string `json:"name,omitempty"`
 
-	// Publisher The publishing namespace. Required: no source carries one.
+	// Publisher The publisher, as <namespace>/<team>. Required: no source carries one — a repository has an owner and an archive URL has a host, and neither is a namespace this hub chose. The namespace is the first segment, and it is what the object key and the package id are built from.
 	//
-	// Examples: example
+	// Examples: example/platform
 	Publisher string `json:"publisher"`
 
 	// Ref Branch, tag or commit. Defaults to the remote's HEAD.

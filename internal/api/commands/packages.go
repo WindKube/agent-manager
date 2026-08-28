@@ -43,7 +43,13 @@ type Registration struct {
 	Ref          string
 	Subdirectory string
 
+	// Publisher is the two-segment slug, `example/platform`. Namespace is its
+	// first segment and is DERIVED in normalise, never supplied: it is the segment
+	// the object key and the rendered package id are both built from, so a caller
+	// able to set it independently could put a package's bytes under a namespace
+	// its publisher does not belong to.
 	Publisher string
+	Namespace string
 	Name      string
 	Version   string
 
@@ -82,7 +88,7 @@ func RegisterPackage(ctx context.Context, db bun.IDB, p auth.Principal, in Regis
 		return contract.PackageRegistered{}, err
 	}
 
-	ref := blob.VersionRef{Publisher: in.Publisher, Name: in.Name, Semver: in.Version}
+	ref := blob.VersionRef{Namespace: in.Namespace, Name: in.Name, Semver: in.Version}
 	if refErr := ref.Validate(); refErr != nil {
 		return contract.PackageRegistered{}, fmt.Errorf("%w: %w", ErrRegistration, refErr)
 	}
@@ -151,7 +157,7 @@ func RegisterPackage(ctx context.Context, db bun.IDB, p auth.Principal, in Regis
 		job := fetcher.Job{
 			VersionID: version.ID,
 			PackageID: pkg.ID,
-			Publisher: in.Publisher,
+			Namespace: in.Namespace,
 			Name:      in.Name,
 			Semver:    in.Version,
 			Source: fetcher.JobSource{
@@ -196,6 +202,18 @@ func (in Registration) normalise() (Registration, error) {
 		// make the object key — which is permanent — a guess.
 		return in, fmt.Errorf("%w: a registration needs a publisher", ErrRegistration)
 	}
+
+	// The two-segment shape is load-bearing rather than stylistic. The namespace is
+	// the first segment and nothing else; `publisher_slug_is_two_segments` in the
+	// schema says the same thing, and this is the same rule stated where the caller
+	// can be told what is wrong with their input rather than reading a 23514.
+	namespace, team, ok := strings.Cut(in.Publisher, "/")
+	if !ok || namespace == "" || team == "" || strings.Contains(team, "/") {
+		return in, fmt.Errorf(
+			"%w: a publisher is <namespace>/<team>, for example example/platform, not %q",
+			ErrRegistration, in.Publisher)
+	}
+	in.Namespace = namespace
 
 	switch in.Source {
 	case fetch.SourceUpload:
@@ -337,11 +355,20 @@ func resolveCategory(ctx context.Context, tx bun.IDB, nameOrSlug string) (*uuid.
 // are in hand. An EXISTING package keeps its kind — a package does not change
 // from a plugin into a skill between versions.
 func upsertPackage(ctx context.Context, tx bun.IDB, publisherID uuid.UUID, categoryID *uuid.UUID, in Registration) (*models.Package, error) {
+	// Looked up by (namespace, name), which is what `unique (namespace, name)`
+	// keys on — not by (publisher_id, name). Two teams in one namespace cannot both
+	// own a name, so a lookup scoped to the publisher would miss a package owned by
+	// a sibling team and turn a nameable conflict into a 23505 from the insert.
 	existing := new(models.Package)
 	err := tx.NewSelect().Model(existing).
-		Where("publisher_id = ? and name = ?", publisherID, in.Name).
+		Where("namespace = ? and name = ?", in.Namespace, in.Name).
 		Limit(1).Scan(ctx)
 	if err == nil {
+		if existing.PublisherID != publisherID {
+			return nil, fmt.Errorf(
+				"%w: %s/%s already belongs to another publisher in the %s namespace",
+				ErrRegistration, in.Namespace, in.Name, in.Namespace)
+		}
 		if categoryID != nil && existing.CategoryID == nil {
 			if _, err := tx.NewUpdate().Model(existing).
 				Set("category_id = ?", categoryID).
@@ -356,6 +383,7 @@ func upsertPackage(ctx context.Context, tx bun.IDB, publisherID uuid.UUID, categ
 	pkg := &models.Package{
 		ID:          models.NewID(),
 		PublisherID: publisherID,
+		Namespace:   in.Namespace,
 		Name:        in.Name,
 		Kind:        in.Kind,
 		CategoryID:  categoryID,

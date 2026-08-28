@@ -77,7 +77,7 @@ type PackageRegistered struct {
 	PackageID string `json:"packageId" format:"uuid"`
 	VersionID string `json:"versionId" format:"uuid"`
 
-	Publisher string `json:"publisher" example:"example"`
+	Publisher string `json:"publisher" example:"example/platform"`
 	Name      string `json:"name" example:"platform-toolkit"`
 	Version   string `json:"version" example:"1.3.0"`
 	Kind      string `json:"kind" enum:"plugin,skill" example:"plugin"`

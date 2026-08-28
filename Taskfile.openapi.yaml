@@ -17,6 +17,10 @@ vars:
   # Revision the diff and breaking tasks compare against. CI passes the PR merge base.
   BASE: '{{.BASE | default "HEAD"}}'
 
+  # Where a deliberate breaking change is justified. Read by openapi:breaking; a
+  # breaking change absent from it still fails the gate.
+  ACK: '{{.ACK | default "specs/001-agent-manager-hub/contracts/ACKNOWLEDGED-BREAKING.md"}}'
+
   # No "v": these two are the goreleaser asset versions; the git tag adds the v.
   VACUUM_VERSION: 0.30.1
   WIRETAP_VERSION: 0.7.3
@@ -330,14 +334,47 @@ tasks:
           head -3 "$tmp/report.json" >&2
           exit 1
         fi
-        breaking="$(jq '[.changes[]? | select(.breaking)] | length' <"$tmp/report.json")"
         total="$(jq '[.changes[]?] | length' <"$tmp/report.json")"
+        breaking="$(jq '[.changes[]? | select(.breaking)] | length' <"$tmp/report.json")"
         echo "openapi:breaking: $total change(s) against {{.BASE}}, $breaking breaking"
-        if [ "$breaking" -gt 0 ]; then
-          jq -r '.changes[] | select(.breaking)
-                 | "  BREAKING \(.changeText) at \(.path // "?"): \(.original // "-") -> \(.new // "-")"' \
+        [ "$breaking" -gt 0 ] || exit 0
+
+        # A breaking change is permitted only if {{.ACK}} names it. That file is read
+        # here rather than trusted, because the alternative to a narrow justified
+        # exception is that the first legitimate break forces someone to disable the
+        # gate wholesale — and a disabled gate never comes back. Anything breaking
+        # and unlisted still fails.
+        #
+        # The key is `<changeText>|<path>`, taken from the fenced ```id blocks.
+        # `grep -Fxf` matches whole lines literally, so a JSONPath full of brackets
+        # and quotes needs no escaping. That matters: an unanchored or
+        # regex-interpreted match here would silently acknowledge breaks nobody
+        # wrote down, which is the one way this mechanism could be worse than no
+        # mechanism.
+        awk '/^```id$/ {inblock=1; next} /^```$/ {inblock=0} inblock' \
+          '{{.ACK}}' 2>/dev/null | sed '/^[[:space:]]*$/d' >"$tmp/ack" || :
+        jq -r '.changes[] | select(.breaking) | "\(.changeText)|\(.path // "?")"' \
+          <"$tmp/report.json" | sort -u >"$tmp/found"
+
+        if [ -s "$tmp/ack" ]; then
+          grep -Fxv -f "$tmp/ack" "$tmp/found" >"$tmp/unack" || :
+          if grep -Fx -f "$tmp/ack" "$tmp/found" >"$tmp/acked"; then
+            echo "openapi:breaking: $(wc -l <"$tmp/acked") breaking change(s) acknowledged in {{.ACK}}"
+            sed 's/^/  ACKNOWLEDGED /' "$tmp/acked"
+          fi
+        else
+          cp "$tmp/found" "$tmp/unack"
+        fi
+
+        if [ -s "$tmp/unack" ]; then
+          jq -r --rawfile unack "$tmp/unack" '
+              ($unack | rtrimstr("\n") | split("\n")) as $u
+              | .changes[] | select(.breaking)
+              | select(("\(.changeText)|\(.path // "?")") | IN($u[]))
+              | "  BREAKING \(.changeText) at \(.path // "?"): \(.original // "-") -> \(.new // "-")"' \
             <"$tmp/report.json" >&2
-          echo "openapi:breaking: the frozen machine-facing surface changed incompatibly" >&2
+          echo "openapi:breaking: the frozen machine-facing surface changed incompatibly." >&2
+          echo "openapi:breaking: if the change is deliberate, justify it in {{.ACK}}." >&2
           exit 1
         fi
 

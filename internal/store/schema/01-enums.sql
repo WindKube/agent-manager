@@ -31,6 +31,13 @@ create type scan_gate as enum ('block', 'approval', 'warn-with-override');
 create type signature_kind as enum ('none', 'cosign-bundle');
 create type signature_result as enum ('verified', 'invalid', 'error');
 create type subject_kind as enum ('user', 'group');
-create type sync_target_kind as enum ('claude-code', 'agents-md', 'codex');
+-- `agents-md` was dropped, not forgotten. The convention it names documents only a
+-- repository-root AGENTS.md and no per-user location, and a single shared file
+-- cannot be installed per package, marked with a package and version, given a
+-- distinct directory per publisher, swapped atomically or pruned by path — so it
+-- was never an install target in the sense the other two are. It will come back
+-- when there is a design for composing N packages into delimited, individually
+-- prunable regions of one file. See specs/002-agent-manager-cli/plan.md R2.
+create type sync_target_kind as enum ('claude-code', 'codex');
 create type verdict as enum ('scanning', 'clean', 'flagged', 'rejected');
 create type version_policy as enum ('floating-latest', 'pinned', 'range');

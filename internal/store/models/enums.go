@@ -66,7 +66,7 @@ var enumTypes = map[string][]string{
 	PGEntryMode:         {"latest", "pinned", "range"},
 	PGMembershipRole:    {"owner", "maintainer", "reviewer", "consumer"},
 	PGSubjectKind:       {"user", "group"},
-	PGSyncTargetKind:    {"claude-code", "agents-md", "codex"},
+	PGSyncTargetKind:    {"claude-code", "codex"},
 	PGOrgRole:           {"catalog-admin", "scanner-reviewer", "profile-consumer", "read-only"},
 	PGDeviceAuthState:   {"pending", "approved", "consumed", "expired", "denied"},
 	PGScanGate:          {"block", "approval", "warn-with-override"},
@@ -319,12 +319,17 @@ const (
 
 func (v SubjectKind) Valid() bool { return inEnum(PGSubjectKind, string(v)) }
 
-// SyncTargetKind is a client-side file format a profile can be written to.
+// SyncTargetKind is a client-side directory convention a profile can be written to.
+//
+// `agents-md` used to be here and was dropped rather than left unimplemented: see
+// 01-enums.sql for why one shared markdown file is not an install target. Adding a
+// value back is a migration, which is the correct cost — a dead enum value the API
+// refuses is worse, because a row can still be written with it directly and then
+// nothing can render it.
 type SyncTargetKind string
 
 const (
 	SyncTargetKindClaudeCode SyncTargetKind = "claude-code"
-	SyncTargetKindAgentsMD   SyncTargetKind = "agents-md"
 	SyncTargetKindCodex      SyncTargetKind = "codex"
 )
 

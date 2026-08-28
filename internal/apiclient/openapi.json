@@ -524,7 +524,6 @@
             "items": {
               "enum": [
                 "claude-code",
-                "agents-md",
                 "codex"
               ],
               "type": "string"
@@ -1572,7 +1571,6 @@
             "items": {
               "enum": [
                 "claude-code",
-                "agents-md",
                 "codex"
               ],
               "type": "string"

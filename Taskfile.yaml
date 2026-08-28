@@ -60,8 +60,15 @@ tasks:
 
   tailwind:install:
     internal: true
+    # The guard is the STAMP, not the binary. `test -x` alone means a bump to
+    # TAILWIND_VERSION never re-downloads anything: the old binary is still
+    # executable, so the task reports up-to-date forever and the pin becomes a
+    # comment on a working tree that does not honour it. Stamping the version rather
+    # than parsing the tool's own `--help` keeps the check independent of how it
+    # spells its version.
     status:
       - test -x {{.BIN}}/tailwindcss
+      - test "$(cat {{.BIN}}/.tailwindcss.version 2>/dev/null)" = "{{.TAILWIND_VERSION}}"
     cmds:
       - mkdir -p {{.BIN}}
       - |
@@ -76,6 +83,7 @@ tasks:
         curl -fsSL -o {{.BIN}}/tailwindcss \
           "https://github.com/tailwindlabs/tailwindcss/releases/download/{{.TAILWIND_VERSION}}/${asset}"
         chmod +x {{.BIN}}/tailwindcss
+        printf '%s' '{{.TAILWIND_VERSION}}' > {{.BIN}}/.tailwindcss.version
 
   atlas:install:
     internal: true

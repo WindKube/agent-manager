@@ -7,6 +7,12 @@ includes:
   openapi:
     taskfile: Taskfile.openapi.yaml
 
+  # The CLI is a second Go module with its own taskfile; `dir` is what keeps its
+  # `go build ./...` inside cli/ instead of resolving against the hub module.
+  cli:
+    taskfile: cli/Taskfile.yaml
+    dir: cli
+
 vars:
   BIN: "{{.ROOT_DIR}}/.bin"
   TAILWIND_VERSION: v4.1.18

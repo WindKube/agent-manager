@@ -242,3 +242,190 @@ jobs:
           cache-to: type=gha,mode=max
       - name: The image runs and reports its version
         run: docker run --rm agent-manager:ci version
+
+  # --- the CLI module (cli/) ------------------------------------------------
+  #
+  # amctl is a second Go module, so every job below points its own toolchain at
+  # cli/go.mod. The hub's jobs above are untouched: a nested module is excluded
+  # from the root's `./...` pattern, so `go build ./...` and `go test ./...` at
+  # the repository root still mean exactly the hub.
+
+  cli-lint:
+    name: CLI lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+          cache: true
+      # Same reason as the hub's lint job: golangci-lint type-checks, so a lazy
+      # module fetch that flakes shows up as a bogus `typecheck` finding on our
+      # own source.
+      - name: go mod download
+        run: go mod download
+        working-directory: cli
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.12.2
+          working-directory: cli
+
+  # Three operating systems, not one, and that is load-bearing rather than thorough.
+  # T008 and T011 arrived at it independently:
+  #
+  #   - T009's TestCompiledInBackendSetIsTheOneThisPlatformShouldHave only sees the
+  #     darwin cgo regression when it runs ON darwin. A linux-only leg makes it a
+  #     gate that can never fire for the case it was written for, and R1's darwin
+  #     conclusion stays a deduction from `go list -json` until a mac executes it.
+  #   - Every non-linux assertion in internal/apply/swap_test.go — the Windows
+  #     ERROR_ACCESS_DENIED errno, the ERROR_NOT_SAME_DEVICE branch, the symlink
+  #     subtests — is unverified for no reason other than this job's runs-on.
+  #
+  # So a green run here on ubuntu alone is not evidence about the platforms where
+  # the interesting failures live.
+  cli-test:
+    name: CLI unit tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One platform's filesystem semantics failing must not cancel the evidence
+      # from the other two; that is the whole reason this job is a matrix.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+          cache: true
+      # -race needs cgo, and a C toolchain is not guaranteed on PATH on
+      # windows-latest. The assertions this leg exists for are filesystem
+      # semantics, not data races, so dropping -race there costs nothing this job
+      # is here to buy. Two steps rather than one conditional command line,
+      # because a shell-level `if` would report success when the branch is wrong.
+      - name: go test -race
+        if: matrix.os != 'windows-latest'
+        working-directory: cli
+        env:
+          CGO_ENABLED: "1" # -race requires cgo
+        run: go test -race -shuffle=on -coverprofile=coverage.out -covermode=atomic ./...
+      - name: go test
+        if: matrix.os == 'windows-latest'
+        working-directory: cli
+        run: go test -shuffle=on ./...
+      # Ubuntu only. Three legs uploading `cli-coverage` collide on the artifact
+      # name, and coverage is a property of the suite rather than of a platform.
+      - name: Coverage summary
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: cli
+        run: go tool cover -func=coverage.out | tail -1 >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always() && matrix.os == 'ubuntu-latest'
+        with:
+          name: cli-coverage
+          path: cli/coverage.out
+          if-no-files-found: ignore
+
+  cli-build:
+    name: CLI build (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        # One shell across all five runners, so the build and smoke steps are
+        # the same script everywhere instead of a pwsh variant for Windows.
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        # The five platforms plan.md's Technical Context names, and no others.
+        # Every one is built on a runner of its own architecture so the binary
+        # can actually be executed afterwards — a cross-compiled binary that
+        # links but cannot start is the failure this matrix exists to catch.
+        include:
+          - goos: linux
+            goarch: amd64
+            runner: ubuntu-latest
+            cgo: "0"
+          - goos: linux
+            goarch: arm64
+            runner: ubuntu-24.04-arm
+            cgo: "0"
+          # CGO_ENABLED=1 on darwin, per plan.md R1, which is now MEASURED
+          # (T008) and confirmed these values. keyring's keychain.go is the only
+          # file in the module gated on cgo (`//go:build darwin && cgo`), and a
+          # static darwin build does not contain it — keyring then walks its own
+          # backendOrder to the next thing that opens, which is `pass`, not the
+          # file. So a Mac developer with pass installed would silently get their
+          # token written into a GPG password store. That is worse than the
+          # fallback plan.md originally described, and it is exactly the silent
+          # downgrade FR-003 forbids.
+          #
+          # Linux and Windows are CGO-invariant (secret-service, kwallet, keyctl
+          # and wincred are all pure Go), also measured — so only the two mac
+          # legs pay for cgo. Note the mac artefacts are therefore NOT static:
+          # they link libSystem and Security.framework, which makes the runner's
+          # deployment target the minimum supported macOS version.
+          - goos: darwin
+            goarch: arm64
+            runner: macos-latest
+            cgo: "1"
+          - goos: darwin
+            goarch: amd64
+            # macos-15-intel, not macos-latest: R1's conclusion is a native
+            # macOS build per architecture, and cgo cross-compilation between
+            # the two Mac architectures is the thing it rules out.
+            runner: macos-15-intel
+            cgo: "1"
+          - goos: windows
+            goarch: amd64
+            runner: windows-latest
+            cgo: "0"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+          cache: true
+      - name: go build
+        working-directory: cli
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: ${{ matrix.cgo }}
+          VERSION: ci-${{ github.sha }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          set -eu
+          ext=""
+          if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
+          out="amctl-${GOOS}-${GOARCH}${ext}"
+          go build -trimpath \
+            -ldflags "-s -w \
+              -X github.com/WindKube/agent-manager/cli/internal/cmd.Version=${VERSION} \
+              -X github.com/WindKube/agent-manager/cli/internal/cmd.Commit=${COMMIT}" \
+            -o "$out" .
+          echo "AMCTL_BIN=$out" >> "$GITHUB_ENV"
+      # The version string comes from -ldflags -X, so this also proves the stamp
+      # path still matches the variables in internal/cmd. A renamed package
+      # leaves the flag silently ineffective and the binary reporting "dev".
+      - name: The built binary runs and reports its stamped version
+        working-directory: cli
+        env:
+          EXPECTED: ci-${{ github.sha }}
+        run: |
+          set -eu
+          "./$AMCTL_BIN" version
+          "./$AMCTL_BIN" version | grep -F "$EXPECTED"

@@ -10,11 +10,11 @@ import (
 // The key layout is the design's (docs/design/agent-manager.dc.html, the Storage
 // screen's keyTree) and FR-006's:
 //
-//	skills/<publisher>/<name>/<semver>/bundle.tar.zst
+//	skills/<namespace>/<name>/<semver>/bundle.tar.zst
 //	                                  /plugin.json      (or SKILL.md)
 //	                                  /scan.json
 //	                                  /signature.sig
-//	skills/<publisher>/<name>/index.json    <- version list + latest pointer
+//	skills/<namespace>/<name>/index.json    <- version list + latest pointer
 //	profiles/<slug>/r<seq>.json
 //	profiles/<slug>/head.json
 const (
@@ -37,7 +37,15 @@ const (
 
 // segmentPattern is what a single path segment may contain.
 //
-// Publisher slugs, package names and semvers all arrive from user-supplied
+// THE FIRST SEGMENT IS THE NAMESPACE, NOT THE PUBLISHER SLUG, and this field was
+// called Publisher until it collided with reality. A publisher is `example/platform`
+// and its namespace is `example`; the design's keyTree reads
+// `skills/example/terraform-module-review/2.4.1/…` and its package ids read
+// `example/pii-redactor`, so both are built from the namespace. Passing a slug here
+// is refused by validSegment below, because a slug contains a `/` — which is how the
+// confusion surfaces if it comes back.
+//
+// Namespaces, package names and semvers all arrive from user-supplied
 // sources — an uploaded manifest, a repository URL — so a key built from them is
 // untrusted input (constitution principle III). Anything that could climb out of
 // its prefix is rejected rather than sanitised: a segment must start
@@ -57,35 +65,35 @@ func validSegment(kind, s string) error {
 
 // PackageRef names one package's prefix in the store.
 type PackageRef struct {
-	Publisher string
+	Namespace string
 	Name      string
 }
 
 func (p PackageRef) Validate() error {
-	if err := validSegment("publisher", p.Publisher); err != nil {
+	if err := validSegment("namespace", p.Namespace); err != nil {
 		return err
 	}
 	return validSegment("package name", p.Name)
 }
 
 func (p PackageRef) Prefix() string {
-	return SkillsPrefix + "/" + p.Publisher + "/" + p.Name
+	return SkillsPrefix + "/" + p.Namespace + "/" + p.Name
 }
 
 // IndexKey is the commit-last pointer: the version list and the latest pointer.
 func (p PackageRef) IndexKey() string { return p.Prefix() + "/" + IndexObject }
 
-func (p PackageRef) String() string { return p.Publisher + "/" + p.Name }
+func (p PackageRef) String() string { return p.Namespace + "/" + p.Name }
 
 // VersionRef names one immutable version's prefix.
 type VersionRef struct {
-	Publisher string
+	Namespace string
 	Name      string
 	Semver    string
 }
 
 func (v VersionRef) Package() PackageRef {
-	return PackageRef{Publisher: v.Publisher, Name: v.Name}
+	return PackageRef{Namespace: v.Namespace, Name: v.Name}
 }
 
 func (v VersionRef) Validate() error {
@@ -108,7 +116,7 @@ func (v VersionRef) String() string { return v.Package().String() + "@" + v.Semv
 // makes two concurrent publishes of the same version write to different prefixes,
 // so one cannot promote the other's bytes.
 func stagingKey(v VersionRef, attempt, object string) string {
-	return StagingPrefix + "/" + v.Publisher + "/" + v.Name + "/" + v.Semver + "/" + attempt + "/" + object
+	return StagingPrefix + "/" + v.Namespace + "/" + v.Name + "/" + v.Semver + "/" + attempt + "/" + object
 }
 
 // ProfileRevisionKey is profiles/<slug>/r<seq>.json — the resolved lockfile.

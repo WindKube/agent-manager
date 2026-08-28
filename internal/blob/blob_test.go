@@ -28,7 +28,7 @@ func newBucket(t *testing.T) *blob.Bucket {
 	return b
 }
 
-var ref = blob.VersionRef{Publisher: "example", Name: "terraform-module-review", Semver: "2.4.1"}
+var ref = blob.VersionRef{Namespace: "example", Name: "terraform-module-review", Semver: "2.4.1"}
 
 func parts(bundle []byte) blob.VersionParts {
 	return blob.VersionParts{
@@ -253,7 +253,7 @@ func TestAnInterruptedCommitLeavesAnAlreadyCommittedVersionReadable(t *testing.T
 	bucket := newBucket(t)
 	catalog := blob.NewCatalog(bucket.Reader())
 
-	first := blob.VersionRef{Publisher: ref.Publisher, Name: ref.Name, Semver: "1.0.0"}
+	first := blob.VersionRef{Namespace: ref.Namespace, Name: ref.Name, Semver: "1.0.0"}
 	firstBytes := []byte("the first bundle")
 
 	_, err := blob.NewCommitter(bucket.Reader(), bucket.Writer()).Commit(ctx, first, parts(firstBytes))
@@ -433,9 +433,9 @@ func TestAKeySegmentThatCouldEscapeItsPrefixIsRejected(t *testing.T) {
 		{name: "a backslash", segment: "name\\sibling"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Error(t, blob.PackageRef{Publisher: tc.segment, Name: "ok"}.Validate())
-			require.Error(t, blob.PackageRef{Publisher: "ok", Name: tc.segment}.Validate())
-			require.Error(t, blob.VersionRef{Publisher: "ok", Name: "ok", Semver: tc.segment}.Validate())
+			require.Error(t, blob.PackageRef{Namespace: tc.segment, Name: "ok"}.Validate())
+			require.Error(t, blob.PackageRef{Namespace: "ok", Name: tc.segment}.Validate())
+			require.Error(t, blob.VersionRef{Namespace: "ok", Name: "ok", Semver: tc.segment}.Validate())
 
 			_, err := blob.ProfileHeadKey(tc.segment)
 			if tc.legalSlug {
@@ -451,10 +451,10 @@ func TestAKeySegmentThatCouldEscapeItsPrefixIsRejected(t *testing.T) {
 		name string
 		ref  blob.VersionRef
 	}{
-		{"a plain semver", blob.VersionRef{Publisher: "example", Name: "pii-redactor", Semver: "1.4.2"}},
-		{"a prerelease", blob.VersionRef{Publisher: "example", Name: "pii-redactor", Semver: "2.0.0-rc.1"}},
-		{"build metadata", blob.VersionRef{Publisher: "example", Name: "pii-redactor", Semver: "2.0.0+build.7"}},
-		{"a dotted name", blob.VersionRef{Publisher: "community", Name: "slack.digest", Semver: "0.5.1"}},
+		{"a plain semver", blob.VersionRef{Namespace: "example", Name: "pii-redactor", Semver: "1.4.2"}},
+		{"a prerelease", blob.VersionRef{Namespace: "example", Name: "pii-redactor", Semver: "2.0.0-rc.1"}},
+		{"build metadata", blob.VersionRef{Namespace: "example", Name: "pii-redactor", Semver: "2.0.0+build.7"}},
+		{"a dotted name", blob.VersionRef{Namespace: "community", Name: "slack.digest", Semver: "0.5.1"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.NoError(t, tc.ref.Validate())
@@ -484,7 +484,7 @@ func TestCommitRejectsAnIncompleteVersion(t *testing.T) {
 		},
 		{
 			name:  "a traversing semver",
-			ref:   blob.VersionRef{Publisher: "example", Name: "p", Semver: "../../etc"},
+			ref:   blob.VersionRef{Namespace: "example", Name: "p", Semver: "../../etc"},
 			parts: parts([]byte("bytes")),
 		},
 		{
@@ -532,7 +532,7 @@ func TestSetLatestMovesThePointerOnlyToACommittedVersion(t *testing.T) {
 	committer := blob.NewCommitter(bucket.Reader(), bucket.Writer())
 	catalog := blob.NewCatalog(bucket.Reader())
 
-	older := blob.VersionRef{Publisher: ref.Publisher, Name: ref.Name, Semver: "2.4.0"}
+	older := blob.VersionRef{Namespace: ref.Namespace, Name: ref.Name, Semver: "2.4.0"}
 	_, err := committer.Commit(ctx, older, parts([]byte("older")))
 	require.NoError(t, err)
 	_, err = committer.Commit(ctx, ref, parts([]byte("newer")))
@@ -718,4 +718,21 @@ func keysOf(attrs []blob.Attributes) []string {
 		out = append(out, a.Key)
 	}
 	return out
+}
+
+// The rename this field went through is only half a fix; the other half is that
+// passing the old value still fails loudly. A publisher slug is two segments and a
+// namespace is one, so handing a slug to a key builder must be an error at the
+// boundary rather than a five-segment key nobody notices until a bundle lands
+// somewhere no reader looks.
+func TestAPublisherSlugIsNotANamespaceAndIsRefusedAsOne(t *testing.T) {
+	t.Parallel()
+
+	require.Error(t, blob.PackageRef{Namespace: "example/platform", Name: "pii-redactor"}.Validate(),
+		"a two-segment publisher slug must not be accepted where a namespace belongs")
+
+	ok := blob.PackageRef{Namespace: "example", Name: "pii-redactor"}
+	require.NoError(t, ok.Validate())
+	require.Equal(t, "skills/example/pii-redactor", ok.Prefix(),
+		"the design's keyTree is skills/<namespace>/<name>, four segments to the version")
 }

@@ -17,7 +17,10 @@ import (
 // therefore leaves orphaned bytes and no reachable version, which is the whole
 // mechanism: object storage gives no transaction, so the last write is the commit.
 type Index struct {
-	Publisher string       `json:"publisher"`
+	// Namespace, not the publisher slug: this is the first key segment, so it is
+	// `example`, never `example/platform`. The stored JSON says so too, because
+	// index.json is read by people.
+	Namespace string       `json:"namespace"`
 	Name      string       `json:"name"`
 	Latest    string       `json:"latest,omitempty"`
 	Versions  []IndexEntry `json:"versions"`

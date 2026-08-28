@@ -166,7 +166,7 @@ func (c *Committer) Commit(ctx context.Context, ref VersionRef, parts VersionPar
 	}
 
 	// Step 3 — the pointer, last.
-	index.Publisher = ref.Publisher
+	index.Namespace = ref.Namespace
 	index.Name = ref.Name
 	index.Versions = append(index.Versions, entry)
 	index.UpdatedAt = c.now().UTC()
@@ -210,7 +210,7 @@ func (c *Committer) SetLatest(ctx context.Context, pkg PackageRef, semver string
 func (c *Committer) loadIndex(ctx context.Context, pkg PackageRef) (Index, error) {
 	idx, err := NewCatalog(c.read).Index(ctx, pkg)
 	if errors.Is(err, ErrNotFound) {
-		return Index{Publisher: pkg.Publisher, Name: pkg.Name}, nil
+		return Index{Namespace: pkg.Namespace, Name: pkg.Name}, nil
 	}
 	if err != nil {
 		return Index{}, err

@@ -114,9 +114,20 @@ func TestPublicOperationsNeedNoToken(t *testing.T) {
 		{"health is a probe a supervisor calls", http.MethodGet, "/v1/health", "", http.StatusOK},
 		{"the emitted document is public", http.MethodGet, "/v1/openapi.json", "", http.StatusOK},
 		{
-			"deviceAuthorize is unauthenticated by definition and not yet implemented",
-			http.MethodPost, "/v1/device/authorize", `{"client_id":"agent-manager-cli","host":"dev-laptop-01"}`,
-			http.StatusNotImplemented,
+			// Was a 501 while the flow was declared and unimplemented. It is now the
+			// 422 an empty host earns, which is the strongest thing this
+			// container-free test can assert: the request got past the middleware
+			// with no token AND reached the handler's own validation. That the flow
+			// works is device_integration_test.go's job.
+			"deviceAuthorize is unauthenticated by definition",
+			http.MethodPost, "/v1/device/authorize", `{"client_id":"agent-manager-cli","host":""}`,
+			http.StatusUnprocessableEntity,
+		},
+		{
+			// Same, on the polling half: an unauthenticated caller reaches the
+			// handler and gets the RFC's own refusal, not a 401.
+			"deviceToken is unauthenticated by definition",
+			http.MethodPost, "/v1/device/token", "grant_type=nope", http.StatusBadRequest,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -170,8 +181,13 @@ func TestEveryFailureCarriesTheOneErrorShape(t *testing.T) {
 			http.StatusUnprocessableEntity,
 		},
 		{
-			"an operation that is declared but not implemented",
-			http.MethodPost, "/v1/device/token", "", "grant_type=x", http.StatusNotImplemented,
+			// Replaces the 501 this row used to assert. /v1/device/authorize's 422 is
+			// the one failure the device flow answers in the project's shape; its
+			// sibling /v1/device/token is the single documented exception and is
+			// asserted separately below.
+			"a device authorisation with no host",
+			http.MethodPost, "/v1/device/authorize", "", `{"client_id":"agent-manager-cli","host":""}`,
+			http.StatusUnprocessableEntity,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -188,6 +204,25 @@ func TestEveryFailureCarriesTheOneErrorShape(t *testing.T) {
 			require.NotEmpty(t, body.CorrelationID)
 		})
 	}
+
+	// The exception, asserted so that it stays exactly one operation wide.
+	// contract.Error's own comment names it: /v1/device/token's 400 is the RFC 8628
+	// envelope because a polling client parses those field names, and the frozen
+	// contract fixes it.
+	t.Run("the device token endpoint is the one documented exception", func(t *testing.T) {
+		rec := formRequest(t, h, "/v1/device/token", "grant_type=not-the-device-grant")
+		require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+		require.Equal(t, "application/json", strings.Split(rec.Header().Get("Content-Type"), ";")[0],
+			"the RFC 8628 envelope is application/json, not problem+json")
+
+		var envelope contract.DeviceTokenError
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &envelope))
+		require.Equal(t, "invalid_grant", envelope.Error)
+
+		var shape contract.Error
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &shape))
+		require.Zero(t, shape.Status, "the RFC envelope must not also carry the project's error shape")
+	})
 }
 
 func TestCorrelationIDIsEchoedOrReplaced(t *testing.T) {

@@ -25,6 +25,16 @@ import (
 //
 // T042 introduces internal/audit and this becomes its Writer. Until then the
 // insert lives beside the commands that must not commit without it.
+//
+// actorKind is `identity` at every call site in this package today, because every
+// command here runs on behalf of a person. It stays a parameter rather than
+// becoming a constant: actor_kind's other value is `system`, which
+// internal/worker/fetcher already writes, and the first request-path row with no
+// person behind it — a scheduled expiry, a policy default — must be able to say
+// so. A hard-coded `identity` would silently label it as somebody's act, which is
+// the one thing an audit log must not do.
+//
+//nolint:unparam // see above: the constant argument is today's call sites, not the contract.
 func writeAudit(ctx context.Context, tx bun.IDB, kind models.AuditKind, actor, actorKind, text, source string) error {
 	if !kind.Valid() {
 		return fmt.Errorf("audit kind %q is not a value the schema allows", kind)

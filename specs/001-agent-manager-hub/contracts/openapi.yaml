@@ -395,9 +395,19 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: JWT
+      # `opaque`, not `JWT`. This said JWT until the device flow was implemented and
+      # the claim became reachable: `internal/auth.NewToken` returns
+      # base64.RawURLEncoding of 32 crypto/rand bytes — one segment, no header, no
+      # payload, no claims. `bearerFormat` is free-form in OpenAPI 3.1 and exists
+      # only as a hint to a client author, so a wrong hint is worse than none: a CLI
+      # that believed it would write `jwt.Parse` and fail on the first token this
+      # hub ever issues. Corrected here rather than worked around because no client
+      # has shipped against it.
+      bearerFormat: opaque
       description: |
         The `access_token` issued by /v1/device/token, sent as `Authorization: Bearer <token>`.
+        The token is opaque: do not decode it, and do not read an expiry out of it. A
+        token's lifetime is the `expires_in` returned beside it.
   responses:
     Unauthorized:
       description: Missing, expired or invalid token.

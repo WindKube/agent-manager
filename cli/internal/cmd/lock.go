@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -384,8 +385,27 @@ func WithLock(h Home, fn func(*Lock) error) error {
 	return l.Release()
 }
 
+// The open goes through an *os.Root, and it is the READER that has to, not the
+// remover. On Windows os.Open omits FILE_SHARE_DELETE, so a plain-os reader
+// denies delete access to every other process for as long as it holds the file
+// — which would make Release's unlink, and a reclaimer's, fail with "Access is
+// denied" for as long as anyone was looking at the lock. No change on the
+// removal side can work around that; the sharing mode is the reader's to grant.
+// Root.Open passes FILE_SHARE_DELETE, so reading a lock never blocks removing
+// it. See internal/cache's package comment for the measurement.
+//
+// The O_EXCL create is deliberately NOT routed through a root: its atomicity is
+// this lock's whole correctness argument, it is reasoned about at the top of
+// this file, and nothing is gained — the file being created cannot already be
+// open to anyone.
 func readLock(path string) (Holder, os.FileInfo, error) {
-	f, err := os.Open(path) //nolint:gosec // path is Home.LockPath, derived from a validated home
+	root, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		return Holder{}, nil, err
+	}
+	defer func() { _ = root.Close() }()
+
+	f, err := root.Open(filepath.Base(path))
 	if err != nil {
 		return Holder{}, nil, err
 	}

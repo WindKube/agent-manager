@@ -200,6 +200,23 @@ func TestRoundTrip(t *testing.T) {
 		require.NoError(t, err)
 		st, err := os.Stat(p)
 		require.NoError(t, err)
+
+		// Windows has no mode bits: Go synthesises 0666 for a writable file, so
+		// tmp.Chmod(fileMode) in Save is discarded there and asserting 0600
+		// could only be satisfied by asserting 0666, which asserts nothing.
+		//
+		// The gap is real and is NOT a secret leak — an installation record
+		// holds package ids, versions and destinations, no credential — but it
+		// is world-readable on Windows where every other platform keeps it to
+		// the owner. Narrowing it needs an explicit DACL via
+		// golang.org/x/sys/windows, which no task in this feature owns. The
+		// credential store is unaffected: keyring uses wincred there, never the
+		// file backend whose mode FR-004 is about.
+		if runtime.GOOS == "windows" {
+			require.Equal(t, os.FileMode(0o666), st.Mode().Perm(),
+				"if Windows ever grows real mode bits, revisit this rather than relaxing it")
+			return
+		}
 		require.Equal(t, os.FileMode(0o600), st.Mode().Perm())
 	})
 
@@ -236,9 +253,9 @@ func TestRoundTrip(t *testing.T) {
 			Targets: []record.Target{record.TargetCodex, record.TargetClaudeCode},
 			Entries: []record.Entry{
 				{ID: "z/b", Version: "1", Digest: mustDigest(t, digestHex), Kind: record.KindSkill,
-					Target: record.TargetClaudeCode, Dest: "/h/b"},
+					Target: record.TargetClaudeCode, Dest: skillDest("b")},
 				{ID: "a/a", Version: "1", Digest: mustDigest(t, digestHex), Kind: record.KindSkill,
-					Target: record.TargetClaudeCode, Dest: "/h/a"},
+					Target: record.TargetClaudeCode, Dest: skillDest("a")},
 			},
 		})
 		r.SetProfile(record.Profile{

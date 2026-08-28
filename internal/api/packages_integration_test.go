@@ -27,12 +27,16 @@ func TestRegisteringAnUploadReturns202AndThenRefusesTheSameVersionWith409(t *tes
 		  on conflict (slug) do nothing`)
 	require.NoError(t, err)
 
-	// The publisher is `<namespace>/<team>`; a check constraint refuses anything
-	// else. The object key and the rendered id are built from the first segment
+	// `uploads`, not `example`: the catalog fixtures this branch adds already
+	// publish example/platform-toolkit@1.3.0, and `unique (namespace, name)`
+	// scopes the rendered id to the namespace rather than to a publisher row, so
+	// the two cannot both own that id any more. That is the constraint working —
+	// this file takes its own namespace instead of the constraint being relaxed.
+	// The object key and the rendered id are still built from the first segment
 	// alone, which is what the assertions below spell out.
 	contentType, body := upload(t, zipOf(t, scenario2Files()), map[string]string{
 		"source":     "upload",
-		"publisher":  "example/platform",
+		"publisher":  "uploads/platform",
 		"category":   "Infrastructure",
 		"visibility": "organisation",
 	})
@@ -45,7 +49,7 @@ func TestRegisteringAnUploadReturns202AndThenRefusesTheSameVersionWith409(t *tes
 	require.Equal(t, "platform-toolkit", registered.Name, "the manifest is the authority on the name")
 	require.Equal(t, "1.3.0", registered.Version, "and on the version, when it carries one")
 	require.Equal(t, "plugin", registered.Kind, "and on the kind, which is which manifest sits at the root")
-	require.Equal(t, "skills/example/platform-toolkit/1.3.0/bundle.tar.zst", registered.ObjectKey)
+	require.Equal(t, "skills/uploads/platform-toolkit/1.3.0/bundle.tar.zst", registered.ObjectKey)
 	require.Equal(t, "scanning", registered.Verdict)
 	require.False(t, registered.Visible, "FR-008: nothing is readable until the fetcher has committed")
 	require.NotEmpty(t, registered.VersionID)
@@ -62,7 +66,7 @@ func TestRegisteringAnUploadReturns202AndThenRefusesTheSameVersionWith409(t *tes
 	require.NoError(t, pool.QueryRow(t.Context(),
 		`select p.category_id::text from package p
 		   join publisher pub on pub.id = p.publisher_id
-		  where pub.slug = 'example/platform' and p.name = 'platform-toolkit'`).Scan(&categoryID))
+		  where pub.slug = 'uploads/platform' and p.name = 'platform-toolkit'`).Scan(&categoryID))
 	require.NotNil(t, categoryID)
 
 	var versions, jobs, audits int
@@ -71,7 +75,7 @@ func TestRegisteringAnUploadReturns202AndThenRefusesTheSameVersionWith409(t *tes
 		   (select count(*) from version where id = $1),
 		   (select count(*) from outbox where job_kind = 'fetch' and idempotency_key = 'fetch:' || $1 || ':1.3.0'),
 		   (select count(*) from audit_event where kind = 'fetch' and actor_kind = 'identity'
-		      and text like 'registered example/platform-toolkit@1.3.0 from upload%')`,
+		      and text like 'registered uploads/platform-toolkit@1.3.0 from upload%')`,
 		registered.VersionID).Scan(&versions, &jobs, &audits))
 	require.Equal(t, 1, versions)
 	require.Equal(t, 1, jobs)
@@ -80,14 +84,14 @@ func TestRegisteringAnUploadReturns202AndThenRefusesTheSameVersionWith409(t *tes
 	// The same publisher/name@version again. FR-007: refused, and the refusal is
 	// the requirement rather than a duplicate-key leak.
 	contentType, body = upload(t, zipOf(t, scenario2Files()), map[string]string{
-		"source": "upload", "publisher": "example/platform",
+		"source": "upload", "publisher": "uploads/platform",
 	})
 	rec = postForm(t, handler, "/v1/packages", kw.token, contentType, body)
 	require.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
 
 	var problem contract.Error
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &problem))
-	require.Contains(t, problem.Detail, "example/platform-toolkit@1.3.0")
+	require.Contains(t, problem.Detail, "uploads/platform-toolkit@1.3.0")
 	require.Contains(t, problem.Detail, "immutable")
 	require.NotContains(t, problem.Detail, "version_package_semver",
 		"the constraint name is an implementation detail, not a message for a publisher")

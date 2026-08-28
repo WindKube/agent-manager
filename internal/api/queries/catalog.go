@@ -175,10 +175,15 @@ left join category as cat on cat.id = pkg.category_id`
 //	name       the manifest name — `pii-redactor`
 //
 // The design renders `example/pii-redactor` (namespace/name) and internal/blob
-// builds the same shape into the object key, so the id derives from the first
-// segment. Derived in the read rather than stored: a namespace column belongs to
-// the persistence layer, which is not this one.
-const catalogID = `split_part(pub.slug, '/', 1) || '/' || pkg.name`
+// builds the same shape into the object key, so the id is namespace and name.
+//
+// It reads package.namespace rather than split_part(pub.slug, '/', 1) — the same
+// string, but the column is held to the publisher's own first segment by a
+// composite foreign key, so it cannot drift, and `unique (namespace, name)` makes
+// the rendered id unique in the database rather than by convention. Deriving it
+// with split_part would be a second definition of the id that nothing enforces
+// against the first.
+const catalogID = `pkg.namespace || '/' || pkg.name`
 
 // catalogSearch is FR-010's search target: the needle must be a substring of ONE
 // of name, id, publisher or a single tag.

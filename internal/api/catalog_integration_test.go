@@ -144,7 +144,12 @@ func seedCatalog(t *testing.T) {
 			spec := &designPackages[i]
 			categoryID := categories[spec.category]
 			pkg := &models.Package{
-				ID: models.NewID(), PublisherID: publishers[spec.publisher], Name: spec.name,
+				ID: models.NewID(), PublisherID: publishers[spec.publisher],
+				// Not free-form: a composite foreign key holds this to the first
+				// segment of the publisher's own slug, so the seed cannot invent a
+				// namespace the publisher does not belong to and neither can a
+				// registration.
+				Namespace: namespaceOf(spec.publisher), Name: spec.name,
 				Kind: spec.kind, CategoryID: &categoryID, Visibility: models.PackageVisibilityOrganisation,
 			}
 			insert(pkg)
@@ -177,7 +182,8 @@ func seedCatalog(t *testing.T) {
 
 		// The private one, which no anonymous reader may see.
 		restricted := &models.Package{
-			ID: models.NewID(), PublisherID: publishers["example/platform"], Name: "internal-only",
+			ID: models.NewID(), PublisherID: publishers["example/platform"],
+			Namespace: "example", Name: "internal-only",
 			Kind: models.PackageKindSkill, Visibility: models.PackageVisibilityPrivate,
 		}
 		insert(restricted)
@@ -713,7 +719,8 @@ func TestTheModalOffersExactlyTheVisibilitiesTheCatalogCanHonour(t *testing.T) {
 
 	for _, visibility := range vocabulary {
 		pkg := &models.Package{
-			ID: models.NewID(), PublisherID: publisher.ID, Name: "probe-" + visibility,
+			ID: models.NewID(), PublisherID: publisher.ID, Namespace: "probe",
+			Name: "probe-" + visibility,
 			Kind: models.PackageKindSkill, Visibility: models.PackageVisibility(visibility),
 		}
 		_, err = db.NewInsert().Model(pkg).Exec(ctx)

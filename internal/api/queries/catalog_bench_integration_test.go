@@ -127,24 +127,34 @@ func generateCatalog(ctx context.Context, pool *pgxpool.Pool) error {
 
 		// Half the publishers verified, so the Verified filter is a real
 		// discriminator rather than a full scan that matches everything. Slugs are
-		// two-segment because that is what the design's are: the id is derived with
-		// split_part over this column, so a single-segment slug would time an
-		// expression the real data never produces.
+		// two-segment because a check constraint refuses anything else, and four
+		// namespaces across forty publishers so the composite foreign key on
+		// package has more than one publisher per namespace to resolve — which is
+		// the shape the real data has.
 		`insert into publisher (id, slug, display_name, verified)
 		 select gen_random_uuid(), 'ns' || (g % 4) || '/pub' || g, 'Publisher ' || g, (g % 2 = 0)
 		 from generate_series(1, 40) as g`,
 
+		// The namespace comes off the chosen publisher row rather than being
+		// recomputed from g: the composite foreign key resolves (publisher_id,
+		// namespace) against publisher, and the publishers are picked by their
+		// position in a slug-ordered list, which is not the order they were
+		// generated in. Recomputing would produce a namespace belonging to a
+		// different publisher for most rows.
 		fmt.Sprintf(`
-		 with pubs as (select array_agg(id order by slug) as ids from publisher),
+		 with pubs as (select id, namespace, row_number() over (order by slug) as rn from publisher),
 		      cats as (select array_agg(id order by name) as ids from category)
-		 insert into package (id, publisher_id, name, kind, category_id, visibility)
+		 insert into package (id, publisher_id, namespace, name, kind, category_id, visibility)
 		 select gen_random_uuid(),
-		        pubs.ids[1 + (g %% 40)],
+		        pubs.id,
+		        pubs.namespace,
 		        'package-' || lpad(g::text, 5, '0'),
 		        (case when g %% 3 = 0 then 'plugin' else 'skill' end)::package_kind,
 		        cats.ids[1 + (g %% 5)],
 		        'organisation'::package_visibility
-		 from generate_series(0, %d) as g, pubs, cats`, benchPackages-1),
+		 from generate_series(0, %d) as g
+		 join pubs on pubs.rn = 1 + (g %% 40)
+		 cross join cats`, benchPackages-1),
 
 		// Five versions per package. Tags are drawn so that a filter on one is
 		// selective and a filter on two is more so, which is the shape FR-013's

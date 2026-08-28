@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -385,27 +384,30 @@ func WithLock(h Home, fn func(*Lock) error) error {
 	return l.Release()
 }
 
-// The open goes through an *os.Root, and it is the READER that has to, not the
-// remover. On Windows os.Open omits FILE_SHARE_DELETE, so a plain-os reader
-// denies delete access to every other process for as long as it holds the file
-// — which would make Release's unlink, and a reclaimer's, fail with "Access is
-// denied" for as long as anyone was looking at the lock. No change on the
-// removal side can work around that; the sharing mode is the reader's to grant.
-// Root.Open passes FILE_SHARE_DELETE, so reading a lock never blocks removing
-// it. See internal/cache's package comment for the measurement.
+// Plain os.Open, deliberately, and this is the one reader in the CLI that is
+// NOT routed through an *os.Root.
 //
-// The O_EXCL create is deliberately NOT routed through a root: its atomicity is
-// this lock's whole correctness argument, it is reasoned about at the top of
-// this file, and nothing is gained — the file being created cannot already be
-// open to anyone.
+// The rule elsewhere — internal/cache, internal/record — is that a reader of a
+// file something may unlink must use a root, because on Windows os.Open omits
+// FILE_SHARE_DELETE and so denies delete access to every other process while it
+// holds the handle. That reasoning applies here in principle too: a concurrent
+// reader of the lock can make Release's unlink fail with "Access is denied".
+//
+// It WAS converted, and the Windows CI leg then failed
+// TestAStaleLockFromAnotherHostIsReclaimedOnlyByTheHeartbeatWindow, which had
+// passed in the previous round — Acquire succeeded where it had to refuse. The
+// mechanism was never established: the FileInfo returned here comes from
+// File.Stat() on the handle either way, and both forms report the same ModTime,
+// so the difference has to lie in os.Root's own path resolution on that runner,
+// which cannot be reproduced from Linux.
+//
+// So it is reverted rather than kept with a guess attached. The conversion was
+// not fixing an observed failure — it was consistency with a rule — and trading
+// a green lock test on a platform we cannot debug for a hazard nobody has
+// measured is the wrong side of that deal. If a Windows run ever shows Release
+// failing to unlink, that is the evidence this needs and the fix is one line.
 func readLock(path string) (Holder, os.FileInfo, error) {
-	root, err := os.OpenRoot(filepath.Dir(path))
-	if err != nil {
-		return Holder{}, nil, err
-	}
-	defer func() { _ = root.Close() }()
-
-	f, err := root.Open(filepath.Base(path))
+	f, err := os.Open(path) //nolint:gosec // path is Home.LockPath, derived from a validated home
 	if err != nil {
 		return Holder{}, nil, err
 	}

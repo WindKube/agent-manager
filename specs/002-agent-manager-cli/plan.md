@@ -132,7 +132,7 @@ cli/
     │   ├── swap.go               atomic per-entry replace
     │   └── prune.go              remove only what the record claims
     ├── layout/                   PURE. target -> paths. One file per target.
-    │   ├── claude_code.go  agents_md.go  codex.go
+    │   ├── claude_code.go  codex.go
     │   └── layout.go             the Target interface and the registry
     ├── record/                   the installation record: read, write, fingerprint
     ├── cache/                    digest-addressed bundle bytes
@@ -232,8 +232,8 @@ cannot end up guarding a copy that drifted on upgrade, but it means compiled-in 
 asserted, never reachable-at-run-time.
 
 **R2 — What is each target's real on-disk layout? (blocks US2, gates SC-009)**
-The contract enumerates `claude-code`, `agents-md` and `codex`; none of them tells us where
-those agents actually look. Writing to a path an agent does not read is the worst failure this
+The contract enumerated `claude-code`, `agents-md` and `codex`; none of them told us where those
+agents actually look. Writing to a path an agent does not read is the worst failure this
 tool has, because it reports success.
 
 **Resolved.** One target ships: **`claude-code`, skills only**. Its layout is user
@@ -241,9 +241,10 @@ tool has, because it reports success.
 `<project>/.claude/skills/<dir>/SKILL.md`, verified by observation against Claude Code 2.1.248.
 `codex` is documented but unobserved, and its user path moved within the last nine months
 (`~/.codex/skills` → `$HOME/.agents/skills`), so it stays gated on one measurement. `agents-md`
-is not merely unverified but **unresolvable as specified**: the convention documents only a
+was not merely unverified but **unresolvable as specified** — the convention documents only a
 repository-root `AGENTS.md`, there is no per-user location, and one shared file cannot satisfy
-FR-020, FR-022, FR-023 or FR-024/028/029.
+FR-020, FR-022, FR-023 or FR-024/028/029 — and it has since been **removed from the contract**
+rather than carried as a target that refuses to construct.
 
 **Evidence.** Three different strengths, and they are not interchangeable.
 
@@ -274,12 +275,21 @@ FR-020, FR-022, FR-023 or FR-024/028/029.
    (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.factory/AGENTS.md`, `~/.config/AGENTS.md`).
    An open proposal to standardise a path is proof there is no standard path.
 
-**Consequence.** The release matrix ships one target. `sync` for a profile naming `agents-md` or
-`codex` must **fail loudly**: both constructors return an error wrapping `ErrR2Unresolved` so
-the registry refuses by class rather than by string match. Warn-and-continue is exactly the
-failure this gate exists to stop — a target that installs nothing while the command exits 0.
-T034's registry must therefore tolerate a target that cannot be constructed: registration is
-fallible, not a package-level `init()` map. Path resolution reads `CLAUDE_CONFIG_DIR` and
+   **`agents-md` has since been removed from the contract entirely** rather than shipped as a
+   target that refuses to construct. It is gone from `sync_target_kind`, from the `targets` enum
+   in `contracts/openapi.yaml` and `lockfile.schema.json`, and from `internal/layout/`. It
+   described a capability that never existed on either side, and a value the API declares and
+   refuses reads as supported to anyone generating a client. What restores it is a design for
+   composing N packages into delimited, individually prunable regions of one shared file, plus a
+   per-user location for that file — not more research. Reintroducing the enum value is additive
+   and non-breaking.
+
+**Consequence.** The release matrix ships one target. `sync` for a profile naming `codex` must
+**fail loudly**: its constructor returns an error wrapping `ErrR2Unresolved` so the registry
+refuses by class rather than by string match. Warn-and-continue is exactly the failure this gate
+exists to stop — a target that installs nothing while the command exits 0. T034's registry must
+therefore tolerate a target that cannot be constructed: registration is fallible, not a
+package-level `init()` map. Path resolution reads `CLAUDE_CONFIG_DIR` and
 nothing else; an XDG-first resolver, the obvious thing to write for Linux, installs to a
 directory the agent never opens. `ValidateClaudeCodeSkillDirName` must run before any write, or
 a package legitimately named `synced` installs, reports success and does nothing. FR-023 is
@@ -308,10 +318,9 @@ Codex version with both answers. Two sub-questions must be settled in the same s
 each is a silent-failure candidate — scan depth (the December accounts say exactly one level,
 non-recursive; OpenAI's current page is silent) and whether Codex accepts YAML frontmatter (the
 spec and OpenAI's page require it, while Claude Code's own Codex importer asserts Codex treats
-`SKILL.md` as plain text, so one of the two is stale). `agents-md` needs a **spec decision, not
-more research**: either name one per-user location and define how N packages compose into one
-file as delimited, individually prunable regions, or drop it from the contract enum. Reading
-more documentation cannot fix it. Also outstanding: `internal/layout/*_test.go` does not exist —
+`SKILL.md` as plain text, so one of the two is stale). `agents-md` needed a **spec decision, not
+more research**, and got one: it was **dropped from the contract enum**. Reading more
+documentation could not have fixed it. Also outstanding: `internal/layout/*_test.go` does not exist —
 the three findings that need regression tests are that `synced` is refused, that
 `XDG_CONFIG_HOME` is not consulted, and that the plugin-adopting subdirectory set is refused.
 
@@ -566,16 +575,16 @@ orderings can be wrong; this one is wrong in the recoverable direction.
 
 ## Risks
 
-- **R2 was the schedule risk, and it landed.** Of the three targets the contract enumerates,
-  **one ships**: `claude-code`, skills only. `codex` is documented but unobserved and its user
-  skills path moved within the last nine months, so it stays unshipped pending one measurement;
-  `agents-md` cannot be shipped as an install target at all as specified — a repository-root
-  shared markdown file with no per-user location satisfies neither FR-020 nor FR-022/023 nor
-  FR-024/028/029, and closing it is a spec decision rather than more research. Both constructors
-  return an error wrapping `ErrR2Unresolved` and `sync` refuses the profile rather than exiting 0
-  having installed nothing. The spec was written so this costs no rework, and it does not — but
-  it is a reduction in scope, not a deferral, and T066's README must say plainly which targets
-  are verified.
+- **R2 was the schedule risk, and it landed.** Of the three targets the contract originally
+  enumerated, **one ships**: `claude-code`, skills only. `codex` is documented but unobserved and
+  its user skills path moved within the last nine months, so it stays unshipped pending one
+  measurement; its constructor returns an error wrapping `ErrR2Unresolved` and `sync` refuses the
+  profile rather than exiting 0 having installed nothing. `agents-md` could not be shipped as an
+  install target at all as specified — a repository-root shared markdown file with no per-user
+  location satisfies neither FR-020 nor FR-022/023 nor FR-024/028/029 — and it was **dropped from
+  the contract** rather than left as an enum value nothing could honour. The spec was written so
+  this costs no rework, and it does not — but it is a reduction in scope, not a deferral, and
+  T066's README must say plainly which targets are verified.
 - **The design's copy will be wrong.** The Connect-the-CLI screen says
   `brew install example/tap/skillhub` and `skillhub login`. Those strings are hub-side and
   need a follow-up change; this feature should not silently leave the screen lying.

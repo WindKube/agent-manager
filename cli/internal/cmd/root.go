@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/WindKube/agent-manager/cli/internal/hub"
 	"github.com/WindKube/agent-manager/cli/internal/output"
 )
 
@@ -43,6 +44,11 @@ type Options struct {
 	// Verbose is -v: diagnostics to the diagnostic stream, never to the
 	// result stream.
 	Verbose bool
+	// AllowPlaintextHub is --allow-plaintext-hub, FR-041's explicit opt-in for an
+	// http:// hub. It is not registered under a literal here: hub.New composes the
+	// refusal message that names the flag, so the two must be one string or the
+	// error tells a user to pass a flag that does not exist.
+	AllowPlaintextHub bool
 
 	// Outcome is what the verb achieved. It is consulted only when the verb
 	// returned no error — see ExitCode. A verb that modified the tree sets
@@ -133,6 +139,12 @@ func NewRootCmd(result, diag io.Writer) (*cobra.Command, *Options) {
 		fmt.Sprintf("output format: %s or %s", output.FormatHuman, output.FormatJSON))
 	flags.BoolVar(&opts.Offline, "offline", false, "use only cached bundles; fail rather than reach the network")
 	flags.BoolVarP(&opts.Verbose, "verbose", "v", false, "diagnostics on stderr")
+	// Deliberately verbose and deliberately not `--insecure`: this is the only way
+	// to send a bearer token over cleartext, and the flag a person has to type
+	// should say what it costs. hub.PlaintextFlagName is imported rather than
+	// retyped so hub.New's refusal cannot name a flag this file does not register.
+	flags.BoolVar(&opts.AllowPlaintextHub, hub.PlaintextFlagName, false,
+		"accept an http:// hub — sends the bearer token over cleartext")
 
 	root.AddCommand(
 		newLoginCmd(opts),

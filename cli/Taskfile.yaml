@@ -60,17 +60,72 @@ tasks:
       - golangci-lint fmt ./...
 
   gen:client:
-    desc: "oapi-codegen -> internal/hub/client.gen.go (NOT IMPLEMENTED — T019)"
+    desc: "openapigen + oapi-codegen -> internal/hub/client.gen.go"
+    # Runs at the REPO ROOT, not in cli/. Both halves belong to the hub module:
+    # `openapigen` is a hub command and `oapi-codegen` is a hub `tool` directive,
+    # and the CLI module deliberately requires neither — a second copy of the
+    # generator would be a second thing to keep in step. So the paths below are
+    # root-relative, and so are the ones in internal/hub/oapi-codegen.yaml.
+    dir: "{{.TASKFILE_DIR}}/.."
+    vars:
+      DOC: cli/internal/hub/openapi.json
+      # The seven operations the CLI uses. Duplicated from the
+      # include-operation-ids list in internal/hub/oapi-codegen.yaml, on purpose:
+      # oapi-codegen's filter silently ignores an id that no longer exists in the
+      # document, so the config alone cannot tell a narrowed surface from a
+      # renamed operation. This list is the independent side of that check.
+      WANTED: >-
+        deviceAuthorize deviceToken getBundle getRevision health listProfiles
+        reportSync
     cmds:
-      # A no-op placeholder here would be worse than nothing: `task cli:gen:client`
-      # would report success, a gen:check gate built on it would pass over a client
-      # that was never generated, and the staleness guard the constitution's
-      # principle V asks for would be decorative. Fail loudly instead.
+      # Half one: EMIT the document from the hub's huma operation definitions
+      # (constitution principle V). Generating from
+      # specs/001-agent-manager-hub/contracts/openapi.yaml instead would give the
+      # CLI a client for the frozen machine-facing subset, which is not what the
+      # hub serves; the emitted document is a superset of it.
+      - go run ./internal/api/cmd/openapigen -out {{.DOC}}
+      # Half two: assert every operation the CLI expects is still in the emitted
+      # document, BEFORE generating. Without this a renamed hub operation id makes
+      # the client quietly lose a method: `include-operation-ids` matches nothing
+      # and reports nothing. The staleness gate would catch it on a stale tree,
+      # but not on a regenerate-and-commit.
       - |
-        echo "cli:gen:client is not implemented yet — T019 generates internal/hub/client.gen.go" >&2
-        echo "from the hub's EMITTED document (root: task gen:client), not from" >&2
-        echo "specs/001-agent-manager-hub/contracts/openapi.yaml, which is the machine-facing subset." >&2
-        exit 1
+        set -eu
+        missing=""
+        for id in {{.WANTED}}; do
+          grep -q "\"operationId\": \"${id}\"" {{.DOC}} || missing="${missing} ${id}"
+        done
+        if [ -n "${missing}" ]; then
+          echo "cli:gen:client: operation id(s) absent from the emitted document:${missing}" >&2
+          echo "the hub renamed or removed them; fix internal/hub/oapi-codegen.yaml and the callers" >&2
+          exit 1
+        fi
+      - go tool oapi-codegen -config cli/internal/hub/oapi-codegen.yaml {{.DOC}}
+
+  gen:check:
+    desc: Fail if the generated hub client is stale (constitution principle V)
+    dir: "{{.TASKFILE_DIR}}/.."
+    vars:
+      # The two generated paths, named exactly. Scoping the check to them rather
+      # than to the tree or even to cli/internal/hub is what lets this run on a
+      # working tree where a sibling's hand-written files in the same package are
+      # still uncommitted.
+      GENERATED: cli/internal/hub/openapi.json cli/internal/hub/client.gen.go
+    cmds:
+      - task: gen:client
+      # `git status --porcelain`, not `git diff`: diff cannot see an UNTRACKED
+      # file, so a client.gen.go that was generated but never committed would
+      # make this gate pass while nothing was checked in at all. Porcelain
+      # reports the ?? and the gate fails, which is the point.
+      - |
+        set -eu
+        dirty="$(git status --porcelain -- {{.GENERATED}})"
+        if [ -n "$dirty" ]; then
+          echo "the generated hub client is stale or uncommitted —" >&2
+          echo "run 'task cli:gen:client' and commit the result" >&2
+          echo "$dirty" >&2
+          exit 1
+        fi
 
   vuln:
     desc: govulncheck over this module

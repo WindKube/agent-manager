@@ -39,6 +39,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/WindKube/agent-manager/cli/internal/record"
 )
 
 // gateAsideSuffix is appended to the destination path to name the place the old
@@ -58,7 +60,13 @@ import (
 //
 // The caller must guarantee no package ever legitimately installs to a path
 // ending in this suffix. internal/layout owns that guarantee.
-const gateAsideSuffix = ".amctl-old"
+//
+// It is record.AsideSuffix and not a literal of its own. The determinism above is
+// what closes the removable set to {dest, dest+suffix}, and record is the package
+// that has to be able to COMPUTE that set — so the constant belongs there, and a
+// second copy here is exactly how the two drift and leave an orphaned .amctl-old
+// that nothing ever removes.
+const gateAsideSuffix = record.AsideSuffix
 
 // gateStep numbers the sequence. The numbering is the deliverable: T041 must
 // implement these steps in this order, and a crash immediately after step N

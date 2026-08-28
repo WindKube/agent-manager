@@ -370,7 +370,7 @@ than an ungoverned one, and every support conversation starts here.
   hubs and targets. Correct by construction because a version's bytes never change.
 - **Credential** — one short-lived token per hub, with the identity it belongs to and its
   expiry, in the platform store or an owner-only file.
-- **Target** — one agent's directory convention (`claude-code`, `agents-md`, `codex`), which
+- **Target** — one agent's directory convention (`claude-code`, `codex`), which
   the profile enables and the CLI writes. Advisory from the hub's side: it stores nothing per
   target (hub FR-039).
 - **Resolved revision** — the hub's lockfile, consumed and never recomputed.

@@ -113,6 +113,25 @@ jobs:
       - name: Regenerate and fail on a diff
         run: task gen:check
 
+      # The CLI's generated hub client, in this job rather than one of its own
+      # because both halves of `task cli:gen:client` belong to THIS module:
+      # openapigen is a hub command and oapi-codegen is a hub `tool` directive.
+      # This job already has the root toolchain and task, and the gate
+      # regenerates a file and diffs it — it never compiles it, so it needs
+      # nothing from cli/go.mod. Compiling the client is cli-lint/cli-test/
+      # cli-build's business and all three already do it on five platforms.
+      #
+      # `task gen:check` above would already catch this, because root `gen` now
+      # chains `cli:gen:client` and the check is a whole-tree `git status`. This
+      # step is kept for the DIAGNOSIS: it is scoped to the two generated paths
+      # by name, so its failure says which artefact is stale instead of printing
+      # the whole dirty tree. `!cancelled()` so hub staleness above cannot hide
+      # CLI staleness here — they are independent facts and a maintainer needs
+      # both from one run.
+      - name: The CLI's generated hub client is current
+        if: ${{ !cancelled() }}
+        run: task cli:gen:check
+
   openapi:
     name: OpenAPI contract
     runs-on: ubuntu-latest

@@ -1,0 +1,66 @@
+# oapi-codegen configuration for the CLI's typed hub client.
+#
+# The input is the document the hub's api role EMITS
+# (cli/internal/hub/openapi.json, written by
+# `go run ./internal/api/cmd/openapigen` in the ROOT module), never
+# specs/001-agent-manager-hub/contracts/openapi.yaml. The frozen contract is the
+# machine-facing subset; the emitted document is a superset and is what the hub
+# actually serves. Constitution principle V.
+#
+# PATHS ARE RELATIVE TO THE REPO ROOT, not to this file. oapi-codegen resolves
+# `output` against its working directory, and the generator half must run in the
+# root module (the hub owns `openapigen` and the `oapi-codegen` tool directive),
+# so `task cli:gen:client` runs both halves from the repo root.
+package: hub
+output: cli/internal/hub/client.gen.go
+
+generate:
+  models: true
+  client: true
+
+output-options:
+  # The seven operations the CLI uses, listed BY ID rather than by tag. The
+  # emitted document declares eleven; the other four are the package registry
+  # (listPackages, registerPackage, previewPackage, getPackage) and the CLI has
+  # no use for them — generating them puts dead code, dead types and a
+  # multipart body helper in every amctl binary.
+  #
+  # Listing ids explicitly, rather than excluding the registry or filtering by
+  # tag, is the point: adding an operation to the hub cannot silently widen the
+  # CLI's surface, and a RENAMED operation id fails the build here instead of
+  # disappearing from the client. Tag filtering would not do that — the
+  # `profiles` tag already spans listProfiles, getRevision and reportSync, and a
+  # new profiles operation would be pulled in unasked.
+  include-operation-ids:
+    - deviceAuthorize
+    - deviceToken
+    - getBundle
+    - getRevision
+    - health
+    - listProfiles
+    - reportSync
+  # skip-prune is deliberately NOT set (the hub's own apiclient config sets it).
+  # Pruning is what actually removes the registry's component schemas once their
+  # operations are filtered out; with it on, the types would survive the filter
+  # and the narrowing would only be cosmetic.
+
+# WHAT THIS CLIENT DOES NOT YET DESCRIBE.
+#
+# The hub's device endpoints are implemented on branch `hub/device-flow` (PR #14),
+# not on this branch, so the emitted document still declares `501` on both of them
+# and declares `422` rather than `400`/`415` on deviceAuthorize. The generated
+# DeviceAuthorizeResponse therefore has no 400 or 415 field. That is a stale tree
+# rather than a contract change: REGENERATE when #14 merges. The staleness step in
+# .github/workflows/ci.yaml ("The CLI's generated hub client is current") is what
+# fails the build if nobody does.
+#
+# PR #14 also corrects `bearerFormat` from `JWT` to `opaque`. The hub's tokens are
+# base64url of 32 random bytes — one segment, no header, no claims. Nothing may
+# call jwt.Parse on one or read an expiry out of it; a token's lifetime is the
+# `expires_in` returned beside it.
+#
+# The form-encoded body on /v1/device/token IS generated: oapi-codegen v2.8.0 emits
+# DeviceTokenWithFormdataBody, and runtime.MarshalForm falls back to the json tag
+# when a $ref'd schema carries no `form` tag (runtime/bindform.go formFieldTag), so
+# grant_type/device_code/client_id encode correctly. Measured, not assumed. No
+# hand-written call is needed for it — do not add one.

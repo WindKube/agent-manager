@@ -16,6 +16,9 @@
 //     must be the same thing, so Get returns the bytes it hashed. Root() exists
 //     for error messages only.
 //   - It does not bound its own size. See "Eviction" below.
+//   - It never touches an entry through the plain `os` package. Every open,
+//     rename and remove of an entry goes through an *os.Root on the cache
+//     directory. See "Why os.Root" below.
 //   - It is NOT the staging directory, and the two must never be merged.
 //     Staging is a sibling of the destination (`<dest-parent>/.amctl-staging/`)
 //     because gate R3 measured `os.Rename` across filesystems: agent
@@ -27,6 +30,32 @@
 //     two profiles or two targets are stored once. Moving staging in here to
 //     "unify the two digest-addressed directories" reintroduces the EXDEV
 //     failure exactly where R3's rollback needs a rename to work.
+//
+// # Why os.Root
+//
+// On Windows the plain `os` package and the os.Root methods issue different
+// syscalls with different sharing semantics, measured in Go 1.26.6's source:
+//
+//   - os.Open sets sharemode FILE_SHARE_READ|FILE_SHARE_WRITE and NOT
+//     FILE_SHARE_DELETE, so a file held open that way cannot be unlinked or
+//     renamed over by anyone. Root.Open goes through windows.Openat, which does
+//     pass FILE_SHARE_DELETE.
+//   - os.Rename is MoveFileEx(MOVEFILE_REPLACE_EXISTING), which fails with
+//     ERROR_ACCESS_DENIED when the destination has an open handle. Root.Rename
+//     is NtSetInformationFile with FILE_RENAME_POSIX_SEMANTICS.
+//   - os.Remove is DeleteFile. Root.Remove is FILE_DISPOSITION_POSIX_SEMANTICS.
+//
+// So os.Root is what makes "replace or unlink a file a concurrent reader holds
+// open" mean on Windows what it means on Unix. This package needs exactly that
+// in three places — installing an entry over an existing one, discarding a
+// corrupt entry while still holding the handle that proved it corrupt, and
+// collecting a temp another process may be writing — and the plain-os version
+// of the first two was measured failing on the Windows CI leg.
+//
+// The root is opened per operation rather than cached on the Cache, so the
+// promise above that a Cache "holds no state beyond its configuration" stays
+// true and no handle can outlive a directory that was deleted underneath it.
+// os.OpenRoot is one openat; every operation here also does real file I/O.
 //
 // # Eviction
 //
@@ -168,7 +197,19 @@ func (c *Cache) load(d Digest, keep bool) ([]byte, error) {
 		return nil, errors.New("refusing to read the zero digest: it was never parsed or computed")
 	}
 	p := c.path(d)
-	f, err := os.Open(p) //nolint:gosec // p is c.dir joined with a 64-hex filename derived from d
+
+	// A missing cache directory is a miss, not an error: New creates nothing, so
+	// a machine that has never synced reaches here with no directory at all.
+	root, err := os.OpenRoot(c.dir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("%s: %w", d, ErrMiss)
+		}
+		return nil, fmt.Errorf("opening cache directory %s: %w", c.dir, err)
+	}
+	defer func() { _ = root.Close() }()
+
+	f, err := root.Open(d.FileName())
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, fmt.Errorf("%s: %w", d, ErrMiss)
@@ -192,8 +233,7 @@ func (c *Cache) load(d Digest, keep bool) ([]byte, error) {
 		return nil, fmt.Errorf("stat of cache entry %s: %w", p, err)
 	}
 	if !st.Mode().IsRegular() {
-		c.discard(p)
-		return nil, fmt.Errorf("%s is not a regular file (%s): %w: %w", d, st.Mode().Type(), ErrCorrupt, ErrMiss)
+		return nil, c.discard(root, d, fmt.Errorf("%s is not a regular file (%s)", d, st.Mode().Type()))
 	}
 
 	h := sha256.New()
@@ -216,8 +256,7 @@ func (c *Cache) load(d Digest, keep bool) ([]byte, error) {
 		return nil, fmt.Errorf("reading cache entry %s: %w", p, err)
 	}
 	if n > c.maxBytes {
-		c.discard(p)
-		return nil, fmt.Errorf("%s is larger than the %d-byte cap: %w: %w", d, c.maxBytes, ErrCorrupt, ErrMiss)
+		return nil, c.discard(root, d, fmt.Errorf("%s is larger than the %d-byte cap", d, c.maxBytes))
 	}
 
 	got, err := digestFromSlice(h.Sum(nil))
@@ -225,8 +264,7 @@ func (c *Cache) load(d Digest, keep bool) ([]byte, error) {
 		return nil, err
 	}
 	if got != d {
-		c.discard(p)
-		return nil, fmt.Errorf("%s hashes to %s: %w: %w", d, got, ErrCorrupt, ErrMiss)
+		return nil, c.discard(root, d, fmt.Errorf("%s hashes to %s", d, got))
 	}
 	if keep {
 		return buf, nil
@@ -234,17 +272,35 @@ func (c *Cache) load(d Digest, keep bool) ([]byte, error) {
 	return nil, nil
 }
 
-// discard removes a failed entry, best effort. The removal error is ignored on
-// purpose: on Windows a concurrent reader's open handle makes os.Remove fail,
-// and the caller's outcome is the same either way — the entry is unusable and
-// the bundle is re-downloaded. Reporting a removal failure as the reason for a
-// cache miss would be a worse message about a worse problem.
+// discard removes an entry that has just been proven unusable and returns the
+// error the caller should report: reason, marked ErrCorrupt and ErrMiss so the
+// caller re-downloads.
+//
+// A failed removal is REPORTED, joined onto that miss. An earlier version
+// swallowed it, reasoning that "the caller's outcome is the same either way —
+// the entry is unusable and the bundle is re-downloaded". That is true of this
+// call and false of the next one: if the entry survives, every future read of
+// the digest finds the same corruption and re-downloads again, forever. The
+// Windows CI leg measured exactly that, because os.Remove cannot unlink a file
+// this function still holds open. The fix is the *os.Root above; keeping the
+// error visible is what stops a permanent poisoning from reading as a transient
+// miss if it ever comes back.
+//
+// errors.Join, so errors.Is still sees ErrCorrupt and ErrMiss and no caller has
+// to learn about the removal to keep working.
 //
 // RemoveAll rather than Remove only so that a directory-shaped squatter at an
-// entry name can be cleared; path is always c.dir joined with one
-// `sha256-<hex>` name this package produced, never a caller's string, so the
-// recursion has nowhere to go.
-func (c *Cache) discard(path string) { _ = os.RemoveAll(path) }
+// entry name can be cleared; the name is always the `sha256-<hex>` spelling of
+// a parsed Digest, never a caller's string, so the recursion has nowhere to go.
+func (c *Cache) discard(root *os.Root, d Digest, reason error) error {
+	miss := fmt.Errorf("%w: %w: %w", reason, ErrCorrupt, ErrMiss)
+	if err := root.RemoveAll(d.FileName()); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return errors.Join(miss, fmt.Errorf(
+			"cache entry %s could not be removed, so every future read of this digest will fail the same way: %w",
+			c.path(d), err))
+	}
+	return miss
+}
 
 // Put stores b under d. It refuses bytes that do not hash to d, so no code path
 // in this CLI can file bytes under a key they do not match.
@@ -287,18 +343,31 @@ func (c *Cache) PutReader(d Digest, r io.Reader) error {
 		return fmt.Errorf("creating cache directory %s: %w", c.dir, err)
 	}
 
+	root, err := os.OpenRoot(c.dir)
+	if err != nil {
+		return fmt.Errorf("opening cache directory %s: %w", c.dir, err)
+	}
+	defer func() { _ = root.Close() }()
+
 	// The temp name carries the prefix so collection can recognise it and the
 	// digest so a human can see what it was; the random suffix is os.CreateTemp's.
+	//
+	// Deliberately os.CreateTemp and not the root: this file is created O_EXCL
+	// under a name this package invents, so no other handle can exist and none
+	// of the sharing semantics the root exists for apply. The rename and the
+	// cleanup below DO go through the root, because those two touch a name a
+	// concurrent amctl may hold open.
 	tmp, err := os.CreateTemp(c.dir, tempPrefix+d.FileName()+"-*")
 	if err != nil {
 		return fmt.Errorf("creating cache temp file in %s: %w", c.dir, err)
 	}
 	name := tmp.Name()
+	base := filepath.Base(name)
 	committed := false
 	defer func() {
 		_ = tmp.Close()
 		if !committed {
-			_ = os.Remove(name)
+			_ = root.Remove(base)
 		}
 	}()
 
@@ -323,7 +392,10 @@ func (c *Cache) PutReader(d Digest, r io.Reader) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("closing cache temp file %s: %w", name, err)
 	}
-	if err := os.Rename(name, c.path(d)); err != nil {
+	// Through the root: a concurrent reader holding the destination open makes
+	// plain os.Rename fail on Windows, and this rename is the only step that
+	// turns a verified temp into the entry other processes read.
+	if err := root.Rename(base, d.FileName()); err != nil {
 		return fmt.Errorf("installing cache entry %s: %w", c.path(d), err)
 	}
 	committed = true
@@ -387,6 +459,12 @@ func (c *Cache) CollectTempsOlderThan(age time.Duration) (int, error) {
 		}
 		return 0, fmt.Errorf("reading cache directory %s: %w", c.dir, err)
 	}
+	root, err := os.OpenRoot(c.dir)
+	if err != nil {
+		return 0, fmt.Errorf("opening cache directory %s: %w", c.dir, err)
+	}
+	defer func() { _ = root.Close() }()
+
 	cutoff := time.Now().Add(-age)
 	removed := 0
 	var errs []error
@@ -404,7 +482,10 @@ func (c *Cache) CollectTempsOlderThan(age time.Duration) (int, error) {
 		if info.ModTime().After(cutoff) {
 			continue
 		}
-		if rmErr := os.Remove(filepath.Join(c.dir, e.Name())); rmErr != nil {
+		// Through the root: the age cutoff makes it unlikely but not impossible
+		// that this temp belongs to a live amctl, and on Windows an open handle
+		// would otherwise make the unlink fail rather than deferring it.
+		if rmErr := root.Remove(e.Name()); rmErr != nil {
 			if !errors.Is(rmErr, fs.ErrNotExist) {
 				errs = append(errs, rmErr)
 			}

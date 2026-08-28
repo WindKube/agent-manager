@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -35,6 +36,50 @@ func mustDigest(t *testing.T, hex string) record.Digest {
 
 func installedAt() time.Time { return time.Date(2026, 8, 27, 10, 11, 12, 0, time.UTC) }
 
+// A record's dest is a path on THIS machine, and validation requires it to be
+// absolute — filepath.IsAbs, which on Windows means a volume is named. So the
+// fixtures cannot hardcode a POSIX path: `/home/u/...` is drive-relative on
+// Windows, not absolute, and every Save in this file would be refused for a
+// reason that has nothing to do with what the test is about. Eight tests failed
+// that way on the Windows CI leg.
+//
+// Both spellings are hand-written, including the JSON escaping. A Windows dest
+// contains backslashes and JSON escapes each as `\\`, so pinning the escaped
+// form here asserts something the POSIX-only golden could not: that the encoder
+// escapes the separator rather than emitting it raw. Deriving destJSON with
+// json.Marshal instead would hand that assertion to the code under test.
+var (
+	destRoot, destJSONRoot = func() (string, string) {
+		if runtime.GOOS == "windows" {
+			return `C:\home\u`, `C:\\home\\u`
+		}
+		return "/home/u", "/home/u"
+	}()
+	sep = string(filepath.Separator)
+)
+
+// skillDest is a fixture destination under the platform's absolute root.
+func skillDest(name string) string {
+	return filepath.Join(destRoot, ".claude", "skills", name)
+}
+
+// skillDestJSON is skillDest spelled as JSON encodes it. Assembled from the
+// hand-written escaped root rather than from the encoder.
+func skillDestJSON(name string) string {
+	s := sep
+	if runtime.GOOS == "windows" {
+		s = `\\`
+	}
+	return destJSONRoot + s + ".claude" + s + "skills" + s + name
+}
+
+// uncleanDest is skillDest("x") with a `..` left in it, built without
+// filepath.Join because Join cleans — which is the whole point of the fixture.
+func uncleanDest() string {
+	return destRoot + sep + ".." + sep + filepath.Base(destRoot) +
+		sep + ".claude" + sep + "skills" + sep + "x"
+}
+
 // smallRecord is the record the golden bytes below describe.
 func smallRecord(t *testing.T) *record.Record {
 	t.Helper()
@@ -50,7 +95,7 @@ func smallRecord(t *testing.T) *record.Record {
 			Digest:  mustDigest(t, digestHex),
 			Kind:    record.KindSkill,
 			Target:  record.TargetClaudeCode,
-			Dest:    "/home/u/.claude/skills/code-review",
+			Dest:    skillDest("code-review"),
 			Fingerprint: record.Fingerprint{
 				Algo: record.FingerprintAlgo,
 				Files: map[string]record.FileMark{
@@ -67,6 +112,14 @@ func smallRecord(t *testing.T) *record.Record {
 // documented rules (field order as declared, map keys sorted, two-space
 // indent), NOT copied out of a test run. A golden captured from output encodes
 // whatever the encoder happened to do, including a bug.
+// golden is goldenSmall with the platform's destination substituted in. The
+// shape — field order as declared, map keys sorted, two-space indent, the short
+// `h`/`s`/`m`/`k` keys, the decimal modes 420 and 493 — is still entirely
+// hand-derived; only the one value that cannot be platform-independent moves.
+func golden() string {
+	return strings.ReplaceAll(goldenSmall, "@DEST@", skillDestJSON("code-review"))
+}
+
 const goldenSmall = `{
   "schemaVersion": 1,
   "hub": "https://hub.example.com",
@@ -85,7 +138,7 @@ const goldenSmall = `{
           "digest": "sha256:abababababababababababababababababababababababababababababababab",
           "kind": "skill",
           "target": "claude-code",
-          "dest": "/home/u/.claude/skills/code-review",
+          "dest": "@DEST@",
           "fingerprint": {
             "algo": "sha256-tree-v1",
             "files": {
@@ -137,7 +190,7 @@ func TestRoundTrip(t *testing.T) {
 
 		b, err := os.ReadFile(p)
 		require.NoError(t, err)
-		require.Equal(t, goldenSmall, string(b))
+		require.Equal(t, golden(), string(b))
 	})
 
 	t.Run("the record file is owner-only", func(t *testing.T) {
@@ -159,7 +212,7 @@ func TestRoundTrip(t *testing.T) {
 			Targets: []record.Target{record.TargetClaudeCode},
 			Entries: []record.Entry{{
 				ID: "acme/skill", Version: "1.0.0", Digest: mustDigest(t, digestHex),
-				Kind: record.KindSkill, Target: record.TargetClaudeCode, Dest: "/home/u/.claude/skills/skill",
+				Kind: record.KindSkill, Target: record.TargetClaudeCode, Dest: skillDest("skill"),
 			}},
 		})
 		_, err := record.Save(p, r)
@@ -442,10 +495,10 @@ func TestRemovablePathsIsTheDestinationAndItsDeterministicAside(t *testing.T) {
 	require.Equal(t, ".amctl-old", record.AsideSuffix,
 		"gate R3 fixed this name; internal/apply's swap and this set must agree on it")
 
-	e := record.Entry{Dest: "/home/u/.claude/skills/code-review"}
+	e := record.Entry{Dest: skillDest("code-review")}
 	require.Equal(t, []string{
-		"/home/u/.claude/skills/code-review",
-		"/home/u/.claude/skills/code-review.amctl-old",
+		skillDest("code-review"),
+		skillDest("code-review") + record.AsideSuffix,
 	}, e.RemovablePaths())
 
 	// Both members are siblings under the destination's own parent: a central
@@ -463,7 +516,7 @@ func TestRemovablePathsIsTheDestinationAndItsDeterministicAside(t *testing.T) {
 func TestTwoProfilesMayClaimOneDestination(t *testing.T) {
 	t.Parallel()
 
-	dest := "/home/u/.claude/skills/code-review"
+	dest := skillDest("code-review")
 	entry := record.Entry{
 		ID: "acme/code-review", Version: "1.2.0", Digest: mustDigest(t, digestHex),
 		Kind: record.KindSkill, Target: record.TargetClaudeCode, Dest: dest,
@@ -486,7 +539,7 @@ func TestTwoProfilesMayClaimOneDestination(t *testing.T) {
 	claims := got.ClaimantsOf(dest)
 	require.Len(t, claims, 2)
 	require.Equal(t, []string{"team-a", "team-b"}, []string{claims[0].Profile, claims[1].Profile})
-	require.Empty(t, got.ClaimantsOf("/home/u/.claude/skills/something-else"))
+	require.Empty(t, got.ClaimantsOf(skillDest("something-else")))
 
 	// ByID names both profiles, which is the shape FR-012's report needs even
 	// though the decision itself is internal/plan's.
@@ -564,16 +617,16 @@ func TestValidateRefusesRecordsAmctlCouldNotHaveWritten(t *testing.T) {
 			func(r *record.Record) { r.Profiles[0].Entries[0].Digest = record.Digest{} },
 			"no digest"},
 		{"a relative destination",
-			func(r *record.Record) { r.Profiles[0].Entries[0].Dest = ".claude/skills/x" },
+			func(r *record.Record) { r.Profiles[0].Entries[0].Dest = filepath.Join(".claude", "skills", "x") },
 			"is not absolute"},
 		{"an unclean destination",
-			func(r *record.Record) { r.Profiles[0].Entries[0].Dest = "/home/u/../u/.claude/skills/x" },
+			func(r *record.Record) { r.Profiles[0].Entries[0].Dest = uncleanDest() },
 			"is not a clean path"},
 		{"no destination",
 			func(r *record.Record) { r.Profiles[0].Entries[0].Dest = "" },
 			"no destination"},
 		{"a destination ending in the swap's aside name",
-			func(r *record.Record) { r.Profiles[0].Entries[0].Dest = "/home/u/.claude/skills/x.amctl-old" },
+			func(r *record.Record) { r.Profiles[0].Entries[0].Dest = skillDest("x") + record.AsideSuffix },
 			"which is the swap's aside name"},
 		{"the same package twice for one target", func(r *record.Record) {
 			e := r.Profiles[0].Entries[0]
@@ -787,7 +840,7 @@ func big(t *testing.T, revision int) *record.Record {
 			Digest:  mustDigest(t, digestHex),
 			Kind:    record.KindSkill,
 			Target:  record.TargetClaudeCode,
-			Dest:    "/home/u/.claude/skills/skill-" + itoa(i),
+			Dest:    skillDest("skill-" + itoa(i)),
 			Fingerprint: record.Fingerprint{
 				Algo: record.FingerprintAlgo,
 				Files: map[string]record.FileMark{

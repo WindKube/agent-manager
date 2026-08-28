@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -615,7 +616,64 @@ func TestPutCreatesTheCacheDirectoryPrivately(t *testing.T) {
 
 	info, err := os.Stat(c.Root())
 	require.NoError(t, err)
+
+	// Windows does not have the mode bits: Go synthesises 0777 for every
+	// directory, so the 0700 argument to MkdirAll is discarded and this
+	// assertion could only ever be made to pass by asserting 0777, which would
+	// assert nothing. The skip is therefore recording a REAL GAP, not a
+	// portability detail — the cache directory is genuinely not private on
+	// Windows, and making it so needs an explicit DACL via
+	// golang.org/x/sys/windows, which no task in this feature owns. Do not
+	// widen this into "the mode does not matter".
+	if runtime.GOOS == "windows" {
+		require.Equal(t, fs.FileMode(0o777), info.Mode().Perm(),
+			"if Windows ever grows real mode bits, this skip needs revisiting rather than relaxing")
+		t.Skip("no mode bits on windows; the cache directory is not private there — see the comment")
+	}
 	require.Equal(t, fs.FileMode(dirMode), info.Mode().Perm())
+}
+
+// A discard that cannot remove the entry must SAY so, because the entry then
+// poisons that digest for every future read rather than for this one. The
+// swallowed version of this shipped and the Windows CI leg caught it; this test
+// is what keeps the reporting from being quietly reverted as noise.
+func TestAnUnremovableCorruptEntryIsReportedNotSwallowed(t *testing.T) {
+	t.Parallel()
+
+	if runtime.GOOS == "windows" {
+		// A read-only directory does not block deletion on Windows, so there is
+		// no portable way to make RemoveAll fail here. The behaviour under test
+		// is platform-independent; only the way to provoke it is not.
+		t.Skip("cannot make a directory refuse unlink on windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores the write bit, so the removal would succeed")
+	}
+
+	c := newTestCache(t)
+	payload := []byte("bundle bytes")
+	d := Compute(payload)
+	require.NoError(t, c.Put(d, payload))
+
+	entry := filepath.Join(c.Root(), d.FileName())
+	require.NoError(t, os.WriteFile(entry, []byte("tampered!!!!"), 0o600))
+
+	// Unlinking needs write on the DIRECTORY, not on the entry.
+	require.NoError(t, os.Chmod(c.Root(), 0o500))
+	t.Cleanup(func() { _ = os.Chmod(c.Root(), 0o700) })
+
+	_, err := c.Get(d)
+
+	// Still a miss and still corrupt, so every existing caller behaves the same...
+	require.ErrorIs(t, err, ErrMiss)
+	require.ErrorIs(t, err, ErrCorrupt)
+	// ...but the permanence is now visible.
+	require.ErrorContains(t, err, "could not be removed")
+	require.ErrorContains(t, err, "every future read of this digest will fail the same way")
+
+	// And the claim in that message is true: the entry really did survive.
+	_, statErr := os.Stat(entry)
+	require.NoError(t, statErr, "the message promises the entry is still there")
 }
 
 func TestVerifyDoesNotRetainBytesButStillRehashes(t *testing.T) {

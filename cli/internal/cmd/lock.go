@@ -10,7 +10,6 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 )
 
@@ -56,8 +55,14 @@ import (
 //     else; the hostname guard normally skips the check entirely (container
 //     hostnames differ), and where it does not (`--uts host`), the worst
 //     answer is again "alive".
-//   - Permission denied, or Windows, where Signal(0) is unsupported. Both are
-//     treated as alive.
+//   - Permission denied — another user's process, which therefore exists. Read
+//     as alive.
+//
+// The probe itself is per-platform, in liveness_unix.go and
+// liveness_windows.go, and the two are not the same shape: on Unix
+// os.FindProcess never fails and Signal(0) answers, while on Windows
+// OpenProcess answers and Signal cannot. A single generic version reported
+// every Windows process as alive, which made the accelerator dead code there.
 //
 // # What this does NOT catch. All four are real; none is fixed by the code
 //
@@ -425,29 +430,4 @@ func (o lockOptions) isStale(h Holder, info os.FileInfo) (stale bool, why string
 		return true, fmt.Sprintf("process %d on this host is gone", h.PID)
 	}
 	return false, ""
-}
-
-// processAlive is the accelerator, and every uncertain answer is "alive". See
-// the pid discussion at the top of this file for why that direction is the only
-// safe one.
-func processAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	p, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	err = p.Signal(syscall.Signal(0))
-	switch {
-	case err == nil:
-		return true
-	case errors.Is(err, os.ErrProcessDone), errors.Is(err, syscall.ESRCH):
-		return false
-	default:
-		// Permission denied (another user's process), and Windows, where
-		// Signal is unsupported outright. Both mean "cannot tell", which this
-		// function reports as alive so the heartbeat decides instead.
-		return true
-	}
 }

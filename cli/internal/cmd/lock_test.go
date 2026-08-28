@@ -470,11 +470,30 @@ func TestProcessAliveFailsTowardsAlive(t *testing.T) {
 // removeIfUnchanged is the reclaim guard: it must not unlink a lock whose
 // holder heartbeated after the staleness judgment.
 func TestRemoveIfUnchangedRefusesAFileThatChangedSinceItWasJudged(t *testing.T) {
+	// The FileInfo comes from an open HANDLE, because that is how readLock
+	// obtains the one this guard is given in production (f.Stat(), not
+	// os.Stat). Do not "simplify" this back to os.Stat: on Windows the two are
+	// not interchangeable, and the difference silently disarms the test.
+	//
+	// os.Stat on Windows records the PATH and resolves the file id lazily, on
+	// the first os.SameFile that needs it (os/types_windows.go, loadFileId).
+	// So a path-based `judged` compared after a replacement loads the id of
+	// whatever is at that path NOW — the same file as `fresh` — and SameFile
+	// always answers true. A handle-based one is filled in eagerly by
+	// GetFileInformationByHandle at stat time, which is what makes it a
+	// snapshot at all.
+	//
+	// The Windows CI leg caught this as a failing precondition below, which is
+	// the good outcome: production reads through a handle and is correct, and
+	// only the fixture was lying.
 	newLock := func(t *testing.T) (string, os.FileInfo) {
 		t.Helper()
 		p := filepath.Join(t.TempDir(), "sync.lock")
 		require.NoError(t, os.WriteFile(p, []byte("{}"), 0o600))
-		info, err := os.Stat(p)
+		f, err := os.Open(p)
+		require.NoError(t, err)
+		defer func() { _ = f.Close() }()
+		info, err := f.Stat()
 		require.NoError(t, err)
 		return p, info
 	}
@@ -504,7 +523,8 @@ func TestRemoveIfUnchangedRefusesAFileThatChangedSinceItWasJudged(t *testing.T) 
 		fresh, err := os.Stat(p)
 		require.NoError(t, err)
 		require.True(t, fresh.ModTime().Equal(judged.ModTime()), "the mtimes must match, or this proves nothing")
-		require.False(t, os.SameFile(judged, fresh), "it must be a different inode, or this proves nothing")
+		require.False(t, os.SameFile(judged, fresh),
+			"it must be a different file, or this proves nothing — see the handle note on newLock")
 
 		err = removeIfUnchanged(p, judged)
 		require.Error(t, err)

@@ -27,9 +27,12 @@ func TestRegisteringAnUploadReturns202AndThenRefusesTheSameVersionWith409(t *tes
 		  on conflict (slug) do nothing`)
 	require.NoError(t, err)
 
+	// The publisher is `<namespace>/<team>`; a check constraint refuses anything
+	// else. The object key and the rendered id are built from the first segment
+	// alone, which is what the assertions below spell out.
 	contentType, body := upload(t, zipOf(t, scenario2Files()), map[string]string{
 		"source":     "upload",
-		"publisher":  "example",
+		"publisher":  "example/platform",
 		"category":   "Infrastructure",
 		"visibility": "organisation",
 	})
@@ -59,7 +62,7 @@ func TestRegisteringAnUploadReturns202AndThenRefusesTheSameVersionWith409(t *tes
 	require.NoError(t, pool.QueryRow(t.Context(),
 		`select p.category_id::text from package p
 		   join publisher pub on pub.id = p.publisher_id
-		  where pub.slug = 'example' and p.name = 'platform-toolkit'`).Scan(&categoryID))
+		  where pub.slug = 'example/platform' and p.name = 'platform-toolkit'`).Scan(&categoryID))
 	require.NotNil(t, categoryID)
 
 	var versions, jobs, audits int
@@ -77,7 +80,7 @@ func TestRegisteringAnUploadReturns202AndThenRefusesTheSameVersionWith409(t *tes
 	// The same publisher/name@version again. FR-007: refused, and the refusal is
 	// the requirement rather than a duplicate-key leak.
 	contentType, body = upload(t, zipOf(t, scenario2Files()), map[string]string{
-		"source": "upload", "publisher": "example",
+		"source": "upload", "publisher": "example/platform",
 	})
 	rec = postForm(t, handler, "/v1/packages", kw.token, contentType, body)
 	require.Equal(t, http.StatusConflict, rec.Code, rec.Body.String())
@@ -102,7 +105,7 @@ func TestRegisteringAgainstAnUncuratedCategoryIsRefused(t *testing.T) {
 	handler := liveHandler(t)
 
 	contentType, body := upload(t, zipOf(t, scenario2Files()), map[string]string{
-		"source": "upload", "publisher": "curated", "category": "Made Up On The Spot",
+		"source": "upload", "publisher": "uncurated/team", "category": "Made Up On The Spot",
 	})
 	rec := postForm(t, handler, "/v1/packages", kw.token, contentType, body)
 	require.Equal(t, http.StatusUnprocessableEntity, rec.Code, rec.Body.String())

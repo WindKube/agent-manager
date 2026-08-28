@@ -1,0 +1,290 @@
+# One command, under five minutes, no cloud account (SC-001).
+#
+# The env blocks below ARE the credential boundary (constitution principle II).
+# Read them as a table: `web` has no DATABASE_URL and no BLOB_URL, `api` holds a
+# read-only object-store key, and only `fetcher` holds one that can write. None
+# of that is an oversight to tidy up — internal/config has no field for what a
+# role must not read, so adding a line here would not even compile.
+name: agent-manager
+
+x-observability: &observability
+  AGENT_MANAGER_LOG_LEVEL: info
+  AGENT_MANAGER_LOG_FORMAT: console
+
+x-queue-url: &queue-url
+  AGENT_MANAGER_RIVER_DATABASE_URL: >-
+    postgres://am_queue:local-development-am-queue@postgres:5432/river?sslmode=disable
+
+# The issuer is browser-facing and the discovery URL is container-facing. They
+# differ on purpose: see the OIDC_DISCOVERY_URL note in quickstart.md. The scope
+# list omits `groups` because the local realm attaches the group-membership
+# mapper to the client rather than to a requestable scope; the code's default
+# (which includes it) is what a real IdP wants.
+x-oidc: &oidc
+  AGENT_MANAGER_OIDC_ISSUER: http://localhost:8083/realms/agent-manager
+  AGENT_MANAGER_OIDC_DISCOVERY_URL: http://keycloak:8083/realms/agent-manager
+  AGENT_MANAGER_OIDC_CLIENT_ID: agent-manager
+  AGENT_MANAGER_OIDC_CLIENT_SECRET: local-only-oidc-client-secret
+  AGENT_MANAGER_OIDC_SCOPES: openid profile email
+
+x-blob-read: &blob-read
+  AGENT_MANAGER_BLOB_URL: >-
+    s3://agent-manager-local?region=us-east-1&endpoint=http://minio:9000&hostname_immutable=true
+  AWS_ACCESS_KEY_ID: am-reader
+  AWS_SECRET_ACCESS_KEY: local-development-minio-reader
+  AWS_REGION: us-east-1
+
+x-blob-write: &blob-write
+  AGENT_MANAGER_BLOB_URL: >-
+    s3://agent-manager-local?region=us-east-1&endpoint=http://minio:9000&hostname_immutable=true
+  AWS_ACCESS_KEY_ID: am-fetcher
+  AWS_SECRET_ACCESS_KEY: local-development-minio-writer
+  AWS_REGION: us-east-1
+
+x-app-image: &app-image
+  image: agent-manager:local
+  build:
+    context: .
+    args:
+      VERSION: local
+      COMMIT: compose
+
+services:
+  postgres:
+    image: postgres:16.15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: local-development-postgres
+      POSTGRES_DB: agent_manager
+    volumes:
+      - ./deploy/local/postgres-init.sql:/docker-entrypoint-initdb.d/10-agent-manager.sql:ro
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d agent_manager"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      BUCKET: agent-manager-local
+      WRITER_KEY: am-fetcher
+      WRITER_SECRET: local-development-minio-writer
+      READER_KEY: am-reader
+      READER_SECRET: local-development-minio-reader
+    volumes:
+      - ./deploy/local/minio/policies.sh:/policies.sh:ro
+    entrypoint: ["/bin/sh", "/policies.sh"]
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.5
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_PORT: "8083"
+      KC_HEALTH_ENABLED: "true"
+      # The frontchannel URLs (issuer, authorize, device) must be reachable from
+      # the operator's browser; the backchannel ones (token, jwks) from the api
+      # and web containers. BACKCHANNEL_DYNAMIC is what lets one Keycloak answer
+      # both: it derives the backchannel URLs from the request's Host header and
+      # leaves `issuer` alone.
+      KC_HOSTNAME: http://localhost:8083
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+    volumes:
+      - ./deploy/local/keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
+    ports:
+      - "8083:8083"
+    healthcheck:
+      # The image has no curl and no shell utilities to speak of, so the probe is
+      # bash's own /dev/tcp against the management port.
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000 &&
+          printf 'GET /health/ready HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q UP <&3
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # Migrations. Two one-shots, chained, and nothing that serves starts until both
+  # have exited 0.
+  # ---------------------------------------------------------------------------
+  migrate-schema:
+    image: arigaio/atlas:1.3.2-community-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - migrate
+      - apply
+      - --dir
+      - file:///migrations
+      - --url
+      - postgres://am_migrate:local-development-am-migrate@postgres:5432/agent_manager?sslmode=disable
+    volumes:
+      - ./internal/store/migrations:/migrations:ro
+
+  migrate-queue:
+    <<: *app-image
+    depends_on:
+      migrate-schema:
+        condition: service_completed_successfully
+    environment:
+      <<: [*observability, *queue-url]
+    command: ["migrate", "queue"]
+    healthcheck:
+      disable: true
+
+  # ---------------------------------------------------------------------------
+  # Serving roles.
+  # ---------------------------------------------------------------------------
+  api:
+    <<: *app-image
+    depends_on:
+      migrate-queue:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+    environment:
+      <<: [*observability, *queue-url, *oidc, *blob-read]
+      AGENT_MANAGER_API_ADDR: ":8081"
+      AGENT_MANAGER_DATABASE_URL: >-
+        postgres://am_api:local-development-am-api@postgres:5432/agent_manager?sslmode=disable
+      AGENT_MANAGER_PUBLIC_BASE_URL: http://localhost:8081
+      AGENT_MANAGER_OIDC_REDIRECT_URL: http://localhost:8080/auth/callback
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+
+  web:
+    <<: *app-image
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      <<: [*observability, *oidc]
+      AGENT_MANAGER_WEB_ADDR: ":8080"
+      AGENT_MANAGER_API_BASE_URL: http://api:8081
+      AGENT_MANAGER_OIDC_REDIRECT_URL: http://localhost:8080/auth/callback
+    command: ["serve", "web"]
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/agent-manager", "healthcheck", "--url", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  fetcher:
+    <<: *app-image
+    depends_on:
+      migrate-queue:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      <<: [*observability, *queue-url, *blob-write]
+      AGENT_MANAGER_DATABASE_URL: >-
+        postgres://am_fetcher:local-development-am-fetcher@postgres:5432/agent_manager?sslmode=disable
+    command: ["worker", "run", "fetcher"]
+    # A worker has no HTTP listener yet, so the image's HEALTHCHECK — which probes
+    # the api's port — would mark it unhealthy forever. T109 adds the metrics and
+    # liveness listener on AGENT_MANAGER_METRICS_ADDR; the probe comes back then.
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+
+  # The registry (internal/worker/roles) has no scanner yet, so `worker run
+  # scanner` exits with "unknown worker" until T071 registers it. Kept behind a
+  # profile so `docker compose up` is green now and the topology is already
+  # wired: the US4 layer deletes the profiles line. Until then:
+  # `--profile workers`.
+  scanner:
+    <<: *app-image
+    profiles: ["workers"]
+    depends_on:
+      migrate-queue:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      <<: [*observability, *queue-url, *blob-read]
+      AGENT_MANAGER_DATABASE_URL: >-
+        postgres://am_scanner:local-development-am-scanner@postgres:5432/agent_manager?sslmode=disable
+      AGENT_MANAGER_RULEPACK_DIR: /etc/agent-manager/rulepack
+    command: ["worker", "run", "scanner"]
+    # A worker has no HTTP listener yet, so the image's HEALTHCHECK — which probes
+    # the api's port — would mark it unhealthy forever. T109 adds the metrics and
+    # liveness listener on AGENT_MANAGER_METRICS_ADDR; the probe comes back then.
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+
+  # seed writes bundle bytes as well as rows, so it holds the writer key. It is a
+  # one-shot: it must exit 0, and `docker compose up` stays up without it.
+  seed:
+    <<: *app-image
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      <<: [*observability, *blob-write]
+      AGENT_MANAGER_DATABASE_URL: >-
+        postgres://am_api:local-development-am-api@postgres:5432/agent_manager?sslmode=disable
+    command: ["seed"]
+    healthcheck:
+      disable: true
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # Optional. `docker compose --profile queue-ui up`
+  # ---------------------------------------------------------------------------
+  queue-ui:
+    image: ghcr.io/riverqueue/riverui:0.19.0
+    profiles: ["queue-ui"]
+    depends_on:
+      migrate-queue:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: >-
+        postgres://am_queue:local-development-am-queue@postgres:5432/river?sslmode=disable
+      RIVER_HOST: ":8082"
+    ports:
+      - "8082:8082"
+
+volumes:
+  postgres-data:
+  minio-data:

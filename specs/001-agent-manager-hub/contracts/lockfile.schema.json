@@ -10,54 +10,79 @@
     "schemaVersion": { "const": "1.0.0" },
     "profile": {
       "type": "object",
+      "description": "Identifies the profile this revision belongs to.",
       "required": ["slug", "name"],
       "additionalProperties": false,
       "properties": {
-        "slug": { "type": "string" },
-        "name": { "type": "string" },
-        "visibility": { "enum": ["organisation", "shared", "private"] }
+        "slug": { "type": "string", "examples": ["platform-baseline"] },
+        "name": { "type": "string", "examples": ["Platform baseline"] },
+        "visibility": { "type": "string", "enum": ["organisation", "shared", "private"], "examples": ["organisation"] }
       }
     },
-    "revision": { "type": "integer", "minimum": 1, "description": "Sequential per profile, no gaps." },
-    "note": { "type": "string" },
-    "resolvedAt": { "type": "string", "format": "date-time" },
+    "revision": { "type": "integer", "minimum": 1, "description": "Sequential per profile, no gaps.", "examples": [7] },
+    "note": { "type": "string", "description": "The publisher's note on this revision.", "examples": ["Quarterly refresh"] },
+    "resolvedAt": { "type": "string", "format": "date-time", "examples": ["2026-04-17T09:12:04Z"] },
     "gate": {
+      "type": "string",
       "enum": ["block", "approval", "warn-with-override"],
-      "description": "The org scan gate in force at resolution. Recorded so a lockfile explains itself later."
+      "description": "The org scan gate in force at resolution. Recorded so a lockfile explains itself later.",
+      "examples": ["approval"]
     },
-    "defaultPolicy": { "enum": ["floating-latest", "pinned", "range"] },
+    "defaultPolicy": { "type": "string", "enum": ["floating-latest", "pinned", "range"], "examples": ["pinned"] },
     "entries": {
       "type": "array",
       "description": "Packages this revision resolves to an exact version.",
+      "examples": [
+        [
+          {
+            "id": "acme/code-review",
+            "kind": "skill",
+            "version": "2.4.1",
+            "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            "objectKey": "bundles/acme/code-review/2.4.1/bundle.tar.zst",
+            "resolution": "pinned",
+            "verdict": "clean"
+          }
+        ]
+      ],
       "items": {
         "type": "object",
         "required": ["id", "kind", "version", "digest", "objectKey", "resolution", "verdict"],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string", "description": "publisher/name" },
-          "kind": { "enum": ["plugin", "skill"] },
-          "version": { "type": "string" },
-          "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
-          "objectKey": { "type": "string" },
-          "resolution": { "enum": ["latest", "pinned", "range"] },
-          "verdict": { "enum": ["clean", "flagged"] },
+          "id": { "type": "string", "description": "publisher/name", "examples": ["acme/code-review"] },
+          "kind": { "type": "string", "enum": ["plugin", "skill"], "examples": ["skill"] },
+          "version": { "type": "string", "examples": ["2.4.1"] },
+          "digest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "examples": ["sha256:0000000000000000000000000000000000000000000000000000000000000000"]
+          },
+          "objectKey": { "type": "string", "examples": ["bundles/acme/code-review/2.4.1/bundle.tar.zst"] },
+          "resolution": { "type": "string", "enum": ["latest", "pinned", "range"], "examples": ["pinned"] },
+          "verdict": { "type": "string", "enum": ["clean", "flagged"], "examples": ["clean"] },
           "override": {
             "type": "object",
             "description": "Present only when a flagged version resolved under warn-with-override.",
             "required": ["reviewer", "note", "expiresAt"],
             "additionalProperties": false,
             "properties": {
-              "reviewer": { "type": "string" },
-              "note": { "type": "string" },
-              "expiresAt": { "type": "string", "format": "date-time" }
+              "reviewer": { "type": "string", "examples": ["security-lead@example.dev"] },
+              "note": { "type": "string", "examples": ["Network call is to our own registry"] },
+              "expiresAt": { "type": "string", "format": "date-time", "examples": ["2026-07-01T00:00:00Z"] }
             }
           },
           "signature": {
             "type": "object",
+            "description": "Signature provenance, when the source carried one.",
             "additionalProperties": false,
             "properties": {
-              "ref": { "type": "string" },
-              "verified": { "type": "boolean", "description": "False until Sigstore verification ships (FR-048a). Never render a false value as a pass." }
+              "ref": { "type": "string", "examples": ["sigstore:acme/code-review@2.4.1"] },
+              "verified": {
+                "type": "boolean",
+                "description": "False until Sigstore verification ships (FR-048a). Never render a false value as a pass.",
+                "examples": [false]
+              }
             }
           }
         }
@@ -66,13 +91,24 @@
     "skipped": {
       "type": "array",
       "description": "FR-036: an excluded package is reported with its reason, never silently omitted.",
+      "examples": [
+        [
+          {
+            "id": "acme/legacy-helper",
+            "reason": "flagged-awaiting-approval",
+            "detail": "SH-NET-002 in postinstall.sh",
+            "wouldHaveResolvedTo": "1.9.0"
+          }
+        ]
+      ],
       "items": {
         "type": "object",
         "required": ["id", "reason"],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string" },
+          "id": { "type": "string", "examples": ["acme/legacy-helper"] },
           "reason": {
+            "type": "string",
             "enum": [
               "flagged-blocked-by-gate",
               "flagged-awaiting-approval",
@@ -80,17 +116,19 @@
               "no-clean-version-available",
               "pin-target-missing",
               "unsigned-and-signatures-required"
-            ]
+            ],
+            "examples": ["flagged-awaiting-approval"]
           },
-          "detail": { "type": "string" },
-          "wouldHaveResolvedTo": { "type": "string" }
+          "detail": { "type": "string", "examples": ["SH-NET-002 in postinstall.sh"] },
+          "wouldHaveResolvedTo": { "type": "string", "examples": ["1.9.0"] }
         }
       }
     },
     "targets": {
       "type": "array",
       "description": "Which agent directories the CLI should write. Advisory to the client; the server stores nothing per target (FR-039).",
-      "items": { "enum": ["claude-code", "agents-md", "codex"] }
+      "items": { "type": "string", "enum": ["claude-code", "agents-md", "codex"] },
+      "examples": [["claude-code", "agents-md"]]
     }
   }
 }

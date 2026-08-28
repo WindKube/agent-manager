@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-manager.invalid/schemas/agent-skills/skill-frontmatter.schema.json",
+  "title": "Agent Skills SKILL.md Frontmatter",
+  "description": "PROJECT-AUTHORED, NOT VENDORED. agentskills.io publishes no JSON Schema (see PROVENANCE.md), so this document is written by Agent Manager from the field set recorded in specs/001-agent-manager-hub/research.md R1. It is not an artefact of the Agent Skills specification and must never be presented as one. The $id host is deliberately unresolvable so nothing can mistake it for a published schema.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$",
+      "description": "Skill name. The published pattern also forbids '--' and '..' anywhere in the value via a negative lookahead, which this pattern cannot express: Go's RE2 has no lookahead. That half of the rule is enforced by an explicit check in name.go and reported at this same schema path."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "What the skill does and when an agent should reach for it."
+    },
+    "license": {
+      "type": "string"
+    },
+    "allowed-tools": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "EXPERIMENTAL, and not an enforcement mechanism: the Agent Skills specification states it grants pre-approval for the listed tools but does not block others. Nothing in this hub may read it as a permission boundary."
+    },
+    "metadata": {
+      "type": "object"
+    },
+    "compatibility": {
+      "type": "object"
+    }
+  },
+  "required": ["name", "description"],
+  "additionalProperties": false
+}

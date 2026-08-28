@@ -1,0 +1,244 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Every job here only reads the checkout. Nothing writes a comment, a package or a
+# check, so no job raises this.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# A statically linked binary is the point of the distroless image, so this is the
+# default. The two test jobs override it, because -race requires cgo.
+env:
+  CGO_ENABLED: "0"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      # golangci-lint type-checks, so it needs the whole module graph on disk. Left
+      # to the linter's own lazy fetches a single flaky proxy read surfaces as a
+      # bogus `typecheck` finding on our source, which is indistinguishable from a
+      # real one.
+      - name: go mod download
+        run: go mod download
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.12.2
+      - name: Import boundaries (credential model, compiled)
+        run: go test ./internal/archcheck/...
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: go test -race
+        env:
+          CGO_ENABLED: "1" # -race requires cgo
+        run: go test -race -shuffle=on -coverprofile=coverage.out -covermode=atomic ./...
+      - name: Coverage summary
+        run: go tool cover -func=coverage.out | tail -1 >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: coverage
+          path: coverage.out
+          if-no-files-found: ignore
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux]
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: go build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build -trimpath -ldflags '-s -w' -o "/tmp/agent-manager-$GOOS-$GOARCH" ./cmd/agent-manager
+      - name: Smoke the built binary
+        if: matrix.goarch == 'amd64'
+        run: /tmp/agent-manager-linux-amd64 version
+
+  generated:
+    name: Generated output is current
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      # Runs every generator, not just templ: internal/store/schema/02-tables.sql is
+      # emitted from the Bun models, so a templ-only check cannot see model drift.
+      - name: Regenerate and fail on a diff
+        run: task gen:check
+
+  openapi:
+    name: OpenAPI contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          # The breaking-change gate compares the contract against the PR's merge base,
+          # which is not in a shallow clone.
+          fetch-depth: 0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      # spectral and redocly are npm-only and have no Go equivalent. Node here is not the
+      # "No Node.js in any image" the constitution forbids: that governs the shipped
+      # container, which has none and gets its CSS from the Tailwind standalone binary.
+      # Nothing in this job reaches an image or a run-time process.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+      - uses: arduino/setup-task@c0bc642852239c2689f73f4ea6459c29405f3c52 # v3.0.0
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      # vacuum and wiretap are ~110MB of release tarball and openapi-changes is a Go
+      # build, so the tools are cached. The key includes Taskfile.openapi.yaml because the
+      # install tasks are guarded on existence, not on version — without the hash a
+      # version bump would keep restoring the old binary.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .bin
+          key: openapi-tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Taskfile.openapi.yaml') }}
+      - name: Install the contract tooling
+        run: task openapi:tools
+      - name: Lint the contract (vacuum, spectral, redocly)
+        run: task openapi:lint
+      - name: Publish the vacuum quality score
+        if: always()
+        run: task --silent openapi:score >> "$GITHUB_STEP_SUMMARY"
+      - name: Build the Redoc docs and the vacuum quality report
+        if: always()
+        run: |
+          task openapi:docs
+          task openapi:report
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: openapi-docs
+          path: |
+            docs/api/index.html
+            docs/api/quality.html
+          if-no-files-found: error
+      # Last, so a breaking change does not cost the docs and the score above. The CLI
+      # ships separately and cannot be redeployed in step with the hub, so an incompatible
+      # change to contracts/openapi.yaml has to fail the build rather than land quietly.
+      - name: Breaking-change gate against the merge base
+        if: ${{ !cancelled() }}
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -eu
+          if [ -n "${BASE_REF:-}" ]; then
+            base="$(git merge-base "origin/${BASE_REF}" HEAD)"
+          elif git rev-parse -q --verify HEAD~1 >/dev/null; then
+            base=HEAD~1
+          else
+            echo "no earlier revision of the contract to compare against"
+            exit 0
+          fi
+          echo "comparing the contract against ${base}"
+          task openapi:breaking BASE="${base}"
+
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      # The per-role grants and every load-bearing constraint are asserted against a
+      # real Postgres via testcontainers. The unit suite cannot reach them, so without
+      # this job the credential boundary is unverified.
+      - name: go test -tags=integration
+        env:
+          CGO_ENABLED: "1" # -race requires cgo
+        run: go test -race -tags=integration -timeout=20m ./...
+
+  vuln:
+    name: Vulnerability scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: govulncheck
+        run: |
+          go run golang.org/x/vuln/cmd/govulncheck@latest -show verbose ./...
+
+  image:
+    name: Image build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - name: Build (no push)
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          push: false
+          load: true
+          tags: agent-manager:ci
+          build-args: |
+            VERSION=ci-${{ github.sha }}
+            COMMIT=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: The image runs and reports its version
+        run: docker run --rm agent-manager:ci version

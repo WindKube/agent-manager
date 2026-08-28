@@ -1,0 +1,17 @@
+# oapi-codegen configuration for the web role's ONLY door to data.
+#
+# Constitution principle V: this client is GENERATED from the document
+# internal/api emits (internal/apiclient/openapi.json, written by
+# `go run ./internal/api/cmd/openapigen`), never from the frozen contract file and
+# never hand-copied. `task gen:client` runs both halves; `task gen:check` fails on
+# a stale result.
+#
+# Only models and the client are generated: `serve web` calls the api over HTTP
+# and has no server side of its own.
+package: apiclient
+output: internal/apiclient/client.gen.go
+generate:
+  models: true
+  client: true
+output-options:
+  skip-prune: true

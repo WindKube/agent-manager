@@ -1,0 +1,75 @@
+// Package roles is the worker registry: the one list of background roles, and the
+// only file that changes when a role is added (constitution principle VII).
+//
+// IT IS A PACKAGE OF ITS OWN AND NOT internal/worker, AND THAT IS FORCED RATHER
+// THAN PREFERRED. contracts/worker.md puts this list in internal/worker itself,
+// but a role package imports internal/worker for Definition, Needs and Deps, so a
+// list inside internal/worker that names fetcher.Definition() is an import cycle
+// and will not compile. The registry therefore sits one level down, above the
+// framework and above every role, which is the only place that can see them all.
+package roles
+
+import (
+	"fmt"
+	"io"
+	"slices"
+	"strings"
+
+	"agent-manager/internal/worker"
+	"agent-manager/internal/worker/fetcher"
+)
+
+// definitions is the one list. It is the ONLY thing that changes when a role is
+// added: not the cobra command, not Build, not the Dockerfile (principle VII).
+//
+//	scanner.Definition(), // T060 — Needs{DB: AccessReadWrite, Blob: AccessRead, Outbound: false}
+var definitions = []worker.Definition{
+	fetcher.Definition(),
+}
+
+// Definitions returns the registered roles in registration order.
+func Definitions() []worker.Definition { return slices.Clone(definitions) }
+
+// Names returns the registered role names, which are the arguments
+// `agent-manager worker run` accepts.
+func Names() []string {
+	out := make([]string, 0, len(definitions))
+	for _, def := range definitions {
+		out = append(out, def.Name)
+	}
+	return out
+}
+
+// Lookup finds a role by the name `worker run <name>` was given.
+func Lookup(name string) (worker.Definition, error) {
+	for _, def := range definitions {
+		if def.Name == name {
+			return def, nil
+		}
+	}
+	if len(definitions) == 0 {
+		return worker.Definition{}, fmt.Errorf("unknown worker %q: no workers are registered yet", name)
+	}
+	return worker.Definition{}, fmt.Errorf("unknown worker %q: registered workers are %s", name, strings.Join(Names(), ", "))
+}
+
+// List writes the registry for `agent-manager worker list`.
+func List(w io.Writer) error {
+	if len(definitions) == 0 {
+		_, err := fmt.Fprintln(w, "no workers registered yet")
+		return err
+	}
+	for _, def := range definitions {
+		queues := make([]string, 0, len(def.Queues))
+		for name, concurrency := range def.Queues {
+			queues = append(queues, fmt.Sprintf("%s=%d", name, concurrency))
+		}
+		slices.Sort(queues)
+
+		if _, err := fmt.Fprintf(w, "%s\tdb=%s blob=%s outbound=%t queues=%s\n",
+			def.Name, def.Needs.DB, def.Needs.Blob, def.Needs.Outbound, strings.Join(queues, ",")); err != nil {
+			return err
+		}
+	}
+	return nil
+}

@@ -1,0 +1,239 @@
+package components
+
+import (
+	"strconv"
+
+	"agent-manager/internal/web/view"
+)
+
+// PackageScreen is the detail page of US3.
+//
+// The plugin and the skill variants differ STRUCTURALLY and not by an empty
+// panel: a standalone skill has no package-contents section at all (US3
+// scenario 2), because a skill has no components and a section headed "Package
+// contents" over an empty tree says something false about the package rather
+// than nothing about it.
+//
+// Two controls the design draws are deliberately absent. "View source" has no
+// target — `version` records where bytes were STORED and nothing about where
+// they came from, so the button is unimplementable for a URL registration and
+// meaningless for an uploaded archive. "Add to profile" belongs to US5, and
+// there is no operation behind it in this layer. A control with nothing behind
+// it is worse than a screen without it.
+templ PackageScreen(p view.Package) {
+	<div class="am-detail-head">
+		<a class="am-back" href="/catalog">← Catalog</a>
+		if p.SignedOut || p.Missing {
+			<h1 class="am-h1">Package</h1>
+		} else {
+			<h1 class="am-h1">{ p.Name }</h1>
+			<div class="am-detail-ids">
+				<span class="am-mono am-id">{ p.ID }</span>
+				<span class="am-detail-sep">|</span>
+				<span class="am-detail-pub">{ p.Publisher }</span>
+				if p.Verified {
+					<span class="am-verified">Verified publisher</span>
+				}
+				<span class={ KindClass(p.Kind) }>{ p.Kind.Label() }</span>
+				<span class={ ScanClass(p.Scan) }>{ p.Scan.Label() }</span>
+				if p.Category != "" {
+					<span class="am-detail-cat">{ p.Category }</span>
+				}
+			</div>
+		}
+	</div>
+	if p.SignedOut {
+		<div class="am-empty am-empty-auth" id="package-signed-out">
+			Sign in to inspect this package. The hub has no anonymous view.
+		</div>
+	} else if p.Missing {
+		<div class="am-empty" id="package-missing">
+			No such package, or it is not readable by your identity.
+		</div>
+	} else {
+		@packageBody(p)
+	}
+}
+
+templ packageBody(p view.Package) {
+	<div class="am-detail">
+		<div class="am-detail-main">
+			@packageDescription(p)
+			if p.HasContents() {
+				@packageContents(p)
+			}
+			@packageManifest(p)
+			@CapabilityPanel(p.Capabilities)
+		</div>
+		<div class="am-detail-side">
+			@VersionsPanel(p)
+			@DependentsPanel(p)
+		</div>
+	</div>
+}
+
+templ packageDescription(p view.Package) {
+	<section class="am-section">
+		<div class="am-label">Description</div>
+		if p.Description != "" {
+			<p class="am-desc">{ p.Description }</p>
+		} else {
+			<p class="am-desc am-desc-none">The manifest carries no description.</p>
+		}
+		<div class="am-origin">{ p.Origin() }</div>
+		if len(p.Tags) > 0 {
+			<div class="am-tagrow">
+				for _, tag := range p.Tags {
+					<span class="am-tag">{ tag }</span>
+				}
+			</div>
+		}
+	</section>
+}
+
+// packageContents is the plugin variant's tree and component list (FR-017).
+// Both are derived from the component rows: no manifest field enumerates
+// components, and the bundle's file list is not stored anywhere (view.Tree).
+templ packageContents(p view.Package) {
+	<section class="am-section am-section-flush">
+		<div class="am-section-head">
+			<div class="am-section-title">Package contents</div>
+			<div class="am-section-note">
+				{ strconv.Itoa(p.CountOf("skill")) } skills · { strconv.Itoa(p.CountOf("mcp")) } MCP · { strconv.Itoa(p.CountOf("ext")) } extensions
+			</div>
+		</div>
+		<pre class="am-pre">{ p.Tree() }</pre>
+		for _, component := range p.Components {
+			<div class="am-comp">
+				<span class={ ComponentClass(component.Kind) }>{ component.Kind }</span>
+				<span class="am-mono am-comp-name">{ component.Name }</span>
+				<span class="am-comp-note">{ component.Note }</span>
+			</div>
+		}
+	</section>
+}
+
+templ packageManifest(p view.Package) {
+	<section class="am-section am-section-flush">
+		<div class="am-section-head">
+			<div class="am-section-title">{ p.ManifestPanelTitle() }</div>
+			<div class="am-section-note">as stored, immutable</div>
+		</div>
+		<pre class="am-pre">{ p.ManifestText() }</pre>
+	</section>
+}
+
+// CapabilityPanel is T060: inferred against expected, presented so that neither
+// can be mistaken for a permission this hub grants.
+//
+// The "not scanned yet" state is a real, reachable state and not an error: the
+// scanner writes both sources in the transaction that records the scan, so a
+// version registered a moment ago has rows of neither. Rendering it as an empty
+// comparison would say "this package reaches nothing", which is the opposite of
+// what is known about it.
+templ CapabilityPanel(caps view.Capabilities) {
+	<section class="am-section" id="capability-panel">
+		<div class="am-label">Capabilities</div>
+		<p class="am-note">
+			Inferred by the scanner from static analysis of the bundle. Neither package specification
+			defines a permissions model, so nothing here is granted, denied or enforced — the inferred
+			column is what the bytes do, and the expected column is what the publisher said they would.
+		</p>
+		if !caps.Scanned {
+			<div class="am-empty" id="capability-unscanned">
+				This version has not been scanned yet, so no capabilities have been recorded from
+				either source. That is not the same as a package that reaches nothing.
+			</div>
+		} else if len(caps.Rows) == 0 {
+			<div class="am-empty" id="capability-none">
+				The scan found no network, filesystem or shell capability in this version.
+			</div>
+		} else {
+			<div class="am-cap-head">
+				<div>Capability</div>
+				<div>Inferred</div>
+				<div>Expected</div>
+			</div>
+			for _, row := range caps.Rows {
+				<div class="am-cap">
+					<div class="am-cap-name">
+						<div class="am-mono">{ row.Name }</div>
+						<div class={ StatusClass(row) }>{ row.Status() }</div>
+					</div>
+					@capabilityFacet(row.Inferred)
+					@capabilityFacet(row.Expected)
+				</div>
+			}
+		}
+	</section>
+}
+
+templ capabilityFacet(facet view.CapabilityFacet) {
+	<div class="am-cap-side">
+		if facet.Present {
+			<span class={ LevelClass(facet.Level) }>{ view.LevelLabel(facet.Level) }</span>
+			if facet.Targets() != "" {
+				<div class="am-cap-targets">{ facet.Targets() }</div>
+			}
+		} else {
+			<span class="am-cap-absent">—</span>
+		}
+	</div>
+}
+
+// VersionsPanel is FR-019: semver, dist tag, date, the FULL object key and the
+// sha256. The key is shown whole rather than abbreviated because the point of
+// showing it is that an operator can find the bytes in the bucket.
+templ VersionsPanel(p view.Package) {
+	<section class="am-section am-section-flush" id="versions-panel">
+		<div class="am-section-head">
+			<div class="am-section-title">Versions</div>
+			<div class="am-section-note">immutable</div>
+		</div>
+		for _, version := range p.Versions {
+			<div class="am-ver">
+				<div class="am-ver-head">
+					<div class="am-ver-tags">
+						<span class="am-mono am-ver-semver">{ version.Version }</span>
+						if version.Tag() != "" {
+							<span class={ VersionTagClass(version.Tag()) }>{ version.Tag() }</span>
+						}
+						if version.PinLabel() != "" {
+							<span class="am-vtag am-vtag-pin">{ version.PinLabel() }</span>
+						}
+						<span class={ ScanClass(version.Scan) }>{ version.Scan.Label() }</span>
+					</div>
+					<span class="am-ver-date">{ version.Date }</span>
+				</div>
+				<div class="am-mono am-ver-key">{ version.ObjectKey }</div>
+				if version.Digest != "" {
+					<div class="am-mono am-ver-digest">{ version.Digest }</div>
+				} else {
+					<div class="am-ver-digest am-ver-nodigest">digest pending: the bytes have not been fetched yet</div>
+				}
+				if version.Size != "" {
+					<div class="am-ver-size">{ version.Size }</div>
+				}
+			</div>
+		}
+	</section>
+}
+
+// DependentsPanel is US3 scenario 5, scoped to the caller.
+//
+// It lists exactly the profiles this identity may read (FR-044) and counts what
+// it lists. There is no "N people" line: a membership row can name a group,
+// nothing here knows how many people are in one, and a partial head count
+// presented as a head count would be worse than none.
+templ DependentsPanel(p view.Package) {
+	<section class="am-section" id="dependents-panel">
+		<div class="am-label">Used in profiles</div>
+		<div class="am-origin">{ p.DependentsLine() }</div>
+		for _, dependent := range p.Dependents {
+			<div class="am-dep">
+				<a class="am-dep-name" href={ view.ProfileHref(dependent.Slug) }>{ dependent.Name }</a>
+				<span class="am-mono am-dep-pin">{ dependent.Resolution() }</span>
+			</div>
+		}
+	</section>
+}

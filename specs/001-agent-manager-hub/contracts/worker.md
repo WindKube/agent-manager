@@ -13,7 +13,7 @@ it needs; the runtime hands it exactly that and nothing else.
 // internal/worker/worker.go
 
 // Definition is the complete description of a background role. Adding a worker means
-// writing one of these and appending it to the list in registry.go. Nothing else in the
+// writing one of these and appending it to the list in worker/roles. Nothing else in the
 // tree changes — not the cobra command, not the bootstrap, not the Dockerfile.
 type Definition struct {
     Name     string              // matches `agent-manager worker run <name>`
@@ -45,14 +45,23 @@ type Deps struct {
 }
 ```
 
-`registry.go` is the only file that changes when a role is added:
+`internal/worker/roles/roles.go` is the only file that changes when a role is added:
 
 ```go
-var definitions = []Definition{
+var definitions = []worker.Definition{
     fetcher.Definition(), // Needs{DB: ReadWrite, Blob: ReadWrite, Outbound: true}
     scanner.Definition(), // Needs{DB: ReadWrite, Blob: Read,      Outbound: false}
 }
 ```
+
+**The registry is a package of its own, not a file in `internal/worker`.** This document
+originally put the list in `internal/worker/registry.go`; that does not compile. A role
+package imports `internal/worker` for `Definition`, `Needs` and `Deps`, so a list inside
+`internal/worker` that names `fetcher.Definition()` closes an import cycle. The registry
+therefore sits one level down, above the framework and above every role — the only place
+that can see them all. The alternative, `init()`-based self-registration, was rejected: it
+trades a compile-time list for an import side effect, and "the one list of roles" stops
+being a thing you can read.
 
 ### Which boundary is enforced by what
 
@@ -128,7 +137,7 @@ inside a `Source` is a defect (principle III).
 ## 4. Adding a worker — the whole checklist
 
 1. New package under `internal/worker/<name>/` exporting `Definition()`.
-2. Append it to `definitions` in `registry.go`.
+2. Append it to `definitions` in `internal/worker/roles/roles.go`.
 3. If it needs a new job type, define the River args struct and its outbox `job_kind`.
 4. Add a compose service reusing the same image with `command: ["worker", "run", "<name>"]`
    and **only** the env vars its `Needs` implies.

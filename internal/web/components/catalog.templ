@@ -1,0 +1,216 @@
+package components
+
+import (
+	"strconv"
+
+	"agent-manager/internal/web/view"
+)
+
+// CatalogScreen is the whole catalog. The initial render is complete — rows,
+// counts and both facet option lists — so the first paint costs no round trip and
+// the screen works with the signals never having been touched.
+templ CatalogScreen(c Catalog) {
+	<div data-signals={ c.Signals() }>
+		<div class="am-header">
+			<div class="am-header-text">
+				<h1 class="am-h1">Catalog</h1>
+				<p class="am-lede">
+					Plugins and standalone skills registered against the Agent Plugins 1.0.0 spec. Every
+					source is fetched, scanned and stored as an immutable version in object storage.
+				</p>
+			</div>
+			<div class="am-actions">
+				<button
+					type="button"
+					class="am-btn"
+					data-on:click="$_importOpen = true; $_importTab = 'upload'"
+				>Upload package</button>
+				<button
+					type="button"
+					class="am-btn am-btn-primary"
+					data-on:click="$_importOpen = true; $_importTab = 'url'"
+				>Add source</button>
+			</div>
+		</div>
+		<div class="am-controls">
+			<input
+				class="am-search"
+				type="search"
+				placeholder="Search plugins, skills, publishers"
+				aria-label="Search plugins, skills, publishers"
+				data-bind="q"
+				data-on:input="$page = 1"
+			/>
+			<div class="am-chips">
+				for _, label := range view.KindFilters {
+					<button
+						type="button"
+						class="am-chip"
+						data-class={ ChipClassExpr("kind", label) }
+						data-on:click={ ChipExpr("kind", label) }
+					>{ label }</button>
+				}
+			</div>
+			<div class="am-chips">
+				for _, label := range view.StatusFilters {
+					<button
+						type="button"
+						class="am-chip"
+						data-class={ ChipClassExpr("status", label) }
+						data-on:click={ ChipExpr("status", label) }
+					>{ label }</button>
+				}
+			</div>
+		</div>
+		<!-- Hidden until datastar says otherwise: a full-viewport overlay that is visible
+			     before the script runs would swallow every click on the page. -->
+		<div class="am-backdrop" style="display:none" data-show="$menu !== ''" data-on:click="$menu = ''"></div>
+		<div class="am-facets">
+			@facet(c.Category)
+			@facet(c.Tags)
+			<button
+				type="button"
+				class="am-reset"
+				style="display:none"
+				data-show="amAny($cats) || amAny($tags)"
+				data-on:click="$cats = '[]'; $tags = '[]'; $page = 1"
+			>Reset filters</button>
+			<div class="am-spacer"></div>
+			<div class="am-count" id="catalog-count">{ c.Page.ResultCount() }</div>
+		</div>
+		<div class="am-card" id="catalog-card">
+			@CatalogTable(c.Page)
+		</div>
+		<!--
+			One place issues the debounced round trip, for any change to a server-side
+			signal. The filter-box signals are underscored and excluded from the patch
+			filter, so typing in a facet menu never reaches here: that is the R7 budget
+			expressed as one attribute rather than as a rule people have to remember.
+		-->
+		<div
+			data-on-signal-patch-filter="{include: /^(q|kind|status|cats|tags|sort|dir|page)$/}"
+			data-on-signal-patch__debounce.150ms="@get('/catalog/results')"
+		></div>
+		@ImportModal(c.Import)
+	</div>
+}
+
+templ facet(f Facet) {
+	<div class="am-facet">
+		<button
+			type="button"
+			class="am-facet-trigger"
+			aria-haspopup="true"
+			data-attr:aria-expanded={ f.ExpandedExpr() }
+			data-on:click={ f.ToggleMenuExpr() }
+		>
+			<span>{ f.Label }</span>
+			<span
+				class="am-facet-summary"
+				data-class={ f.SummaryClassExpr() }
+				data-text={ f.SummaryExpr() }
+			>{ view.SelectedSummary(f.Selected) }</span>
+			<span class="am-facet-caret">▾</span>
+		</button>
+		<div class="am-facet-menu" style="display:none" data-show={ f.OpenExpr() }>
+			<div class="am-facet-filter">
+				<input
+					type="text"
+					placeholder={ f.Placeholder }
+					aria-label={ f.Placeholder }
+					data-bind={ f.BindQuery() }
+				/>
+			</div>
+			<div class="am-facet-list" id={ f.OptionsID() }>
+				@FacetOptions(f)
+			</div>
+			<div class="am-facet-foot">
+				<button type="button" class="am-facet-clear" data-on:click={ f.ClearExpr() }>Clear</button>
+				<button type="button" class="am-facet-done" data-on:click="$menu = ''">Done</button>
+			</div>
+		</div>
+	</div>
+}
+
+// FacetOptions is the payload sent when a menu opens, and re-sent with the counts
+// after a round trip. Filtering it is entirely client-side from here on.
+templ FacetOptions(f Facet) {
+	for _, option := range f.Options {
+		<div
+			class="am-opt"
+			role="checkbox"
+			data-label={ option.Label }
+			data-show={ f.ShowOptionExpr() }
+			data-class={ f.OptionClassExpr() }
+			data-attr:aria-checked={ f.OptionCheckedExpr() }
+			data-on:click={ f.ToggleOptionExpr() }
+		>
+			<span class="am-check"></span>
+			<span class={ f.LabelClass() }>{ option.Label }</span>
+			<span class="am-opt-count">{ strconv.Itoa(option.Count) }</span>
+		</div>
+	}
+	<div class="am-opt-none" style="display:none" data-show={ f.NoMatchExpr() }>No match</div>
+}
+
+templ CatalogTable(page view.CatalogPage) {
+	<div class="am-row am-row-head">
+		<button type="button" class={ SortClass(page.Query, view.SortName) } data-on:click={ SortExpr(page.Query, view.SortName) }>
+			{ "Name" + SortArrow(page.Query, view.SortName) }
+		</button>
+		<div>Kind</div>
+		<div>Category</div>
+		<div>Version</div>
+		<div>Scan</div>
+		<button type="button" class={ SortClass(page.Query, view.SortUses) } data-on:click={ SortExpr(page.Query, view.SortUses) }>
+			{ "Uses" + SortArrow(page.Query, view.SortUses) }
+		</button>
+		<button type="button" class={ SortClass(page.Query, view.SortUpdated) } data-on:click={ SortExpr(page.Query, view.SortUpdated) }>
+			{ "Updated" + SortArrow(page.Query, view.SortUpdated) }
+		</button>
+	</div>
+	for _, row := range page.Rows {
+		<a class="am-row" href={ row.Href() }>
+			<div class="am-cell-name">
+				<div class="am-name">{ row.Name }</div>
+				<div class="am-id">{ row.ID }</div>
+			</div>
+			<div><span class={ KindClass(row.Kind) }>{ row.Kind.Label() }</span></div>
+			<div class="am-cell-text">{ row.Category }</div>
+			<div class="am-cell-mono">{ row.Version }</div>
+			<div><span class={ ScanClass(row.Scan) }>{ row.Scan.Label() }</span></div>
+			<div class="am-cell-mono">{ strconv.Itoa(row.Uses) }</div>
+			<div class="am-cell-dim">{ row.Updated }</div>
+		</a>
+	}
+	if page.SignedOut {
+		// Distinct copy AND a distinct class, because the whole risk here is a
+		// reader — or a test — mistaking this for a catalog that has no packages.
+		<div class="am-empty am-empty-auth" id="catalog-signed-out">
+			Sign in to browse the catalog. The hub has no anonymous view.
+		</div>
+	} else if page.Empty() {
+		<div class="am-empty">Nothing matches these filters. Clear a tag or widen the category.</div>
+	}
+	if page.Pages() > 1 {
+		<div class="am-pager">
+			<span>Page { strconv.Itoa(page.Page) } of { strconv.Itoa(page.Pages()) }</span>
+			if page.Page > 1 {
+				<button type="button" data-on:click={ PageExpr(page.Page - 1) }>Previous</button>
+			} else {
+				<button type="button" disabled>Previous</button>
+			}
+			if page.Page < page.Pages() {
+				<button type="button" data-on:click={ PageExpr(page.Page + 1) }>Next</button>
+			} else {
+				<button type="button" disabled>Next</button>
+			}
+		</div>
+	}
+}
+
+// CatalogCount is patched alongside the table so the live count of FR-015 stays
+// in step with it.
+templ CatalogCount(page view.CatalogPage) {
+	<div class="am-count" id="catalog-count">{ page.ResultCount() }</div>
+}

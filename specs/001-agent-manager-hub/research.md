@@ -26,8 +26,11 @@ additionalProperties: false
 
 Ten fields, closed set. `extensions` is keyed by reverse-domain namespace and the spec
 states it "assigns no semantics to namespace object contents". Schema 1.1.0 has an
-**identical** plugin field set; only `mcp.json` changed (now `{$schema, mcpServers}`, both
-required).
+**identical** plugin field set, and — corrected by diffing the vendored copies — an
+**identical** `mcp.json` too: both files differ between the two versions only in the `$id`,
+the `const` on `$schema` and the version named in the prose `description`, and 1.0.0's
+`mcp.schema.json` already requires `{$schema, mcpServers}`. See
+`internal/domain/pkgspec/schemas/PROVENANCE.md`.
 
 Agent Skills (`agentskills.io`) defines `SKILL.md` frontmatter with required `name` and
 `description`, optional `license`, `metadata`, `compatibility`, and an **experimental**
@@ -150,14 +153,34 @@ extracting to a temp dir and measuring after (the bomb has already landed).
 
 ## R4. Catalog query shape
 
-**Decision**: two round trips against the `catalog_entry` projection, issued concurrently —
-one for the filtered page, one for the facet counts. Indexes: GIN on `tags text[]`, GIN on
-the `tsvector` search column, btree on `(category)`, `(verdict)`, `(uses DESC)`,
-`(updated_at DESC)`.
+**Decision**: two round trips issued concurrently — one for the filtered page, one for the
+facet counts. Indexes: GIN on `tags text[]`, GIN on the `tsvector` search column, btree on
+`(category)`, `(verdict)`, `(uses DESC)`, `(updated_at DESC)`.
 
-Facet counts are computed **over the result set with that facet's own filter removed** —
-the standard faceted-search semantic, and what makes the design's per-option counts
-meaningful rather than misleading.
+The two queries run against the **base tables**, not against `catalog_entry`. R12 makes that
+projection conditional on a measurement, and the measurement passed without it: p95 14.2 ms
+at 10,000 packages / 50,000 versions against SC-003's 300 ms budget. `catalog_entry` does not
+exist and principle VIII's single-projection allowance is unspent. Two of the indexes above
+also turn out not to be reached at that size — see the note in
+`internal/api/queries/catalog_bench_integration_test.go` on why the planner is right to
+seq-scan `version` for a tag filter.
+
+Facet counts follow the way each facet **combines**, and the two facets combine differently
+(FR-013), so one blanket rule is wrong for one of them:
+
+- **Categories are disjunctive (OR).** Each option is counted with the **category filter
+  removed** and every other filter kept — the standard disjunctive-facet semantic. Selecting
+  a second category can only widen the result set, so a count that ignored the current
+  category selection is exactly what the reader will get by clicking.
+- **Tags are conjunctive (AND).** Each option is counted **against the current result set**,
+  filters and all — a drill-down count. Removing the tag facet's own filter here would
+  overstate every option by the intersection the reader is about to lose: with `aws`
+  selected, `terraform` would advertise every package carrying `terraform` rather than the
+  ones carrying both, and clicking it would return fewer rows than the menu promised.
+
+The rule for both is therefore "count what selecting this option would actually yield". For a
+disjunctive facet that means dropping its own filter; for a conjunctive one it means keeping
+it. This was originally written as own-filter-removed for both; the tags half was wrong.
 
 **Rationale**: one round trip forces either a `GROUPING SETS` monster or counting in Go over
 a full scan. Two concurrent queries are simpler, independently cacheable, and the latency
@@ -197,21 +220,48 @@ than the problem).
 
 ---
 
-## R6. Dex device-flow parity
+## R6. Local IdP device-flow and groups parity — RESOLVED BY MEASUREMENT
 
-**Decision**: Dex is the local IdP. It implements the OAuth 2.0 device authorisation grant
-and can emit a `groups` claim from its connectors, including the static-password connector
-used for local development. Local config ships two users in two groups so the group→role
-mapping screen is exercisable offline.
+**Original decision**: Dex, with verification owed on two points — that the device
+authorisation grant is enabled, and that `groups` appears in the ID token for a
+*static-password* user, since a static connector's claim support has historically lagged its
+OIDC connector.
 
-**Verification owed before the auth tasks start**: confirm the device grant is enabled in
-the shipped Dex version's config and that `groups` appears in the ID token for a static
-user, since a static connector's claim support has historically lagged its OIDC connector.
-If it does not, the fallback is Keycloak — heavier, but unambiguous on both counts.
+**Measured 2026-08-27 against real containers. Dex fails the second point, so the stated
+fallback is taken: the local IdP is Keycloak.**
 
-**Rationale**: FR-056 requires the device flow to work with no external account. Testing
-the CLI path against a mocked token endpoint would leave the real path unexercised until
-staging.
+| | Dex v2.44.0 | Keycloak 26.5 |
+| --- | --- | --- |
+| `device_authorization_endpoint` advertised | yes | yes |
+| `device_code` in `grant_types_supported` | yes | yes |
+| `groups` in `scopes_supported` | yes | — |
+| **`groups` claim in the ID token, static/local user** | **no** | **yes** |
+| **`groups` differs per user** | n/a | yes — `['eng-platform']` vs `['eng-security']` |
+| Startup to a live discovery document | ~2 s | 9 s |
+
+Dex's `staticPasswords` entries carry `email`, `hash`, `username` and `userID` and no groups
+field. Adding `groups: [...]` is accepted without warning and **silently ignored** — Dex logs
+nothing and starts normally, so it fails as a missing claim at run time rather than as a
+config error at boot. Requesting `scope=openid email groups profile` returns an ID token with
+`iss/sub/aud/exp/iat/at_hash/email/email_verified/name` and no `groups`.
+
+That makes FR-037's group→role mapping and the quickstart's "log in as anowak and step 4
+returns a different set" impossible to demonstrate locally, because the claim is the input to
+`group_role_map`. 9 seconds is well inside SC-001's five-minute budget, and Keycloak needs one
+realm-import JSON, no cloud account and no credential anyone has to obtain — so SC-001 still
+holds in full and the concern that made Dex attractive does not materialise.
+
+**Consequence for the code**: Keycloak's frontchannel URLs (`issuer`, authorisation, device)
+must be browser-reachable and its backchannel URLs (token, JWKS) container-reachable, and one
+`KC_HOSTNAME` cannot be both. `KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true` derives the backchannel
+URLs from the request's Host header and leaves `issuer` alone; go-oidc then needs
+`oidc.InsecureIssuerURLContext` because it otherwise refuses a document whose `issuer`
+differs from the URL it was fetched from. Hence `AGENT_MANAGER_OIDC_DISCOVERY_URL`, and the
+`iss` claim is still checked against `AGENT_MANAGER_OIDC_ISSUER`.
+
+**Rationale unchanged**: FR-056 requires the device flow to work with no external account.
+Testing the CLI path against a mocked token endpoint would leave the real path unexercised
+until staging.
 
 **Alternatives rejected**: Keycloak by default (slow start, heavy image, more config for the
 same coverage); a hand-rolled OIDC stub (tests our own bugs, not the protocol).
@@ -247,8 +297,12 @@ avoid).
 
 **Decision**: two distinct numbers, both derived, neither self-reported.
 
-- **Uses** = `count(distinct profile)` containing the package, plus a people count via
-  profile membership. Computed by the `catalog_entry` projection refresh, not per request.
+- **Uses** = `count(distinct profile)` containing the package. There is no people count
+  beside it: a membership row can name a group, and neither the schema nor the OIDC claims
+  record a group's size, so the design's "42 people across 4 profiles" cannot be produced
+  from anything this system stores. Profiles is the number, and FR-009 says so.
+  Aggregated per request in the catalog query — R12's measurement removed the
+  `catalog_entry` refresh this line assumed.
 - **Installs** = count of `sync_event` rows, written when a client fetches a resolved
   revision that contains the package. Aggregated by a nightly River job into a counter
   column.

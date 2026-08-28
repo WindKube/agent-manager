@@ -65,7 +65,7 @@ adjudicates and is browsable. US5–US8 are increments on top.
 
 ### Worker framework
 
-- [ ] T026 `internal/worker/` — `Definition`, `Needs`, `Access`, `Deps`, `Build()`, `registry.go`, exactly as `contracts/worker.md` specifies. `Build` returns nil for undeclared capabilities.
+- [ ] T026 `internal/worker/` — `Definition`, `Needs`, `Access`, `Deps`, `Build()`, and the registry in `internal/worker/roles` (a package, not a file in `internal/worker` — a role imports `internal/worker`, so a list there is an import cycle), exactly as `contracts/worker.md` specifies. `Build` returns nil for undeclared capabilities.
 - [ ] T027 [P] `internal/worker/worker_test.go` — a Definition declaring `Blob: AccessRead` gets a nil `BlobWrite`; `Build` fails fast when config lacks a declared credential.
 
 ### API and web skeletons
@@ -76,7 +76,7 @@ adjudicates and is browsable. US5–US8 are increments on top.
 - [ ] T031 `internal/web/` — templ + datastar skeleton, `assets/input.css` carrying the design's CSS-variable palette as Tailwind tokens, light/dark from `data-sm-theme`, shell + sidebar nav.
 - [ ] T032 **[R7 GATE]** Spike the catalog's typeahead-filtered multi-select facet with live counts in datastar. Exit criterion: instant typing at 50 options, table update < 300 ms. **If it fails, stop and adopt the Alpine.js fallback before building any other screen.**
 - [ ] T033 [P] Lint rule enforcing the role import boundary: only `internal/api` may import `internal/store` or `internal/blob`; `internal/web` may import only `internal/apiclient` and `internal/domain`.
-- [ ] T034 `compose.yaml` — postgres (two databases), minio + bucket init, dex (2 users, 2 groups, device grant), `migrate-schema` → `migrate-queue` chained on `service_completed_successfully`, api, web, fetcher, scanner, seed one-shot, `queue-ui` profile. Env per the quickstart table; `web` gets **no** DSN and **no** blob URL.
+- [ ] T034 `compose.yaml` — postgres (two databases), minio + bucket init, keycloak (2 users, 2 groups, device grant — Dex was measured and rejected, see R6), `migrate-schema` → `migrate-queue` chained on `service_completed_successfully`, api, web, fetcher, scanner, seed one-shot, `queue-ui` profile. Env per the quickstart table; `web` gets **no** DSN and **no** blob URL.
 - [ ] T035 [P] Test booting each role with **only** its own environment — proves SC-006 and that no role silently depends on a credential it should not have.
 
 **Checkpoint**: `docker compose up` starts everything, all health checks green, no screens yet.
@@ -123,7 +123,7 @@ adjudicates and is browsable. US5–US8 are increments on top.
 ## Phase 5: US3 — Inspect a package (P1) 🎯 MVP
 
 - [ ] T056 [P] [US3] `internal/domain/capability/` — **inference** from the scan: hosts from the shell AST and instruction URLs, filesystem scope from read/write targets, shell from commands present. Levels `scoped`/`allowlisted`/`review`; shell never below `review`.
-- [ ] T057 [P] [US3] Read the *expected* capability set from `extensions["dev.agent-manager"]` (FR-018a) and store it as `capability` rows with `source = 'expected'`.
+- [ ] T057 [P] [US3] Derive the *expected* capability set from `extensions["dev.agent-manager"]` (FR-018a) — a pure function in `internal/domain/capability/`, no I/O. The rows with `source = 'expected'` are **written by the scanner** in T071, in the transaction that records the scan: `am_fetcher` has no grant on `capability` and deliberately does not get one (data-model.md, grants). Until a version is scanned it therefore has no capability rows of either source, and T060's panel must say so rather than render an empty comparison.
 - [ ] T058 [US3] `GET /v1/packages/{id}` — description, origin line, tags, manifest, capabilities, versions with key + digest, dependent profiles.
 - [ ] T059 [US3] Detail screen: plugin variant (tree + components) vs skill variant (no contents section, frontmatter as manifest, origin naming the parent plugin).
 - [ ] T060 [P] [US3] Capabilities panel presenting **inferred vs expected** clearly. It must not read as an enforced permission grant — the specs define no such thing (R1).
@@ -173,7 +173,7 @@ adjudicates and is browsable. US5–US8 are increments on top.
 
 - [ ] T088 [US6] `POST /v1/device/authorize` — Crockford base32 user code (ambiguous glyphs excluded), device code **hashed at rest**, host bound, expiry.
 - [ ] T089 [US6] `POST /v1/device/token` — RFC 8628 polling with `authorization_pending` / `slow_down` / `expired_token`. Single-use via the `pending → approved → consumed` transition in one transaction.
-- [ ] T090 [US6] Browser approval flow through Dex, `login` audit row naming the host.
+- [ ] T090 [US6] Browser approval flow through the OIDC provider, `login` audit row naming the host.
 - [ ] T091 [P] [US6] Refusal tests: expired code, replayed code, approval by a different identity than the requester (FR-042).
 - [ ] T092 [P] [US6] `GET /v1/profiles` — exactly the readable set, enumerated not filtered (FR-044).
 - [ ] T093 [P] [US6] `GET /v1/profiles/{slug}/revisions/{revision}` and `GET /v1/bundles/...` with the `Digest` header.

@@ -1,0 +1,27 @@
+# vacuum by-path suppressions. Passed with --ignore-file; each entry is matched literally
+# against the JSONPath vacuum reports for a violation.
+#
+# RFC 8628 (OAuth 2.0 Device Authorization Grant) fixes these member names on the wire:
+# §3.1 (client_id), §3.2 (device_code, user_code, verification_uri,
+# verification_uri_complete, expires_in), §3.4 (grant_type), and RFC 6749 §5.1
+# (access_token, token_type, refresh_token). Renaming any of them to camelCase would make
+# the hub non-conformant and break every off-the-shelf device-flow client.
+#
+# Listed one path at a time rather than by switching camel-case-properties off, so a
+# genuinely inconsistent field name anywhere else in the contract still fails the lint.
+# The rule walks every schema in the document and ignores its own `given`, so a scoped
+# JSONPath in the ruleset would not work — this file is vacuum's only path-level hook.
+camel-case-properties:
+  - $.paths['/v1/device/authorize'].post.requestBody.content['application/json'].schema.properties['client_id']
+  - $.paths['/v1/device/authorize'].post.responses['200'].content['application/json'].schema.properties['device_code']
+  - $.paths['/v1/device/authorize'].post.responses['200'].content['application/json'].schema.properties['user_code']
+  - $.paths['/v1/device/authorize'].post.responses['200'].content['application/json'].schema.properties['verification_uri']
+  - $.paths['/v1/device/authorize'].post.responses['200'].content['application/json'].schema.properties['verification_uri_complete']
+  - $.paths['/v1/device/authorize'].post.responses['200'].content['application/json'].schema.properties['expires_in']
+  - $.paths['/v1/device/token'].post.requestBody.content['application/x-www-form-urlencoded'].schema.properties['grant_type']
+  - $.paths['/v1/device/token'].post.requestBody.content['application/x-www-form-urlencoded'].schema.properties['device_code']
+  - $.paths['/v1/device/token'].post.requestBody.content['application/x-www-form-urlencoded'].schema.properties['client_id']
+  - $.paths['/v1/device/token'].post.responses['200'].content['application/json'].schema.properties['access_token']
+  - $.paths['/v1/device/token'].post.responses['200'].content['application/json'].schema.properties['token_type']
+  - $.paths['/v1/device/token'].post.responses['200'].content['application/json'].schema.properties['expires_in']
+  - $.paths['/v1/device/token'].post.responses['200'].content['application/json'].schema.properties['refresh_token']

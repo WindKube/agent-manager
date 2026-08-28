@@ -1,0 +1,10 @@
+# Redocly by-path suppressions. Generated with `redocly lint --generate-ignore-file`, then
+# annotated. Path-scoped on purpose: operation-4xx-response stays live for every other
+# operation, so a real endpoint that forgets its error responses is still a finding.
+#
+# /v1/health answers 200 or 503 and has no authenticated variant, so it has no 4xx to
+# declare. Inventing one to satisfy the rule would put a response in the frozen
+# machine-facing contract that the hub never returns.
+specs/001-agent-manager-hub/contracts/openapi.yaml:
+  operation-4xx-response:
+    - '#/paths/~1v1~1health/get/responses'

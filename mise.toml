@@ -1,0 +1,24 @@
+# The dev toolchain. `mise install` gets you everything the Taskfile and the
+# pre-commit hooks expect on PATH.
+#
+# Not in here: atlas and tailwindcss. Those are downloaded into .bin/ by the
+# Taskfile because their versions are coupled to checked-in artefacts —
+# atlas.sum and the generated CSS — rather than to a developer's environment.
+[tools]
+go = "1.26.6"
+golangci-lint = "2.12.2"
+task = "3"
+pre-commit = "4"
+
+# Both also run in CI (.github/workflows/security.yaml). Pinned so a local run and
+# a CI run agree on what a finding is.
+zizmor = "1.29.0"
+actionlint = "1.7.12"
+gitleaks = "8.30.1"
+
+# The OpenAPI layer (Taskfile.openapi.yaml). node is here for npx only: spectral and
+# redocly run from the npm registry at pinned versions, in a dev shell and in CI, and
+# never inside a Dockerfile — the constitution's "no Node.js in any image" governs
+# shipped images. jq reads the openapi-changes report, so it gates the build.
+node = "24"
+jq = "1.8.1"

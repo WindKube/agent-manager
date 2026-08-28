@@ -1,0 +1,486 @@
+package models
+
+import (
+	"fmt"
+	"slices"
+	"sort"
+	"strings"
+)
+
+// Enum is implemented by every enumerated column type in this package.
+type Enum interface {
+	Valid() bool
+}
+
+// Postgres enum type names. These are the names the `type:` option of each bun
+// struct tag must carry, so Atlas diffs the column against the enum type rather
+// than against text.
+const (
+	PGPackageKind       = "package_kind"
+	PGPackageVisibility = "package_visibility"
+	PGDistTag           = "dist_tag"
+	PGVerdict           = "verdict"
+	PGComponentKind     = "component_kind"
+	PGCapabilitySource  = "capability_source"
+	PGCapabilityLevel   = "capability_level"
+	PGSignatureKind     = "signature_kind"
+	PGSignatureResult   = "signature_result"
+	PGCheckResult       = "check_result"
+	PGFindingSeverity   = "finding_severity"
+	PGFindingState      = "finding_state"
+	PGProfileVisibility = "profile_visibility"
+	PGVersionPolicy     = "version_policy"
+	PGEntryMode         = "entry_mode"
+	PGMembershipRole    = "membership_role"
+	PGSubjectKind       = "subject_kind"
+	PGSyncTargetKind    = "sync_target_kind"
+	PGOrgRole           = "org_role"
+	PGDeviceAuthState   = "device_auth_state"
+	PGScanGate          = "scan_gate"
+	PGActorKind         = "actor_kind"
+	PGAuditKind         = "audit_kind"
+	PGOutboxState       = "outbox_state"
+	PGEvidenceRole      = "evidence_role"
+	PGFetchSourceKind   = "fetch_source_kind"
+	PGFetchOutcome      = "fetch_outcome"
+)
+
+// enumTypes maps each Postgres enum type to its value set in declaration order.
+// Valid() and EnumDDL both read this map, so the values Postgres accepts and the
+// values Go accepts cannot drift apart.
+var enumTypes = map[string][]string{
+	PGPackageKind:       {"plugin", "skill"},
+	PGPackageVisibility: {"organisation", "team", "private"},
+	PGDistTag:           {"latest", "archived", "none"},
+	PGVerdict:           {"scanning", "clean", "flagged", "rejected"},
+	PGComponentKind:     {"skill", "mcp", "ext"},
+	PGCapabilitySource:  {"inferred", "expected"},
+	PGCapabilityLevel:   {"scoped", "allowlisted", "review"},
+	PGSignatureKind:     {"none", "cosign-bundle"},
+	PGSignatureResult:   {"verified", "invalid", "error"},
+	PGCheckResult:       {"pass", "fail", "warn"},
+	PGFindingSeverity:   {"low", "medium", "high"},
+	PGFindingState:      {"open", "approved", "rejected"},
+	PGProfileVisibility: {"organisation", "shared", "private"},
+	PGVersionPolicy:     {"floating-latest", "pinned", "range"},
+	PGEntryMode:         {"latest", "pinned", "range"},
+	PGMembershipRole:    {"owner", "maintainer", "reviewer", "consumer"},
+	PGSubjectKind:       {"user", "group"},
+	PGSyncTargetKind:    {"claude-code", "agents-md", "codex"},
+	PGOrgRole:           {"catalog-admin", "scanner-reviewer", "profile-consumer", "read-only"},
+	PGDeviceAuthState:   {"pending", "approved", "consumed", "expired", "denied"},
+	PGScanGate:          {"block", "approval", "warn-with-override"},
+	PGActorKind:         {"identity", "system"},
+	PGAuditKind: {
+		"fetch", "scan", "approve", "profile", "share", "sync", "login",
+		// The four admin kinds are appended, never interleaved: the migration that
+		// added them is `alter type ... add value`, which appends, and this slice is
+		// asserted against pg_enum in enumsortorder.
+		"policy", "role", "category", "secret",
+	},
+	PGOutboxState:     {"pending", "delivered"},
+	PGEvidenceRole:    {"primary", "supporting"},
+	PGFetchSourceKind: {"upload", "git", "archive-url"},
+	// fetch_outcome is one value per failure internal/fetch, internal/repourl and
+	// internal/bundle can actually tell apart today; the mapping is on FetchOutcome
+	// below. It deliberately does not enumerate HTTP status codes or transport
+	// causes: those are `detail`, and a value nothing can produce is a filter that
+	// always returns nothing.
+	PGFetchOutcome: {
+		"ok", "invalid-ref", "blocked", "unreachable",
+		"malformed", "too-large", "rejected-member", "extract-timeout",
+	},
+}
+
+func inEnum(pgType, value string) bool {
+	return slices.Contains(enumTypes[pgType], value)
+}
+
+// EnumTypes returns the Postgres enum types the models reference, mapped to their
+// declared value sets.
+func EnumTypes() map[string][]string {
+	out := make(map[string][]string, len(enumTypes))
+	for name, values := range enumTypes {
+		out[name] = slices.Clone(values)
+	}
+	return out
+}
+
+// EnumDDL returns one `create type` statement per enum type, sorted by name.
+// Bun emits no DDL for enum types, so the migration layer prepends these before
+// the loader's `create table` output.
+func EnumDDL() []string {
+	names := make([]string, 0, len(enumTypes))
+	for name := range enumTypes {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		quoted := make([]string, 0, len(enumTypes[name]))
+		for _, v := range enumTypes[name] {
+			quoted = append(quoted, "'"+v+"'")
+		}
+		out = append(out, fmt.Sprintf("create type %s as enum (%s);", name, strings.Join(quoted, ", ")))
+	}
+	return out
+}
+
+// PackageKind distinguishes a plugin from a standalone skill.
+type PackageKind string
+
+const (
+	PackageKindPlugin PackageKind = "plugin"
+	PackageKindSkill  PackageKind = "skill"
+)
+
+func (v PackageKind) Valid() bool { return inEnum(PGPackageKind, string(v)) }
+
+// PackageVisibility is who may see a package in the catalog.
+type PackageVisibility string
+
+const (
+	PackageVisibilityOrganisation PackageVisibility = "organisation"
+	PackageVisibilityTeam         PackageVisibility = "team"
+	PackageVisibilityPrivate      PackageVisibility = "private"
+)
+
+func (v PackageVisibility) Valid() bool { return inEnum(PGPackageVisibility, string(v)) }
+
+// DistTag is the distribution channel a version occupies. "pinned by N" in the
+// design is derived from profile entries, never stored here.
+type DistTag string
+
+const (
+	DistTagLatest   DistTag = "latest"
+	DistTagArchived DistTag = "archived"
+	DistTagNone     DistTag = "none"
+)
+
+func (v DistTag) Valid() bool { return inEnum(PGDistTag, string(v)) }
+
+// Verdict is the scan outcome carried by both version and scan.
+type Verdict string
+
+const (
+	VerdictScanning Verdict = "scanning"
+	VerdictClean    Verdict = "clean"
+	VerdictFlagged  Verdict = "flagged"
+	VerdictRejected Verdict = "rejected"
+)
+
+func (v Verdict) Valid() bool { return inEnum(PGVerdict, string(v)) }
+
+// ComponentKind is derived from the bundle's file tree, not from the manifest.
+type ComponentKind string
+
+const (
+	ComponentKindSkill ComponentKind = "skill"
+	ComponentKindMCP   ComponentKind = "mcp"
+	ComponentKindExt   ComponentKind = "ext"
+)
+
+func (v ComponentKind) Valid() bool { return inEnum(PGComponentKind, string(v)) }
+
+// CapabilitySource is the R1 inversion: `inferred` is what the scanner found in
+// the bytes, `expected` is what the publisher declared.
+type CapabilitySource string
+
+const (
+	CapabilitySourceInferred CapabilitySource = "inferred"
+	CapabilitySourceExpected CapabilitySource = "expected"
+)
+
+func (v CapabilitySource) Valid() bool { return inEnum(PGCapabilitySource, string(v)) }
+
+// CapabilityLevel is how much trust a capability demands.
+type CapabilityLevel string
+
+const (
+	CapabilityLevelScoped      CapabilityLevel = "scoped"
+	CapabilityLevelAllowlisted CapabilityLevel = "allowlisted"
+	CapabilityLevelReview      CapabilityLevel = "review"
+)
+
+func (v CapabilityLevel) Valid() bool { return inEnum(PGCapabilityLevel, string(v)) }
+
+// SignatureKind is the signature format. `cosign-bundle` is reserved for when
+// sigstore-go lands (R9).
+type SignatureKind string
+
+const (
+	SignatureKindNone         SignatureKind = "none"
+	SignatureKindCosignBundle SignatureKind = "cosign-bundle"
+)
+
+func (v SignatureKind) Valid() bool { return inEnum(PGSignatureKind, string(v)) }
+
+// SignatureResult is the outcome of a verification attempt. Every value is
+// provisional: nothing writes this column until sigstore-go lands, and null
+// means "never attempted" — which is what the UI must say (FR-048a).
+type SignatureResult string
+
+const (
+	SignatureResultVerified SignatureResult = "verified"
+	SignatureResultInvalid  SignatureResult = "invalid"
+	SignatureResultError    SignatureResult = "error"
+)
+
+func (v SignatureResult) Valid() bool { return inEnum(PGSignatureResult, string(v)) }
+
+// CheckResult is one scanner check's outcome.
+type CheckResult string
+
+const (
+	CheckResultPass CheckResult = "pass"
+	CheckResultFail CheckResult = "fail"
+	CheckResultWarn CheckResult = "warn"
+)
+
+func (v CheckResult) Valid() bool { return inEnum(PGCheckResult, string(v)) }
+
+// FindingSeverity ranks a finding.
+type FindingSeverity string
+
+const (
+	FindingSeverityLow    FindingSeverity = "low"
+	FindingSeverityMedium FindingSeverity = "medium"
+	FindingSeverityHigh   FindingSeverity = "high"
+)
+
+func (v FindingSeverity) Valid() bool { return inEnum(PGFindingSeverity, string(v)) }
+
+// FindingState is where a finding sits in review.
+type FindingState string
+
+const (
+	FindingStateOpen     FindingState = "open"
+	FindingStateApproved FindingState = "approved"
+	FindingStateRejected FindingState = "rejected"
+)
+
+func (v FindingState) Valid() bool { return inEnum(PGFindingState, string(v)) }
+
+// ProfileVisibility is who may see a profile. Deliberately a different value set
+// from PackageVisibility: a profile is shared, not owned by a team.
+type ProfileVisibility string
+
+const (
+	ProfileVisibilityOrganisation ProfileVisibility = "organisation"
+	ProfileVisibilityShared       ProfileVisibility = "shared"
+	ProfileVisibilityPrivate      ProfileVisibility = "private"
+)
+
+func (v ProfileVisibility) Valid() bool { return inEnum(PGProfileVisibility, string(v)) }
+
+// VersionPolicy is the organisation-wide or profile-wide default for how entries
+// track new versions.
+type VersionPolicy string
+
+const (
+	VersionPolicyFloatingLatest VersionPolicy = "floating-latest"
+	VersionPolicyPinned         VersionPolicy = "pinned"
+	VersionPolicyRange          VersionPolicy = "range"
+)
+
+func (v VersionPolicy) Valid() bool { return inEnum(PGVersionPolicy, string(v)) }
+
+// EntryMode is one profile entry's tracking mode.
+type EntryMode string
+
+const (
+	EntryModeLatest EntryMode = "latest"
+	EntryModePinned EntryMode = "pinned"
+	EntryModeRange  EntryMode = "range"
+)
+
+func (v EntryMode) Valid() bool { return inEnum(PGEntryMode, string(v)) }
+
+// MembershipRole is a subject's role on one profile.
+type MembershipRole string
+
+const (
+	MembershipRoleOwner      MembershipRole = "owner"
+	MembershipRoleMaintainer MembershipRole = "maintainer"
+	MembershipRoleReviewer   MembershipRole = "reviewer"
+	MembershipRoleConsumer   MembershipRole = "consumer"
+)
+
+func (v MembershipRole) Valid() bool { return inEnum(PGMembershipRole, string(v)) }
+
+// SubjectKind is whether a membership names a person or a mapped group.
+type SubjectKind string
+
+const (
+	SubjectKindUser  SubjectKind = "user"
+	SubjectKindGroup SubjectKind = "group"
+)
+
+func (v SubjectKind) Valid() bool { return inEnum(PGSubjectKind, string(v)) }
+
+// SyncTargetKind is a client-side file format a profile can be written to.
+type SyncTargetKind string
+
+const (
+	SyncTargetKindClaudeCode SyncTargetKind = "claude-code"
+	SyncTargetKindAgentsMD   SyncTargetKind = "agents-md"
+	SyncTargetKindCodex      SyncTargetKind = "codex"
+)
+
+func (v SyncTargetKind) Valid() bool { return inEnum(PGSyncTargetKind, string(v)) }
+
+// OrgRole is the role an IdP group maps onto.
+type OrgRole string
+
+const (
+	OrgRoleCatalogAdmin    OrgRole = "catalog-admin"
+	OrgRoleScannerReviewer OrgRole = "scanner-reviewer"
+	OrgRoleProfileConsumer OrgRole = "profile-consumer"
+	OrgRoleReadOnly        OrgRole = "read-only"
+)
+
+func (v OrgRole) Valid() bool { return inEnum(PGOrgRole, string(v)) }
+
+// DeviceAuthState is the device-flow lifecycle. Single use comes from the
+// pending -> approved -> consumed transition inside one transaction (FR-042),
+// which is why there is no boolean here.
+type DeviceAuthState string
+
+const (
+	DeviceAuthStatePending  DeviceAuthState = "pending"
+	DeviceAuthStateApproved DeviceAuthState = "approved"
+	DeviceAuthStateConsumed DeviceAuthState = "consumed"
+	DeviceAuthStateExpired  DeviceAuthState = "expired"
+	DeviceAuthStateDenied   DeviceAuthState = "denied"
+)
+
+func (v DeviceAuthState) Valid() bool { return inEnum(PGDeviceAuthState, string(v)) }
+
+// ScanGate is what a non-clean verdict does to a publish.
+type ScanGate string
+
+const (
+	ScanGateBlock            ScanGate = "block"
+	ScanGateApproval         ScanGate = "approval"
+	ScanGateWarnWithOverride ScanGate = "warn-with-override"
+)
+
+func (v ScanGate) Valid() bool { return inEnum(PGScanGate, string(v)) }
+
+// ActorKind separates a person from the system in the audit log.
+type ActorKind string
+
+const (
+	ActorKindIdentity ActorKind = "identity"
+	ActorKindSystem   ActorKind = "system"
+)
+
+func (v ActorKind) Valid() bool { return inEnum(PGActorKind, string(v)) }
+
+// AuditKind is the class of audited action.
+//
+// The last four are the Organization screen's mutations. They are four values
+// rather than one `admin` bucket because the audit screen filters by kind, and
+// "who changed the scan gate" and "who rotated the identity-provider secret" are
+// not the same question. Their absence was not a gap to backfill later: with no
+// valid kind to write, FR-050's "every state-changing action writes exactly one
+// audit row" failed silently on the highest-privilege screen in the product —
+// nothing written, nothing raised, no gap to detect afterwards.
+type AuditKind string
+
+const (
+	AuditKindFetch   AuditKind = "fetch"
+	AuditKindScan    AuditKind = "scan"
+	AuditKindApprove AuditKind = "approve"
+	AuditKindProfile AuditKind = "profile"
+	AuditKindShare   AuditKind = "share"
+	AuditKindSync    AuditKind = "sync"
+	AuditKindLogin   AuditKind = "login"
+	// AuditKindPolicy covers org_policy as a whole: the scan gate (FR-046), the
+	// default version policy (FR-047) and the four booleans beside them.
+	AuditKindPolicy AuditKind = "policy"
+	// AuditKindRole is the group->role map (FR-040), which can grant catalog-admin.
+	AuditKindRole AuditKind = "role"
+	// AuditKindCategory is the admin-curated category vocabulary (FR-049).
+	AuditKindCategory AuditKind = "category"
+	// AuditKindSecret is identity-provider credential rotation. The credential
+	// itself never reaches a row here; the fact that it moved does.
+	AuditKindSecret AuditKind = "secret"
+)
+
+func (v AuditKind) Valid() bool { return inEnum(PGAuditKind, string(v)) }
+
+// OutboxState is the hand-off state of one outbox row.
+type OutboxState string
+
+const (
+	OutboxStatePending   OutboxState = "pending"
+	OutboxStateDelivered OutboxState = "delivered"
+)
+
+func (v OutboxState) Valid() bool { return inEnum(PGOutboxState, string(v)) }
+
+// EvidenceRole separates the location that caused a finding from the ones that
+// show its consequences. SH-FS-007's cause is scripts/explain-costs.sh:9 while
+// the writes it lets escape are on lines 28, 34 and 36, so one location per
+// finding cannot render the finding (FR-024).
+type EvidenceRole string
+
+const (
+	EvidenceRolePrimary    EvidenceRole = "primary"
+	EvidenceRoleSupporting EvidenceRole = "supporting"
+)
+
+func (v EvidenceRole) Valid() bool { return inEnum(PGEvidenceRole, string(v)) }
+
+// FetchSourceKind mirrors fetch.SourceKind, the three shapes FR-001 accepts.
+//
+// It is a copy rather than an import: internal/store/models is loaded by the
+// Atlas provider and must stay free of the fetch tree, and internal/fetch must
+// not learn about the database. TestFetchSourceKindCoversEveryFetchSourceKind in
+// internal/store/models is what stops the copy drifting.
+type FetchSourceKind string
+
+const (
+	FetchSourceUpload     FetchSourceKind = "upload"
+	FetchSourceGit        FetchSourceKind = "git"
+	FetchSourceArchiveURL FetchSourceKind = "archive-url"
+)
+
+func (v FetchSourceKind) Valid() bool { return inEnum(PGFetchSourceKind, string(v)) }
+
+// FetchOutcome is how one fetch attempt ended.
+//
+// Every value is something the ingestion path distinguishes today, and the
+// mapping is one-to-one so that nothing has to be recovered by parsing `detail`:
+//
+//	ok               a Tree was produced
+//	invalid-ref      repourl.ErrInvalid or fetch.ErrNoSource — nothing was dialled
+//	blocked          fetch.ErrBlocked — the outbound policy refused the address
+//	unreachable      any other failure out of fetch.Client.Do
+//	malformed        bundle.ErrMalformed
+//	too-large        bundle.ErrTooLarge
+//	rejected-member  bundle.ErrRejectedMember
+//	extract-timeout  bundle.ErrTimeout
+//
+// Two deliberate decisions. A fetch-side timeout is `unreachable`, not
+// `extract-timeout`: the http client's own deadline is indistinguishable from a
+// dead host at this layer, and one word that means both stages is worse than a
+// name that says which stage it came from. And there is no `not-found`: a 404 is
+// a status on a response fetch.Client returns successfully, so nothing below the
+// worker can tell it from any other status, and the worker does not exist yet.
+type FetchOutcome string
+
+const (
+	FetchOutcomeOK             FetchOutcome = "ok"
+	FetchOutcomeInvalidRef     FetchOutcome = "invalid-ref"
+	FetchOutcomeBlocked        FetchOutcome = "blocked"
+	FetchOutcomeUnreachable    FetchOutcome = "unreachable"
+	FetchOutcomeMalformed      FetchOutcome = "malformed"
+	FetchOutcomeTooLarge       FetchOutcome = "too-large"
+	FetchOutcomeRejectedMember FetchOutcome = "rejected-member"
+	FetchOutcomeExtractTimeout FetchOutcome = "extract-timeout"
+)
+
+func (v FetchOutcome) Valid() bool { return inEnum(PGFetchOutcome, string(v)) }

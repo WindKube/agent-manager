@@ -1,0 +1,91 @@
+package components
+
+templ Layout(s Shell) {
+	<!DOCTYPE html>
+	<html lang="en" data-sm-theme={ s.Theme }>
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ s.Title } · Agent Manager</title>
+			<link rel="stylesheet" href={ s.AppCSS }/>
+			<script type="module" src={ s.VendorJS }></script>
+			<script src={ s.AppJS }></script>
+		</head>
+		<body>
+			<div class="am-page">
+				@sidebar(s)
+				<main class="am-main">
+					{ children... }
+				</main>
+			</div>
+		</body>
+	</html>
+}
+
+templ sidebar(s Shell) {
+	<aside class="am-sidebar">
+		<div class="am-brand">
+			<div class="am-brand-row">
+				<div class="am-brand-mark"></div>
+				<div class="am-brand-name">Agent Manager</div>
+			</div>
+			<div class="am-brand-host">hub.example.dev</div>
+		</div>
+		<nav class="am-nav">
+			for _, group := range Nav {
+				<div class="am-nav-group">
+					<div class="am-nav-label">{ group.Label }</div>
+					for _, item := range group.Items {
+						if item.ID == s.Active {
+							<a class="am-nav-item" href={ item.Href } aria-current="page">
+								@navLabel(item)
+							</a>
+						} else {
+							<a class="am-nav-item" href={ item.Href }>
+								@navLabel(item)
+							</a>
+						}
+					}
+				</div>
+			}
+		</nav>
+		<div class="am-viewer">
+			<div class="am-avatar">KW</div>
+			<div class="am-viewer-id">
+				<div class="am-viewer-name">Krzysztof W.</div>
+				<div class="am-viewer-role">Platform · Admin</div>
+			</div>
+			<form method="post" action="/theme">
+				<input type="hidden" name="theme" value={ s.Next }/>
+				<input type="hidden" name="return" value={ s.Return }/>
+				<button type="submit" class="am-theme-toggle" title="Toggle theme" aria-label="Toggle theme">
+					{ s.ToggleIcon() }
+				</button>
+			</form>
+		</div>
+	</aside>
+}
+
+templ navLabel(item NavItem) {
+	<span>{ item.Label }</span>
+	if item.Alert {
+		<span class="am-nav-badge am-nav-badge-alert">{ item.Badge }</span>
+	} else {
+		<span class="am-nav-badge">{ item.Badge }</span>
+	}
+}
+
+// Placeholder stands in for a screen a later layer of this stack owns. The
+// sidebar stays navigable rather than dead-ending on a 404.
+templ Placeholder(title, lede string) {
+	<div class="am-header">
+		<div class="am-header-text">
+			<h1 class="am-h1">{ title }</h1>
+			<p class="am-lede">{ lede }</p>
+		</div>
+	</div>
+	<div class="am-placeholder">
+		This screen is not built yet in this layer of the stack. The shell, the theme and the
+		catalog's facet interaction are; the remaining screens land in the layers that own them.
+	</div>
+}

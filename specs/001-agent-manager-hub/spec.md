@@ -416,9 +416,14 @@ correspondingly-typed audit row appears with the right actor and source.
 **Catalog**
 
 - **FR-009**: The catalog MUST present plugins and standalone skills in one list, each row
-  showing name, id, kind, category, version, scan verdict, usage count and recency.
+  showing name, id, kind, category, version, scan verdict, **the number of profiles
+  containing the package** and recency. The count is profiles, not people: see the
+  Assumptions note on usage counts for why a people count is not computable.
 - **FR-010**: The catalog MUST support free-text search across name, id, publisher and
-  tags, case-insensitively, matching on substring.
+  tags, case-insensitively, matching on substring. The needle must be a substring of **one**
+  of those fields: concatenating them into a single haystack matches across the joins
+  between them, so `redactor example` would find `example/pii-redactor` on a match the
+  reader cannot see anywhere on the row.
 - **FR-011**: The catalog MUST support a kind filter (All / Plugins / Skills) and a status
   filter (All / Verified / Community / Flagged) as mutually exclusive single selections.
 - **FR-012**: The catalog MUST support multi-select category and tag facets, each option
@@ -648,13 +653,19 @@ correspondingly-typed audit row appears with the right actor and source.
 - **Single organisation per deployment.** Multi-tenancy is not modelled; `Organization` is
   a singleton settings object, not a scoping dimension.
 - **Identity provider**: any OIDC provider supporting the device authorisation grant and a
-  groups claim. Okta is the design's example; Dex is the local substitute. Neither is
+  groups claim. Okta is the design's example; Keycloak is the local substitute (Dex was the
+  original choice and does not emit `groups` for a static user — see research R6). Neither is
   hard-coded.
 - **Object storage**: any S3-compatible endpoint. Object lock, SSE-KMS and lifecycle
   retention are *configured and surfaced* by this system but *enforced* by the storage
   backend; the Storage screen reports what the bucket reports.
 - **Usage counts** ("42 uses", "184 installs") are derived from profile membership and
-  recorded sync events, not self-reported by publishers.
+  recorded sync events, not self-reported by publishers. The catalog's per-package number is
+  `count(distinct profile)` — **profiles, not people**. The design's "42 people across 4
+  profiles" is not merely unseeded, it is not computable: expanding profile membership into
+  a headcount requires knowing the size of every group a membership row names, and nothing
+  in the schema or in the OIDC claims records group membership counts. A people count needs
+  a directory this system does not have.
 - **Relative dates** in the design ("2 days ago", "yesterday") are rendered from stored
   timestamps; the seed data is generated relative to seed time so the screens stay
   plausible.

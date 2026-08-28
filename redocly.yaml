@@ -1,0 +1,24 @@
+# Redocly config: one named api so `redocly lint`, `bundle` and `build-docs` all resolve
+# the same root, plus the Redoc options the standalone docs build reads. Invoked through
+# npx from Taskfile.openapi.yaml — see the note there on why Node in a dev shell is not a
+# breach of the constitution's "No Node.js in any image".
+#
+# In Redocly CLI v2 the Redoc options live under a top-level `openapi:` key; the v1
+# `theme.openapi:` nesting is rejected by the config linter.
+apis:
+  machine-facing@v1:
+    root: specs/001-agent-manager-hub/contracts/openapi.yaml
+
+# recommended-strict, not recommended: `redocly lint` has no --fail-severity and exits 0
+# on warnings, so under plain `recommended` a redocly-only finding would print and pass
+# while vacuum (-n warn) and spectral (--fail-severity=warn) both gate. Strict promotes
+# every recommended rule to error, which puts the three linters on the same footing. The
+# one genuine exemption is scoped by path in .redocly.lint-ignore.yaml.
+extends:
+  - recommended-strict
+
+openapi:
+  expandResponses: "200"
+  jsonSampleExpandLevel: 3
+  sortTagsAlphabetically: true
+  hideLoading: true

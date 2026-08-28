@@ -1,0 +1,298 @@
+version: "3"
+
+# The OpenAPI contract tooling is a standalone taskfile so it can be run on its own
+# (`task -t Taskfile.openapi.yaml lint`); this makes the same tasks reachable as
+# `task openapi:<task>`.
+includes:
+  openapi:
+    taskfile: Taskfile.openapi.yaml
+
+vars:
+  BIN: "{{.ROOT_DIR}}/.bin"
+  TAILWIND_VERSION: v4.1.18
+  # Must match the binary that produced internal/store/migrations/atlas.sum. A
+  # floating "latest" that drifts past it makes `migrate apply` fail the directory
+  # checksum on a clean checkout. Atlas enforces a supported-version policy and
+  # withdraws old downloads, so an expired pin breaks a clean checkout too — 1.3.2
+  # computes a byte-identical atlas.sum and reports the directory synced, which is
+  # what makes this a pin bump rather than a migration change.
+  ATLAS_VERSION: v1.3.2
+  LDFLAGS: >-
+    -s -w
+    -X agent-manager/internal/cli.Version={{.VERSION | default "dev"}}
+    -X agent-manager/internal/cli.Commit={{.COMMIT | default "none"}}
+
+env:
+  CGO_ENABLED: "0"
+
+tasks:
+  default:
+    cmds:
+      - task: gen
+      - task: lint
+      - task: test
+
+  gen:
+    desc: Generate everything that is generated
+    cmds:
+      - task: gen:templ
+      - task: gen:css
+      - task: gen:client
+      - task: migrate:schema
+
+  gen:templ:
+    desc: templ components -> _templ.go
+    cmds:
+      - go tool templ generate
+
+  gen:css:
+    desc: Tailwind standalone -> internal/web/static/app.css (no Node)
+    status:
+      - test ! -f assets/input.css
+    cmds:
+      - task: tailwind:install
+      - mkdir -p internal/web/static
+      - "{{.BIN}}/tailwindcss -i assets/input.css -o internal/web/static/app.css --minify"
+
+  gen:client:
+    desc: oapi-codegen -> internal/apiclient (the web role's only door to data)
+    cmds:
+      # Two halves, in this order. The document is EMITTED from the huma operation
+      # definitions first (constitution principle V), and only then is the client
+      # generated from it. Generating from
+      # specs/001-agent-manager-hub/contracts/openapi.yaml instead would give the web
+      # role a client for the frozen machine-facing subset and nothing else.
+      #
+      # The status guard this task used to carry - "skip unless
+      # internal/apiclient/oapi-codegen.yaml exists" - made a missing config a silent
+      # skip rather than a failure. It is gone: if the config is missing, this must
+      # fail loudly.
+      - go run ./internal/api/cmd/openapigen -out internal/apiclient/openapi.json
+      - go tool oapi-codegen -config internal/apiclient/oapi-codegen.yaml internal/apiclient/openapi.json
+
+  gen:check:
+    desc: Fail if generated output is stale (constitution principle V)
+    cmds:
+      - task: gen
+      - |
+        if ! git diff --quiet; then
+          echo "generated output is stale — run 'task gen' and commit the result" >&2
+          git --no-pager diff --stat >&2
+          exit 1
+        fi
+
+  tailwind:install:
+    internal: true
+    # The guard is the STAMP, not the binary. `test -x` alone means a bump to
+    # TAILWIND_VERSION never re-downloads anything: the old binary is still
+    # executable, so the task reports up-to-date forever and the pin becomes a
+    # comment on a working tree that does not honour it. Stamping the version rather
+    # than parsing the tool's own `--help` keeps the check independent of how it
+    # spells its version.
+    status:
+      - test -x {{.BIN}}/tailwindcss
+      - test "$(cat {{.BIN}}/.tailwindcss.version 2>/dev/null)" = "{{.TAILWIND_VERSION}}"
+    cmds:
+      - mkdir -p {{.BIN}}
+      - |
+        set -eu
+        case "$(uname -s)-$(uname -m)" in
+          Linux-x86_64)  asset=tailwindcss-linux-x64 ;;
+          Linux-aarch64) asset=tailwindcss-linux-arm64 ;;
+          Darwin-arm64)  asset=tailwindcss-macos-arm64 ;;
+          Darwin-x86_64) asset=tailwindcss-macos-x64 ;;
+          *) echo "unsupported platform for the tailwind standalone binary" >&2; exit 1 ;;
+        esac
+        curl -fsSL -o {{.BIN}}/tailwindcss \
+          "https://github.com/tailwindlabs/tailwindcss/releases/download/{{.TAILWIND_VERSION}}/${asset}"
+        chmod +x {{.BIN}}/tailwindcss
+        printf '%s' '{{.TAILWIND_VERSION}}' > {{.BIN}}/.tailwindcss.version
+
+  atlas:install:
+    internal: true
+    # Same stamp guard as tailwind:install, and this is the task that proved it was
+    # needed: a .bin/atlas left over from v0.36.0 survived the bump to v1.3.2 on a
+    # working tree, because `test -x` only ever asked whether A binary was there.
+    status:
+      - test -x {{.BIN}}/atlas
+      - test "$(cat {{.BIN}}/.atlas.version 2>/dev/null)" = "{{.ATLAS_VERSION}}"
+    cmds:
+      - mkdir -p {{.BIN}}
+      - |
+        set -eu
+        case "$(uname -s)-$(uname -m)" in
+          Linux-x86_64)  asset=atlas-community-linux-amd64 ;;
+          Linux-aarch64) asset=atlas-community-linux-arm64 ;;
+          Darwin-arm64)  asset=atlas-community-darwin-arm64 ;;
+          Darwin-x86_64) asset=atlas-community-darwin-amd64 ;;
+          *) echo "unsupported platform for the atlas community binary" >&2; exit 1 ;;
+        esac
+        curl -fsSL -o {{.BIN}}/atlas \
+          "https://release.ariga.io/atlas/${asset}-{{.ATLAS_VERSION}}"
+        chmod +x {{.BIN}}/atlas
+        printf '%s' '{{.ATLAS_VERSION}}' > {{.BIN}}/.atlas.version
+
+  migrate:schema:
+    desc: "Bun models -> internal/store/schema/02-tables.sql (layer 2 of the desired state)"
+    cmds:
+      # The community Atlas build rejects the `external_schema` data source, so the
+      # loader cannot be invoked from atlas.hcl and its output is a checked-in file
+      # instead. Two things are normalised here and both are load-bearing for
+      # gen:check: the `-- atlas:pos` directives are dropped because they embed
+      # absolute developer paths, and the statements are sorted because the loader
+      # breaks topological-sort ties by Go map order — roughly one run in ten emits
+      # a different table order, which would make the staleness guard flap. Sorting
+      # is only safe once the inline FOREIGN KEY clauses are lifted into ALTER TABLE
+      # statements that run after every CREATE TABLE, which is what the awk does.
+      # Postgres names an FK added by ALTER exactly as it names an inline one, so the
+      # resulting schema is byte-identical either way.
+      - |
+        set -eu
+        set -o pipefail
+        {
+          cat <<'HDR'
+        -- Layer 2 of the desired state (see atlas.hcl). GENERATED - do not edit.
+        -- Regenerate with 'task migrate:schema' after any change to
+        -- internal/store/models. The Bun models are the source of truth; this file
+        -- only exists because the community Atlas build cannot run the loader.
+        --
+        -- Sorted, and with foreign keys lifted out of the CREATE TABLE statements, so
+        -- the output is byte-stable across runs. See the migrate:schema task.
+        HDR
+          echo
+          go tool atlas-provider-bun load --path ./internal/store/models --dialect postgres \
+            | grep -v '^-- atlas:pos' \
+            | awk '
+                BEGIN {
+                  # A dynamic regex rather than a literal, because an awk regex
+                  # literal cannot be wrapped and this one does not fit a line.
+                  fk = ", FOREIGN KEY \\(\"[^)]+\"\\) REFERENCES \"[^\"]+\" \\(\"[^)]+\"\\)"
+                  fk = fk " ON UPDATE NO ACTION ON DELETE NO ACTION"
+                }
+                /^[[:space:]]*$/ || /^--/ { next }
+                !/^CREATE TABLE "/ {
+                  printf "migrate:schema: unexpected loader output: %s\n", $0 > "/dev/stderr"
+                  bad = 1; next
+                }
+                {
+                  line = $0
+                  match(line, /^CREATE TABLE "[^"]+"/)
+                  tbl = substr(line, RSTART + 14, RLENGTH - 15)
+                  while (match(line, fk)) {
+                    print "2\tALTER TABLE \"" tbl "\" ADD " substr(line, RSTART + 2, RLENGTH - 2) ";"
+                    line = substr(line, 1, RSTART - 1) substr(line, RSTART + RLENGTH)
+                  }
+                  if (line ~ /FOREIGN KEY/) {
+                    printf "migrate:schema: unextracted FOREIGN KEY in %s\n", tbl > "/dev/stderr"
+                    bad = 1
+                  }
+                  print "1\t" line
+                }
+                END { if (bad) exit 1 }
+              ' \
+            | LC_ALL=C sort -t "$(printf '\t')" -k1,1 -k2,2 \
+            | cut -f2-
+        } > internal/store/schema/02-tables.sql
+
+  migrate:diff:
+    desc: "Diff the desired state into versioned SQL (needs a Docker socket)"
+    deps: [atlas:install]
+    cmds:
+      - task: migrate:schema
+      - "{{.BIN}}/atlas migrate diff {{.CLI_ARGS | default \"change\"}} --env bun"
+
+  migrate:apply:
+    desc: Apply migrations locally
+    deps: [atlas:install]
+    cmds:
+      - '{{.BIN}}/atlas migrate apply --env bun --url "$AGENT_MANAGER_DATABASE_URL"'
+
+  migrate:hash:
+    desc: Recompute atlas.sum
+    deps: [atlas:install]
+    cmds:
+      - "{{.BIN}}/atlas migrate hash --env bun"
+
+  build:
+    desc: Build the single binary
+    cmds:
+      - go build -trimpath -ldflags '{{.LDFLAGS}}' -o {{.BIN}}/agent-manager ./cmd/agent-manager
+
+  test:
+    desc: Unit tests (memblob, no containers)
+    cmds:
+      - go test -race -shuffle=on ./...
+
+  test:integration:
+    desc: testcontainers — postgres, minio, dex
+    cmds:
+      - go test -race -tags=integration -timeout=20m ./...
+
+  test:cover:
+    cmds:
+      - go test -race -coverprofile=coverage.out -covermode=atomic ./...
+      - go tool cover -func=coverage.out | tail -1
+
+  lint:
+    desc: golangci-lint plus the role-import boundary check
+    cmds:
+      # The integration-tagged files hold every grant and constraint assertion and
+      # are invisible to an untagged build, so lint them explicitly.
+      - golangci-lint run --build-tags=integration ./...
+      - go test ./internal/archcheck/...
+
+  lint:actions:
+    desc: "GitHub Actions supply-chain audit (zizmor) + syntax (actionlint)"
+    cmds:
+      # pedantic, not the default regular: regular hides the excessive-permissions
+      # class, which was a real finding here (packages:write at workflow scope).
+      - zizmor --persona=pedantic .github/workflows/
+      - actionlint .github/workflows/*.yaml
+
+  lint:secrets:
+    desc: "Secret scan of the working tree and full history (gitleaks)"
+    cmds:
+      - gitleaks dir . --redact --verbose
+      # `git` mode walks every commit, which is the only way to catch something
+      # that was committed and then removed in a later commit.
+      - gitleaks git . --redact
+
+  lint:yaml:
+    desc: yamllint
+    cmds:
+      - pre-commit run yamllint --all-files
+
+  lint:all:
+    desc: Every hook against every file — what CI approximates
+    cmds:
+      - pre-commit run --all-files
+
+  hooks:install:
+    desc: Install the git hooks (pre-commit, commit-msg, pre-push)
+    cmds:
+      - pre-commit install --install-hooks
+      - pre-commit install --hook-type commit-msg
+
+  hooks:update:
+    desc: Bump the pinned hook revisions, then run them
+    cmds:
+      - pre-commit autoupdate
+      - pre-commit run --all-files
+
+  fmt:
+    cmds:
+      - golangci-lint fmt ./...
+
+  vuln:
+    desc: govulncheck
+    cmds:
+      - go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  up:
+    desc: The whole stack
+    cmds:
+      - docker compose up --build
+
+  down:
+    cmds:
+      - docker compose down -v

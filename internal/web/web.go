@@ -52,6 +52,16 @@ type CatalogSource interface {
 	Catalog(ctx context.Context, q view.CatalogQuery) (view.CatalogPage, error)
 }
 
+// PackageSource is the detail screen's door to one package (US3).
+//
+// It is a third interface rather than a second method on CatalogSource for the
+// same reason Registrar is separate: internal/web/fixture implements both of
+// these and internal/web/hub implements all three, and an interface a stand-in
+// cannot honestly satisfy is one every screen test then exercises as a claim.
+type PackageSource interface {
+	Package(ctx context.Context, namespace, name string) (view.Package, error)
+}
+
 // Registrar is the modal's door to the two registration operations.
 //
 // It is a second interface rather than two more methods on CatalogSource because
@@ -67,6 +77,9 @@ type Registrar interface {
 // database handle and no bucket to reach for.
 type Deps struct {
 	Catalog CatalogSource
+	// Packages backs the detail screen. Nil renders /packages/... as a 404 rather
+	// than panicking, which is what a screen test that wired only the catalog gets.
+	Packages PackageSource
 	// Registrar is optional. Nil means the modal renders and refuses to submit,
 	// which is what a screen test wants and is not a state a deployment is in.
 	Registrar Registrar
@@ -114,6 +127,12 @@ func (s *Server) register() {
 	s.engine.POST("/catalog/import/preview", s.importPreview)
 	s.engine.POST("/catalog/import", s.importRegister)
 
+	// Two segments, because a package id IS two segments: `example/platform-toolkit`.
+	// A single :id would have to arrive percent-encoded and would not survive —
+	// gin routes on the DECODED path, so `example%2Fplatform-toolkit` reaches the
+	// router as two segments anyway.
+	s.engine.GET("/packages/:namespace/:name", s.packageDetail)
+
 	s.engine.POST("/theme", s.setTheme)
 
 	s.engine.GET("/static/*path", serveStatic)
@@ -135,7 +154,6 @@ type screen struct {
 }
 
 var placeholders = []screen{
-	{path: "/packages/:id", nav: "catalog", title: "Package", lede: "One package, its versions, its contents and its scan verdict."},
 	{path: "/profiles", nav: "profiles", title: "Profiles", lede: "Named sets of packages a machine can sync."},
 	{path: "/profiles/:slug", nav: "profiles", title: "Profile", lede: "The packages in one profile, their pins and their targets."},
 	{path: "/scanner", nav: "scanner", title: "Scanner", lede: "Open findings, their evidence and the reviewer's decision."},

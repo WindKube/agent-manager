@@ -875,6 +875,404 @@
     opacity: 0.55;
   }
 
+  /* Package detail (US3) -------------------------------------------------- */
+
+  .am-detail-head {
+    padding: 26px 44px 24px;
+    border-bottom: 1px solid var(--bd);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .am-back {
+    font-size: 12.5px;
+    color: var(--fg3);
+    margin-bottom: 6px;
+  }
+
+  .am-back:hover {
+    color: var(--fg2);
+  }
+
+  .am-detail-ids {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .am-detail-sep {
+    color: var(--bd);
+  }
+
+  .am-detail-pub,
+  .am-detail-cat {
+    font-size: 12.5px;
+    color: var(--fg2);
+  }
+
+  .am-verified {
+    padding: 3px 9px;
+    border-radius: 20px;
+    background: var(--okbg);
+    color: var(--ok);
+    font-size: 11.5px;
+    font-weight: 500;
+  }
+
+  /* The design's two columns. It collapses to one below 1100px rather than
+     letting the object keys and the tree squeeze the manifest into a column
+     nothing can read. */
+  .am-detail {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    gap: 28px;
+    padding: 28px 44px 48px;
+    align-items: start;
+  }
+
+  @media (max-width: 1100px) {
+    .am-detail {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  .am-detail-main,
+  .am-detail-side {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    min-width: 0;
+  }
+
+  .am-section {
+    border: 1px solid var(--bd);
+    border-radius: 12px;
+    background: var(--surface);
+    padding: 22px;
+    min-width: 0;
+  }
+
+  /* A section whose children run edge to edge: a tree, a component list, a
+     version list. The padding moves onto the rows so their separators reach
+     the card's border, as the design draws them. */
+  .am-section-flush {
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .am-section-head {
+    padding: 16px 22px;
+    border-bottom: 1px solid var(--bd);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .am-section-title {
+    font-size: 13.5px;
+    font-weight: 500;
+  }
+
+  .am-section-note {
+    font-size: 12px;
+    color: var(--fg3);
+  }
+
+  .am-label {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--fg3);
+    margin-bottom: 12px;
+  }
+
+  .am-desc {
+    margin: 0 0 10px;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--fg2);
+  }
+
+  .am-desc-none {
+    font-style: italic;
+    color: var(--fg3);
+  }
+
+  .am-origin {
+    font-size: 12.5px;
+    color: var(--fg3);
+  }
+
+  .am-note {
+    margin: 0 0 14px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--fg2);
+  }
+
+  .am-tagrow {
+    display: flex;
+    gap: 7px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+  }
+
+  .am-tag {
+    padding: 4px 10px;
+    border: 1px solid var(--bd);
+    border-radius: 20px;
+    font-size: 11.5px;
+    color: var(--fg2);
+  }
+
+  /* Trees, manifests and anything else quoted from a bundle. It scrolls in its
+     own box: a 200-character object key inside a manifest must not widen the
+     page and push the sidebar off the screen. */
+  .am-pre {
+    margin: 0;
+    padding: 20px 22px;
+    background: var(--surface2);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    line-height: 1.75;
+    color: var(--fg2);
+    min-width: 0;
+    overflow: auto;
+  }
+
+  .am-comp {
+    padding: 12px 22px;
+    border-top: 1px solid var(--bd);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .am-comp-kind {
+    padding: 2px 8px;
+    border: 1px solid var(--bd);
+    border-radius: 6px;
+    font-size: 10.5px;
+    font-weight: 500;
+    color: var(--fg2);
+    flex: 0 0 auto;
+  }
+
+  .am-comp-kind-skill {
+    background: var(--sel);
+  }
+
+  .am-comp-name {
+    font-size: 12px;
+    flex: 0 0 auto;
+  }
+
+  .am-comp-note {
+    font-size: 12px;
+    color: var(--fg3);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The capability comparison. Three columns so inferred and expected line up
+     per capability rather than sitting in two lists a reader has to align. */
+  .am-cap-head,
+  .am-cap {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+  }
+
+  .am-cap-head {
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--bd);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--fg3);
+  }
+
+  .am-cap {
+    padding: 11px 0;
+    border-bottom: 1px solid var(--bd);
+  }
+
+  .am-cap-name {
+    font-size: 12.5px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .am-cap-side {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    align-items: flex-start;
+    min-width: 0;
+  }
+
+  .am-cap-targets {
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--fg3);
+    overflow-wrap: anywhere;
+  }
+
+  .am-cap-absent {
+    font-size: 12.5px;
+    color: var(--fg3);
+  }
+
+  .am-cap-status {
+    align-self: flex-start;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 10.5px;
+    font-weight: 500;
+    background: var(--sel);
+    color: var(--fg2);
+  }
+
+  .am-cap-status-warn {
+    background: var(--warnbg);
+    color: var(--warn);
+  }
+
+  .am-cap-status-dan {
+    background: var(--danbg);
+    color: var(--dan);
+  }
+
+  /* A level is a claim about how much trust a capability demands, so the three
+     read as a scale. Every pair here is a token on its own tinted background,
+     which is what contrast_test.go already holds to AA. */
+  .am-level {
+    padding: 3px 9px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 500;
+    background: var(--sel);
+    color: var(--fg2);
+  }
+
+  .am-level-ok {
+    background: var(--okbg);
+    color: var(--ok);
+  }
+
+  .am-level-warn {
+    background: var(--warnbg);
+    color: var(--warn);
+  }
+
+  .am-level-dan {
+    background: var(--danbg);
+    color: var(--dan);
+  }
+
+  .am-ver {
+    padding: 14px 20px;
+    border-top: 1px solid var(--bd);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .am-ver-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .am-ver-tags {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    flex-wrap: wrap;
+  }
+
+  .am-ver-semver {
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .am-vtag {
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 10.5px;
+    font-weight: 500;
+    background: var(--sel);
+    color: var(--fg2);
+  }
+
+  .am-vtag-latest {
+    background: var(--okbg);
+    color: var(--ok);
+  }
+
+  .am-vtag-pin {
+    border: 1px solid var(--bd);
+    background: transparent;
+    color: var(--fg2);
+  }
+
+  .am-ver-date,
+  .am-ver-size {
+    font-size: 12px;
+    color: var(--fg3);
+  }
+
+  /* The FULL object key, wrapped rather than truncated: the reason FR-019 asks
+     for it is that an operator can find the bytes, and half a key cannot. */
+  .am-ver-key,
+  .am-ver-digest {
+    font-size: 11px;
+    color: var(--fg3);
+    overflow-wrap: anywhere;
+  }
+
+  .am-ver-nodigest {
+    font-style: italic;
+  }
+
+  .am-dep {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-top: 12px;
+    font-size: 13.5px;
+    min-width: 0;
+  }
+
+  .am-dep-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .am-dep-pin {
+    font-size: 12px;
+    color: var(--fg2);
+    flex: 0 0 auto;
+  }
+
   /* Placeholder for the screens later layers own. */
   .am-placeholder {
     margin: 0 44px 44px;

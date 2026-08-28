@@ -132,6 +132,29 @@ func (s *Server) registerPackages() {
 	}, s.listPackages)
 
 	huma.Register(s.api, huma.Operation{
+		OperationID: "getPackage",
+		Method:      http.MethodGet,
+		Path:        "/v1/packages/{namespace}/{name}",
+		Tags:        []string{"catalog"},
+		Summary:     "One package's detail",
+		Description: "Description, origin, tags, manifest, components, capabilities, version history and " +
+			"dependent profiles for one package (FR-016). The path is the package id, whose two " +
+			"segments are the namespace and the name. " +
+			"Two panels are scoped to the caller: the dependent profiles are exactly the ones this " +
+			"identity may read (FR-044), and each version's `pinnedBy` counts only those — an " +
+			"unscoped count beside a scoped list would leak the existence of private profiles by " +
+			"arithmetic. " +
+			"`capabilities.scanned` distinguishes a version that was scanned and reaches nothing " +
+			"from one that has never been scanned; the two produce identical empty lists, and only " +
+			"that flag tells them apart.",
+		Responses: map[string]*huma.Response{
+			"401": s.errorResponse("No usable session. The caller must sign in; there is no anonymous view."),
+			"404": s.errorResponse("No such package, or it has no published version."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.getPackage)
+
+	huma.Register(s.api, huma.Operation{
 		OperationID: "previewPackage",
 		Method:      http.MethodPost,
 		Path:        "/v1/packages/preview",

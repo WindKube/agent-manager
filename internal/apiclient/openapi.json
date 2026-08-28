@@ -739,6 +739,317 @@
         ],
         "type": "object"
       },
+      "PackageCapabilities": {
+        "additionalProperties": false,
+        "properties": {
+          "expected": {
+            "items": {
+              "$ref": "#/components/schemas/PackageCapability"
+            },
+            "type": "array"
+          },
+          "inferred": {
+            "items": {
+              "$ref": "#/components/schemas/PackageCapability"
+            },
+            "type": "array"
+          },
+          "scanned": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "scanned",
+          "inferred",
+          "expected"
+        ],
+        "type": "object"
+      },
+      "PackageCapability": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "description": "The scoping: hosts for network, paths for filesystem, command names for shell.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "indefinite": {
+            "type": "boolean"
+          },
+          "level": {
+            "description": "How much trust it demands. A shell capability is never below review (FR-018).",
+            "enum": [
+              "scoped",
+              "allowlisted",
+              "review"
+            ],
+            "examples": [
+              "allowlisted"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "enum": [
+              "network",
+              "filesystem.read",
+              "filesystem.write",
+              "shell"
+            ],
+            "examples": [
+              "network"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "level",
+          "detail"
+        ],
+        "type": "object"
+      },
+      "PackageComponent": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "skill",
+              "mcp",
+              "ext"
+            ],
+            "examples": [
+              "skill"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "examples": [
+              "terraform-module-review"
+            ],
+            "type": "string"
+          },
+          "note": {
+            "examples": [
+              "SKILL.md + scripts/"
+            ],
+            "type": "string"
+          },
+          "path": {
+            "examples": [
+              "skills/terraform-module-review"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "path"
+        ],
+        "type": "object"
+      },
+      "PackageDependent": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "description": "How this profile resolves the package.",
+            "enum": [
+              "latest",
+              "pinned",
+              "range"
+            ],
+            "examples": [
+              "pinned"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "examples": [
+              "Platform baseline"
+            ],
+            "type": "string"
+          },
+          "range": {
+            "examples": [
+              "^1.2"
+            ],
+            "type": "string"
+          },
+          "slug": {
+            "examples": [
+              "platform-baseline"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "examples": [
+              "1.3.0"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "mode"
+        ],
+        "type": "object"
+      },
+      "PackageDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "$ref": "#/components/schemas/PackageCapabilities"
+          },
+          "category": {
+            "description": "The admin-curated category (FR-049). Empty when none was chosen.",
+            "examples": [
+              "Infrastructure"
+            ],
+            "type": "string"
+          },
+          "components": {
+            "description": "Derived from the FILE TREE. No manifest field enumerates components (FR-017, R1).",
+            "items": {
+              "$ref": "#/components/schemas/PackageComponent"
+            },
+            "type": "array"
+          },
+          "dependents": {
+            "description": "Profiles using this package that the CALLER MAY READ, and no others (FR-044).",
+            "items": {
+              "$ref": "#/components/schemas/PackageDependent"
+            },
+            "type": "array"
+          },
+          "description": {
+            "examples": [
+              "Platform guardrails, ADR authoring and service scaffolding."
+            ],
+            "type": "string"
+          },
+          "id": {
+            "description": "namespace/name — the first segment of the publisher slug, not the whole slug.",
+            "examples": [
+              "example/platform-toolkit"
+            ],
+            "type": "string"
+          },
+          "kind": {
+            "description": "Decided by which manifest is at the tree root, never by a manifest field.",
+            "enum": [
+              "plugin",
+              "skill"
+            ],
+            "examples": [
+              "plugin"
+            ],
+            "type": "string"
+          },
+          "manifest": {
+            "type": "string"
+          },
+          "manifestObject": {
+            "enum": [
+              "plugin.json",
+              "SKILL.md"
+            ],
+            "examples": [
+              "plugin.json"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "description": "The manifest name. No manifest field and no column carries a human title.",
+            "examples": [
+              "platform-toolkit"
+            ],
+            "type": "string"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/PackageOrigin"
+          },
+          "publisher": {
+            "$ref": "#/components/schemas/PackagePublisher"
+          },
+          "tags": {
+            "description": "The latest version's manifest keywords. Tags belong to the version, not the package.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "verdict": {
+            "enum": [
+              "scanning",
+              "clean",
+              "flagged",
+              "rejected"
+            ],
+            "examples": [
+              "clean"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "description": "The latest visible version's semver — the one the panels below describe.",
+            "examples": [
+              "1.3.0"
+            ],
+            "type": "string"
+          },
+          "versions": {
+            "description": "Every visible version, newest first.",
+            "items": {
+              "$ref": "#/components/schemas/PackageVersion"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "publisher",
+          "origin",
+          "version",
+          "verdict",
+          "tags",
+          "manifestObject",
+          "manifest",
+          "components",
+          "capabilities",
+          "versions",
+          "dependents"
+        ],
+        "type": "object"
+      },
+      "PackageOrigin": {
+        "additionalProperties": false,
+        "properties": {
+          "parentId": {
+            "examples": [
+              "example/platform-toolkit"
+            ],
+            "type": "string"
+          },
+          "parentName": {
+            "examples": [
+              "platform-toolkit"
+            ],
+            "type": "string"
+          },
+          "specVersion": {
+            "examples": [
+              "1.0.0"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "PackagePreview": {
         "additionalProperties": false,
         "properties": {
@@ -824,6 +1135,33 @@
         ],
         "type": "object"
       },
+      "PackagePublisher": {
+        "additionalProperties": false,
+        "properties": {
+          "displayName": {
+            "examples": [
+              "Platform Engineering"
+            ],
+            "type": "string"
+          },
+          "slug": {
+            "examples": [
+              "example/platform"
+            ],
+            "type": "string"
+          },
+          "verified": {
+            "description": "Set by a catalog admin and never inferred from the namespace.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "slug",
+          "displayName",
+          "verified"
+        ],
+        "type": "object"
+      },
       "PackageRegistered": {
         "additionalProperties": false,
         "properties": {
@@ -901,6 +1239,72 @@
           "objectKey",
           "verdict",
           "visible"
+        ],
+        "type": "object"
+      },
+      "PackageVersion": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "digest": {
+            "description": "Empty while a registration is still being fetched: the digest is computed on write.",
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "distTag": {
+            "enum": [
+              "latest",
+              "archived",
+              "none"
+            ],
+            "examples": [
+              "latest"
+            ],
+            "type": "string"
+          },
+          "objectKey": {
+            "examples": [
+              "skills/example/platform-toolkit/1.3.0/bundle.tar.zst"
+            ],
+            "type": "string"
+          },
+          "pinnedBy": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "sizeBytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "verdict": {
+            "enum": [
+              "scanning",
+              "clean",
+              "flagged",
+              "rejected"
+            ],
+            "examples": [
+              "clean"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "examples": [
+              "1.3.0"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "distTag",
+          "verdict",
+          "createdAt",
+          "objectKey",
+          "pinnedBy"
         ],
         "type": "object"
       },
@@ -1959,6 +2363,86 @@
         "summary": "Validate an archive before registering it",
         "tags": [
           "packages"
+        ]
+      }
+    },
+    "/v1/packages/{namespace}/{name}": {
+      "get": {
+        "description": "Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package (FR-016). The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read (FR-044), and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.",
+        "operationId": "getPackage",
+        "parameters": [
+          {
+            "description": "The publishing namespace — the FIRST segment of the publisher slug, as it appears in the catalog id. Not the whole slug.",
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "description": "The publishing namespace — the FIRST segment of the publisher slug, as it appears in the catalog id. Not the whole slug.",
+              "examples": [
+                "example"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "The package name within that namespace.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "The package name within that namespace.",
+              "examples": [
+                "platform-toolkit"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageDetail"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No usable session. The caller must sign in; there is no anonymous view."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such package, or it has no published version."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "One package's detail",
+        "tags": [
+          "catalog"
         ]
       }
     },

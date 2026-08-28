@@ -53,6 +53,7 @@ func runWeb(ctx context.Context) error {
 
 	server := web.New(web.Deps{
 		Catalog:   client,
+		Packages:  client,
 		Registrar: client,
 		Log:       log,
 	}, web.Options{Addr: cfg.Addr})

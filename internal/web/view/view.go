@@ -9,7 +9,6 @@ package view
 import (
 	"context"
 	"errors"
-	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -182,9 +181,11 @@ type Row struct {
 	Tags      []string
 }
 
-// Href is the row's link. The key is path-escaped: it comes from a package id,
-// so a key containing "../" or a "?" must not be able to rewrite the URL.
-func (r Row) Href() string { return "/packages/" + url.PathEscape(r.Key) }
+// Href is the row's link, built from the ID rather than the Key: the detail
+// screen is addressed by `namespace/name`, and Key is whatever the source chose
+// to identify a row by. See PackageHref for why the id is validated and not
+// merely escaped.
+func (r Row) Href() string { return PackageHref(r.ID) }
 
 // FacetOption is one checkbox in a facet menu. Count is what selecting this
 // option would yield, so it responds to every other filter.
@@ -315,27 +316,35 @@ func Relative(at, now time.Time) string {
 	case age < time.Minute:
 		return "just now"
 	case age < time.Hour:
-		return plural(int(age.Minutes()), "minute")
+		return ago(int(age.Minutes()), "minute")
 	case age < 24*time.Hour:
-		return plural(int(age.Hours()), "hour")
+		return ago(int(age.Hours()), "hour")
 	case age < 48*time.Hour:
 		return "yesterday"
 	case age < 7*24*time.Hour:
-		return plural(int(age.Hours()/24), "day")
+		return ago(int(age.Hours()/24), "day")
 	case age < 30*24*time.Hour:
-		return plural(int(age.Hours()/(24*7)), "week")
+		return ago(int(age.Hours()/(24*7)), "week")
 	case age < 365*24*time.Hour:
-		return plural(int(age.Hours()/(24*30)), "month")
+		return ago(int(age.Hours()/(24*30)), "month")
 	default:
-		return plural(int(age.Hours()/(24*365)), "year")
+		return ago(int(age.Hours()/(24*365)), "year")
 	}
+}
+
+// ago is the age formatter Relative is built from, and it is NOT a pluraliser:
+// every string it returns ends in "ago". It was called `plural` until the detail
+// screen's origin line reused it for a component count and rendered "2 skills
+// ago". The name is the fix — `plural` below does what that caller wanted.
+func ago(n int, unit string) string {
+	return plural(n, unit) + " ago"
 }
 
 func plural(n int, unit string) string {
 	if n == 1 {
-		return "1 " + unit + " ago"
+		return "1 " + unit
 	}
-	return strconv.Itoa(n) + " " + unit + "s ago"
+	return strconv.Itoa(n) + " " + unit + "s"
 }
 
 // ErrSignedOut is a CatalogSource reporting that the caller has no usable

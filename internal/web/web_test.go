@@ -19,7 +19,15 @@ import (
 
 func handler(t *testing.T, source web.CatalogSource) http.Handler {
 	t.Helper()
-	return web.New(web.Deps{Catalog: source, Log: zerolog.Nop()}, web.Options{}).Handler()
+
+	deps := web.Deps{Catalog: source, Log: zerolog.Nop()}
+	// A source that can also answer for one package backs the detail screen. The
+	// hostile source below deliberately cannot, which is what makes /packages/...
+	// a 404 rather than a nil dereference in the escaping test.
+	if packages, ok := source.(web.PackageSource); ok {
+		deps.Packages = packages
+	}
+	return web.New(deps, web.Options{}).Handler()
 }
 
 func get(t *testing.T, h http.Handler, target string) *httptest.ResponseRecorder {
@@ -56,7 +64,8 @@ func TestShell(t *testing.T) {
 
 	t.Run("the sidebar routes are all navigable rather than 404", func(t *testing.T) {
 		for _, path := range []string{"/", "/catalog", "/profiles", "/profiles/platform-engineer",
-			"/scanner", "/audit", "/storage", "/org", "/cli", "/packages/tf-review"} {
+			"/scanner", "/audit", "/storage", "/org", "/cli",
+			"/packages/example/terraform-module-review"} {
 			require.Equalf(t, http.StatusOK, get(t, h, path).Code, "%s is not reachable", path)
 		}
 	})
@@ -198,10 +207,17 @@ func TestPackageDerivedContentIsEscaped(t *testing.T) {
 		require.Contains(t, bodies["facet payload"], "&lt;script&gt;alert(&#39;tag&#39;)&lt;/script&gt;")
 	})
 
-	t.Run("a package key cannot become a javascript: href or escape its path segment", func(t *testing.T) {
+	// A package id is `namespace/name`, so the link has to keep that slash as a
+	// separator — which rules out escaping the id whole, and escaping the halves
+	// separately leaves `..` intact because `.` is a legal path character that
+	// url.PathEscape does not touch. So each half is VALIDATED against the same
+	// segment pattern internal/blob holds an object key to, and a row whose id
+	// fails it is not linked to a package at all.
+	t.Run("a package id that is not two valid segments is not linked to a package", func(t *testing.T) {
 		require.NotContains(t, bodies["catalog screen"], "javascript:")
 		require.NotContains(t, bodies["catalog screen"], `href="/packages/../`)
-		require.Contains(t, bodies["catalog screen"], `href="/packages/..%2F..%2Fetc%2Fpasswd"`)
+		require.NotContains(t, bodies["catalog screen"], `href="/packages/`)
+		require.Contains(t, bodies["catalog screen"], `<a class="am-row" href="/catalog">`)
 	})
 }
 
@@ -337,4 +353,146 @@ func TestReadBodyDoesNotLeak(t *testing.T) {
 	rec := get(t, h, "/catalog")
 	_, err := io.Copy(io.Discard, rec.Body)
 	require.NoError(t, err)
+}
+
+// hostileDetail is a package whose manifest, components and dependent profiles
+// were all written by an attacker. It is a separate source from hostileSource
+// because that one deliberately implements only CatalogSource — which is what
+// makes /packages/... a 404 there — and the detail screen renders strings the
+// catalog row never carries: the manifest body, the component tree, the
+// capability targets and the dependent profiles' slugs.
+type hostileDetail struct{ hostileSource }
+
+func (hostileDetail) Package(_ context.Context, namespace, name string) (view.Package, error) {
+	return view.Package{
+		ID:             namespace + "/" + name,
+		Name:           `<script>alert('detailname')</script>`,
+		Kind:           view.KindPlugin,
+		Publisher:      `evil/"onmouseover="alert('pub')`,
+		Category:       `<img src=x onerror=alert('cat')>`,
+		Description:    `<script>alert('desc')</script>`,
+		Version:        `1.0.0"><script>alert('ver')</script>`,
+		SpecVersion:    `1.0.0"><script>alert('spec')</script>`,
+		ManifestObject: `plugin.json"><script>alert('object')</script>`,
+		Manifest:       `{"name":"<script>alert('manifest')</script>"}`,
+		Tags:           []string{`"><script>alert('tag')</script>`},
+		Components: []view.Component{{
+			Kind: "skill",
+			Name: `<script>alert('component')</script>`,
+			Path: `skills/<script>alert('path')</script>`,
+			Note: `<b>note</b>`,
+		}},
+		Capabilities: view.Capabilities{
+			Scanned: true,
+			Rows: []view.CapabilityRow{{
+				Name:     `<script>alert('cap')</script>`,
+				Inferred: view.CapabilityFacet{Present: true, Level: "review", Detail: []string{`<script>alert('target')</script>`}},
+			}},
+		},
+		Versions: []view.PackageVersion{{
+			Version:   `1.0.0"><script>alert('vrow')</script>`,
+			ObjectKey: `skills/<script>alert('key')</script>/bundle.tar.zst`,
+			Digest:    `sha256:<script>alert('digest')</script>`,
+		}},
+		Dependents: []view.Dependent{{
+			Slug: `../../etc/passwd`,
+			Name: `<script>alert('profile')</script>`,
+			Mode: "pinned",
+			Pin:  `1.0.0"><script>alert('pin')</script>`,
+		}},
+	}, nil
+}
+
+func TestDetailDerivedContentIsEscaped(t *testing.T) {
+	body := get(t, handler(t, hostileDetail{}), "/packages/evil/thing").Body.String()
+
+	// Each payload is asserted BOTH ways: the raw bytes are absent AND the escaped
+	// bytes are present. The second half is not decoration. A NotContains alone
+	// passes when the field is never rendered at all, and one of these fields
+	// genuinely is not — Component.Path, which the tree builds from names, so it
+	// carries no payload here and is not in this table. Without the positive half
+	// there would be no way to tell that case from a field that is escaped, and a
+	// panel quietly dropped in a later edit would take its assertion with it.
+	for _, tc := range []struct{ raw, escaped string }{
+		{`<script>alert('detailname')</script>`, `&lt;script&gt;alert(&#39;detailname&#39;)&lt;/script&gt;`},
+		{`<script>alert('desc')</script>`, `&lt;script&gt;alert(&#39;desc&#39;)&lt;/script&gt;`},
+		{`<script>alert('manifest')</script>`, `&lt;script&gt;alert(&#39;manifest&#39;)&lt;/script&gt;`},
+		{`<script>alert('component')</script>`, `&lt;script&gt;alert(&#39;component&#39;)&lt;/script&gt;`},
+		{`<script>alert('cap')</script>`, `&lt;script&gt;alert(&#39;cap&#39;)&lt;/script&gt;`},
+		{`<script>alert('target')</script>`, `&lt;script&gt;alert(&#39;target&#39;)&lt;/script&gt;`},
+		{`<script>alert('key')</script>`, `&lt;script&gt;alert(&#39;key&#39;)&lt;/script&gt;`},
+		{`<script>alert('digest')</script>`, `&lt;script&gt;alert(&#39;digest&#39;)&lt;/script&gt;`},
+		{`<script>alert('profile')</script>`, `&lt;script&gt;alert(&#39;profile&#39;)&lt;/script&gt;`},
+		{`<script>alert('spec')</script>`, `&lt;script&gt;alert(&#39;spec&#39;)&lt;/script&gt;`},
+		{`<script>alert('vrow')</script>`, `&lt;script&gt;alert(&#39;vrow&#39;)&lt;/script&gt;`},
+		{`<script>alert('pin')</script>`, `&lt;script&gt;alert(&#39;pin&#39;)&lt;/script&gt;`},
+		{`<script>alert('object')</script>`, `&lt;script&gt;alert(&#39;object&#39;)&lt;/script&gt;`},
+		{`"onmouseover="alert('pub')`, `onmouseover=&#34;alert(&#39;pub&#39;)`},
+	} {
+		require.NotContainsf(t, body, tc.raw, "unescaped %q reached the detail screen", tc.raw)
+		require.Containsf(t, body, tc.escaped,
+			"%q is neither escaped nor rendered — the assertion above is passing vacuously", tc.raw)
+	}
+
+	// A dependent profile's slug reaches the page as data too, and `..` inside one
+	// would climb out of /profiles/.
+	require.NotContains(t, body, `href="/profiles/../`)
+}
+
+// T062, the rendering half. Driven off the fixture's own id list rather than a
+// list written here, so a package added to the fixtures cannot skip this by
+// omission — and it asserts the STRUCTURAL difference between the variants,
+// which is the one thing a per-package screenshot would not catch.
+func TestBothVariantsRenderForEverySeededPackage(t *testing.T) {
+	source := fixture.New()
+	h := handler(t, source)
+
+	ids := source.IDs()
+	require.Len(t, ids, 10, "the design seeds ten packages")
+
+	var plugins, skills int
+	for _, id := range ids {
+		t.Run(id, func(t *testing.T) {
+			rec := get(t, h, "/packages/"+id)
+			require.Equal(t, http.StatusOK, rec.Code)
+			body := rec.Body.String()
+
+			namespace, name, _ := strings.Cut(id, "/")
+			detail, err := source.Package(t.Context(), namespace, name)
+			require.NoError(t, err)
+
+			require.Contains(t, body, "am-detail")
+			require.Contains(t, body, detail.ManifestPanelTitle())
+
+			// The variant split is STRUCTURAL: a standalone skill has no
+			// package-contents section at all, rather than an empty one. An empty
+			// section would say the tree was inspected and found nothing, which is
+			// a different claim from "this kind of package has no tree".
+			if detail.Kind == view.KindPlugin {
+				plugins++
+				require.Contains(t, body, "Package contents")
+				require.Contains(t, body, detail.Tree())
+			} else {
+				skills++
+				require.NotContains(t, body, "Package contents")
+			}
+
+			// Whichever branch the capability panel took, exactly one of the three
+			// is present — the unscanned notice, the scanned-and-empty notice, or
+			// the comparison table. Two of them would mean the panel is showing a
+			// version's state and its absence at once.
+			states := 0
+			for _, marker := range []string{
+				`id="capability-unscanned"`, `id="capability-none"`, `class="am-cap-head"`,
+			} {
+				if strings.Contains(body, marker) {
+					states++
+				}
+			}
+			require.Equal(t, 1, states, "the capability panel must be in exactly one state")
+		})
+	}
+
+	require.Positive(t, plugins, "the fixtures must contain a plugin")
+	require.Positive(t, skills, "and a standalone skill, or this test proves one variant")
 }

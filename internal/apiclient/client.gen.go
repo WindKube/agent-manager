@@ -321,6 +321,153 @@ func (e LockfileSkipReason) Valid() bool {
 	}
 }
 
+// Defines values for PackageCapabilityLevel.
+const (
+	PackageCapabilityLevelAllowlisted PackageCapabilityLevel = "allowlisted"
+	PackageCapabilityLevelReview      PackageCapabilityLevel = "review"
+	PackageCapabilityLevelScoped      PackageCapabilityLevel = "scoped"
+)
+
+// Valid indicates whether the value is a known member of the PackageCapabilityLevel enum.
+func (e PackageCapabilityLevel) Valid() bool {
+	switch e {
+	case PackageCapabilityLevelAllowlisted:
+		return true
+	case PackageCapabilityLevelReview:
+		return true
+	case PackageCapabilityLevelScoped:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PackageCapabilityName.
+const (
+	FilesystemRead  PackageCapabilityName = "filesystem.read"
+	FilesystemWrite PackageCapabilityName = "filesystem.write"
+	Network         PackageCapabilityName = "network"
+	Shell           PackageCapabilityName = "shell"
+)
+
+// Valid indicates whether the value is a known member of the PackageCapabilityName enum.
+func (e PackageCapabilityName) Valid() bool {
+	switch e {
+	case FilesystemRead:
+		return true
+	case FilesystemWrite:
+		return true
+	case Network:
+		return true
+	case Shell:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PackageComponentKind.
+const (
+	PackageComponentKindExt   PackageComponentKind = "ext"
+	PackageComponentKindMcp   PackageComponentKind = "mcp"
+	PackageComponentKindSkill PackageComponentKind = "skill"
+)
+
+// Valid indicates whether the value is a known member of the PackageComponentKind enum.
+func (e PackageComponentKind) Valid() bool {
+	switch e {
+	case PackageComponentKindExt:
+		return true
+	case PackageComponentKindMcp:
+		return true
+	case PackageComponentKindSkill:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PackageDependentMode.
+const (
+	PackageDependentModeLatest PackageDependentMode = "latest"
+	PackageDependentModePinned PackageDependentMode = "pinned"
+	PackageDependentModeRange  PackageDependentMode = "range"
+)
+
+// Valid indicates whether the value is a known member of the PackageDependentMode enum.
+func (e PackageDependentMode) Valid() bool {
+	switch e {
+	case PackageDependentModeLatest:
+		return true
+	case PackageDependentModePinned:
+		return true
+	case PackageDependentModeRange:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PackageDetailKind.
+const (
+	PackageDetailKindPlugin PackageDetailKind = "plugin"
+	PackageDetailKindSkill  PackageDetailKind = "skill"
+)
+
+// Valid indicates whether the value is a known member of the PackageDetailKind enum.
+func (e PackageDetailKind) Valid() bool {
+	switch e {
+	case PackageDetailKindPlugin:
+		return true
+	case PackageDetailKindSkill:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PackageDetailManifestObject.
+const (
+	PluginJson PackageDetailManifestObject = "plugin.json"
+	SKILLMd    PackageDetailManifestObject = "SKILL.md"
+)
+
+// Valid indicates whether the value is a known member of the PackageDetailManifestObject enum.
+func (e PackageDetailManifestObject) Valid() bool {
+	switch e {
+	case PluginJson:
+		return true
+	case SKILLMd:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PackageDetailVerdict.
+const (
+	PackageDetailVerdictClean    PackageDetailVerdict = "clean"
+	PackageDetailVerdictFlagged  PackageDetailVerdict = "flagged"
+	PackageDetailVerdictRejected PackageDetailVerdict = "rejected"
+	PackageDetailVerdictScanning PackageDetailVerdict = "scanning"
+)
+
+// Valid indicates whether the value is a known member of the PackageDetailVerdict enum.
+func (e PackageDetailVerdict) Valid() bool {
+	switch e {
+	case PackageDetailVerdictClean:
+		return true
+	case PackageDetailVerdictFlagged:
+		return true
+	case PackageDetailVerdictRejected:
+		return true
+	case PackageDetailVerdictScanning:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PackagePreviewKind.
 const (
 	PackagePreviewKindPlugin PackagePreviewKind = "plugin"
@@ -381,21 +528,66 @@ func (e PackageRegisteredVerdict) Valid() bool {
 	}
 }
 
+// Defines values for PackageVersionDistTag.
+const (
+	PackageVersionDistTagArchived PackageVersionDistTag = "archived"
+	PackageVersionDistTagLatest   PackageVersionDistTag = "latest"
+	PackageVersionDistTagNone     PackageVersionDistTag = "none"
+)
+
+// Valid indicates whether the value is a known member of the PackageVersionDistTag enum.
+func (e PackageVersionDistTag) Valid() bool {
+	switch e {
+	case PackageVersionDistTagArchived:
+		return true
+	case PackageVersionDistTagLatest:
+		return true
+	case PackageVersionDistTagNone:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PackageVersionVerdict.
+const (
+	PackageVersionVerdictClean    PackageVersionVerdict = "clean"
+	PackageVersionVerdictFlagged  PackageVersionVerdict = "flagged"
+	PackageVersionVerdictRejected PackageVersionVerdict = "rejected"
+	PackageVersionVerdictScanning PackageVersionVerdict = "scanning"
+)
+
+// Valid indicates whether the value is a known member of the PackageVersionVerdict enum.
+func (e PackageVersionVerdict) Valid() bool {
+	switch e {
+	case PackageVersionVerdictClean:
+		return true
+	case PackageVersionVerdictFlagged:
+		return true
+	case PackageVersionVerdictRejected:
+		return true
+	case PackageVersionVerdictScanning:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PreviewCapabilityLevel.
 const (
-	Allowlisted PreviewCapabilityLevel = "allowlisted"
-	Review      PreviewCapabilityLevel = "review"
-	Scoped      PreviewCapabilityLevel = "scoped"
+	PreviewCapabilityLevelAllowlisted PreviewCapabilityLevel = "allowlisted"
+	PreviewCapabilityLevelReview      PreviewCapabilityLevel = "review"
+	PreviewCapabilityLevelScoped      PreviewCapabilityLevel = "scoped"
 )
 
 // Valid indicates whether the value is a known member of the PreviewCapabilityLevel enum.
 func (e PreviewCapabilityLevel) Valid() bool {
 	switch e {
-	case Allowlisted:
+	case PreviewCapabilityLevelAllowlisted:
 		return true
-	case Review:
+	case PreviewCapabilityLevelReview:
 		return true
-	case Scoped:
+	case PreviewCapabilityLevelScoped:
 		return true
 	default:
 		return false
@@ -1015,6 +1207,156 @@ type LockfileSkip struct {
 // LockfileSkipReason Examples: flagged-awaiting-approval
 type LockfileSkipReason string
 
+// PackageCapabilities defines model for PackageCapabilities.
+type PackageCapabilities struct {
+	Expected []PackageCapability `json:"expected"`
+	Inferred []PackageCapability `json:"inferred"`
+	Scanned  bool                `json:"scanned"`
+}
+
+// PackageCapability defines model for PackageCapability.
+type PackageCapability struct {
+	// Detail The scoping: hosts for network, paths for filesystem, command names for shell.
+	Detail     []string `json:"detail"`
+	Indefinite *bool    `json:"indefinite,omitempty"`
+
+	// Level How much trust it demands. A shell capability is never below review (FR-018).
+	//
+	// Examples: allowlisted
+	Level PackageCapabilityLevel `json:"level"`
+
+	// Name Examples: network
+	Name PackageCapabilityName `json:"name"`
+}
+
+// PackageCapabilityLevel How much trust it demands. A shell capability is never below review (FR-018).
+//
+// Examples: allowlisted
+type PackageCapabilityLevel string
+
+// PackageCapabilityName Examples: network
+type PackageCapabilityName string
+
+// PackageComponent defines model for PackageComponent.
+type PackageComponent struct {
+	// Kind Examples: skill
+	Kind PackageComponentKind `json:"kind"`
+
+	// Name Examples: terraform-module-review
+	Name string `json:"name"`
+
+	// Note Examples: SKILL.md + scripts/
+	Note *string `json:"note,omitempty"`
+
+	// Path Examples: skills/terraform-module-review
+	Path string `json:"path"`
+}
+
+// PackageComponentKind Examples: skill
+type PackageComponentKind string
+
+// PackageDependent defines model for PackageDependent.
+type PackageDependent struct {
+	// Mode How this profile resolves the package.
+	//
+	// Examples: pinned
+	Mode PackageDependentMode `json:"mode"`
+
+	// Name Examples: Platform baseline
+	Name string `json:"name"`
+
+	// Range Examples: ^1.2
+	Range *string `json:"range,omitempty"`
+
+	// Slug Examples: platform-baseline
+	Slug string `json:"slug"`
+
+	// Version Examples: 1.3.0
+	Version *string `json:"version,omitempty"`
+}
+
+// PackageDependentMode How this profile resolves the package.
+//
+// Examples: pinned
+type PackageDependentMode string
+
+// PackageDetail defines model for PackageDetail.
+type PackageDetail struct {
+	Capabilities PackageCapabilities `json:"capabilities"`
+
+	// Category The admin-curated category (FR-049). Empty when none was chosen.
+	//
+	// Examples: Infrastructure
+	Category *string `json:"category,omitempty"`
+
+	// Components Derived from the FILE TREE. No manifest field enumerates components (FR-017, R1).
+	Components []PackageComponent `json:"components"`
+
+	// Dependents Profiles using this package that the CALLER MAY READ, and no others (FR-044).
+	Dependents []PackageDependent `json:"dependents"`
+
+	// Description Examples: Platform guardrails, ADR authoring and service scaffolding.
+	Description *string `json:"description,omitempty"`
+
+	// Id namespace/name — the first segment of the publisher slug, not the whole slug.
+	//
+	// Examples: example/platform-toolkit
+	Id string `json:"id"`
+
+	// Kind Decided by which manifest is at the tree root, never by a manifest field.
+	//
+	// Examples: plugin
+	Kind     PackageDetailKind `json:"kind"`
+	Manifest string            `json:"manifest"`
+
+	// ManifestObject Examples: plugin.json
+	ManifestObject PackageDetailManifestObject `json:"manifestObject"`
+
+	// Name The manifest name. No manifest field and no column carries a human title.
+	//
+	// Examples: platform-toolkit
+	Name      string           `json:"name"`
+	Origin    PackageOrigin    `json:"origin"`
+	Publisher PackagePublisher `json:"publisher"`
+
+	// Tags The latest version's manifest keywords. Tags belong to the version, not the package.
+	Tags []string `json:"tags"`
+
+	// Verdict Examples: clean
+	Verdict PackageDetailVerdict `json:"verdict"`
+
+	// Version The latest visible version's semver — the one the panels below describe.
+	//
+	// Examples: 1.3.0
+	Version string `json:"version"`
+
+	// Versions Every visible version, newest first.
+	Versions []PackageVersion `json:"versions"`
+}
+
+// PackageDetailKind Decided by which manifest is at the tree root, never by a manifest field.
+//
+// Examples: plugin
+type PackageDetailKind string
+
+// PackageDetailManifestObject Examples: plugin.json
+type PackageDetailManifestObject string
+
+// PackageDetailVerdict Examples: clean
+type PackageDetailVerdict string
+
+// PackageOrigin defines model for PackageOrigin.
+type PackageOrigin struct {
+	// ParentId Examples: example/platform-toolkit
+	ParentId *string `json:"parentId,omitempty"`
+
+	// ParentName Examples: platform-toolkit
+	ParentName *string `json:"parentName,omitempty"`
+
+	// SpecVersion Examples: 1.0.0
+	SpecVersion *string `json:"specVersion,omitempty"`
+}
+
 // PackagePreview defines model for PackagePreview.
 type PackagePreview struct {
 	// Components Derived from the file tree. No manifest field enumerates components.
@@ -1057,6 +1399,18 @@ type PackagePreview struct {
 // Examples: plugin
 type PackagePreviewKind string
 
+// PackagePublisher defines model for PackagePublisher.
+type PackagePublisher struct {
+	// DisplayName Examples: Platform Engineering
+	DisplayName string `json:"displayName"`
+
+	// Slug Examples: example/platform
+	Slug string `json:"slug"`
+
+	// Verified Set by a catalog admin and never inferred from the namespace.
+	Verified bool `json:"verified"`
+}
+
 // PackageRegistered defines model for PackageRegistered.
 type PackageRegistered struct {
 	// Kind Examples: plugin
@@ -1095,6 +1449,34 @@ type PackageRegisteredKind string
 //
 // Examples: scanning
 type PackageRegisteredVerdict string
+
+// PackageVersion defines model for PackageVersion.
+type PackageVersion struct {
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Digest Empty while a registration is still being fetched: the digest is computed on write.
+	Digest *string `json:"digest,omitempty"`
+
+	// DistTag Examples: latest
+	DistTag PackageVersionDistTag `json:"distTag"`
+
+	// ObjectKey Examples: skills/example/platform-toolkit/1.3.0/bundle.tar.zst
+	ObjectKey string `json:"objectKey"`
+	PinnedBy  int64  `json:"pinnedBy"`
+	SizeBytes *int64 `json:"sizeBytes,omitempty"`
+
+	// Verdict Examples: clean
+	Verdict PackageVersionVerdict `json:"verdict"`
+
+	// Version Examples: 1.3.0
+	Version string `json:"version"`
+}
+
+// PackageVersionDistTag Examples: latest
+type PackageVersionDistTag string
+
+// PackageVersionVerdict Examples: clean
+type PackageVersionVerdict string
 
 // PreviewCapability defines model for PreviewCapability.
 type PreviewCapability struct {
@@ -1516,6 +1898,13 @@ type ClientInterface interface {
 	// Corresponds with POST /v1/packages/preview (the `PreviewPackage` operationId).
 	PreviewPackageWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetPackage One package's detail
+	//
+	// Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package (FR-016). The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read (FR-044), and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
+	//
+	// Corresponds with GET /v1/packages/{namespace}/{name} (the `GetPackage` operationId).
+	GetPackage(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListProfiles Profiles readable by this identity
 	//
 	// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all.
@@ -1704,6 +2093,23 @@ func (c *Client) RegisterPackageWithBody(ctx context.Context, contentType string
 // Corresponds with POST /v1/packages/preview (the `PreviewPackage` operationId).
 func (c *Client) PreviewPackageWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPreviewPackageRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetPackage One package's detail
+//
+// Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package (FR-016). The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read (FR-044), and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
+//
+// Corresponds with GET /v1/packages/{namespace}/{name} (the `GetPackage` operationId).
+func (c *Client) GetPackage(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetPackageRequest(c.Server, namespace, name)
 	if err != nil {
 		return nil, err
 	}
@@ -2149,6 +2555,47 @@ func NewPreviewPackageRequestWithBody(server string, contentType string, body io
 	return req, nil
 }
 
+// NewGetPackageRequest constructs an http.Request for the GetPackage method
+func NewGetPackageRequest(server string, namespace string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/packages/%s/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListProfilesRequest constructs an http.Request for the ListProfiles method
 func NewListProfilesRequest(server string) (*http.Request, error) {
 	var err error
@@ -2381,6 +2828,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /v1/packages/preview (the `PreviewPackage` operationId).
 	PreviewPackageWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewPackageResponse, error)
+
+	// GetPackageWithResponse One package's detail
+	//
+	// Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package (FR-016). The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read (FR-044), and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/packages/{namespace}/{name} (the `GetPackage` operationId).
+	GetPackageWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*GetPackageResponse, error)
 
 	// ListProfilesWithResponse Profiles readable by this identity
 	//
@@ -2868,6 +3324,68 @@ func (r PreviewPackageResponse) ContentType() string {
 	return ""
 }
 
+type GetPackageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PackageDetail
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetPackageResponse) GetJSON200() *PackageDetail {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetPackageResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetPackageResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r GetPackageResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetPackageResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetPackageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetPackageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetPackageResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListProfilesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3187,6 +3705,21 @@ func (c *ClientWithResponses) PreviewPackageWithBodyWithResponse(ctx context.Con
 		return nil, err
 	}
 	return ParsePreviewPackageResponse(rsp)
+}
+
+// GetPackageWithResponse One package's detail
+//
+// Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package (FR-016). The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read (FR-044), and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/packages/{namespace}/{name} (the `GetPackage` operationId).
+func (c *ClientWithResponses) GetPackageWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*GetPackageResponse, error) {
+	rsp, err := c.GetPackage(ctx, namespace, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetPackageResponse(rsp)
 }
 
 // ListProfilesWithResponse Profiles readable by this identity
@@ -3604,6 +4137,53 @@ func ParsePreviewPackageResponse(rsp *http.Response) (*PreviewPackageResponse, e
 			return nil, err
 		}
 		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetPackageResponse parses an HTTP response from a GetPackageWithResponse call
+func ParseGetPackageResponse(rsp *http.Response) (*GetPackageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetPackageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PackageDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

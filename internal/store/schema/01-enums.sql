@@ -8,7 +8,7 @@
 -- the integration suite rather than surfacing as a runtime insert error.
 
 create type actor_kind as enum ('identity', 'system');
-create type audit_kind as enum ('fetch', 'scan', 'approve', 'profile', 'share', 'sync', 'login');
+create type audit_kind as enum ('fetch', 'scan', 'approve', 'profile', 'share', 'sync', 'login', 'policy', 'role', 'category', 'secret');
 create type capability_level as enum ('scoped', 'allowlisted', 'review');
 create type capability_source as enum ('inferred', 'expected');
 create type check_result as enum ('pass', 'fail', 'warn');
@@ -16,6 +16,9 @@ create type component_kind as enum ('skill', 'mcp', 'ext');
 create type device_auth_state as enum ('pending', 'approved', 'consumed', 'expired', 'denied');
 create type dist_tag as enum ('latest', 'archived', 'none');
 create type entry_mode as enum ('latest', 'pinned', 'range');
+create type evidence_role as enum ('primary', 'supporting');
+create type fetch_outcome as enum ('ok', 'invalid-ref', 'blocked', 'unreachable', 'malformed', 'too-large', 'rejected-member', 'extract-timeout');
+create type fetch_source_kind as enum ('upload', 'git', 'archive-url');
 create type finding_severity as enum ('low', 'medium', 'high');
 create type finding_state as enum ('open', 'approved', 'rejected');
 create type membership_role as enum ('owner', 'maintainer', 'reviewer', 'consumer');

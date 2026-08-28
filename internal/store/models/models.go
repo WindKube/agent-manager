@@ -52,6 +52,7 @@ func All() []any {
 		(*Scan)(nil),
 		(*ScanCheck)(nil),
 		(*Finding)(nil),
+		(*FindingEvidence)(nil),
 		(*Override)(nil),
 
 		// Profiles
@@ -71,6 +72,7 @@ func All() []any {
 		(*OrgPolicy)(nil),
 		(*AuditEvent)(nil),
 		(*SyncEvent)(nil),
+		(*FetchAttempt)(nil),
 
 		// Job hand-off
 		(*Outbox)(nil),

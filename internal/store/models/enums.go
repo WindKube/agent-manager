@@ -40,6 +40,9 @@ const (
 	PGActorKind         = "actor_kind"
 	PGAuditKind         = "audit_kind"
 	PGOutboxState       = "outbox_state"
+	PGEvidenceRole      = "evidence_role"
+	PGFetchSourceKind   = "fetch_source_kind"
+	PGFetchOutcome      = "fetch_outcome"
 )
 
 // enumTypes maps each Postgres enum type to its value set in declaration order.
@@ -68,8 +71,25 @@ var enumTypes = map[string][]string{
 	PGDeviceAuthState:   {"pending", "approved", "consumed", "expired", "denied"},
 	PGScanGate:          {"block", "approval", "warn-with-override"},
 	PGActorKind:         {"identity", "system"},
-	PGAuditKind:         {"fetch", "scan", "approve", "profile", "share", "sync", "login"},
-	PGOutboxState:       {"pending", "delivered"},
+	PGAuditKind: {
+		"fetch", "scan", "approve", "profile", "share", "sync", "login",
+		// The four admin kinds are appended, never interleaved: the migration that
+		// added them is `alter type ... add value`, which appends, and this slice is
+		// asserted against pg_enum in enumsortorder.
+		"policy", "role", "category", "secret",
+	},
+	PGOutboxState:     {"pending", "delivered"},
+	PGEvidenceRole:    {"primary", "supporting"},
+	PGFetchSourceKind: {"upload", "git", "archive-url"},
+	// fetch_outcome is one value per failure internal/fetch, internal/repourl and
+	// internal/bundle can actually tell apart today; the mapping is on FetchOutcome
+	// below. It deliberately does not enumerate HTTP status codes or transport
+	// causes: those are `detail`, and a value nothing can produce is a filter that
+	// always returns nothing.
+	PGFetchOutcome: {
+		"ok", "invalid-ref", "blocked", "unreachable",
+		"malformed", "too-large", "rejected-member", "extract-timeout",
+	},
 }
 
 func inEnum(pgType, value string) bool {
@@ -359,6 +379,14 @@ const (
 func (v ActorKind) Valid() bool { return inEnum(PGActorKind, string(v)) }
 
 // AuditKind is the class of audited action.
+//
+// The last four are the Organization screen's mutations. They are four values
+// rather than one `admin` bucket because the audit screen filters by kind, and
+// "who changed the scan gate" and "who rotated the identity-provider secret" are
+// not the same question. Their absence was not a gap to backfill later: with no
+// valid kind to write, FR-050's "every state-changing action writes exactly one
+// audit row" failed silently on the highest-privilege screen in the product —
+// nothing written, nothing raised, no gap to detect afterwards.
 type AuditKind string
 
 const (
@@ -369,6 +397,16 @@ const (
 	AuditKindShare   AuditKind = "share"
 	AuditKindSync    AuditKind = "sync"
 	AuditKindLogin   AuditKind = "login"
+	// AuditKindPolicy covers org_policy as a whole: the scan gate (FR-046), the
+	// default version policy (FR-047) and the four booleans beside them.
+	AuditKindPolicy AuditKind = "policy"
+	// AuditKindRole is the group->role map (FR-040), which can grant catalog-admin.
+	AuditKindRole AuditKind = "role"
+	// AuditKindCategory is the admin-curated category vocabulary (FR-049).
+	AuditKindCategory AuditKind = "category"
+	// AuditKindSecret is identity-provider credential rotation. The credential
+	// itself never reaches a row here; the fact that it moved does.
+	AuditKindSecret AuditKind = "secret"
 )
 
 func (v AuditKind) Valid() bool { return inEnum(PGAuditKind, string(v)) }
@@ -382,3 +420,67 @@ const (
 )
 
 func (v OutboxState) Valid() bool { return inEnum(PGOutboxState, string(v)) }
+
+// EvidenceRole separates the location that caused a finding from the ones that
+// show its consequences. SH-FS-007's cause is scripts/explain-costs.sh:9 while
+// the writes it lets escape are on lines 28, 34 and 36, so one location per
+// finding cannot render the finding (FR-024).
+type EvidenceRole string
+
+const (
+	EvidenceRolePrimary    EvidenceRole = "primary"
+	EvidenceRoleSupporting EvidenceRole = "supporting"
+)
+
+func (v EvidenceRole) Valid() bool { return inEnum(PGEvidenceRole, string(v)) }
+
+// FetchSourceKind mirrors fetch.SourceKind, the three shapes FR-001 accepts.
+//
+// It is a copy rather than an import: internal/store/models is loaded by the
+// Atlas provider and must stay free of the fetch tree, and internal/fetch must
+// not learn about the database. TestFetchSourceKindCoversEveryFetchSourceKind in
+// internal/store/models is what stops the copy drifting.
+type FetchSourceKind string
+
+const (
+	FetchSourceUpload     FetchSourceKind = "upload"
+	FetchSourceGit        FetchSourceKind = "git"
+	FetchSourceArchiveURL FetchSourceKind = "archive-url"
+)
+
+func (v FetchSourceKind) Valid() bool { return inEnum(PGFetchSourceKind, string(v)) }
+
+// FetchOutcome is how one fetch attempt ended.
+//
+// Every value is something the ingestion path distinguishes today, and the
+// mapping is one-to-one so that nothing has to be recovered by parsing `detail`:
+//
+//	ok               a Tree was produced
+//	invalid-ref      repourl.ErrInvalid or fetch.ErrNoSource — nothing was dialled
+//	blocked          fetch.ErrBlocked — the outbound policy refused the address
+//	unreachable      any other failure out of fetch.Client.Do
+//	malformed        bundle.ErrMalformed
+//	too-large        bundle.ErrTooLarge
+//	rejected-member  bundle.ErrRejectedMember
+//	extract-timeout  bundle.ErrTimeout
+//
+// Two deliberate decisions. A fetch-side timeout is `unreachable`, not
+// `extract-timeout`: the http client's own deadline is indistinguishable from a
+// dead host at this layer, and one word that means both stages is worse than a
+// name that says which stage it came from. And there is no `not-found`: a 404 is
+// a status on a response fetch.Client returns successfully, so nothing below the
+// worker can tell it from any other status, and the worker does not exist yet.
+type FetchOutcome string
+
+const (
+	FetchOutcomeOK             FetchOutcome = "ok"
+	FetchOutcomeInvalidRef     FetchOutcome = "invalid-ref"
+	FetchOutcomeBlocked        FetchOutcome = "blocked"
+	FetchOutcomeUnreachable    FetchOutcome = "unreachable"
+	FetchOutcomeMalformed      FetchOutcome = "malformed"
+	FetchOutcomeTooLarge       FetchOutcome = "too-large"
+	FetchOutcomeRejectedMember FetchOutcome = "rejected-member"
+	FetchOutcomeExtractTimeout FetchOutcome = "extract-timeout"
+)
+
+func (v FetchOutcome) Valid() bool { return inEnum(PGFetchOutcome, string(v)) }

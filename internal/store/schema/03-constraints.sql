@@ -4,9 +4,73 @@
 -- that exists only in a migration is DROPped by the next `atlas migrate diff`.
 
 -- ---------------------------------------------------------------------------
+-- The namespace, and the object-key collision it closes
+-- ---------------------------------------------------------------------------
+-- Three concepts, and until now the schema had names for two:
+--
+--   namespace  example | community    first segment; the rendered id AND the object key
+--   publisher  example/platform       the owning team; carries `verified`
+--   name       pii-redactor
+--
+-- `unique (publisher_id, name)` let example/platform and example/security each
+-- own pii-redactor. Both render as example/pii-redactor and both resolve to the
+-- object key skills/example/pii-redactor/..., so one bundle overwrites the other
+-- — a correctness bug against FR-007, not a display bug. `unique (namespace,
+-- name)` in 02-tables.sql replaces it and is strictly stronger, so the old key is
+-- redundant rather than merely weaker.
+--
+-- Everything below exists to make that key trustworthy: a namespace that cannot
+-- drift from its slug, and a package namespace that cannot disagree with its
+-- publisher's.
+
+-- A stored generated column, so publisher.namespace is not a value anybody
+-- writes. Postgres recomputes it from slug on every write and refuses a direct
+-- assignment, which is a guarantee no trigger and no application check can give.
+-- Bun cannot express `generated always as` and 02-tables.sql is generated from the
+-- models, so this is the layer it belongs in.
+alter table "publisher"
+  add column "namespace" text
+  generated always as (split_part("slug", '/', 1)) stored not null;
+
+-- The two-segment shape is load-bearing now: the first segment is the object-key
+-- prefix, so a one-segment slug would silently produce keys with an empty
+-- namespace and a second slash. It is a check rather than a comment for that
+-- reason.
+--
+-- The per-segment character set is deliberately NOT re-stated here. Registration
+-- validates each segment against one pattern; a second, looser copy in the
+-- database would be a rule that disagrees with the real one the first time either
+-- moves. This constraint asserts only what the object key depends on: exactly two
+-- segments, neither empty.
+alter table "publisher"
+  add constraint "publisher_slug_is_two_segments"
+  check ("slug" ~ '^[^/]+/[^/]+$');
+
+-- Redundant against the primary key on its own, and it is not here for its own
+-- sake: a composite foreign key can only reference a set of columns that carries
+-- a unique constraint, and this is that set.
+alter table "publisher"
+  add constraint "publisher_id_namespace_key"
+  unique ("id", "namespace");
+
+-- What makes package.namespace safe to denormalise. Postgres refuses any package
+-- row whose namespace is not its own publisher's, on insert and on update, with
+-- no trigger and nothing for the application to remember. Without it,
+-- `unique (namespace, name)` would be enforcing uniqueness over a column the
+-- application is free to get wrong.
+--
+-- The single-column package(publisher_id) -> publisher(id) key stays. It is
+-- implied by this one, but it is what the Bun belongs-to emits, and removing it
+-- would mean dropping the relation.
+alter table "package"
+  add constraint "package_publisher_id_namespace_fkey"
+  foreign key ("publisher_id", "namespace") references "publisher" ("id", "namespace")
+  on update no action on delete no action;
+
+-- ---------------------------------------------------------------------------
 -- Foreign keys the Bun loader cannot emit
 -- ---------------------------------------------------------------------------
--- The models declare 26 belongs-to relations; the loader emits 16 foreign keys.
+-- The models declare 27 belongs-to relations; the loader emits 17 foreign keys.
 -- The ten it drops are the ones whose base column is part of the primary key —
 -- and data-model.md itself mandates pk-and-fk for signature.version_id and
 -- override.finding_id, so they are unavoidable rather than a modelling choice.
@@ -83,8 +147,9 @@ alter table "package"
 -- ---------------------------------------------------------------------------
 -- The four uniques T015 names — version(package_id, semver) for FR-007,
 -- scan(version_id, pack_version) for the R5 idempotency key,
--- revision(profile_id, seq), and package(publisher_id, name) — are expressible
--- as bun tags and come from layer 2. The three checks are not.
+-- revision(profile_id, seq), and package(namespace, name), which replaced the
+-- publisher-scoped key above — are expressible as bun tags and come from layer 2.
+-- The three checks are not.
 
 -- FR-008 commit-last: no version leaves the scanning verdict without bytes
 -- behind it. A publish that fails between metadata and bytes is therefore stuck
@@ -148,6 +213,23 @@ create index "finding_open_version_idx" on "finding" ("version_id") where "state
 create index "outbox_pending_created_at_idx" on "outbox" ("created_at") where "state" = 'pending';
 
 create index "audit_event_occurred_at_idx" on "audit_event" ("occurred_at" desc);
+
+-- The finding detail pane reads every location for one finding, so the child
+-- table needs the parent lookup its foreign key does not give it.
+create index "finding_evidence_finding_idx" on "finding_evidence" ("finding_id");
+
+-- At most one primary location per finding. finding.evidence_path/line/quote is a
+-- copy of that row, kept so the list view is a single-table read; without this
+-- there could be two rows claiming to be the one it copies, and no way to say
+-- which. The predicate must stay exactly role = 'primary': supporting locations
+-- are many per finding by definition.
+create unique index "finding_evidence_one_primary_idx"
+  on "finding_evidence" ("finding_id") where "role" = 'primary';
+
+-- FR-053 asks for RECENT fetch outcomes, so the panel's whole query is this
+-- index. Nothing indexes outcome: the panel shows the last N whatever they are,
+-- and a filter over a few dozen rows is not a scan worth avoiding.
+create index "fetch_attempt_occurred_at_idx" on "fetch_attempt" ("occurred_at" desc);
 
 -- T017 also asks for a GIN index on "the tsvector search column". There is no
 -- such column: data-model.md names `search tsvector` only on catalog_entry, the

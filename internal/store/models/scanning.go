@@ -49,6 +49,11 @@ type ScanCheck struct {
 }
 
 // Finding is one problem a check raised.
+//
+// The evidence triple below is the PRIMARY location only, kept denormalised so
+// the findings list renders without a join. It is not the whole evidence: a
+// finding legitimately has several locations, and those live in
+// FindingEvidence — including a `primary` row that mirrors this triple.
 type Finding struct {
 	bun.BaseModel `bun:"table:finding,alias:fnd"`
 
@@ -63,6 +68,12 @@ type Finding struct {
 	Detail    string          `bun:"detail,type:text,nullzero"`
 	// EvidenceQuote is rendered escaped, always (FR-055). It is attacker-controlled
 	// bundle content quoted verbatim.
+	//
+	// These three are the primary location, duplicated from the FindingEvidence
+	// row whose role is `primary`. The duplication is what keeps the list view a
+	// single-table read; `unique (finding_id) where role = 'primary'` is what keeps
+	// "the" primary row well defined, so the two can never disagree about which
+	// location this triple copies.
 	EvidencePath  string       `bun:"evidence_path,type:text,nullzero"`
 	EvidenceLine  *int32       `bun:"evidence_line,type:integer,nullzero"`
 	EvidenceQuote string       `bun:"evidence_quote,type:text,nullzero"`
@@ -70,9 +81,43 @@ type Finding struct {
 	CreatedAt     time.Time    `bun:"created_at,type:timestamptz,notnull,default:now()"`
 	UpdatedAt     time.Time    `bun:"updated_at,type:timestamptz,notnull,default:now()"`
 
-	Scan     *Scan     `bun:"rel:belongs-to,join:scan_id=id"`
-	Version  *Version  `bun:"rel:belongs-to,join:version_id=id"`
-	Override *Override `bun:"rel:has-one,join:id=finding_id"`
+	Scan     *Scan              `bun:"rel:belongs-to,join:scan_id=id"`
+	Version  *Version           `bun:"rel:belongs-to,join:version_id=id"`
+	Override *Override          `bun:"rel:has-one,join:id=finding_id"`
+	Evidence []*FindingEvidence `bun:"rel:has-many,join:id=finding_id"`
+}
+
+// FindingEvidence is one location a finding points at. A finding has several:
+// SH-FS-007's cause is scripts/explain-costs.sh:9 while the writes it lets escape
+// are on lines 28, 34 and 36, and a schema that holds one location per finding
+// either drops the rest or formats them into a string.
+//
+// Formatting them into a string is the option this table exists to refuse. It
+// would defeat Line — the number a reader needs to find the code — and it would
+// turn FR-055's escaping requirement into a per-substring problem inside one
+// text column, which is exactly the shape that gets escaped once and then
+// concatenated wrong.
+//
+// The rows carry no explicit ordering column. Evidence is read as `order by
+// role, path, line`, which is stable and is what the pane renders; a position
+// column would be a second thing to keep right for no question anyone asks.
+type FindingEvidence struct {
+	bun.BaseModel `bun:"table:finding_evidence,alias:fev"`
+
+	ID        uuid.UUID `bun:"id,pk,type:uuid,notnull"`
+	FindingID uuid.UUID `bun:"finding_id,type:uuid,notnull"`
+	Path      string    `bun:"path,type:text,notnull"`
+	// Line is nullable because a finding can name a file without naming a line —
+	// which is also why the primary key is a uuid rather than
+	// (finding_id, path, line): Postgres will not hold a null in one.
+	Line *int32 `bun:"line,type:integer,nullzero"`
+	// Quote is attacker-controlled bundle content, quoted verbatim, and is rendered
+	// escaped always (FR-055).
+	Quote     string       `bun:"quote,type:text,nullzero"`
+	Role      EvidenceRole `bun:"role,type:evidence_role,notnull"`
+	CreatedAt time.Time    `bun:"created_at,type:timestamptz,notnull,default:now()"`
+
+	Finding *Finding `bun:"rel:belongs-to,join:finding_id=id"`
 }
 
 // Override is a reviewer accepting a finding (FR-028). ExpiresAt is what the

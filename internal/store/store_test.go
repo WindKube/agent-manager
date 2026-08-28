@@ -17,6 +17,7 @@ import (
 	"os"
 	"reflect"
 	"sort"
+	"strconv"
 	"sync"
 	"testing"
 
@@ -447,27 +448,139 @@ func TestARedeliveredScanForTheSameVersionAndPackVersionIsRejected(t *testing.T)
 }
 
 // ---------------------------------------------------------------------------
-// A publisher cannot own two packages of the same name
+// The namespace, and the object-key collision the old key allowed
 // ---------------------------------------------------------------------------
 
-func TestAPublisherCannotOwnTwoPackagesOfTheSameName(t *testing.T) {
+// uniqueNamespace returns a namespace no other test in this suite will use. It is
+// spelled out of a whole uuid rather than uuid.ID(), whose value is the high bits
+// of a v7 timestamp and is therefore the same for ids minted in the same
+// millisecond — which is every publisher this suite creates.
+func uniqueNamespace() string { return "ns" + models.NewID().String() }
+
+// seedPublisherIn creates a publisher whose slug is `<namespace>/<team>`, which is
+// the shape the check constraint now requires.
+func seedPublisherIn(t *testing.T, ctx context.Context, namespace, team string) uuid.UUID {
+	t.Helper()
+
+	id := models.NewID()
+	_, err := pool.Exec(ctx,
+		`insert into publisher (id, slug, display_name) values ($1, $2, 'Example')`,
+		id, namespace+"/"+team)
+	require.NoError(t, err)
+
+	return id
+}
+
+// insertPackageIn writes the namespace the caller asks for rather than the one the
+// publisher has, because half these cases are about the two disagreeing.
+func insertPackageIn(ctx context.Context, pubID uuid.UUID, namespace, name string) error {
+	_, err := pool.Exec(ctx,
+		`insert into package (id, publisher_id, namespace, name, kind, visibility)
+		 values ($1, $2, $3, $4, 'skill', 'organisation')`,
+		models.NewID(), pubID, namespace, name)
+	return err
+}
+
+// This is the defect `unique (publisher_id, name)` allowed and `unique (namespace,
+// name)` does not. Two teams in one namespace, one package name: both render as
+// the id example/pii-redactor and both resolve to the object key
+// skills/example/pii-redactor/…, so one bundle overwrites the other. Against
+// FR-007 that is a correctness bug, and the second insert below is the one the old
+// key accepted.
+func TestTwoPublishersInOneNamespaceCannotBothOwnAPackageOfTheSameName(t *testing.T) {
 	ctx := context.Background()
 
-	pubA, pubB := seedPublisher(t, ctx), seedPublisher(t, ctx)
+	ns := uniqueNamespace()
+	platform := seedPublisherIn(t, ctx, ns, "platform")
+	security := seedPublisherIn(t, ctx, ns, "security")
 
-	insert := func(pubID uuid.UUID, name string) error {
+	require.NoError(t, insertPackageIn(ctx, platform, ns, "pii-redactor"))
+	requirePgError(t, insertPackageIn(ctx, security, ns, "pii-redactor"), "23505", "package_namespace_name")
+
+	// The same publisher twice is still refused, which is everything the old key
+	// caught: the new one is strictly stronger, not different.
+	requirePgError(t, insertPackageIn(ctx, platform, ns, "pii-redactor"), "23505", "package_namespace_name")
+
+	// And a different namespace is a different package, or the key would make
+	// community/slack-digest and example/slack-digest the same thing.
+	other := uniqueNamespace()
+	require.NoError(t, insertPackageIn(ctx, seedPublisherIn(t, ctx, other, "platform"), other, "pii-redactor"))
+}
+
+// The uniqueness above is only worth the honesty of the column it indexes. If a
+// package could name a namespace its publisher does not have, `unique (namespace,
+// name)` would be enforcing uniqueness over a value the application picks.
+func TestAPackageCannotClaimANamespaceItsPublisherDoesNotHave(t *testing.T) {
+	ctx := context.Background()
+
+	ns := uniqueNamespace()
+	pubID := seedPublisherIn(t, ctx, ns, "platform")
+
+	requirePgError(t, insertPackageIn(ctx, pubID, "community", "borrowed"),
+		"23503", "package_publisher_id_namespace_fkey")
+
+	require.NoError(t, insertPackageIn(ctx, pubID, ns, "borrowed"))
+
+	// An UPDATE is checked too, which is the half a trigger written for INSERT
+	// would have missed.
+	_, err := pool.Exec(ctx, `update package set namespace = 'community' where publisher_id = $1`, pubID)
+	requirePgError(t, err, "23503", "package_publisher_id_namespace_fkey")
+}
+
+// publisher.namespace is a stored generated column, so it is not a value anybody
+// writes. That is the whole reason it cannot drift from the slug — no trigger, no
+// application check, and no way to get it wrong by writing to it.
+func TestPublisherNamespaceIsDerivedFromTheSlugAndCannotBeWrittenDirectly(t *testing.T) {
+	ctx := context.Background()
+
+	ns := uniqueNamespace()
+	pubID := seedPublisherIn(t, ctx, ns, "platform")
+
+	namespaceOf := func() string {
+		var got string
+		require.NoError(t, pool.QueryRow(ctx, `select namespace from publisher where id = $1`, pubID).Scan(&got))
+		return got
+	}
+	require.Equal(t, ns, namespaceOf())
+
+	_, err := pool.Exec(ctx, `update publisher set namespace = 'evil' where id = $1`, pubID)
+	requirePgError(t, err, "428C9", "")
+
+	// Renaming the slug moves the namespace with it, in the same statement. A
+	// denormalised copy maintained by application code is what this replaces.
+	_, err = pool.Exec(ctx, `update publisher set slug = 'renamed/platform' where id = $1`, pubID)
+	require.NoError(t, err)
+	require.Equal(t, "renamed", namespaceOf())
+}
+
+// The two-segment shape is load-bearing rather than conventional: the first
+// segment is the object-key prefix, so a slug with any other shape produces keys
+// nothing else in the system expects. It is a check for that reason.
+func TestAPublisherSlugMustBeExactlyTwoNonEmptySegments(t *testing.T) {
+	ctx := context.Background()
+
+	insert := func(slug string) error {
 		_, err := pool.Exec(ctx,
-			`insert into package (id, publisher_id, name, kind, visibility) values ($1, $2, $3, 'skill', 'organisation')`,
-			models.NewID(), pubID, name)
+			`insert into publisher (id, slug, display_name) values ($1, $2, 'Example')`,
+			models.NewID(), slug)
 		return err
 	}
 
-	require.NoError(t, insert(pubA, "deploy-helper"))
-	requirePgError(t, insert(pubA, "deploy-helper"), "23505", "package_publisher_name")
+	for _, slug := range []string{
+		"lonely",    // no namespace at all
+		"a/b/c",     // split_part would happily return "a" and lose b/c
+		"/platform", // empty namespace: the object key would start skills//
+		"example/",  // empty team
+		"example",   // the namespace on its own
+		"",          //
+	} {
+		t.Run("rejects "+strconv.Quote(slug), func(t *testing.T) {
+			requirePgError(t, insert(slug), "23514", "publisher_slug_is_two_segments")
+		})
+	}
 
-	// The key is scoped to the publisher, so the same name under another
-	// publisher is a different package and must be allowed.
-	require.NoError(t, insert(pubB, "deploy-helper"))
+	require.NoError(t, insert("example/platform-"+models.NewID().String()),
+		"a check that rejected everything would also pass the assertions above")
 }
 
 // ---------------------------------------------------------------------------
@@ -645,13 +758,16 @@ func TestIndexDefinitionsAreExactlyAsSpecified(t *testing.T) {
 	ctx := context.Background()
 
 	want := map[string]string{
-		"version_tags_gin":                "CREATE INDEX version_tags_gin ON public.version USING gin (tags)",
-		"version_package_semver_sort_idx": "CREATE INDEX version_package_semver_sort_idx ON public.version USING btree (package_id, semver_sort DESC)",
-		"version_verdict_visible_idx":     "CREATE INDEX version_verdict_visible_idx ON public.version USING btree (verdict) WHERE visible",
-		"version_created_at_idx":          "CREATE INDEX version_created_at_idx ON public.version USING btree (created_at DESC)",
-		"finding_open_version_idx":        "CREATE INDEX finding_open_version_idx ON public.finding USING btree (version_id) WHERE (state = 'open'::finding_state)",
-		"outbox_pending_created_at_idx":   "CREATE INDEX outbox_pending_created_at_idx ON public.outbox USING btree (created_at) WHERE (state = 'pending'::outbox_state)",
-		"audit_event_occurred_at_idx":     "CREATE INDEX audit_event_occurred_at_idx ON public.audit_event USING btree (occurred_at DESC)",
+		"version_tags_gin":                 "CREATE INDEX version_tags_gin ON public.version USING gin (tags)",
+		"version_package_semver_sort_idx":  "CREATE INDEX version_package_semver_sort_idx ON public.version USING btree (package_id, semver_sort DESC)",
+		"version_verdict_visible_idx":      "CREATE INDEX version_verdict_visible_idx ON public.version USING btree (verdict) WHERE visible",
+		"version_created_at_idx":           "CREATE INDEX version_created_at_idx ON public.version USING btree (created_at DESC)",
+		"finding_open_version_idx":         "CREATE INDEX finding_open_version_idx ON public.finding USING btree (version_id) WHERE (state = 'open'::finding_state)",
+		"outbox_pending_created_at_idx":    "CREATE INDEX outbox_pending_created_at_idx ON public.outbox USING btree (created_at) WHERE (state = 'pending'::outbox_state)",
+		"audit_event_occurred_at_idx":      "CREATE INDEX audit_event_occurred_at_idx ON public.audit_event USING btree (occurred_at DESC)",
+		"finding_evidence_finding_idx":     "CREATE INDEX finding_evidence_finding_idx ON public.finding_evidence USING btree (finding_id)",
+		"finding_evidence_one_primary_idx": "CREATE UNIQUE INDEX finding_evidence_one_primary_idx ON public.finding_evidence USING btree (finding_id) WHERE (role = 'primary'::evidence_role)",
+		"fetch_attempt_occurred_at_idx":    "CREATE INDEX fetch_attempt_occurred_at_idx ON public.fetch_attempt USING btree (occurred_at DESC)",
 	}
 
 	for name, def := range want {
@@ -881,8 +997,11 @@ func seedPackage(t *testing.T, ctx context.Context) uuid.UUID {
 	t.Helper()
 
 	pubID, pkgID := seedPublisher(t, ctx), models.NewID()
+	// namespace is read back off the publisher rather than recomputed here: it is
+	// a generated column, so the database is the only place it is ever decided.
 	_, err := pool.Exec(ctx,
-		`insert into package (id, publisher_id, name, kind, visibility) values ($1, $2, $3, 'skill', 'organisation')`,
+		`insert into package (id, publisher_id, namespace, name, kind, visibility)
+		 select $1, p.id, p.namespace, $3, 'skill', 'organisation' from publisher p where p.id = $2`,
 		pkgID, pubID, "p-"+pkgID.String())
 	require.NoError(t, err)
 
@@ -948,7 +1067,12 @@ func TestFetcherCanPerformTheWholeIngestionWriteInOneTransaction(t *testing.T) {
 		defer func() { _ = tx.Rollback(ctx) }()
 
 		pubID, pkgID, verID := models.NewID(), models.NewID(), models.NewID()
-		slug := "pub-" + pubID.String()
+		// The slug is the whole two-segment owner and the namespace is its first
+		// segment. Those are different strings, and the object key below is built
+		// from the namespace: this test used to build it from the slug, which is the
+		// same confusion the composite key now makes unrepresentable.
+		namespace := uniqueNamespace()
+		slug := namespace + "/platform"
 
 		// Registering the first package under a new publisher creates the
 		// publisher row; package.publisher_id is NOT NULL, so there is no order
@@ -958,8 +1082,8 @@ func TestFetcherCanPerformTheWholeIngestionWriteInOneTransaction(t *testing.T) {
 		require.NoError(t, err, "publisher")
 
 		_, err = tx.Exec(ctx,
-			`insert into package (id, publisher_id, name, kind, visibility)
-			 values ($1, $2, $3, 'skill', 'organisation')`, pkgID, pubID, "p-"+pkgID.String())
+			`insert into package (id, publisher_id, namespace, name, kind, visibility)
+			 values ($1, $2, $3, $4, 'skill', 'organisation')`, pkgID, pubID, namespace, "p-"+pkgID.String())
 		require.NoError(t, err, "package")
 
 		// verdict starts at 'scanning' and visible at false: commit-last (FR-008)
@@ -968,7 +1092,7 @@ func TestFetcherCanPerformTheWholeIngestionWriteInOneTransaction(t *testing.T) {
 		_, err = tx.Exec(ctx,
 			`insert into version (id, package_id, semver, semver_sort, object_key, digest, size_bytes, manifest, dist_tag, verdict, visible)
 			 values ($1, $2, '1.0.0', $3, $4, $5, 4096, '{"name":"p"}', 'latest', 'scanning', false)`,
-			verID, pkgID, semverSort(t, "1.0.0"), "skills/"+slug+"/p/1.0.0/bundle.tar.zst",
+			verID, pkgID, semverSort(t, "1.0.0"), "skills/"+namespace+"/p/1.0.0/bundle.tar.zst",
 			bytes.Repeat([]byte{0x11}, 32))
 		require.NoError(t, err, "version")
 
@@ -1048,6 +1172,263 @@ func semverSort(t *testing.T, semver string) string {
 	key, err := models.SemverSort(semver)
 	require.NoError(t, err)
 	return key
+}
+
+// ---------------------------------------------------------------------------
+// FR-024 — a finding has more than one location
+// ---------------------------------------------------------------------------
+
+// seedFinding writes the chain a finding needs: package, version, scan, finding.
+// It returns the finding id.
+func seedFinding(t *testing.T, ctx context.Context) uuid.UUID {
+	t.Helper()
+
+	pkgID := seedPackage(t, ctx)
+	verID := seedVersion(t, ctx, pkgID, "1.0.0", bytes.Repeat([]byte{0x55}, 32),
+		"skills/ex/p/1.0.0/bundle.tar.zst")
+
+	scanID, findingID := models.NewID(), models.NewID()
+	_, err := pool.Exec(ctx,
+		`insert into scan (id, version_id, pack_version, verdict) values ($1, $2, $3, 'flagged')`,
+		scanID, verID, "2026.08."+scanID.String())
+	require.NoError(t, err)
+
+	_, err = pool.Exec(ctx, `insert into finding
+		(id, scan_id, version_id, rule_id, severity, title, evidence_path, evidence_line, evidence_quote, state)
+		values ($1, $2, $3, 'SH-FS-007', 'high', 'writes escape the sandbox',
+		        'scripts/explain-costs.sh', 9, 'set -o allexport', 'open')`,
+		findingID, scanID, verID)
+	require.NoError(t, err)
+
+	return findingID
+}
+
+func insertEvidence(ctx context.Context, findingID uuid.UUID, path string, line int32, role string) error {
+	_, err := pool.Exec(ctx,
+		`insert into finding_evidence (id, finding_id, path, line, quote, role)
+		 values ($1, $2, $3, $4, 'aws s3 cp "$f" s3://bucket/', $5::evidence_role)`,
+		models.NewID(), findingID, path, line, role)
+	return err
+}
+
+// The concrete case the child table exists for: SH-FS-007's cause is
+// scripts/explain-costs.sh:9 while the writes it lets escape are on lines 28, 34
+// and 36. One location per finding either drops three of those or formats them
+// into a string, which is the option this table refuses.
+func TestAFindingCarriesEveryLocationButOnlyOnePrimaryOne(t *testing.T) {
+	ctx := context.Background()
+	findingID := seedFinding(t, ctx)
+
+	require.NoError(t, insertEvidence(ctx, findingID, "scripts/explain-costs.sh", 9, "primary"))
+	for _, line := range []int32{28, 34, 36} {
+		require.NoError(t, insertEvidence(ctx, findingID, "scripts/explain-costs.sh", line, "supporting"),
+			"supporting locations are many per finding by definition")
+	}
+
+	// finding.evidence_path/line/quote is a denormalised copy of the primary row.
+	// Two rows claiming to be primary would leave no way to say which one the
+	// triple copies, so the partial unique index refuses the second.
+	requirePgError(t, insertEvidence(ctx, findingID, "scripts/other.sh", 1, "primary"),
+		"23505", "finding_evidence_one_primary_idx")
+
+	var supporting int
+	require.NoError(t, pool.QueryRow(ctx,
+		`select count(*) from finding_evidence where finding_id = $1 and role = 'supporting'`,
+		findingID).Scan(&supporting))
+	require.Equal(t, 3, supporting, "the refusal above must not have cost the supporting rows")
+
+	// A location without a line is legal — a finding can name a file — and it is
+	// why the primary key is a uuid rather than (finding_id, path, line).
+	_, err := pool.Exec(ctx,
+		`insert into finding_evidence (id, finding_id, path, role) values ($1, $2, 'mcp.json', 'supporting')`,
+		models.NewID(), findingID)
+	require.NoError(t, err)
+}
+
+// The scanner raises findings, so the scanner writes their evidence. Nothing else
+// does: api does not run checks, and the fetcher does not scan. am_api's grant on
+// this table is deliberately narrower than its blanket select/insert/update on
+// every other one, which is exactly the kind of narrowing that erodes silently
+// unless a test names it.
+func TestOnlyTheScannerCanWriteFindingEvidence(t *testing.T) {
+	ctx := context.Background()
+	findingID := seedFinding(t, ctx)
+
+	stmt := `insert into finding_evidence (id, finding_id, path, line, quote, role)
+	         values ($1, $2, 'scripts/explain-costs.sh', 28, 'aws s3 cp', 'supporting')`
+
+	asRole(t, "am_scanner", func(ctx context.Context, conn *pgxpool.Conn) {
+		_, err := conn.Exec(ctx, stmt, models.NewID(), findingID)
+		require.NoError(t, err, "the scanner writes the evidence for the finding it raised")
+	})
+
+	// Each denial is checked as 42501 and then run again as the owner, so a
+	// statement that had quietly acquired a defect could not read as a pass.
+	for _, tc := range []struct{ role, why string }{
+		{role: "am_api", why: "api does not run checks; a reviewer writes override and finding.state"},
+		{role: "am_fetcher", why: "the fetcher does not scan"},
+	} {
+		t.Run(tc.role+" cannot insert, because "+tc.why, func(t *testing.T) {
+			asRole(t, tc.role, func(ctx context.Context, conn *pgxpool.Conn) {
+				_, err := conn.Exec(ctx, stmt, models.NewID(), findingID)
+				requirePgError(t, err, "42501", "")
+			})
+
+			id := models.NewID()
+			_, err := pool.Exec(ctx, stmt, id, findingID)
+			require.NoError(t, err,
+				"the same statement must succeed as the owner, or the denial was about something other than the privilege")
+		})
+	}
+
+	// The scanner cannot rewrite one either. An evidence row quotes the bundle's
+	// bytes at the instant they were scanned; a rescan makes a new scan and new
+	// findings rather than editing old ones.
+	asRole(t, "am_scanner", func(ctx context.Context, conn *pgxpool.Conn) {
+		_, err := conn.Exec(ctx, `update finding_evidence set quote = 'harmless' where finding_id = $1`, findingID)
+		requirePgError(t, err, "42501", "")
+	})
+	tag, err := pool.Exec(ctx, `update finding_evidence set quote = 'harmless' where finding_id = $1`, findingID)
+	require.NoError(t, err)
+	require.Positive(t, tag.RowsAffected(), "the denied update must have had real rows to aim at")
+}
+
+// ---------------------------------------------------------------------------
+// FR-053 — a refused fetch produces no object key, and must still be reportable
+// ---------------------------------------------------------------------------
+
+// The storage panel's rows used to be object keys, which a refused fetch never
+// produces: an SSRF block, a bad ref and a zip bomb could not appear in the one
+// panel required to report fetch outcomes, and those are the security-relevant
+// ones. This proves the row exists with no version and no object key behind it.
+func TestARefusedFetchIsRecordedWithNoVersionAndNoObjectKey(t *testing.T) {
+	ctx := context.Background()
+
+	ref := "https://169.254.169.254/latest/meta-data/" + models.NewID().String()
+	_, err := pool.Exec(ctx, `insert into fetch_attempt (id, source_kind, requested_ref, outcome, detail)
+		values ($1, 'archive-url', $2, 'blocked', $3)`,
+		models.NewID(), ref,
+		"outbound request to 169.254.169.254:443 refused: link-local address")
+	require.NoError(t, err)
+
+	var outcome, detail string
+	require.NoError(t, pool.QueryRow(ctx,
+		`select outcome::text, detail from fetch_attempt where requested_ref = $1`, ref).Scan(&outcome, &detail))
+	require.Equal(t, "blocked", outcome)
+	require.Contains(t, detail, "link-local")
+
+	// Nothing about this row needed a version to exist, which is the whole point:
+	// version.object_key can only describe the fetches that succeeded.
+	var versions int
+	require.NoError(t, pool.QueryRow(ctx,
+		`select count(*) from version where object_key like '%' || $1 || '%'`, ref).Scan(&versions))
+	require.Zero(t, versions)
+
+	// A successful fetch is the same table, so the panel is one query rather than
+	// a union of object keys and errors.
+	_, err = pool.Exec(ctx, `insert into fetch_attempt (id, source_kind, requested_ref, outcome)
+		values ($1, 'git', $2, 'ok')`, models.NewID(), "github.com/example/plugin@v1.3.0")
+	require.NoError(t, err, "detail is null for an outcome that has nothing to explain")
+}
+
+// The fetcher writes this table and reads nothing back, exactly as it does for
+// audit_event and outbox. api reads it because FR-053's panel is served over HTTP,
+// and writes nothing: no handler produces a fetch outcome today, and a grant on a
+// prediction is the excess nothing ever surfaces.
+func TestOnlyTheFetcherRecordsFetchAttemptsAndNoRoleCanRewriteOne(t *testing.T) {
+	ctx := context.Background()
+
+	insert := `insert into fetch_attempt (id, source_kind, requested_ref, outcome)
+	           values ($1, 'git', $2, 'invalid-ref')`
+	ref := "not a repository " + models.NewID().String()
+
+	asRole(t, "am_fetcher", func(ctx context.Context, conn *pgxpool.Conn) {
+		_, err := conn.Exec(ctx, insert, models.NewID(), ref)
+		require.NoError(t, err)
+
+		// It never reads its own history, so it holds no select.
+		_, err = conn.Exec(ctx, `select outcome from fetch_attempt limit 1`)
+		requirePgError(t, err, "42501", "")
+	})
+
+	asRole(t, "am_api", func(ctx context.Context, conn *pgxpool.Conn) {
+		var n int
+		require.NoError(t, conn.QueryRow(ctx,
+			`select count(*) from fetch_attempt where requested_ref = $1`, ref).Scan(&n),
+			"FR-053's panel is served by api")
+		require.Equal(t, 1, n)
+
+		_, err := conn.Exec(ctx, insert, models.NewID(), ref+"-api")
+		requirePgError(t, err, "42501", "")
+	})
+	// The withheld INSERT was refused for the privilege and not for a defect in the
+	// statement, which the owner running the same statement is what proves.
+	_, ownerErr := pool.Exec(ctx, insert, models.NewID(), ref+"-api")
+	require.NoError(t, ownerErr)
+
+	// An attempt is a record of something that already happened, so no role rewrites
+	// or removes one. This is NOT FR-052's revoke, which names audit_event and only
+	// audit_event: it is the absence of a grant, and a table owner can still grant
+	// itself back.
+	for _, role := range []string{"am_api", "am_fetcher", "am_scanner"} {
+		for _, stmt := range []string{
+			`update fetch_attempt set outcome = 'ok' where requested_ref = $1`,
+			`delete from fetch_attempt where requested_ref = $1`,
+		} {
+			t.Run(role+" cannot run "+stmt[:6], func(t *testing.T) {
+				asRole(t, role, func(ctx context.Context, conn *pgxpool.Conn) {
+					_, err := conn.Exec(ctx, stmt, ref)
+					requirePgError(t, err, "42501", "")
+				})
+			})
+		}
+	}
+	tag, ownerErr := pool.Exec(ctx, `delete from fetch_attempt where requested_ref = $1`, ref)
+	require.NoError(t, ownerErr)
+	require.EqualValues(t, 1, tag.RowsAffected(),
+		"the denied statements must have had exactly one real row to aim at")
+
+	// am_scanner holds nothing at all here: it does not fetch.
+	asRole(t, "am_scanner", func(ctx context.Context, conn *pgxpool.Conn) {
+		_, err := conn.Exec(ctx, `select count(*) from fetch_attempt`)
+		requirePgError(t, err, "42501", "")
+	})
+}
+
+// ---------------------------------------------------------------------------
+// FR-050 — every state-changing action writes exactly one audit row
+// ---------------------------------------------------------------------------
+
+// The Organization screen's mutations had no representable kind, so they wrote
+// nothing and raised nothing: no row to repair afterwards and no gap to detect.
+// This drives one insert per admin mutation, which is what proves the values are
+// usable and not merely present in pg_enum.
+func TestEveryOrganizationScreenMutationHasAnAuditKindToRecordItWith(t *testing.T) {
+	ctx := context.Background()
+
+	for _, tc := range []struct{ kind, action string }{
+		{kind: "policy", action: "set the scan gate to block"},          // FR-046
+		{kind: "policy", action: "set the default version policy"},      // FR-047
+		{kind: "policy", action: "require signed bundles"},              // FR-048
+		{kind: "role", action: "map platform-eng to catalog-admin"},     // FR-040
+		{kind: "category", action: "add the category Observability"},    // FR-049
+		{kind: "secret", action: "rotate the identity-provider secret"}, // US7
+	} {
+		t.Run(tc.kind+": "+tc.action, func(t *testing.T) {
+			_, err := pool.Exec(ctx, `insert into audit_event (id, actor, actor_kind, kind, text)
+				values ($1, 'admin@example.com', 'identity', $2::audit_kind, $3)`,
+				models.NewID(), tc.kind, tc.action)
+			require.NoError(t, err)
+		})
+	}
+
+	// Four values rather than one `admin` bucket, because the audit screen filters
+	// by kind: "who changed the scan gate" and "who rotated the IdP secret" are not
+	// the same question, and a single bucket cannot answer either.
+	var kinds int
+	require.NoError(t, pool.QueryRow(ctx,
+		`select count(distinct kind) from audit_event where kind in ('policy','role','category','secret')`).Scan(&kinds))
+	require.Equal(t, 4, kinds)
 }
 
 // ---------------------------------------------------------------------------

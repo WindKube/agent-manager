@@ -22,7 +22,7 @@ them, by construction.
   cleanly and a typo becomes a migration failure rather than a runtime surprise.
 - Foreign keys are **uniformly `ON DELETE NO ACTION`**, stated explicitly by the versioned
   migrations rather than left to Postgres's default. (`internal/store/schema/03-constraints.sql`
-  still leans on that default for ten of the eleven hand-written keys; the resulting action
+  still leans on that default for ten of the twelve hand-written keys; the resulting action
   is identical and the test below pins it, but the SQL should state the rule it follows.)
   The catalog is append-only and no role holds
   `DELETE` on any table a foreign key points at, so a delete that would cascade is a bug to
@@ -35,7 +35,10 @@ them, by construction.
   failure, not a shorthand. `override.reviewer_identity_id` points at `identity`, not at a
   `reviewer_identity` table, so no rule that infers the target from the column name survives
   contact with this schema; `TestDataModelDeclaresTheSameForeignKeys` therefore has no such
-  rule and fails on any foreign key that does not spell out where it points.
+  rule and fails on any foreign key that does not spell out where it points. A composite key
+  names its whole column tuple as well — `fk (publisher_id, namespace) → publisher`, written
+  once, on the last of its columns — because two single-column declarations describe a
+  different constraint from one two-column one.
 
 ---
 
@@ -46,8 +49,33 @@ them, by construction.
 | --- | --- | --- |
 | `id` | uuid pk | |
 | `slug` | text, **unique** | `example/platform`, `community/dbtools` |
+| `namespace` | text, **stored generated** `split_part(slug, '/', 1)` | `example`. Not a column anybody writes: Postgres recomputes it from the slug and refuses a direct assignment |
 | `display_name` | text | |
 | `verified` | bool, default false | Drives the Verified/Community filter. Set by a catalog admin — **never** inferred from the slug prefix (spec Assumptions). |
+
+**`check (slug ~ '^[^/]+/[^/]+$')`** — exactly two non-empty segments. The shape is
+load-bearing rather than conventional: the first segment is the rendered package id and the
+object-key prefix, so a one-segment slug produces keys with an empty namespace. The
+per-segment character set is deliberately *not* restated here — registration validates it
+against one pattern, and a second, looser copy in the database would be a rule that disagrees
+with the real one the first time either moves.
+
+**`unique (id, namespace)`** — not needed for its own sake, since `id` is already the primary
+key. It exists because a composite foreign key can only reference a column set carrying a
+unique constraint, and `package` needs to reference this one.
+
+Three concepts, and only two of them used to have names:
+
+| Concept | Example | What it is |
+| --- | --- | --- |
+| namespace | `example`, `community` | first segment; the rendered id **and** the object key |
+| publisher | `example/platform` | the owning team; carries `verified` |
+| name | `pii-redactor` | the package name |
+
+They stay three rather than collapsing to two because `verified` is admin-set and never
+inferred from the prefix. Collapsing publisher onto namespace would make `verified` and the
+namespace one column, and `community/octoflow` could then never be verified after review —
+which is the one thing the flag exists to do.
 
 ### `category`
 | Column | Type | Notes |
@@ -63,6 +91,7 @@ Admin-curated (FR-049). Tags are *not* here — they are free-form strings on th
 | --- | --- | --- |
 | `id` | uuid pk | |
 | `publisher_id` | uuid fk → publisher | |
+| `namespace` | text, fk (publisher_id, namespace) → publisher | Denormalised first segment of the owning publisher's slug. The composite key references `publisher (id, namespace)`, so it cannot disagree with its publisher — on insert or on update, with no trigger |
 | `name` | text | Matches the manifest `name` pattern: `^(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$`, ≤64 chars |
 | `kind` | enum `plugin \| skill` | |
 | `category_id` | uuid fk → category, nullable | |
@@ -70,7 +99,21 @@ Admin-curated (FR-049). Tags are *not* here — they are free-form strings on th
 | `parent_package_id` | uuid fk → package, nullable | Set when a skill is distributed inside a plugin (FR-016 origin line) |
 | `latest_version_id` | uuid fk → version, nullable | Denormalised pointer; maintained on publish |
 
-**`unique (publisher_id, name)`** — a publisher cannot own two packages of the same name.
+**`unique (namespace, name)`** — one package per name per namespace, whichever publisher owns
+it.
+
+This **replaces** `unique (publisher_id, name)`, which was wrong rather than merely weak. The
+publisher-scoped key permits `example/platform` and `example/security` to each own
+`pii-redactor`; both render as the id `example/pii-redactor` and both resolve to the object key
+`skills/example/pii-redactor/…`, so one bundle silently overwrites the other. In a system whose
+premise is immutable versions (FR-007) that is a correctness bug, not a display bug. The new
+key is strictly stronger — every pair the old one rejected it also rejects — so the old one is
+redundant, not merely superseded, and keeping both would mean two error messages for one
+mistake.
+
+The denormalised `namespace` is what makes that key a constraint rather than a trigger: it is
+held to its publisher's by the composite foreign key above, and `publisher.namespace` is
+generated from the slug, so the value under the unique index cannot be made to lie.
 
 ### `version`
 | Column | Type | Notes |
@@ -79,7 +122,7 @@ Admin-curated (FR-049). Tags are *not* here — they are free-form strings on th
 | `package_id` | uuid fk → package | |
 | `semver` | text | Normalised at registration; rejected if unparseable (spec Edge Cases) |
 | `semver_sort` | text | Zero-padded sort key, so ordering is an index scan not a Go sort |
-| `object_key` | text | `skills/<publisher>/<name>/<semver>/bundle.tar.zst` |
+| `object_key` | text | `skills/<namespace>/<name>/<semver>/bundle.tar.zst` — the *namespace*, not the whole publisher slug |
 | `digest` | bytea(32) | sha256 of the bundle |
 | `size_bytes` | bigint | Compressed |
 | `manifest` | jsonb | The raw conformant manifest, stored verbatim |
@@ -173,12 +216,39 @@ with no renderer change.
 | `rule_id` | text | `SH-NET-002` |
 | `severity` | enum `low \| medium \| high` | |
 | `title`, `detail` | text | |
-| `evidence_path` | text | `scripts/digest.sh` |
+| `evidence_path` | text | `scripts/digest.sh` — the **primary** location only |
 | `evidence_line` | int | `41` |
 | `evidence_quote` | text | Rendered escaped, always (FR-055) |
 | `state` | enum `open \| approved \| rejected` | |
 
 Partial index `(version_id) where state = 'open'`.
+
+The evidence triple is a denormalised copy of the `finding_evidence` row whose role is
+`primary`, kept so the findings list renders without a join. It is **not** the finding's whole
+evidence.
+
+### `finding_evidence`
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid pk | |
+| `finding_id` | uuid fk → finding | |
+| `path` | text | `scripts/explain-costs.sh` |
+| `line` | int, nullable | Nullable because a finding can name a file without a line — which is also why the primary key is a uuid and not `(finding_id, path, line)` |
+| `quote` | text | Attacker-controlled bundle content, rendered escaped, always (FR-055) |
+| `role` | enum `primary \| supporting` | |
+
+A finding legitimately has several locations (FR-024): SH-FS-007's cause is
+`scripts/explain-costs.sh:9` while the writes it lets escape are on lines 28, 34 and 36. One
+location per finding either drops the rest or formats them into a string — and formatting them
+into a string is the option this table exists to refuse, because it defeats `line`, the number
+a reader needs to find the code, and turns FR-055's escaping into a per-substring problem
+inside one text column.
+
+Index `(finding_id)` for the detail pane's read, and **`unique (finding_id) where role =
+'primary'`** so that "the" primary row the triple above copies is well defined. The predicate
+must stay exactly `role = 'primary'`: supporting locations are many per finding by definition.
+There is deliberately no ordering column — evidence reads as `order by role, path, line`, which
+is stable, and a `position` would be a second thing to keep right for no question anyone asks.
 
 ### `override`
 | `finding_id` uuid pk fk → finding | `reviewer_identity_id` uuid fk → identity | `note` text | `expires_at` timestamptz | `created_at` |
@@ -273,10 +343,70 @@ The `check (id = 1)` is what makes it a singleton at the schema level rather tha
 convention (spec Assumptions: single organisation per deployment).
 
 ### `audit_event` — append-only
-| `id` uuid pk | `occurred_at` timestamptz | `actor` text | `actor_kind` enum `identity \| system` | `kind` enum `fetch \| scan \| approve \| profile \| share \| sync \| login` | `text` text | `source` text |
+| `id` uuid pk | `occurred_at` timestamptz | `actor` text | `actor_kind` enum `identity \| system` | `kind` enum `fetch \| scan \| approve \| profile \| share \| sync \| login \| policy \| role \| category \| secret` | `text` text | `source` text |
 
 **Append-only is enforced by revoking `UPDATE` and `DELETE` from the application role**, not
 by convention (FR-052, constitution principle IV). Index `(occurred_at desc)`.
+
+The last four kinds are the Organization screen's mutations, which had no representable kind
+at all: `policy` for `org_policy` (the scan gate FR-046, the default version policy FR-047 and
+the four booleans beside them), `role` for the group→role map (FR-040), `category` for the
+admin-curated vocabulary (FR-049), and `secret` for identity-provider credential rotation.
+
+Four values rather than one `admin` bucket, because the audit screen filters by kind and "who
+changed the scan gate" and "who rotated the IdP secret" are not the same question.
+
+Their absence was not a gap to backfill later. FR-050 requires **every** state-changing action
+to write exactly one audit row; with no valid kind to write, the highest-privilege screen in
+the product wrote nothing and raised nothing — leaving no row to repair and no gap to detect.
+That is why the values land before the screen rather than after it.
+
+### `fetch_attempt`
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid pk | |
+| `occurred_at` | timestamptz | |
+| `source_kind` | enum `upload \| git \| archive-url` | Mirrors `fetch.SourceKind` |
+| `requested_ref` | text | The reference as submitted; credentials already redacted, rendered escaped (FR-055) |
+| `outcome` | enum, below | |
+| `detail` | text, nullable | The redacted error message; null when the outcome is `ok` |
+
+FR-053 requires the storage view report recent fetch **outcomes**, and the only record of a
+fetch was `version.object_key` — which a refused fetch never produces. An SSRF refusal, a
+reference that names nothing, a zip bomb: none reaches a version row, so a panel whose rows
+*are* object keys structurally cannot show them, and those are the outcomes an operator most
+needs. The Edge Cases requirement that a failed fetch be "recorded as a fetch error, not a scan
+finding" had nowhere else to be recorded.
+
+`outcome` is one value per failure the ingestion path can actually tell apart today, so that
+nothing has to be recovered by parsing `detail`:
+
+| Value | Produced by |
+| --- | --- |
+| `ok` | a `fetch.Tree` was produced |
+| `invalid-ref` | `repourl.ErrInvalid` or `fetch.ErrNoSource` — nothing was dialled |
+| `blocked` | `fetch.ErrBlocked` — the outbound policy refused the address |
+| `unreachable` | any other failure out of `fetch.Client.Do`, the client's own timeout included |
+| `malformed` | `bundle.ErrMalformed` |
+| `too-large` | `bundle.ErrTooLarge` |
+| `rejected-member` | `bundle.ErrRejectedMember` |
+| `extract-timeout` | `bundle.ErrTimeout` |
+
+Two deliberate omissions. There is no `not-found`: a 404 is a status on a response
+`fetch.Client` returns *successfully*, so nothing below the worker distinguishes it from any
+other status. And a fetch-side timeout is `unreachable` rather than sharing a name with
+`extract-timeout`, because one word meaning both stages is worse than a name that says which
+stage produced it.
+
+This is **not** a second audit log. `audit_event` answers "who did what" and is append-only by
+revoke; this answers "what happened to the bytes" for a worker with no actor behind it. It
+carries no `version_id`: the row is written before there is a version to point at, and the
+successful half is already reachable through `version.object_key`. Index `(occurred_at desc)`,
+which is the panel's whole query; `outcome` is not indexed because the panel shows the last N
+whatever they are.
+
+**Known limitation**: no role holds `DELETE`, retention is unspecified, and the table therefore
+grows without bound. The first requirement that names a window is where a prune gets designed.
 
 ### `sync_event`
 | `id` uuid pk | `identity_id` uuid fk → identity | `profile_id` uuid fk → profile | `revision_id` uuid fk → revision | `host` text | `occurred_at` |
@@ -327,12 +457,13 @@ renders that intermediate state).
 | Spec entity | Table(s) |
 | --- | --- |
 | Publisher, Package, Version, Component, Capability | `publisher`, `package`, `version`, `version_tag`, `component`, `capability`, `signature` |
-| Scan, Finding, Override | `scan`, `scan_check`, `finding`, `override` |
+| Scan, Finding, Override | `scan`, `scan_check`, `finding`, `finding_evidence`, `override` |
 | Profile, ProfileEntry, Revision, Membership | `profile`, `profile_entry`, `revision`, `membership`, `sync_target` |
 | Category | `category` |
 | Identity, DeviceAuthorization | `identity`, `group_role_map`, `device_authorization`, `session` |
 | AuditEvent | `audit_event`, `sync_event` |
 | OrgPolicy | `org_policy` |
+| — no spec entity; FR-053's fetch outcomes | `fetch_attempt` |
 
 ---
 
@@ -372,6 +503,10 @@ against a stated decision instead of a fresh guess.
 | `am_scanner` | `INSERT`, `UPDATE` on `scan`, `scan_check`, `finding`, `capability` | FR-025 (a row per check, passes included), FR-024 (findings), FR-018 (inferred capabilities) |
 | `am_scanner` | `UPDATE (verdict)` on `version` | `contracts/worker.md`; FR-020 — the verdict is the scanner's whole output |
 | `am_scanner` | `INSERT` on `audit_event` | FR-050 (system actor `scanner`) |
+| `am_scanner` | `SELECT`, `INSERT` on `finding_evidence` | FR-024 — the evidence rows are written by the check that raised the finding, in the same transaction as the finding |
+| `am_api` | `SELECT` on `finding_evidence` | The finding detail pane, served over HTTP by `api` |
+| `am_fetcher` | `INSERT` on `fetch_attempt` | FR-053 and the Edge Cases requirement that a refused fetch be recorded as a fetch error; the fetcher is what performs the fetch |
+| `am_api` | `SELECT` on `fetch_attempt` | FR-053's "recent fetch outcomes" panel, served by `api` |
 | `am_web` | **none — no role, no grant, no DSN** | Principle II. It reaches data only through `api` over HTTP |
 | `am_migrate` | DDL owner, used only by the Atlas init container | quickstart.md's `migrate-schema` gate |
 
@@ -390,6 +525,11 @@ will reach for by neighbourhood, so each carries the reason it stays withheld.
 | `DELETE`/`UPDATE`/`TRUNCATE` on `audit_event` from **every** role | `am_api` writes audit rows, so it looks like it owns them | FR-052. The revoke is the entire enforcement — no trigger, no ORM hook |
 | `INSERT` on `capability` from `am_fetcher` | It parses the manifest the `expected` set comes from | The `expected` set is read out of `extensions["dev.agent-manager"]` by the API when the detail page is assembled (T057) and the `inferred` set is the scanner's. The fetcher transcribes the manifest into `version.manifest` and stops, so no role writes a capability row it did not derive itself |
 | `UPDATE` on `version.digest`, `object_key`, `size_bytes`, `manifest`, `visible` from `am_scanner` | It already holds `UPDATE` on `version` | The scanner does not produce bundle bytes. The column-level grant says so as well as the Go type does, and it survives a hand-written SQL statement, which the Go type does not |
+| `UPDATE` on `finding_evidence` from `am_scanner` | It holds `UPDATE` on `finding`, `scan`, `scan_check` and `capability` | An evidence row quotes the bundle's bytes at the instant they were scanned. A rescan produces a new scan and new findings rather than editing old ones, so nothing needs to rewrite one — and a row that cannot be rewritten is one an operator can still trust after the fact |
+| `INSERT`, `UPDATE` on `finding_evidence` from `am_api` | `am_api` otherwise holds `SELECT`/`INSERT`/`UPDATE` on every table | `api` does not run checks: findings and their evidence are the scanner's whole output (`contracts/worker.md`). The one thing a reviewer does to a finding is approve or reject it, which writes `override` and `finding.state` |
+| `INSERT` on `fetch_attempt` from `am_api` | A reference that names no repository at all can be rejected in the registration handler, before any outbox row exists — so a future `api` could have a refusal to record with no fetcher involved | No such handler exists yet, so there is no statement to name, and a grant on a prediction is exactly the excess that never surfaces. The layer that writes that handler widens this deliberately |
+| `SELECT` on `fetch_attempt` from `am_fetcher` | It writes every row in it | It never reads its own history, the same reason it holds only `INSERT` on `audit_event` and `outbox` |
+| `UPDATE`, `DELETE` on `fetch_attempt` from **every** role | An attempt row looks like something a retention job would tidy | An attempt is a record of something that already happened. Note what this does **not** amount to: `fetch_attempt` is not covered by FR-052's revoke, which names `audit_event` and only `audit_event`, so a table owner can still grant itself back |
 | `SELECT` on `identity`, `session`, `device_authorization`, `profile*`, `audit_event` from `am_scanner` | The grant summary above says "`SELECT` on the catalog and its scan history", which an earlier draft wrote as "SELECT broadly" | `session.token_hash` and `device_authorization.device_code_hash` are bearer credentials at rest. "Broadly" is read as the catalog and its scan history; narrowing a grant is always safe, widening one is the mistake worth avoiding |
 
 Three independent lines of evidence back the `DELETE` half of that list, and all three were
@@ -401,6 +541,14 @@ removal affordance exists anywhere in the product being built.
 
 If the UI later grows a "remove package" control, `DELETE` on `profile_entry` widens — as a
 deliberate decision recorded here, with the FR that asked for it, and not as a bug fix.
+
+Grants for `finding_evidence` and `fetch_attempt` live in the migration that creates them,
+not in `20260827150200_roles_and_grants.sql` with every other grant. That migration runs first,
+so its `grant … on all tables in schema public` cannot see a table a later migration creates —
+naming the tables there would fail the apply, and the `all tables` form would silently grant
+nothing. That file states the rule this follows: there are deliberately no default privileges,
+so every migration that creates a table grants on it in the same file. This document is where
+the whole map stays in one place.
 
 `am_fetcher` needs `version_tag` because `version.tags` is a denormalisation of it and the
 two are written in the same transaction — granting one without the other makes the

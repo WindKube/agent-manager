@@ -16,6 +16,7 @@ import (
 	"github.com/uptrace/bun/schema"
 	"golang.org/x/tools/go/packages"
 
+	"agent-manager/internal/fetch"
 	"agent-manager/internal/store/models"
 )
 
@@ -29,13 +30,13 @@ var wantTables = []string{
 	"publisher", "category", "package", "version", "version_tag", "component",
 	"capability", "signature",
 	// Scanning
-	"scan", "scan_check", "finding", "override",
+	"scan", "scan_check", "finding", "finding_evidence", "override",
 	// Profiles
 	"profile", "profile_entry", "revision", "membership", "sync_target",
 	// Identity
 	"identity", "group_role_map", "device_authorization", "session",
 	// Governance
-	"org_policy", "audit_event", "sync_event",
+	"org_policy", "audit_event", "sync_event", "fetch_attempt",
 	// Job hand-off
 	"outbox",
 }
@@ -227,6 +228,31 @@ func enumCases() []enumCase {
 		enumCheck[models.ActorKind](models.PGActorKind),
 		enumCheck[models.AuditKind](models.PGAuditKind),
 		enumCheck[models.OutboxState](models.PGOutboxState),
+		enumCheck[models.EvidenceRole](models.PGEvidenceRole),
+		enumCheck[models.FetchSourceKind](models.PGFetchSourceKind),
+		enumCheck[models.FetchOutcome](models.PGFetchOutcome),
+	}
+}
+
+// TestFetchSourceKindHoldsExactlyTheSourceKindsTheFetcherCanProduce is the guard
+// the doc comment on models.FetchSourceKind promises. The enum is a hand-written
+// copy of fetch.SourceKind — models must stay free of the fetch tree because the
+// Atlas provider loads this package, and internal/fetch must not learn about the
+// database — and a copy nothing compares is a copy that goes stale. A fourth
+// source added over there would otherwise reach production as a failed insert on
+// fetch_attempt.source_kind, on the failure path, where nothing exercises it.
+func TestFetchSourceKindHoldsExactlyTheSourceKindsTheFetcherCanProduce(t *testing.T) {
+	// Transcribed from internal/fetch/source.go, not derived from it: this is the
+	// side of the comparison that has to be independent.
+	want := []string{
+		string(fetch.SourceUpload),
+		string(fetch.SourceGit),
+		string(fetch.SourceArchiveURL),
+	}
+	require.Equal(t, want, models.EnumTypes()[models.PGFetchSourceKind])
+
+	for _, v := range want {
+		require.Truef(t, models.FetchSourceKind(v).Valid(), "fetch.SourceKind %q is not a valid FetchSourceKind", v)
 	}
 }
 

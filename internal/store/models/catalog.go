@@ -18,11 +18,26 @@ import (
 // unspent until the measurement says otherwise.
 
 // Publisher owns packages. `verified` is set by a catalog admin and is never
-// inferred from the slug prefix.
+// inferred from the slug prefix — which is what keeps the namespace and the
+// verified flag two different things, and lets community/octoflow be verified
+// after review.
+//
+// There is no Namespace field here, and that is deliberate. publisher.namespace
+// exists in the database as a STORED GENERATED column, split_part(slug, '/', 1),
+// so it cannot drift from the slug; a bun tag cannot express `generated always
+// as`, and a plain column here would make 02-tables.sql create an ordinary one
+// that 03-constraints.sql could not then convert. Nothing in Go needs to read it:
+// a query derives the namespace with split_part, which is the same string by
+// definition. The column exists so that package.namespace has something to be
+// held to by a foreign key.
 type Publisher struct {
 	bun.BaseModel `bun:"table:publisher,alias:pub"`
 
-	ID          uuid.UUID `bun:"id,pk,type:uuid,notnull"`
+	ID uuid.UUID `bun:"id,pk,type:uuid,notnull"`
+	// Slug is the whole two-segment owner, `example/platform`. The two-segment
+	// shape is a check constraint, not a convention: the first segment is the
+	// object-key prefix, so a one-segment slug would produce keys nothing else in
+	// the system expects.
 	Slug        string    `bun:"slug,type:text,notnull,unique"`
 	DisplayName string    `bun:"display_name,type:text,notnull"`
 	Verified    bool      `bun:"verified,type:boolean,notnull,default:false"`
@@ -45,15 +60,30 @@ type Category struct {
 }
 
 // Package is the named unit a publisher owns.
+//
+// Uniqueness is `(namespace, name)`, NOT `(publisher_id, name)`. The weaker key
+// permits example/platform and example/security to each own pii-redactor; both
+// render as the id example/pii-redactor and both resolve to the object key
+// skills/example/pii-redactor/..., so one bundle silently overwrites the other.
+// Against FR-007's immutability premise that is a correctness bug, not a display
+// one. The new key is strictly stronger — two packages with the same namespace
+// and name are rejected whichever publisher owns them — so the old one is
+// redundant rather than merely weaker, and is gone.
 type Package struct {
 	bun.BaseModel `bun:"table:package,alias:pkg"`
 
-	ID          uuid.UUID         `bun:"id,pk,type:uuid,notnull"`
-	PublisherID uuid.UUID         `bun:"publisher_id,type:uuid,notnull,unique:package_publisher_name"`
-	Name        string            `bun:"name,type:text,notnull,unique:package_publisher_name"`
-	Kind        PackageKind       `bun:"kind,type:package_kind,notnull"`
-	CategoryID  *uuid.UUID        `bun:"category_id,type:uuid,nullzero"`
-	Visibility  PackageVisibility `bun:"visibility,type:package_visibility,notnull"`
+	ID          uuid.UUID `bun:"id,pk,type:uuid,notnull"`
+	PublisherID uuid.UUID `bun:"publisher_id,type:uuid,notnull"`
+	// Namespace is the first segment of the owning publisher's slug, denormalised
+	// so `unique (namespace, name)` can be a plain constraint. It is not free to
+	// disagree with its publisher: a composite foreign key
+	// (publisher_id, namespace) -> publisher (id, namespace) holds it, which is
+	// what makes the denormalisation safe declaratively rather than by trigger.
+	Namespace  string            `bun:"namespace,type:text,notnull,unique:package_namespace_name"`
+	Name       string            `bun:"name,type:text,notnull,unique:package_namespace_name"`
+	Kind       PackageKind       `bun:"kind,type:package_kind,notnull"`
+	CategoryID *uuid.UUID        `bun:"category_id,type:uuid,nullzero"`
+	Visibility PackageVisibility `bun:"visibility,type:package_visibility,notnull"`
 	// ParentPackageID is set when a skill is distributed inside a plugin, which is
 	// what the origin line in FR-016 renders.
 	ParentPackageID *uuid.UUID `bun:"parent_package_id,type:uuid,nullzero"`

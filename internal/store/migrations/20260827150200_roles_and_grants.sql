@@ -19,6 +19,14 @@
 -- Every migration that creates a table must grant on it in the same file. That
 -- makes a forgotten grant a permission-denied error against a known new table
 -- rather than a silent widening of am_api onto a table nobody reviewed.
+--
+-- Which is why this file is NOT the whole privilege map, and cannot become it.
+-- `grant ... on all tables in schema public` below binds the tables that exist
+-- when this migration runs; a table created by a later migration is invisible to
+-- it. finding_evidence and fetch_attempt are granted in
+-- 20260828000342_namespace_audit_kinds_evidence_and_fetch_attempts.sql, beside the
+-- CREATE TABLE statements that make them exist. data-model.md holds the map for
+-- all of them.
 
 do $$
 declare

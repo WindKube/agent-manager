@@ -140,30 +140,38 @@ func parseGeneratedTables(t *testing.T, sql string) map[string]map[string]bool {
 // the independence of its two sides: a list produced from either side turns the
 // test on that side into a tautology, and the pair then agrees about anything.
 //
-// Eleven of these cannot come from the Bun models — ten because the base column
+// Twelve of these cannot come from the Bun models — ten because the base column
 // is part of the primary key, which is a shape data-model.md mandates for
-// signature and override, and package.latest_version_id because a second
-// belongs-to between package and version makes the Atlas loader's topological
-// sort a cycle. They are added by internal/store/schema/03-constraints.sql, so
-// nothing in Go fails if a statement is lost from that file.
+// signature and override; package.latest_version_id because a second belongs-to
+// between package and version makes the Atlas loader's topological sort a cycle;
+// and the composite package(publisher_id, namespace) key, which a bun tag has no
+// way to spell at all. They are added by
+// internal/store/schema/03-constraints.sql, so nothing in Go fails if a statement
+// is lost from that file.
 var wantForeignKeys = []string{
-	// The eleven the loader cannot emit.
+	// The twelve the loader cannot emit.
 	"capability(version_id) -> version",
 	"component(version_id) -> version",
 	"membership(profile_id) -> profile",
 	"override(finding_id) -> finding",
 	"package(latest_version_id) -> version",
+	// The composite key that holds package.namespace to its publisher's. It sits
+	// beside the single-column package(publisher_id) key rather than replacing it:
+	// the narrow one is what the bun belongs-to emits, and it is implied by this
+	// one anyway.
+	"package(publisher_id,namespace) -> publisher",
 	"profile_entry(package_id) -> package",
 	"profile_entry(profile_id) -> profile",
 	"scan_check(scan_id) -> scan",
 	"signature(version_id) -> version",
 	"sync_target(profile_id) -> profile",
 	"version_tag(version_id) -> version",
-	// The sixteen the loader does emit, listed so an accidental loss on the
+	// The seventeen the loader does emit, listed so an accidental loss on the
 	// generated side fails here too.
 	"device_authorization(approved_by_identity_id) -> identity",
 	"finding(scan_id) -> scan",
 	"finding(version_id) -> version",
+	"finding_evidence(finding_id) -> finding",
 	"override(reviewer_identity_id) -> identity",
 	"package(category_id) -> category",
 	"package(parent_package_id) -> package",
@@ -211,7 +219,12 @@ var (
 	designTableRE  = regexp.MustCompile("^#{2,3}\\s+`([a-z_]+)`")
 	designColumnRE = regexp.MustCompile("^`([a-z_]+)`\\s*(.*)$")
 	designFKRE     = regexp.MustCompile(`\bfk\b`)
-	designTargetRE = regexp.MustCompile("\\bfk\\s*→\\s*`?([a-z_]+)`?")
+	// The optional parenthesised list is how a COMPOSITE foreign key is declared:
+	// `fk (publisher_id, namespace) → publisher` on the second of its columns, and
+	// nothing on the first, so it is emitted once and under the same column tuple
+	// pg_constraint reports. Without it a two-column key could only be written as
+	// two single-column ones, which is a different constraint.
+	designTargetRE = regexp.MustCompile("\\bfk\\s*(?:\\(([a-z_, ]+)\\)\\s*)?→\\s*`?([a-z_]+)`?")
 )
 
 // parseDesignForeignKeys reads `table(column) -> target` out of data-model.md,
@@ -273,7 +286,11 @@ func parseDesignForeignKeys(t *testing.T, path string) []string {
 					"stripping `_id` gets override.reviewer_identity_id wrong, and a plausible "+
 					"wrong target is worse than a failure here", table, column)
 
-			out = append(out, fmt.Sprintf("%s(%s) -> %s", table, column, m[1]))
+			columns := column
+			if m[1] != "" {
+				columns = strings.Join(strings.Fields(strings.ReplaceAll(m[1], ",", " ")), ",")
+			}
+			out = append(out, fmt.Sprintf("%s(%s) -> %s", table, columns, m[2]))
 		}
 	}
 	sort.Strings(out)

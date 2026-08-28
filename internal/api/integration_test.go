@@ -49,6 +49,13 @@ var (
 	bundleKey   = "skills/acme/code-review/2.4.1/bundle.tar.zst"
 	bundleBytes = []byte("not really zstd, but immutable bytes with a digest")
 	bundleSHA   = bytes.Repeat([]byte{0xab}, 32)
+
+	// A second team publishing into the SAME namespace. Both packages are reached
+	// through the same first path segment, which is what makes the segment a
+	// namespace rather than a publisher.
+	siblingKey   = "skills/acme/threat-model/1.0.0/bundle.tar.zst"
+	siblingBytes = []byte("a different team's bytes, under the same namespace")
+	siblingSHA   = bytes.Repeat([]byte{0xcd}, 32)
 )
 
 // statements records every statement bun sends. It is how the FR-044 test proves
@@ -259,13 +266,17 @@ func seed(ctx context.Context) error {
 		}
 	}
 
-	publisher := &models.Publisher{ID: models.NewID(), Slug: "acme", DisplayName: "Acme"}
+	// <namespace>/<team>: publisher.namespace is generated from the first segment
+	// and package.namespace is held to it by a composite foreign key, so the two
+	// cannot be seeded independently even here.
+	publisher := &models.Publisher{ID: models.NewID(), Slug: "acme/platform", DisplayName: "Acme"}
 	if err := insert(publisher); err != nil {
 		return fmt.Errorf("seed publisher: %w", err)
 	}
 	pkg := &models.Package{
 		ID:          models.NewID(),
 		PublisherID: publisher.ID,
+		Namespace:   "acme",
 		Name:        "code-review",
 		Kind:        models.PackageKindSkill,
 		Visibility:  models.PackageVisibilityOrganisation,
@@ -296,6 +307,41 @@ func seed(ctx context.Context) error {
 		}); err != nil {
 			return fmt.Errorf("seed version %s: %w", spec.semver, err)
 		}
+	}
+
+	// A sibling team in the same namespace. Its package is addressed through the
+	// same `/v1/bundles/acme/...` prefix as the one above, which is the whole
+	// point: the first path segment names the namespace and the publisher table
+	// is not consulted at all.
+	sibling := &models.Publisher{ID: models.NewID(), Slug: "acme/security", DisplayName: "Acme Security"}
+	if err := insert(sibling); err != nil {
+		return fmt.Errorf("seed sibling publisher: %w", err)
+	}
+	siblingPkg := &models.Package{
+		ID:          models.NewID(),
+		PublisherID: sibling.ID,
+		Namespace:   "acme",
+		Name:        "threat-model",
+		Kind:        models.PackageKindSkill,
+		Visibility:  models.PackageVisibilityOrganisation,
+	}
+	if err := insert(siblingPkg); err != nil {
+		return fmt.Errorf("seed sibling package: %w", err)
+	}
+	if err := insert(&models.Version{
+		ID:         models.NewID(),
+		PackageID:  siblingPkg.ID,
+		Semver:     "1.0.0",
+		SemverSort: "1.0.0",
+		ObjectKey:  siblingKey,
+		Digest:     siblingSHA,
+		Manifest:   json.RawMessage(`{"name":"threat-model"}`),
+		Tags:       []string{"security"},
+		DistTag:    models.DistTagLatest,
+		Verdict:    models.VerdictClean,
+		Visible:    true,
+	}); err != nil {
+		return fmt.Errorf("seed sibling version: %w", err)
 	}
 
 	// Sessions come from the real login command, so the fixtures exercise the
@@ -350,10 +396,10 @@ func liveHandler(t *testing.T) http.Handler {
 	bucket, err := blob.Open(context.Background(), "mem://")
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, bucket.Close()) })
-	require.NoError(t, func() error {
-		_, writeErr := bucket.Writer().Write(context.Background(), bundleKey, bytes.NewReader(bundleBytes))
-		return writeErr
-	}())
+	for key, body := range map[string][]byte{bundleKey: bundleBytes, siblingKey: siblingBytes} {
+		_, writeErr := bucket.Writer().Write(context.Background(), key, bytes.NewReader(body))
+		require.NoError(t, writeErr)
+	}
 
 	return api.New(api.Deps{
 		DB:       db,
@@ -710,6 +756,23 @@ func TestGetBundleServesCleanBytesAndNeverARejectedVersion(t *testing.T) {
 	t.Run("an unknown version is a 404", func(t *testing.T) {
 		rec := request(t, handler, http.MethodGet, "/v1/bundles/acme/code-review/9.9.9", kw.token, "")
 		require.Equal(t, http.StatusNotFound, rec.Code)
+	})
+
+	// The regression this guards: the query matched publisher.slug for a while, and
+	// a slug is two segments, so every request 404'd. Matching one team's slug
+	// would fix that test and still lose this one — `acme/security` publishes
+	// threat-model, `acme/platform` publishes code-review, and both answer under
+	// the same first segment because that segment is the namespace.
+	t.Run("two teams in one namespace are both reachable through it", func(t *testing.T) {
+		rec := request(t, handler, http.MethodGet, "/v1/bundles/acme/threat-model/1.0.0", kw.token, "")
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		require.Equal(t, siblingBytes, rec.Body.Bytes())
+		require.Equal(t, "sha-256="+encodeBase64(siblingSHA), rec.Header().Get("Digest"))
+	})
+
+	t.Run("a package is not reachable through its publisher's team segment", func(t *testing.T) {
+		rec := request(t, handler, http.MethodGet, "/v1/bundles/security/threat-model/1.0.0", kw.token, "")
+		require.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
 	})
 }
 

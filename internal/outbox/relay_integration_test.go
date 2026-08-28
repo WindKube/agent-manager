@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -524,14 +525,21 @@ func seedVersion(t *testing.T, ctx context.Context, semver string, digest []byte
 
 	pubID, pkgID, verID := models.NewID(), models.NewID(), models.NewID()
 
+	// A publisher slug is <namespace>/<team>, and publisher.namespace is generated
+	// from its first segment. package.namespace is not: it is denormalised and held
+	// to its publisher's by a composite foreign key, so it has to be written and it
+	// has to agree.
+	namespace := "ns" + strings.ReplaceAll(pubID.String(), "-", "")
+
 	_, err := appPool.Exec(ctx,
 		`insert into publisher (id, slug, display_name) values ($1, $2, 'Example')`,
-		pubID, "example-"+pubID.String())
+		pubID, namespace+"/relay")
 	require.NoError(t, err)
 
 	_, err = appPool.Exec(ctx,
-		`insert into package (id, publisher_id, name, kind, visibility) values ($1, $2, $3, 'skill', 'organisation')`,
-		pkgID, pubID, "p-"+pkgID.String())
+		`insert into package (id, publisher_id, namespace, name, kind, visibility)
+		 values ($1, $2, $3, $4, 'skill', 'organisation')`,
+		pkgID, pubID, namespace, "p-"+pkgID.String())
 	require.NoError(t, err)
 
 	sortKey, err := models.SemverSort(semver)

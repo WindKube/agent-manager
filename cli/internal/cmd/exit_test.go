@@ -185,10 +185,16 @@ func TestVersionPrintsAndStaysOffTheDiagnosticStream(t *testing.T) {
 func TestDiagnosticsNeverReachTheResultStream(t *testing.T) {
 	// FR-035, at the level the verbs will inherit: a stub warns, and the
 	// result stream stays empty rather than gaining an unparseable line.
+	//
+	// The verb here has to be one that is still a stub, so it moves as each
+	// user story lands — it was `login` until T030 implemented it. When the
+	// last stub goes, replace it with a verb whose real diagnostic this can
+	// assert; the property being tested belongs to output.Streams and not to
+	// any one verb.
 	var result, diag bytes.Buffer
-	require.Equal(t, CodeNoChanges, Main([]string{"--output", "json", "login"}, &result, &diag))
+	require.Equal(t, CodeNoChanges, Main([]string{"--output", "json", "sync"}, &result, &diag))
 	require.Empty(t, result.String())
-	require.Contains(t, diag.String(), "login is not implemented yet")
+	require.Contains(t, diag.String(), "sync is not implemented yet")
 }
 
 func TestErrorsGoToTheDiagnosticStream(t *testing.T) {

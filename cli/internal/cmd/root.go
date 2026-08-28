@@ -184,28 +184,11 @@ func newVersionCmd(opts *Options) *cobra.Command {
 	}
 }
 
-// The four stubs below are replaced by internal/cmd/login.go, logout.go,
-// sync.go and status.go as each user story lands. Until then they exit 0 and
-// say so on the diagnostic stream, so the command tree, the flags and the exit
-// codes can be wired and tested ahead of the work they front.
-
-func newLoginCmd(opts *Options) *cobra.Command {
-	return &cobra.Command{
-		Use:   "login",
-		Short: "Authenticate this machine against a hub",
-		Args:  cobra.NoArgs,
-		RunE:  func(_ *cobra.Command, _ []string) error { return notYet(opts, "login") },
-	}
-}
-
-func newLogoutCmd(opts *Options) *cobra.Command {
-	return &cobra.Command{
-		Use:   "logout",
-		Short: "Remove this machine's credential for a hub",
-		Args:  cobra.NoArgs,
-		RunE:  func(_ *cobra.Command, _ []string) error { return notYet(opts, "logout") },
-	}
-}
+// The two stubs below are replaced by internal/cmd/sync.go and status.go as
+// each user story lands. Until then they exit 0 and say so on the diagnostic
+// stream, so the command tree, the flags and the exit codes can be wired and
+// tested ahead of the work they front. `login` and `logout` have landed: they
+// are in login.go and logout.go.
 
 func newSyncCmd(opts *Options) *cobra.Command {
 	return &cobra.Command{

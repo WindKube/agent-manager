@@ -94,8 +94,12 @@ tasks:
 
   atlas:install:
     internal: true
+    # Same stamp guard as tailwind:install, and this is the task that proved it was
+    # needed: a .bin/atlas left over from v0.36.0 survived the bump to v1.3.2 on a
+    # working tree, because `test -x` only ever asked whether A binary was there.
     status:
       - test -x {{.BIN}}/atlas
+      - test "$(cat {{.BIN}}/.atlas.version 2>/dev/null)" = "{{.ATLAS_VERSION}}"
     cmds:
       - mkdir -p {{.BIN}}
       - |
@@ -110,6 +114,7 @@ tasks:
         curl -fsSL -o {{.BIN}}/atlas \
           "https://release.ariga.io/atlas/${asset}-{{.ATLAS_VERSION}}"
         chmod +x {{.BIN}}/atlas
+        printf '%s' '{{.ATLAS_VERSION}}' > {{.BIN}}/.atlas.version
 
   migrate:schema:
     desc: "Bun models -> internal/store/schema/02-tables.sql (layer 2 of the desired state)"

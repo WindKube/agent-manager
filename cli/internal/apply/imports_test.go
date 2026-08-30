@@ -45,12 +45,11 @@
 // internal/cache, internal/record, internal/credentials and internal/cmd's lock
 // all legitimately write — to ~/.agent-manager and to the credential file, which
 // are amctl's OWN state and not an agent's tree. Exempting four packages of
-// twelve would measure nothing. And the three named calls no longer cover the
-// writes anyway: cache, record and cmd's lock were converted to *os.Root
-// methods for the Windows FILE_SHARE_DELETE measurement, so a grep for
-// `os.Rename` misses `root.Rename` entirely. The rule that is actually true is
-// the conjunction below: knowing where the agent tree is AND mutating it is
-// internal/apply's alone.
+// twelve would measure nothing, and the three named calls do not cover the
+// writes anyway — internal/apply and internal/archive mutate through *os.Root,
+// so a grep for `os.Rename` misses `root.Rename` entirely. The rule that is
+// actually true is the conjunction below: knowing where the agent tree is AND
+// mutating it is internal/apply's alone.
 
 package apply
 
@@ -78,8 +77,7 @@ const semverModule = "github.com/Masterminds/semver"
 
 // mutatingCalls are the call names that write to, replace or unlink something.
 // Both spellings are here on purpose: os.Rename and root.Rename are the same
-// operation through different syscalls, and only the second one is used by the
-// packages that were converted for Windows.
+// operation, and the containment-critical packages only ever use the second.
 var mutatingCalls = map[string]bool{
 	"Remove": true, "RemoveAll": true, "Rename": true, "WriteFile": true,
 	"Create": true, "CreateTemp": true, "Mkdir": true, "MkdirAll": true,

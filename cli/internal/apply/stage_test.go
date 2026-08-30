@@ -444,9 +444,8 @@ func TestPruneStagingRootRemovesOnlyAnEmptyStagingDirectory(t *testing.T) {
 }
 
 // TestStagedOpenRootReadsTheStagedTreeAndCannotEscapeIt. R4 hashes the staged
-// content before the swap, and it must read through a root: FILE_SHARE_DELETE is
-// granted by whoever OPENS a file, so a plain os.Open of a staged file on
-// Windows would deny the swap's own rename the delete access it needs.
+// content before the swap, and it must read through a root so that a symlink
+// planted in the staged tree cannot walk the hasher out of it.
 func TestStagedOpenRootReadsTheStagedTreeAndCannotEscapeIt(t *testing.T) {
 	f := newStageFixture(t)
 	staged, err := Stage(context.Background(), requestFor(t, f, skillBundle(t)))

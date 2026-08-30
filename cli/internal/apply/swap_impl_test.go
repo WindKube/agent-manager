@@ -12,7 +12,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"syscall"
 	"testing"
@@ -283,9 +282,7 @@ func TestSwapRefusesAStagedTreeThatIsNotASibling(t *testing.T) {
 // destination's parent, so a second filesystem can only appear as a mount point
 // or a symlink INSIDE that parent — a mount needs privileges, and os.Root
 // refuses to traverse a symlink that leaves the root (measured: "path escapes
-// from parent"). So the mapping is asserted on the classifier directly, and the
-// Windows ERROR_NOT_SAME_DEVICE(17) branch remains unexercised exactly as gate
-// R3 recorded.
+// from parent"). So the mapping is asserted on the classifier directly.
 func TestCrossDeviceIsRefusedAndNeverCopied(t *testing.T) {
 	sep := string(os.PathSeparator)
 	staging := filepath.Join(sep, "mnt", "other", ".amctl-staging", "sha256-deadbeef")
@@ -308,14 +305,10 @@ func TestCrossDeviceIsRefusedAndNeverCopied(t *testing.T) {
 
 // TestSwapReportsALeftoverAsideRatherThanFailingTheEntry — step 5 is non-fatal.
 // The failure is constructed by making the old tree unremovable (its own mode
-// forbids unlinking its children), which is the portable stand-in for the
-// Windows case that motivates the rule: an open handle in the old tree makes
-// RemoveAll fail routinely, and failing the entry there reports a broken install
-// for a working one.
+// forbids unlinking its children), standing in for any reason RemoveAll can
+// fail on a tree the new version has already replaced: failing the entry there
+// would report a broken install for a working one.
 func TestSwapReportsALeftoverAsideRatherThanFailingTheEntry(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("windows: directory modes do not prevent unlinking; the motivating case there is an open handle")
-	}
 	if os.Geteuid() == 0 {
 		t.Skip("running as root: mode bits do not restrict root, so the failure cannot be constructed")
 	}

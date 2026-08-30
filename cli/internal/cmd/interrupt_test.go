@@ -70,10 +70,6 @@
 //   - Power loss. SIGKILL kills a process; it does not lose a write the kernel
 //     has already accepted. Crash consistency needs dm-log-writes or a VM
 //     force-reset loop, exactly as gate R3 says.
-//   - Windows. `os.Process.Kill` is TerminateProcess there, and the "died of a
-//     signal" assertion (`ExitCode() == -1`) is POSIX, so it is asserted
-//     per-GOOS. Nothing here is skipped on Windows, but the kill assertion is
-//     weaker there and says so at the assertion.
 //   - A kill DURING a rename. Rename is atomic, so there is no such state to
 //     observeInterrupted; that is why the interruption points are the boundaries between
 //     R3's steps and not points inside them.
@@ -432,10 +428,8 @@ func spawnKilledSync(t *testing.T, e *syncEnv, mode interruptMode, flags syncFla
 	}
 	require.NotEqual(t, 0, run.exitCode, "a child that neither reported surviving nor died is a bug in this test: %s", out)
 	require.NotContains(t, out, "panic:", "the child must have been KILLED, not panicked: %s", out)
-	if runtime.GOOS != "windows" {
-		require.Equal(t, -1, run.exitCode,
-			"exit code -1 is os/exec's report of death by signal; anything else means the process unwound, and an unwound process runs defers")
-	}
+	require.Equal(t, -1, run.exitCode,
+		"exit code -1 is os/exec's report of death by signal; anything else means the process unwound, and an unwound process runs defers")
 	return run
 }
 

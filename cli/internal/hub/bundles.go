@@ -24,7 +24,7 @@ package hub
 // WHAT IS LEFT ON DISK IF THE BODY IS TRUNCATED MID-STREAM: nothing. The
 // partial bytes are in the temp file, and cache.PutReader's own deferred
 // cleanup removes it on every path that does not reach the rename. If that
-// removal itself fails — an open handle on Windows — the leftover is a
+// removal itself fails, the leftover is a
 // `.amctl-tmp-` file that Cache.CollectTemps sweeps on the next download; it
 // is never readable as an entry, because entry lookup is by the
 // `sha256-<hex>` name only.

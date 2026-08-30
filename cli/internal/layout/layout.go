@@ -88,8 +88,8 @@ const (
 	// It stays inside the lowercase-alphanumeric-and-hyphen alphabet the Agent
 	// Skills format expects, which is why it is `--` and not `@`, `:` or `__`.
 	// R2's consequence is explicit that the separator must be conservative
-	// because Codex may enforce naming rules claude-code ignores; `:` is illegal
-	// in a filename on Windows, `@` already means `<skill>@<source>` in
+	// because Codex may enforce naming rules claude-code ignores; `:` is a path
+	// separator to enough tools to be unusable, `@` already means `<skill>@<source>` in
 	// claude-code's own plugin vocabulary, and `_` is not in the hub's
 	// object-key charset at all so it buys nothing the hyphen does not.
 	//
@@ -104,7 +104,7 @@ const (
 	// probes were single-segment names (`amctl-probe`). The scheme is the most
 	// conservative disambiguation available — same charset, one extra hyphen —
 	// but confirming that claude-code lists `acme--code-review` is owed on the
-	// release-matrix runners (T063) alongside the darwin and windows roots.
+	// release-matrix runners (T063) alongside the darwin roots.
 	DirSeparator = "--"
 
 	// StagingDirName is the extraction staging directory, a sibling of the
@@ -116,11 +116,9 @@ const (
 	StagingDirName = ".amctl-staging"
 
 	// MaxDirNameBytes is the longest directory name any target accepts. 255
-	// bytes is the strictest of the three filesystems in the release matrix
-	// (ext4 255 bytes, APFS 255 characters, NTFS 255 UTF-16 units), so applying
-	// it everywhere keeps one record readable on every platform. Total path
-	// length needs no check: every root here is absolute and Go's os package
-	// applies the \\?\ prefix on Windows for absolute paths itself.
+	// bytes is the strictest of the filesystems in the release matrix (ext4 255
+	// bytes, APFS 255 characters), so applying it everywhere keeps one record
+	// readable on every platform.
 	MaxDirNameBytes = 255
 
 	// MarkerSchemaVersion is the version of the marker format this build writes
@@ -195,13 +193,12 @@ func (p Package) DirName() string { return p.Namespace + DirSeparator + p.Name }
 // place that has to widen with it.
 //
 // It also answers the platform question outright: every character that is
-// illegal in a filename on any target platform is already outside this set —
-// `/ \ : * ? " < > |`, every control character, and space. A colon is illegal
-// on Windows and legal on Linux, and refusing it EVERYWHERE rather than only
-// where it is illegal is deliberate: R4 made the record cross-platform on
-// purpose (its keys are filepath.ToSlash'd so a record written on Windows reads
-// on Linux), and a charset that varied by GOOS would mean a profile that
-// installs on Linux and refuses on Windows, with the same lockfile.
+// awkward in a filename anywhere is already outside this set — `/ \ : * ? " < >
+// |`, every control character, and space. Refusing them EVERYWHERE rather than
+// only where the filesystem does is deliberate: R4 made the record
+// separator-independent on purpose, and a charset that varied by GOOS would
+// mean a profile that installs on one platform and refuses on another, with the
+// same lockfile.
 func idSegmentAllowed(r rune) bool {
 	return isAlnum(r) || r == '.' || r == '_' || r == '+' || r == '-'
 }
@@ -235,12 +232,15 @@ func validateIDSegment(id, what, seg string) error {
 	return nil
 }
 
-// windowsReservedNames are the DOS device names Windows still refuses as a path
-// component, with or without an extension. A composed DirName always contains
+// reservedDeviceNames are the DOS device names, refused as a path component
+// with or without an extension. amctl does not run on Windows; the names come
+// out of a HUB LOCKFILE, which is data authored elsewhere and read on machines
+// amctl does not control, so the refusal is about what the hub may serve rather
+// than about what this binary runs on. A composed DirName always contains
 // DirSeparator and so can never be one of these, but the guarantee must not
 // depend on the separator: ValidateDirName is the last check before a path is
 // built, and it is called on names this package did not compose.
-var windowsReservedNames = map[string]struct{}{
+var reservedDeviceNames = map[string]struct{}{
 	"con": {}, "prn": {}, "aux": {}, "nul": {},
 	"com0": {}, "com1": {}, "com2": {}, "com3": {}, "com4": {},
 	"com5": {}, "com6": {}, "com7": {}, "com8": {}, "com9": {},
@@ -266,10 +266,11 @@ var windowsReservedNames = map[string]struct{}{
 //   - StagingDirName. Extraction stages into a sibling of the destination; a
 //     package installed there would be inside the directory a later run
 //     clears.
-//   - A dot-prefixed name, a trailing dot or a trailing space. Windows strips
-//     trailing dots and spaces from a path component, so a directory recorded
-//     as `foo.` is `foo` on disk: the record then names a path that does not
-//     exist, prune finds nothing to remove, and the files stay forever.
+//   - A dot-prefixed name, a trailing dot or a trailing space. Some filesystems
+//     strip trailing dots and spaces from a path component, so a directory
+//     recorded as `foo.` is `foo` on disk: the record then names a path that
+//     does not exist, prune finds nothing to remove, and the files stay
+//     forever.
 //   - A DOS device name, a path traversal, a name containing a separator, and
 //     anything over MaxDirNameBytes.
 func ValidateDirName(dirName string) error {
@@ -286,7 +287,7 @@ func ValidateDirName(dirName string) error {
 	case strings.HasPrefix(dirName, "."):
 		return fmt.Errorf("%w: %q is dot-prefixed, which is how an agent hides its own internals", ErrDirName, dirName)
 	case strings.HasSuffix(dirName, "."), strings.HasSuffix(dirName, " "):
-		return fmt.Errorf("%w: %q ends in a dot or a space, which Windows strips from a path component, so the "+
+		return fmt.Errorf("%w: %q ends in a dot or a space, which some filesystems strip from a path component, so the "+
 			"recorded path would not be the path on disk", ErrDirName, dirName)
 	case strings.HasSuffix(dirName, record.AsideSuffix):
 		return fmt.Errorf("%w: %q ends in %s, the name the atomic swap renames a replaced destination to, so "+
@@ -305,8 +306,8 @@ func ValidateDirName(dirName string) error {
 		}
 	}
 	stem, _, _ := strings.Cut(dirName, ".")
-	if _, reserved := windowsReservedNames[strings.ToLower(stem)]; reserved {
-		return fmt.Errorf("%w: %q is a reserved device name on Windows", ErrDirName, dirName)
+	if _, reserved := reservedDeviceNames[strings.ToLower(stem)]; reserved {
+		return fmt.Errorf("%w: %q is a reserved device name", ErrDirName, dirName)
 	}
 	return nil
 }

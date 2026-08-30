@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"runtime"
 	"syscall"
 
 	"github.com/WindKube/agent-manager/cli/internal/record"
@@ -61,10 +60,9 @@ type SwapResult struct {
 	// not create the safety.
 	SyncDirErr error
 
-	// RemoveAsideErr is step 5's failure, if any. NON-FATAL: on Windows an open
-	// handle anywhere in the old tree — an editor, an indexer, an antivirus
-	// scanner — makes RemoveAll fail routinely, and failing the entry here would
-	// report a broken install for a working one. See LeftoverAside.
+	// RemoveAsideErr is step 5's failure, if any. NON-FATAL: the new version is
+	// already in place, so failing the entry here would report a broken install
+	// for a working one. See LeftoverAside.
 	RemoveAsideErr error
 }
 
@@ -85,16 +83,11 @@ func (r SwapResult) LeftoverAside() string {
 // a successful swap.
 //
 // Every rename, remove, stat and open goes through an *os.Root opened on dest's
-// parent, and the reason is only half containment. Measured in Go 1.26.6's
-// source: os.Open omits FILE_SHARE_DELETE on Windows, so a plain-os READER
-// anywhere in this tree denies delete access to every other process and no
-// change on the mutating side can work around it; Root.Open passes it,
-// Root.Rename is FILE_RENAME_POSIX_SEMANTICS and Root.Remove is
-// FILE_DISPOSITION_POSIX_SEMANTICS. Root.Rename and os.Rename agree on all five
-// destination shapes on Linux — absent nil, empty dir EEXIST, non-empty dir
-// EEXIST, file ENOTDIR, symlink-to-dir ENOTDIR — so the root changes none of the
-// sequence's semantics; it only stops a concurrent reader from breaking step 3
-// or step 5 on Windows.
+// parent, so no symlink in or above the destination can move a step of the
+// sequence out of that directory. Root.Rename and os.Rename agree on all five
+// destination shapes — absent nil, empty dir EEXIST, non-empty dir EEXIST, file
+// ENOTDIR, symlink-to-dir ENOTDIR — so the root changes none of the sequence's
+// semantics.
 //
 // What Swap deliberately does NOT do:
 //
@@ -176,7 +169,7 @@ func Swap(staging, dest string) (SwapResult, error) {
 
 	// STEP 3 — move the staged tree into place. dest is absent here, which is the
 	// only shape os.Rename accepts for a directory on any platform, and is why
-	// step 2 is not a Windows workaround but the whole mechanism.
+	// step 2 is not a nicety but the whole mechanism.
 	//
 	// FATAL WITH ROLLBACK: after step 2 the machine is changed, so FR-015's
 	// "leave the machine unchanged for it" needs the old version put back before
@@ -217,20 +210,6 @@ func crossDevice(err error, staging, dest string) error {
 }
 
 // isCrossDevice reports whether err is a cross-filesystem rename.
-//
-// Windows does not map to EXDEV. os.Rename is MoveFileEx WITHOUT
-// MOVEFILE_COPY_ALLOWED, so a cross-volume move fails with ERROR_NOT_SAME_DEVICE
-// (17), and syscall.EXDEV on Windows is an APPLICATION_ERROR-range constant no
-// real Windows error ever equals. UNVERIFIED on Windows: this branch is the same
-// one gate R3 wrote and neither has been exercised on a Windows runner.
 func isCrossDevice(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, syscall.EXDEV) {
-		return true
-	}
-	const errorNotSameDevice = syscall.Errno(17)
-	var errno syscall.Errno
-	return runtime.GOOS == "windows" && errors.As(err, &errno) && errno == errorNotSameDevice
+	return err != nil && errors.Is(err, syscall.EXDEV)
 }

@@ -80,9 +80,8 @@ import (
 
 // idemNode is one path as it exists on disk. info is kept so os.SameFile can
 // answer the identity question, which needs the FileInfo and not a field of it:
-// the inode number lives in a per-platform Sys() value and reading it here
-// would not compile on Windows (measured for gate R4: `GOOS=windows` gives
-// `undefined: syscall.Stat_t`).
+// the inode number lives in a per-platform Sys() value, and os.SameFile is the
+// portable way to ask.
 type idemNode struct {
 	dir   bool
 	mode  fs.FileMode

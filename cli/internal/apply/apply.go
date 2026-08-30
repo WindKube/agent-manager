@@ -270,8 +270,8 @@ type Result struct {
 
 	Failed []EntryError
 
-	// Leftovers are `.amctl-old` paths a swap could not remove (an open handle,
-	// routinely on Windows). Each is already inside the entry's removable set,
+	// Leftovers are `.amctl-old` paths a swap could not remove. Each is already
+	// inside the entry's removable set,
 	// so the next swap of the same entry discards it; the caller reports them
 	// and does nothing else.
 	Leftovers []string
@@ -674,9 +674,7 @@ type destState struct {
 // FR-022 marker out of it.
 //
 // The marker is read through an *os.Root opened on the destination, so a symlink
-// planted where the marker should be cannot make amctl read a file elsewhere,
-// and — the half that is easy to miss — so the read passes FILE_SHARE_DELETE on
-// Windows and does not deny the swap's own rename of this very directory.
+// planted where the marker should be cannot make amctl read a file elsewhere.
 func inspectDest(cont Contained) (destState, error) {
 	info, err := os.Lstat(cont.Dest)
 	switch {
@@ -1040,8 +1038,7 @@ func (h *Home) Contains(dest string) (Contained, error) {
 //
 // It stops at the home, which OpenHome established exists, so the walk
 // terminates. os.Lstat and not a root method: this is a stat, it follows no
-// final symlink and it holds no handle open, so it cannot deny another process
-// the delete access the Windows measurement is about.
+// final symlink and the containment check on the result is inspectDest's.
 func deepestExisting(home, dest string) (existing string, tail []string, err error) {
 	p := dest
 	for {

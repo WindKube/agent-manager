@@ -278,11 +278,9 @@ func writeMarker(root *os.Root, name string, req StageRequest, staged *Staged) e
 // read what was extracted — R4's fingerprint hashes the staged content, before
 // the swap, while the extractor's caps have just bounded it.
 //
-// It is a root and not a path for the READER's sake, which is the half of the
-// os.Root rule that is easy to miss: FILE_SHARE_DELETE is granted by whoever
-// opens a file, so a plain os.Open of a staged file on Windows denies delete
-// access to every other process and no change on the mutating side can work
-// around it — the swap's own rename of the staged tree would then fail.
+// It is a root and not a path so the reader is confined to the staged tree: a
+// caller handed a path could be walked out of it by a symlink the extractor
+// refused to create but a concurrent process planted.
 func (s *Staged) OpenRoot() (*os.Root, error) {
 	root, err := os.OpenRoot(s.Path)
 	if err != nil {

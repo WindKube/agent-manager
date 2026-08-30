@@ -22,7 +22,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -374,8 +373,8 @@ func TestHomeUnsetIsRefusedBeforeAnyRequest(t *testing.T) {
 	tg := startSyncFake(t)
 	env := newSyncEnv(t, tg)
 
-	// Unset the platform's own home variable, whichever it is: naming HOME on
-	// Windows would make this test assert nothing there.
+	// Unset the platform's own home variable, whichever it is: hardcoding HOME
+	// would make this test assert nothing where that is not the one consulted.
 	t.Setenv(homeEnvVar(), "")
 
 	code, result, _, err := env.run(t, output.FormatHuman, baselineFlags(tg))
@@ -394,9 +393,6 @@ func TestHomeUnsetIsRefusedBeforeAnyRequest(t *testing.T) {
 }
 
 func TestAnUnwritableHomeIsRefusedBeforeAnyRequest(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("a 0500 directory does not deny writes to its owner on Windows")
-	}
 	tg := startSyncFake(t)
 	env := newSyncEnv(t, tg)
 	require.NoError(t, os.Chmod(env.home, 0o500))
@@ -563,9 +559,6 @@ func readLockfile(t *testing.T, tg fake.Target, slug string) map[string]any {
 // frequently symlinks into a dotfiles repository, so the containment check runs
 // on the RESOLVED path and must not simply refuse a link.
 func TestSyncFollowsASymlinkedAgentDirectoryInsideTheHome(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("unprivileged os.Symlink needs Developer Mode on Windows")
-	}
 	tg := startSyncFake(t)
 	env := newSyncEnv(t, tg)
 
@@ -595,9 +588,6 @@ func TestSyncFollowsASymlinkedAgentDirectoryInsideTheHome(t *testing.T) {
 // the test above. Without it, "the check runs on the resolved path" would be
 // indistinguishable from "there is no check".
 func TestSyncRefusesAnAgentDirectoryThatLeavesTheHome(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("unprivileged os.Symlink needs Developer Mode on Windows")
-	}
 	tg := startSyncFake(t)
 	env := newSyncEnv(t, tg)
 

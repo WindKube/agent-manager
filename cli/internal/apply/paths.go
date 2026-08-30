@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 )
 
@@ -84,15 +83,7 @@ func relInParent(parent, p, dest string) (string, error) {
 // On darwin Go's os.File.Sync is fcntl(F_FULLFSYNC) rather than fsync(2) — see
 // $GOROOT/src/internal/poll/fd_fsync_darwin.go, citing golang/go#26650 — so the
 // same call is a real barrier on linux and darwin both.
-//
-// On Windows it is a documented no-op: there is no directory handle
-// FlushFileBuffers accepts, and NTFS metadata durability is not reachable from
-// userspace this way. The mitigation there is the write ordering — the
-// installation record is written after the swap — not a syscall.
 func syncRootDir(root *os.Root) error {
-	if runtime.GOOS == "windows" {
-		return nil
-	}
 	d, err := root.Open(".")
 	if err != nil {
 		return err

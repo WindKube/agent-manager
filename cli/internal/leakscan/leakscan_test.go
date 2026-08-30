@@ -105,6 +105,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -267,8 +268,18 @@ func TestNoSecretReachesAnyOutputOfTheWholeSuite(t *testing.T) {
 	}
 	root := moduleRoot(t)
 
-	cmd := exec.CommandContext(context.Background(), goTool(t),
-		"test", "-count=1", "-v", "-timeout=15m", "./...")
+	// The child's deadline must be shorter than THIS test's, and it is derived
+	// rather than guessed: -test.timeout is what the parent was given, and a
+	// child allowed to outlive its parent means the parent panics with
+	// "test timed out" and the scan reports nothing at all. The first version
+	// gave the child 15m under a parent default of 10m and the macOS leg died
+	// exactly that way — a red build whose message said nothing about SC-010.
+	budget := childBudget(t)
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, goTool(t), "test", "-count=1", "-v",
+		"-timeout="+budget.String(), "./...")
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), childEnvVar+"=1")
 	out, err := cmd.CombinedOutput()
@@ -277,6 +288,14 @@ func TestNoSecretReachesAnyOutputOfTheWholeSuite(t *testing.T) {
 		// Not a failure of this gate; see the doc comment. Recorded so a reader
 		// of a red build knows the scan still ran.
 		t.Logf("the child suite exited non-zero (%v); scanning its output anyway", err)
+	}
+	// A child killed by the deadline is different in kind: it did not finish the
+	// suite, so a clean scan of its output proves nothing about the part that
+	// never ran. Say so rather than passing.
+	if ctx.Err() != nil {
+		t.Fatalf("the child suite did not finish within %s, so this scan covered only part of it "+
+			"— raise the -timeout the CI job gives this package rather than trusting a partial pass "+
+			"(captured %d bytes)", budget, len(captured))
 	}
 
 	// Anti-vacuity. Each of these has to hold before a clean scan means
@@ -820,6 +839,36 @@ func requireNoSentinelInAnyVerb(t *testing.T, what string, v any) {
 func planted(t *testing.T, n int) {
 	t.Helper()
 	t.Logf("%s %d credential-bearing renderings", plantMarker, n)
+}
+
+// childBudget is how long the child suite may run: comfortably inside whatever
+// deadline the parent was given, so the parent is never the one that dies.
+//
+// go test's -timeout reaches the binary as -test.timeout, and flag.Lookup finds
+// it whether or not the caller passed it. A zero or absent value means no
+// deadline at all, which is the `-timeout 0` case; the child then gets a
+// generous fixed budget rather than an unbounded one, because an unbounded
+// child in CI is a job that hangs until the runner kills it with no output.
+func childBudget(t *testing.T) time.Duration {
+	t.Helper()
+	const (
+		fallback = 8 * time.Minute
+		margin   = 2 * time.Minute
+	)
+	f := flag.Lookup("test.timeout")
+	if f == nil {
+		return fallback
+	}
+	parent, err := time.ParseDuration(f.Value.String())
+	if err != nil || parent <= 0 {
+		return fallback
+	}
+	if budget := parent - margin; budget > 0 {
+		return budget
+	}
+	// The parent's own deadline is tighter than the margin. Use most of it and
+	// let the check above report a truncated scan rather than silently passing.
+	return parent / 2
 }
 
 func moduleRoot(t *testing.T) string {

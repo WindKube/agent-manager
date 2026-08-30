@@ -45,7 +45,15 @@ type containFixture struct {
 
 func newContainFixture(t *testing.T) containFixture {
 	t.Helper()
-	sandbox := t.TempDir()
+	// EvalSymlinks on the sandbox root, because Home.Contains resolves the path
+	// it checks and this fixture compares against paths it built itself. On
+	// darwin t.TempDir() hands back /var/folders/..., and /var is a symlink to
+	// /private/var — so an unresolved fixture path and a resolved Contains
+	// result differ by a prefix that has nothing to do with what is being
+	// tested. Resolving here once puts the whole fixture in the same space as
+	// the code under test rather than teaching each assertion to compensate.
+	sandbox, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
 	f := containFixture{
 		sandbox: sandbox,
 		home:    filepath.Join(sandbox, "home"),

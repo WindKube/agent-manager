@@ -40,15 +40,60 @@ func newStore(t *testing.T, backend keyring.BackendType) (store *Store, warnings
 	return s, warnings, root
 }
 
+// systemKeyringEnv opts the round-trip tests into the platform's own credential
+// store. Unset — which is what CI and a colleague running `go test ./...` have
+// — they use the file backend only.
+const systemKeyringEnv = "AMCTL_TEST_SYSTEM_KEYRING"
+
+// systemBackends are the ones whose store is SHARED OS STATE: the login
+// keychain, the session's Secret Service or KWallet, a GPG password store. The
+// file backend is not one of them, because Options.StateRoot puts it inside the
+// test's own t.TempDir.
+//
+// WHY THEY ARE OFF BY DEFAULT, measured rather than assumed. On the macOS CI
+// runner this suite HUNG for six and a half minutes in
+// TestTwoHubsCoexistWithoutTouchingEachOther/keychain, blocked in
+// SecItemCopyMatching — the login keychain asking a human for permission that
+// no human was there to give. That is not a CI quirk to be waited out: the same
+// code on a developer's Mac pops a dialog during `go test ./...` and, if the
+// dialog is answered, leaves amctl's test items in their real keychain. A unit
+// suite that mutates state outside its temp directory is wrong even when it
+// passes.
+//
+// What is given up is real and is smaller than it looks: Store adds no
+// per-backend logic — every backend goes through the same keyring.Item calls —
+// so what these subtests cover beyond the file backend is keyring's own
+// behaviour and the OS's. Set AMCTL_TEST_SYSTEM_KEYRING=1 to run them
+// deliberately, on a machine where a prompt has somewhere to appear.
+var systemBackends = map[keyring.BackendType]bool{
+	keyring.KeychainBackend:      true,
+	keyring.SecretServiceBackend: true,
+	keyring.KWalletBackend:       true,
+	keyring.PassBackend:          true,
+	keyring.KeyCtlBackend:        true,
+}
+
 // openableBackends is the policy order intersected with what actually opens on
-// this machine. keyctl never appears: AllowedBackends excludes it, and amctl
-// configures no KeyCtlScope, so its opener would fail anyway — see
+// this machine AND what this suite may write to. keyctl never appears:
+// AllowedBackends excludes it, and amctl configures no KeyCtlScope, so its
+// opener would fail anyway — see
 // TestAllowedBackendsExcludesTheVolatileKernelKeyring for the reason and the
 // negative control.
+//
+// Opening a backend and being able to USE it are different facts, which is the
+// distinction that cost a CI leg: keyring.Open on the macOS keychain succeeds
+// without touching the keychain, and the first Get blocks on an authorisation
+// prompt. So the gate is on the backend's KIND, not on whether it opened.
 func openableBackends(t *testing.T) []keyring.BackendType {
 	t.Helper()
+	useSystem := os.Getenv(systemKeyringEnv) != ""
 	var out []keyring.BackendType
 	for _, b := range AllowedBackends() {
+		if systemBackends[b] && !useSystem {
+			t.Logf("skipping backend %q: it is the machine's own credential store; set %s=1 to include it",
+				b, systemKeyringEnv)
+			continue
+		}
 		root := t.TempDir()
 		if _, err := Open(Options{StateRoot: root, Backends: []keyring.BackendType{b}}); err != nil {
 			t.Logf("skipping backend %q on %s: %v", b, runtime.GOOS, err)
@@ -59,10 +104,11 @@ func openableBackends(t *testing.T) []keyring.BackendType {
 	return out
 }
 
-func TestACredentialRoundTripsThroughEveryBackendThisPlatformOpens(t *testing.T) {
+func TestACredentialRoundTripsThroughEveryBackendTheSuiteMayUse(t *testing.T) {
 	backends := openableBackends(t)
-	// The file backend opens everywhere, so an empty list means the loop below
-	// is testing nothing and the whole suite would pass vacuously.
+	// The file backend opens everywhere and is never gated, so an empty list
+	// means the loop below is testing nothing and the whole suite would pass
+	// vacuously.
 	require.NotEmpty(t, backends, "no credential backend opened at all on %s", runtime.GOOS)
 
 	issued := time.Date(2026, 8, 27, 10, 0, 0, 0, time.UTC)

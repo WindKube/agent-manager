@@ -18,11 +18,10 @@ import (
 //	secretservice.go  linux
 //	kwallet.go        linux
 //	keyctl.go         linux
-//	wincred.go        windows
 //	pass.go           !windows
 //	file.go           (none)
 //
-// darwin therefore requires cgo to reach this set; linux and windows do not.
+// darwin therefore requires cgo to reach this set; linux does not.
 var compiledIn = map[string][]keyring.BackendType{
 	"darwin": {
 		keyring.KeychainBackend,
@@ -34,10 +33,6 @@ var compiledIn = map[string][]keyring.BackendType{
 		keyring.KWalletBackend,
 		keyring.KeyCtlBackend,
 		keyring.PassBackend,
-		keyring.FileBackend,
-	},
-	"windows": {
-		keyring.WinCredBackend,
 		keyring.FileBackend,
 	},
 }
@@ -96,15 +91,19 @@ func TestVerify(t *testing.T) {
 			available: compiledIn["linux"],
 		},
 		{
-			name:      "a windows build keeps wincred",
-			goos:      "windows",
-			available: compiledIn["windows"],
-		},
-		{
 			name:      "a build with only the file fallback is refused",
 			goos:      "linux",
 			available: []keyring.BackendType{keyring.FileBackend},
 			wantErr:   `keyring backend "secret-service" is not compiled into this linux build`,
+		},
+		{
+			// windows is here rather than in `required` on purpose: amctl does
+			// not ship it, and the guard's job is to fail the build rather than
+			// let an unsupported platform through on a default.
+			name:      "windows is not a supported platform and is refused",
+			goos:      "windows",
+			available: []keyring.BackendType{keyring.WinCredBackend, keyring.FileBackend},
+			wantErr:   `no required credential backend recorded for GOOS "windows"`,
 		},
 		{
 			name:      "an unrecorded platform is refused rather than passed",

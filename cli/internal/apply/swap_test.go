@@ -112,29 +112,21 @@ type gateOutcome struct {
 // Why not simply os.Rename(staging, dest):
 //
 // MEASURED, and stronger than plan.md's R3 paragraph claims. plan.md says
-// os.Rename "over an existing directory fails on Windows and is not atomic for
-// directories on any platform". Through Go's os package it is worse than that:
-// it FAILS ON EVERY PLATFORM, empty destination or not.
+// os.Rename "is not atomic for directories on any platform". Through Go's os
+// package it is worse than that: it FAILS, empty destination or not.
+// $GOROOT/src/os/file_unix.go's rename() Lstats newname first and returns
+// EEXIST outright if it is a directory, without ever reaching syscall.Rename.
+// Measured on linux/arm64, go1.26.6: os.Rename(dir, EMPTY dir) = EEXIST,
+// os.Rename(dir, NON-EMPTY dir) = EEXIST, os.Rename(dir, SYMLINK->dir) =
+// ENOTDIR, os.Rename(dir, ABSENT) = nil. Only the last one is usable.
 //
-//   - unix: $GOROOT/src/os/file_unix.go's rename() Lstats newname first and
-//     returns EEXIST outright if it is a directory, without ever reaching
-//     syscall.Rename. Measured on linux/arm64, go1.26.6:
-//     os.Rename(dir, EMPTY dir) = EEXIST, os.Rename(dir, NON-EMPTY dir) =
-//     EEXIST, os.Rename(dir, SYMLINK->dir) = ENOTDIR, os.Rename(dir, ABSENT) =
-//     nil. Only the last one is usable.
-//   - windows: os.Rename is MoveFileEx(from, to, MOVEFILE_REPLACE_EXISTING)
-//     ($GOROOT/src/internal/syscall/windows/syscall_windows.go), and
-//     MOVEFILE_REPLACE_EXISTING is documented as unusable when either name is a
-//     directory.
-//
-// So the aside step is not a Windows workaround. It is the only way os.Rename
-// installs over anything at all, and dest MUST be absent before step 3 runs.
-// The trap this creates is the reverse of the one plan.md anticipated: the raw
-// POSIX call is more permissive than Go's wrapper (syscall.Rename(dir, EMPTY
-// dir) = nil, measured), so anyone "fixing" the EEXIST by dropping to
-// syscall.Rename or golang.org/x/sys gets a swap that works for empty
-// destinations, fails with ENOTEMPTY for real upgrades, and has no Windows
-// equivalent. TestR3NaiveRenameOverAnExistingDestination pins all of it.
+// So the aside step is the only way os.Rename installs over anything at all,
+// and dest MUST be absent before step 3 runs. The trap this creates is the
+// reverse of the one plan.md anticipated: the raw POSIX call is more permissive
+// than Go's wrapper (syscall.Rename(dir, EMPTY dir) = nil, measured), so anyone
+// "fixing" the EEXIST by dropping to syscall.Rename or golang.org/x/sys gets a
+// swap that works for empty destinations and fails with ENOTEMPTY for real
+// upgrades. TestR3NaiveRenameOverAnExistingDestination pins all of it.
 //
 // Why step 2 tolerates ENOENT instead of stat-ing first: a Stat-then-branch
 // implementation has two code paths (a three-step swap when no old version
@@ -230,10 +222,9 @@ func gateSwap(staging, dest string, stopAfter gateStep) (gateOutcome, error) {
 	}
 
 	// STEP 5 — remove the aside. NON-FATAL: the new version is already in
-	// place, and on Windows an open handle anywhere in the old tree (an editor,
-	// an indexer, an antivirus scanner) makes this fail routinely. Failing the
-	// entry here would report a broken install for a working one. It must be
-	// reported as a leftover to clean next run, not as an error.
+	// place, so a permission quirk or a busy file in the old tree must not fail
+	// the entry — that would report a broken install for a working one. It is
+	// reported as a leftover to clean next run instead.
 	out.RemoveAsideErr = os.RemoveAll(aside)
 	return out, nil
 }
@@ -243,15 +234,7 @@ func gateSwap(staging, dest string, stopAfter gateStep) (gateOutcome, error) {
 // $GOROOT/src/internal/poll/fd_fsync_darwin.go, which cites golang/go#26650
 // ("on OS X, SYS_FSYNC doesn't fully flush contents to disk"). So the same Go
 // call gives a real barrier on both linux and darwin.
-//
-// On Windows it is a no-op: there is no directory handle to flush. Go's
-// os.Open on a directory does not obtain one that FlushFileBuffers accepts,
-// and NTFS metadata durability is not exposed to userspace this way. The
-// mitigation is the write ordering, not a syscall — see the R3 notes.
 func gateSyncDir(dir string) error {
-	if runtime.GOOS == "windows" {
-		return nil
-	}
 	f, err := os.Open(dir)
 	if err != nil {
 		return err
@@ -490,7 +473,7 @@ func TestR3ReclaimingALeftoverAsideRestoresARollbackTarget(t *testing.T) {
 	require.Equal(t, gateStateOld, gateState(t, f.aside))
 
 	// The second run fails at step 3 — the staged tree is missing, standing in
-	// for any step-3 failure (EXDEV, a Windows sharing violation, ENOSPC).
+	// for any step-3 failure (EXDEV, ENOSPC, a permission change).
 	missing := filepath.Join(filepath.Dir(f.staging), "sha256-never-staged")
 	_, err = gateSwap(missing, f.dest, gateStepComplete)
 	require.Error(t, err)
@@ -692,11 +675,6 @@ func TestR3ASymlinkPointingOutsideTheHomeIsNotWrittenThrough(t *testing.T) {
 func gateRequireSymlink(t *testing.T, target, link string) {
 	t.Helper()
 	if err := os.Symlink(target, link); err != nil {
-		if runtime.GOOS == "windows" {
-			// Unprivileged symlink creation on Windows needs Developer Mode.
-			// The assertion is unverified there; see the R3 notes.
-			t.Skipf("windows: cannot create a symlink without Developer Mode or admin: %v", err)
-		}
 		require.NoError(t, err)
 	}
 }
@@ -737,9 +715,6 @@ func TestR3NaiveRenameOverAnExistingDestination(t *testing.T) {
 	})
 
 	t.Run("the raw POSIX call is more permissive which is the trap", func(t *testing.T) {
-		if runtime.GOOS == "windows" {
-			t.Skip("windows: syscall.Rename is MoveFileEx and has no POSIX directory-replacement semantics to compare against")
-		}
 		f := newGateFixture(t)
 		require.NoError(t, os.MkdirAll(f.dest, 0o755))
 		f.stageNew(t)
@@ -764,10 +739,8 @@ func TestR3NaiveRenameOverAnExistingDestination(t *testing.T) {
 
 		err := os.Rename(f.staging, f.dest)
 		require.Error(t, err, "a symlink at the destination defeats the naive rename as thoroughly as a directory does")
-		if runtime.GOOS != "windows" {
-			require.ErrorIs(t, err, syscall.ENOTDIR,
-				"Lstat sees a symlink rather than a directory, so os.Rename reaches syscall.Rename and gets ENOTDIR")
-		}
+		require.ErrorIs(t, err, syscall.ENOTDIR,
+			"Lstat sees a symlink rather than a directory, so os.Rename reaches syscall.Rename and gets ENOTDIR")
 	})
 }
 
@@ -776,16 +749,8 @@ func TestR3NaiveRenameOverAnExistingDestination(t *testing.T) {
 // testing anything.
 func gateRequireRenameOntoDirErr(t *testing.T, err error) {
 	t.Helper()
-	switch runtime.GOOS {
-	case "linux", "darwin":
-		require.ErrorIs(t, err, syscall.EEXIST,
-			"os/file_unix.go returns EEXIST for a directory destination before it calls syscall.Rename")
-	default:
-		// windows: MoveFileEx with MOVEFILE_REPLACE_EXISTING is documented as
-		// unusable when either name is a directory; the reported error is
-		// ERROR_ACCESS_DENIED. UNVERIFIED here — see the R3 notes.
-		t.Logf("%s: errno unverified on this machine, got %v", runtime.GOOS, err)
-	}
+	require.ErrorIs(t, err, syscall.EEXIST,
+		"os/file_unix.go returns EEXIST for a directory destination before it calls syscall.Rename")
 }
 
 // TestR3AStaleAsideBlocksTheNaiveAsideRename is the negative control for step 1
@@ -894,26 +859,15 @@ func gateOtherFilesystemDir(t *testing.T) string {
 }
 
 func gateIsCrossDevice(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, syscall.EXDEV) {
-		return true
-	}
-	// Windows does not map to EXDEV: os.Rename is MoveFileEx WITHOUT
-	// MOVEFILE_COPY_ALLOWED, so a cross-volume move fails with
-	// ERROR_NOT_SAME_DEVICE (17). UNVERIFIED on this machine.
-	const errorNotSameDevice = syscall.Errno(17)
-	var errno syscall.Errno
-	return runtime.GOOS == "windows" && errors.As(err, &errno) && errno == errorNotSameDevice
+	return err != nil && errors.Is(err, syscall.EXDEV)
 }
 
 // --- durability -------------------------------------------------------------
 
 // TestR3ParentDirectoryFsync settles whether the code should fsync.
 //
-// THE ANSWER: yes on linux and darwin, best-effort and non-fatal; a no-op on
-// windows. rename(2) is atomic with respect to concurrent observers but says
+// THE ANSWER: yes on linux and darwin, best-effort and non-fatal. rename(2) is
+// atomic with respect to concurrent observers but says
 // nothing about durability — POSIX and Linux's rename(2) both stay silent, and
 // the standing advice (LWN, "Ensuring data reaches disk", Jeff Layton, 2011;
 // SQLite's atomic-commit notes; Dan Luu's "Files are hard", 2015) is that the
@@ -945,12 +899,7 @@ func TestR3ParentDirectoryFsync(t *testing.T) {
 	out, err := gateSwap(f.staging, f.dest, gateStepComplete)
 	require.NoError(t, err)
 
-	switch runtime.GOOS {
-	case "linux", "darwin":
-		require.NoError(t, out.SyncDirErr, "fsync of the destination's parent directory must succeed")
-	default:
-		require.NoError(t, out.SyncDirErr, "windows: the fsync step is a documented no-op")
-	}
+	require.NoError(t, out.SyncDirErr, "fsync of the destination's parent directory must succeed")
 	require.Equal(t, gateStateNew, gateState(t, f.dest))
 }
 
@@ -993,12 +942,13 @@ func TestR3RepeatedSwapsLeaveNothingBehind(t *testing.T) {
 
 // TestR3PlatformsInScope states, as an executable fact, which platform this run
 // verified. The unverified-per-platform list is in the R3 notes; the short
-// version is that darwin and windows share every assertion above except the
-// errno-specific ones and the symlink-creation privilege, and that they are
-// verified only when the cli unit-test job runs on macos-latest and
-// windows-latest runners.
+// version is that darwin shares every assertion above except the cross-device
+// one, and that it is verified only when the cli unit-test job runs on a
+// macos-latest runner. Windows is not a target and is refused here rather than
+// skipped, so a build for it fails loudly instead of reporting a pass it never
+// measured.
 func TestR3PlatformsInScope(t *testing.T) {
-	require.Contains(t, []string{"linux", "darwin", "windows"}, runtime.GOOS,
-		"plan.md's Technical Context names five targets over three operating systems")
+	require.Contains(t, []string{"linux", "darwin"}, runtime.GOOS,
+		"plan.md's Technical Context names four targets over two operating systems")
 	t.Logf("R3 verified on %s/%s", runtime.GOOS, runtime.GOARCH)
 }

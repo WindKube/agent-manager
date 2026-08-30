@@ -46,10 +46,10 @@ import (
 // state, not dropping a directory, so amctl cannot do it atomically (FR-024) or
 // prune it safely (FR-028). Skills only, until that is specified.
 //
-// What this layout does NOT claim: no Windows or darwin observation was possible
-// here (linux/arm64 only). Both are the same code path — CLAUDE_CONFIG_DIR, else
-// the OS home dir joined with ".claude" — and no XDG or %APPDATA% indirection was
-// found for the skills root, but SC-009 on those platforms is still owed.
+// What this layout does NOT claim: no darwin observation was possible here
+// (linux/arm64 only). It is the same code path — CLAUDE_CONFIG_DIR, else the OS
+// home dir joined with ".claude" — and no XDG indirection was found for the
+// skills root, but SC-009 on darwin is still owed.
 const (
 	// ClaudeCodeConfigDirEnv is the ONLY environment variable that relocates the
 	// user-scope root. Verified: XDG_CONFIG_HOME does not.

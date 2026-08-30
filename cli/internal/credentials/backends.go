@@ -21,8 +21,7 @@ import (
 // with the library after an upgrade, and a guard that guards a copy guards
 // nothing. What this does NOT report is whether a backend will *open*: on a
 // headless Linux box secret-service is compiled in and still unreachable, and
-// pass is compiled in on every non-Windows build whether or not the `pass`
-// binary exists. Compiled-in is a build fact; reachable is a run-time one, and
+// pass is compiled in on every build whether or not the `pass` binary exists. Compiled-in is a build fact; reachable is a run-time one, and
 // only the first is this file's business.
 func Available() []keyring.BackendType {
 	return keyring.AvailableBackends()
@@ -30,13 +29,12 @@ func Available() []keyring.BackendType {
 
 // required is the backend set a shippable amctl build must have, per GOOS,
 // hand-derived from keyring v1.2.2's build constraints (R1). Note that CGO does
-// not appear: on the three target platforms the required set is the same either
-// way *by policy*, and darwin is the only one where the toolchain can fail to
+// not appear: on both target platforms the required set is the same either way
+// *by policy*, and darwin is the only one where the toolchain can fail to
 // deliver it, because keychain.go alone is behind `darwin && cgo`.
 var required = map[string][]keyring.BackendType{
-	"darwin":  {keyring.KeychainBackend},
-	"linux":   {keyring.SecretServiceBackend},
-	"windows": {keyring.WinCredBackend},
+	"darwin": {keyring.KeychainBackend},
+	"linux":  {keyring.SecretServiceBackend},
 }
 
 // Verify refuses a build whose platform credential store was dropped at compile

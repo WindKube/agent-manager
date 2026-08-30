@@ -30,7 +30,7 @@ terminal detector — entirely out of the hub's module graph and out of the hub'
 **Primary Dependencies**:
 `spf13/cobra` (verbs, matching the hub's house standard) ·
 `99designs/keyring` (credential store: macOS keychain, Secret Service, KWallet, `pass`,
-Windows credential manager, and an owner-only file as the sanctioned fallback) ·
+and an owner-only file as the sanctioned fallback) ·
 `klauspost/compress/zstd` (the bundle format, same as the hub) ·
 `Masterminds/semver/v3` (comparison for reporting upgrade vs downgrade — **not** for
 resolution, which is the hub's) ·
@@ -59,8 +59,10 @@ trivial to produce against a fake and awkward against a real one. One integratio
 against the real compose stack to prove the fake does not lie. Filesystem behaviour is tested
 against a temporary HOME, never the developer's own.
 
-**Target Platform**: `linux/amd64`, `linux/arm64`, `darwin/arm64`, `darwin/amd64`,
-`windows/amd64`. Static where possible — see R1, which says macOS cannot be.
+**Target Platform**: `linux/amd64`, `linux/arm64`, `darwin/arm64`, `darwin/amd64`. Static
+where possible — see R1, which says macOS cannot be. **Windows is not a target**: it is not
+built, not tested and not supported, and `internal/credentials`' `required` table refuses it by
+having no entry.
 
 **Project Type**: single-binary command-line client.
 
@@ -163,8 +165,8 @@ that opens — which is **`pass`, not the file**, because `pass.go` is `!windows
 `FileBackend` in that order. A Mac
 developer with `pass` on `$PATH` gets their token written into their GPG password store; one
 without gets a file. Nothing in the library reports either: a missing backend file is not an
-error at any layer, only a shorter list. Linux and Windows are CGO-invariant — `secret-service`,
-`kwallet`, `keyctl` and `wincred` are pure Go — so only the macOS builds pay for cgo.
+error at any layer, only a shorter list. Linux is CGO-invariant — `secret-service`, `kwallet`
+and `keyctl` are pure Go — so only the macOS builds pay for cgo.
 
 **Evidence.** `GOOS=darwin GOARCH=arm64 CGO_ENABLED=n go list -json github.com/99designs/keyring`
 moves `keychain.go` between `IgnoredGoFiles` and `GoFiles` on that one flag. `go tool nm` on a
@@ -179,7 +181,6 @@ being what `Open` picks:
 |---|---|---|
 | `linux/amd64`, `linux/arm64` | `secret-service kwallet keyctl pass file` | *identical* |
 | `darwin/arm64`, `darwin/amd64` | **`pass file`** — keychain lost | `keychain pass file` |
-| `windows/amd64` | `wincred file` | *identical* |
 
 The linux row was cross-checked against a real run — `keyring.AvailableBackends()` on native
 linux/arm64 prints exactly `[secret-service kwallet keyctl pass file]` — which validates the
@@ -198,7 +199,6 @@ CGO_ENABLED=0`.
 | `darwin/amd64` | **1** | macOS | same |
 | `linux/amd64` | 0 (static) | linux | Linux backends are pure Go — measured CGO-invariant |
 | `linux/arm64` | 0 (static) | linux | same |
-| `windows/amd64` | 0 (static) | linux or windows | `wincred` is pure Go — measured CGO-invariant |
 
 darwin cannot be cross-compiled for a shippable build: `CGO_ENABLED=1 GOOS=darwin` from linux
 fails with `cgo: C compiler "clang" not found`, and the host `gcc` rejects Apple's `-arch`. The
@@ -298,10 +298,10 @@ servers in user-owned `~/.codex/config.toml`, and neither can be swapped by rena
 pruned without touching keys the CLI did not write (FR-028). The frozen contract keeps all three
 enum values; a target the CLI refuses is a client-side decision and needs no OpenAPI change.
 
-**Not established.** SC-009 is met for `claude-code` on **linux only**. darwin and windows are
-the same code path (`CLAUDE_CONFIG_DIR`, else OS home + `.claude`) with no XDG or `%APPDATA%`
-indirection found for the skills root, but the observation is owed on both and belongs on the
-release-matrix runners (T063). `codex` needs ten minutes on a machine with Codex signed in:
+**Not established.** SC-009 is met for `claude-code` on **linux only**. darwin is the same
+code path (`CLAUDE_CONFIG_DIR`, else OS home + `.claude`) with no XDG indirection found for the
+skills root, but the observation is owed there and belongs on the release-matrix runners
+(T063). `codex` needs ten minutes on a machine with Codex signed in:
 plant `~/.agents/skills/amctl-probe/SKILL.md` plus the marker, confirm Codex lists the skill,
 then repeat against `~/.codex/skills` to learn whether the old root is still live, recording the
 Codex version with both answers. Two sub-questions must be settled in the same sitting because
@@ -316,8 +316,7 @@ the three findings that need regression tests are that `synced` is refused, that
 `XDG_CONFIG_HOME` is not consulted, and that the plugin-adopting subdirectory set is refused.
 
 **R3 — Atomic swap across platforms.**
-`os.Rename` over an existing directory fails on Windows and is not atomic for directories on any
-platform. Does the intended shape — extract to `staging/<digest>`, rename the old aside, rename
+`os.Rename` is not atomic for directories on any platform. Does the intended shape — extract to `staging/<digest>`, rename the old aside, rename
 the new in, remove the old only after the new is in place — leave either the old or the new
 version at every interruption point (FR-024)?
 
@@ -326,8 +325,8 @@ destination absent, wholly old or wholly new after an interruption at every one 
 a mixture — and a re-run always converges on the new version leaving no `.amctl-old` behind. The
 question's framing was wrong on a load-bearing detail: through Go's `os` package, `os.Rename`
 refuses **any** existing directory destination on **every** platform, empty or not. The
-rename-aside step is therefore not a Windows workaround but the only way `os.Rename` installs
-over anything at all.
+rename-aside step is therefore not a portability workaround but the only way `os.Rename`
+installs over anything at all.
 
 **Evidence.** `cli/internal/apply/swap_test.go` — 26 subtests, all passing, none skipped:
 `go test ./internal/apply/... -v`, and `CGO_ENABLED=1 go test -race -shuffle=on -count=2
@@ -348,13 +347,9 @@ linux/arm64, go1.26.6:
 Root cause, read from `$GOROOT/src/os/file_unix.go`: `rename()` `Lstat`s the destination and
 returns `EEXIST` for any directory *without ever reaching* `syscall.Rename`. Anyone hitting
 `EEXIST` will reach for `syscall.Rename` or `unix.Renameat` because it "works" — it does, for
-empty destinations only, then gives `ENOTEMPTY` at the first real upgrade, and has no Windows
-equivalent. `TestR3NaiveRenameOverAnExistingDestination` pins these measurements in four
-subtests, so that shortcut fails a test instead of passing review. On Windows, from source: `os.Rename` is
-`MoveFileEx(from, to, MOVEFILE_REPLACE_EXISTING)`, documented as unusable when either name is a
-directory, and `MOVEFILE_COPY_ALLOWED` is not passed, so a cross-volume move gives
-`ERROR_NOT_SAME_DEVICE` (17) rather than `EXDEV` — and `syscall.EXDEV` on Windows is an
-`APPLICATION_ERROR`-range constant no real Windows error ever equals. Cross-device was
+empty destinations only, then gives `ENOTEMPTY` at the first real upgrade.
+`TestR3NaiveRenameOverAnExistingDestination` pins these measurements in four subtests, so that
+shortcut fails a test instead of passing review. Cross-device was
 constructed for real, `/dev/shm` (tmpfs, device 29) against the home filesystem (64769), and
 `TestR3CrossDeviceStagingCollapsesTheWholeScheme` genuinely runs rather than skips.
 
@@ -380,9 +375,8 @@ window; tolerating `ENOENT` at step 2 makes the no-old-version case the same cod
 **not** add an `EXDEV` recursive-copy fallback: a copy is not atomic, so the fallback silently
 inverts the one requirement this gate exists for. Detect cross-device and fail the entry naming
 both paths. Steps 4 and 5 stay non-fatal, and a failed step 5 is surfaced as a leftover to clean
-next run — on Windows an open handle in the old tree (editor, indexer, antivirus) makes
-`RemoveAll` fail routinely, and failing the entry there reports a broken install for a working
-one. `internal/layout` must guarantee no package installs to a path ending in `.amctl-old`.
+next run: an open handle or a permission quirk in the old tree can make `RemoveAll` fail, and
+failing the entry there reports a broken install for a working one. `internal/layout` must guarantee no package installs to a path ending in `.amctl-old`.
 
 Two things the plan left open are settled by this gate. **Staging is a sibling of the
 destination** — `<dest-parent>/.amctl-staging/<digest>`, not a central
@@ -408,13 +402,10 @@ and then untested code path. The release matrix is unaffected: R3 imposes no bui
 platform-drop decision.
 
 **Not established.** The suite was **executed on linux/arm64 only**. It cross-compiles clean for
-darwin/amd64, darwin/arm64 and windows/amd64 (`go vet` per GOOS), platform expectations are
-explicit via a `runtime.GOOS` switch rather than hidden, and on the unmeasured platforms the
-errno assertions log rather than assert. The highest-value unverified items: the Windows
-`ERROR_ACCESS_DENIED` errno for rename-onto-a-directory, the `ERROR_NOT_SAME_DEVICE` (17) branch
-of the cross-device check (entirely unexercised), and the symlink subtests on Windows, where
-unprivileged `os.Symlink` needs Developer Mode. Cross-device is verified on linux only — neither
-darwin nor windows has a dependable unprivileged second filesystem here. Crash consistency under
+darwin/amd64 and darwin/arm64 (`go vet` per GOOS), platform expectations are explicit via a
+`runtime.GOOS` switch rather than hidden, and on darwin the errno assertions log rather than
+assert. Cross-device is verified on linux only — darwin has no dependable unprivileged second
+filesystem here. Crash consistency under
 a **real power loss** is not verified anywhere and cannot be by a unit test: the gate proves the
 sequence against process death at every step, not the filesystem's durability behaviour, which
 needs a crash-consistency harness (`dm-log-writes`, or a VM force-reset loop). That is the
@@ -422,12 +413,10 @@ residual risk behind the T040 fsync requirement. `swap.go` itself does not exist
 drives the sequence through a helper local to the test file, so T041 must assert that
 `swap.go`'s own aside-suffix constant equals the gate's, or the two drift apart silently.
 Closing the platform gap costs one line of CI: `cli-test` is pinned to `ubuntu-latest` while
-`cli-build` already runs on `macos-latest`, `macos-15-intel` and `windows-latest` with
-`shell: bash` and `setup-go` on `cli/go.mod`. Running `cli-test` over
-`[ubuntu-latest, macos-latest, windows-latest]` with `fail-fast: false` converts the whole
-unverified column above into measurements — Windows without `-race` (it needs cgo, and gcc is
-not guaranteed on `PATH` there; these assertions are filesystem semantics, not data races), and
-the coverage upload kept on the ubuntu leg only or the three legs collide on the artifact name.
+`cli-build` already runs on `macos-latest` and `macos-15-intel` with `shell: bash` and
+`setup-go` on `cli/go.mod`. Running `cli-test` over `[ubuntu-latest, macos-latest]` with
+`fail-fast: false` converts the unverified column above into measurements, with the coverage
+upload kept on the ubuntu leg only or the two legs collide on the artifact name.
 
 **R4 — Modification detection.**
 FR-029 needs "changed since install" without hashing a large tree on every run. Candidates:
@@ -480,12 +469,12 @@ decide it.
   security-relevant rather than bookkeeping: a `--force` overwrite of a path the CLI believes is
   a regular file writes *through* the link, which is what FR-020 exists to prevent.
 - **`size + mtime + ctime` is not merely inadvisable but impossible.** Rejected by compiling
-  rather than by assuming: `GOOS=windows` → `undefined: syscall.Stat_t`; `GOOS=darwin` →
-  `st.Ctim undefined (type *syscall.Stat_t has no field or method Ctim)`.
+  rather than by assuming: `GOOS=darwin` → `st.Ctim undefined (type *syscall.Stat_t has no field
+  or method Ctim)`.
 
 **Consequence.** T049 stores `{algo, files: {path → {sha256, size, mode, kind}}, dirs: {path →
-mode}}`, keys entry-root-relative and `filepath.ToSlash`'d so a record written on Windows reads
-on Linux. That is ~146 B per file — 3,764 B per entry, 45 KB for the whole largest profile — so
+mode}}`, keys entry-root-relative and `filepath.ToSlash`'d so the record is
+separator-independent. That is ~146 B per file — 3,764 B per entry, 45 KB for the whole largest profile — so
 **T017's `state.json` field must be an object, not a scalar**: this document's on-disk state
 model line "the fingerprint from R4" means a per-file map. `Mode` and `Kind` MUST come from
 `lstat` on the file as actually written, never from the archive header — under `umask 0027` a
@@ -518,10 +507,9 @@ ctime, so it needs no per-GOOS plumbing at all.
 
 **Not established.** The tree is **synthetic**. The seeded catalogue is 40 files totalling
 34,887 bytes — too small to benchmark anything, so the shape was kept and the counts scaled;
-the numbers are therefore a fair stand-in rather than a measurement of real bundles. darwin and
-windows are unmeasured: the HFS+ 1-second and exFAT 2-second mtime granularities are documented
-claims, and the 1-second matrix row models them by truncating stored mtimes rather than by
-running on such a volume. They *strengthen* the rejection of size+mtime; what *establishes* it
+the numbers are therefore a fair stand-in rather than a measurement of real bundles. darwin is
+unmeasured: the HFS+ 1-second mtime granularity is a documented claim, and the 1-second matrix
+row models it by truncating stored mtimes rather than by running on such a volume. They *strengthen* the rejection of size+mtime; what *establishes* it
 is the measured ext4/`CONFIG_HZ` finding. The one reported budget breach — ceiling entry, cold
 cache, no SHA-2 acceleration, 1.05 s — is a **modelled** worst case: 386.87 MB/s is
 `GODEBUG=cpu.sha2=off` on an ARM core standing in for an x86-64 without SHA-NI, not a

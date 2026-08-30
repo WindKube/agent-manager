@@ -87,9 +87,9 @@ func TestServedLockfilesConformToTheFrozenSchema(t *testing.T) {
 	schema := lockfileSchema(t)
 
 	bodies := servedLockfiles(t, tg)
-	// Six: five profile heads plus the baseline's older revision. Asserted so a
+	// Seven: six profile heads plus the baseline's older revision. Asserted so a
 	// profile silently dropped from the catalog cannot shrink this test to nothing.
-	require.Len(t, bodies, 6)
+	require.Len(t, bodies, 7)
 
 	for key, body := range bodies {
 		t.Run("lockfile "+key+" validates", func(t *testing.T) {

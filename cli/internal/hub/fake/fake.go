@@ -87,6 +87,16 @@ type Fixtures struct {
 	// UnknownSkipReason is a profile whose skipped array carries a reason value
 	// this build has never seen. FR-011 says report it verbatim.
 	UnknownSkipReason string
+	// UnwritableTarget is a profile whose lockfile names a target this client
+	// cannot write (codex, gated on gate R2's unmade measurement). It must be
+	// REFUSED with the target named, never silently skipped: writing nowhere and
+	// reporting success is the failure R2 exists to prevent.
+	//
+	// It is a profile of its own rather than a property of every profile. The
+	// earlier fixture named codex on all of them, which meant no profile the fake
+	// served could be synced at all — see the note in catalog.go's profiles().
+	UnwritableTarget string
+
 	// MissingProfile is a slug that does not exist. 404.
 	MissingProfile string
 }
@@ -246,6 +256,7 @@ func (h *Hub) Target() Target {
 			ForbiddenEntryID:   "contoso/gated",
 			PresignedBundle:    slugPresigned,
 			UnknownSkipReason:  slugFutureSkip,
+			UnwritableTarget:   slugUnwritable,
 			MissingProfile:     slugMissing,
 		},
 	}

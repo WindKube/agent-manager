@@ -86,6 +86,7 @@ const (
 	slugForbidden      = "bundle-forbidden"
 	slugPresigned      = "presigned-bundles"
 	slugFutureSkip     = "future-skip-reason"
+	slugUnwritable     = "unwritable-target"
 	slugMissing        = "no-such-profile"
 )
 
@@ -120,18 +121,32 @@ func catalog() []*pkg {
 }
 
 func profiles() []profileSpec {
-	// Both contract targets, deliberately, even though R2 ships only claude-code:
-	// the fake serves what the hub may serve, and a lockfile naming a target the
-	// client cannot write is the case FR-011 and layout's ErrR2Unresolved exist for.
-	// A fake that only ever names the shipped target cannot exercise the refusal.
-	claudeCode := []hub.LockfileTargets{"claude-code", "codex"}
+	// TWO target fixtures, and which profile gets which is load-bearing.
+	//
+	// An earlier version put both contract targets on every profile, reasoning
+	// that "the fake serves what the hub may serve" and that a fake naming only
+	// the shipped target could not exercise ErrR2Unresolved. The first half is
+	// right and the conclusion was wrong: because codex is unwritable by design,
+	// naming it on EVERY profile meant every profile the fake serves is refused,
+	// so the fake could not serve the happy path at all. T045 and T046 — the
+	// idempotence and interruption properties, the two that decide whether the
+	// MVP works — had no syncable profile to run against, and the agent writing
+	// the sync verb had to stand up a rewriting reverse proxy to get one.
+	//
+	// The real hub's own seeded lockfile names claude-code only
+	// (internal/api/integration_test.go, storedLockfile), so that is the shipping
+	// case and it belongs on the profiles that model a working sync. The refusal
+	// gets a profile of its own, named for it, so it is still exercised — by a
+	// test that asks for it rather than by every test incidentally.
+	writable := []hub.LockfileTargets{"claude-code"}
+	unwritable := []hub.LockfileTargets{"claude-code", "codex"}
 	return []profileSpec{
 		{
 			slug: slugBaseline, name: "Platform baseline", visibility: "organisation",
 			revisions: []revisionSpec{
 				{
 					revision: 6, note: "Previous quarter", gate: "approval",
-					policy: "pinned", targets: claudeCode,
+					policy: "pinned", targets: writable,
 					entries: []entrySpec{
 						{pkgID: "acme/code-review@2.4.0", resolution: "pinned", verdict: "clean"},
 					},
@@ -142,7 +157,7 @@ func profiles() []profileSpec {
 				},
 				{
 					revision: 7, note: "Quarterly refresh", gate: "approval",
-					policy: "pinned", targets: claudeCode,
+					policy: "pinned", targets: writable,
 					entries: []entrySpec{
 						{pkgID: "acme/code-review@2.4.1", resolution: "pinned", verdict: "clean",
 							signature: &hub.LockfileSignature{
@@ -175,7 +190,7 @@ func profiles() []profileSpec {
 		{
 			slug: slugDigestMismatch, name: "Digest mismatch", visibility: "private",
 			revisions: []revisionSpec{{
-				revision: 1, gate: "block", targets: claudeCode,
+				revision: 1, gate: "block", targets: writable,
 				entries: []entrySpec{
 					{pkgID: "acme/code-review@2.4.1", resolution: "pinned", verdict: "clean"},
 					// The digest of a DIFFERENT real bundle. Both sides are genuine
@@ -190,7 +205,7 @@ func profiles() []profileSpec {
 		{
 			slug: slugForbidden, name: "Gated bundle", visibility: "organisation",
 			revisions: []revisionSpec{{
-				revision: 2, gate: "block", targets: claudeCode,
+				revision: 2, gate: "block", targets: writable,
 				// Order matters: one installable entry, then the 403, then another
 				// installable entry. A sync that aborts on the 403 leaves the third
 				// uninstalled, which is what FR-011's mid-sync case is about.
@@ -205,7 +220,7 @@ func profiles() []profileSpec {
 		{
 			slug: slugPresigned, name: "Pre-signed bundles", visibility: "organisation",
 			revisions: []revisionSpec{{
-				revision: 1, gate: "warn-with-override", targets: claudeCode,
+				revision: 1, gate: "warn-with-override", targets: writable,
 				entries: []entrySpec{
 					{pkgID: "contoso/offloaded@1.2.0", resolution: "pinned", verdict: "clean"},
 				},
@@ -213,9 +228,23 @@ func profiles() []profileSpec {
 			}},
 		},
 		{
+			// The ErrR2Unresolved case: a lockfile naming a target this client
+			// cannot write. It must be REFUSED with the target named, never
+			// silently skipped — writing nowhere and reporting success is the
+			// exact failure R2 exists to prevent.
+			slug: slugUnwritable, name: "Names an unwritable target", visibility: "organisation",
+			revisions: []revisionSpec{{
+				revision: 1, gate: "approval", policy: "pinned", targets: unwritable,
+				entries: []entrySpec{
+					{pkgID: "acme/code-review@2.4.1", resolution: "pinned", verdict: "clean"},
+				},
+				skipped: []hub.LockfileSkip{},
+			}},
+		},
+		{
 			slug: slugFutureSkip, name: "Unknown skip reason", visibility: "organisation",
 			revisions: []revisionSpec{{
-				revision: 1, gate: "approval", targets: claudeCode,
+				revision: 1, gate: "approval", targets: writable,
 				entries: []entrySpec{
 					{pkgID: "acme/code-review@2.4.1", resolution: "pinned", verdict: "clean"},
 				},

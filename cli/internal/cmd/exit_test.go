@@ -103,7 +103,10 @@ func TestMainExitCodes(t *testing.T) {
 		want Code
 	}{
 		{"version succeeds with nothing changed", []string{"version"}, CodeNoChanges},
-		{"a stub verb exits zero", []string{"sync"}, CodeNoChanges},
+		{"a stub verb exits zero", []string{"status"}, CodeNoChanges},
+		// sync is no longer a stub: with no --hub it refuses, before any
+		// request, which is FR-039's ordering seen from the exit code.
+		{"sync with no hub is a refusal", []string{"sync"}, CodeRefused},
 		{"no arguments prints help and exits zero", nil, CodeNoChanges},
 		{"an unknown output format is a refusal", []string{"--output", "yaml", "version"}, CodeRefused},
 		{"an unknown flag is a refusal", []string{"--nope", "version"}, CodeRefused},
@@ -192,9 +195,9 @@ func TestDiagnosticsNeverReachTheResultStream(t *testing.T) {
 	// assert; the property being tested belongs to output.Streams and not to
 	// any one verb.
 	var result, diag bytes.Buffer
-	require.Equal(t, CodeNoChanges, Main([]string{"--output", "json", "sync"}, &result, &diag))
+	require.Equal(t, CodeNoChanges, Main([]string{"--output", "json", "status"}, &result, &diag))
 	require.Empty(t, result.String())
-	require.Contains(t, diag.String(), "sync is not implemented yet")
+	require.Contains(t, diag.String(), "status is not implemented yet")
 }
 
 func TestErrorsGoToTheDiagnosticStream(t *testing.T) {

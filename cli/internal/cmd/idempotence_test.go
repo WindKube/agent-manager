@@ -28,8 +28,8 @@
 //     destination with identical bytes. If the extractor ever restored mtimes
 //     from the archive header, mtime would go blind and this is what still
 //     fires. Sound in ONE direction only: SameFile false proves a replacement,
-//     SameFile true does not prove there was none — NTFS recycles MFT record
-//     numbers. Used as a detector, never as a licence.
+//     SameFile true does not prove there was none — an inode number can be
+//     reused. Used as a detector, never as a licence.
 //   - the request log — run two must not re-download a bundle. The cache is
 //     the second most likely place for a silent rewrite, and a re-download that
 //     landed identical bytes is invisible to every channel above (cache.Put

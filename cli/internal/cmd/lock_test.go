@@ -15,6 +15,10 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/WindKube/agent-manager/cli/internal/output"
+	"github.com/WindKube/agent-manager/cli/internal/plan"
+	"github.com/WindKube/agent-manager/cli/internal/record"
 )
 
 // lockHome builds a Home over a temp directory without going through
@@ -321,6 +325,40 @@ func TestAHolderWhoseLockWasReclaimedReportsLost(t *testing.T) {
 	holder, _, err := readLock(h.LockPath())
 	require.NoError(t, err)
 	require.Equal(t, "zzzz", holder.Token, "the thief's lock must survive our Release")
+}
+
+// TestASyncWhoseLockWasReclaimedStopsBeforeWriting is the other half of the test
+// above, and it is what makes the detection a mitigation rather than a fact
+// nobody reads. Lock.Lost's own doc says "a caller that sees true should stop
+// before it writes anything more"; until this was wired, `sync` discarded the
+// *Lock at WithLock and Lost had no production call site at all, so a holder
+// frozen past the staleness window resumed and kept swapping entries in a tree
+// another amctl was already applying to.
+func TestASyncWhoseLockWasReclaimedStopsBeforeWriting(t *testing.T) {
+	h := lockHome(t)
+	l, err := acquire(h, fastOpts(defaultLockOptions()))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = l.Release() })
+
+	opts, _, _ := testOptions("https://hub.example.com", output.FormatHuman)
+	r := &syncRun{opts: opts, s: opts.Streams(), home: h, lock: l}
+	require.NoError(t, r.stillOurs(), "a lock we still hold is not a reason to stop")
+
+	// Another run reclaims it while this one is frozen.
+	writeLockFile(t, h, Holder{PID: 999999, Host: "thief", Token: "zzzz"}, time.Now())
+	require.Eventually(t, l.Lost, 5*time.Second, 5*time.Millisecond)
+
+	err = r.stillOurs()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), h.LockPath(), "the message must name the lock")
+	require.False(t, IsRefusal(err), "nothing the user did caused this and re-running is the fix")
+
+	// And the apply phase refuses before it opens the tree.
+	applied, aerr := r.apply(t.Context(), plan.Plan{}, record.New("https://hub.example.com"),
+		filepath.Join(h.Root, "hub", record.FileName), nil, nil, nil)
+	require.Error(t, aerr)
+	require.Contains(t, aerr.Error(), h.LockPath())
+	require.Nil(t, applied, "nothing may be attempted once the lock is somebody else's")
 }
 
 // A corrupt lock file is still a lock: treating it as absent would be a way to

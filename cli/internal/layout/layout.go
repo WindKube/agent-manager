@@ -321,7 +321,7 @@ func StagingRoot(dest string) string {
 }
 
 // DestCollisionKey is the key under which two destinations are the SAME
-// directory on a case-insensitive filesystem — APFS and NTFS by default.
+// directory on a case-insensitive filesystem — APFS by default.
 //
 // This is the one FR-023 hazard a per-entry function cannot close. `Acme/x` and
 // `acme/x` are two packages with two distinct destinations on ext4 and one

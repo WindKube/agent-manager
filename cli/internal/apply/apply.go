@@ -185,6 +185,26 @@ type Config struct {
 	// unchanged sync would rewrite state.json on every run and make FR-025
 	// false of the record while being true of the tree.
 	Now func() time.Time
+
+	// Continue is asked, before each entry, whether this run may still write.
+	// A non-nil error abandons the rest of the plan; entries already installed
+	// stay installed and recorded, because they landed while the answer was yes.
+	//
+	// It exists for the one hazard the per-home sync lock cannot catch: a
+	// holder frozen past the staleness window — SIGSTOP, a laptop suspend, a
+	// hung NFS read — is declared stale, a second amctl reclaims the lock and
+	// starts applying, and the first then resumes with no idea. internal/cmd's
+	// Lock heartbeat DETECTS that (Lock.Lost), and this is where a caller acts
+	// on it. Two concurrent Swaps of one entry can otherwise have one process's
+	// step 2 rename the destination aside while the other's step 1 reclaims it.
+	//
+	// It is a seam and not a context because the answer is not cancellation:
+	// the run is not being asked to stop, it is being told it no longer owns
+	// the tree, and the distinction is what the message has to say.
+	//
+	// Nil means "always". Nothing here can un-write what already landed, which
+	// is why the check is per entry rather than once at the start.
+	Continue func() error
 }
 
 // Applier executes plans against one home and one installation record.
@@ -270,10 +290,18 @@ type Result struct {
 
 	Failed []EntryError
 
-	// Leftovers are `.amctl-old` paths a swap could not remove. Each is already
-	// inside the entry's removable set,
-	// so the next swap of the same entry discards it; the caller reports them
-	// and does nothing else.
+	// Leftovers are `.amctl-old` paths that still exist after sweepAsides ran,
+	// which is the last thing Apply does. Each is inside the entry's removable
+	// set — record.Entry.RemovablePaths() is {Dest, Dest+AsideSuffix} — so
+	// nothing has to remember them across runs and no glob is ever needed to
+	// find one.
+	//
+	// It is the SWEEP's list and not the swap's. A swap whose step 5 failed does
+	// not put a path here: the sweep retries it at the end of the same run, so a
+	// handle released in between does not leave the run reporting a leftover it
+	// no longer has. What lands here is a path amctl could not remove twice, and
+	// the caller must report it — until it goes, every later change to that
+	// entry fails on Swap's step 1.
 	Leftovers []string
 
 	// RecordWrites counts the times state.json actually changed on disk. Zero
@@ -332,7 +360,7 @@ func (a *Applier) Apply(ctx context.Context, p plan.Plan) (*Result, error) {
 	writes := p.Writes()
 	for i := range writes {
 		c := writes[i]
-		if err := ctx.Err(); err != nil {
+		if err := a.mayContinue(ctx); err != nil {
 			res.Failed = append(res.Failed, EntryError{Change: c, Err: err})
 			joined := res.Err()
 			return res, joined
@@ -342,8 +370,21 @@ func (a *Applier) Apply(ctx context.Context, p plan.Plan) (*Result, error) {
 	a.applyRemovals(ctx, p, res)
 	a.saveRecord(res)
 	a.pruneStaging(p)
+	a.sweepAsides(p, res)
 	joined := res.Err()
 	return res, joined
+}
+
+// mayContinue is the two questions asked before every entry: has the caller
+// cancelled, and does this run still own the tree. See Config.Continue.
+func (a *Applier) mayContinue(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if a.cfg.Continue == nil {
+		return nil
+	}
+	return a.cfg.Continue()
 }
 
 // checkProfiles refuses a plan naming a profile the caller did not describe.
@@ -390,9 +431,11 @@ func (a *Applier) applyChange(ctx context.Context, c plan.Change, res *Result) {
 		return
 	}
 	if leftover := inst.Swap.LeftoverAside(); leftover != "" {
-		a.cfg.Log.Warnf("%s: could not remove %s (%v); it will be cleaned up on the next sync of this entry",
+		// Reported, not recorded: sweepAsides retries it at the end of this run
+		// and owns Result.Leftovers, so a handle released between the swap and
+		// then does not leave the run claiming a leftover it no longer has.
+		a.cfg.Log.Debugf("%s: the swap could not remove %s (%v); it is retried at the end of this run",
 			c.ID, leftover, inst.Swap.RemoveAsideErr)
-		res.Leftovers = append(res.Leftovers, leftover)
 	}
 	res.Installed = append(res.Installed, *inst)
 
@@ -580,31 +623,43 @@ func (a *Applier) guard(c plan.Change, cont Contained) error {
 			"%s: --force is replacing %s, which amctl's record does not claim", c.ID, c.Dest)
 
 	case st.marker != nil && st.marker.ID == c.ID && st.marker.Target == c.Target &&
-		st.marker.Version == c.Version && c.From.Version != c.Version:
-		// The record and the tree disagree, and the TREE is already at the
-		// version being installed. The only thing that produces that state is a
-		// run killed between the swap and the record write, and the FR-022
-		// marker — amctl's own file, written into the staged tree before the
-		// swap — is the proof.
+		st.marker.Version == c.Version && st.marker.Digest == c.Digest &&
+		(c.From.Version != c.Version || c.From.Digest != c.Digest):
+		// The record and the tree disagree, and the TREE is already exactly what
+		// this change installs. The only thing that produces that state is a run
+		// killed between the swap and the record write, and the FR-022 marker —
+		// amctl's own file, written into the staged tree before the swap — is
+		// the proof.
 		//
 		// The branch above does the same for an entry the record does not claim
-		// at all; this is the same interruption on an UPGRADE, where the record
-		// still names the old version. Without it, verifyUnmodified demands a
-		// positive unmodified verdict for a version that is no longer on disk,
+		// at all; this is the same interruption on a WRITE, where the record
+		// still names what was there before. Without it, verifyUnmodified demands
+		// a positive unmodified verdict for bytes that are no longer on disk,
 		// gets none, and refuses — so `sync` exits non-zero forever on a machine
 		// whose tree is already correct, until a human passes --force. T046
 		// measured exactly that.
 		//
-		// The guard is deliberately narrow. `c.From.Version != c.Version` is
-		// what keeps it to the interrupted case: when the record and the tree
-		// agree there is no change to apply, so a marker matching the target
-		// version while the record names a different one is not a state any
-		// completed run can leave. It never widens to "the marker says it is
-		// ours, so overwrite" — that would silence verifyUnmodified for every
-		// upgrade and hand back the user-edit protection it exists to give.
+		// THE PREDICATE IS "the marker names this exact change and the record
+		// does not", not "the versions differ". The version inequality alone was
+		// wrong on plan.OpReplace: the hub may republish one version with new
+		// bytes, and plan.change emits a write for it whose From.Version EQUALS
+		// c.Version and whose From.Digest does not. That write is a real
+		// interruption case and the version test could not see it, so the
+		// republish refused forever — the same non-convergence this branch was
+		// added to remove. Comparing DIGESTS on both sides covers upgrade,
+		// downgrade and republish with one rule.
+		//
+		// The guard is deliberately narrow, and comparing the marker's digest
+		// makes it narrower than the version test was rather than wider: the
+		// tree must be byte-for-byte the install this change would perform. It
+		// never widens to "the marker says it is ours, so overwrite" — that
+		// would silence verifyUnmodified for every upgrade and hand back the
+		// user-edit protection it exists to give. The record-and-tree
+		// disagreement is what keeps it to the interrupted case: when the two
+		// agree there is no change to apply at all.
 		a.cfg.Log.Warnf("%s: %s already holds %s and amctl's marker for it, but the record still names %s; "+
 			"a previous sync was interrupted between the install and the record write, so the record is being caught up",
-			c.ID, c.Dest, c.Version, c.From.Version)
+			c.ID, c.Dest, c.Version, describeFrom(c))
 		return nil
 
 	default:
@@ -653,6 +708,20 @@ func (a *Applier) override(refusal error, format string, args ...any) error {
 	}
 	a.cfg.Log.Warnf(format, args...)
 	return nil
+}
+
+// describeFrom names what the record still claims, in a way that reads for a
+// republish as well as for an upgrade. "the record still names 1.4.0" is
+// nonsense when the version being installed is also 1.4.0; the digest is the
+// only thing that moved, so the digest is what the sentence has to say.
+func describeFrom(c plan.Change) string {
+	if c.From == nil {
+		return "nothing"
+	}
+	if c.From.Version == c.Version {
+		return c.From.Version + " at digest " + c.From.Digest.Lockfile()
+	}
+	return c.From.Version
 }
 
 func orUnknown(s string) string {
@@ -886,6 +955,109 @@ func upsertEntry(entries []record.Entry, e record.Entry) []record.Entry {
 // pruneStaging removes the shared .amctl-staging directory beside each
 // destination this run touched, once, and only when it is empty. Best effort: an
 // empty directory left behind is tidiness, not correctness.
+// sweepAsides removes the `.amctl-old` beside every destination this plan
+// mentions, and it is the reason a failed step 5 is survivable.
+//
+// THE BUG THIS EXISTS FOR. Swap's step 5 is non-fatal — an open handle or a
+// permission quirk in the OLD tree must not fail an install that already
+// landed — and the only other code that removes an aside is Swap's step 1,
+// which runs solely when an entry is being WRITTEN. Once the record write lands
+// the entry is Unchanged on every later run, so Swap is never called for it
+// again and the leftover is permanent: a complete copy of the old version
+// sitting in ~/.claude/skills beside the live one, which the agent may well
+// load. Worse, step 1 is FATAL on an aside it cannot remove, so the entry then
+// refuses every future change until somebody deletes the directory by hand.
+//
+// Sweeping the whole plan rather than only its writes is what closes that: a
+// converged run still passes through here, and convergence is exactly the state
+// the leftover survives into.
+//
+// WHAT IT REFUSES TO DO. It never removes an aside whose destination is ABSENT.
+// That is the one shape in which the aside holds the only complete copy of the
+// entry — a crash in Swap's single-rename window between steps 2 and 3 — and
+// Swap's step 1 reclaims it by renaming it back. Deleting it here would destroy
+// the version the record claims. It also runs every path through
+// Home.Contains first, so FR-020 is checked on the resolved path before
+// anything is unlinked, and it derives the path as dest+AsideSuffix rather than
+// by listing the directory, so what it may remove stays exactly
+// record.Entry.RemovablePaths() and FR-028 holds by construction (FR-028's
+// failure mode is a glob that matches somebody's hand-written skill).
+func (a *Applier) sweepAsides(p plan.Plan, res *Result) {
+	res.Leftovers = nil
+	for _, dest := range plannedDests(p) {
+		if err := a.sweepAside(dest); err != nil {
+			res.Leftovers = append(res.Leftovers, dest+AsideSuffix)
+			a.cfg.Log.Warnf("%s could not be removed (%v); it is a leftover copy of an earlier version of %s "+
+				"and is safe to delete by hand — amctl will keep trying, and every change to that entry fails until it goes",
+				dest+AsideSuffix, err, dest)
+		}
+	}
+}
+
+// sweepAside removes one aside, or explains why it could not.
+//
+// It reports an error ONLY when an aside was observed to exist and its removal
+// failed. Everything before that — a destination outside the home, a
+// destination this package refuses to touch, a parent that cannot be opened, an
+// aside that is not there — returns nil, because none of them is evidence of a
+// leftover. The containment refusal in particular is already the entry's own
+// failure and is reported there; repeating it here as "a leftover could not be
+// removed" would name a path that does not exist and bury the real message.
+func (a *Applier) sweepAside(dest string) error {
+	cont, err := a.cfg.Home.Contains(dest)
+	if err != nil {
+		return nil //nolint:nilerr // see the comment above: not evidence of a leftover
+	}
+	parent, name, err := splitDest(cont.Dest)
+	if err != nil {
+		return nil //nolint:nilerr // as above
+	}
+	root, err := os.OpenRoot(parent)
+	if err != nil {
+		return nil //nolint:nilerr // as above
+	}
+	defer func() { _ = root.Close() }()
+
+	asideName := name + AsideSuffix
+	if _, lerr := root.Lstat(asideName); lerr != nil {
+		return nil //nolint:nilerr // as above
+	}
+	if _, derr := root.Lstat(name); errors.Is(derr, fs.ErrNotExist) {
+		// The interrupted-swap shape: the aside is the only copy. Swap's step 1
+		// puts it back; this must not delete it.
+		return nil
+	}
+	return root.RemoveAll(asideName)
+}
+
+// plannedDests is every destination a plan mentions, deduplicated. Writes,
+// unchanged entries, removals and retained removals all qualify: an aside is
+// legal beside any of them, and the converged (Unchanged) case is the one the
+// sweep exists for.
+func plannedDests(p plan.Plan) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, p.ChangeCount()+len(p.Unchanged))
+	add := func(dest string) {
+		if dest == "" {
+			return
+		}
+		if _, dup := seen[dest]; dup {
+			return
+		}
+		seen[dest] = struct{}{}
+		out = append(out, dest)
+	}
+	for _, set := range [][]plan.Change{p.Add, p.Upgrade, p.Downgrade, p.Unchanged} {
+		for i := range set {
+			add(set[i].Dest)
+		}
+	}
+	for i := range p.Remove {
+		add(p.Remove[i].Dest)
+	}
+	return out
+}
+
 func (a *Applier) pruneStaging(p plan.Plan) {
 	seen := map[string]struct{}{}
 	writes := p.Writes()

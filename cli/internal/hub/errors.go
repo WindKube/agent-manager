@@ -70,6 +70,17 @@ const (
 	// at a load balancer's error page looks like, and calling that
 	// "unreachable" sends the user hunting a network fault that is not there.
 	ClassProtocol
+	// ClassOffload — getBundle's 307 was followed and the OBJECT STORE refused.
+	// The status came from a host that is not the hub, so the whole table above
+	// is the wrong table to read it with: an object store answers 403 for an
+	// expired pre-signed signature, for clock skew, and for a proxy in front of
+	// it, none of which is the organisation's scan gate, and it answers 404 for
+	// an object that was garbage-collected, which is not "no such version".
+	//
+	// This class exists because ClassForbidden carries a POLICY meaning that
+	// FR-011 turns into "skip this entry and exit 0". Attributing a download
+	// failure to the gate is how a sync installs nothing and reports success.
+	ClassOffload
 )
 
 // Sentinels, one per Class, so a caller may use errors.Is instead of switching
@@ -86,6 +97,9 @@ var (
 	ErrUnavailable   = errors.New("hub is not ready")
 	ErrServer        = errors.New("hub failed internally")
 	ErrProtocol      = errors.New("response did not come from a hub")
+	// ErrOffload is ClassOffload's sentinel: the hub's 307 was followed and the
+	// object store refused. NOT a gate decision — see ClassOffload.
+	ErrOffload = errors.New("the object store the hub redirected to refused the bundle")
 
 	// ErrInsecureHub is returned by New for an http:// hub without
 	// Config.AllowPlaintext (FR-041). It is not a Class: no request was made.
@@ -109,6 +123,7 @@ var classSentinel = map[Class]error{
 	ClassUnavailable:   ErrUnavailable,
 	ClassServer:        ErrServer,
 	ClassProtocol:      ErrProtocol,
+	ClassOffload:       ErrOffload,
 }
 
 // classSlug is the stable machine-facing token for a Class — what
@@ -127,6 +142,7 @@ var classSlug = map[Class]string{
 	ClassUnavailable:   "unavailable",
 	ClassServer:        "server-error",
 	ClassProtocol:      "not-a-hub",
+	ClassOffload:       "offload-refused",
 }
 
 // String implements fmt.Stringer with the machine-facing slug.
@@ -143,7 +159,7 @@ func Classes() []Class {
 	return []Class{
 		ClassUnreachable, ClassTLS, ClassUnauthorised, ClassForbidden,
 		ClassNotFound, ClassRateLimited, ClassRequest, ClassUnimplemented,
-		ClassUnavailable, ClassServer, ClassProtocol,
+		ClassUnavailable, ClassServer, ClassProtocol, ClassOffload,
 	}
 }
 
@@ -153,6 +169,11 @@ func Classes() []Class {
 func (c Class) Retryable() bool {
 	switch c {
 	case ClassUnreachable, ClassRateLimited, ClassUnavailable, ClassServer:
+		return true
+	case ClassOffload:
+		// A pre-signed URL is short-lived by construction, so the commonest
+		// cause — the signature expired during a slow or large download — is
+		// gone by the next run, which asks the hub for a fresh one.
 		return true
 	case ClassTLS, ClassUnauthorised, ClassForbidden, ClassNotFound,
 		ClassRequest, ClassUnimplemented, ClassProtocol:

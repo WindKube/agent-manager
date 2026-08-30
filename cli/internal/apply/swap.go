@@ -66,10 +66,15 @@ type SwapResult struct {
 	RemoveAsideErr error
 }
 
-// LeftoverAside is the path a caller must report as needing cleanup, or "" when
-// there is none. It is the same path the next run's step 1 will discard, and the
-// same path record.Entry.RemovablePaths() already covers, so nothing has to
-// remember it across runs and no glob is ever needed to find it.
+// LeftoverAside is the path step 5 could not remove, or "" when there is none.
+// It is the same path record.Entry.RemovablePaths() already covers, so nothing
+// has to remember it across runs and no glob is ever needed to find it.
+//
+// Two things remove it, and BOTH are needed: the next swap of this entry
+// discards it at step 1, and Apply's sweep retries it at the end of every run
+// that mentions the entry. The sweep is not redundant — after the record write
+// the entry is Unchanged on every later run, so without it a leftover on a
+// converged machine would never be looked at again.
 func (r SwapResult) LeftoverAside() string {
 	if r.RemoveAsideErr != nil {
 		return r.Aside
@@ -153,7 +158,13 @@ func Swap(staging, dest string) (SwapResult, error) {
 			// dest is there, so the aside is a superseded duplicate from a crash
 			// after step 3. dest is authoritative.
 			if rerr := root.RemoveAll(asideName); rerr != nil {
-				return res, fmt.Errorf("discard stale %s: %w", res.Aside, rerr)
+				// Naming it as something the operator may delete matters: this
+				// is fatal for the entry and stays fatal on every later run
+				// until the directory goes, and the aside is never a live
+				// install — it is a superseded copy this swap already replaced.
+				return res, fmt.Errorf("discard stale %s: %w; it is a leftover copy of an earlier version "+
+					"and is safe to delete by hand, and no change to this entry can be applied until it is gone",
+					res.Aside, rerr)
 			}
 			res.DiscardedAside = true
 		}

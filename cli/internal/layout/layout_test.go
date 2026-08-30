@@ -632,7 +632,7 @@ func TestMarkerRefusals(t *testing.T) {
 	})
 }
 
-// The one FR-023 hazard a per-entry function cannot close: APFS and NTFS fold
+// The one FR-023 hazard a per-entry function cannot close: APFS folds
 // case, so two ids differing only in case share one directory. Recorded here so
 // internal/plan has a named thing to compare and the limitation is not
 // rediscovered as a bug.
@@ -647,7 +647,7 @@ func TestDestCollisionKeyExposesTheCaseFoldingHazard(t *testing.T) {
 
 	require.NotEqual(t, lower.Dest, upper.Dest, "the names are kept verbatim, never lowercased")
 	require.Equal(t, layout.DestCollisionKey(lower.Dest), layout.DestCollisionKey(upper.Dest),
-		"on APFS and NTFS these are one directory; internal/plan must refuse the pair")
+		"on APFS these are one directory; internal/plan must refuse the pair")
 }
 
 func TestKnownTargetNamesIsTheVocabularyAndNotTheWritableSet(t *testing.T) {

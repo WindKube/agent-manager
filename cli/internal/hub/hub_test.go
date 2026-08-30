@@ -678,6 +678,8 @@ func wantSentinel(t *testing.T, c Class) error {
 		return ErrServer
 	case ClassProtocol:
 		return ErrProtocol
+	case ClassOffload:
+		return ErrOffload
 	default:
 		t.Fatalf("no sentinel expectation written for class %d", int(c))
 		return nil
@@ -1288,7 +1290,7 @@ func TestClassTableIsComplete(t *testing.T) {
 		// not to itself.
 		require.ErrorIs(t, &OpError{Class: c}, sentinel)
 	}
-	require.Len(t, seenSlug, 11, "a new class needs a slug, a sentinel and a Retryable answer")
+	require.Len(t, seenSlug, 12, "a new class needs a slug, a sentinel and a Retryable answer")
 
 	require.Equal(t, Class(0), ClassOf(nil))
 	require.Equal(t, Class(0), ClassOf(fmt.Errorf("something else entirely")))
@@ -1297,7 +1299,10 @@ func TestClassTableIsComplete(t *testing.T) {
 	// Retryable, hand-written rather than derived.
 	wantRetryable := map[Class]bool{
 		ClassUnreachable: true, ClassRateLimited: true, ClassUnavailable: true, ClassServer: true,
-		ClassTLS: false, ClassUnauthorised: false, ClassForbidden: false, ClassNotFound: false,
+		// A pre-signed URL is short-lived, so the commonest offload refusal is
+		// an expired signature the next run replaces.
+		ClassOffload: true,
+		ClassTLS:     false, ClassUnauthorised: false, ClassForbidden: false, ClassNotFound: false,
 		ClassRequest: false, ClassUnimplemented: false, ClassProtocol: false,
 	}
 	for _, c := range Classes() {

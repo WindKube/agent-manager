@@ -175,18 +175,44 @@ func scanModule(t *testing.T, root, module string) map[string]*pkgInfo {
 	return pkgs
 }
 
+// collectCalls records two different things from two different node types, and
+// the split is load-bearing.
+//
+// `selectors` is every qualified SelectorExpr, called or not, because the
+// destination-derivation rule asks whether internal/apply so much as MENTIONS
+// layout.NewRegistry.
+//
+// `mutators` is only a SelectorExpr in the FUNCTION position of a CallExpr. It
+// used to be every SelectorExpr whose final name matched, which counted a FIELD
+// READ as a mutation: `p.Remove` in internal/plan's compute.go — a read of
+// Plan.Remove, the slice of removals — made the pure planning package register
+// as a mutator and therefore unable to import internal/layout at all. That is
+// what kept layout.DestCollisionKey, written for internal/plan and documented
+// as belonging there, from ever being called; the FR-023 case-folding hazard it
+// closes was open the whole time.
+//
+// What the narrowing gives up is a mutating function used as a VALUE —
+// `defer r.Remove` or passing os.RemoveAll to something. No such use exists in
+// this module, and the rule it feeds is a conjunction with an import, so the
+// cost is bounded to a package that both knows the agent tree and launders its
+// writes through a function value. TestBoundariesFireOnASyntheticViolation
+// pins both directions: a call is still seen, a field read is not.
 func collectCalls(f *ast.File, info *pkgInfo, file string) {
 	ast.Inspect(f, func(n ast.Node) bool {
-		sel, ok := n.(*ast.SelectorExpr)
-		if !ok {
-			return true
-		}
-		qualified := sel.Sel.Name
-		if ident, isIdent := sel.X.(*ast.Ident); isIdent {
-			qualified = ident.Name + "." + sel.Sel.Name
-			info.selectors[qualified] = true
-		}
-		if mutatingCalls[sel.Sel.Name] {
+		switch node := n.(type) {
+		case *ast.SelectorExpr:
+			if ident, isIdent := node.X.(*ast.Ident); isIdent {
+				info.selectors[ident.Name+"."+node.Sel.Name] = true
+			}
+		case *ast.CallExpr:
+			sel, ok := node.Fun.(*ast.SelectorExpr)
+			if !ok || !mutatingCalls[sel.Sel.Name] {
+				return true
+			}
+			qualified := sel.Sel.Name
+			if ident, isIdent := sel.X.(*ast.Ident); isIdent {
+				qualified = ident.Name + "." + sel.Sel.Name
+			}
 			info.mutators[qualified] = append(info.mutators[qualified], file)
 		}
 		return true
@@ -545,6 +571,25 @@ func TestBoundariesFireOnASyntheticViolation(t *testing.T) {
 				"internal/cache/cache.go": "package cache\n\nimport \"os\"\n\nfunc f(d string) { _ = os.RemoveAll(d) }\n",
 			},
 			want: "",
+		},
+		{
+			name: "a FIELD named Remove, read but never called, is not a mutation",
+			rule: "knowing where the agent tree is AND mutating it is internal/apply's alone (T042)",
+			files: map[string]string{
+				"internal/plan/compute.go": "package plan\n\nimport \"" + mod + "/internal/layout\"\n\n" +
+					"type P struct{ Remove []string }\n\n" +
+					"func f(p P, d string) int { _ = layout.DestCollisionKey(d); return len(p.Remove) }\n",
+			},
+			want: "",
+		},
+		{
+			name: "the same name CALLED is still a mutation",
+			rule: "knowing where the agent tree is AND mutating it is internal/apply's alone (T042)",
+			files: map[string]string{
+				"internal/plan/compute.go": "package plan\n\nimport (\n\t\"os\"\n\n\t\"" + mod + "/internal/layout\"\n)\n\n" +
+					"func f(d string) { _ = os.Remove(layout.StagingRoot(d)) }\n",
+			},
+			want: mod + "/internal/plan imports internal/layout and calls os.Remove",
 		},
 		{
 			name: "a mutation through an os.Root, which a grep for os.Rename would miss",

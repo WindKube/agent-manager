@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/WindKube/agent-manager/cli/internal/hub"
+	"github.com/WindKube/agent-manager/cli/internal/layout"
 	"github.com/WindKube/agent-manager/cli/internal/record"
 )
 
@@ -96,6 +97,7 @@ func Compute(in Inputs) (Plan, error) {
 		slug := lf.Profile.Slug
 		enabled[slug] = map[record.Target]bool{}
 		writable[slug] = map[record.Target]Target{}
+		alreadyRefused := false
 		for _, name := range dedupeTargets(lf.Targets) {
 			t := record.Target(name)
 			enabled[slug][t] = true
@@ -103,11 +105,31 @@ func Compute(in Inputs) (Plan, error) {
 			switch {
 			case !ok:
 				b.targetRefusal(ConflictTargetUnknown, t, nil, slug)
+				alreadyRefused = true
+			case resolved.Withdrawn != nil:
+				// Reported by the caller, not refused here. See Target.Withdrawn
+				// for why this one class of unwritable target does not abort the
+				// sync; the empty-set check below is what stops it becoming
+				// "installed nothing and exited 0".
 			case resolved.Err != nil:
 				b.targetRefusal(ConflictTargetUnwritable, t, resolved.Err, slug)
+				alreadyRefused = true
 			default:
 				writable[slug][t] = resolved
 			}
+		}
+		// Only when nothing else already refuses this profile. A profile whose
+		// one target is gated is refused by ConflictTargetUnwritable, which says
+		// more and says it once across every profile; adding a second sentence
+		// per profile would bury it. What is left is the case this check is for:
+		// every target the profile named was WITHDRAWN, which on its own is not
+		// a refusal, so without this the sync would install nothing and exit 0.
+		if len(enabled[slug]) > 0 && len(writable[slug]) == 0 && !alreadyRefused {
+			claims := make([]Claim, 0, len(enabled[slug]))
+			for _, name := range dedupeTargets(lf.Targets) {
+				claims = append(claims, Claim{Profile: slug, Target: record.Target(name)})
+			}
+			b.other = append(b.other, Conflict{Kind: ConflictNoWritableTarget, Claims: claims})
 		}
 	}
 
@@ -342,12 +364,23 @@ func (b *builder) destCollisions(desired map[entryKey]desiredEntry, order []entr
 		dest   string
 	}
 	byDest := map[destKey][]desiredEntry{}
+	dests := map[destKey]string{}
 	var keys []destKey
 	for _, key := range order {
 		d := desired[key]
-		dk := destKey{target: d.key.target, dest: d.dest}
+		// layout.DestCollisionKey, not the raw path: `Acme/x` and `acme/x` are
+		// two directories on ext4 and ONE on APFS, which is half the release
+		// matrix. Comparing the paths as strings finds no collision, both
+		// entries install, and the second one's swap overwrites the first — with
+		// the record then holding two rows for one directory, so pruning either
+		// would delete the other's live install. The refusal is unconditional
+		// rather than filesystem-dependent, for the reason internal/layout gives
+		// for the id charset: one lockfile must behave the same on both
+		// platforms.
+		dk := destKey{target: d.key.target, dest: layout.DestCollisionKey(d.dest)}
 		if _, seen := byDest[dk]; !seen {
 			keys = append(keys, dk)
+			dests[dk] = d.dest
 		}
 		byDest[dk] = append(byDest[dk], d)
 	}
@@ -357,7 +390,7 @@ func (b *builder) destCollisions(desired map[entryKey]desiredEntry, order []entr
 			continue
 		}
 		b.other = append(b.other, Conflict{
-			Kind: ConflictDestCollision, Target: dk.target, Dest: dk.dest, Claims: claimsOf(group),
+			Kind: ConflictDestCollision, Target: dk.target, Dest: dests[dk], Claims: claimsOf(group),
 		})
 	}
 }
@@ -467,10 +500,19 @@ func retain(rec *record.Record, removals []Removal, desired map[entryKey]desired
 		r := &removals[i]
 		removing[entryKey{profile: r.Profile, target: r.Target, id: r.ID}] = struct{}{}
 	}
+	// Keyed by layout.DestCollisionKey for the same reason destCollisions is:
+	// on a case-insensitive filesystem a removal of `<root>/Acme--x` unlinks the
+	// directory a desired `<root>/acme--x` was just installed into. destCollisions
+	// cannot see that pair — it is one desired entry and one recorded one, not
+	// two desired ones — so the retention check is the only thing between the
+	// prune and somebody's live install. Retaining across case on a
+	// case-SENSITIVE filesystem leaves a directory behind instead of removing
+	// it, which is the harmless direction of the same mistake.
 	byDest := map[string][]Claim{}
 	for key := range desired {
 		d := desired[key]
-		byDest[d.dest] = append(byDest[d.dest], Claim{
+		k := layout.DestCollisionKey(d.dest)
+		byDest[k] = append(byDest[k], Claim{
 			Profile: d.key.profile, Target: d.key.target, ID: d.key.id, Version: d.version,
 		})
 	}
@@ -482,7 +524,7 @@ func retain(rec *record.Record, removals []Removal, desired map[entryKey]desired
 		var kept []Claim
 
 		// Source 1: another profile in THIS run installs the same directory.
-		for _, c := range byDest[r.Dest] {
+		for _, c := range byDest[layout.DestCollisionKey(r.Dest)] {
 			if (entryKey{profile: c.Profile, target: c.Target, id: c.ID}) == self {
 				continue
 			}
@@ -589,7 +631,11 @@ func indexTargets(in []Target) (map[record.Target]Target, error) {
 		if _, dup := out[t.Name]; dup {
 			return nil, fmt.Errorf("%w: target %s given twice", ErrInputs, t.Name)
 		}
-		if t.Err == nil && t.Dest == nil {
+		if t.Err != nil && t.Withdrawn != nil {
+			return nil, fmt.Errorf("%w: target %s is both unwritable and withdrawn; "+
+				"one refuses the plan and the other does not, so the caller has to choose", ErrInputs, t.Name)
+		}
+		if t.Err == nil && t.Withdrawn == nil && t.Dest == nil {
 			return nil, fmt.Errorf("%w: target %s has neither a destination resolver nor an error, "+
 				"so nothing can be said about it", ErrInputs, t.Name)
 		}

@@ -38,6 +38,18 @@ const (
 	serveBytes     serveMode = iota // 200 with the bytes
 	serveRedirect                   // 307 to a same-host pre-signed URL
 	serveForbidden                  // 403: rejected by the gate, mid-sync
+
+	// serveRedirectStale is the 307 offload path's NEGATIVE CONTROL: the
+	// Location carries a signature the object store will not accept, so the
+	// STORE answers 403 while the hub itself answered 307. That is what an
+	// expired pre-signed URL, a clock-skewed one, or a proxy in front of the
+	// store looks like on the wire, and S3, GCS and MinIO all answer 403 for it.
+	//
+	// It exists because a 403 from the store and a 403 from the hub mean
+	// opposite things — infrastructure failure versus the organisation's scan
+	// gate — and without a fixture that produces the first, the code that has to
+	// tell them apart cannot be tested at all.
+	serveRedirectStale
 )
 
 func (p pkg) namespace() string {
@@ -85,6 +97,7 @@ const (
 	slugDigestMismatch = "digest-mismatch"
 	slugForbidden      = "bundle-forbidden"
 	slugPresigned      = "presigned-bundles"
+	slugPresignedStale = "presigned-stale"
 	slugFutureSkip     = "future-skip-reason"
 	slugUnwritable     = "unwritable-target"
 	slugMissing        = "no-such-profile"
@@ -110,6 +123,7 @@ func catalog() []*pkg {
 		{ID: "contoso/stale-digest", Version: "1.0.0", Publisher: "contoso/tools", Kind: "skill"},
 		{ID: "contoso/gated", Version: "3.1.0", Publisher: "contoso/tools", Kind: "skill", serve: serveForbidden},
 		{ID: "contoso/offloaded", Version: "1.2.0", Publisher: "contoso/tools", Kind: "skill", serve: serveRedirect},
+		{ID: "contoso/offloaded-stale", Version: "1.2.0", Publisher: "contoso/tools", Kind: "skill", serve: serveRedirectStale},
 		// An older revision of code-review, so `head` and a pinned revision differ
 		// in content and not merely in number.
 		{ID: "acme/code-review", Version: "2.4.0", Publisher: "acme/platform", Kind: "skill"},
@@ -223,6 +237,23 @@ func profiles() []profileSpec {
 				revision: 1, gate: "warn-with-override", targets: writable,
 				entries: []entrySpec{
 					{pkgID: "contoso/offloaded@1.2.0", resolution: "pinned", verdict: "clean"},
+				},
+				skipped: []hub.LockfileSkip{},
+			}},
+		},
+		{
+			// The offload path's negative control. Two entries, and the order is
+			// the point: one that serves bytes, then one whose 307 target refuses.
+			// A client that reads the store's 403 as the hub's scan gate skips the
+			// second entry and exits 0, which is the "installs nothing and reports
+			// success" failure gate R2 exists to prevent.
+			slug: slugPresignedStale, name: "Pre-signed bundle whose signature the store rejects",
+			visibility: "organisation",
+			revisions: []revisionSpec{{
+				revision: 1, gate: "warn-with-override", targets: writable,
+				entries: []entrySpec{
+					{pkgID: "acme/code-review@2.4.1", resolution: "pinned", verdict: "clean"},
+					{pkgID: "contoso/offloaded-stale@1.2.0", resolution: "pinned", verdict: "clean"},
 				},
 				skipped: []hub.LockfileSkip{},
 			}},

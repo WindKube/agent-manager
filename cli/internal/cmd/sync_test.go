@@ -36,6 +36,7 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/hub/fake"
 	"github.com/WindKube/agent-manager/cli/internal/layout"
 	"github.com/WindKube/agent-manager/cli/internal/output"
+	"github.com/WindKube/agent-manager/cli/internal/plan"
 	"github.com/WindKube/agent-manager/cli/internal/record"
 )
 
@@ -518,6 +519,87 @@ func TestALockfileNamingCodexIsRefused(t *testing.T) {
 	require.Empty(t, reports, "a refused sync is not reported")
 }
 
+// ------------------------------------------------- the withdrawn target
+
+// withdrawnLockfile is a lockfile built in the test rather than served by the
+// fake, on purpose: `agents-md` is still in the frozen enum on this branch and
+// PR #16 removes it, so seeding it into the fake's catalogue would put a value
+// in the conformance fixtures that the schema is about to reject. What is under
+// test here is the WIRING — what the sync verb does with a target
+// layout.Registry has withdrawn — and that needs no server.
+func withdrawnLockfile(t *testing.T, targets ...string) *hub.Lockfile {
+	t.Helper()
+	tg := make([]hub.LockfileTargets, 0, len(targets))
+	for _, name := range targets {
+		tg = append(tg, hub.LockfileTargets(name))
+	}
+	return &hub.Lockfile{
+		SchemaVersion: "1.0.0",
+		Profile:       hub.LockfileProfile{Slug: "base", Name: "base"},
+		Revision:      1,
+		Gate:          "block",
+		Targets:       tg,
+		Entries: []hub.LockfileEntry{{
+			Id: "acme/code-review", Kind: hub.Skill, Version: "2.4.1",
+			Digest:     "sha256:" + strings.Repeat("ab", 32),
+			ObjectKey:  "bundles/acme/code-review/2.4.1/bundle.tar.zst",
+			Resolution: "pinned", Verdict: "clean",
+		}},
+		Skipped: []hub.LockfileSkip{},
+	}
+}
+
+func planForTargets(t *testing.T, lf *hub.Lockfile) (p plan.Plan, diagnostics string) {
+	t.Helper()
+	opts, _, diag := testOptions("https://hub.example.com", output.FormatHuman)
+	r := &syncRun{opts: opts, s: opts.Streams()}
+	reg, err := layout.NewRegistry(layout.Config{HomeDir: filepath.Join(t.TempDir(), "home")})
+	require.NoError(t, err)
+	targets, _ := r.resolveTargets(reg, []*hub.Lockfile{lf})
+	p, cerr := plan.Compute(plan.Inputs{Lockfiles: []*hub.Lockfile{lf}, Targets: targets})
+	require.NoError(t, cerr)
+	return p, diag.String()
+}
+
+// TestAWithdrawnTargetIsReportedAndTheSyncContinues is the wiring contradiction
+// this test exists to pin.
+//
+// internal/layout argues at length that a withdrawn target must NOT refuse the
+// sync — `agents-md` is the lockfile schema's own example value and a legal
+// member of the frozen enum, the target list is the hub's, and there is nothing
+// a user can change — and it built ErrWithdrawnTarget to say so. resolveTargets
+// used to drop that sentinel into its `default` branch beside the R2 gate, so a
+// profile naming agents-md exited 3 and installed nothing, with no user-side
+// fix. The registry did the right thing and the verb did not use it.
+func TestAWithdrawnTargetIsReportedAndTheSyncContinues(t *testing.T) {
+	p, diag := planForTargets(t, withdrawnLockfile(t, "claude-code", "agents-md"))
+
+	require.False(t, p.Refuses(), "a withdrawn target must not refuse a profile that also names a writable one")
+	require.Empty(t, p.Conflicts)
+	require.Len(t, p.Add, 1, "the claude-code entry still installs")
+	require.Equal(t, record.TargetClaudeCode, p.Add[0].Target)
+	require.Contains(t, diag, "agents-md",
+		"FR-011's spirit: the difference between what the profile named and what was written is reported")
+	require.Contains(t, diag, "will not write")
+}
+
+// TestAProfileWhoseTargetsAreAllWithdrawnIsRefused is the negative control for
+// the test above, and the reason "reported, not fatal" is safe to do at all.
+//
+// Reporting a withdrawn target and carrying on is right only while something
+// else is still being written. A profile that named nothing but withdrawn
+// targets would otherwise install nothing and exit 0, which is verbatim the
+// warn-and-continue outcome research gate R2 was opened to stop.
+func TestAProfileWhoseTargetsAreAllWithdrawnIsRefused(t *testing.T) {
+	p, _ := planForTargets(t, withdrawnLockfile(t, "agents-md"))
+
+	require.True(t, p.Refuses())
+	require.Len(t, p.Conflicts, 1)
+	require.Equal(t, plan.ConflictNoWritableTarget, p.Conflicts[0].Kind)
+	require.Contains(t, p.Conflicts[0].String(), "install nothing and still exit 0")
+	require.Empty(t, p.Add)
+}
+
 // TestTheUnwritableFixtureIsTheOnlyOneNamingCodex is what keeps the refusal test
 // from going vacuous. TestALockfileNamingCodexIsRefused would pass trivially if
 // Fixtures.UnwritableTarget stopped naming codex only because the refusal moved
@@ -699,6 +781,108 @@ func TestADigestMismatchFailsThatEntryAndExitsNonZero(t *testing.T) {
 	prof, ok := rec.ProfileBySlug(tg.Fixtures.DigestMismatch)
 	require.True(t, ok)
 	require.Len(t, prof.Entries, 1)
+}
+
+// TestAnAbandonedEntryIsNamedInTheReportAndTheResult is the half the test above
+// never looked at: what the hub is told, and what a script reading --output json
+// can see.
+//
+// A digest mismatch is the single event an audit trail most needs to carry —
+// somebody substituted or corrupted the object this machine was told to install
+// — and the report used to go out with no `skipped` field at all, so the hub's
+// row read "synced digest-mismatch r1 to this host (claude-code)" for a machine
+// that is missing contoso/stale-digest. hub.Report.SkippedLocally's own doc says
+// a bundle "whose bytes did not match the digest the lockfile locked" belongs
+// there. In the JSON the entry appeared in NO array: only `partial` said
+// anything had gone wrong, and it did not say which package.
+func TestAnAbandonedEntryIsNamedInTheReportAndTheResult(t *testing.T) {
+	tg := startSyncFake(t)
+	env := newSyncEnv(t, tg)
+
+	code, result, _, err := env.run(t, output.FormatJSON,
+		syncFlags{profiles: []string{tg.Fixtures.DigestMismatch}})
+	require.Error(t, err)
+	require.Equal(t, CodeFailure, code, "naming the entry must not soften the exit code")
+
+	var doc struct {
+		Result struct {
+			Added   []struct{ Package string } `json:"added"`
+			Skipped []struct {
+				Package string `json:"package"`
+				Reason  string `json:"reason"`
+			} `json:"skipped"`
+			Failed []struct {
+				Package string `json:"package"`
+				Version string `json:"version"`
+				Reason  string `json:"reason"`
+			} `json:"failed"`
+			Partial bool `json:"partial"`
+		} `json:"result"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(result.String()), &doc))
+	require.True(t, doc.Result.Partial)
+	require.Len(t, doc.Result.Added, 1)
+	require.Empty(t, doc.Result.Skipped,
+		"an abandoned entry is not a skip: a skip exits 0 and this run does not")
+	require.Len(t, doc.Result.Failed, 1)
+	require.Equal(t, "contoso/stale-digest", doc.Result.Failed[0].Package)
+	require.Equal(t, "1.0.0", doc.Result.Failed[0].Version)
+	require.Contains(t, doc.Result.Failed[0].Reason, "the lockfile locked",
+		"the reason must carry both digests, not merely say that something failed")
+
+	reports, cerr := tg.Control.SyncReports()
+	require.NoError(t, cerr)
+	require.Len(t, reports, 1)
+	require.NotNil(t, reports[0].Skipped,
+		"the hub is told this machine is missing an entry, or its audit row is a lie")
+	require.Equal(t, []string{"contoso/stale-digest"}, *reports[0].Skipped)
+}
+
+// ------------------------------------------- the 307 whose target refuses
+
+// TestAStoreRefusingThePresignedURLFailsTheEntryRatherThanSkippingIt is the
+// offload path's negative control at the verb level.
+//
+// getBundle answers 307 to a short-lived pre-signed URL. When the OBJECT STORE
+// then answers 403 — an expired signature, clock skew, a proxy in front of the
+// store; S3, GCS and MinIO all answer 403 for those — the CLI used to read it as
+// the hub's own 403, which FR-011 defines as the organisation's scan gate and
+// answers by skipping the entry and exiting 0. That is the "installs nothing and
+// reports success" outcome gate R2 exists to prevent, over an infrastructure
+// failure the next run would have fixed by asking for a fresh signature.
+func TestAStoreRefusingThePresignedURLFailsTheEntryRatherThanSkippingIt(t *testing.T) {
+	tg := startSyncFake(t)
+	env := newSyncEnv(t, tg)
+	require.NotEmpty(t, tg.Fixtures.StalePresignedBundle)
+
+	code, result, diag, err := env.run(t, output.FormatJSON,
+		syncFlags{profiles: []string{tg.Fixtures.StalePresignedBundle}})
+	require.Error(t, err)
+	require.ErrorIs(t, err, hub.ErrOffload)
+	require.NotErrorIs(t, err, hub.ErrForbidden,
+		"the store refusing a pre-signed URL is not the organisation's gate")
+	require.Equal(t, CodeFailure, code)
+	require.NotEqual(t, CodeChanged, code,
+		"exiting 0 here is the failure this test exists for: under `set -e` nothing would notice")
+
+	// The entry beside it still installed, so this is per-entry and not an abort.
+	require.Equal(t, []string{"acme--code-review"}, skillDirs(t, env.skillsRoot()))
+	require.NotContains(t, diag.String(), "scan gate")
+
+	var doc struct {
+		Result struct {
+			Skipped []struct{ Package string } `json:"skipped"`
+			Failed  []struct {
+				Package string `json:"package"`
+				Reason  string `json:"reason"`
+			} `json:"failed"`
+		} `json:"result"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(result.String()), &doc))
+	require.Empty(t, doc.Result.Skipped)
+	require.Len(t, doc.Result.Failed, 1)
+	require.Equal(t, tg.Fixtures.StalePresignedEntryID, doc.Result.Failed[0].Package)
+	require.Contains(t, doc.Result.Failed[0].Reason, "object store")
 }
 
 // ---------------------------------------------------------------- the lock

@@ -814,6 +814,72 @@ func TestAForbiddenBundleFailsOnlyThatEntryAndTheOthersStillFetch(t *testing.T) 
 	require.Len(t, r.cacheNames(t), 2, "and exactly those two must be in the cache")
 }
 
+// TestA403FromTheRedirectTargetIsNotTheHubsGate is the offload path's negative
+// control, and it is the one case the fixtures could not reach before: every
+// pre-signed URL the fake handed out was valid, so the only 403 anywhere in the
+// suite came from the hub itself.
+//
+// The two halves are asserted against each other on purpose. A 403 from the hub
+// is the organisation's scan gate and FR-011 skips that entry and exits 0; a 403
+// from the STORE the hub redirected to is a failed download — an expired
+// signature, clock skew, a proxy — and skipping it would install nothing while
+// reporting success. Same status, opposite outcomes, so the classes must not be
+// the same class.
+func TestA403FromTheRedirectTargetIsNotTheHubsGate(t *testing.T) {
+	t.Parallel()
+	r := newRig(t)
+
+	slug := r.target.Fixtures.StalePresignedBundle
+	staleID := r.target.Fixtures.StalePresignedEntryID
+	require.NotEmpty(t, slug)
+	require.NotEmpty(t, staleID)
+
+	refs := r.refs(t, slug)
+	require.Len(t, refs, 2, "the fixture must pair the refusal with an entry that serves bytes")
+
+	var stale hub.BundleRef
+	fetched := 0
+	for _, ref := range refs {
+		if ref.ID == staleID {
+			stale = ref
+			continue
+		}
+		_, err := r.dl.Fetch(t.Context(), ref)
+		require.NoError(t, err, "the other entry must still fetch")
+		fetched++
+	}
+	require.Equal(t, 1, fetched)
+	require.NotEmpty(t, stale.ID, "the fixture's stale entry was not found")
+
+	_, err := r.dl.Fetch(t.Context(), stale)
+	require.Error(t, err)
+	require.Equal(t, http.StatusForbidden, statusOf(t, err),
+		"the premise: the store really did answer 403, the same status the gate uses")
+	require.Equal(t, hub.ClassOffload, hub.ClassOf(err))
+	require.ErrorIs(t, err, hub.ErrOffload)
+	require.NotErrorIs(t, err, hub.ErrForbidden,
+		"a store that refused the pre-signed URL is not the organisation's scan gate; "+
+			"FR-011 would skip this entry and exit 0")
+	require.True(t, hub.ClassOffload.Retryable(),
+		"a pre-signed URL is short-lived, so the next run gets a fresh one")
+
+	// And the hub's OWN 403 is untouched, or the fix would have closed FR-011's
+	// skip along with the hole.
+	gated := r.refByID(t, r.target.Fixtures.ForbiddenBundle, r.target.Fixtures.ForbiddenEntryID)
+	_, gerr := r.dl.Fetch(t.Context(), gated)
+	require.ErrorIs(t, gerr, hub.ErrForbidden)
+	require.NotErrorIs(t, gerr, hub.ErrOffload)
+}
+
+// statusOf reads the HTTP status off the OpError, so a test can assert that two
+// outcomes classified differently arrived on the SAME status line.
+func statusOf(t *testing.T, err error) int {
+	t.Helper()
+	var oe *hub.OpError
+	require.ErrorAs(t, err, &oe)
+	return oe.Status
+}
+
 func TestAMissingVersionIsNotSkippableTheWayA403Is(t *testing.T) {
 	t.Parallel()
 	r := newRig(t)

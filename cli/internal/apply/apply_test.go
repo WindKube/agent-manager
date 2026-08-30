@@ -343,6 +343,154 @@ func TestApplyFailsTheEntryWhenItsFingerprintCannotBeTaken(t *testing.T) {
 	require.NoFileExists(t, f.recPath, "no record is written for an entry that did not land")
 }
 
+// TestApplyStopsWritingWhenTheCallerSaysItNoLongerOwnsTheTree is Config.Continue.
+//
+// The hazard is the one the per-home lock cannot prevent: a holder frozen past
+// the staleness window is declared stale, a second amctl reclaims the lock and
+// starts applying, and the first resumes with no idea. internal/cmd's Lock
+// heartbeat detects it; this is the seam that acts on it, and the assertion that
+// matters is that the entries which ALREADY landed stay landed and recorded —
+// they were installed while the answer was still yes, and nothing here can
+// un-write them.
+func TestApplyStopsWritingWhenTheCallerSaysItNoLongerOwnsTheTree(t *testing.T) {
+	f := newApplyFixture(t)
+	first := f.add(t, "acme/lint-go", "1.4.0", skillBundle(t))
+	second := f.add(t, "acme/doc-gen", "2.0.0", skillBundle(t))
+
+	reclaimed := errors.New("another amctl reclaimed the lock")
+	seen := 0
+	res, err := f.applier(t, func(cfg *Config) {
+		cfg.Continue = func() error {
+			seen++
+			if seen > 1 {
+				return reclaimed
+			}
+			return nil
+		}
+	}).Apply(context.Background(), planOf(first, second))
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, reclaimed)
+	require.Len(t, res.Installed, 1, "the entry that landed before the lock went stays installed")
+	require.Len(t, res.Failed, 1)
+	require.Empty(t, res.Refusals(), "losing the lock is not the user's to fix with --force")
+
+	// Whichever entry went first is on disk WITH its record row: the record is
+	// written per entry, immediately after its swap, so an abandoned run leaves
+	// no installed-but-unrecorded entry behind.
+	rec := loadedRecord(t, f)
+	installed := res.Installed[0].Change
+	require.Len(t, rec.ByID(installed.ID), 1)
+	require.DirExists(t, installed.Dest)
+	require.NoDirExists(t, res.Failed[0].Change.Dest, "the abandoned entry was never staged")
+}
+
+// ---------------------------------------------------------------------------
+// the aside a swap could not remove
+// ---------------------------------------------------------------------------
+
+// leftoverAsideFixture installs 1.4.0, then upgrades to 1.5.0 with step 5's
+// RemoveAll made to fail, so the destination ends up with an `.amctl-old`
+// beside it. The obstruction is a subdirectory inside the OLD tree that cannot
+// be emptied, which is the case gate R3 made step 5 non-fatal for.
+//
+// It returns the upgrade change and the path of the aside.
+func leftoverAsideFixture(t *testing.T, f *applyFixture) (upgrade plan.Change, aside string) {
+	t.Helper()
+	a := f.add(t, "acme/lint-go", "1.4.0", skillBundle(t))
+	_, err := f.applier(t).Apply(context.Background(), planOf(a))
+	require.NoError(t, err)
+
+	blocked := filepath.Join(a.Dest, "references")
+	require.NoError(t, os.Chmod(blocked, 0o500))
+
+	b := f.add(t, "acme/lint-go", "1.5.0", skillBundle(t))
+	b.Op = plan.OpUpgrade
+	b.From = &plan.Installed{Version: "1.4.0", Digest: a.Digest}
+
+	res, err := f.applier(t, func(cfg *Config) { cfg.Force = true }).Apply(context.Background(), planOf(b))
+	require.NoError(t, err, "a failed step 5 must not fail an install that landed")
+	aside = b.Dest + AsideSuffix
+	require.DirExists(t, aside, "the premise: step 5 really did fail and left the aside behind")
+	require.Equal(t, []string{aside}, res.Leftovers)
+	t.Cleanup(func() { _ = os.Chmod(filepath.Join(aside, "references"), 0o700) })
+
+	return b, aside
+}
+
+// TestAConvergedRunSweepsAnAsideAnEarlierSwapCouldNotRemove is the whole point
+// of sweeping the plan rather than its writes.
+//
+// After the record write the entry is Unchanged on every later run, so Swap —
+// the only other code that removes an aside — is never called for it again. The
+// leftover was therefore permanent: a complete copy of the old skill living in
+// ~/.claude/skills beside the live one, which the agent may load, and which then
+// makes every future change to that entry fail on Swap's step 1.
+func TestAConvergedRunSweepsAnAsideAnEarlierSwapCouldNotRemove(t *testing.T) {
+	f := newApplyFixture(t)
+	b, aside := leftoverAsideFixture(t, f)
+
+	// Whatever held the old tree lets go — the handle closes, the scan finishes.
+	require.NoError(t, os.Chmod(filepath.Join(aside, "references"), 0o700))
+
+	converged := b
+	converged.Op = plan.OpUnchanged
+	converged.From = &plan.Installed{Version: "1.5.0", Digest: b.Digest}
+
+	res, err := f.applier(t).Apply(context.Background(), planOf(converged))
+	require.NoError(t, err)
+	require.Empty(t, res.Installed, "the premise: this run writes nothing, so nothing calls Swap")
+	require.Empty(t, res.Leftovers)
+	require.NoDirExists(t, aside, "the aside must be swept by a run that had no change for the entry")
+	require.DirExists(t, b.Dest, "and the live install is untouched")
+}
+
+// TestASweepReportsAnAsideItStillCannotRemove keeps the first half honest: while
+// the obstruction is there the leftover must be REPORTED on every run, not
+// silently forgotten because the run had nothing to install.
+func TestASweepReportsAnAsideItStillCannotRemove(t *testing.T) {
+	f := newApplyFixture(t)
+	b, aside := leftoverAsideFixture(t, f)
+
+	converged := b
+	converged.Op = plan.OpUnchanged
+	converged.From = &plan.Installed{Version: "1.5.0", Digest: b.Digest}
+
+	res, err := f.applier(t).Apply(context.Background(), planOf(converged))
+	require.NoError(t, err, "a leftover is reported, never a failed entry")
+	require.Equal(t, []string{aside}, res.Leftovers)
+	require.True(t, f.log.warnedAbout(t, "safe to delete by hand"),
+		"the operator has to be told which path to remove, or the entry is stuck forever")
+}
+
+// TestTheSweepNeverRemovesAnAsideWhoseDestinationIsAbsent is the sweep's
+// negative control, and the one shape that would make it destructive.
+//
+// A crash inside Swap's single-rename window between steps 2 and 3 leaves the
+// destination absent and the aside holding the ONLY complete copy of the version
+// the record claims. Step 1 reclaims it by renaming it back. A sweep that
+// removed it would delete the entry outright.
+func TestTheSweepNeverRemovesAnAsideWhoseDestinationIsAbsent(t *testing.T) {
+	f := newApplyFixture(t)
+	c := f.add(t, "acme/lint-go", "1.4.0", skillBundle(t))
+	_, err := f.applier(t).Apply(context.Background(), planOf(c))
+	require.NoError(t, err)
+
+	// The state a crash between steps 2 and 3 leaves.
+	aside := c.Dest + AsideSuffix
+	require.NoError(t, os.Rename(c.Dest, aside))
+
+	converged := c
+	converged.Op = plan.OpUnchanged
+	converged.From = &plan.Installed{Version: "1.4.0", Digest: c.Digest}
+
+	res, err := f.applier(t).Apply(context.Background(), planOf(converged))
+	require.NoError(t, err)
+	require.Empty(t, res.Leftovers, "an aside that is the only copy is not a leftover")
+	require.DirExists(t, aside, "the only complete copy of the entry must survive the sweep")
+	require.FileExists(t, filepath.Join(aside, "SKILL.md"))
+}
+
 // ---------------------------------------------------------------------------
 // convergence after a crash between the swap and the record write (T046's case)
 // ---------------------------------------------------------------------------
@@ -363,6 +511,112 @@ func TestApplyAdoptsItsOwnLeftoverFromAnInterruptedRun(t *testing.T) {
 	require.Len(t, res.Installed, 1)
 	require.True(t, f.log.warnedAbout(t, "interrupted between the install and the record write"))
 	require.Len(t, loadedRecord(t, f).ByID(c.ID), 1, "the record row is restored")
+}
+
+// republishFixture is the state a run killed between the swap and the record
+// write leaves behind for a REPUBLISH: the hub served new bytes under an
+// unchanged version, the tree and the marker are at the new digest, and the
+// record still names the old one. It returns the OpReplace change that
+// reconciles it.
+//
+// It is built by installing, republishing with --force and then winding the
+// record's digest back, because that produces the real on-disk artefacts —
+// the swapped tree and amctl's own marker — rather than a hand-written
+// approximation of them.
+func republishFixture(t *testing.T, f *applyFixture) plan.Change {
+	t.Helper()
+	first := f.add(t, "acme/lint-go", "1.4.0", skillBundle(t))
+	_, err := f.applier(t).Apply(context.Background(), planOf(first))
+	require.NoError(t, err)
+
+	republished := packBundle(t,
+		file("SKILL.md", "---\nname: lint-go\n---\nthe body, republished\n"),
+		file("references/style.md", "a reference\n"),
+	)
+	newDigest, derr := record.ParseDigest(cache.Compute(republished).Lockfile())
+	require.NoError(t, derr)
+	require.NotEqual(t, first.Digest, newDigest, "the republish must actually change the bytes")
+	f.bundles.byRef["acme/lint-go@1.4.0"] = republished
+
+	c := first
+	c.Op = plan.OpReplace
+	c.Digest = newDigest
+	c.From = &plan.Installed{Version: "1.4.0", Digest: first.Digest}
+
+	_, err = f.applier(t, func(cfg *Config) { cfg.Force = true }).Apply(context.Background(), planOf(c))
+	require.NoError(t, err)
+
+	rec := loadedRecord(t, f)
+	prof, ok := rec.ProfileBySlug(applyProfile)
+	require.True(t, ok)
+	require.Len(t, prof.Entries, 1)
+	prof.Entries[0].Digest = first.Digest
+	rec.SetProfile(prof)
+	_, serr := record.Save(f.recPath, rec)
+	require.NoError(t, serr)
+	f.rec = rec
+	f.log.warns = nil
+
+	return c
+}
+
+// TestApplyAdoptsItsOwnLeftoverFromAnInterruptedRepublish is the same
+// convergence as the test above, for the one write plan.change emits whose
+// From.Version EQUALS the version being installed: plan.OpReplace, the hub
+// republishing a version with different bytes.
+//
+// It has its own test because the guard used to key on `From.Version !=
+// Version`, which cannot see this case at all — so a machine whose tree was
+// already correct refused forever, needing a --force nobody could know to give,
+// which is verbatim the failure the upgrade branch exists to prevent.
+func TestApplyAdoptsItsOwnLeftoverFromAnInterruptedRepublish(t *testing.T) {
+	f := newApplyFixture(t)
+	c := republishFixture(t, f)
+
+	res, err := f.applier(t).Apply(context.Background(), planOf(c))
+	require.NoError(t, err, "a republish killed between the swap and the record write must converge without --force")
+	require.Len(t, res.Installed, 1)
+	require.Empty(t, res.Failed)
+	require.True(t, f.log.warnedAbout(t, "interrupted between the install and the record write"))
+	require.True(t, f.log.warnedAbout(t, "at digest "+c.From.Digest.Lockfile()),
+		"the warning must name the digest, because both versions read 1.4.0")
+
+	rec := loadedRecord(t, f)
+	refs := rec.ByID(c.ID)
+	require.Len(t, refs, 1)
+	require.Equal(t, c.Digest, refs[0].Entry.Digest, "the record is caught up to what is on disk")
+}
+
+// TestApplyDoesNotAdoptAMarkerWhoseDigestIsNotTheChangesIsTheNegativeControl
+// for the branch above. The adoption is allowed to fire only when the tree is
+// byte-for-byte the install this change would perform; a marker at the right id,
+// target and VERSION but a third digest is not amctl's finished install of this
+// change, and letting it through would silence verifyUnmodified for every
+// upgrade.
+func TestApplyDoesNotAdoptAMarkerWhoseDigestIsNotTheChanges(t *testing.T) {
+	f := newApplyFixture(t)
+	c := republishFixture(t, f)
+
+	// The plan now wants a THIRD set of bytes at the same version. The tree and
+	// its marker hold the second, so the marker no longer names this change.
+	third := packBundle(t,
+		file("SKILL.md", "---\nname: lint-go\n---\nthe body, republished twice\n"),
+		file("references/style.md", "a reference\n"),
+	)
+	thirdDigest, derr := record.ParseDigest(cache.Compute(third).Lockfile())
+	require.NoError(t, derr)
+	require.NotEqual(t, c.Digest, thirdDigest)
+	f.bundles.byRef["acme/lint-go@1.4.0"] = third
+
+	want := c
+	want.Digest = thirdDigest
+
+	res, err := f.applier(t).Apply(context.Background(), planOf(want))
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrUnverifiable,
+		"the tree is not this change's install, so it goes back through verifyUnmodified")
+	require.Empty(t, res.Installed)
+	require.Len(t, res.Refusals(), 1)
 }
 
 // TestApplyRefusesAnUnrecordedDestinationWithoutAMarker is the negative control

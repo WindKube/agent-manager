@@ -52,6 +52,12 @@ type Control interface {
 	SyncReports() ([]hub.SyncReport, error)
 }
 
+// staleSignature is a syntactically plausible pre-signed signature that matches
+// no package, so the object-store handler refuses it exactly as a real store
+// refuses an expired one. It is a constant rather than a random value so a
+// failing test can be read without re-running it.
+const staleSignature = "s1Gn4tur3-thAt-h4s-3xp1r3d"
+
 // Fixtures names the seeded content a behavioural test may address. An EMPTY field
 // means "this hub has nothing that exercises that case" and the suite must skip,
 // not improvise: a slug invented by a test is a 404 against the real hub, and a
@@ -84,6 +90,19 @@ type Fixtures struct {
 	// Authorization header in net/http already, so it passes even with FR-016
 	// unimplemented.
 	PresignedBundle string
+	// StalePresignedBundle is the offload path's negative control: a profile
+	// whose SECOND entry answers 307 to a pre-signed URL the object store then
+	// refuses with 403 — an expired signature, clock skew, or a proxy in front
+	// of the store, all of which S3, GCS and MinIO answer 403 for.
+	//
+	// The hub's own 403 means the organisation's scan gate rejected the version
+	// and FR-011 says skip that entry and carry on. The STORE's 403 means the
+	// download failed. Reading the second as the first is how a sync installs
+	// nothing and exits 0. StalePresignedEntryID is the id of that entry; the
+	// first entry serves bytes, so a run that abandons the profile wholesale is
+	// distinguishable from one that fails only the offloaded entry.
+	StalePresignedBundle  string
+	StalePresignedEntryID string
 	// UnknownSkipReason is a profile whose skipped array carries a reason value
 	// this build has never seen. FR-011 says report it verbatim.
 	UnknownSkipReason string
@@ -247,17 +266,19 @@ func (h *Hub) Target() Target {
 		HTTPClient: h.srv.Client(),
 		Control:    control{h},
 		Fixtures: Fixtures{
-			Profile:            slugBaseline,
-			HeadRevision:       baseline.revisions[len(baseline.revisions)-1].revision,
-			PriorRevision:      baseline.revisions[0].revision,
-			SharedNamespaceIDs: []string{"acme/code-review", "acme/lint-guard"},
-			DigestMismatch:     slugDigestMismatch,
-			ForbiddenBundle:    slugForbidden,
-			ForbiddenEntryID:   "contoso/gated",
-			PresignedBundle:    slugPresigned,
-			UnknownSkipReason:  slugFutureSkip,
-			UnwritableTarget:   slugUnwritable,
-			MissingProfile:     slugMissing,
+			Profile:               slugBaseline,
+			HeadRevision:          baseline.revisions[len(baseline.revisions)-1].revision,
+			PriorRevision:         baseline.revisions[0].revision,
+			SharedNamespaceIDs:    []string{"acme/code-review", "acme/lint-guard"},
+			DigestMismatch:        slugDigestMismatch,
+			ForbiddenBundle:       slugForbidden,
+			ForbiddenEntryID:      "contoso/gated",
+			PresignedBundle:       slugPresigned,
+			StalePresignedBundle:  slugPresignedStale,
+			StalePresignedEntryID: "contoso/offloaded-stale",
+			UnknownSkipReason:     slugFutureSkip,
+			UnwritableTarget:      slugUnwritable,
+			MissingProfile:        slugMissing,
 		},
 	}
 }
@@ -441,6 +462,12 @@ func (h *Hub) getBundle(w http.ResponseWriter, r *http.Request) {
 	case serveForbidden:
 		writeProblem(w, http.StatusForbidden, "Forbidden",
 			"version rejected by the organisation's scan gate")
+	case serveRedirectStale:
+		// The same 307, with a signature the store will not accept. See
+		// serveRedirectStale.
+		loc := "/objects/" + p.objectKey() + "?X-Amz-Expires=60&X-Amz-Signature=" + url.QueryEscape(staleSignature)
+		w.Header().Set("Location", loc)
+		w.WriteHeader(http.StatusTemporaryRedirect)
 	case serveRedirect:
 		loc := "/objects/" + p.objectKey() + "?X-Amz-Expires=60&X-Amz-Signature=" + url.QueryEscape(h.signatures[key])
 		// 307, not 302: the method must survive. The Location is on THIS host on

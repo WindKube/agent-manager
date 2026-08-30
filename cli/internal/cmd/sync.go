@@ -189,7 +189,10 @@ func runSync(ctx context.Context, opts *Options, flags syncFlags, deps syncDeps)
 			opts: opts, flags: flags, deps: deps, s: s,
 			home: home, target: target, client: client, host: host,
 		}
-		return WithLock(home, func(*Lock) error { return run.do(ctx) })
+		return WithLock(home, func(l *Lock) error {
+			run.lock = l
+			return run.do(ctx)
+		})
 	})
 }
 
@@ -246,6 +249,31 @@ type syncRun struct {
 	target Hub
 	client *hub.Hub
 	host   string
+
+	// lock is the per-home sync lock this run holds (FR-038). It is carried
+	// this far rather than discarded at WithLock because Lock.Lost is the
+	// documented mitigation for the one hazard the lock cannot prevent — a
+	// holder frozen past the staleness window whose lock another amctl
+	// reclaimed — and a detection nothing consults is not a mitigation. Nil in
+	// tests that drive a phase directly.
+	lock *Lock
+}
+
+// stillOurs is what internal/apply asks before each entry. A run whose lock was
+// reclaimed while it was frozen no longer owns the tree: the other amctl is
+// already swapping entries in it, and two concurrent swaps of one entry can
+// have one process rename the destination aside while the other reclaims it.
+//
+// Not a Refusal: nothing the user did caused it and nothing they can change
+// fixes it. Re-running is the answer, which is what CodeFailure means here.
+func (r *syncRun) stillOurs() error {
+	if r.lock == nil || !r.lock.Lost() {
+		return nil
+	}
+	return fmt.Errorf("this sync no longer holds %s: another amctl reclaimed it, which happens when this "+
+		"process was suspended or frozen for longer than the lock's staleness window; "+
+		"the entries already installed are recorded, and re-running converges the rest",
+		r.lock.Path())
 }
 
 // do is the sync, in the order the requirements impose. Read the step comments
@@ -581,6 +609,18 @@ func (r *syncRun) resolveTargets(reg *layout.Registry, lockfiles []*hub.Lockfile
 			out = append(out, plan.Target{Name: record.Target(name), Dest: destFunc(t)})
 		case errors.Is(err, layout.ErrUnknownTarget):
 			r.s.Warnf("the lockfile names target %s, which this build does not know: %v", name, err)
+		case errors.Is(err, layout.ErrWithdrawnTarget):
+			// REPORTED, NOT FATAL, and this is the one case that is neither of
+			// the two above. A withdrawn target is one nobody will ever
+			// implement — `agents-md` is the lockfile schema's own example value
+			// and a legal member of the frozen enum — so refusing the sync would
+			// make the seeded catalogue unsyncable over a value the hub itself
+			// suggested, with no user-side fix, because the target list is the
+			// hub's. plan.Target.Withdrawn carries that distinction through:
+			// omitting the name here instead would make it ConflictTargetUnknown
+			// and refuse anyway, which is what this code used to do.
+			r.s.Warnf("the lockfile names target %s, which this build will not write: %v", name, err)
+			out = append(out, plan.Target{Name: record.Target(name), Withdrawn: err})
 		default:
 			r.s.Warnf("the lockfile names target %s, which this build cannot write: %v", name, err)
 			out = append(out, plan.Target{Name: record.Target(name), Err: err})
@@ -674,6 +714,18 @@ type bundleFetcher struct {
 
 	skips    []localSkip
 	failures []error
+
+	// failed is the localSkip half of `failures`: the same entries, as
+	// (profile, id, version, reason) rather than as a joined error, because the
+	// error is what sets the exit code and this is what NAMES the package — in
+	// the JSON result and in the sync report's `skipped`. hub.Report's own doc
+	// puts a bundle "whose bytes did not match the digest the lockfile locked"
+	// in that field, and FR-032 says the report carries the entries skipped
+	// locally. Without this list the hub's audit row reads "synced profile P
+	// revision N to this host" for a machine that is missing a package because
+	// somebody substituted the object — the single event an audit trail most
+	// needs to carry.
+	failed []localSkip
 }
 
 func refKey(profile, id string) string { return profile + "\x00" + id }
@@ -752,6 +804,15 @@ func (r *syncRun) prefetch(ctx context.Context, dl *hub.Downloader, p plan.Plan,
 			f.dropped[changeKey(c.Profile, c.Target, c.ID)] = true
 			r.s.Warnf("%s: skipping %s at %s — %v", c.Profile, c.ID, c.Version, err)
 
+		case errors.Is(err, hub.ErrOffload):
+			// NOT the FR-011 gate skip above, even though it is usually the same
+			// 403. The hub answered 307 and the OBJECT STORE refused — an expired
+			// pre-signed signature, clock skew, a proxy in front of the store —
+			// which is a download that failed, not a version the organisation
+			// withheld. Skipping it would install nothing and exit 0 over
+			// something a retry fixes.
+			f.fail(r.s, c, err)
+
 		case errors.Is(err, hub.ErrDigestMismatch):
 			// FR-015: abort THIS entry, leave the machine unchanged for it, exit
 			// non-zero. Nothing was written because phase one runs before any
@@ -778,6 +839,9 @@ func (r *syncRun) prefetch(ctx context.Context, dl *hub.Downloader, p plan.Plan,
 func (f *bundleFetcher) fail(s *output.Streams, c plan.Change, err error) {
 	wrapped := fmt.Errorf("%s: %s at %s: %w", c.Profile, c.ID, c.Version, err)
 	f.failures = append(f.failures, wrapped)
+	f.failed = append(f.failed, localSkip{
+		Profile: c.Profile, ID: c.ID, Version: c.Version, Reason: err.Error(),
+	})
 	f.dropped[changeKey(c.Profile, c.Target, c.ID)] = true
 	s.Errorf("%v", wrapped)
 }
@@ -835,6 +899,11 @@ func (r *syncRun) apply(
 	if err != nil {
 		return nil, Refuse(err)
 	}
+	// Before the first entry is staged, as well as before each one: the download
+	// phase is where a long freeze is most likely to have happened.
+	if lost := r.stillOurs(); lost != nil {
+		return nil, lost
+	}
 	applier, err := apply.New(apply.Config{
 		Home:       home,
 		Record:     rec,
@@ -844,6 +913,7 @@ func (r *syncRun) apply(
 		Log:        r.s,
 		Force:      r.flags.force,
 		Now:        nowOr(r.deps.now),
+		Continue:   r.stillOurs,
 		// Fingerprints, Verifier and Pruner are deliberately nil: T049's R4
 		// fingerprint and T048's prune do not exist yet. The consequences are
 		// documented rather than hidden — an entry installed now carries no
@@ -955,6 +1025,19 @@ func (r *syncRun) fill(res *output.SyncResult, applied *apply.Result, fetch *bun
 		})
 	}
 
+	// An ABANDONED entry goes in its own array, not beside the skips. Both mean
+	// "resolved but not installed" and they exit differently — a skip is a
+	// decision this run carries on past, a failure sets the exit code — so a
+	// script that read one list would have to re-derive which was which. Before
+	// this, a digest mismatch appeared in no array at all: only `partial` said
+	// anything had gone wrong, and it did not say which package.
+	for i := range fetch.failed {
+		fl := fetch.failed[i]
+		res.Failed = append(res.Failed, output.Skip{
+			Package: fl.ID, Version: fl.Version, Reason: fl.Reason,
+		})
+	}
+
 	// Partial is plan.md's partially-applied sync: something did not land, and
 	// the result must read as partial rather than as an undetailed failure.
 	// A RETAINED removal is not partial — the record row went and the directory
@@ -1022,10 +1105,19 @@ func (r *syncRun) report(
 		return
 	}
 	states := profileStates(lockfiles, writable)
+	// Both lists, because POST /v1/sync's `skipped` is defined as "entry ids the
+	// CLI skipped locally" and hub.Report.SkippedLocally's own doc names a
+	// bundle whose bytes did not match the locked digest as one of them. The
+	// wire has one field for the two, and an audit row that omitted the
+	// substituted object would be exactly the row that mattered.
 	skipped := map[string][]string{}
 	for i := range fetch.skips {
 		sk := fetch.skips[i]
 		skipped[sk.Profile] = append(skipped[sk.Profile], sk.ID)
+	}
+	for i := range fetch.failed {
+		fl := fetch.failed[i]
+		skipped[fl.Profile] = append(skipped[fl.Profile], fl.ID)
 	}
 	landed := map[string]int{}
 	for i := range applied.Installed {

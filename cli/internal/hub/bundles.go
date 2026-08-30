@@ -443,7 +443,7 @@ func (d *Downloader) download(ctx context.Context, ref BundleRef) error {
 		// than discarded in favour of the bare status.
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
 		if e := ClassifyStatus(OpGetBundle, resp, body, http.StatusOK); e != nil {
-			return e
+			return attributeOffload(e, resp)
 		}
 		// Unreachable — 200 is the only wanted status and this is not it — but
 		// failing closed here is the difference between a bug and a silently
@@ -504,6 +504,47 @@ func (d *Downloader) download(ctx context.Context, ref BundleRef) error {
 		}
 	}
 	return fmt.Errorf("bundle %s could not be cached in %s: %w", ref, d.cache.Root(), putErr)
+}
+
+// attributeOffload re-classifies a status that came from the 307's target
+// rather than from the hub itself.
+//
+// getBundle may answer 307 to a pre-signed object-store URL, and the status the
+// download ends on is then the STORE's. Class's whole table is written for the
+// hub's own answers, and none of its readings survive the move: an object store
+// answers 403 for an expired signature, for clock skew and for a proxy refusing
+// on its behalf — S3, GCS and MinIO all do — and 404 for an object that has been
+// garbage-collected. Passing those through as ClassForbidden and ClassNotFound
+// tells the sync verb that the organisation's GATE refused this version, which
+// FR-011 answers by skipping the entry and exiting 0. That is the "installs
+// nothing and reports success" outcome gate R2 exists to prevent, over an
+// infrastructure failure a retry would have fixed.
+//
+// COMPARING ORIGINS DOES NOT WORK, and it is the obvious thing to reach for.
+// The contract's own offload is a redirect to a URL that may be on the hub's
+// host, a subdomain of it, or another port — CLI-CONTRACT.md calls the same-host
+// layout "the commonest self-hosted layout there is", and the fake's fixture is
+// deliberately same-host because a cross-host redirect is the case net/http
+// already handles. So an origin comparison would say "this is the hub" for
+// exactly the deployments the check exists for.
+//
+// What IS reliable is whether a redirect was followed at all. net/http sets
+// Request.Response on the request it generates from a redirect (the same field
+// bearerTransport reads to identify the first hop), so a non-nil one means this
+// answer is not the hub's. The frozen contract gives getBundle exactly one
+// redirect and it is the object-store offload, so "a redirect happened" and
+// "this came from the store" are the same statement here.
+func attributeOffload(err error, resp *http.Response) error {
+	if resp == nil || resp.Request == nil || resp.Request.Response == nil {
+		return err
+	}
+	var e *OpError
+	if !errors.As(err, &e) {
+		return err
+	}
+	out := *e
+	out.Class = ClassOffload
+	return &out
 }
 
 // responseURL is the sanitised URL a response came from, falling back to the

@@ -43,6 +43,26 @@ type Target struct {
 	// can still match errors.Is(err, layout.ErrR2Unresolved) rather than
 	// matching on a message.
 	Err error
+
+	// Withdrawn is the THIRD outcome, and the split from Err is the decision
+	// this field exists to record: a target that is known, deliberately never
+	// going to be implemented, and therefore REPORTED rather than refused.
+	//
+	// Err is a target awaiting a MEASUREMENT — codex has a plausible layout and
+	// writing to the wrong one of two candidate directories would report success
+	// and do nothing — so it refuses, and the user can fix it by turning codex
+	// off. Withdrawn is a target awaiting a DESIGN that will not come, on both
+	// sides, and there is nothing the user can do about it: the target list is
+	// the hub's, and `agents-md` is the lockfile schema's own example value. A
+	// refusal there would make the seeded catalogue unsyncable over a value the
+	// hub itself suggests, with no user-side fix. See internal/layout's
+	// withdrawnTargets for the full argument.
+	//
+	// It is NOT a licence to install nothing and exit 0, which is the failure
+	// gate R2 exists to prevent: a profile whose targets are ALL withdrawn or
+	// unwritable has an empty writable set and is refused with
+	// ConflictNoWritableTarget.
+	Withdrawn error
 }
 
 // Op is what a plan does to one entry. It is finer-grained than the bucket the
@@ -230,6 +250,14 @@ const (
 	// than ignored for the same reason as unwritable: silence looks like success.
 	ConflictTargetUnknown ConflictKind = "target-unknown"
 
+	// ConflictNoWritableTarget is a profile that enabled targets and none of
+	// them survived: every one was unknown, gated or withdrawn. It exists
+	// because a withdrawn target is reported rather than refused, which without
+	// this check would let a profile naming only withdrawn targets install
+	// nothing and exit 0 — the exact warn-and-continue outcome gate R2 was
+	// opened to stop.
+	ConflictNoWritableTarget ConflictKind = "no-writable-target"
+
 	// ConflictUnroutable is an entry the target refused to route, or one whose
 	// id, kind or digest is unusable: an id that is not exactly two non-empty
 	// segments, a kind outside skill|plugin, a digest that is not
@@ -288,6 +316,9 @@ func (c Conflict) String() string {
 		return fmt.Sprintf("target %s is enabled by %s and is not a target this build knows; "+
 			"refusing rather than skipping, because a target that installs nothing still exits 0",
 			c.Target, describeProfiles(c.Claims))
+	case ConflictNoWritableTarget:
+		return fmt.Sprintf("profile %s enables %s and this build can write none of them, so a sync would "+
+			"install nothing and still exit 0", describeProfiles(c.Claims), describeTargets(c.Claims))
 	case ConflictUnroutable:
 		detail := c.Detail
 		if c.Err != nil {
@@ -397,6 +428,22 @@ func describeProfiles(claims []Claim) string {
 	}
 	if len(parts) == 0 {
 		return "the profiles being synced"
+	}
+	return strings.Join(parts, ", ")
+}
+
+func describeTargets(claims []Claim) string {
+	seen := make(map[record.Target]struct{}, len(claims))
+	parts := make([]string, 0, len(claims))
+	for _, c := range claims {
+		if _, dup := seen[c.Target]; dup {
+			continue
+		}
+		seen[c.Target] = struct{}{}
+		parts = append(parts, string(c.Target))
+	}
+	if len(parts) == 0 {
+		return "no target"
 	}
 	return strings.Join(parts, ", ")
 }

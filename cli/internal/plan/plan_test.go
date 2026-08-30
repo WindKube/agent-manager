@@ -81,6 +81,18 @@ func codexTarget(t *testing.T) Target {
 	return Target{Name: record.TargetCodex, Err: err}
 }
 
+// withdrawnTarget is the THIRD outcome: known, deliberately never implemented,
+// reported rather than refused. layout.Registry.Resolve produces it for
+// agents-md, so the sentinel is taken from there rather than invented.
+func withdrawnTarget(t *testing.T) Target {
+	t.Helper()
+	reg, err := layout.NewRegistry(layout.Config{HomeDir: home})
+	require.NoError(t, err)
+	_, err = reg.Resolve("agents-md")
+	require.ErrorIs(t, err, layout.ErrWithdrawnTarget)
+	return Target{Name: "agents-md", Withdrawn: err}
+}
+
 func lf(slug string, targets []string, entries ...hub.LockfileEntry) *hub.Lockfile {
 	tg := make([]hub.LockfileTargets, 0, len(targets))
 	for _, name := range targets {
@@ -387,6 +399,28 @@ func TestEveryTransitionBetweenTheLockfileAndTheRecord(t *testing.T) {
 			},
 		},
 		{
+			name: "a withdrawn target is reported rather than refused, and the writable one still installs",
+			lockfiles: []*hub.Lockfile{
+				lf("base", []string{"claude-code", "agents-md"}, skill("acme/code-review", "2.4.1", 1)),
+			},
+			record:  nil,
+			targets: []Target{cc, withdrawnTarget(t)},
+			want: want{
+				add: []string{"claude-code acme/code-review base add none->2.4.1 dir=-"},
+			},
+		},
+		{
+			name: "a profile whose every target is withdrawn is refused, or it would install nothing and exit 0",
+			lockfiles: []*hub.Lockfile{
+				lf("base", []string{"agents-md"}, skill("acme/code-review", "2.4.1", 1)),
+			},
+			record:  nil,
+			targets: []Target{cc, withdrawnTarget(t)},
+			want: want{
+				conflicts: []string{"no-writable-target - -"},
+			},
+		},
+		{
 			name: "a target this build has never heard of is refused rather than ignored",
 			lockfiles: []*hub.Lockfile{
 				lf("base", []string{"claude-code", "agents-md"}, skill("acme/code-review", "2.4.1", 1)),
@@ -449,6 +483,21 @@ func TestEveryTransitionBetweenTheLockfileAndTheRecord(t *testing.T) {
 				add: []string{
 					"claude-code acme/tools base add none->1.0.0 dir=-",
 					"claude-code beta/tools base add none->1.0.0 dir=-",
+				},
+				conflicts: []string{"destination-collision - claude-code"},
+			},
+		},
+		{
+			name: "two ids differing only by case collide, because APFS folds them into one directory",
+			lockfiles: []*hub.Lockfile{
+				lf("base", []string{"claude-code"}, skill("Acme/tools", "1.0.0", 1), skill("acme/tools", "1.0.0", 2)),
+			},
+			record:  nil,
+			targets: []Target{cc},
+			want: want{
+				add: []string{
+					"claude-code Acme/tools base add none->1.0.0 dir=-",
+					"claude-code acme/tools base add none->1.0.0 dir=-",
 				},
 				conflicts: []string{"destination-collision - claude-code"},
 			},
@@ -974,4 +1023,83 @@ func TestConflictErrorIsNilWhenThereIsNothingToRefuse(t *testing.T) {
 
 	missing := errors.New("sentinel")
 	require.NotErrorIs(t, p.ConflictError(), missing)
+}
+
+// TestCaseFoldedDestinationsAreRefusedAgainstTheRealLayout drives the REAL
+// registry rather than this file's single-dash test target, because the
+// hand-derived source of truth for FR-023 is layout's `<namespace>--<name>` and
+// nothing else. Two ids that differ only in the case of their namespace are two
+// paths on ext4 and one directory on APFS — half the release matrix — where the
+// second install silently overwrites the first and the record ends up with two
+// rows for one tree.
+//
+// The two Place calls are asserted to SUCCEED and to differ only by case first:
+// if layout ever starts refusing an uppercase namespace, this test would
+// otherwise pass while testing nothing.
+func TestCaseFoldedDestinationsAreRefusedAgainstTheRealLayout(t *testing.T) {
+	t.Parallel()
+
+	reg, err := layout.NewRegistry(layout.Config{HomeDir: home})
+	require.NoError(t, err)
+	cc, err := reg.Resolve(record.TargetClaudeCode)
+	require.NoError(t, err)
+
+	upper, err := cc.Place(layout.Request{ID: "Acme/x", Kind: record.KindSkill})
+	require.NoError(t, err, "layout accepts an uppercase namespace; that is the premise of this test")
+	lower, err := cc.Place(layout.Request{ID: "acme/x", Kind: record.KindSkill})
+	require.NoError(t, err)
+	require.NotEqual(t, upper.Dest, lower.Dest, "the two paths differ as strings")
+	require.Equal(t, strings.ToLower(upper.Dest), strings.ToLower(lower.Dest),
+		"and are the same directory once the filesystem folds them")
+
+	target := Target{Name: record.TargetClaudeCode, Dest: func(id string, kind record.Kind) (string, error) {
+		p, perr := cc.Place(layout.Request{ID: id, Kind: kind})
+		if perr != nil {
+			return "", perr
+		}
+		return p.Dest, nil
+	}}
+
+	p, err := Compute(Inputs{
+		Lockfiles: []*hub.Lockfile{lf("base", []string{"claude-code"},
+			skill("Acme/x", "1.0.0", 1), skill("acme/x", "1.0.0", 2))},
+		Targets: []Target{target},
+	})
+	require.NoError(t, err)
+	require.True(t, p.Refuses(), "the plan must refuse rather than install both")
+	require.Len(t, p.Conflicts, 1)
+	require.Equal(t, ConflictDestCollision, p.Conflicts[0].Kind)
+	require.ElementsMatch(t, []string{"Acme/x", "acme/x"}, distinctIDs(p.Conflicts[0].Claims))
+}
+
+// TestARemovalIsRetainedAgainstACaseFoldedInstall is the second half of the same
+// hazard, and the half destCollisions cannot see: it is one RECORDED entry being
+// removed and one DESIRED entry being installed, not two desired ones, so the
+// collision check never groups them. Their paths differ only by case, so on
+// APFS the removal would RemoveAll the very directory the install just
+// filled. Retention is the only thing between the prune and a live install.
+func TestARemovalIsRetainedAgainstACaseFoldedInstall(t *testing.T) {
+	t.Parallel()
+
+	p, err := Compute(Inputs{
+		Lockfiles: []*hub.Lockfile{
+			// `dropped` no longer lists Acme/x, so its recorded row is removed.
+			lf("dropped", []string{"claude-code"}),
+			// `keeps` installs acme/x, which folds onto the same directory.
+			lf("keeps", []string{"claude-code"}, skill("acme/x", "1.0.0", 2)),
+		},
+		Record: rec(t, map[string][]installedEntry{"dropped": {{
+			id: "Acme/x", version: "1.0.0", digestSeed: 1, dest: skillsRoot + "/Acme-x",
+		}}}),
+		Targets: []Target{claudeCodeTarget(skillsRoot)},
+	})
+	require.NoError(t, err)
+	require.False(t, p.Refuses())
+
+	require.Len(t, p.Remove, 1)
+	rm := p.Remove[0]
+	require.Equal(t, skillsRoot+"/Acme-x", rm.Dest)
+	require.NotEmpty(t, rm.RetainedBy,
+		"the record row goes, but the directory is another entry's live install and must not be unlinked")
+	require.Equal(t, "acme/x", rm.RetainedBy[0].ID)
 }

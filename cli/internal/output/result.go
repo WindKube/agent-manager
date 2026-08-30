@@ -91,6 +91,18 @@ type SyncResult struct {
 	Downgrade []Change `json:"downgraded"`
 	Removed   []Change `json:"removed"`
 	Skipped   []Skip   `json:"skipped"`
+
+	// Failed is an entry this run ABANDONED: the served bytes did not match the
+	// locked digest (FR-015), the hub would not serve a version its own lockfile
+	// names, the object store refused the pre-signed URL. It is separate from
+	// Skipped because the two exit differently — a skip is a decision the sync
+	// carries on past and exits 0 for, a failure sets the exit code — and a
+	// consumer reading only `skipped` would treat an abandoned entry as an
+	// intentional omission. Before this field existed such an entry appeared in
+	// NO array at all: only `partial` said anything had gone wrong, and it did
+	// not say which package.
+	Failed []Skip `json:"failed"`
+
 	Conflicts []Change `json:"conflicts"`
 	Partial   bool     `json:"partial"`
 }
@@ -136,6 +148,11 @@ func (r SyncResult) Human(w io.Writer) error {
 	}
 	for _, s := range r.Skipped {
 		if _, err := fmt.Fprintf(w, "  %-9s %s %s: %s\n", "skip", s.Package, s.Version, s.Reason); err != nil {
+			return err
+		}
+	}
+	for _, s := range r.Failed {
+		if _, err := fmt.Fprintf(w, "  %-9s %s %s: %s\n", "fail", s.Package, s.Version, s.Reason); err != nil {
 			return err
 		}
 	}

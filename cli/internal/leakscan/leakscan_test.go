@@ -229,6 +229,30 @@ func scan(text string) []finding {
 	return out
 }
 
+// timeoutTailBytes is how much of the child's output a timeout failure shows.
+// Enough to name the last package `go test` reported, small enough that a red
+// build is still readable.
+const timeoutTailBytes = 1500
+
+// finishedPackages is the diagnostic that makes a timeout actionable: `go test
+// ./...` buffers a package's output until that package finishes, so the one
+// that hung is precisely the one MISSING from this list. Reading it against
+// `go list ./...` names the culprit without a runner to log into.
+func finishedPackages(out string) []string {
+	var pkgs []string
+	for _, line := range strings.Split(out, "\n") {
+		for _, prefix := range []string{"ok  \t", "FAIL\t", "?   \t", "--- FAIL: "} {
+			rest, found := strings.CutPrefix(line, prefix)
+			if !found {
+				continue
+			}
+			name, _, _ := strings.Cut(rest, "\t")
+			pkgs = append(pkgs, strings.TrimSpace(name))
+		}
+	}
+	return pkgs
+}
+
 // tail is the last n bytes of s, for a failure message that has to show
 // something without showing 160KB of it.
 func tail(s string, n int) string {
@@ -294,8 +318,10 @@ func TestNoSecretReachesAnyOutputOfTheWholeSuite(t *testing.T) {
 	// never ran. Say so rather than passing.
 	if ctx.Err() != nil {
 		t.Fatalf("the child suite did not finish within %s, so this scan covered only part of it "+
-			"— raise the -timeout the CI job gives this package rather than trusting a partial pass "+
-			"(captured %d bytes)", budget, len(captured))
+			"— a clean scan of half a suite is not evidence (captured %d bytes).\n"+
+			"packages that finished: %s\nlast %d bytes of what it printed:\n%s",
+			budget, len(captured), strings.Join(finishedPackages(captured), " "),
+			timeoutTailBytes, redact(tail(captured, timeoutTailBytes)))
 	}
 
 	// Anti-vacuity. Each of these has to hold before a clean scan means

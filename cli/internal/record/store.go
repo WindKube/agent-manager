@@ -78,7 +78,7 @@ func Load(path, hub string) (*Record, error) {
 	if hub == "" {
 		return nil, errors.New("refusing to load an installation record without an expected hub URL")
 	}
-	b, err := readRecordFile(path)
+	b, err := os.ReadFile(path) //nolint:gosec // path is record.Path of a validated hub directory
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return New(hub), nil
@@ -170,7 +170,7 @@ func Save(path string, r *Record) (bool, error) {
 	}
 	b = append(b, '\n')
 
-	if existing, readErr := readRecordFile(path); readErr == nil && bytes.Equal(existing, b) {
+	if existing, readErr := os.ReadFile(path); readErr == nil && bytes.Equal(existing, b) { //nolint:gosec // as above
 		return false, nil
 	}
 
@@ -178,32 +178,16 @@ func Save(path string, r *Record) (bool, error) {
 	if mkErr := os.MkdirAll(dir, dirMode); mkErr != nil {
 		return false, fmt.Errorf("creating hub directory %s: %w", dir, mkErr)
 	}
-	// Through an *os.Root, for the same measured reason as internal/cache: on
-	// Windows os.Rename is MoveFileEx, which fails ERROR_ACCESS_DENIED when the
-	// destination has an open handle, and os.Open does not pass
-	// FILE_SHARE_DELETE so a concurrent reader creates one. Root.Rename is
-	// NtSetInformationFile with FILE_RENAME_POSIX_SEMANTICS and Root.Open does
-	// pass it, which is what makes the atomic swap below atomic rather than
-	// occasionally failing. The Windows CI leg measured both halves:
-	// TestNoReaderEverObservesATornRecord saw readers refused and the install
-	// rename denied.
-	root, err := os.OpenRoot(dir)
-	if err != nil {
-		return false, fmt.Errorf("opening hub directory %s: %w", dir, err)
-	}
-	defer func() { _ = root.Close() }()
-
 	tmp, err := os.CreateTemp(dir, tempPrefix+"*")
 	if err != nil {
 		return false, fmt.Errorf("creating installation record temp file in %s: %w", dir, err)
 	}
 	name := tmp.Name()
-	base := filepath.Base(name)
 	committed := false
 	defer func() {
 		_ = tmp.Close()
 		if !committed {
-			_ = root.Remove(base)
+			_ = os.Remove(name)
 		}
 	}()
 
@@ -219,7 +203,7 @@ func Save(path string, r *Record) (bool, error) {
 	if err := tmp.Close(); err != nil {
 		return false, fmt.Errorf("closing %s: %w", name, err)
 	}
-	if err := root.Rename(base, filepath.Base(path)); err != nil {
+	if err := os.Rename(name, path); err != nil {
 		return false, fmt.Errorf("installing installation record %s: %w", path, err)
 	}
 	committed = true
@@ -227,25 +211,6 @@ func Save(path string, r *Record) (bool, error) {
 	syncDir(dir)
 	collectTemps(dir)
 	return true, nil
-}
-
-// readRecordFile reads the record through an *os.Root on its directory.
-//
-// Not os.ReadFile: os.Open on Windows omits FILE_SHARE_DELETE, so a reader
-// holding the record open blocks the rename Save uses to install a new one —
-// the reader and the writer break each other rather than the reader simply
-// seeing the old bytes or the new ones. Root.Open passes FILE_SHARE_DELETE, so
-// both sides behave the way the POSIX implementation always did.
-//
-// A missing directory reports fs.ErrNotExist, which both callers already treat
-// the same as a missing file: a hub that has never been synced.
-func readRecordFile(path string) ([]byte, error) {
-	root, err := os.OpenRoot(filepath.Dir(path))
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = root.Close() }()
-	return root.ReadFile(filepath.Base(path))
 }
 
 // syncDir makes the new directory entry durable. Non-fatal, matching gate R3's
@@ -283,18 +248,11 @@ func collectTemps(dir string) {
 	if err != nil {
 		return
 	}
-	root, err := os.OpenRoot(dir)
-	if err != nil {
-		return
-	}
-	defer func() { _ = root.Close() }()
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasPrefix(e.Name(), tempPrefix) {
 			continue
 		}
-		// Through the root: a temp belonging to a concurrent Save is still open,
-		// and on Windows plain os.Remove would fail on it rather than defer the
-		// unlink. Best effort either way — a leaked temp is collected next time.
-		_ = root.Remove(e.Name())
+		// Best effort — a leaked temp is collected next time.
+		_ = os.Remove(filepath.Join(dir, e.Name()))
 	}
 }

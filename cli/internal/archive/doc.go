@@ -24,7 +24,7 @@
 // compressed size, total decompressed size, compression ratio, entry count,
 // per-entry size, path depth, path length, wall clock.
 //
-// Members refused outright: absolute paths (including a Windows drive letter),
+// Members refused outright: absolute paths (including a drive-letter spelling),
 // `..` surviving path.Clean, backslashes and NULs in a path, symlinks, hardlinks,
 // device nodes, FIFOs, any other exotic tar type, duplicate paths, and — R2 — a
 // skill root containing any of the subdirectory names that make Claude Code adopt
@@ -61,7 +61,7 @@
 // Do not move the file fsync into apply/stage.go, and do not delete it as
 // redundant with the swap's fsync: they cover different objects.
 //
-// A file fsync failure is fatal. A directory fsync failure is not: it is a
-// documented no-op on Windows, where the write ordering (the installation record
-// is written after the swap) is the only available mitigation.
+// A file fsync failure is fatal. A directory fsync failure is not: the write
+// ordering — the installation record is written after the swap — is what keeps
+// state consistent, and the fsync only narrows a window.
 package archive

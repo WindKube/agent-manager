@@ -9,7 +9,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -206,22 +205,6 @@ func TestExtractWritesTheTree(t *testing.T) {
 	plain, err := os.Lstat(filepath.Join(dest, "SKILL.md"))
 	require.NoError(t, err)
 
-	// Windows has no executable bit. Go synthesises 0666 for every writable file
-	// and 0444 for a read-only one, so neither the presence nor the absence of
-	// 0o100 carries information there and BOTH assertions below would be
-	// meaningless — the second one would even pass for the wrong reason, since
-	// 0666&0o111 is 0 whatever the header said.
-	//
-	// The product consequence is real and is not worked around anywhere: a
-	// skill's scripts/run.sh is not executable on Windows, so anything that
-	// depends on running it directly depends on an interpreter being named
-	// explicitly. Nothing in this feature runs a skill's scripts, so that is a
-	// statement rather than a defect — but it stops being one the moment
-	// something does.
-	if runtime.GOOS == "windows" {
-		require.Equal(t, fs.FileMode(0o666), info.Mode().Perm(), "windows synthesises the mode; if that changes, revisit this")
-		return
-	}
 	require.NotZero(t, info.Mode().Perm()&0o100, "executable bit lost")
 	require.Zero(t, plain.Mode().Perm()&0o111, "non-executable member became executable")
 }
@@ -344,7 +327,7 @@ func TestExtractRefusedMembers(t *testing.T) {
 			path:    "/etc/passwd",
 		},
 		{
-			name:    "windows drive letter",
+			name:    "drive-letter path",
 			members: []member{{name: `C:/Windows/system32/x`, typeflag: tar.TypeReg, mode: 0o644, body: []byte("x")}},
 			reason:  RejectAbsolutePath,
 			path:    `C:/Windows/system32/x`,
@@ -442,7 +425,7 @@ func TestExtractRefusedMembers(t *testing.T) {
 
 // TestExtractRefusesCaseOnlyCollision answers a question the platforms disagree
 // about: a bundle carrying both SKILL.md and Skill.md is ONE file on a
-// case-insensitive filesystem (darwin, Windows) and TWO on linux. The extractor
+// case-insensitive filesystem (darwin) and TWO on linux. The extractor
 // refuses it everywhere rather than extracting two files on linux and failing on
 // O_EXCL on darwin, because a digest that installs a different tree per platform
 // breaks FR-024 and R4's install fingerprint.

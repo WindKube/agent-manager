@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -36,26 +35,14 @@ func mustDigest(t *testing.T, hex string) record.Digest {
 
 func installedAt() time.Time { return time.Date(2026, 8, 27, 10, 11, 12, 0, time.UTC) }
 
-// A record's dest is a path on THIS machine, and validation requires it to be
-// absolute — filepath.IsAbs, which on Windows means a volume is named. So the
-// fixtures cannot hardcode a POSIX path: `/home/u/...` is drive-relative on
-// Windows, not absolute, and every Save in this file would be refused for a
-// reason that has nothing to do with what the test is about. Eight tests failed
-// that way on the Windows CI leg.
-//
-// Both spellings are hand-written, including the JSON escaping. A Windows dest
-// contains backslashes and JSON escapes each as `\\`, so pinning the escaped
-// form here asserts something the POSIX-only golden could not: that the encoder
-// escapes the separator rather than emitting it raw. Deriving destJSON with
-// json.Marshal instead would hand that assertion to the code under test.
-var (
-	destRoot, destJSONRoot = func() (string, string) {
-		if runtime.GOOS == "windows" {
-			return `C:\home\u`, `C:\\home\\u`
-		}
-		return "/home/u", "/home/u"
-	}()
-	sep = string(filepath.Separator)
+// A record's dest is a path on THIS machine and validation requires it to be
+// absolute, so the fixtures spell one out. The JSON form is hand-written rather
+// than derived with json.Marshal, which would hand the encoding assertion to
+// the code under test.
+const (
+	destRoot     = "/home/u"
+	destJSONRoot = "/home/u"
+	sep          = "/"
 )
 
 // skillDest is a fixture destination under the platform's absolute root.
@@ -66,11 +53,7 @@ func skillDest(name string) string {
 // skillDestJSON is skillDest spelled as JSON encodes it. Assembled from the
 // hand-written escaped root rather than from the encoder.
 func skillDestJSON(name string) string {
-	s := sep
-	if runtime.GOOS == "windows" {
-		s = `\\`
-	}
-	return destJSONRoot + s + ".claude" + s + "skills" + s + name
+	return destJSONRoot + sep + ".claude" + sep + "skills" + sep + name
 }
 
 // uncleanDest is skillDest("x") with a `..` left in it, built without
@@ -201,22 +184,6 @@ func TestRoundTrip(t *testing.T) {
 		st, err := os.Stat(p)
 		require.NoError(t, err)
 
-		// Windows has no mode bits: Go synthesises 0666 for a writable file, so
-		// tmp.Chmod(fileMode) in Save is discarded there and asserting 0600
-		// could only be satisfied by asserting 0666, which asserts nothing.
-		//
-		// The gap is real and is NOT a secret leak — an installation record
-		// holds package ids, versions and destinations, no credential — but it
-		// is world-readable on Windows where every other platform keeps it to
-		// the owner. Narrowing it needs an explicit DACL via
-		// golang.org/x/sys/windows, which no task in this feature owns. The
-		// credential store is unaffected: keyring uses wincred there, never the
-		// file backend whose mode FR-004 is about.
-		if runtime.GOOS == "windows" {
-			require.Equal(t, os.FileMode(0o666), st.Mode().Perm(),
-				"if Windows ever grows real mode bits, revisit this rather than relaxing it")
-			return
-		}
 		require.Equal(t, os.FileMode(0o600), st.Mode().Perm())
 	})
 

@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -20,9 +19,8 @@ func tempHome(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv(homeEnvVar(), dir)
-	// os.UserHomeDir on darwin and linux reads HOME; on Windows it reads
-	// USERPROFILE. Setting only the current platform's variable is the point —
-	// setting both would hide a bug in homeEnvVar.
+	// Setting only the current platform's variable is the point — setting every
+	// candidate would hide a bug in homeEnvVar.
 	return dir
 }
 
@@ -38,10 +36,8 @@ func TestResolveHomeCreatesTheStateRootAndReportsIt(t *testing.T) {
 	info, err := os.Stat(home.Root)
 	require.NoError(t, err)
 	require.True(t, info.IsDir())
-	if runtime.GOOS != "windows" {
-		require.Equal(t, os.FileMode(0o700), info.Mode().Perm(),
-			"the state root holds the list of paths amctl may delete and the cache it later trusts")
-	}
+	require.Equal(t, os.FileMode(0o700), info.Mode().Perm(),
+		"the state root holds the list of paths amctl may delete and the cache it later trusts")
 }
 
 func TestResolveHomeLeavesNoWriteProbeBehind(t *testing.T) {
@@ -72,7 +68,7 @@ func TestResolveHomeRefusesAnUnsetHomeNamingTheVariable(t *testing.T) {
 	require.True(t, IsRefusal(err), "an unset home is the user's to fix (FR-039), so it must reach CodeRefused")
 	require.Equal(t, CodeRefused, ExitCode(CodeNoChanges, err))
 	require.Contains(t, err.Error(), homeEnvVar(),
-		"FR-039 requires the refusal to NAME the variable; a message naming HOME on Windows is unactionable")
+		"FR-039 requires the refusal to NAME the variable the running platform actually consults")
 }
 
 func TestResolveHomeRefusesARelativeHome(t *testing.T) {
@@ -139,7 +135,6 @@ func TestResolveHomeRefusesAWritableHomeWithAnUnwritableStateRoot(t *testing.T) 
 // A relative symlink that stays inside the home is fine. Measured on go1.26:
 // os.Root's openat resolution follows it.
 func TestResolveHomeAcceptsARelativeSymlinkedStateRootInsideTheHome(t *testing.T) {
-	requireSymlinks(t)
 	dir := tempHome(t)
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "dotfiles"), 0o700))
 	require.NoError(t, os.Symlink("dotfiles", filepath.Join(dir, DirName)))
@@ -153,7 +148,6 @@ func TestResolveHomeAcceptsARelativeSymlinkedStateRootInsideTheHome(t *testing.T
 // because os.Root refuses every absolute link. This is a deliberate, documented
 // usability cost, so the refusal has to say what to do about it.
 func TestResolveHomeRefusesAnAbsolutelySymlinkedStateRootAndSaysWhy(t *testing.T) {
-	requireSymlinks(t)
 	dir := tempHome(t)
 	target := filepath.Join(t.TempDir(), "elsewhere")
 	require.NoError(t, os.Mkdir(target, 0o700))
@@ -173,7 +167,6 @@ func TestHomeEnvVarNamesThePlatformVariable(t *testing.T) {
 		"linux":   "HOME",
 		"darwin":  "HOME",
 		"freebsd": "HOME",
-		"windows": "USERPROFILE",
 		"plan9":   "home",
 	} {
 		t.Run(goos+" uses "+want, func(t *testing.T) {
@@ -551,7 +544,7 @@ func TestValidatePathComponentRefusals(t *testing.T) {
 		{"a double dot", "..", "relative directory reference"},
 		{"a forward slash", "a/b", "not portable"},
 		{"a backslash", `a\b`, "not portable"},
-		{"a colon, legal on darwin and illegal on Windows", "a:b", "not portable"},
+		{"a colon, legal on darwin and awkward everywhere", "a:b", "not portable"},
 		{"an asterisk", "a*b", "not portable"},
 		{"a question mark", "a?b", "not portable"},
 		{"a pipe", "a|b", "not portable"},
@@ -559,19 +552,19 @@ func TestValidatePathComponentRefusals(t *testing.T) {
 		{"a NUL", "a\x00b", "NUL"},
 		{"a control character", "a\x01b", "control character"},
 		{"non-ASCII", "café", "non-ASCII"},
-		{"a trailing dot, which Windows strips", "hub-a.", "Windows strips"},
-		{"a trailing space, which Windows strips", "hub-a ", "Windows strips"},
-		{"the CON device", "CON", "Windows device name"},
-		{"the con device in lower case", "con", "Windows device name"},
-		{"CON with an extension", "con.txt", "Windows device name"},
-		{"the NUL device", "nul", "Windows device name"},
-		{"the PRN device", "prn", "Windows device name"},
-		{"the AUX device", "aux", "Windows device name"},
-		{"COM1", "com1", "Windows device name"},
-		{"COM9", "com9", "Windows device name"},
-		{"LPT1", "lpt1", "Windows device name"},
-		{"LPT9", "lpt9", "Windows device name"},
-		{"CONOUT$", "conout$", "Windows device name"},
+		{"a trailing dot, which some filesystems strip", "hub-a.", "some filesystems strip"},
+		{"a trailing space, which some filesystems strip", "hub-a ", "some filesystems strip"},
+		{"the CON device", "CON", "reserved device name"},
+		{"the con device in lower case", "con", "reserved device name"},
+		{"CON with an extension", "con.txt", "reserved device name"},
+		{"the NUL device", "nul", "reserved device name"},
+		{"the PRN device", "prn", "reserved device name"},
+		{"the AUX device", "aux", "reserved device name"},
+		{"COM1", "com1", "reserved device name"},
+		{"COM9", "com9", "reserved device name"},
+		{"LPT1", "lpt1", "reserved device name"},
+		{"LPT9", "lpt9", "reserved device name"},
+		{"CONOUT$", "conout$", "reserved device name"},
 		{"over the length budget", strings.Repeat("a", maxDirNameLen+1), "over the"},
 	}
 	for _, tc := range cases {
@@ -590,34 +583,23 @@ func TestValidatePathComponentRefusals(t *testing.T) {
 	})
 }
 
-// A device name is a real bug on a real platform, so the guard is checked on
-// every platform: a state root written on Linux gets read on Windows through a
-// mounted home or a synced dotfiles repo.
-func TestNoHubURLCanProduceAWindowsDeviceName(t *testing.T) {
+// A state root is routinely synced or mounted between machines, so the guard is
+// checked unconditionally rather than on the platforms that enforce it.
+func TestNoHubURLCanProduceAReservedDeviceName(t *testing.T) {
 	for _, host := range []string{"con", "nul", "prn", "aux", "com1", "lpt9", "CON", "Nul"} {
 		t.Run(host, func(t *testing.T) {
 			hub, err := ParseHub("https://" + host)
 			require.NoError(t, err)
 			require.NoError(t, validatePathComponent(hub.Dir))
 			base, _, _ := strings.Cut(hub.Dir, ".")
-			require.False(t, windowsReservedNames[strings.ToLower(base)])
+			require.False(t, reservedDeviceNames[strings.ToLower(base)])
 		})
 	}
 }
 
 func requireUnprivileged(t *testing.T) {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("POSIX mode bits do not deny writes on Windows")
-	}
 	if os.Geteuid() == 0 {
 		t.Skip("root ignores the mode bits this case depends on")
-	}
-}
-
-func requireSymlinks(t *testing.T) {
-	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("unprivileged os.Symlink needs Developer Mode on Windows")
 	}
 }

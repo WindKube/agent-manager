@@ -22,11 +22,9 @@ import (
 //
 //   - `flock`/`fcntl` locks (gofrs/flock and friends). A kernel-held lock is
 //     released automatically when the process dies, which is strictly better
-//     than anything below — and it does not exist on Windows in the same shape,
-//     it is famously unreliable over NFS, and on Linux an `flock` on an
-//     inherited fd is shared with children. It would mean a second, untested
-//     code path on the platform amctl is least able to observe. No dependency
-//     was added for this; the standard library is enough.
+//     than anything below — and it is famously unreliable over NFS, and on
+//     Linux an `flock` on an inherited fd is shared with children. No
+//     dependency was added for this; the standard library is enough.
 //   - A lock DIRECTORY (`os.Mkdir`). Also atomic, but there is nowhere to
 //     record who holds it, and "another amctl is running" without a pid, a
 //     host and a start time is a message nobody can act on.
@@ -58,11 +56,7 @@ import (
 //   - Permission denied — another user's process, which therefore exists. Read
 //     as alive.
 //
-// The probe itself is per-platform, in liveness_unix.go and
-// liveness_windows.go, and the two are not the same shape: on Unix
-// os.FindProcess never fails and Signal(0) answers, while on Windows
-// OpenProcess answers and Signal cannot. A single generic version reported
-// every Windows process as alive, which made the accelerator dead code there.
+// The probe itself is in liveness.go.
 //
 // # What this does NOT catch. All four are real; none is fixed by the code
 //
@@ -384,28 +378,9 @@ func WithLock(h Home, fn func(*Lock) error) error {
 	return l.Release()
 }
 
-// Plain os.Open, deliberately, and this is the one reader in the CLI that is
-// NOT routed through an *os.Root.
-//
-// The rule elsewhere — internal/cache, internal/record — is that a reader of a
-// file something may unlink must use a root, because on Windows os.Open omits
-// FILE_SHARE_DELETE and so denies delete access to every other process while it
-// holds the handle. That reasoning applies here in principle too: a concurrent
-// reader of the lock can make Release's unlink fail with "Access is denied".
-//
-// It WAS converted, and the Windows CI leg then failed
-// TestAStaleLockFromAnotherHostIsReclaimedOnlyByTheHeartbeatWindow, which had
-// passed in the previous round — Acquire succeeded where it had to refuse. The
-// mechanism was never established: the FileInfo returned here comes from
-// File.Stat() on the handle either way, and both forms report the same ModTime,
-// so the difference has to lie in os.Root's own path resolution on that runner,
-// which cannot be reproduced from Linux.
-//
-// So it is reverted rather than kept with a guess attached. The conversion was
-// not fixing an observed failure — it was consistency with a rule — and trading
-// a green lock test on a platform we cannot debug for a hazard nobody has
-// measured is the wrong side of that deal. If a Windows run ever shows Release
-// failing to unlink, that is the evidence this needs and the fix is one line.
+// The FileInfo comes from File.Stat() on the open handle rather than from a
+// second os.Stat of the path, so the mode and mtime reported here describe the
+// file this call actually read.
 func readLock(path string) (Holder, os.FileInfo, error) {
 	f, err := os.Open(path) //nolint:gosec // path is Home.LockPath, derived from a validated home
 	if err != nil {

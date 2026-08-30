@@ -43,9 +43,8 @@ const (
 	// ever written at a call site.
 	headerScheme = "sha-256="
 
-	// fileScheme prefixes the cache filename. A colon is not a legal filename
-	// character on Windows and is special to some darwin tooling, so the
-	// on-disk key is `sha256-<hex>` as plan.md specifies — a THIRD spelling,
+	// fileScheme prefixes the cache filename. A colon is special to some darwin
+	// tooling, so the on-disk key is `sha256-<hex>` as plan.md specifies — a THIRD spelling,
 	// produced only by Digest.FileName so no call site does string surgery on
 	// one of the other two.
 	fileScheme = "sha256-"

@@ -187,8 +187,8 @@ func (d *Digest) UnmarshalJSON(b []byte) error {
 // mtime, and reported unmodified, 99% of the time — which is exactly the
 // window a post-sync hook or a `sed -i` one-liner lands in — and any
 // mtime-preserving restore (`tar -x`, `rsync -a`, `cp -p`) has no window at
-// all. No ctime: `syscall.Stat_t` has no Ctim on darwin and does not exist on
-// windows, so it is not merely inadvisable but does not compile. No inode
+// all. No ctime: `syscall.Stat_t` has no Ctim on darwin, so it is not merely
+// inadvisable but does not compile. No inode
 // number: the atomic swap replaces the destination by rename, so the inode
 // changes on every install by design and would report every re-install as a
 // modification.
@@ -267,8 +267,8 @@ type Fingerprint struct {
 
 	// Files is keyed by entry-root-relative, slash-separated path. Never
 	// absolute: the entry already carries its absolute destination, and
-	// duplicating it here gives two things that can disagree. Slashes so a
-	// record written on Windows reads on Linux.
+	// duplicating it here gives two things that can disagree. Slashes so the
+	// key is separator-independent.
 	Files map[string]FileMark `json:"files,omitempty"`
 
 	// Dirs is keyed the same way; the value is permission bits only.

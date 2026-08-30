@@ -472,20 +472,7 @@ func TestProcessAliveFailsTowardsAlive(t *testing.T) {
 func TestRemoveIfUnchangedRefusesAFileThatChangedSinceItWasJudged(t *testing.T) {
 	// The FileInfo comes from an open HANDLE, because that is how readLock
 	// obtains the one this guard is given in production (f.Stat(), not
-	// os.Stat). Do not "simplify" this back to os.Stat: on Windows the two are
-	// not interchangeable, and the difference silently disarms the test.
-	//
-	// os.Stat on Windows records the PATH and resolves the file id lazily, on
-	// the first os.SameFile that needs it (os/types_windows.go, loadFileId).
-	// So a path-based `judged` compared after a replacement loads the id of
-	// whatever is at that path NOW — the same file as `fresh` — and SameFile
-	// always answers true. A handle-based one is filled in eagerly by
-	// GetFileInformationByHandle at stat time, which is what makes it a
-	// snapshot at all.
-	//
-	// The Windows CI leg caught this as a failing precondition below, which is
-	// the good outcome: production reads through a handle and is correct, and
-	// only the fixture was lying.
+	// os.Stat).
 	newLock := func(t *testing.T) (string, os.FileInfo) {
 		t.Helper()
 		p := filepath.Join(t.TempDir(), "sync.lock")

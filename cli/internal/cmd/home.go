@@ -28,7 +28,7 @@ const DirName = ".agent-manager"
 const LockFileName = "sync.lock"
 
 // maxDirNameLen bounds a per-hub directory name. It is our own budget rather
-// than a filesystem limit (255 bytes on ext4/APFS/NTFS): the name is
+// than a filesystem limit (255 bytes on ext4 and APFS): the name is
 // prefix + "-" + 16 hex, so this is the readable prefix's ceiling plus the
 // suffix, and it leaves room for a `.amctl-tmp-*` sibling of the record inside.
 const maxDirNameLen = 64
@@ -69,10 +69,9 @@ type Home struct {
 	// UserHome is the resolved OS home directory.
 	UserHome string
 	// Var is the environment variable that was actually consulted to find it.
-	// On darwin and linux that is HOME; on Windows there is no HOME and
-	// os.UserHomeDir reads USERPROFILE; on plan9 it is lowercase `home`. A
-	// refusal naming HOME on Windows is a refusal nobody can act on, which is
-	// why this is a field and not a constant.
+	// On darwin and linux that is HOME; os.UserHomeDir reads a different one on
+	// other platforms, and a refusal that names the wrong variable is a refusal
+	// nobody can act on, which is why this is a field and not a constant.
 	Var string
 	// Root is <UserHome>/.agent-manager. It exists and is writable.
 	Root string
@@ -88,7 +87,7 @@ type Hub struct {
 	// URL is the canonical form. See ParseHub for what is normalised away.
 	URL string
 	// Dir is the directory name under Home.Root: a readable prefix plus a
-	// truncated SHA-256 of URL. Never `..`, never absolute, never a Windows
+	// truncated SHA-256 of URL. Never `..`, never absolute, never a reserved
 	// device name; see validatePathComponent for the full refusal list.
 	Dir string
 }
@@ -480,7 +479,7 @@ func canonicalPath(u *url.URL, raw string) (string, error) {
 // and nothing may ever compare or parse it.
 //
 // Because the name always ends in a hex digit and the prefix is built from a
-// whitelist, the result cannot be `.`, `..`, a Windows reserved device name, or
+// whitelist, the result cannot be `.`, `..`, a reserved device name, or
 // a name ending in a dot or a space — the four collisions that are silent
 // rather than loud. validatePathComponent asserts that rather than trusting it.
 func hubDirName(canonical string) string {
@@ -495,9 +494,9 @@ func hubDirName(canonical string) string {
 
 // readablePrefix maps a canonical URL to at most readablePrefixLen characters
 // of [a-z0-9-]. Everything else — including the scheme's punctuation, a colon
-// (illegal in a filename on Windows and legal but awkward on darwin, where it
-// is what the Finder shows as a path separator), a slash, a backslash and any
-// non-ASCII rune — collapses to a single dash.
+// (legal but awkward on darwin, where it is what the Finder shows as a path
+// separator), a slash, a backslash and any non-ASCII rune — collapses to a
+// single dash.
 func readablePrefix(canonical string) string {
 	s := strings.TrimPrefix(strings.TrimPrefix(canonical, "https://"), "http://")
 	var b strings.Builder
@@ -520,14 +519,13 @@ func readablePrefix(canonical string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-// windowsReservedNames are the DOS device names Windows still resolves in every
-// directory. Creating `CON` there does not fail with a clear error; the open
-// succeeds against the console device, which is why this is a real bug on a
-// real platform rather than a curiosity. The set is deliberately a SUPERSET of
-// the documented one (COM0/LPT0 and the CONIN$/CONOUT$ pair are included) —
-// over-rejecting a name amctl never generates costs nothing, and the list is
-// checked on every platform so a Linux test suite catches a Windows bug.
-var windowsReservedNames = map[string]bool{
+// reservedDeviceNames are the DOS device names. amctl does not run on Windows,
+// but a home directory is routinely synced or mounted across machines and a
+// directory named `CON` is a name some tools still cannot open. The set is
+// deliberately a SUPERSET of the documented one (COM0/LPT0 and the
+// CONIN$/CONOUT$ pair are included): over-rejecting a name amctl never
+// generates costs nothing.
+var reservedDeviceNames = map[string]bool{
 	"con": true, "prn": true, "aux": true, "nul": true,
 	"conin$": true, "conout$": true,
 	"com0": true, "com1": true, "com2": true, "com3": true, "com4": true,
@@ -538,10 +536,10 @@ var windowsReservedNames = map[string]bool{
 
 // validatePathComponent refuses anything that is not a single, boring,
 // portable directory name. It is exported to the package as the one place the
-// refusal list lives, and it is checked on EVERY platform rather than behind a
-// runtime.GOOS switch: a state root created on Linux gets read on Windows via
-// a mounted home or a synced dotfiles repo, and a name that is only invalid
-// over there is still a name amctl must not produce.
+// refusal list lives, and it is checked unconditionally rather than behind a
+// runtime.GOOS switch: a state root is routinely synced or mounted between
+// machines, and a name that is only invalid elsewhere is still a name amctl
+// must not produce.
 func validatePathComponent(name string) error {
 	switch {
 	case name == "":
@@ -557,27 +555,26 @@ func validatePathComponent(name string) error {
 			return errors.New("contains a NUL")
 		case unicode.IsControl(r):
 			return fmt.Errorf("contains control character %q", r)
-		// `/` is the separator everywhere; `\` and `:` are separators on
-		// Windows, and `:` is legal on darwin, which is the trap — a name with
-		// a colon works on the developer's Mac and produces an unopenable path
-		// on a user's Windows box.
+		// `/` is the separator everywhere, and `\` and `:` are separators to
+		// enough other tools that a name carrying one is not portable — `:` is
+		// legal on darwin, which is the trap.
 		case strings.ContainsRune(`/\:*?"<>|`, r):
 			return fmt.Errorf("contains %q, which is not portable in a filename", r)
 		case r >= utf8Max:
 			return fmt.Errorf("contains non-ASCII %q", r)
 		}
 	}
-	// Windows silently STRIPS a trailing dot or space when creating a file, so
-	// `hub-a.` and `hub-a` become one directory over there. That is a
-	// collision, not an error, and it is the collision this whole function
-	// exists to make impossible: two hubs sharing a directory means one
-	// machine's record applies to the other.
+	// A trailing dot or space is silently STRIPPED by some filesystems, so
+	// `hub-a.` and `hub-a` become one directory there. That is a collision, not
+	// an error, and it is the collision this whole function exists to make
+	// impossible: two hubs sharing a directory means one machine's record
+	// applies to the other.
 	if last := name[len(name)-1]; last == '.' || last == ' ' {
-		return fmt.Errorf("ends in %q, which Windows strips", last)
+		return fmt.Errorf("ends in %q, which some filesystems strip", last)
 	}
 	base, _, _ := strings.Cut(name, ".")
-	if windowsReservedNames[strings.ToLower(base)] {
-		return fmt.Errorf("%q is a Windows device name", base)
+	if reservedDeviceNames[strings.ToLower(base)] {
+		return fmt.Errorf("%q is a reserved device name", base)
 	}
 	return nil
 }

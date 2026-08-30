@@ -299,7 +299,7 @@ func (e *extractor) acceptMember(hdr *tar.Header) (clean string, isDir bool, err
 	}
 	// Case-folded collisions are refused on EVERY platform, not only where the
 	// filesystem would collapse them. A bundle carrying both SKILL.md and Skill.md is
-	// one file on darwin/Windows and two on linux; accepting it on linux would mean
+	// one file on darwin and two on linux; accepting it on linux would mean
 	// the same digest installs a different tree per platform, which breaks FR-024's
 	// all-or-nothing guarantee and R4's install fingerprint. Uniform refusal is the
 	// only behaviour that is the same everywhere. Folding is ASCII-cheap on purpose:
@@ -327,7 +327,7 @@ func (e *extractor) validatePath(name string) (clean string, isDir bool, err err
 	if name == "" {
 		return "", false, rejected(RejectEmptyPath, name)
 	}
-	// A backslash is a path separator to any Windows consumer of this tree, so
+	// A backslash is a path separator to some consumers of this tree, so
 	// `a\..\..\x` is a traversal that path.Clean would wave through. A NUL truncates
 	// the path for any C consumer. Neither belongs in a bundle path.
 	//
@@ -515,11 +515,10 @@ func (e *extractor) drainTrailer(r io.Reader) error {
 }
 
 // syncDirs makes the directories this extraction created durable, deepest first.
-// Failures are ignored on purpose: a directory fsync is a documented no-op on
-// Windows, and R3 established that the write ordering — the installation record is
-// written after the swap — is what actually keeps state consistent. The fsync
-// narrows a window; it does not create the safety, so it must not be able to fail
-// an otherwise good extraction.
+// Failures are ignored on purpose: R3 established that the write ordering — the
+// installation record is written after the swap — is what actually keeps state
+// consistent. The fsync narrows a window; it does not create the safety, so it
+// must not be able to fail an otherwise good extraction.
 func (e *extractor) syncDirs() {
 	for i := len(e.dirOrder) - 1; i >= 0; i-- {
 		e.syncDir(e.dirOrder[i])

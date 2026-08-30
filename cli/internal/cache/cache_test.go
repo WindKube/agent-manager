@@ -9,7 +9,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -599,8 +598,8 @@ func TestNewWithLimitFallsBackToTheDefaultCap(t *testing.T) {
 func TestEntryFileNameCarriesNoColon(t *testing.T) {
 	t.Parallel()
 
-	// A colon is illegal in a Windows filename; the on-disk spelling of the
-	// digest is deliberately the third one.
+	// The on-disk spelling of the digest is deliberately the third one: a colon
+	// is special to some darwin tooling and awkward in a shell everywhere.
 	name := Compute([]byte("abc")).FileName()
 	require.NotContains(t, name, ":")
 	require.Equal(t, "sha256-"+abcHex, name)
@@ -617,35 +616,16 @@ func TestPutCreatesTheCacheDirectoryPrivately(t *testing.T) {
 	info, err := os.Stat(c.Root())
 	require.NoError(t, err)
 
-	// Windows does not have the mode bits: Go synthesises 0777 for every
-	// directory, so the 0700 argument to MkdirAll is discarded and this
-	// assertion could only ever be made to pass by asserting 0777, which would
-	// assert nothing. The skip is therefore recording a REAL GAP, not a
-	// portability detail — the cache directory is genuinely not private on
-	// Windows, and making it so needs an explicit DACL via
-	// golang.org/x/sys/windows, which no task in this feature owns. Do not
-	// widen this into "the mode does not matter".
-	if runtime.GOOS == "windows" {
-		require.Equal(t, fs.FileMode(0o777), info.Mode().Perm(),
-			"if Windows ever grows real mode bits, this skip needs revisiting rather than relaxing")
-		t.Skip("no mode bits on windows; the cache directory is not private there — see the comment")
-	}
 	require.Equal(t, fs.FileMode(dirMode), info.Mode().Perm())
 }
 
 // A discard that cannot remove the entry must SAY so, because the entry then
 // poisons that digest for every future read rather than for this one. The
-// swallowed version of this shipped and the Windows CI leg caught it; this test
-// is what keeps the reporting from being quietly reverted as noise.
+// swallowed version of this shipped; this test is what keeps the reporting from
+// being quietly reverted as noise.
 func TestAnUnremovableCorruptEntryIsReportedNotSwallowed(t *testing.T) {
 	t.Parallel()
 
-	if runtime.GOOS == "windows" {
-		// A read-only directory does not block deletion on Windows, so there is
-		// no portable way to make RemoveAll fail here. The behaviour under test
-		// is platform-independent; only the way to provoke it is not.
-		t.Skip("cannot make a directory refuse unlink on windows")
-	}
 	if os.Geteuid() == 0 {
 		t.Skip("root ignores the write bit, so the removal would succeed")
 	}

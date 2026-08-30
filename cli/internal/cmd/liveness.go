@@ -1,5 +1,3 @@
-//go:build !windows
-
 package cmd
 
 import (
@@ -11,9 +9,8 @@ import (
 // processAlive is the staleness accelerator described at the top of lock.go, and
 // every uncertain answer is "alive".
 //
-// On Unix os.FindProcess never fails — it does not look the pid up — so the
-// question is entirely Signal(0)'s to answer. Windows works the opposite way
-// round and has its own file.
+// os.FindProcess never fails — it does not look the pid up — so the question is
+// entirely Signal(0)'s to answer.
 func processAlive(pid int) bool {
 	if pid <= 0 {
 		return false

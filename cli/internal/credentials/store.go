@@ -22,8 +22,7 @@ import (
 const DirName = "credentials"
 
 // ServiceName is the grouping amctl uses in every backend that has the concept
-// (keychain service, secret-service collection item, wincred prefix, pass
-// subdirectory). It is what a human sees in Keychain Access or seahorse.
+// (keychain service, secret-service collection item, pass subdirectory). It is what a human sees in Keychain Access or seahorse.
 const ServiceName = "amctl"
 
 // libSecretCollection is the Secret Service collection amctl stores into.
@@ -230,8 +229,6 @@ func Open(opts Options) (*Store, error) {
 		// PassDir is left empty on purpose: keyring then honours
 		// PASSWORD_STORE_DIR or ~/.password-store, which is the user's own
 		// store and not ours to relocate.
-
-		WinCredPrefix: keyPrefix,
 	}
 
 	var (
@@ -488,13 +485,6 @@ func (s *Store) filePath(key string) string { return filepath.Join(s.fileDir, ke
 // exposed since whenever the mode changed, and cannot be right for a file that
 // turns out to be a symlink to something else. The refusal names the path and
 // the two commands that fix it.
-//
-// One thing it is NOT responsible for: the fallback file's WRITE and UNLINK go
-// through keyring's own plain-`os` calls (os.WriteFile, os.Remove), so the
-// Windows sharing semantics that make `os.Root` mandatory elsewhere in this
-// module do not apply here and could not be fixed from this package anyway.
-// Windows reaches the file backend only if `wincred` fails to open, which it
-// does not, so the exposure is a Linux and macOS path in practice.
 //
 // It applies ONLY when the file backend is the one in use. On a static darwin
 // build the chosen fallback is `pass` (R1), whose permissions are the GPG

@@ -221,9 +221,6 @@ func TestTheFileFallbackWritesThePathWePredict(t *testing.T) {
 }
 
 func TestTheFileFallbackCreatesAnOwnerOnlyFile(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("POSIX permission bits are not the access control on Windows")
-	}
 	s, _ := fileStore(t)
 	require.NoError(t, s.Save(Issued(hubA, sentinelToken, 3600, time.Now())))
 
@@ -244,9 +241,6 @@ func TestTheFileFallbackCreatesAnOwnerOnlyFile(t *testing.T) {
 }
 
 func TestTheFileFallbackRefusesAFileWiderThanOwnerOnly(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("POSIX permission bits are not the access control on Windows")
-	}
 	tests := []struct {
 		name    string
 		mode    fs.FileMode
@@ -302,9 +296,6 @@ func TestTheFileFallbackRefusesAFileWiderThanOwnerOnly(t *testing.T) {
 }
 
 func TestTheFileFallbackRefusesADirectoryOthersCanWrite(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("POSIX permission bits are not the access control on Windows")
-	}
 	s, root := fileStore(t)
 	require.NoError(t, s.Save(Issued(hubA, sentinelToken, 3600, time.Now())))
 	dir := filepath.Join(root, DirName)
@@ -335,9 +326,6 @@ func TestTheFileFallbackRefusesADirectoryOthersCanWrite(t *testing.T) {
 // Save performs would be worse than no pre-flight: login would pass and then
 // fail anyway.
 func TestCheckIsTheSameGateBeforeAnythingIsTouched(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("POSIX permission bits are not the access control on Windows")
-	}
 	for _, tt := range []struct {
 		name    string
 		setUp   func(t *testing.T, s *Store, root string)
@@ -418,9 +406,6 @@ func TestCheckIsTheSameGateBeforeAnythingIsTouched(t *testing.T) {
 }
 
 func TestTheFileFallbackRefusesToFollowASymlinkToACredential(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("symlink creation needs a privilege the CI user may not have on Windows")
-	}
 	s, _ := fileStore(t)
 	path := s.filePath(itemKey(hubA))
 	target := filepath.Join(t.TempDir(), "elsewhere")
@@ -455,8 +440,8 @@ func TestTheFallbackWarningNamesTheBackendActuallyChosen(t *testing.T) {
 		{
 			// R1's measured case, and the one a hand-written message gets
 			// wrong: a CGO_ENABLED=0 darwin build lands on `pass`, not on a
-			// file, because pass.go is `!windows` and precedes FileBackend in
-			// keyring's own order.
+			// file, because pass.go precedes FileBackend in keyring's own
+			// order.
 			name:      "a static darwin build that lands on pass says pass",
 			goos:      "darwin",
 			available: darwinStatic,
@@ -629,9 +614,7 @@ func TestAllowedBackendsExcludesTheVolatileKernelKeyring(t *testing.T) {
 	}
 	require.Equal(t, wantOrder, allowed)
 	require.Contains(t, allowed, keyring.FileBackend, "the sanctioned fallback must always be reachable")
-	if runtime.GOOS != "windows" {
-		require.Contains(t, allowed, keyring.PassBackend, "R1: pass is what a static darwin build lands on")
-	}
+	require.Contains(t, allowed, keyring.PassBackend, "R1: pass is what a static darwin build lands on")
 }
 
 // --- FR-007: no token in any message ----------------------------------------
@@ -660,13 +643,11 @@ func TestNoErrorOrRenderingEverContainsTheToken(t *testing.T) {
 	s, _ := fileStore(t)
 	require.NoError(t, s.Save(c))
 	path := s.filePath(itemKey(hubA))
-	if runtime.GOOS != "windows" {
-		require.NoError(t, os.Chmod(path, 0o644))
-		_, _, err := s.Load(hubA)
-		require.Error(t, err)
-		rendered = append(rendered, err.Error())
-		require.NoError(t, os.Chmod(path, 0o600))
-	}
+	require.NoError(t, os.Chmod(path, 0o644))
+	_, _, err := s.Load(hubA)
+	require.Error(t, err)
+	rendered = append(rendered, err.Error())
+	require.NoError(t, os.Chmod(path, 0o600))
 
 	blob, err := encodeCredential(c)
 	require.NoError(t, err)

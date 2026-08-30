@@ -15,7 +15,6 @@ import (
 var fallbackHints = map[keyring.BackendType]string{
 	keyring.SecretServiceBackend: "no Secret Service is running on the session bus (a headless or SSH session), or the login keyring is locked",
 	keyring.KeychainBackend:      "the login keychain is locked, or access was denied",
-	keyring.WinCredBackend:       "the credential manager refused the request",
 }
 
 // fallbackWarning is FR-003's report, or "" when there is nothing to report.

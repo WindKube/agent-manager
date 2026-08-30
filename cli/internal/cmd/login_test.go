@@ -36,7 +36,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -742,9 +741,6 @@ func plantCredentialFile(t *testing.T, home, hubURL string, mode fs.FileMode) st
 // mode check still ran after the device flow, this would fail as unreachable
 // instead. Nothing is displayed and no packet leaves.
 func TestLoginRefusesAWideCredentialStoreBeforeSendingAnyoneToABrowser(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("POSIX permission bits are not the access control on Windows")
-	}
 	// Port 1 is reserved and nothing listens on it.
 	const deadHub = "https://127.0.0.1:1"
 

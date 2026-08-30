@@ -229,6 +229,37 @@ func scan(text string) []finding {
 	return out
 }
 
+// childPanicMargin is how much sooner the child's own -timeout fires than the
+// deadline this process enforces. Long enough for `go test` to write a full
+// goroutine dump for every package still running and for that output to reach
+// the pipe, short enough that the margin is not mistaken for slack in the
+// budget.
+const childPanicMargin = 90 * time.Second
+
+// childTimeoutPanic is what `go test` prints when a test binary exceeds its own
+// -timeout. Matching the string is the only way to tell that shape of failure
+// apart from an ordinary non-zero exit, which this gate deliberately ignores.
+const childTimeoutPanic = "panic: test timed out after"
+
+// panicExcerptBytes bounds the goroutine dump a hang reports. Enough for the
+// blocked test's own stack, which `go test` prints first, and not the whole
+// runtime.
+const panicExcerptBytes = 4000
+
+// redactBlock is redact for a multi-line excerpt: sentinels are replaced
+// everywhere and the whole block is capped, rather than each line being
+// truncated at 300 characters, which would throw away the stack frames that
+// make a dump worth printing.
+func redactBlock(s string, limit int) string {
+	for _, sent := range sentinels() {
+		s = strings.ReplaceAll(s, sent.value, "<the test "+sent.name+">")
+	}
+	if len(s) > limit {
+		s = s[:limit] + "\n...(truncated)"
+	}
+	return s
+}
+
 // timeoutTailBytes is how much of the child's output a timeout failure shows.
 // Enough to name the last package `go test` reported, small enough that a red
 // build is still readable.
@@ -302,8 +333,16 @@ func TestNoSecretReachesAnyOutputOfTheWholeSuite(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
 
+	// The child's OWN -timeout is deliberately shorter than the deadline above,
+	// and the gap is the whole diagnostic. When `go test` hits its own timeout
+	// it panics and dumps every goroutine's stack — which names the test that
+	// hung and the call it is sitting in — and that dump is captured here. When
+	// the context wins instead, the process is killed and there is nothing to
+	// read but the clock. A hang in this suite can only be observed on the
+	// runner where it happens, so the difference is between one red build that
+	// says where and an unbounded number that say when.
 	cmd := exec.CommandContext(ctx, goTool(t), "test", "-count=1", "-v",
-		"-timeout="+budget.String(), "./...")
+		"-timeout="+(budget-childPanicMargin).String(), "./...")
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), childEnvVar+"=1")
 	out, err := cmd.CombinedOutput()
@@ -316,6 +355,15 @@ func TestNoSecretReachesAnyOutputOfTheWholeSuite(t *testing.T) {
 	// A child killed by the deadline is different in kind: it did not finish the
 	// suite, so a clean scan of its output proves nothing about the part that
 	// never ran. Say so rather than passing.
+	// The child timed itself out and dumped its goroutines. That dump is the
+	// answer to "which test hung", so it is reported rather than left in a
+	// buffer nobody sees.
+	if i := strings.Index(captured, childTimeoutPanic); i >= 0 {
+		t.Fatalf("the child suite hung and timed itself out, so this scan covered only part of it "+
+			"(captured %d bytes).\npackages that finished: %s\nthe child's own report, from the panic:\n%s",
+			len(captured), strings.Join(finishedPackages(captured), " "),
+			redactBlock(captured[i:], panicExcerptBytes))
+	}
 	if ctx.Err() != nil {
 		t.Fatalf("the child suite did not finish within %s, so this scan covered only part of it "+
 			"— a clean scan of half a suite is not evidence (captured %d bytes).\n"+

@@ -1,0 +1,24 @@
+id: SH-NET-004
+severity: medium
+check: network-allowlist
+title: Instruction file directs the agent at an undeclared host
+detail: |
+  An instruction file names a host that the expected capability set does not
+  list. An instruction is network reach: a SKILL.md telling an agent to POST a
+  summary somewhere reaches that host without a single line of shell in the
+  bundle, and a scanner that only read scripts would call such a package clean.
+
+  The severity is one step below the script case because prose is read by a human
+  or an agent that may decline, while a script runs. The host still belongs in
+  front of a reviewer.
+match:
+  kind: regex
+  pattern: 'https?://[^\s"''<>)\]}]+'
+  paths: ["**/*.md", "**/*.txt", "**/*.rst"]
+  extract: url-argument
+  condition: host-not-in-expected
+evidence:
+  quote: matched-line
+fixtures:
+  trips: fixtures/SH-NET-004/hostile
+  clean: fixtures/SH-NET-004/benign

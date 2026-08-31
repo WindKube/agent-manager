@@ -1,0 +1,23 @@
+id: SH-MAN-001
+severity: medium
+check: manifest-schema
+title: Manifest does not conform to its published schema
+detail: |
+  The root manifest was validated against the schema its own `$schema` names and
+  did not conform. The bytes in the bundle are what was validated, not the
+  catalog's copy of the manifest, so this can appear on a version that was
+  accepted at registration: the schemas this build holds may have moved since.
+
+  A non-conformant manifest is not a cosmetic problem. Every downstream reading —
+  the package kind, the expected capability set every other check compares
+  against, the component list — is taken from it, so a document the validator
+  rejects is a document nothing else should be trusted to have read correctly.
+match:
+  kind: schema-path
+  extract: matched-text
+  condition: always
+evidence:
+  quote: schema-error
+fixtures:
+  trips: fixtures/SH-MAN-001/hostile
+  clean: fixtures/SH-MAN-001/benign

@@ -1,0 +1,22 @@
+id: SH-DEP-004
+severity: medium
+check: dependency-pinning
+title: Dependency is not pinned to one release
+detail: |
+  A dependency specifier in this package resolves to whatever the registry serves
+  at install time rather than to one release. The bytes a reviewer approved are
+  therefore not the bytes the next machine installs, and this scan's verdict says
+  nothing about the tree that will actually run.
+
+  The package need not be hostile itself. A caret range hands the decision to
+  whoever can publish a new patch of the dependency.
+match:
+  kind: dep-manifest
+  paths: ["**/package.json", "**/requirements.txt", "**/go.mod"]
+  extract: package-spec
+  condition: version-unpinned
+evidence:
+  quote: matched-line
+fixtures:
+  trips: fixtures/SH-DEP-004/hostile
+  clean: fixtures/SH-DEP-004/benign

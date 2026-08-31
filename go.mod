@@ -34,6 +34,8 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
+require mvdan.cc/sh/v3 v3.12.0
+
 require (
 	ariga.io/atlas v0.36.2-0.20250801020723-2aaaf0682dd9 // indirect
 	ariga.io/atlas-provider-bun v0.0.3 // indirect

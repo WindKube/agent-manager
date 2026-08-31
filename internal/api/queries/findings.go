@@ -381,12 +381,22 @@ func Finding(ctx context.Context, db bun.IDB, id uuid.UUID) (contract.FindingDet
 // absence of a check. The scan is the relation — not the finding — because a
 // check that passed raised nothing and so has no finding to hang off.
 //
-// The order is the scan's own insertion order, which the runner takes from the
-// check registry, so a newly registered check appears in the matrix in its
-// registered position with no renderer change. uuid v7 does not help here — the
-// primary key is (scan_id, check_id) — so it is `created_at, check_id`, and the
-// check_id tiebreak is what keeps a matrix written in one transaction stable
-// across two reads.
+// The order is check_id ascending, and the `created_at` in front of it never
+// breaks a tie. Say so plainly, because the obvious reading of this clause is
+// wrong: the scanner writes the whole matrix in one bulk insert inside one
+// transaction, and the column defaults to `now()`, which in Postgres is the
+// TRANSACTION timestamp rather than the statement's or the row's. Every row of a
+// scan therefore carries the same instant, and the sort falls entirely through to
+// check_id. uuid v7 cannot rescue it either — the primary key is
+// (scan_id, check_id) and there is no id to sort on.
+//
+// The consequence is that the matrix renders alphabetically and NOT in the order
+// checks.Default() registers them, which is the order the design's matrix lists.
+// That is a divergence between the two halves of this feature, not a bug in
+// either: the read cannot recover an order the write does not record, and
+// recording it needs an ordinal column, i.e. a migration this feature does not
+// take (data-model.md). What the clause does buy is what the pane actually
+// requires — a total, deterministic order, so two reads of one scan agree.
 func findingChecks(ctx context.Context, db bun.IDB, id uuid.UUID) ([]contract.FindingCheck, error) {
 	const query = `
 select schk.check_id, schk.label, schk.result::text, schk.warn_count

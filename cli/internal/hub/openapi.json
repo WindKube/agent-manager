@@ -524,7 +524,6 @@
             "items": {
               "enum": [
                 "claude-code",
-                "agents-md",
                 "codex"
               ],
               "type": "string"
@@ -1572,7 +1571,6 @@
             "items": {
               "enum": [
                 "claude-code",
-                "agents-md",
                 "codex"
               ],
               "type": "string"
@@ -1591,8 +1589,8 @@
     },
     "securitySchemes": {
       "bearerAuth": {
-        "bearerFormat": "JWT",
-        "description": "The `access_token` issued by /v1/device/token, or a web session token, sent as `Authorization: Bearer \u003ctoken\u003e`.",
+        "bearerFormat": "opaque",
+        "description": "The `access_token` issued by /v1/device/token, or a web session token, sent as `Authorization: Bearer \u003ctoken\u003e`. The token is OPAQUE — one base64url segment of random bytes, with no header, payload or claims. Do not decode one and do not read `exp` from it: a token's lifetime is the `expires_in` returned beside it.",
         "scheme": "bearer",
         "type": "http"
       }
@@ -1752,6 +1750,26 @@
             },
             "description": "OK"
           },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is missing or is not valid JSON."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body must be sent as application/json."
+          },
           "422": {
             "content": {
               "application/problem+json": {
@@ -1773,7 +1791,7 @@
               }
             }
           },
-          "501": {
+          "500": {
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1781,7 +1799,7 @@
                 }
               }
             },
-            "description": "Not implemented in this build."
+            "description": "The request could not be completed."
           }
         },
         "security": [],
@@ -1793,7 +1811,7 @@
     },
     "/v1/device/token": {
       "post": {
-        "description": "Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042).",
+        "description": "Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).",
         "operationId": "deviceToken",
         "requestBody": {
           "content": {
@@ -1823,11 +1841,16 @@
                 "schema": {
                   "$ref": "#/components/schemas/DeviceTokenError"
                 }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
               }
             },
-            "description": "RFC 8628 error"
+            "description": "RFC 8628 error. A request that is not a token request at all — no body — is refused before the flow is entered and carries the project's error shape instead; the two are told apart by the response's content type."
           },
-          "501": {
+          "500": {
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1835,7 +1858,7 @@
                 }
               }
             },
-            "description": "Not implemented in this build."
+            "description": "The request could not be completed."
           }
         },
         "security": [],

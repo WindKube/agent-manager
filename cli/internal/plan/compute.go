@@ -725,6 +725,13 @@ func deref(s *string) string {
 	return *s
 }
 
+// ChangeOrder is the order every bucket in a Plan is sorted in, exported so a
+// caller that has to extend a write set keeps that order rather than inventing a
+// second one. internal/apply needs it: a destination the record claims and the
+// disk does not have is promoted from Unchanged to a write, and two orderings
+// for one list is how `--dry-run` output and a real run start disagreeing.
+func ChangeOrder(a, b Change) int { return changeOrder(a, b) }
+
 func changeOrder(a, b Change) int {
 	return cmp.Or(
 		strings.Compare(string(a.Target), string(b.Target)),

@@ -468,8 +468,21 @@ func TestASweepReportsAnAsideItStillCannotRemove(t *testing.T) {
 //
 // A crash inside Swap's single-rename window between steps 2 and 3 leaves the
 // destination absent and the aside holding the ONLY complete copy of the version
-// the record claims. Step 1 reclaims it by renaming it back. A sweep that
-// removed it would delete the entry outright.
+// the record claims. A sweep that removed it would delete the entry outright.
+//
+// WHAT THIS ASSERTS CHANGED, AND WHY IT IS STRONGER NOW. This test used to
+// require the ASIDE to still be on disk afterwards, because a plan calling the
+// entry unchanged made the run write nothing, so preserving the aside for some
+// later run to reclaim was the best available outcome — and it left the tree
+// non-convergent in the meantime, which SC-008 forbids. Apply now promotes an
+// "unchanged" entry whose destination is GONE to a write (presentAndGone), so
+// Swap step 1 reclaims the aside in THIS run: the aside is renamed back to the
+// destination and installed over. The property under test is unchanged — the only
+// complete copy is never destroyed — and it is now asserted at the destination,
+// where the entry belongs, rather than at the aside path where it was stranded.
+// res.Reclaimed is checked so that "it is at dest" cannot be satisfied by a fresh
+// extraction from the bundle cache that happened to leave the same bytes there
+// while the only copy was deleted.
 func TestTheSweepNeverRemovesAnAsideWhoseDestinationIsAbsent(t *testing.T) {
 	f := newApplyFixture(t)
 	c := f.add(t, "acme/lint-go", "1.4.0", skillBundle(t))
@@ -487,8 +500,16 @@ func TestTheSweepNeverRemovesAnAsideWhoseDestinationIsAbsent(t *testing.T) {
 	res, err := f.applier(t).Apply(context.Background(), planOf(converged))
 	require.NoError(t, err)
 	require.Empty(t, res.Leftovers, "an aside that is the only copy is not a leftover")
-	require.DirExists(t, aside, "the only complete copy of the entry must survive the sweep")
-	require.FileExists(t, filepath.Join(aside, "SKILL.md"))
+
+	require.Len(t, res.Installed, 1,
+		"the destination the record claims is absent, so this run must not report itself converged")
+	require.True(t, res.Installed[0].Swap.Reclaimed,
+		"the aside held the only complete copy: step 1 must have RECLAIMED it by renaming it back, "+
+			"not discarded it and re-extracted over the gap")
+
+	require.DirExists(t, c.Dest, "the only complete copy of the entry must survive, at the destination")
+	require.FileExists(t, filepath.Join(c.Dest, "SKILL.md"))
+	require.NoDirExists(t, aside, "and nothing is left stranded at the aside path")
 }
 
 // ---------------------------------------------------------------------------

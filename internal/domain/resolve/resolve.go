@@ -538,6 +538,24 @@ func findCandidate(candidates []Candidate, id string) *Candidate {
 	return nil
 }
 
+// ValidRange reports whether an expression is one poolFor can evaluate.
+//
+// It exists so the operation that STORES a range refuses a bad one at the edge
+// (constitution principle III: a request body is hostile until validated) using
+// the same parser that will later evaluate it. A second opinion about what a
+// range is would let a profile accept an expression that then fails every
+// resolution of it — and the failure would surface as a 500 on a screen, long
+// after whoever typed it had gone.
+func ValidRange(expr string) error {
+	if expr == "" {
+		return fmt.Errorf("a range entry needs a constraint expression")
+	}
+	if _, err := semver.NewConstraint(expr); err != nil {
+		return fmt.Errorf("range %q is not a constraint: %w", expr, err)
+	}
+	return nil
+}
+
 // poolFor is the set a floating entry may choose from, newest first: visible
 // candidates, narrowed to the range expression when the entry has one.
 func poolFor(entry Entry) ([]Candidate, error) {

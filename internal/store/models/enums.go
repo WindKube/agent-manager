@@ -309,6 +309,43 @@ const (
 
 func (v MembershipRole) Valid() bool { return inEnum(PGMembershipRole, string(v)) }
 
+// What each of FR-037's four roles may do to the profile it is held on.
+//
+// These live beside the enum rather than in internal/api because three packages
+// need the same answer and none of them may import another: the detail query
+// reports them so a screen can disable a control it must not offer (FR-126), the
+// commands enforce them, and the operations turn a refusal into a 403. Three
+// hand-written copies of an authorisation rule is how one of them silently
+// drifts — the argument queries.Readable and api.requireRole both make.
+//
+// The empty role is legitimately common and grants nothing: a profile with
+// organisation visibility is readable by everybody (FR-044) and almost none of
+// those readers holds a membership. Every method below therefore fails closed on
+// it, which is also what stops a value the enum gains later from acquiring
+// privilege by default.
+
+// MayCurate reports whether this role may change what the profile holds — its
+// entries and its sync targets.
+func (v MembershipRole) MayCurate() bool {
+	return v == MembershipRoleOwner || v == MembershipRoleMaintainer
+}
+
+// MayShare reports whether this role may change who the profile is shared with.
+//
+// Owner only, and deliberately narrower than MayCurate: curating what a profile
+// contains and deciding who can see it are different powers, and a maintainer
+// who could re-share would be able to widen an access decision the owner made.
+func (v MembershipRole) MayShare() bool { return v == MembershipRoleOwner }
+
+// MayPublish reports whether this role may publish a revision.
+//
+// A revision is what reaches machines, so this is the sharpest of the three. A
+// consumer may not — they consume what somebody else published — and neither may
+// a reviewer, whose role is to look at a profile rather than to ship it.
+func (v MembershipRole) MayPublish() bool {
+	return v == MembershipRoleOwner || v == MembershipRoleMaintainer
+}
+
 // SubjectKind is whether a membership names a person or a mapped group.
 type SubjectKind string
 

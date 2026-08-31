@@ -2165,6 +2165,399 @@
         ],
         "type": "object"
       },
+      "ProfileCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "defaultPolicy": {
+            "enum": [
+              "floating-latest",
+              "pinned",
+              "range"
+            ],
+            "examples": [
+              "floating-latest"
+            ],
+            "type": "string"
+          },
+          "description": {
+            "maxLength": 2000,
+            "type": "string"
+          },
+          "forkOf": {
+            "description": "Slug of a profile to fork. Its entries are COPIED at this instant; the fork never sees an upstream revision published afterwards (FR-038). The upstream must be readable by this identity.",
+            "examples": [
+              "example/sre-oncall"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "examples": [
+              "Platform Engineer"
+            ],
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "ownerTeam": {
+            "examples": [
+              "example/platform"
+            ],
+            "maxLength": 200,
+            "type": "string"
+          },
+          "slug": {
+            "description": "URL-safe identifier, unique across the organisation. May carry several segments — the design's profiles live at example/platform-engineer — and each one is validated, because the slug becomes an object-store prefix.",
+            "examples": [
+              "example/platform-engineer"
+            ],
+            "maxLength": 120,
+            "minLength": 1,
+            "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*$",
+            "type": "string"
+          },
+          "visibility": {
+            "description": "Defaults to private. A new profile is not readable by the whole organisation until somebody says so (FR-037, FR-044).",
+            "enum": [
+              "organisation",
+              "shared",
+              "private"
+            ],
+            "examples": [
+              "organisation"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name"
+        ],
+        "type": "object"
+      },
+      "ProfileDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "defaultPolicy": {
+            "description": "The profile's own default, which a per-entry mode overrides (FR-032).",
+            "enum": [
+              "floating-latest",
+              "pinned",
+              "range"
+            ],
+            "examples": [
+              "floating-latest"
+            ],
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "entries": {
+            "description": "Every package this profile holds, in the profile's own order — INCLUDING the ones the gate excludes, which are reported and never silently omitted (FR-036).",
+            "items": {
+              "$ref": "#/components/schemas/ProfileEntry"
+            },
+            "type": "array"
+          },
+          "forkedFrom": {
+            "description": "Slug of the profile this was forked from. Lineage only: a fork never inherits the upstream's future revisions (FR-038).",
+            "examples": [
+              "example/sre-oncall"
+            ],
+            "type": "string"
+          },
+          "gate": {
+            "enum": [
+              "block",
+              "approval",
+              "warn-with-override"
+            ],
+            "examples": [
+              "warn-with-override"
+            ],
+            "type": "string"
+          },
+          "headRevision": {
+            "description": "The most recent published revision, 0 when nothing has been published yet.",
+            "examples": [
+              14
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "members": {
+            "description": "Individual members and identity-provider groups, with the role each holds (FR-037).",
+            "items": {
+              "$ref": "#/components/schemas/ProfileMember"
+            },
+            "type": "array"
+          },
+          "name": {
+            "examples": [
+              "Platform Engineer"
+            ],
+            "type": "string"
+          },
+          "ownerTeam": {
+            "description": "The team named on the header line. Free text, not a membership.",
+            "examples": [
+              "example/platform"
+            ],
+            "type": "string"
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/ProfilePermissions",
+            "description": "What this identity may do here. FR-126: a screen disables what it may not do rather than offering it and being refused."
+          },
+          "revisions": {
+            "description": "Published history, most recent first. Previous revisions stay readable for ever (FR-034).",
+            "items": {
+              "$ref": "#/components/schemas/ProfileRevision"
+            },
+            "type": "array"
+          },
+          "role": {
+            "description": "This identity's role on this profile. Absent when they read it through organisation visibility rather than a membership.",
+            "enum": [
+              "owner",
+              "maintainer",
+              "reviewer",
+              "consumer"
+            ],
+            "type": "string"
+          },
+          "slug": {
+            "examples": [
+              "example/platform-engineer"
+            ],
+            "type": "string"
+          },
+          "targets": {
+            "description": "Every sync target this hub knows, each with whether the profile enables it. The whole vocabulary, so a screen draws the same checkboxes without holding a copy of the enum.",
+            "items": {
+              "$ref": "#/components/schemas/ProfileTarget"
+            },
+            "type": "array"
+          },
+          "unpublishedChanges": {
+            "description": "Publishing now would write a lockfile different from the head revision's. True for a profile with no revisions at all.",
+            "type": "boolean"
+          },
+          "visibility": {
+            "enum": [
+              "organisation",
+              "shared",
+              "private"
+            ],
+            "examples": [
+              "organisation"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "visibility",
+          "defaultPolicy",
+          "gate",
+          "headRevision",
+          "permissions",
+          "unpublishedChanges",
+          "entries",
+          "members",
+          "targets",
+          "revisions"
+        ],
+        "type": "object"
+      },
+      "ProfileEntries": {
+        "additionalProperties": false,
+        "properties": {
+          "entries": {
+            "description": "Every package the profile holds, in the order it holds them. Naming one it does not hold adds it.",
+            "items": {
+              "$ref": "#/components/schemas/ProfileEntrySetting"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "entries"
+        ],
+        "type": "object"
+      },
+      "ProfileEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "digest": {
+            "description": "The resolved version's bundle digest, so the screen shows the same identity the lockfile would freeze.",
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "id": {
+            "description": "namespace/name, as the catalog renders it.",
+            "examples": [
+              "community/postgres-migration-guard"
+            ],
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "plugin",
+              "skill"
+            ],
+            "examples": [
+              "skill"
+            ],
+            "type": "string"
+          },
+          "latestVerdict": {
+            "description": "That version's scan state — the row's Scan badge. Unaffected by what the gate then does.",
+            "enum": [
+              "scanning",
+              "clean",
+              "flagged",
+              "rejected"
+            ],
+            "examples": [
+              "flagged"
+            ],
+            "type": "string"
+          },
+          "latestVersion": {
+            "description": "The catalog's newest visible version of this package. Absent when it has none.",
+            "examples": [
+              "0.8.3"
+            ],
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "latest",
+              "pinned",
+              "range"
+            ],
+            "examples": [
+              "latest"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "description": "The package's own name, for the row's title.",
+            "examples": [
+              "Postgres Migration Guard"
+            ],
+            "type": "string"
+          },
+          "note": {
+            "examples": [
+              "Flagged (SH-SQL-004 in SKILL.md); warn-with-override includes it with a warning."
+            ],
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "resolved",
+              "warned",
+              "overridden",
+              "downgraded",
+              "skipped"
+            ],
+            "examples": [
+              "warned"
+            ],
+            "type": "string"
+          },
+          "override": {
+            "$ref": "#/components/schemas/LockfileOverride",
+            "description": "The ACTIVE acceptance that let a flagged version through. A lapsed one is not an override and is absent here."
+          },
+          "pinnedVersion": {
+            "description": "The version the pin names, present only when mode is pinned. Absent when the pin names a version this hub no longer holds — which is the pin-target-missing exclusion.",
+            "examples": [
+              "3.0.2"
+            ],
+            "type": "string"
+          },
+          "range": {
+            "description": "The constraint expression, present only when mode is range.",
+            "examples": [
+              "\u003e=1.4.0 \u003c2.0.0"
+            ],
+            "type": "string"
+          },
+          "skip": {
+            "$ref": "#/components/schemas/LockfileSkip",
+            "description": "Present exactly when outcome is skipped. The same shape the lockfile publishes, so the screen and the CLI report an exclusion identically (FR-036)."
+          },
+          "unpublished": {
+            "description": "This row would resolve differently from the head revision's lockfile. Nothing reaches a machine until a revision is published.",
+            "type": "boolean"
+          },
+          "verdict": {
+            "description": "The RESOLVED version's verdict. The vocabulary is narrower than the catalog's on purpose: a rejected version never resolves, under any gate (FR-029).",
+            "enum": [
+              "scanning",
+              "clean",
+              "flagged"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "description": "What this entry resolves to. Absent exactly when the entry is excluded.",
+            "examples": [
+              "0.8.3"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "mode",
+          "outcome",
+          "unpublished"
+        ],
+        "type": "object"
+      },
+      "ProfileEntrySetting": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "namespace/name of a registered package.",
+            "examples": [
+              "example/adr-writer"
+            ],
+            "minLength": 1,
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "latest",
+              "pinned",
+              "range"
+            ],
+            "examples": [
+              "pinned"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "description": "The exact version when mode is pinned, the constraint expression when mode is range, and unused for latest.",
+            "examples": [
+              "3.0.2"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "mode"
+        ],
+        "type": "object"
+      },
       "ProfileList": {
         "additionalProperties": false,
         "properties": {
@@ -2179,6 +2572,228 @@
         "required": [
           "profiles"
         ],
+        "type": "object"
+      },
+      "ProfileMember": {
+        "additionalProperties": false,
+        "properties": {
+          "displayName": {
+            "examples": [
+              "Krzysztof Wiatrzyk"
+            ],
+            "type": "string"
+          },
+          "kind": {
+            "description": "group is an identity-provider group, matched against the claim on every request rather than expanded into people.",
+            "enum": [
+              "user",
+              "group"
+            ],
+            "examples": [
+              "group"
+            ],
+            "type": "string"
+          },
+          "ref": {
+            "description": "The person's email or subject, or the group's name as the provider spells it.",
+            "examples": [
+              "eng-platform"
+            ],
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "owner",
+              "maintainer",
+              "reviewer",
+              "consumer"
+            ],
+            "examples": [
+              "maintainer"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "ref",
+          "role"
+        ],
+        "type": "object"
+      },
+      "ProfilePermissions": {
+        "additionalProperties": false,
+        "properties": {
+          "curate": {
+            "description": "May change entries and sync targets. Owner or maintainer.",
+            "type": "boolean"
+          },
+          "publish": {
+            "description": "May publish a revision. Owner or maintainer — a consumer may not (FR-037).",
+            "type": "boolean"
+          },
+          "share": {
+            "description": "May change who the profile is shared with. Owner only: who can see a profile is not a curation decision.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "curate",
+          "share",
+          "publish"
+        ],
+        "type": "object"
+      },
+      "ProfileRevision": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "examples": [
+              "pinned ADR Writer to 3.0.2"
+            ],
+            "type": "string"
+          },
+          "publishedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "publishedBy": {
+            "description": "The email or subject of whoever published it.",
+            "examples": [
+              "pkaczmarek@example.com"
+            ],
+            "type": "string"
+          },
+          "revision": {
+            "examples": [
+              14
+            ],
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "revision",
+          "publishedAt",
+          "publishedBy"
+        ],
+        "type": "object"
+      },
+      "ProfileShare": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "user",
+              "group"
+            ],
+            "examples": [
+              "group"
+            ],
+            "type": "string"
+          },
+          "ref": {
+            "description": "The person's email or subject, or the group's name exactly as the identity provider spells it — it is compared against the groups claim, so a near miss silently grants nothing.",
+            "examples": [
+              "eng-platform"
+            ],
+            "maxLength": 320,
+            "minLength": 1,
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "owner",
+              "maintainer",
+              "reviewer",
+              "consumer"
+            ],
+            "examples": [
+              "maintainer"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "ref",
+          "role"
+        ],
+        "type": "object"
+      },
+      "ProfileSharing": {
+        "additionalProperties": false,
+        "properties": {
+          "members": {
+            "description": "The subjects whose role is being set. Others keep theirs.",
+            "items": {
+              "$ref": "#/components/schemas/ProfileShare"
+            },
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "members"
+        ],
+        "type": "object"
+      },
+      "ProfileTarget": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "target": {
+            "enum": [
+              "claude-code",
+              "codex"
+            ],
+            "examples": [
+              "claude-code"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "target",
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "ProfileTargetSelection": {
+        "additionalProperties": false,
+        "properties": {
+          "targets": {
+            "description": "The agent directories a client should write. An omitted target is disabled. An empty list is legal and means the profile writes nothing until somebody chooses.",
+            "items": {
+              "enum": [
+                "claude-code",
+                "codex"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "targets"
+        ],
+        "type": "object"
+      },
+      "RevisionPublish": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "description": "The publisher's note on this revision, shown in the history and carried in the lockfile.",
+            "examples": [
+              "pinned ADR Writer to 3.0.2"
+            ],
+            "maxLength": 500,
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "ScannerSummary": {
@@ -3916,6 +4531,415 @@
         "tags": [
           "profiles"
         ]
+      },
+      "post": {
+        "description": "Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.",
+        "operationId": "createProfile",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Profile"
+                }
+              }
+            },
+            "description": "Created."
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is missing or is not valid JSON."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity may not create a profile."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "`forkOf` names no profile this identity may read."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A profile with this slug already exists."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body must be sent as application/json."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The slug, the visibility or the default policy is not one this hub accepts."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Create a profile, or fork one",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/v1/profiles/{slug}": {
+      "get": {
+        "description": "The profile detail screen (001 US5): every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted (FR-036). The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.",
+        "operationId": "getProfile",
+        "parameters": [
+          {
+            "description": "The profile's URL-safe identifier. It may carry several segments, as the design's example/platform-engineer does.",
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "description": "The profile's URL-safe identifier. It may carry several segments, as the design's example/platform-engineer does.",
+              "examples": [
+                "example/platform-engineer"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileDetail"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such profile, or not readable by this identity. The two are deliberately one answer (FR-044)."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "One profile, resolved under the org gate",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/v1/profiles/{slug}/entries": {
+      "put": {
+        "description": "Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.",
+        "operationId": "setProfileEntries",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileEntries"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileDetail"
+                }
+              }
+            },
+            "description": "Set. The body is the profile as it now resolves."
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is missing or is not valid JSON."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity may not curate this profile."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such profile, or not readable by this identity."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body must be sent as application/json."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A package is unknown, a pin names a version this hub does not hold, a range is not a constraint, or the request leaves out a package the profile holds."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Set the packages a profile holds and how each one tracks versions",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/v1/profiles/{slug}/revisions": {
+      "post": {
+        "description": "Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.",
+        "operationId": "publishRevision",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevisionPublish"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Lockfile"
+                }
+              }
+            },
+            "description": "Published. The body conforms to lockfile.schema.json.",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "description": "The published revision's own path.",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is missing or is not valid JSON."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity may not publish a revision of this profile."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such profile, or not readable by this identity."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body must be sent as application/json."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The profile holds a state the resolver refuses."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Publish the next immutable revision",
+        "tags": [
+          "profiles"
+        ]
       }
     },
     "/v1/profiles/{slug}/revisions/{revision}": {
@@ -3998,6 +5022,230 @@
           }
         },
         "summary": "Fetch a resolved revision lockfile",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/v1/profiles/{slug}/sharing": {
+      "put": {
+        "description": "Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.",
+        "operationId": "setProfileSharing",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileSharing"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileDetail"
+                }
+              }
+            },
+            "description": "Shared. The body is the profile, with its members."
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is missing or is not valid JSON."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity may not change who can see this profile."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such profile, or not readable by this identity."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body must be sent as application/json."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A subject or role is outside its vocabulary, a subject is named twice, or the change would leave the profile with no owner."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Set the role each member and identity-provider group holds",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/v1/profiles/{slug}/targets": {
+      "put": {
+        "description": "The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.",
+        "operationId": "setProfileTargets",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileTargetSelection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileDetail"
+                }
+              }
+            },
+            "description": "Set. The body is the profile, with every target and whether it is enabled."
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is missing or is not valid JSON."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity may not curate this profile."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such profile, or not readable by this identity."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body must be sent as application/json."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A named target is not one this hub writes."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Choose which agent directories a client writes",
         "tags": [
           "profiles"
         ]

@@ -183,24 +183,6 @@ func lockfileFor(
 	entries []resolve.Entry,
 	at time.Time,
 ) (contract.Lockfile, error) {
-	lockfile := contract.Lockfile{
-		SchemaVersion: "1.0.0",
-		Profile: contract.LockfileProfile{
-			Slug: spec.slug, Name: spec.name, Visibility: string(spec.visibility),
-		},
-		Revision:      seq,
-		Note:          note,
-		ResolvedAt:    at,
-		Gate:          string(spec.gate),
-		DefaultPolicy: string(spec.defaultPolicy),
-		Entries:       []contract.LockfileEntry{},
-		Skipped:       []contract.LockfileSkip{},
-		Targets:       []string{},
-	}
-	for _, target := range spec.targets {
-		lockfile.Targets = append(lockfile.Targets, string(target))
-	}
-
 	// `at` rather than seed time: a revision records the resolution as it stood
 	// when it was published, and whether an acceptance had lapsed by then is part
 	// of that.
@@ -213,37 +195,22 @@ func lockfileFor(
 		return contract.Lockfile{}, fmt.Errorf("%s r%d: %w", spec.slug, seq, err)
 	}
 
-	for _, resolution := range result.Entries {
-		if resolution.Skip != nil {
-			lockfile.Skipped = append(lockfile.Skipped, contract.LockfileSkip{
-				ID:                  resolution.Skip.ID,
-				Reason:              string(resolution.Skip.Reason),
-				Detail:              resolution.Skip.Detail,
-				WouldHaveResolvedTo: resolution.Skip.WouldHaveResolvedTo,
-			})
-			continue
-		}
-		row := contract.LockfileEntry{
-			ID:         resolution.ID,
-			Kind:       resolution.Kind,
-			Version:    resolution.Version.Semver,
-			Digest:     resolution.Version.Digest,
-			ObjectKey:  resolution.Version.ObjectKey,
-			Resolution: string(resolution.Mode),
-			Verdict:    string(resolution.Version.Verdict),
-		}
-		if resolution.Override != nil {
-			row.Override = &contract.LockfileOverride{
-				Reviewer: resolution.Override.Reviewer,
-				Note:     resolution.Override.Note,
-			}
-			if resolution.Override.ExpiresAt != nil {
-				row.Override.ExpiresAt = *resolution.Override.ExpiresAt
-			}
-		}
-		lockfile.Entries = append(lockfile.Entries, row)
+	targets := make([]string, 0, len(spec.targets))
+	for _, target := range spec.targets {
+		targets = append(targets, string(target))
 	}
-	return lockfile, nil
+
+	// The same assembly the publish command runs (contract.LockfileFrom). Two
+	// field-by-field copies of it is how the seeded history and a lockfile
+	// published through the product come to disagree about a field somebody added
+	// to only one of them — and these seeded lockfiles are the design canon the
+	// screens are checked against.
+	return contract.LockfileFrom(
+		contract.LockfileProfile{
+			Slug: spec.slug, Name: spec.name, Visibility: string(spec.visibility),
+		},
+		seq, note, at, string(spec.defaultPolicy), targets, result,
+	), nil
 }
 
 // resolverEntries is the dataset in the shape the resolver takes: one entry per

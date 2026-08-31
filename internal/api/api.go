@@ -150,6 +150,28 @@ func New(deps Deps, opts Options) *Server {
 	// Off by default in gin, which answers a wrong method with 404. A client that
 	// used the wrong verb deserves to be told so.
 	engine.HandleMethodNotAllowed = true
+	// Route on the RAW path and unescape the captured values afterwards, so a path
+	// parameter may carry an encoded slash.
+	//
+	// It is load-bearing for profiles and it was measured, not assumed. A profile
+	// slug legitimately holds several segments — the representative dataset's are
+	// `example/platform-engineer`, and blob.ProfileRevisionKey validates each
+	// segment because the slug becomes an object-store prefix — while the frozen
+	// contract fixes the path template as `/v1/profiles/{slug}/revisions/{revision}`
+	// with ONE parameter, which gin matches against ONE segment. The generated
+	// clients already send `example%2Fplatform-engineer`: oapi-codegen's `simple`
+	// style escapes a path parameter, and the request's RawPath carries it. With
+	// gin's defaults the router reads URL.Path instead — the DECODED form, two
+	// segments — and answers 404, so every seeded profile was unreachable through
+	// its own revision endpoint. Measured against gin's router on 2026-08-31: with
+	// these two flags the same request routes and `slug` arrives decoded.
+	//
+	// It changes nothing for a parameter with no escape in it. gin falls back to
+	// URL.Path whenever RawPath is empty, which is every request whose path needed
+	// no encoding, so the unescaping applies only where a client actually escaped
+	// something.
+	engine.UseRawPath = true
+	engine.UnescapePathValues = true
 	engine.Use(correlation(deps.Log), recovery())
 	engine.NoRoute(notFound)
 	engine.NoMethod(methodNotAllowed)

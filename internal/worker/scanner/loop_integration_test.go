@@ -597,10 +597,9 @@ type auditCase struct {
 // deliberately: neither has a registered HTTP operation yet, so no client can
 // perform them. Their cases belong in the layer that exposes them.
 //
-// When a later phase adds an action — publishing a revision (T083), sharing a
-// profile (T081), an administration change (US7) — its case belongs in this table
-// rather than in a test of its own: the value of a sweep is that somebody has to
-// look at the list.
+// The five profile commands (T079-T083) landed here rather than in a test of
+// their own, which is what this paragraph used to promise and now records. An
+// administration change (US7) is the next one owed.
 func TestEveryMutatingActionWritesExactlyOneAuditRow(t *testing.T) {
 	requireNoSeededData(t)
 	ctx := context.Background()
@@ -739,6 +738,78 @@ func TestEveryMutatingActionWritesExactlyOneAuditRow(t *testing.T) {
 				return who.Email
 			},
 		},
+		{
+			// The five profile commands (T079-T083). They run as one chain in table
+			// order because each needs what the one before it wrote, and because a
+			// profile whose entries were inserted by a helper would not exercise the
+			// upsert that the audit row is meant to account for.
+			action: "a person creates a profile", kind: models.AuditKindProfile,
+			actorKind: models.ActorKindIdentity,
+			drive: func(t *testing.T) string {
+				t.Helper()
+				_, err := commands.CreateProfile(ctx, db, who, commands.ProfileCreation{
+					Slug: "sweep/curated", Name: "Sweep curated",
+				})
+				require.NoError(t, err)
+				return who.Email
+			},
+		},
+		{
+			action: "an owner sets the packages in a profile", kind: models.AuditKindProfile,
+			actorKind: models.ActorKindIdentity,
+			drive: func(t *testing.T) string {
+				t.Helper()
+				require.NoError(t, commands.SetProfileEntries(ctx, db, who, "sweep/curated",
+					contract.ProfileEntries{Entries: []contract.ProfileEntrySetting{
+						{ID: sweepPackageID(t, sweepVersion), Mode: "latest"},
+					}}))
+				return who.Email
+			},
+		},
+		{
+			// Kind `share` rather than `profile`: the audit vocabulary separates
+			// them, and "who can see this" is the question a reviewer searches for
+			// on its own. Still exactly one row, which is this table's claim.
+			action: "an owner shares a profile", kind: models.AuditKindShare,
+			actorKind: models.ActorKindIdentity,
+			drive: func(t *testing.T) string {
+				t.Helper()
+				require.NoError(t, commands.SetProfileSharing(ctx, db, who, "sweep/curated",
+					contract.ProfileSharing{Members: []contract.ProfileShare{
+						{Kind: "user", Ref: who.Email, Role: "owner"},
+						{Kind: "group", Ref: "eng-platform", Role: "consumer"},
+					}}))
+				return who.Email
+			},
+		},
+		{
+			action: "an owner chooses the sync targets", kind: models.AuditKindProfile,
+			actorKind: models.ActorKindIdentity,
+			drive: func(t *testing.T) string {
+				t.Helper()
+				require.NoError(t, commands.SetProfileTargets(ctx, db, who, "sweep/curated",
+					contract.ProfileTargetSelection{Targets: []string{"claude-code"}}))
+				return who.Email
+			},
+		},
+		{
+			action: "an owner publishes a revision", kind: models.AuditKindProfile,
+			actorKind: models.ActorKindIdentity,
+			setup: func(t *testing.T) {
+				// The resolver refuses to guess a gate, so a publish needs the
+				// singleton to exist. Nothing else in this file writes it.
+				t.Helper()
+				setScanGate(t, models.ScanGateWarnWithOverride)
+			},
+			drive: func(t *testing.T) string {
+				t.Helper()
+				lockfile, err := commands.PublishRevision(ctx, db, who, "sweep/curated",
+					"the sweep's revision")
+				require.NoError(t, err)
+				require.Equal(t, 1, lockfile.Revision)
+				return who.Email
+			},
+		},
 	} {
 		t.Run(tc.action, func(t *testing.T) {
 			if tc.setup != nil {
@@ -831,6 +902,19 @@ func sweepProfile(t *testing.T, slug string) {
 		CreatedBy: "sweep",
 	}).Exec(context.Background())
 	require.NoError(t, err)
+}
+
+// sweepPackageID names the package a version belongs to the way a profile entry
+// addresses it, so the curation case uses the package the chain above registered
+// rather than one it invented.
+func sweepPackageID(t *testing.T, versionID uuid.UUID) string {
+	t.Helper()
+
+	var id string
+	require.NoError(t, pool.QueryRow(context.Background(), `
+select pkg.namespace || '/' || pkg.name from package as pkg
+join version as ver on ver.package_id = pkg.id where ver.id = $1`, versionID).Scan(&id))
+	return id
 }
 
 type auditRow struct{ kind, actorKind, actor, source, text string }

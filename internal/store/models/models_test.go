@@ -518,3 +518,52 @@ func TestEveryRelationTargetIsARegisteredTable(t *testing.T) {
 		}
 	}
 }
+
+// FR-037's four roles, and what each one may do to the profile it is held on.
+//
+// A table rather than four one-line assertions, because what makes this an
+// authorisation model rather than three booleans is the SHAPE of the answers:
+// sharing is strictly narrower than curating, publishing is not something a
+// consumer does, and the empty role — which is what a reader of an
+// organisation-visible profile holds — grants nothing at all. Each of those is a
+// row somebody could change by accident while adding a fifth role.
+//
+// The last case is the one worth having. `Principal.Role` is legitimately empty
+// and so is a membership role, and a permission function that returned true for
+// the zero value would hand every reader of every organisation profile the right
+// to publish it.
+func TestWhatEachProfileRoleMayDo(t *testing.T) {
+	for _, tc := range []struct {
+		role                          models.MembershipRole
+		curate, share, publish, valid bool
+	}{
+		{models.MembershipRoleOwner, true, true, true, true},
+		{models.MembershipRoleMaintainer, true, false, true, true},
+		{models.MembershipRoleReviewer, false, false, false, true},
+		{models.MembershipRoleConsumer, false, false, false, true},
+		{"", false, false, false, false},
+		{"admin", false, false, false, false},
+	} {
+		name := string(tc.role)
+		if name == "" {
+			name = "no role at all, which is what a reader of an organisation profile holds"
+		}
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, tc.curate, tc.role.MayCurate())
+			require.Equal(t, tc.share, tc.role.MayShare())
+			require.Equal(t, tc.publish, tc.role.MayPublish())
+			require.Equal(t, tc.valid, tc.role.Valid())
+		})
+	}
+
+	// Every value the column admits is answered above. A fifth role added to the
+	// enum without a row here would arrive holding nothing, silently.
+	answered := []string{}
+	for _, role := range []models.MembershipRole{
+		models.MembershipRoleOwner, models.MembershipRoleMaintainer,
+		models.MembershipRoleReviewer, models.MembershipRoleConsumer,
+	} {
+		answered = append(answered, string(role))
+	}
+	require.ElementsMatch(t, models.EnumTypes()[models.PGMembershipRole], answered)
+}

@@ -10,21 +10,87 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/dialect/pgdialect"
+
+	"agent-manager/internal/blob"
 	"agent-manager/internal/config"
 	"agent-manager/internal/logging"
 	"agent-manager/internal/outbox"
+	"agent-manager/internal/seed"
+	"agent-manager/internal/store/models"
 	"agent-manager/internal/web"
 	"agent-manager/internal/web/hub"
 	"agent-manager/internal/worker"
 	"agent-manager/internal/worker/roles"
 )
 
-// The remaining serving roles land in later layers of this stack. Each is
-// replaced by a real bootstrap in the layer that owns it; until then a role
-// starts, reports itself and exits 0 so the compose topology can be wired ahead
-// of the code. `serve api` is real: see serve.go.
+// runSeed is the one-shot that loads the design's dataset (001 FR-057).
+//
+// It opens the pools itself instead of calling store.Open, and that is the
+// config's doing rather than an omission: config.Seed names the application
+// database and the bucket and NOTHING ELSE. store.Open requires the queue URL as
+// well, because the pair of them is what lets it refuse the one misconfiguration
+// that would put Atlas in front of River's tables — and a role that enqueues
+// nothing has no business holding a queue credential (principle II).
+func runSeed(ctx context.Context) error {
+	cfg, err := config.Load[config.Seed]()
+	if err != nil {
+		return err
+	}
+	log := logging.New("seed", cfg.LogLevel, cfg.LogFormat)
 
-func runSeed(context.Context) error { return notYet("seed") }
+	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("open the application pool: %w", err)
+	}
+	defer pool.Close()
+
+	sqldb := stdlib.OpenDBFromPool(pool)
+	defer func() {
+		if closeErr := sqldb.Close(); closeErr != nil {
+			log.Error().Err(closeErr).Msg("close database handle")
+		}
+	}()
+
+	db := bun.NewDB(sqldb, pgdialect.New())
+	db.RegisterModel(models.All()...)
+
+	bucket, err := blob.Open(ctx, cfg.BlobURL)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := bucket.Close(); closeErr != nil {
+			log.Error().Err(closeErr).Msg("close bucket")
+		}
+	}()
+
+	// Both halves of the bucket. This is the only role besides the fetcher that
+	// gets a writer, and the reason is in the compose comment beside its service:
+	// the seed writes bundle bytes as well as rows.
+	report, err := seed.Run(ctx, seed.Deps{
+		DB:        db,
+		BlobRead:  bucket.Reader(),
+		BlobWrite: bucket.Writer(),
+	})
+	if err != nil {
+		return err
+	}
+
+	log.Info().
+		Int("packages", report.Packages).
+		Int("versions", report.Versions).
+		Int("profiles", report.Profiles).
+		Int("findings", report.Findings).
+		Int("revisions", report.Revisions).
+		Int("bundles_written", report.Bundles).
+		Int("lockfiles_written", report.Lockfiles).
+		Msg("seeded the representative dataset")
+	return nil
+}
 
 // runWeb is the web role's bootstrap. Compare it with runAPI: there is no
 // store.Open and no blob.Open here, and config.Web has no field that would let
@@ -129,10 +195,5 @@ func runHealthcheck(ctx context.Context, url string) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("probe %s: status %d", url, resp.StatusCode)
 	}
-	return nil
-}
-
-func notYet(role string) error {
-	fmt.Printf("agent-manager: %s is not implemented in this layer yet\n", role)
 	return nil
 }

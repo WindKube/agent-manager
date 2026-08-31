@@ -115,6 +115,11 @@ var mayTouchDatastore = []func(string) bool{
 	under("internal/cli"),
 	// The outbox rows and the relay that drains them (R5).
 	under("internal/outbox"),
+	// The one-shot that loads the representative dataset (FR-057). It stands in
+	// for the fetcher as well as the api: a seeded version has to have bytes
+	// behind its object_key, so this is the only package besides internal/worker
+	// that holds the bucket's writer half.
+	under("internal/seed"),
 	// The store and the bucket themselves.
 	under("internal/store"),
 	under("internal/blob"),

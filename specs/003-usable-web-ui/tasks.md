@@ -43,10 +43,10 @@ Setup ─> Foundational ─> US3 split ─> US1 Dex ─> US2 sign-in ─┬─> 
 
 **Purpose**: the configuration surface every later phase reads.
 
-- [ ] T001 Add `BrowserBaseURL` to the OIDC config block in `internal/config/config.go`, read from `AGENT_MANAGER_OIDC_BROWSER_BASE_URL`, optional, empty meaning "the issuer is browser-reachable"
-- [ ] T002 Add `SessionMintSecret` to **both** the api and web config structs in `internal/config/config.go`. It is the one value both roles must hold; the api MUST refuse to mint sessions when it is empty, so it has no default
-- [ ] T003 [P] Add `DevCredentialHint bool` to the web config struct in `internal/config/config.go`, read from `AGENT_MANAGER_WEB_DEV_CREDENTIAL_HINT`, defaulting false. It MUST NOT be derived from the issuer URL, the host name or the build type — see FR-119
-- [ ] T004 [P] Extend the config test in `internal/config/config_test.go` to assert the web struct still has no `DatabaseURL` and no `BlobURL` field after this feature's additions (principle II, by absence)
+- [x] T001 Add `BrowserBaseURL` to the OIDC config block in `internal/config/config.go`, read from `AGENT_MANAGER_OIDC_BROWSER_BASE_URL`, optional, empty meaning "the issuer is browser-reachable"
+- [x] T002 Add `SessionMintSecret` to **both** the api and web config structs in `internal/config/config.go`. It is the one value both roles must hold; the api MUST refuse to mint sessions when it is empty, so it has no default
+- [x] T003 [P] Add `DevCredentialHint bool` to the web config struct in `internal/config/config.go`, read from `AGENT_MANAGER_WEB_DEV_CREDENTIAL_HINT`, defaulting false. It MUST NOT be derived from the issuer URL, the host name or the build type — see FR-119
+- [x] T004 [P] Extend the config test in `internal/config/config_test.go` to assert the web struct still has no `DatabaseURL` and no `BlobURL` field after this feature's additions (principle II, by absence)
 
 ---
 
@@ -57,12 +57,12 @@ later phase would be untestable through the product.
 
 **⚠️ No screen story can be validated until this phase is complete.**
 
-- [ ] T005 [001-T107] Implement `runSeed` in `internal/cli/run.go` — it currently returns `notYet("seed")`, which prints a notice and exits 0, so the compose one-shot "succeeds" while doing nothing
-- [ ] T006 [001-T107] Write the seed dataset in `internal/seed/` — the design's 10 packages (4 plugins, 6 skills), 4 profiles, 4 findings and the audit rows, with **conformant** manifests per 001's R1 finding and timestamps relative to seed time so "2 days ago" stays true
-- [ ] T007 Seed the `group_role_map` rows in `internal/seed/` mapping `eng-platform` → catalog admin and `eng-security` → scanner reviewer. **These two group names are shared with the identity-provider fixture in T018** — a mismatch produces a working login with no role, which is the hardest failure in this feature to diagnose. Define them as one exported constant pair and have both sides read it
-- [ ] T008 [P] Seed the singleton `org_policy` row and the category vocabulary in `internal/seed/`
-- [ ] T009 [P] Integration test in `internal/seed/seed_integration_test.go` asserting the seed is idempotent (running it twice leaves the same row counts) and that it writes bundle bytes as well as rows — the compose `seed` service holds the writer key precisely because it does both
-- [ ] T010 Assert in `internal/seed/seed_integration_test.go` that every seeded package appears on the catalog query with the verdict the design specifies (001 SC-004)
+- [x] T005 [001-T107] Implement `runSeed` in `internal/cli/run.go` — it currently returns `notYet("seed")`, which prints a notice and exits 0, so the compose one-shot "succeeds" while doing nothing
+- [x] T006 [001-T107] Write the seed dataset in `internal/seed/` — the design's 10 packages (4 plugins, 6 skills), 4 profiles, 4 findings and the audit rows, with **conformant** manifests per 001's R1 finding and timestamps relative to seed time so "2 days ago" stays true
+- [x] T007 Seed the `group_role_map` rows in `internal/seed/` mapping `eng-platform` → catalog admin and `eng-security` → scanner reviewer. **These two group names are shared with the identity-provider fixture in T018** — a mismatch produces a working login with no role, which is the hardest failure in this feature to diagnose. Define them as one exported constant pair and have both sides read it
+- [x] T008 [P] Seed the singleton `org_policy` row and the category vocabulary in `internal/seed/`
+- [x] T009 [P] Integration test in `internal/seed/seed_integration_test.go` asserting the seed is idempotent (running it twice leaves the same row counts) and that it writes bundle bytes as well as rows — the compose `seed` service holds the writer key precisely because it does both
+- [x] T010 Assert in `internal/seed/seed_integration_test.go` that every seeded package appears on the catalog query with the verdict the design specifies (001 SC-004)
 
 **Checkpoint**: a fresh stack comes up with data in it. No screen is built yet, but nothing that
 follows will show an empty page for want of rows.
@@ -111,7 +111,7 @@ accepted at boot and silently ignored.
 
 ### Implementation for User Story 1
 
-- [ ] T018 [US1] Write `deploy/local/glauth/glauth.cfg` — two users in two groups plus one service account for Dex's bind, `baseDN=dc=example,dc=dev`, `nameformat=cn`, `groupformat=ou`. The group names MUST be the constants from T007
+- [ ] T018 [US1] Write `deploy/local/glauth/glauth.cfg` — two users in two groups plus one service account for Dex's bind, `baseDN=dc=example,dc=dev`, `nameformat=cn`, `groupformat=ou`. The group names MUST be the constants from T007, and the two users' names and mails MUST be `seed.DirectoryUsers` from the same file — the seed asserts that no seeded identity collides with them, which a second, hand-typed spelling of an address quietly defeats
 - [ ] T019 [US1] Write `deploy/local/dex/config.yaml` — issuer `http://dex:5556/dex` (**container-reachable**, the reverse of the Keycloak arrangement), memory storage, `skipApprovalScreen`, the `agent-manager` confidential client and the `agent-manager-cli` public client, and the LDAP connector. Use `idAttr: uidNumber`, `groupAttr: uniqueMember` with `userAttr: DN`, and `nameAttr: ou` — each of the three obvious alternatives fails in a way that reads like a different problem
 - [ ] T020 [US1] Replace the `keycloak` service in `compose.infra.yaml` with `dex` and `glauth`. Dex's healthcheck probes its own discovery path; glauth gets `condition: service_started` rather than a healthcheck, so a broken directory surfaces as a failed login rather than a hung boot
 - [ ] T021 [US1] Delete `deploy/local/keycloak/realm.json` and every Keycloak reference in `compose.infra.yaml`, `compose.yaml` and the anchors

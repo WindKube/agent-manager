@@ -5,7 +5,9 @@
 # blob.Reader with no write method (internal/blob), but a type boundary is only
 # as good as the credential behind it: with one root key, code that bypassed the
 # interface would still succeed. am-fetcher can write; am-reader cannot, and the
-# api, scanner and seed roles hold only that key.
+# api and scanner roles hold only that key. The seed holds the writer key too —
+# it writes bundle bytes as well as rows, and a catalog row whose object_key
+# names nothing is not a state worth seeding.
 set -eu
 
 mc alias set local "http://minio:9000" "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"

@@ -7,6 +7,12 @@ includes:
   openapi:
     taskfile: Taskfile.openapi.yaml
 
+  # The CLI is a second Go module with its own taskfile; `dir` is what keeps its
+  # `go build ./...` inside cli/ instead of resolving against the hub module.
+  cli:
+    taskfile: cli/Taskfile.yaml
+    dir: cli
+
 vars:
   BIN: "{{.ROOT_DIR}}/.bin"
   TAILWIND_VERSION: v4.1.18
@@ -39,6 +45,11 @@ tasks:
       - task: gen:css
       - task: gen:client
       - task: migrate:schema
+      # The CLI's hub client is generated from the hub's EMITTED document by the
+      # hub's own generator, so it is stale for exactly the same reasons the four
+      # above are and belongs in the same command. It lives in the cli module but
+      # nothing about producing it does.
+      - task: cli:gen:client
 
   gen:templ:
     desc: templ components -> _templ.go
@@ -75,9 +86,14 @@ tasks:
     cmds:
       - task: gen
       - |
-        if ! git diff --quiet; then
-          echo "generated output is stale — run 'task gen' and commit the result" >&2
-          git --no-pager diff --stat >&2
+        # `git status --porcelain`, not `git diff --quiet`. The latter cannot see an
+        # UNTRACKED file, so a generated artefact that was produced but never
+        # committed made this gate pass while nothing was checked in at all — found
+        # while building the CLI's equivalent gate, which needed the distinction.
+        dirty="$(git status --porcelain)"
+        if [ -n "$dirty" ]; then
+          echo "generated output is stale or uncommitted — run 'task gen' and commit the result" >&2
+          printf '%s\n' "$dirty" >&2
           exit 1
         fi
 

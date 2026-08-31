@@ -34,7 +34,16 @@ go.work.sum
 # Project build artefacts
 /.bin/
 /dist/
+# The CLI module's build output. Root-anchored /.bin/ above does not cover a
+# nested module's, and `task cli:build` writes into cli/.bin/.
+/cli/.bin/
+/cli/dist/
+/cli/amctl
+/cli/amctl-*
 # Generated Redoc docs, vacuum report and bundled contract (task openapi:docs).
 /docs/api/
 /agent-manager
 .task/
+
+# Worktrees created for isolated agent runs; never part of the repository.
+/.claude/worktrees/

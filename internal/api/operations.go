@@ -68,7 +68,21 @@ func (s *Server) registerDevice() {
 			"authorised until a human approves that user code, so the response is not a credential " +
 			"grant — it is a pending request.",
 		Security: publicSecurity(),
+		// The issuance cap is an operation middleware rather than a branch in the
+		// handler, so the 429 is answered before a statement is issued and the body
+		// stays empty, which is what the declared response says (device.go).
+		Middlewares: huma.Middlewares{s.limitDeviceAuthorize},
 		Responses: map[string]*huma.Response{
+			// 400 and 415 are the framework's own, not this handler's: the request
+			// body is `required: true` and JSON-only, so an absent body, a body that
+			// is not JSON and a body sent under another media type are all refused
+			// before deviceAuthorize runs. They are declared because they are what
+			// actually goes out — a generated client (internal/apiclient) leaves every
+			// typed response field nil for an undeclared status and returns no error,
+			// so a caller switching on those fields reads an undeclared 400 as
+			// "success, empty body". Same reasoning as deviceToken's 400 below.
+			"400": s.errorResponse("The request body is missing or is not valid JSON."),
+			"415": s.errorResponse("The request body must be sent as application/json."),
 			"422": s.errorResponse("The request body is not a valid authorisation request."),
 			"429": {
 				Description: "Too many requests.",
@@ -79,7 +93,7 @@ func (s *Server) registerDevice() {
 					},
 				},
 			},
-			"501": s.errorResponse("Not implemented in this build."),
+			"500": s.errorResponse("The request could not be completed."),
 		},
 	}, s.deviceAuthorize)
 
@@ -90,16 +104,31 @@ func (s *Server) registerDevice() {
 		Tags:        []string{"device"},
 		Summary:     "Poll for the issued token",
 		Description: "Standard RFC 8628 polling. A code that has expired, been consumed, or been approved " +
-			"by an identity other than the requester is refused and no token is issued (FR-042).",
+			"by an identity other than the requester is refused and no token is issued (FR-042). " +
+			"The issued token is a session for the identity that APPROVED the authorisation, so the " +
+			"machine holds exactly that person's access, re-derived from their groups on every " +
+			"request (FR-040, FR-044).",
 		Security: publicSecurity(),
 		Responses: map[string]*huma.Response{
 			"400": {
-				Description: "RFC 8628 error",
+				Description: "RFC 8628 error. A request that is not a token request at all — no body — is " +
+					"refused before the flow is entered and carries the project's error shape instead; " +
+					"the two are told apart by the response's content type.",
 				Content: map[string]*huma.MediaType{
 					"application/json": {Schema: s.schemaOf(contract.DeviceTokenError{}, "DeviceTokenError")},
+					// Declared because it is what actually goes out, not because a
+					// second shape is wanted here. The request body is `required: true`
+					// in the frozen contract, so an absent body is refused by the
+					// framework's own validation before this handler runs, and a
+					// response the document does not describe is worse than a second
+					// media type that it does.
+					"application/problem+json": {Schema: s.schemaOf(contract.Error{}, "Error")},
 				},
 			},
-			"501": s.errorResponse("Not implemented in this build."),
+			// Declared because a fault here must not be reported as one of the RFC's
+			// five values: three of them are terminal, so answering a database outage
+			// with invalid_grant would tell every polling client to give up.
+			"500": s.errorResponse("The request could not be completed."),
 		},
 	}, s.deviceToken)
 
@@ -387,34 +416,8 @@ func (s *Server) reportSync(ctx context.Context, in *reportSyncInput) (*struct{}
 	return &struct{}{}, nil
 }
 
-type deviceAuthorizeInput struct {
-	Body contract.DeviceAuthorizeRequest
-}
-
-type deviceAuthorizeOutput struct {
-	Body contract.DeviceAuthorization
-}
-
-// deviceAuthorize and deviceToken are declared here and implemented in the
-// device-flow layer. The shapes are frozen by
-// specs/001-agent-manager-hub/contracts/openapi.yaml because the CLI ships
-// separately and cannot be redeployed with the hub, so they are declared now and
-// the superset test holds them still; only the behaviour is missing.
-func (s *Server) deviceAuthorize(context.Context, *deviceAuthorizeInput) (*deviceAuthorizeOutput, error) {
-	return nil, huma.Error501NotImplemented("the device authorisation flow is not implemented in this build")
-}
-
-type deviceTokenInput struct {
-	RawBody []byte `contentType:"application/x-www-form-urlencoded"`
-}
-
-type deviceTokenOutput struct {
-	Body contract.DeviceToken
-}
-
-func (s *Server) deviceToken(context.Context, *deviceTokenInput) (*deviceTokenOutput, error) {
-	return nil, huma.Error501NotImplemented("the device authorisation flow is not implemented in this build")
-}
+// The device flow's two handlers, its request and response types and its rate
+// limit live in device.go.
 
 // ---- document helpers -------------------------------------------------------
 

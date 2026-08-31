@@ -46,11 +46,19 @@ func humaConfig(opts Options) huma.Config {
 			Components: &huma.Components{
 				SecuritySchemes: map[string]*huma.SecurityScheme{
 					BearerScheme: {
-						Type:         "http",
-						Scheme:       "bearer",
-						BearerFormat: "JWT",
+						Type:   "http",
+						Scheme: "bearer",
+						// `opaque`, and the frozen contract now says the same. It said JWT
+						// on both sides until the device flow made the claim reachable:
+						// auth.NewToken is 256 crypto/rand bits in base64url — one segment,
+						// no header, no claims. The field is a hint to a client author and
+						// nothing else, so a wrong hint is worse than an absent one.
+						BearerFormat: "opaque",
 						Description: "The `access_token` issued by /v1/device/token, or a web session token, " +
-							"sent as `Authorization: Bearer <token>`.",
+							"sent as `Authorization: Bearer <token>`. The token is OPAQUE — one " +
+							"base64url segment of random bytes, with no header, payload or claims. Do " +
+							"not decode one and do not read `exp` from it: a token's lifetime is the " +
+							"`expires_in` returned beside it.",
 					},
 				},
 			},

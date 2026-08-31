@@ -103,6 +103,9 @@ type Server struct {
 	opts   Options
 	engine *gin.Engine
 	api    huma.API
+	// deviceLimiter caps how many device authorisations one caller may open. It is
+	// per process and therefore per replica; see device.go for what that costs.
+	deviceLimiter *rateLimiter
 }
 
 // New assembles the router. It performs no I/O, so a zero Deps is a valid
@@ -118,7 +121,12 @@ func New(deps Deps, opts Options) *Server {
 	engine.NoRoute(notFound)
 	engine.NoMethod(methodNotAllowed)
 
-	srv := &Server{deps: deps, opts: opts, engine: engine}
+	srv := &Server{
+		deps:          deps,
+		opts:          opts,
+		engine:        engine,
+		deviceLimiter: newRateLimiter(deviceAuthorizeBurst, deviceAuthorizeWindow, deviceAuthorizeMaxKeys),
+	}
 	srv.api = humagin.New(engine, humaConfig(opts))
 	srv.api.UseMiddleware(srv.authenticate)
 	srv.register()

@@ -30,17 +30,33 @@ x-queue-url: &queue-url
   AGENT_MANAGER_RIVER_DATABASE_URL: >-
     postgres://am_queue:local-development-am-queue@postgres:5432/river?sslmode=disable
 
-# The issuer is browser-facing and the discovery URL is container-facing. They
-# differ on purpose: see the OIDC_DISCOVERY_URL note in quickstart.md. The scope
-# list omits `groups` because the local realm attaches the group-membership
-# mapper to the client rather than to a requestable scope; the code's default
-# (which includes it) is what a real IdP wants.
+# The URL split is INVERTED from the Keycloak arrangement this replaces, and the
+# reason is a measured difference between the two providers (003 research R2).
+#
+# Keycloak published a browser-reachable `issuer` and derived token and JWKS from
+# each request's Host header (KC_HOSTNAME_BACKCHANNEL_DYNAMIC), so the issuer was
+# `localhost` and a second container-facing DISCOVERY_URL existed to fetch the
+# document from a host this process could actually reach. Dex ignores the request
+# Host entirely: one discovery document, byte-identical from the host and from
+# the compose network. A `localhost` issuer would therefore hand api and web a
+# token_endpoint and a jwks_uri naming a host no container can reach.
+#
+# So the issuer is now the CONTAINER-reachable URL, used verbatim for discovery,
+# token and JWKS — which is why DISCOVERY_URL is gone from here, and why the
+# local stack no longer asks go-oidc to skip its issuer check. The browser gets
+# one override, on the single endpoint whose only job is to be clicked.
+#
+# `groups` is requested now, and was not before. The Keycloak realm attached the
+# group-membership mapper to the client, so the claim arrived whether or not the
+# scope was asked for; Dex only emits it for a client that requests the scope.
+# This is also what the code's own default has always wanted (FR-107): the local
+# stack stops being the odd one out.
 x-oidc: &oidc
-  AGENT_MANAGER_OIDC_ISSUER: http://localhost:8083/realms/agent-manager
-  AGENT_MANAGER_OIDC_DISCOVERY_URL: http://keycloak:8083/realms/agent-manager
+  AGENT_MANAGER_OIDC_ISSUER: http://dex:5556/dex
+  AGENT_MANAGER_OIDC_BROWSER_BASE_URL: http://localhost:5556/dex
   AGENT_MANAGER_OIDC_CLIENT_ID: agent-manager
   AGENT_MANAGER_OIDC_CLIENT_SECRET: local-only-oidc-client-secret
-  AGENT_MANAGER_OIDC_SCOPES: openid profile email
+  AGENT_MANAGER_OIDC_SCOPES: openid profile email groups
 
 x-blob-read: &blob-read
   AGENT_MANAGER_BLOB_URL: >-
@@ -75,7 +91,7 @@ services:
         condition: service_completed_successfully
       minio-init:
         condition: service_completed_successfully
-      keycloak:
+      dex:
         condition: service_healthy
     environment:
       <<: [*observability, *queue-url, *oidc, *blob-read]

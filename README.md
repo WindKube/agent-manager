@@ -148,8 +148,8 @@ breaking change against the merge base.
 task up
 ```
 
-That brings up Postgres, MinIO, Keycloak, the migrations, the API, the web UI and the
-fetcher. The UI is on <http://localhost:8080> and the API on <http://localhost:8082>.
+That brings up Postgres, MinIO, the identity provider, the migrations, the API, the web
+UI and the fetcher. The UI is on <http://localhost:8080> and the API on <http://localhost:8082>.
 
 Requires Docker and [Task](https://taskfile.dev). Nothing else is installed on the host —
 the toolchain is pinned in `mise.toml`, and the image has no Node.js in it.
@@ -203,7 +203,7 @@ This project is assembled almost entirely from other people's work. What each pi
 | **PostgreSQL** | Both databases: the application schema with its outbox, and River's queue |
 | **Atlas (community)** | Versioned migrations with a checksummed directory, so a tampered migration set fails to apply |
 | **MinIO** | S3-compatible object storage for bundle bytes in local development |
-| **Keycloak** | OIDC provider for local development, including the RFC 8628 device grant |
+| **Dex + glauth** | OIDC provider for local development, including the RFC 8628 device grant. glauth is the directory behind it, and it is there because the `groups` claim the hub maps to roles cannot come from a static password list |
 | **Tailwind CSS** | Styling via the standalone binary — no Node.js in any image |
 | **Redoc** | The static, self-contained API reference built by `task openapi:docs` |
 | **Distroless** | The runtime base image: no shell, no package manager, non-root |

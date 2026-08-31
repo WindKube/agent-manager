@@ -91,11 +91,19 @@ func (p *provider) sign(t *testing.T, key *rsa.PrivateKey, claims jwt.MapClaims)
 	return signed
 }
 
+// The subject is the one the local provider actually mints for the directory's
+// first user, measured 2026-08-31: Dex's `sub` is base64url of a protobuf pairing
+// the connector's user id (glauth's uidnumber, 5001) with the connector id
+// (`ldap`). It is opaque on purpose and this project never parses it — it is here
+// so a fixture and a real token look alike, and so nothing accidentally starts
+// assuming the email-shaped or UUID-shaped subjects other providers emit.
+const localDirectorySubject = "CgQ1MDAxEgRsZGFw"
+
 func (p *provider) claims(audience string, extra map[string]any) jwt.MapClaims {
 	claims := jwt.MapClaims{
 		"iss": p.server.URL,
 		"aud": audience,
-		"sub": "CgVrd2lhdBIEbGRhcA",
+		"sub": localDirectorySubject,
 		"iat": time.Now().Add(-time.Minute).Unix(),
 		"exp": time.Now().Add(time.Hour).Unix(),
 	}
@@ -137,9 +145,12 @@ func TestVerifierAcceptsAnIDTokenAndReadsTheGroupsClaim(t *testing.T) {
 			wantName:   "Krzysztof Wiatrzyk",
 		},
 		{
-			// Measured behaviour of one real provider: a static-connector user's
-			// ID token can arrive with no `groups` at all. That is a token with no
-			// mapped role, not a malformed token, and it must not be an error here.
+			// Measured behaviour of a real provider, twice, a year apart (001 R6 and
+			// 003 R1): a static-password user's ID token arrives with no `groups` at
+			// all, even with the scope requested. That is a token with no mapped
+			// role, not a malformed token, and it must not be an error here. The
+			// local stack avoids the shape by putting a directory behind the
+			// provider; a customer's provider may not.
 			name: "a provider that omits groups yields no groups and no error",
 			token: idp.sign(t, idp.key, idp.claims("agent-manager", map[string]any{
 				"email": "anowak@example.com",
@@ -182,7 +193,7 @@ func TestVerifierAcceptsAnIDTokenAndReadsTheGroupsClaim(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			require.Equal(t, "CgVrd2lhdBIEbGRhcA", claims.Subject)
+			require.Equal(t, localDirectorySubject, claims.Subject)
 			require.Equal(t, tc.wantGroups, claims.Groups)
 			require.Equal(t, tc.wantName, claims.DisplayName())
 		})
@@ -227,18 +238,21 @@ func TestClaimsDisplayNameFallsBackInOrder(t *testing.T) {
 	}
 }
 
-// The compose stack fetches the discovery document from a host the browser
-// cannot reach and trusts an `iss` this process cannot reach. Both halves of
-// that are load-bearing (R6), and go-oidc refuses the combination by default, so
-// the split has its own test rather than only a comment.
+// A provider whose metadata is served from a host other than the one its
+// `issuer` names (FR-106).
+//
+// The local stack no longer does this — its provider publishes one issuer that
+// every container reaches — so this is now purely the real-provider case, and
+// that is why it keeps a test rather than a comment: nothing in the stack a
+// developer runs would notice if it broke.
 func TestDiscoveryMayBeFetchedFromAHostThatIsNotTheIssuer(t *testing.T) {
 	ctx := context.Background()
 
-	// browserIssuer is what the token says and what the operator's browser would
-	// reach. Nothing in this test can dial it, which is exactly the situation.
-	const browserIssuer = "http://localhost:65535/realms/agent-manager"
+	// What the token says, and the only value the `iss` claim is checked against.
+	// Nothing in this test can dial it, which is exactly the situation.
+	const configuredIssuer = "https://idp.example.dev"
 
-	idp := newProviderWithIssuer(t, browserIssuer)
+	idp := newProviderWithIssuer(t, configuredIssuer)
 
 	t.Run("without the split, discovery is refused", func(t *testing.T) {
 		_, err := auth.NewVerifier(ctx, auth.VerifierConfig{
@@ -251,7 +265,7 @@ func TestDiscoveryMayBeFetchedFromAHostThatIsNotTheIssuer(t *testing.T) {
 	})
 
 	verifier, err := auth.NewVerifier(ctx, auth.VerifierConfig{
-		Issuer:       browserIssuer,
+		Issuer:       configuredIssuer,
 		DiscoveryURL: idp.server.URL,
 		ClientID:     "agent-manager",
 		HTTPClient:   idp.server.Client(),
@@ -260,7 +274,7 @@ func TestDiscoveryMayBeFetchedFromAHostThatIsNotTheIssuer(t *testing.T) {
 
 	t.Run("a token from the trusted issuer verifies", func(t *testing.T) {
 		claims := idp.claims("agent-manager", map[string]any{"groups": []string{"eng-platform"}})
-		claims["iss"] = browserIssuer
+		claims["iss"] = configuredIssuer
 
 		got, err := verifier.Verify(ctx, idp.sign(t, idp.key, claims))
 		require.NoError(t, err)
@@ -276,6 +290,25 @@ func TestDiscoveryMayBeFetchedFromAHostThatIsNotTheIssuer(t *testing.T) {
 		_, err := verifier.Verify(ctx, idp.sign(t, idp.key, claims))
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "id token issued by a different provider")
-		require.Contains(t, err.Error(), browserIssuer)
+		require.Contains(t, err.Error(), configuredIssuer)
 	})
+}
+
+// The other half of the split, and the reason it is not built on
+// oidc.InsecureIssuerURLContext: that context value turns the issuer comparison
+// OFF, so a metadata host advertising an issuer neither side configured was
+// accepted, and its keys and token endpoint adopted. The document has to name
+// the configured issuer, not merely differ from its own URL.
+func TestDiscoveryIsRefusedWhenTheMetadataNamesADifferentIssuer(t *testing.T) {
+	idp := newProviderWithIssuer(t, "https://someone-elses-idp.example.dev")
+
+	_, err := auth.NewVerifier(context.Background(), auth.VerifierConfig{
+		Issuer:       "https://idp.example.dev",
+		DiscoveryURL: idp.server.URL,
+		ClientID:     "agent-manager",
+		HTTPClient:   idp.server.Client(),
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "someone-elses-idp.example.dev")
+	require.Contains(t, err.Error(), "not the configured")
 }

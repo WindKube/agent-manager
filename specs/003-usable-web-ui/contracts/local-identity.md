@@ -20,7 +20,7 @@ legitimate substitution (FR-105 — nothing in the hub may branch on which provi
 | 3 | A `groups` claim in the ID token **for each of the two local users**, with **different values** | integration test, FR-101 · SC-104 |
 | 4 | An authorization-code flow whose browser leg works through a host the operator's browser can resolve, and whose token leg works from inside the container network | integration test, R2 |
 | 5 | Users, groups and client registration present on first start with no manual step | `docker compose up` from a clean checkout, FR-104 |
-| 6 | Combined image footprint under 300 MB | `docker image inspect`, FR-103 |
+| 6 | Combined **unpacked** image footprint under 300 MB — the size `docker image ls` prints, not `docker image inspect`'s `Size`, which is the compressed content size under the containerd snapshotter | integration test, FR-103 |
 
 ---
 

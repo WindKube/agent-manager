@@ -44,7 +44,7 @@ func TestTheInfrastructureComposeFileIsAWholeProjectAlone(t *testing.T) {
 	services, err := compose(t, root, "-f", infraComposeFile, "config", "--services")
 	require.NoError(t, err, services)
 	require.ElementsMatch(t,
-		[]string{"postgres", "minio", "minio-init", "keycloak", "migrate-schema", "migrate-queue"},
+		[]string{"postgres", "minio", "minio-init", "dex", "glauth", "migrate-schema", "migrate-queue"},
 		lines(services),
 		"FR-129 fixes what infrastructure means; this is the list")
 }

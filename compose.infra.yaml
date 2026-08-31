@@ -74,38 +74,59 @@ services:
       - ./deploy/local/minio/policies.sh:/policies.sh:ro
     entrypoint: ["/bin/sh", "/policies.sh"]
 
-  keycloak:
-    image: quay.io/keycloak/keycloak:26.5
-    command: ["start-dev", "--import-realm"]
-    environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
-      KC_HTTP_PORT: "8083"
-      KC_HEALTH_ENABLED: "true"
-      # The frontchannel URLs (issuer, authorize, device) must be reachable from
-      # the operator's browser; the backchannel ones (token, jwks) from the api
-      # and web containers. BACKCHANNEL_DYNAMIC is what lets one Keycloak answer
-      # both: it derives the backchannel URLs from the request's Host header and
-      # leaves `issuer` alone.
-      KC_HOSTNAME: http://localhost:8083
-      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+  # ---------------------------------------------------------------------------
+  # Identity. Dex in front of glauth, replacing Keycloak (003 research R1/R2).
+  #
+  # Two images instead of one, and still 462 MB and eight seconds lighter, with
+  # the per-user `groups` claim FR-101 makes non-negotiable. Dex alone cannot
+  # produce it — a `groups:` key on a `staticPasswords` entry is accepted at boot
+  # and silently ignored — so the claim comes from a real directory behind a real
+  # LDAP connector. See specs/003-usable-web-ui/contracts/local-identity.md.
+  # ---------------------------------------------------------------------------
+  dex:
+    image: ghcr.io/dexidp/dex:v2.44.0
+    depends_on:
+      glauth:
+        condition: service_started
     volumes:
-      - ./deploy/local/keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
+      - ./deploy/local/dex/config.yaml:/etc/dex/config.docker.yaml:ro
+    # 5556 on both sides, because this is the one service whose published port a
+    # browser and a container both have to name — the issuer is
+    # http://dex:5556/dex and AGENT_MANAGER_OIDC_BROWSER_BASE_URL is
+    # http://localhost:5556/dex. Remapping the host side would make those two
+    # differ in the port as well as the host, for nothing.
     ports:
-      - "8083:8083"
+      - "5556:5556"
     healthcheck:
-      # The image has no curl and no shell utilities to speak of, so the probe is
-      # bash's own /dev/tcp against the management port.
+      # The discovery path itself, not a TCP connect: Dex binds its listener
+      # before it has finished loading connectors, so a socket that accepts is
+      # not yet a provider that answers. The image has no curl, and busybox has
+      # no /dev/tcp, but it does ship wget — which exits non-zero on a non-2xx
+      # status, so this is a real assertion about the document api and web are
+      # about to fetch.
       test:
-        - CMD-SHELL
-        - >-
-          exec 3<>/dev/tcp/127.0.0.1/9000 &&
-          printf 'GET /health/ready HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n' >&3 &&
-          grep -q UP <&3
-      interval: 5s
-      timeout: 5s
-      retries: 30
-      start_period: 10s
+        - CMD
+        - wget
+        - --quiet
+        - --output-document=/dev/null
+        - http://127.0.0.1:5556/dex/.well-known/openid-configuration
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # No healthcheck, on purpose. Dex is the only thing that talks to glauth, and
+  # Dex's own probe passes without an LDAP round trip — so a directory that is up
+  # but wrong cannot be caught here anyway, and one that is down would only turn
+  # a failed login into a hung boot. On a laptop a stack that starts and then
+  # tells you the directory is wrong beats a stack that never starts.
+  #
+  # The mount path is exact: the image's start script copies its own example
+  # directory in when /app/config/config.cfg is absent, so a typo here looks like
+  # a wrong password rather than a missing file.
+  glauth:
+    image: glauth/glauth:v2.4.0
+    volumes:
+      - ./deploy/local/glauth/glauth.cfg:/app/config/config.cfg:ro
 
   # ---------------------------------------------------------------------------
   # Migrations. Two one-shots, chained, and nothing that serves starts until both

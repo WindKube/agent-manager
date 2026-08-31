@@ -222,6 +222,32 @@ than the problem).
 
 ## R6. Local IdP device-flow and groups parity — RESOLVED BY MEASUREMENT
 
+> **SUPERSEDED by feature 003's R1 (2026-08-31). The measurement below is still correct; the
+> conclusion drawn from it is not.**
+>
+> R6 measured Dex's *static-password* connector, found no `groups` claim, and took its stated
+> fallback of Keycloak. That finding **still reproduces** on Dex v2.44.0: a `groups:` key on a
+> `staticPasswords` entry is accepted at boot with no warning, logged nowhere, and silently
+> ignored. Nothing below needs correcting.
+>
+> What R6 did not test is Dex in front of a **directory**. Dex's `local` connector *is*
+> `staticPasswords` and has no group field at all; its LDAP connector reads groups from
+> wherever it is pointed. Pairing Dex with glauth — one static binary, one TOML file —
+> produces the per-user claim: `eng-platform` for one user and `eng-security` for the other,
+> measured as a signed token. So the capability gap R6 found was a gap in one connector, not
+> in the provider, and the fallback was taken one question too early.
+>
+> 003's R1 records the replacement and its numbers (268 MB against Keycloak's 730 MB, a
+> discovery document in under a second against nine). The consequence R6 draws below for the
+> code — `KC_HOSTNAME_BACKCHANNEL_DYNAMIC`, and `oidc.InsecureIssuerURLContext` behind it — is
+> also gone, because Dex has no such hostname mode and needs none: 003's R2 inverts the split
+> so the issuer is container-reachable and only the authorisation endpoint is rewritten for
+> the browser.
+>
+> This is kept rather than deleted because the thing it measured is a trap that is still
+> there, and because the shape of the mistake is worth more than the answer: the fallback was
+> reached for after testing one configuration of the candidate, not the candidate.
+
 **Original decision**: Dex, with verification owed on two points — that the device
 authorisation grant is enabled, and that `groups` appears in the ID token for a
 *static-password* user, since a static connector's claim support has historically lagged its

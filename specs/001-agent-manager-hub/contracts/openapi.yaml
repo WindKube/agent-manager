@@ -366,8 +366,8 @@ paths:
                 targets:
                   type: array
                   description: Agent directories the client actually wrote.
-                  examples: [[claude-code, agents-md]]
-                  items: { type: string, enum: [claude-code, agents-md, codex] }
+                  examples: [[claude-code]]
+                  items: { type: string, enum: [claude-code, codex] }
                 skipped:
                   type: array
                   description: Entry ids the client skipped locally, if any.

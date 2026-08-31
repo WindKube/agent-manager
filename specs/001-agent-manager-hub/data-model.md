@@ -311,7 +311,7 @@ Previous revisions are never deleted (FR-034).
 the union of permissions (FR-042 acceptance 2) — resolved at query time, not stored.
 
 ### `sync_target`
-| `profile_id` uuid fk → profile | `target` enum `claude-code \| agents-md \| codex` | `enabled` bool |
+| `profile_id` uuid fk → profile | `target` enum `claude-code \| codex` | `enabled` bool |
 
 Affects only what a client writes locally, never server state (FR-039).
 

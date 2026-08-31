@@ -41,7 +41,7 @@ type Lockfile struct {
 	DefaultPolicy string          `json:"defaultPolicy,omitempty" enum:"floating-latest,pinned,range" example:"pinned"`
 	Entries       []LockfileEntry `json:"entries" doc:"Packages this revision resolves to an exact version."`
 	Skipped       []LockfileSkip  `json:"skipped" doc:"FR-036: an excluded package is reported with its reason, never silently omitted."`
-	Targets       []string        `json:"targets" enum:"claude-code,agents-md,codex" doc:"Which agent directories the CLI should write. Advisory to the client; the server stores nothing per target (FR-039)."`
+	Targets       []string        `json:"targets" enum:"claude-code,codex" doc:"Which agent directories the CLI should write. Advisory to the client; the server stores nothing per target (FR-039)."`
 }
 
 // LockfileProfile identifies the profile a lockfile belongs to.
@@ -139,7 +139,7 @@ type SyncReport struct {
 	Profile  string   `json:"profile" doc:"Slug of the profile that was synced." example:"platform-baseline"`
 	Revision int      `json:"revision" doc:"The exact revision the client resolved against." example:"7"`
 	Host     string   `json:"host" doc:"Hostname the sync landed on, for the audit row." example:"dev-laptop-01"`
-	Targets  []string `json:"targets" enum:"claude-code,agents-md,codex" doc:"Agent directories the client actually wrote."`
+	Targets  []string `json:"targets" enum:"claude-code,codex" doc:"Agent directories the client actually wrote."`
 	Skipped  []string `json:"skipped,omitempty" doc:"Entry ids the client skipped locally, if any."`
 }
 

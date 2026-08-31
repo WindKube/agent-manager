@@ -194,7 +194,6 @@ func (e LockfileSchemaVersion) Valid() bool {
 
 // Defines values for LockfileTargets.
 const (
-	LockfileTargetsAgentsMd   LockfileTargets = "agents-md"
 	LockfileTargetsClaudeCode LockfileTargets = "claude-code"
 	LockfileTargetsCodex      LockfileTargets = "codex"
 )
@@ -202,8 +201,6 @@ const (
 // Valid indicates whether the value is a known member of the LockfileTargets enum.
 func (e LockfileTargets) Valid() bool {
 	switch e {
-	case LockfileTargetsAgentsMd:
-		return true
 	case LockfileTargetsClaudeCode:
 		return true
 	case LockfileTargetsCodex:
@@ -659,7 +656,6 @@ func (e ProfileVisibility) Valid() bool {
 
 // Defines values for SyncReportTargets.
 const (
-	SyncReportTargetsAgentsMd   SyncReportTargets = "agents-md"
 	SyncReportTargetsClaudeCode SyncReportTargets = "claude-code"
 	SyncReportTargetsCodex      SyncReportTargets = "codex"
 )
@@ -667,8 +663,6 @@ const (
 // Valid indicates whether the value is a known member of the SyncReportTargets enum.
 func (e SyncReportTargets) Valid() bool {
 	switch e {
-	case SyncReportTargetsAgentsMd:
-		return true
 	case SyncReportTargetsClaudeCode:
 		return true
 	case SyncReportTargetsCodex:

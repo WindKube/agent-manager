@@ -670,7 +670,7 @@ func TestReportSyncWritesOneSyncEventAndOneAuditRow(t *testing.T) {
 	beforeAudit := countRows(t, "select count(*) from audit_event where kind = 'sync'")
 
 	body := `{"profile":"platform-baseline","revision":2,"host":"dev-laptop-01",` +
-		`"targets":["claude-code","agents-md"],"skipped":["acme/legacy-helper"]}`
+		`"targets":["claude-code","codex"],"skipped":["acme/legacy-helper"]}`
 	rec := request(t, handler, http.MethodPost, "/v1/sync", kw.token, body)
 	require.Equal(t, http.StatusNoContent, rec.Code, rec.Body.String())
 

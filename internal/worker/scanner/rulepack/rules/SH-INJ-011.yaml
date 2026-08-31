@@ -12,7 +12,11 @@ detail: |
   This package needs no script to be hostile — the sentence is the attack.
 match:
   kind: regex
-  pattern: '(?i)\b(?:ignore|disregard|forget|override)\b[^.\n]{0,40}\b(?:all\s+|any\s+)?(?:previous|prior|above|earlier|preceding|system|initial)\b[^.\n]{0,20}\b(?:instruction|instructions|prompt|prompts|rule|rules|direction|directions|guardrail|guardrails)\b'
+  # The pattern sits on its own line because it does not fit on one with its key
+  # and cannot be wrapped: YAML folds a wrapped scalar's line break into a space,
+  # and a space inside a regex is a character it matches.
+  pattern:
+    '(?i)\b(?:ignore|disregard|forget|override)\b[^.\n]{0,40}\b(?:all\s+|any\s+)?(?:previous|prior|above|earlier|preceding|system|initial)\b[^.\n]{0,20}\b(?:instruction|instructions|prompt|prompts|rule|rules|direction|directions|guardrail|guardrails)\b'
   paths: ["**/*.md", "**/*.txt", "**/*.rst"]
   extract: matched-text
   condition: always

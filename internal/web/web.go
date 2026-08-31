@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"regexp"
@@ -23,6 +24,7 @@ import (
 
 	"agent-manager/internal/logging"
 	"agent-manager/internal/web/components"
+	"agent-manager/internal/web/hub"
 	"agent-manager/internal/web/view"
 )
 
@@ -73,6 +75,47 @@ type Registrar interface {
 	Register(ctx context.Context, registration view.Registration) (view.ImportResult, error)
 }
 
+// ScannerSource is the Scanner screen's door to the api (US4).
+//
+// Three reads and no decision, for the reason Registrar is separate from
+// CatalogSource: internal/web/fixture can honestly answer all three of these and
+// must not be able to answer an accept, and an interface a stand-in cannot
+// honestly satisfy is one every screen test then exercises as a claim.
+type ScannerSource interface {
+	ScannerSummary(ctx context.Context, days int) (hub.ScannerSummary, error)
+	Findings(ctx context.Context, q hub.FindingQuery) (hub.FindingsPage, error)
+	Finding(ctx context.Context, id string) (hub.FindingDetail, error)
+}
+
+// Reviewer is the two decisions a scanner reviewer can take (001 FR-028).
+//
+// Separate from ScannerSource precisely because it writes: a fixture that could
+// approve a finding would be claiming it had recorded an override, an audit row
+// and a version state it cannot touch.
+type Reviewer interface {
+	AcceptFinding(ctx context.Context, id, note string, days int) (hub.Decision, error)
+	RejectFinding(ctx context.Context, id, note string) (hub.Decision, error)
+}
+
+// AuditSource is the audit screen and its export (001 FR-050, FR-051).
+//
+// AuditExport hands back a LIVE body and the caller owns the Close. The audit table
+// is the one table designed to grow without bound, so this signature exists to keep
+// the export a stream all the way to the browser.
+type AuditSource interface {
+	Audit(ctx context.Context, page int) (hub.AuditPage, error)
+	AuditExport(ctx context.Context) (io.ReadCloser, string, error)
+}
+
+// BadgeSource is the sidebar's three counts (FR-121, research R5).
+//
+// One operation, read once per full page render and never on a fragment update.
+// Nil means a shell with no badges on it, which is the honest rendering of counts
+// this request could not read — not three zeroes.
+type BadgeSource interface {
+	Badges(ctx context.Context) (hub.Badges, error)
+}
+
 // Deps is what the role is handed. Every field is narrow on purpose: there is no
 // database handle and no bucket to reach for.
 type Deps struct {
@@ -96,7 +139,18 @@ type Deps struct {
 	// Sessions is the api's session mint and its sign-out. Nil means sign-in cannot
 	// complete, which the callback renders as the hub's own failure.
 	Sessions SessionMinter
-	Log      zerolog.Logger
+	// Scanner backs the Scanner screen. Nil renders its unavailable state rather
+	// than an empty one: a screen with no source is not a hub with no findings.
+	Scanner ScannerSource
+	// Reviewer is the accept and reject pair. Nil means the screen renders and
+	// refuses to record, which is what a screen test gets and is not a state a
+	// deployment is in.
+	Reviewer Reviewer
+	// Audit backs the audit log and its export.
+	Audit AuditSource
+	// Badges backs the sidebar counts. Nil is a sidebar with no counts.
+	Badges BadgeSource
+	Log    zerolog.Logger
 }
 
 // Options is the run-time configuration of the surface itself.
@@ -188,6 +242,14 @@ func (s *Server) register() {
 	// router as two segments anyway.
 	s.engine.GET("/packages/:namespace/:name", s.packageDetail)
 
+	// The two governance screens (US4). Both are plain renders; the two decisions
+	// are POST forms that redirect, so a browser reload cannot re-approve anything.
+	s.engine.GET("/scanner", s.scanner)
+	s.engine.POST("/scanner/findings/:id/accept", s.acceptFinding)
+	s.engine.POST("/scanner/findings/:id/reject", s.rejectFinding)
+	s.engine.GET("/audit", s.audit)
+	s.engine.GET("/audit/export", s.auditExport)
+
 	s.engine.POST("/theme", s.setTheme)
 
 	// Sign-in (US2). These four and only these four are exempt from the guard,
@@ -220,11 +282,9 @@ type screen struct {
 var placeholders = []screen{
 	{path: "/profiles", nav: "profiles", title: "Profiles", lede: "Named sets of packages a machine can sync."},
 	{path: "/profiles/:slug", nav: "profiles", title: "Profile", lede: "The packages in one profile, their pins and their targets."},
-	{path: "/scanner", nav: "scanner", title: "Scanner", lede: "Open findings, their evidence and the reviewer's decision."},
 	{path: "/cli", nav: "cli", title: "Connect the CLI", lede: "Pair a machine with the hub through the device flow."},
 	{path: "/org", nav: "org", title: "Organization", lede: "Identity provider, group-to-role mapping and policy."},
 	{path: "/storage", nav: "storage", title: "Storage", lede: "Bucket layout, object counts and recent fetch outcomes."},
-	{path: "/audit", nav: "audit", title: "Audit log", lede: "Every state-changing action, one row each."},
 }
 
 func (s *Server) placeholder(sc screen) gin.HandlerFunc {

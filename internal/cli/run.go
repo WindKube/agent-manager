@@ -146,6 +146,13 @@ func runWeb(ctx context.Context) error {
 		// minting a session is not.
 		Viewers:  client,
 		Sessions: client,
+		// The two governance screens (US4). Four fields for the same client again,
+		// and again because they are four different claims: reading findings, deciding
+		// one, reading the audit log, and counting what this viewer may see.
+		Scanner:  client,
+		Reviewer: client,
+		Audit:    client,
+		Badges:   client,
 		Log:      log,
 	}, web.Options{
 		Addr: cfg.Addr,

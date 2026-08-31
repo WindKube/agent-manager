@@ -148,6 +148,14 @@ func sweep() []sweptScreen {
 		inShell("CapabilityPanel", func() templ.Component { return components.CapabilityPanel(view.Capabilities{}) }),
 		inShell("VersionsPanel", func() templ.Component { return components.VersionsPanel(view.Package{}) }),
 		inShell("DependentsPanel", func() templ.Component { return components.DependentsPanel(view.Package{}) }),
+		// The two governance screens (US4). They are swept EMPTY on purpose: the
+		// actor column of an audit row and the reviewer on an override are both
+		// person-shaped by nature and both arrive from a source, so feeding rows in
+		// would mean weakening the patterns to accommodate data that was never the
+		// risk. What is swept is the chrome — the copy, the empty states and the
+		// refusal wording — which is where a name gets written by hand.
+		inShell("ScannerScreen", func() templ.Component { return components.ScannerScreen(view.Scanner{}) }),
+		inShell("AuditScreen", func() templ.Component { return components.AuditScreen(view.Audit{}) }),
 		{
 			name: "NoRoleScreen",
 			// The one screen whose body renders the viewer itself. Signed out there is

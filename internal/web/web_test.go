@@ -33,6 +33,19 @@ func handler(t *testing.T, source web.CatalogSource) http.Handler {
 	if packages, ok := source.(web.PackageSource); ok {
 		deps.Packages = packages
 	}
+	// Same shape for the two governance screens, and for the sidebar counts. The
+	// fixture answers all three reads and deliberately cannot answer a decision, so
+	// deps.Reviewer stays nil here and the screen renders what a hub with no
+	// reviewer wired renders.
+	if scanner, ok := source.(web.ScannerSource); ok {
+		deps.Scanner = scanner
+	}
+	if audit, ok := source.(web.AuditSource); ok {
+		deps.Audit = audit
+	}
+	if badges, ok := source.(web.BadgeSource); ok {
+		deps.Badges = badges
+	}
 	return web.New(deps, web.Options{}).Handler()
 }
 

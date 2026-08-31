@@ -13,7 +13,11 @@ detail: |
   `TOKEN`.
 match:
   kind: regex
-  pattern: '(?i)(?:~|\$HOME|/home/[a-z0-9_.-]+|/root)?/\.(?:aws/credentials|ssh/id_[a-z0-9]+|ssh/authorized_keys|netrc|npmrc|pypirc|pgpass|git-credentials|docker/config\.json|kube/config|env(?:\.[a-z]+)?)\b'
+  # The pattern sits on its own line because it does not fit on one with its key
+  # and cannot be wrapped: YAML folds a wrapped scalar's line break into a space,
+  # and a space inside a regex is a character it matches.
+  pattern:
+    '(?i)(?:~|\$HOME|/home/[a-z0-9_.-]+|/root)?/\.(?:aws/credentials|ssh/id_[a-z0-9]+|ssh/authorized_keys|netrc|npmrc|pypirc|pgpass|git-credentials|docker/config\.json|kube/config|env(?:\.[a-z]+)?)\b'
   paths: ["**/*.md", "**/*.txt", "**/*.rst", "**/*.sh", "**/*.bash", "**/*.zsh"]
   extract: matched-text
   condition: always

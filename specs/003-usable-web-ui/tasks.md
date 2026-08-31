@@ -195,37 +195,37 @@ and anything a person imports sits at "Scanning" for ever (research R6).
 
 ### The scanner worker — inherited from 001 US4
 
-- [ ] T053 [001-T061] [US4] Create `internal/worker/scanner/` with a `worker.Definition` declaring `Needs{DB: AccessReadWrite, Blob: AccessRead}` and **no blob writer** — the type system is what enforces "the scanner never writes bundle bytes" (principle VII)
-- [ ] T054 [001-T062] [US4] Uncomment the scanner entry in `internal/worker/roles/register.go`, which has been sitting behind a `// T060` comment
-- [ ] T055 [001-T063] [US4] Implement the scan handler — read the bundle, run the check registry, write `scan`, `scan_check`, `finding` and `finding_evidence` in one transaction. **Idempotent**: a version that already has a scan for the current pack version is a no-op, enforced by `unique (version_id, pack_version)` (principle IX)
-- [ ] T056 [001-T064] [US4] Implement the check registry in `internal/worker/scanner/checks/` following the same registry pattern `contracts/worker.md` fixes for workers and sources
-- [ ] T057 [001-T065..T069] [P] [US4] Implement the five checks, one file each, as **data-driven rules loaded from the rulepack** rather than Go control flow — the constitution requires a rule to be addable without a code change or a rebuild
-- [ ] T058 [001-T070] [US4] Load the rulepack from `AGENT_MANAGER_RULEPACK_DIR`, already wired in the compose scanner block, and ship each rule with a fixture that must trip it and a fixture that must not
-- [ ] T059 [US4] Remove `profiles: ["workers"]` from the `scanner` service in `compose.yaml` and delete the comment explaining why it was there
-- [ ] T060 [001-T071] [US4] Implement rescan-on-new-version (001 US4 scenario 5) — enqueued **through the outbox**, never by calling the queue from a handler (principle IX)
-- [ ] T061 [P] [US4] Integration test in `internal/worker/scanner/scanner_integration_test.go` asserting a hostile fixture reaches a flagged verdict, a benign one reaches clean, and a redelivered job is a no-op
+- [x] T053 [001-T061] [US4] Create `internal/worker/scanner/` with a `worker.Definition` declaring `Needs{DB: AccessReadWrite, Blob: AccessRead}` and **no blob writer** — the type system is what enforces "the scanner never writes bundle bytes" (principle VII)
+- [x] T054 [001-T062] [US4] Uncomment the scanner entry in `internal/worker/roles/register.go`, which has been sitting behind a `// T060` comment
+- [x] T055 [001-T063] [US4] Implement the scan handler — read the bundle, run the check registry, write `scan`, `scan_check`, `finding` and `finding_evidence` in one transaction. **Idempotent**: a version that already has a scan for the current pack version is a no-op, enforced by `unique (version_id, pack_version)` (principle IX)
+- [x] T056 [001-T064] [US4] Implement the check registry in `internal/worker/scanner/checks/` following the same registry pattern `contracts/worker.md` fixes for workers and sources
+- [x] T057 [001-T065..T069] [P] [US4] Implement the five checks, one file each, as **data-driven rules loaded from the rulepack** rather than Go control flow — the constitution requires a rule to be addable without a code change or a rebuild
+- [x] T058 [001-T070] [US4] Load the rulepack from `AGENT_MANAGER_RULEPACK_DIR`, already wired in the compose scanner block, and ship each rule with a fixture that must trip it and a fixture that must not
+- [x] T059 [US4] Remove `profiles: ["workers"]` from the `scanner` service in `compose.yaml` and delete the comment explaining why it was there
+- [x] T060 [001-T071] [US4] Implement rescan-on-new-version (001 US4 scenario 5) — enqueued **through the outbox**, never by calling the queue from a handler (principle IX)
+- [x] T061 [P] [US4] Integration test in `internal/worker/scanner/scanner_integration_test.go` asserting a hostile fixture reaches a flagged verdict, a benign one reaches clean, and a redelivered job is a no-op
 
 ### The api behind the two screens
 
-- [ ] T062 [P] [US4] `GET /v1/scanner/summary` in `internal/api/operations.go` + `internal/api/queries/findings.go` — scans in the period, quarantined count, active overrides with nearest expiry, median fetch-to-verdict
-- [ ] T063 [P] [US4] `GET /v1/findings` (paged, filterable by state and severity) in `internal/api/queries/findings.go`
-- [ ] T064 [US4] `GET /v1/findings/{id}` returning the finding, its evidence, and **every check that ran** — not only the failing one. A pane showing only failures cannot be told apart from one where nothing else ran (001 US4 scenario 2)
-- [ ] T065 [US4] `POST /v1/findings/{id}/accept` in `internal/api/commands/findings.go` — writes the finding's new state, the `override` row with its expiry, and one audit row of kind `approve`, in one transaction
-- [ ] T066 [US4] `POST /v1/findings/{id}/reject` in `internal/api/commands/findings.go` — the version stays quarantined regardless of gate, and cannot be resolved by any profile
-- [ ] T067 [P] [US4] `GET /v1/audit` (paged, `occurred_at desc`, served by 001 T017's index) in `internal/api/queries/audit.go`
-- [ ] T068 [US4] `GET /v1/audit/export` — **streamed**, full current scope, not the visible page (001 FR-051). It must not materialise the result set; the audit log is the one table designed to grow without bound
-- [ ] T069 [P] [US4] `GET /v1/badges` in `internal/api/queries/badges.go` — visible packages, readable profiles, open findings. One operation, three indexed counts, no projection (FR-121, research R5)
-- [ ] T070 [US4] Regenerate the client and add the operations to `internal/web/hub/`
+- [x] T062 [P] [US4] `GET /v1/scanner/summary` in `internal/api/operations.go` + `internal/api/queries/findings.go` — scans in the period, quarantined count, active overrides with nearest expiry, median fetch-to-verdict
+- [x] T063 [P] [US4] `GET /v1/findings` (paged, filterable by state and severity) in `internal/api/queries/findings.go`
+- [x] T064 [US4] `GET /v1/findings/{id}` returning the finding, its evidence, and **every check that ran** — not only the failing one. A pane showing only failures cannot be told apart from one where nothing else ran (001 US4 scenario 2)
+- [x] T065 [US4] `POST /v1/findings/{id}/accept` in `internal/api/commands/findings.go` — writes the finding's new state, the `override` row with its expiry, and one audit row of kind `approve`, in one transaction
+- [x] T066 [US4] `POST /v1/findings/{id}/reject` in `internal/api/commands/findings.go` — the version stays quarantined regardless of gate, and cannot be resolved by any profile
+- [x] T067 [P] [US4] `GET /v1/audit` (paged, `occurred_at desc`, served by 001 T017's index) in `internal/api/queries/audit.go`
+- [x] T068 [US4] `GET /v1/audit/export` — **streamed**, full current scope, not the visible page (001 FR-051). It must not materialise the result set; the audit log is the one table designed to grow without bound
+- [x] T069 [P] [US4] `GET /v1/badges` in `internal/api/queries/badges.go` — visible packages, readable profiles, open findings. One operation, three indexed counts, no projection (FR-121, research R5)
+- [x] T070 [US4] Regenerate the client and add the operations to `internal/web/hub/`
 
 ### The two screens
 
-- [ ] T071 [US4] Write `internal/web/components/scanner.templ` and its view model in `internal/web/view/scanner.go` — headline figures, findings list, detail pane with rule, explanation, escaped file-and-line evidence and the full check matrix
-- [ ] T072 [US4] Wire approve-with-note and reject, with the action **absent or disabled with its reason** when the viewer's role does not permit it (FR-126)
-- [ ] T073 [US4] Write `internal/web/components/audit.templ` and `internal/web/view/audit.go` — kind badges, actor, source, paging, and the export action
-- [ ] T074 [US4] Delete the `/scanner` and `/audit` entries from the `placeholders` list in `internal/web/web.go` and register the real handlers (FR-120, FR-123)
-- [ ] T075 [US4] Replace the hard-coded `Badge: "10"` / `"4"` / `"4"` values in `internal/web/components/props.go` with the computed counts, absent rather than zero when there is nothing to count (FR-121)
-- [ ] T076 [P] [US4] Integration test asserting the **full loop**: register a hostile package, reach a verdict, approve it, and assert a profile containing it now resolves differently (SC-108). An approval that writes an audit row but changes no resolution is the failure this test exists to catch
-- [ ] T077 [P] [US4] Extend 001's audit-count sweep to assert exactly one row per action this phase adds (SC-111)
+- [x] T071 [US4] Write `internal/web/components/scanner.templ` and its view model in `internal/web/view/scanner.go` — headline figures, findings list, detail pane with rule, explanation, escaped file-and-line evidence and the full check matrix
+- [x] T072 [US4] Wire approve-with-note and reject, with the action **absent or disabled with its reason** when the viewer's role does not permit it (FR-126)
+- [x] T073 [US4] Write `internal/web/components/audit.templ` and `internal/web/view/audit.go` — kind badges, actor, source, paging, and the export action
+- [x] T074 [US4] Delete the `/scanner` and `/audit` entries from the `placeholders` list in `internal/web/web.go` and register the real handlers (FR-120, FR-123)
+- [x] T075 [US4] Replace the hard-coded `Badge: "10"` / `"4"` / `"4"` values in `internal/web/components/props.go` with the computed counts, absent rather than zero when there is nothing to count (FR-121)
+- [x] T076 [P] [US4] Integration test asserting the **full loop**: register a hostile package, reach a verdict, approve it, and assert a profile containing it now resolves differently (SC-108). An approval that writes an audit row but changes no resolution is the failure this test exists to catch
+- [x] T077 [P] [US4] Extend 001's audit-count sweep to assert exactly one row per action this phase adds (SC-111)
 
 **Checkpoint**: the product's central claim — ingest, scan, adjudicate, account for it — works
 through the browser. Five routes still show placeholders.

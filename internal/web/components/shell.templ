@@ -47,11 +47,11 @@ templ sidebar(s Shell) {
 					for _, item := range group.Items {
 						if item.ID == s.Active {
 							<a class="am-nav-item" href={ item.Href } aria-current="page">
-								@navLabel(item)
+								@navLabel(s, item)
 							</a>
 						} else {
 							<a class="am-nav-item" href={ item.Href }>
-								@navLabel(item)
+								@navLabel(s, item)
 							</a>
 						}
 					}
@@ -121,12 +121,17 @@ templ signOut() {
 	</form>
 }
 
-templ navLabel(item NavItem) {
+// navLabel renders an entry's count only when there is one to render (FR-121).
+// An empty badge element is not a smaller badge, it is a gap where a reader looks
+// for a number, so the element is absent rather than blank — and so is a zero.
+templ navLabel(s Shell, item NavItem) {
 	<span>{ item.Label }</span>
-	if item.Alert {
-		<span class="am-nav-badge am-nav-badge-alert">{ item.Badge }</span>
-	} else {
-		<span class="am-nav-badge">{ item.Badge }</span>
+	if badge := s.Badge(item.ID); badge != "" {
+		if item.Alert {
+			<span class="am-nav-badge am-nav-badge-alert">{ badge }</span>
+		} else {
+			<span class="am-nav-badge">{ badge }</span>
+		}
 	}
 }
 

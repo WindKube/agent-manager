@@ -1396,6 +1396,585 @@
     border-left: 3px solid var(--warn);
   }
 
+
+  /* The two governance screens (US4) ------------------------------------------
+
+     Every colour below is a palette token, and every text-on-background pair the
+     two screens produce is one internal/web/contrast_test.go sweeps in both
+     themes. One pair is deliberately absent: a status colour is never painted on
+     --sel. --ok and --warn reach only 4.44:1 and 4.32:1 there in the light theme,
+     so a severity or a check result rendered directly on a selected row would fail
+     AA — which is why every status here is a pill carrying its own tinted
+     background, and why .am-find-on tints only the row behind them. */
+
+  .am-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+    padding: 24px 44px 0;
+  }
+
+  @media (max-width: 1100px) {
+    .am-stats {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  .am-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    padding: 18px 20px;
+    border: 1px solid var(--bd);
+    border-radius: 12px;
+    background: var(--surface);
+  }
+
+  .am-stat-label {
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--fg3);
+  }
+
+  .am-stat-value {
+    font-family: var(--font-mono);
+    font-size: 24px;
+    color: var(--fg);
+  }
+
+  .am-stat-value-ok {
+    color: var(--ok);
+  }
+
+  .am-stat-value-warn {
+    color: var(--warn);
+  }
+
+  .am-stat-value-dan {
+    color: var(--dan);
+  }
+
+  .am-stat-note {
+    font-size: 12px;
+    color: var(--fg3);
+  }
+
+  .am-gov {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+    align-items: start;
+    gap: 24px;
+    padding: 24px 44px 48px;
+  }
+
+  @media (max-width: 1100px) {
+    .am-gov {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  /* Not .am-card: that one carries the page's own 44px side margins, and these two
+     sit inside the grid above, which owns the padding. */
+  .am-gov-card {
+    min-width: 0;
+    border: 1px solid var(--bd);
+    border-radius: 12px;
+    background: var(--surface);
+    overflow: hidden;
+  }
+
+  .am-pane {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .am-find-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--bd);
+  }
+
+  .am-find {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    padding: 15px 20px;
+    border-top: 1px solid var(--bd);
+    cursor: pointer;
+  }
+
+  .am-find:hover {
+    background: var(--surface2);
+  }
+
+  .am-find-on {
+    background: var(--sel);
+  }
+
+  .am-find-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .am-find-title {
+    font-size: 13.5px;
+    font-weight: 500;
+  }
+
+  .am-find-subject {
+    font-size: 11.5px;
+    color: var(--fg3);
+    overflow-wrap: anywhere;
+  }
+
+  .am-find-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 9px;
+  }
+
+  .am-find-rule,
+  .am-find-raised {
+    font-size: 11.5px;
+    color: var(--fg3);
+  }
+
+  /* One pill for severity, finding state, version verdict and audit kind. They are
+     one shape in the design and the tone is what separates them, so a fifth thing
+     that needs a pill gets the tone rather than a fifth class. */
+  .am-pill {
+    flex: none;
+    padding: 3px 8px;
+    border-radius: 20px;
+    font-size: 10.5px;
+    font-weight: 500;
+  }
+
+  .am-pill-ok {
+    background: var(--okbg);
+    color: var(--ok);
+  }
+
+  .am-pill-warn {
+    background: var(--warnbg);
+    color: var(--warn);
+  }
+
+  .am-pill-dan {
+    background: var(--danbg);
+    color: var(--dan);
+  }
+
+  .am-pill-neutral {
+    background: var(--sel);
+    color: var(--fg2);
+  }
+
+  .am-pane-head {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 20px 22px;
+    border-bottom: 1px solid var(--bd);
+  }
+
+  .am-pane-pills {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .am-pane-rule {
+    font-size: 12px;
+    color: var(--fg3);
+  }
+
+  .am-pane-title {
+    font-size: 17px;
+    font-weight: 500;
+  }
+
+  .am-pane-subject {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .am-pane-link {
+    font-size: 12px;
+    color: var(--fg2);
+    overflow-wrap: anywhere;
+  }
+
+  .am-pane-link:hover {
+    color: var(--fg);
+  }
+
+  .am-pane-raised {
+    font-size: 12px;
+    color: var(--fg3);
+  }
+
+  .am-pane-body {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    min-width: 0;
+    padding: 20px 22px;
+  }
+
+  .am-pane-block {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  /* Evidence is bytes out of somebody else's package. It gets its own scroll
+     container so a 240-byte quote cannot make the whole page scroll sideways. */
+  .am-ev {
+    min-width: 0;
+    border: 1px solid var(--bd);
+    border-radius: 9px;
+    background: var(--surface2);
+    overflow: hidden;
+  }
+
+  .am-ev-supporting {
+    border-left: 2px solid var(--bd);
+  }
+
+  .am-ev-loc {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--bd);
+    font-size: 11.5px;
+    color: var(--fg3);
+    overflow-wrap: anywhere;
+  }
+
+  .am-ev-quote {
+    margin: 0;
+    padding: 12px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    line-height: 1.7;
+    color: var(--fg2);
+    min-width: 0;
+    overflow-x: auto;
+  }
+
+  .am-chk {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 9px 0;
+    border-top: 1px solid var(--bd);
+    font-size: 13px;
+  }
+
+  .am-chk-mark {
+    flex: 0 0 14px;
+    width: 14px;
+    text-align: center;
+  }
+
+  .am-chk-mark-ok {
+    color: var(--ok);
+  }
+
+  .am-chk-mark-warn {
+    color: var(--warn);
+  }
+
+  .am-chk-mark-dan {
+    color: var(--dan);
+  }
+
+  .am-chk-mark-neutral {
+    color: var(--fg3);
+  }
+
+  .am-chk-label {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    flex: 1;
+    min-width: 0;
+    color: var(--fg2);
+  }
+
+  .am-chk-note {
+    font-size: 11.5px;
+    color: var(--fg3);
+  }
+
+  .am-chk-result {
+    flex: none;
+    font-size: 11.5px;
+    color: var(--fg3);
+  }
+
+  .am-kv {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 5px 0;
+    font-size: 12.5px;
+  }
+
+  .am-kv-key {
+    flex: none;
+    color: var(--fg3);
+  }
+
+  .am-kv-val {
+    min-width: 0;
+    color: var(--fg2);
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+
+  .am-kv-none {
+    color: var(--fg3);
+    font-style: italic;
+  }
+
+  /* margin-top:auto pins the decision footer to the bottom of the pane, so the two
+     controls are in the same place whether the finding has one evidence row or
+     eight. */
+  .am-gate {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: auto;
+    padding: 16px 22px;
+    border-top: 1px solid var(--bd);
+    background: var(--surface2);
+  }
+
+  .am-gate-note {
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--fg3);
+  }
+
+  .am-gate-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+
+  .am-review {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .am-review-note {
+    width: 100%;
+    padding: 9px 11px;
+    border: 1px solid var(--bd);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--fg);
+    font-size: 12.5px;
+    outline: none;
+  }
+
+  .am-review-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .am-review-expiry {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--fg2);
+  }
+
+  .am-review-days {
+    width: 66px;
+    padding: 6px 8px;
+    border: 1px solid var(--bd);
+    border-radius: 7px;
+    background: var(--surface);
+    color: var(--fg);
+    font-size: 12.5px;
+    outline: none;
+  }
+
+  .am-review-hint {
+    flex: 1;
+    min-width: 200px;
+    font-size: 11.5px;
+    line-height: 1.6;
+    color: var(--fg3);
+  }
+
+  /* A control disabled for a reason (FR-126) still has to be READABLE, because the
+     reason beside it is only useful if the reader can see what it applies to. So
+     this is a colour change and not an opacity: opacity multiplies against whatever
+     is behind it and takes the label out of the palette the contrast sweep
+     covers. */
+  .am-btn:disabled,
+  .am-btn-primary:disabled {
+    border-color: var(--bd);
+    background: var(--surface2);
+    color: var(--fg3);
+    cursor: not-allowed;
+    font-weight: 400;
+  }
+
+  .am-btn:disabled:hover,
+  .am-btn-primary:disabled:hover {
+    background: var(--surface2);
+  }
+
+  /* The pager as links rather than buttons, because paging here is a plain
+     navigation: no signals on either screen, so the browser's own history is the
+     state. An unavailable direction is a span, not a disabled link — there is no
+     such thing, and an anchor with no href is a tab stop that does nothing. */
+  .am-pager-link {
+    padding: 5px 10px;
+    border: 1px solid var(--bd);
+    border-radius: 7px;
+    background: var(--surface);
+    color: var(--fg2);
+    font-size: 12px;
+  }
+
+  .am-pager-link:hover {
+    background: var(--sel);
+    color: var(--fg2);
+  }
+
+  .am-pager-off {
+    background: var(--surface2);
+    color: var(--fg3);
+    cursor: default;
+  }
+
+  .am-pager-off:hover {
+    background: var(--surface2);
+    color: var(--fg3);
+  }
+
+  .am-gov-notice {
+    margin: 18px 44px 0;
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-size: 12.5px;
+    line-height: 1.6;
+  }
+
+  .am-gov-notice-ok {
+    background: var(--okbg);
+    color: var(--ok);
+  }
+
+  .am-gov-notice-warn {
+    background: var(--warnbg);
+    color: var(--warn);
+  }
+
+  .am-gov-notice-dan {
+    background: var(--danbg);
+    color: var(--dan);
+  }
+
+  .am-gov-notice-neutral {
+    background: var(--sel);
+    color: var(--fg2);
+  }
+
+  /* The unreachable-api state. .am-notice-auth's warn rule is a permission the
+     reader can do something about; this one is an outage, and the two must not read
+     alike (FR-122). */
+  .am-notice-dan {
+    border-left: 3px solid var(--dan);
+  }
+
+  .am-audit-row {
+    display: grid;
+    grid-template-columns: minmax(120px, 0.9fr) minmax(90px, 1.1fr) minmax(180px, 2.4fr) minmax(80px, 0.9fr);
+    align-items: center;
+    gap: 16px;
+    padding: 13px 20px;
+    border-top: 1px solid var(--bd);
+    font-size: 13px;
+  }
+
+  .am-audit-head {
+    padding: 11px 20px;
+    border-top: 0;
+    background: var(--surface2);
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--fg3);
+  }
+
+  .am-audit-time {
+    font-size: 12px;
+    color: var(--fg3);
+  }
+
+  .am-audit-actor {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    color: var(--fg2);
+    overflow-wrap: anywhere;
+  }
+
+  .am-audit-actor-kind {
+    flex: none;
+    padding: 1px 6px;
+    border: 1px solid var(--bd);
+    border-radius: 20px;
+    font-size: 10.5px;
+    color: var(--fg3);
+  }
+
+  .am-audit-event {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+  }
+
+  .am-audit-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .am-audit-source {
+    font-size: 11.5px;
+    color: var(--fg3);
+    overflow-wrap: anywhere;
+  }
+
   /* Placeholder for the screens later layers own. */
   .am-placeholder {
     margin: 0 44px 44px;

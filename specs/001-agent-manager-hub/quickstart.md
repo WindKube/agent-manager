@@ -31,6 +31,10 @@ the group → role mapping do something real. Both users live in
 `deploy/local/glauth/glauth.cfg`; the group names there are the same exported constants the
 seed writes into `group_role_map`, and a test parses both sides so they cannot drift.
 
+A third, `dnowicki@example.com`, same password again, is in `vendors` — a group this hub maps
+to no role on purpose. Signing in as them is how you reach the no-role screen without breaking
+the group-to-role coupling to get there.
+
 ## What comes up
 
 Two files, one command. `compose.yaml` names `compose.infra.yaml` through Compose's top-level

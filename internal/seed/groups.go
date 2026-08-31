@@ -22,13 +22,27 @@ const (
 )
 
 // The other two names the design's Organization screen shows. They are not part
-// of the identity-provider coupling above — the local directory has two people —
-// but they are what a membership row and the design's audit trail point at, so
-// the vocabulary is seeded whole.
+// of the identity-provider coupling above — the local directory has two people
+// who resolve a role — but they are what a membership row and the design's audit
+// trail point at, so the vocabulary is seeded whole.
 const (
 	GroupEngAll      = "eng-all"
 	GroupContractors = "contractors"
 )
+
+// GroupUnmapped is a group the local directory HAS and this hub maps to nothing.
+//
+// It exists so FR-117's screen — signed in, authenticated, holding no role — is
+// reachable in a browser rather than only in a component test. Without it the
+// only way to see that screen on the local stack is to break the group-to-role
+// coupling on purpose, which is the same edit as the bug it is meant to
+// distinguish from: a person who reached it would have no way to tell "this hub
+// has not mapped my group" from "somebody typo'd the fixture".
+//
+// It must stay absent from GroupRoles. TestTheUnmappedGroupIsMappedToNothing
+// asserts that, because mapping it is a one-line change that silently deletes the
+// only route to a whole screen.
+const GroupUnmapped = "vendors"
 
 // The two people in the local directory, on this same surface and for the same
 // reason: `deploy/local/glauth/glauth.cfg` spells these usernames and mails, and
@@ -57,18 +71,66 @@ const (
 	DirectoryEmailPlatform = "kwiatrzyk@example.com"
 	DirectoryUserSecurity  = "anowak"
 	DirectoryEmailSecurity = "anowak@example.com"
+	// The third person, in GroupUnmapped. Everything above applies to them
+	// unchanged — they are in the directory, they can sign in, and the seed must
+	// not write them a row either.
+	DirectoryUserUnmapped  = "dnowicki"
+	DirectoryEmailUnmapped = "dnowicki@example.com"
 )
 
-// DirectoryUsers is the set to walk — generating the fixture, or checking nothing
-// collides with it. The group is the one each user resolves a role through, and
-// SC-104 turns on those two being different.
-var DirectoryUsers = []struct {
+// DirectoryPassword is the password BOTH people above authenticate with.
+//
+// It sits beside their usernames for the same reason the rest of this surface
+// does: `deploy/local/glauth/glauth.cfg` holds only sha256 of it, and no amount of
+// reading that file recovers the plaintext, so the plaintext has to be spelled
+// somewhere — and it must be spelled exactly once. 001's quickstart table needs
+// it, and so does the sign-in screen's development hint (003 FR-119), which is the
+// caller that makes a second copy dangerous: a stale copy of a password on a
+// screen sends a person to reset something that was never broken.
+//
+// It is a laptop credential and nothing more. glauth listens on the compose
+// network only, the value is documented in the quickstart, and the hint that shows
+// it renders ONLY when an operator set AGENT_MANAGER_WEB_DEV_CREDENTIAL_HINT.
+//
+//nolint:gosec // G101: it IS a hard-coded credential, and that is the design. See above.
+const DirectoryPassword = "local-only-directory-password"
+
+// DirectoryUser is one person the local directory can authenticate.
+type DirectoryUser struct {
 	Username string
 	Email    string
-	Group    string
-}{
+	// Group is the one group this person is in. For two of the three it is the
+	// group they resolve a role through, and SC-104 turns on those two being
+	// different; for the third it is GroupUnmapped, and they resolve none.
+	Group string
+}
+
+// DirectoryUsers is the set to walk — generating the fixture, checking nothing
+// collides with it, or building the sign-in screen's development hint.
+//
+// ALL THREE, including the one who resolves no role. Every walk over this list is
+// either "who can sign in" or "who must not be seeded", and the unmapped user is
+// both of those: a list that held only the two role-holders would leave the third
+// out of the collision check in internal/seed/identities_test.go, where a seeded
+// row naming them would shadow the row their first sign-in creates.
+var DirectoryUsers = []DirectoryUser{
 	{DirectoryUserPlatform, DirectoryEmailPlatform, GroupEngPlatform},
 	{DirectoryUserSecurity, DirectoryEmailSecurity, GroupEngSecurity},
+	{DirectoryUserUnmapped, DirectoryEmailUnmapped, GroupUnmapped},
+}
+
+// RoleOf is the role a group resolves to, and "" when the hub maps it to none.
+//
+// A lookup over GroupRoles rather than a second map, so there is one answer to
+// the question and the unmapped case is a value rather than a missing key
+// somebody has to remember to check.
+func RoleOf(group string) string {
+	for _, mapping := range GroupRoles {
+		if mapping.Group == group {
+			return string(mapping.Role)
+		}
+	}
+	return ""
 }
 
 // GroupRoles is the mapping as the Organization screen lists it (design line

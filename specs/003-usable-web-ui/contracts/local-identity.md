@@ -169,6 +169,14 @@ R1 re-measured on Dex v2.44.0. The LDAP connector is the mechanism; static passw
   primarygroup = 5500          # eng-security
   passsha256 = "<sha256>"
 
+# FR-117's account: in a group this hub maps to no role.
+[[users]]
+  name = "dnowicki"
+  mail = "dnowicki@example.com"
+  uidnumber = 5004
+  primarygroup = 5503          # vendors
+  passsha256 = "<sha256>"
+
 [[groups]]
   name = "eng-platform"
   gidnumber = 5501
@@ -176,12 +184,17 @@ R1 re-measured on Dex v2.44.0. The LDAP connector is the mechanism; static passw
   name = "eng-security"
   gidnumber = 5500
 [[groups]]
+  name = "vendors"
+  gidnumber = 5503
+[[groups]]
   name = "svcaccts"
   gidnumber = 5502
 ```
 
-The two group names must match the `group_role_map` rows the seed writes, or the mapping resolves
-to nothing and both users hold no role. That coupling is the single most breakable thing in the
+The first two group names must match the `group_role_map` rows the seed writes, or the mapping
+resolves to nothing and both users hold no role. `vendors` is the exception and matches nothing on
+purpose: it is what makes FR-117's no-role screen reachable by signing in rather than by breaking
+the coupling, and `internal/seed` asserts it stays unmapped. That coupling is the single most breakable thing in the
 local stack, so the integration test asserts the end state — *these two users resolve to these
 two different roles* — rather than asserting the claim alone.
 
@@ -211,15 +224,19 @@ starts and then tells you the directory is wrong beats a stack that hangs on a h
 One test, `testcontainers-go`, containers for dex and glauth, asserting in order:
 
 1. Discovery answers within 5 s and advertises the device endpoint and the `device_code` grant.
-2. For **each** of the two users: obtain an ID token, assert `groups` is present and non-empty.
-3. Assert the two `groups` values **differ**. A test that only checks presence would pass against
-   the `mockCallback` connector, which returns one hard-coded group for everybody.
+2. For **each** directory user: obtain an ID token, assert `groups` is present and non-empty.
+3. Assert the two role-holders' `groups` values **differ**. A test that only checks presence would
+   pass against the `mockCallback` connector, which returns one hard-coded group for everybody.
 4. Drive the full authorization-code round trip with the browser leg on one host and the token
    exchange on another, asserting `iss`, `sub`, `email` and `groups` on the resulting token. This
    is R2's proof, promoted from a scratch probe to a test the build runs.
-5. Assert the two users resolve to two different roles through `group_role_map` — the end
+5. Assert the two role-holders resolve to two different roles through `group_role_map` — the end
    property SC-104 names, which is the only assertion that catches a group-name typo in the
    glauth fixture.
+6. Assert the third user authenticates and resolves to **no** role, and that their group is absent
+   from `group_role_map`. This is FR-117's route: without it the no-role screen can only be
+   reached by breaking step 5's coupling, which is the same edit as the bug it must be
+   distinguishable from.
 
 Steps 3 and 5 are the ones that matter. Everything else in this contract can be right while the
 claim is silently empty, and that failure mode is what cost feature 001 its Keycloak detour.

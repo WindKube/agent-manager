@@ -1534,6 +1534,48 @@
         ],
         "type": "object"
       },
+      "Session": {
+        "additionalProperties": false,
+        "properties": {
+          "expiresAt": {
+            "description": "When the session row expires. This is the value stored, and what a cookie's expiry must match.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "expiresIn": {
+            "description": "Seconds until the session expires, measured on this hub's clock. Use this for a cookie's Max-Age rather than subtracting expiresAt from a local clock.",
+            "examples": [
+              43200
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "token": {
+            "description": "The opaque session token. Returned once; the hub stores only its hash. Sent back as an Authorization bearer credential on every later request.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "expiresAt",
+          "expiresIn"
+        ],
+        "type": "object"
+      },
+      "SessionMintRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "idToken": {
+            "description": "The provider's ID token, exactly as issued. Verified here against the configured issuer, audience and signing keys; the caller's own parsing is not trusted and is not accepted.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "idToken"
+        ],
+        "type": "object"
+      },
       "SyncReport": {
         "additionalProperties": false,
         "properties": {
@@ -1585,6 +1627,64 @@
           "targets"
         ],
         "type": "object"
+      },
+      "Viewer": {
+        "additionalProperties": false,
+        "properties": {
+          "displayName": {
+            "description": "The name a screen shows. Derived by the hub from whichever of name, preferred_username or email the provider populated.",
+            "examples": [
+              "Krzysztof Wiatrzyk"
+            ],
+            "type": "string"
+          },
+          "email": {
+            "description": "May be empty: a provider is not obliged to release an email address, and a screen must cope rather than invent one.",
+            "examples": [
+              "kwiatrzyk@example.dev"
+            ],
+            "type": "string"
+          },
+          "groups": {
+            "description": "The groups claim as the provider sent it, unfiltered. Shown on the no-role screen so a person can say which groups they hold when asking for access.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "hasRole": {
+            "description": "Whether any group this identity holds maps to a role at all (FR-117). False is a screen state, not an error.",
+            "type": "boolean"
+          },
+          "role": {
+            "description": "The most privileged role this identity's groups map to. Absent when none of them maps to anything.",
+            "enum": [
+              "catalog-admin",
+              "scanner-reviewer",
+              "profile-consumer",
+              "read-only"
+            ],
+            "examples": [
+              "catalog-admin"
+            ],
+            "type": "string"
+          },
+          "subject": {
+            "description": "The provider's stable subject identifier for this identity.",
+            "examples": [
+              "CgVrd2lhdHISBGxvY2Fs"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "displayName",
+          "email",
+          "hasRole",
+          "groups"
+        ],
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -1593,6 +1693,12 @@
         "description": "The `access_token` issued by /v1/device/token, or a web session token, sent as `Authorization: Bearer \u003ctoken\u003e`. The token is OPAQUE — one base64url segment of random bytes, with no header, payload or claims. Do not decode one and do not read `exp` from it: a token's lifetime is the `expires_in` returned beside it.",
         "scheme": "bearer",
         "type": "http"
+      },
+      "sessionMintSecret": {
+        "description": "A secret shared between the `serve web` and `serve api` roles, compared in constant time. It authorises minting a session for ANY subject, so it is the most privileged credential this hub accepts. The mint is refused outright when no secret is configured: there is no default and no development bypass.",
+        "in": "header",
+        "name": "X-Session-Mint-Secret",
+        "type": "apiKey"
       }
     }
   },
@@ -2596,6 +2702,148 @@
         ]
       }
     },
+    "/v1/sessions": {
+      "post": {
+        "description": "The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.",
+        "operationId": "createSession",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionMintRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            },
+            "description": "Minted. The token is in this body and nowhere else on this side: the row holds only its sha256."
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is missing or is not valid JSON."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The shared secret is missing or is not the one this hub holds."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body must be sent as application/json."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The body carries no ID token, or the ID token did not verify. The second case is deliberately unexplained: which check failed is not something to tell whoever presented the token."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too many refused mints from this address."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This hub cannot mint sessions: no shared secret is configured, or the identity provider could not be reached to verify the token."
+          }
+        },
+        "security": [
+          {
+            "sessionMintSecret": []
+          }
+        ],
+        "summary": "Mint a browser session from a verified ID token",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/v1/sessions/current": {
+      "delete": {
+        "description": "Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction (FR-114, FR-115). Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.",
+        "operationId": "deleteSession",
+        "responses": {
+          "204": {
+            "description": "Signed out."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token. Also what a session that had already expired gets, and what a second concurrent sign-out gets — the caller clears its cookie either way, so the two need not be told apart."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Sign out",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
     "/v1/sync": {
       "post": {
         "description": "Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.",
@@ -2660,6 +2908,48 @@
           "profiles"
         ]
       }
+    },
+    "/v1/viewer": {
+      "get": {
+        "description": "The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL (FR-117) — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate (FR-118).",
+        "operationId": "getViewer",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Viewer"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token. There is no anonymous viewer."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Who this request is acting as",
+        "tags": [
+          "identity"
+        ]
+      }
     }
   },
   "security": [
@@ -2679,6 +2969,10 @@
     {
       "description": "RFC 8628 device authorisation. Unauthenticated by definition.",
       "name": "device"
+    },
+    {
+      "description": "Who a request is acting as, and the sessions that say so.",
+      "name": "identity"
     },
     {
       "description": "What this identity may read, and how it resolves.",

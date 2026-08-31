@@ -168,28 +168,41 @@ func TestEachRoleBootsWithOnlyItsOwnEnvironment(t *testing.T) {
 		// the role still WORKS with what it is given, and the web role's whole
 		// premise is that a screen renders without a datastore.
 		//
-		// It renders SIGNED OUT, and that is the point rather than a shortfall.
-		// There is no browser session until T090, the api refuses an anonymous read
-		// because public anonymous browsing is out of scope, and the web role holds
-		// no credential it could substitute — so a page that renders and says why is
-		// exactly what a correct hub does here. Two processes, one hop, one 401
-		// turned into a screen.
+		// With no session it renders the sign-in screen, and that is the point
+		// rather than a shortfall: the guard refuses every protected route before
+		// any hop, and the web role holds no credential it could substitute
+		// (constitution principle II). A page that renders and says why is exactly
+		// what a correct hub does here.
 		status, body := fetch(t, base+"/catalog")
 		require.Equal(t, http.StatusOK, status,
 			"the web role must render a screen with no database and no bucket")
-		require.Contains(t, body, "Sign in to browse the catalog",
-			"and the screen must say why it has no rows")
+		require.Contains(t, body, "am-signin-card",
+			"and the screen must be the one that says how to get in")
+		require.NotContains(t, body, "am-sidebar",
+			"a signed-out request must not reach a shell, empty or otherwise")
 
-		// The negative control for the assertion above. With the api gone the same
-		// request must fail loudly rather than rendering the same rowless page: an
-		// outage dressed as a login is one nobody reports, and one dressed as an
-		// empty hub is worse.
+		// The api hop, which the request above never made. A cookie is what gets
+		// past the guard, and this one is not a session anybody minted — so the api
+		// answers 401, the hub client reports that as signed out, and the guard
+		// renders the same sign-in screen. One 401 turned into a screen, across two
+		// processes.
+		status, body = fetchWithSession(t, base+"/catalog", "not-a-session-anyone-minted")
+		require.Equal(t, http.StatusOK, status)
+		require.Contains(t, body, "am-signin-card")
+
+		// The negative control, and it needs the cookie for the same reason: with
+		// the api gone that request must fail loudly rather than rendering the same
+		// page. An outage dressed as a login is one nobody reports, and one dressed
+		// as an empty hub is worse — so being unable to reach the api must never
+		// read as being signed out (FR-122).
 		require.NoError(t, apiCmd.Process.Signal(syscall.SIGTERM))
 		require.NoError(t, stopAPI(), "a SIGTERM must drain and exit 0")
-		status, body = fetch(t, base+"/catalog")
+		status, body = fetchWithSession(t, base+"/catalog", "not-a-session-anyone-minted")
 		require.Equal(t, http.StatusBadGateway, status,
-			"an unreachable api must never render as a catalog of any kind")
-		require.NotContains(t, body, "Sign in to browse the catalog")
+			"an unreachable api must never render as a catalog of any kind, nor as a sign-in")
+		require.NotContains(t, body, "am-signin-card",
+			"an outage that renders as a sign-in screen sends the person to try their password again")
+		require.NotContains(t, body, "am-row")
 
 		require.NoError(t, cmd.Process.Signal(syscall.SIGTERM))
 		require.NoError(t, stop(), "a SIGTERM must drain and exit 0")
@@ -410,6 +423,25 @@ func fetch(t *testing.T, url string) (status int, body string) {
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, http.NoBody)
 	require.NoError(t, err)
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	payload, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	return resp.StatusCode, string(payload)
+}
+
+// fetchWithSession is the same request from a browser holding a session cookie.
+// It is what reaches the api at all: the guard reads the cookie before it asks
+// anybody who this is, so a request without one never leaves the web role.
+func fetchWithSession(t *testing.T, url, token string) (status int, body string) {
+	t.Helper()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, http.NoBody)
+	require.NoError(t, err)
+	req.AddCookie(&http.Cookie{Name: "am_session", Value: token})
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)

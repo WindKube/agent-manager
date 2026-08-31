@@ -60,17 +60,35 @@ func humaConfig(opts Options) huma.Config {
 							"not decode one and do not read `exp` from it: a token's lifetime is the " +
 							"`expires_in` returned beside it.",
 					},
+					// The session mint's own scheme, declared rather than left implicit.
+					// It is a second authentication mechanism in a codebase that
+					// deliberately had one, and a document that described the most
+					// privileged call in the system as unauthenticated — which is what
+					// `security: []` would have said — would be worse than the extra
+					// entry. See contracts/auth.md and the plan's Complexity Tracking
+					// table.
+					SessionMintScheme: {
+						Type: "apiKey",
+						In:   "header",
+						Name: SessionMintHeader,
+						Description: "A secret shared between the `serve web` and `serve api` roles, compared " +
+							"in constant time. It authorises minting a session for ANY subject, so it is " +
+							"the most privileged credential this hub accepts. The mint is refused " +
+							"outright when no secret is configured: there is no default and no " +
+							"development bypass.",
+					},
 				},
 			},
 			// Every operation is authenticated unless it says otherwise with an
 			// empty `security: []`, which is the OpenAPI way to remove the root
-			// requirement. Defaulting the other way round means a new operation is
-			// public until somebody remembers.
+			// requirement, or with a requirement of its own. Defaulting the other way
+			// round means a new operation is public until somebody remembers.
 			Security: []map[string][]string{{BearerScheme: {}}},
 			Tags: []*huma.Tag{
 				{Name: "bundles", Description: "Immutable version content."},
 				{Name: "catalog", Description: "Browsing what is registered. Readable without a token."},
 				{Name: "device", Description: "RFC 8628 device authorisation. Unauthenticated by definition."},
+				{Name: "identity", Description: "Who a request is acting as, and the sessions that say so."},
 				{Name: "profiles", Description: "What this identity may read, and how it resolves."},
 				{Name: "system", Description: "Probes a supervisor calls. Unauthenticated."},
 			},

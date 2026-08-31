@@ -99,7 +99,11 @@ func localPath(raw string) string {
 func (s *Server) shell(c *gin.Context, title, active string) components.Shell {
 	theme := themeFor(c)
 	return components.Shell{
-		Title:    title,
+		Title: title,
+		// The ONLY source of an identity on any screen (FR-116). The zero value is
+		// the signed-out state and renders no chip at all; nothing else may supply
+		// one, and there is no default.
+		Viewer:   viewerFor(c),
 		Theme:    theme,
 		Next:     otherTheme(theme),
 		Active:   active,

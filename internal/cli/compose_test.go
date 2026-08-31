@@ -180,6 +180,67 @@ func TestNoTwoServicesClaimTheSameHostPort(t *testing.T) {
 	}
 }
 
+// TestExactlyTwoServicesHoldTheSessionMintSecret is contracts/auth.md's count,
+// asserted on the MERGED configuration rather than on the anchor.
+//
+// The anchor is not the property. Compose merges, includes and interpolates, so
+// what a container gets is not what the file reads — a service could pick the
+// value up from an `<<:` somebody widened, from an env_file, or from a second
+// anchor with the same string in it, and the file would still look right.
+//
+// Both halves of the count matter and they fail differently. Fewer than two and
+// sign-in fails at the mint with both roles looking correctly configured. More
+// than two and there is a third process on this network that can ask the api to
+// open a session for any identity it can produce a token for — which is the whole
+// of the mint's authentication, so a worker holding it is a worker that can mint
+// itself an administrator's session.
+func TestExactlyTwoServicesHoldTheSessionMintSecret(t *testing.T) {
+	root := repoRootForCompose(t)
+	requireDockerCLI(t)
+
+	profiles, err := compose(t, root, "config", "--profiles")
+	require.NoError(t, err, profiles)
+
+	args := []string{}
+	for _, p := range lines(profiles) {
+		args = append(args, "--profile", p)
+	}
+
+	var doc struct {
+		Services map[string]struct {
+			Environment map[string]*string `json:"environment"`
+		} `json:"services"`
+	}
+	raw := composeJSON(t, root, append(args, "config", "--format", "json")...)
+	require.NoError(t, json.Unmarshal(raw, &doc))
+	require.NotEmpty(t, doc.Services)
+
+	const variable = "AGENT_MANAGER_SESSION_MINT_SECRET"
+
+	var holders []string
+	values := map[string]string{}
+	for name, service := range doc.Services {
+		value, present := service.Environment[variable]
+		if !present {
+			continue
+		}
+		holders = append(holders, name)
+		require.NotNilf(t, value, "%s passes %s through from the host, so the stack depends on "+
+			"a variable that is unset in a normal shell", name, variable)
+		require.NotEmptyf(t, *value, "%s holds %s as an empty string, which the api refuses at "+
+			"the mint — a sign-in that fails after the password was accepted", name, variable)
+		values[name] = *value
+	}
+	slices.Sort(holders)
+
+	require.Equal(t, []string{"api", "web"}, holders,
+		"the api verifies the secret and web presents it. Any other service holding it can ask "+
+			"the api to open a session for anyone")
+	require.Equal(t, values["api"], values["web"],
+		"the two roles read the same variable and disagree about its value, so every sign-in "+
+			"fails at the mint with both roles looking correctly configured")
+}
+
 // Every subset of the profiles Compose reported, the empty one — the documented
 // argument-free command — included.
 func profileCombinations(profiles []string) [][]string {

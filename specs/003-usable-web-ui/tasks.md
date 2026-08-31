@@ -143,36 +143,36 @@ cookies, the state and PKCE rules, and what each of eleven failures renders.
 
 ### Tests for User Story 2 (write first)
 
-- [ ] T029 [P] [US2] Integration test in `internal/auth/signin_integration_test.go` driving the **full split-host round trip**: browser leg through the browser-facing base, token exchange from the container network, asserting `iss`, `sub`, `email` and `groups` on the resulting token. This promotes research R2's scratch proof to a test the build runs, and it is the gate — if it fails, nothing downstream is testable through the product
-- [ ] T030 [P] [US2] Table test in `internal/web/auth_test.go` for the return-target validator: a bare path passes; `//evil.example`, `https://evil.example`, a scheme-relative path and an authority all fall back to `/`. Without this, `/auth/login` is an open redirect with a login button
-- [ ] T031 [P] [US2] Table test in `internal/web/auth_test.go` for state handling: missing cookie, mismatched value, replayed value and an expired cookie each refuse with no session issued and no code exchanged
-- [ ] T032 [P] [US2] Test in `internal/api/commands/session_test.go` asserting the session mint is **refused when the shared secret is unset** — no default, no development bypass — and that the secret never appears in a log line, an error message or an audit row
+- [X] T029 [P] [US2] Integration test in `internal/auth/signin_integration_test.go` driving the **full split-host round trip**: browser leg through the browser-facing base, token exchange from the container network, asserting `iss`, `sub`, `email` and `groups` on the resulting token. This promotes research R2's scratch proof to a test the build runs, and it is the gate — if it fails, nothing downstream is testable through the product
+- [X] T030 [P] [US2] Table test in `internal/web/auth_test.go` for the return-target validator: a bare path passes; `//evil.example`, `https://evil.example`, a scheme-relative path and an authority all fall back to `/`. Without this, `/auth/login` is an open redirect with a login button
+- [X] T031 [P] [US2] Table test in `internal/web/auth_test.go` for state handling: missing cookie, mismatched value, replayed value and an expired cookie each refuse with no session issued and no code exchanged
+- [X] T032 [P] [US2] Test in `internal/api/commands/session_test.go` asserting the session mint is **refused when the shared secret is unset** — no default, no development bypass — and that the secret never appears in a log line, an error message or an audit row
 
 ### The api half
 
-- [ ] T033 [US2] Add `POST /v1/sessions` to `internal/api/operations.go`, authenticated by the shared secret in constant time, wrapping the existing `commands.Login` (FR-111) — which already upserts the identity, inserts the session and writes the `login` audit row in one transaction, and has never been reachable
-- [ ] T034 [US2] Implement the mint handler in `internal/api/commands/session.go`. Prefer passing the **raw ID token** and verifying it here rather than accepting parsed claims: verification then lives in the role that owns identity, and the shared secret becomes defence in depth rather than the only control. The plan's Complexity Tracking row records this as the preferred shape
-- [ ] T035 [P] [US2] Add `DELETE /v1/sessions/current` to `internal/api/operations.go`, wrapping the existing `commands.ExpireSession`, and write the sign-out audit row (FR-115)
-- [ ] T036 [P] [US2] Add `GET /v1/viewer` to `internal/api/operations.go` returning the display name, email, role and **whether the identity maps to any role at all** (FR-117), from what `auth.Sessions.Resolve` already resolved on the request rather than by re-querying
-- [ ] T037 [US2] Rate-limit the session mint in `internal/api/middleware.go` — a failure here is worth brute-forcing
-- [ ] T038 [US2] Regenerate the client with `task gen:client` so `internal/apiclient` carries the three new operations, and add them to `internal/web/hub/`
+- [X] T033 [US2] Add `POST /v1/sessions` to `internal/api/operations.go`, authenticated by the shared secret in constant time, wrapping the existing `commands.Login` (FR-111) — which already upserts the identity, inserts the session and writes the `login` audit row in one transaction, and has never been reachable
+- [X] T034 [US2] Implement the mint handler in `internal/api/commands/session.go`. Prefer passing the **raw ID token** and verifying it here rather than accepting parsed claims: verification then lives in the role that owns identity, and the shared secret becomes defence in depth rather than the only control. The plan's Complexity Tracking row records this as the preferred shape
+- [X] T035 [P] [US2] Add `DELETE /v1/sessions/current` to `internal/api/operations.go`, wrapping the existing `commands.ExpireSession`, and write the sign-out audit row (FR-115)
+- [X] T036 [P] [US2] Add `GET /v1/viewer` to `internal/api/operations.go` returning the display name, email, role and **whether the identity maps to any role at all** (FR-117), from what `auth.Sessions.Resolve` already resolved on the request rather than by re-querying
+- [X] T037 [US2] Rate-limit the session mint in `internal/api/middleware.go` — a failure here is worth brute-forcing
+- [X] T038 [US2] Regenerate the client with `task gen:client` so `internal/apiclient` carries the three new operations, and add them to `internal/web/hub/`
 
 ### The web half
 
-- [ ] T039 [US2] Create `internal/web/auth.go` with `/auth/login`, `/auth/callback`, `/auth/logout` (POST — a GET sign-out fires from any image tag) and `/auth/signin`, registered in `internal/web/web.go`
-- [ ] T040 [US2] Implement the `am_oidc` round-trip cookie in `internal/web/auth.go` — signed, 90 s, `Path=/auth/callback`, carrying state, the PKCE S256 verifier and the return target, and **deleted before the code exchange** so a replayed callback finds nothing
-- [ ] T041 [US2] Implement the authorization redirect, rewriting only the authorization endpoint's host to `BrowserBaseURL`. This is the **one** place that value is read (research R2)
-- [ ] T042 [US2] Implement the callback: validate state in constant time, exchange the code against the issuer, verify the ID token, call the session mint, set `am_session`, redirect to the return target
-- [ ] T043 [US2] Extend `internal/web/session.go` to issue and clear the session cookie per [contracts/auth.md](./contracts/auth.md#cookies) — `HttpOnly`, `SameSite=Lax`, `Secure` derived from the configured public base URL's scheme rather than from the request, and `Max-Age` matching the row's `expires_at` (FR-110). It currently only reads one, with a comment saying login is the only thing that may set it — this is that
-- [ ] T044 [US2] Add the auth guard middleware in `internal/web/auth.go`: every route except `/healthz`, `/static/*` and `/auth/*` requires a resolved session, redirecting to `/auth/signin` with the requested path as the return target (FR-108, SC-105)
-- [ ] T045 [US2] Write `internal/web/components/signin.templ` — the hub's name, the configured provider's name, one action, no password field and no registration form or link to one (FR-109). Show the local credentials **only** when `DevCredentialHint` is set
-- [ ] T046 [US2] Add a `Viewer` value to `Shell` in `internal/web/components/props.go` with **no default and no fallback** (FR-116), and make `Shell` constructible in a signed-out state that renders no viewer chip at all — not a placeholder chip, not initials, not "Guest"
-- [ ] T047 [US2] Replace the hard-coded `KW` / `Krzysztof W.` / `Platform · Admin` block in `internal/web/components/shell.templ` with the resolved viewer (FR-116), and add the sign-out form alongside the theme toggle
-- [ ] T048 [US2] Render the no-mapped-role state (FR-117) — signed in, told plainly they hold no role and what to ask for, never an empty catalog implying the registry is empty
-- [ ] T049 [US2] Implement the eleven failure renderings from [contracts/auth.md](./contracts/auth.md#what-each-failure-renders), with provider-supplied error text escaped
-- [ ] T050 [US2] Update `internal/web/web_test.go`, which currently **asserts** the strings `"Krzysztof W."` and `"Platform · Admin"` are present, and add a signed-in and a signed-out variant to `internal/web/fixture/`
-- [ ] T051 [P] [US2] Test in `internal/web/contrast_test.go`'s neighbourhood asserting the product contains no literal display name, email, role or avatar outside a fixture (FR-116, SC-106)
-- [ ] T052 [US2] Run `internal/archcheck` and confirm the new web auth package acquired no forbidden import. A failure here is a principle II violation — revert, do not add an allowlist entry
+- [X] T039 [US2] Create `internal/web/auth.go` with `/auth/login`, `/auth/callback`, `/auth/logout` (POST — a GET sign-out fires from any image tag) and `/auth/signin`, registered in `internal/web/web.go`
+- [X] T040 [US2] Implement the `am_oidc` round-trip cookie in `internal/web/auth.go` — signed, 90 s, `Path=/auth/callback`, carrying state, the PKCE S256 verifier and the return target, and **deleted before the code exchange** so a replayed callback finds nothing
+- [X] T041 [US2] Implement the authorization redirect, rewriting only the authorization endpoint's host to `BrowserBaseURL`. This is the **one** place that value is read (research R2)
+- [X] T042 [US2] Implement the callback: validate state in constant time, exchange the code against the issuer, verify the ID token, call the session mint, set `am_session`, redirect to the return target
+- [X] T043 [US2] Extend `internal/web/session.go` to issue and clear the session cookie per [contracts/auth.md](./contracts/auth.md#cookies) — `HttpOnly`, `SameSite=Lax`, `Secure` derived from the configured public base URL's scheme rather than from the request, and `Max-Age` matching the row's `expires_at` (FR-110). It currently only reads one, with a comment saying login is the only thing that may set it — this is that
+- [X] T044 [US2] Add the auth guard middleware in `internal/web/auth.go`: every route except `/healthz`, `/static/*` and `/auth/*` requires a resolved session, redirecting to `/auth/signin` with the requested path as the return target (FR-108, SC-105)
+- [X] T045 [US2] Write `internal/web/components/signin.templ` — the hub's name, the configured provider's name, one action, no password field and no registration form or link to one (FR-109). Show the local credentials **only** when `DevCredentialHint` is set
+- [X] T046 [US2] Add a `Viewer` value to `Shell` in `internal/web/components/props.go` with **no default and no fallback** (FR-116), and make `Shell` constructible in a signed-out state that renders no viewer chip at all — not a placeholder chip, not initials, not "Guest"
+- [X] T047 [US2] Replace the hard-coded `KW` / `Krzysztof W.` / `Platform · Admin` block in `internal/web/components/shell.templ` with the resolved viewer (FR-116), and add the sign-out form alongside the theme toggle
+- [X] T048 [US2] Render the no-mapped-role state (FR-117) — signed in, told plainly they hold no role and what to ask for, never an empty catalog implying the registry is empty
+- [X] T049 [US2] Implement the eleven failure renderings from [contracts/auth.md](./contracts/auth.md#what-each-failure-renders), with provider-supplied error text escaped
+- [X] T050 [US2] Update `internal/web/web_test.go`, which currently **asserts** the strings `"Krzysztof W."` and `"Platform · Admin"` are present, and add a signed-in and a signed-out variant to `internal/web/fixture/`
+- [X] T051 [P] [US2] Test in `internal/web/contrast_test.go`'s neighbourhood asserting the product contains no literal display name, email, role or avatar outside a fixture (FR-116, SC-106)
+- [X] T052 [US2] Run `internal/archcheck` and confirm the new web auth package acquired no forbidden import. A failure here is a principle II violation — revert, do not add an allowlist entry
 
 **Checkpoint**: a person can sign in, see themselves, and sign out. The catalog and package
 detail screens work end to end for a real viewer. Seven routes still show placeholders — but the

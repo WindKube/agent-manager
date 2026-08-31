@@ -101,6 +101,20 @@ func runAPI(ctx context.Context) error {
 		// the api holds no value that could.
 		Bundles:  bucket.Reader(),
 		Sessions: auth.NewSessions(handle.DB()),
+		// Verification of a signed-in person's ID token happens HERE, in the role
+		// that owns identity, rather than in the web role that received the callback
+		// (contracts/auth.md's preferred refinement). The verifier discovers on first
+		// use: discovery reaches the provider, and a provider that is slow to start
+		// must not take this role's reads, health probe and device flow with it.
+		IDTokens: api.NewLazyVerifier(auth.VerifierConfig{
+			Issuer:       cfg.Issuer,
+			DiscoveryURL: cfg.DiscoveryURL,
+			ClientID:     cfg.ClientID,
+		}),
+		// Empty here means the session mint is refused outright — no default and no
+		// development bypass. Nothing above this line enforces that, which is why
+		// commands.SessionMint does.
+		SessionMintSecret: cfg.SessionMintSecret,
 		Probes: []api.Probe{
 			{Name: "database", Check: handle.Ping},
 			{Name: "objectstore", Check: func(ctx context.Context) error {
@@ -114,6 +128,7 @@ func runAPI(ctx context.Context) error {
 		PublicBaseURL:  cfg.PublicBaseURL,
 		DeviceCodeTTL:  cfg.DeviceCodeTTL,
 		DeviceTokenTTL: cfg.DeviceTokenTTL,
+		SessionTTL:     cfg.SessionTTL,
 	})
 
 	return server.Run(ctx)

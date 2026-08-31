@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"golang.org/x/oauth2"
 )
 
 // Claims is the subset of an ID token this project reads. `groups` is the input
@@ -152,6 +153,29 @@ func fetchMetadata(ctx context.Context, cfg VerifierConfig) (*oidc.ProviderConfi
 		return nil, fmt.Errorf("decode provider metadata: %w", err)
 	}
 	return metadata, nil
+}
+
+// Endpoint is the authorization and token endpoints the discovery document
+// published, used exactly as published.
+//
+// It is exported for the role that owns the browser's origin: the redirect and
+// the code exchange belong there, and that role cannot import this package —
+// internal/archcheck refuses it, because this package reads the session table and
+// a role that must hold no datastore credential may not link one, not even for an
+// accessor. So the endpoints cross that boundary as a value and the browser flow
+// is built on the other side of it.
+func (v *Verifier) Endpoint() oauth2.Endpoint { return v.provider.Endpoint() }
+
+// VerifyIDToken verifies a token and discards its claims.
+//
+// The caller is the browser callback, which checks the token it just received
+// before asking the api to open a session for it. It reads no claim on purpose:
+// the api verifies the same bytes again and resolves the identity itself, so a
+// claim decoded on that side would be a second, unauthoritative copy of something
+// this side owns.
+func (v *Verifier) VerifyIDToken(ctx context.Context, rawIDToken string) error {
+	_, err := v.Verify(ctx, rawIDToken)
+	return err
 }
 
 // Verify checks the token's signature, issuer, audience and expiry, then returns

@@ -52,6 +52,15 @@ var Nav = []NavGroup{
 	}},
 }
 
+// ProductName is what this product calls itself.
+//
+// A constant because two surfaces render it — the sidebar's brand and the sign-in
+// screen — and because the identity sweep next to internal/web's contrast test
+// has to exempt exactly one pair of capitalised words from "that is a person's
+// name". An exemption that is a constant is one identifier; an exemption that is
+// a spelling is a place for a second one to be added quietly.
+const ProductName = "Agent Manager"
+
 // Shell is everything the layout needs that is not the screen itself.
 type Shell struct {
 	Title string
@@ -70,6 +79,15 @@ type Shell struct {
 	AppCSS   string
 	AppJS    string
 	VendorJS string
+	// Viewer is who this request resolved as, or nil when it resolved nobody.
+	//
+	// A pointer, with no default and no fallback (FR-116). The alternative — a
+	// Viewer value — has a zero form that renders a chip with an empty name over an
+	// empty role, which is the compiled-in chip again with its literals deleted:
+	// still an identity no screen verified. nil renders no chip at all, so a caller
+	// that forgets to resolve a viewer produces a page that is visibly missing
+	// something rather than a page that is quietly lying.
+	Viewer *view.Viewer
 }
 
 func (s Shell) ToggleIcon() string {

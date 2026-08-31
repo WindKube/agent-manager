@@ -5,12 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -84,6 +82,10 @@ var (
 // which commands.userCodeLength's entropy note requires: 40 bits of user code is
 // only enough while the number of LIVE codes stays small, and without a cap an
 // attacker can raise that number himself.
+//
+// rateLimiter itself now lives in middleware.go: a second operation caps a second
+// thing with it, and machinery two operations share is request plumbing rather
+// than part of the device flow.
 
 const (
 	// deviceAuthorizeBurst codes per window per client address. Roomy enough for a
@@ -96,67 +98,6 @@ const (
 	// unauthenticated, so the key space is whatever addresses reach the hub.
 	deviceAuthorizeMaxKeys = 4096
 )
-
-// rateLimiter is a fixed-window counter per key.
-//
-// In-process, and therefore per replica: two api replicas each allow the burst,
-// so the effective cap is the burst times the replica count. That is stated
-// rather than hidden, and it is acceptable here because the limit exists to bound
-// a population by orders of magnitude, not to meter a quota. A shared limiter
-// would be a Redis this project does not run or a table this layer would have to
-// migrate.
-type rateLimiter struct {
-	mu     sync.Mutex
-	burst  int
-	window time.Duration
-	max    int
-	seen   map[string]*rateWindow
-}
-
-type rateWindow struct {
-	started time.Time
-	count   int
-}
-
-func newRateLimiter(burst int, window time.Duration, maxKeys int) *rateLimiter {
-	return &rateLimiter{burst: burst, window: window, max: maxKeys, seen: map[string]*rateWindow{}}
-}
-
-// allow reports whether one more request from key fits, and how long the caller
-// should be told to wait when it does not.
-//
-// It fails CLOSED when the key table is full of live entries: an unauthenticated
-// endpoint whose limiter can be evicted by flooding it with fresh keys is a
-// limiter with an off switch.
-func (r *rateLimiter) allow(key string, now time.Time) (bool, time.Duration) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if window, ok := r.seen[key]; ok {
-		if now.Sub(window.started) >= r.window {
-			window.started, window.count = now, 1
-			return true, 0
-		}
-		if window.count >= r.burst {
-			return false, r.window - now.Sub(window.started)
-		}
-		window.count++
-		return true, 0
-	}
-
-	if len(r.seen) >= r.max {
-		for k, window := range r.seen {
-			if now.Sub(window.started) >= r.window {
-				delete(r.seen, k)
-			}
-		}
-		if len(r.seen) >= r.max {
-			return false, r.window
-		}
-	}
-	r.seen[key] = &rateWindow{started: now, count: 1}
-	return true, 0
-}
 
 // limitDeviceAuthorize is the operation's own middleware, so the cap applies to
 // this one operation and nothing else.
@@ -182,14 +123,6 @@ func (s *Server) limitDeviceAuthorize(ctx huma.Context, next func(huma.Context))
 	}
 	ctx.SetHeader("Retry-After", strconv.Itoa(seconds))
 	ctx.SetStatus(http.StatusTooManyRequests)
-}
-
-// peerAddress strips the port, so a client's many connections share one key.
-func peerAddress(remote string) string {
-	if host, _, err := net.SplitHostPort(remote); err == nil {
-		return host
-	}
-	return remote
 }
 
 // ---- POST /v1/device/authorize ----------------------------------------------

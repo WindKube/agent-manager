@@ -79,6 +79,13 @@ type Web struct {
 
 	Addr       string `env:"WEB_ADDR" envDefault:":8080"`
 	APIBaseURL string `env:"API_BASE_URL,required,notEmpty"`
+	// PublicBaseURL is the origin a browser reaches this role at. It is read for
+	// exactly one decision — whether the two session cookies are marked Secure —
+	// and it is read INSTEAD of the request on purpose: something else may
+	// terminate TLS and forward plain http, so a hub served over https sees no TLS
+	// on any request and would drop the flag exactly where it is needed
+	// (contracts/auth.md's cookie table).
+	PublicBaseURL string `env:"PUBLIC_BASE_URL" envDefault:"http://localhost:8080"`
 	// SessionMintSecret is the api's, held here because web owns the browser's
 	// origin and therefore sets the cookie. See config.API for why it has no
 	// default. This is the only credential web carries, and it buys access to
@@ -90,6 +97,16 @@ type Web struct {
 	// that switches itself on is one misconfiguration away from doing it in
 	// production. Compose sets it; nothing else should.
 	DevCredentialHint bool `env:"WEB_DEV_CREDENTIAL_HINT" envDefault:"false"`
+	// ProviderName is what the operator calls the identity provider, for the
+	// sign-in screen's one action: naming it tells a person which
+	// password-manager entry to reach for.
+	//
+	// Stated or absent, with no default and nothing derived. FR-105 forbids this
+	// hub knowing which provider it is in front of, and an issuer URL is the
+	// obvious thing to derive a name from and the wrong one — "dex" is the
+	// container's name, not the directory's, and a hosted issuer would give the
+	// vendor rather than the organisation. Empty renders neutral wording.
+	ProviderName string `env:"WEB_PROVIDER_NAME"`
 }
 
 // Fetcher is the only role with object-store write access.

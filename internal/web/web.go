@@ -83,13 +83,54 @@ type Deps struct {
 	// Registrar is optional. Nil means the modal renders and refuses to submit,
 	// which is what a screen test wants and is not a state a deployment is in.
 	Registrar Registrar
-	Log       zerolog.Logger
+	// Auth is the door to the identity provider. Nil is a role whose provider could
+	// not be discovered at boot: /auth/signin then says the provider cannot be
+	// reached and offers no action, rather than a button known to fail.
+	Auth AuthProvider
+	// Viewers resolves who each request is acting as, on EVERY request (FR-118).
+	//
+	// Nil fails closed: the guard sends every protected route to the sign-in screen.
+	// A screen test that wants a signed-in shell has to supply one (SC-106) — there
+	// is no default viewer and there must not be one.
+	Viewers ViewerSource
+	// Sessions is the api's session mint and its sign-out. Nil means sign-in cannot
+	// complete, which the callback renders as the hub's own failure.
+	Sessions SessionMinter
+	Log      zerolog.Logger
 }
 
 // Options is the run-time configuration of the surface itself.
 type Options struct {
 	// Addr is the listen address, e.g. ":8080".
 	Addr string
+	// PublicBaseURL is the origin a browser reaches this role at. It is read for
+	// exactly one decision — whether the two cookies are marked Secure — and it is
+	// read instead of the request on purpose: see secureCookie.
+	PublicBaseURL string
+	// ProviderName is what the operator calls the identity provider, for the
+	// sign-in screen's one action. Empty renders the neutral wording — naming it
+	// tells a person which password-manager entry to reach for, and nothing else in
+	// this role branches on it. It is a label an operator states or does without:
+	// deriving one from the issuer URL would be the provider-specific quirk FR-105
+	// forbids.
+	ProviderName string
+	// DevCredentialHint puts the local stack's seeded logins on the sign-in screen
+	// (FR-119). It is an explicit flag and is never derived from the issuer, the
+	// host name or the build type.
+	DevCredentialHint bool
+	// DevCredentials is what the hint above prints, handed in rather than spelled
+	// anywhere under internal/web: a username or an address written into this role
+	// would be the compiled-in identity FR-116 and SC-106 forbid, and it would
+	// reach every visitor the moment that flag flipped. Ignored unless the flag is
+	// set.
+	DevCredentials []view.Credential
+	// OIDCCookieKey signs the round-trip cookie. Empty means one is drawn at boot,
+	// which is the right default for a single process: the cookie lives 90 seconds,
+	// so a restart costs at most one person one retry, and there is no key material
+	// in the environment to leak. A deployment running more than one web replica
+	// behind a load balancer MUST set the same value on each, or a sign-in that
+	// starts on one and returns to another finds no round trip in flight.
+	OIDCCookieKey []byte
 }
 
 // Server is the assembled router. It owns no connections.
@@ -97,6 +138,10 @@ type Server struct {
 	deps   Deps
 	opts   Options
 	engine *gin.Engine
+	// secureCookie and oidcKey are decided once, at construction: a per-request
+	// decision about either is a per-request opportunity to get one of them wrong.
+	secureCookie bool
+	oidcKey      []byte
 }
 
 // New assembles the router. It performs no I/O.
@@ -107,9 +152,19 @@ func New(deps Deps, opts Options) *Server {
 
 	engine := gin.New()
 	engine.HandleMethodNotAllowed = true
-	engine.Use(correlation(deps.Log), recovery())
 
-	srv := &Server{deps: deps, opts: opts, engine: engine}
+	srv := &Server{
+		deps:         deps,
+		opts:         opts,
+		engine:       engine,
+		secureCookie: secureCookie(opts.PublicBaseURL),
+		oidcKey:      oidcSigningKey(opts.OIDCCookieKey),
+	}
+	// The guard is global, so a route added by a later layer is protected by
+	// default and opting out means editing the one list that names the
+	// unauthenticated set. It runs after correlation so its own log lines and its
+	// redirect carry the request's id.
+	engine.Use(correlation(deps.Log), recovery(), srv.guard())
 	srv.register()
 	return srv
 }
@@ -134,6 +189,15 @@ func (s *Server) register() {
 	s.engine.GET("/packages/:namespace/:name", s.packageDetail)
 
 	s.engine.POST("/theme", s.setTheme)
+
+	// Sign-in (US2). These four and only these four are exempt from the guard,
+	// together with /healthz and /static — contracts/auth.md fixes that set.
+	// /auth/logout is a POST because a GET sign-out fires from any image tag on any
+	// page, on any origin.
+	s.engine.GET("/auth/signin", s.signin)
+	s.engine.GET("/auth/login", s.login)
+	s.engine.GET("/auth/callback", s.callback)
+	s.engine.POST("/auth/logout", s.logout)
 
 	s.engine.GET("/static/*path", serveStatic)
 

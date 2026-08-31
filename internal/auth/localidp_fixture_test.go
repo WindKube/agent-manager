@@ -220,6 +220,18 @@ func TestTheGlauthFixtureSpellsTheGroupNamesTheSeedMapsToRoles(t *testing.T) {
 			glauthFixturePath, want)
 	}
 
+	// The unmapped group is checked the same way and for the opposite reason: it
+	// must EXIST here and must map to nothing, which is what makes FR-117's screen
+	// reachable by signing in rather than by breaking something.
+	require.Truef(t, names[seed.GroupUnmapped],
+		"%s defines no group named %q, so the directory user who is supposed to hold no role "+
+			"either fails to log in or arrives with no groups at all — which is the silent "+
+			"claim loss this fixture exists to rule out, not the no-role state",
+		glauthFixturePath, seed.GroupUnmapped)
+	require.Empty(t, seed.RoleOf(seed.GroupUnmapped),
+		"internal/seed now maps %q to a role, so nobody in the local directory reaches the "+
+			"no-role screen", seed.GroupUnmapped)
+
 	// The users, their mails and the group each one resolves a role through, all
 	// read off seed.DirectoryUsers rather than spelled a second time. The mail
 	// matters as much as the group: Dex's user search is `username: mail`, so the

@@ -307,14 +307,31 @@ func TestTheSeedLeavesNoIdentityRowForSomeoneWhoCanSignIn(t *testing.T) {
 	}
 
 	// The mapping is seeded whole even though no seeded identity can sign in: the
-	// two directory users resolve their roles through it on first login (SC-104).
+	// two role-holding directory users resolve their roles through it on first
+	// login (SC-104).
 	var mapped []string
 	require.NoError(t, db.NewSelect().
 		ColumnExpr("group_name").TableExpr("group_role_map").Scan(ctx, &mapped))
+
+	var unmapped []string
 	for _, user := range seed.DirectoryUsers {
+		if user.Group == seed.GroupUnmapped {
+			// FR-117's account. The row's ABSENCE is the requirement here, asserted
+			// rather than skipped: seeding a mapping for this group is the one edit
+			// that removes the only route to the no-role screen, and it would look
+			// like completing the mapping table.
+			require.NotContainsf(t, mapped, user.Group,
+				"%q now has a group_role_map row, so %q resolves a role and nobody in the local "+
+					"directory reaches the no-role screen", user.Group, user.Username)
+			unmapped = append(unmapped, user.Username)
+			continue
+		}
 		require.Containsf(t, mapped, user.Group,
 			"%q has no group_role_map row, so %q would sign in with no role", user.Group, user.Username)
 	}
+	require.Len(t, unmapped, 1,
+		"exactly one directory user holds no role. Two would mean a coupling failure wearing "+
+			"FR-117's clothes; none would mean the screen is unreachable")
 }
 
 // TestTheSeedRunsWithTheGrantsTheApiRoleHolds is the constraint the compose

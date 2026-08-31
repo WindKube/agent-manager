@@ -158,3 +158,53 @@ func directoryUserIn(value string) (string, bool) {
 	}
 	return "", false
 }
+
+// TestTheUnmappedGroupIsMappedToNothing is the guard on FR-117's only route.
+//
+// GroupUnmapped exists so a person can reach the no-role screen on the local
+// stack by signing in as somebody real, rather than by breaking the group-to-role
+// coupling on purpose. Mapping it is a one-line change that looks like tidying up
+// an oversight and silently deletes the only way to see a whole screen — so the
+// absence is asserted rather than left to the comment beside the constant.
+func TestTheUnmappedGroupIsMappedToNothing(t *testing.T) {
+	require.NotEmpty(t, GroupRoles, "no mappings, so this test asserts nothing")
+
+	for _, mapping := range GroupRoles {
+		require.NotEqualf(t, GroupUnmapped, mapping.Group,
+			"%q now resolves to %q. That is the only group in the local directory that maps to "+
+				"nothing, and FR-117's screen has no other way to be reached in a browser: pick "+
+				"a new unmapped group name and put the directory user in it, or delete the "+
+				"requirement", GroupUnmapped, mapping.Role)
+	}
+	require.Empty(t, RoleOf(GroupUnmapped))
+
+	// And the directory really has somebody in it, because a group nothing maps to
+	// and nobody is in is not a route to anything.
+	var found bool
+	for _, user := range DirectoryUsers {
+		if user.Group == GroupUnmapped {
+			found = true
+			require.Equal(t, DirectoryEmailUnmapped, user.Email)
+		}
+	}
+	require.True(t, found, "no directory user is in %q", GroupUnmapped)
+}
+
+// Every group a directory user is in resolves to a role, or is the one that
+// deliberately does not. A third unmapped group would be a silent second no-role
+// account, which is a coupling mistake wearing FR-117's clothes.
+func TestEveryDirectoryGroupExceptTheUnmappedOneResolvesToARole(t *testing.T) {
+	for _, user := range DirectoryUsers {
+		t.Run(user.Username, func(t *testing.T) {
+			if user.Group == GroupUnmapped {
+				require.Empty(t, RoleOf(user.Group))
+				return
+			}
+			require.NotEmptyf(t, RoleOf(user.Group),
+				"%q is in %q, which maps to no role — so they sign in successfully and land on "+
+					"the no-role screen. If that is intended, GroupUnmapped is the group to put "+
+					"them in; if not, this is the silent coupling failure "+
+					"internal/seed/groups.go describes", user.Username, user.Group)
+		})
+	}
+}

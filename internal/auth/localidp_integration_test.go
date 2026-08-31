@@ -374,7 +374,7 @@ func TestTheLocalProviderAdvertisesTheDeviceEndpointAndTheDeviceCodeGrant(t *tes
 // ---------------------------------------------------------------------------
 // 3. A groups claim, per user, in a token Dex signed.
 
-func TestEachDirectoryUserGetsAGroupsClaimNamingTheGroupTheSeedMapsToARole(t *testing.T) {
+func TestEachDirectoryUserGetsAGroupsClaimNamingTheirOwnGroup(t *testing.T) {
 	requireStack(t)
 
 	for _, user := range seed.DirectoryUsers {
@@ -386,7 +386,20 @@ func TestEachDirectoryUserGetsAGroupsClaimNamingTheGroupTheSeedMapsToARole(t *te
 				"avoid and the one the group search's attribute names reintroduce silently: the "+
 				"login succeeds and the claim is simply absent")
 			require.Contains(t, c.Groups, user.Group,
-				"the group internal/seed maps to this user's role")
+				"the group seed.DirectoryUsers puts this user in")
+
+			// Two of the three resolve a role through that group and the third
+			// deliberately resolves none (FR-117). Asserted here rather than left
+			// implicit, because "the claim arrived" and "the claim resolves to
+			// something" are the two halves the local stack breaks between: the group
+			// search working and the NAME matching are independent failures.
+			if user.Group == seed.GroupUnmapped {
+				require.Empty(t, seed.RoleOf(user.Group),
+					"this is the account that reaches the no-role screen; a role here removes "+
+						"the only route to it")
+				return
+			}
+			require.NotEmpty(t, seed.RoleOf(user.Group))
 		})
 	}
 }
@@ -505,19 +518,6 @@ func signIn(t *testing.T, email string) idTokenClaims {
 	t.Helper()
 	quoteDexLogOnFailure(t)
 
-	jar, err := cookiejar.New(nil)
-	require.NoError(t, err)
-
-	// Stop at the first hop that leaves Dex. That hop is the redirect carrying the
-	// authorization code, and nothing is listening on the redirect URI's port.
-	stopAtRedirectURI := func(req *http.Request, _ []*http.Request) error {
-		if strings.HasPrefix(req.URL.String(), oidcRedirectURI) {
-			return http.ErrUseLastResponse
-		}
-		return nil
-	}
-	c := &http.Client{Jar: jar, CheckRedirect: stopAtRedirectURI, Timeout: 20 * time.Second}
-
 	const state = "localidp-integration-state"
 	authURL := dexBase + "/auth?" + url.Values{
 		"client_id":     {oidcClientID},
@@ -529,38 +529,7 @@ func signIn(t *testing.T, email string) idTokenClaims {
 		"scope": {composeOIDCScopes(t)},
 		"state": {state},
 	}.Encode()
-
-	// One connector, so Dex redirects straight past its chooser to the login page.
-	page, err := c.Get(authURL)
-	require.NoError(t, err)
-	body, err := io.ReadAll(page.Body)
-	_ = page.Body.Close()
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, page.StatusCode, "login page: %s", body)
-
-	action := formActionPattern.FindSubmatch(body)
-	require.NotNil(t, action, "no login form in Dex's response:\n%s", body)
-	loginURL, err := page.Request.URL.Parse(html.UnescapeString(string(action[1])))
-	require.NoError(t, err)
-
-	// skipApprovalScreen collapses the consent hop, so this lands on the redirect
-	// directly; the client would follow an approval hop on its own if it appeared.
-	submitted, err := c.PostForm(loginURL.String(), url.Values{
-		"login":    {email},
-		"password": {directoryPassword},
-	})
-	require.NoError(t, err)
-	_ = submitted.Body.Close()
-
-	redirect, err := submitted.Location()
-	require.NoErrorf(t, err,
-		"Dex answered %d with no redirect, so the login never produced a code. The flow is not "+
-			"the suspect — the connector is: the bind DN or password, the user search, the "+
-			"attribute names, or the password hash in the glauth fixture. The dex log quoted "+
-			"below says which", submitted.StatusCode)
-	require.Equal(t, state, redirect.Query().Get("state"), "state must come back unchanged")
-	code := redirect.Query().Get("code")
-	require.NotEmpty(t, code, "no authorization code in %s", redirect)
+	code := authorizationCode(t, authURL, email, state)
 
 	form := url.Values{
 		"grant_type":   {"authorization_code"},
@@ -599,4 +568,62 @@ func signIn(t *testing.T, email string) idTokenClaims {
 	require.NoError(t, verified.Claims(&claims))
 	require.Equal(t, issuer, claims.Iss)
 	return claims
+}
+
+// authorizationCode drives a browser through Dex's LDAP login form and returns
+// the authorization code the redirect carries.
+//
+// Extracted rather than inlined because signin_integration_test.go needs the same
+// browser with a DIFFERENT authorization URL — one the product built, through the
+// browser-facing authority — and a second copy of the form handling would be a
+// second thing to fix when Dex's markup moves.
+func authorizationCode(t *testing.T, authorizationURL, email, wantState string) string {
+	t.Helper()
+	quoteDexLogOnFailure(t)
+
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err)
+
+	// Stop at the first hop that leaves Dex. That hop is the redirect carrying the
+	// authorization code, and nothing is listening on the redirect URI's port.
+	stopAtRedirectURI := func(req *http.Request, _ []*http.Request) error {
+		if strings.HasPrefix(req.URL.String(), oidcRedirectURI) {
+			return http.ErrUseLastResponse
+		}
+		return nil
+	}
+	c := &http.Client{Jar: jar, CheckRedirect: stopAtRedirectURI, Timeout: 20 * time.Second}
+
+	// One connector, so Dex redirects straight past its chooser to the login page.
+	page, err := c.Get(authorizationURL)
+	require.NoError(t, err)
+	body, err := io.ReadAll(page.Body)
+	_ = page.Body.Close()
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, page.StatusCode, "login page: %s", body)
+
+	action := formActionPattern.FindSubmatch(body)
+	require.NotNil(t, action, "no login form in Dex's response:\n%s", body)
+	loginURL, err := page.Request.URL.Parse(html.UnescapeString(string(action[1])))
+	require.NoError(t, err)
+
+	// skipApprovalScreen collapses the consent hop, so this lands on the redirect
+	// directly; the client would follow an approval hop on its own if it appeared.
+	submitted, err := c.PostForm(loginURL.String(), url.Values{
+		"login":    {email},
+		"password": {directoryPassword},
+	})
+	require.NoError(t, err)
+	_ = submitted.Body.Close()
+
+	redirect, err := submitted.Location()
+	require.NoErrorf(t, err,
+		"Dex answered %d with no redirect, so the login never produced a code. The flow is not "+
+			"the suspect — the connector is: the bind DN or password, the user search, the "+
+			"attribute names, or the password hash in the glauth fixture. The dex log quoted "+
+			"below says which", submitted.StatusCode)
+	require.Equal(t, wantState, redirect.Query().Get("state"), "state must come back unchanged")
+	code := redirect.Query().Get("code")
+	require.NotEmpty(t, code, "no authorization code in %s", redirect)
+	return code
 }

@@ -1,16 +1,11 @@
 package components
 
+import "agent-manager/internal/web/view"
+
 templ Layout(s Shell) {
 	<!DOCTYPE html>
 	<html lang="en" data-sm-theme={ s.Theme }>
-		<head>
-			<meta charset="utf-8"/>
-			<meta name="viewport" content="width=device-width, initial-scale=1"/>
-			<title>{ s.Title } · Agent Manager</title>
-			<link rel="stylesheet" href={ s.AppCSS }/>
-			<script type="module" src={ s.VendorJS }></script>
-			<script src={ s.AppJS }></script>
-		</head>
+		@head(s)
 		<body>
 			<div class="am-page">
 				@sidebar(s)
@@ -22,12 +17,26 @@ templ Layout(s Shell) {
 	</html>
 }
 
+// head is shared with the sign-in page, which is a document of its own rather
+// than a screen inside the shell. Two copies would be two places the theme
+// attribute, the asset URLs and the title could drift apart.
+templ head(s Shell) {
+	<head>
+		<meta charset="utf-8"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1"/>
+		<title>{ s.Title } · { ProductName }</title>
+		<link rel="stylesheet" href={ s.AppCSS }/>
+		<script type="module" src={ s.VendorJS }></script>
+		<script src={ s.AppJS }></script>
+	</head>
+}
+
 templ sidebar(s Shell) {
 	<aside class="am-sidebar">
 		<div class="am-brand">
 			<div class="am-brand-row">
 				<div class="am-brand-mark"></div>
-				<div class="am-brand-name">Agent Manager</div>
+				<div class="am-brand-name">{ ProductName }</div>
 			</div>
 			<div class="am-brand-host">hub.example.dev</div>
 		</div>
@@ -50,20 +59,66 @@ templ sidebar(s Shell) {
 			}
 		</nav>
 		<div class="am-viewer">
-			<div class="am-avatar">KW</div>
-			<div class="am-viewer-id">
-				<div class="am-viewer-name">Krzysztof W.</div>
-				<div class="am-viewer-role">Platform · Admin</div>
-			</div>
-			<form method="post" action="/theme">
-				<input type="hidden" name="theme" value={ s.Next }/>
-				<input type="hidden" name="return" value={ s.Return }/>
-				<button type="submit" class="am-theme-toggle" title="Toggle theme" aria-label="Toggle theme">
-					{ s.ToggleIcon() }
-				</button>
-			</form>
+			if s.Viewer != nil {
+				@viewerChip(*s.Viewer)
+			} else {
+				// No chip, not a placeholder chip: no initials, no "Guest", no dimmed
+				// name (FR-116, contracts/auth.md's signed-out contract). The spacer is
+				// what the chip's own flex:1 would have done, so the toggle stays where
+				// the design puts it.
+				<div class="am-spacer"></div>
+			}
+			@themeToggle(s)
+			if s.Viewer != nil {
+				@signOut()
+			}
 		</div>
 	</aside>
+}
+
+// viewerChip renders the resolved viewer and nothing else. Every value in it
+// comes from the argument; there is no default in this file for any of them, which
+// is what FR-116 asks of every component and what SC-106's sweep asserts of all
+// of them.
+templ viewerChip(v view.Viewer) {
+	<div class="am-avatar">{ v.Initials() }</div>
+	<div class="am-viewer-id">
+		<div class="am-viewer-name">{ v.DisplayName }</div>
+		if v.HasRole {
+			<div class="am-viewer-role">{ v.RoleLabel() }</div>
+		} else {
+			// FR-117 as the chip renders it. RoleLabel() is "" here and says so
+			// deliberately — what fills that space is the chip's decision — and an
+			// empty line reads as a broken render rather than as the one state an
+			// administrator has to act on. Branching on HasRole rather than on the
+			// label, because a role the api reported under an unfamiliar spelling is
+			// a role held.
+			<div class="am-viewer-role">No role</div>
+		}
+	</div>
+}
+
+templ themeToggle(s Shell) {
+	<form method="post" action="/theme">
+		<input type="hidden" name="theme" value={ s.Next }/>
+		<input type="hidden" name="return" value={ s.Return }/>
+		<button type="submit" class="am-theme-toggle" title="Toggle theme" aria-label="Toggle theme">
+			{ s.ToggleIcon() }
+		</button>
+	</form>
+}
+
+// signOut is a POST form and must stay one (contracts/auth.md): a GET sign-out is
+// triggerable by any image tag on any page, including one in an email. The form
+// carries no token because it needs none — the session cookie is SameSite=Lax, so
+// a cross-site POST arrives without it and expires nothing.
+//
+// No return field either. Sign-out lands on the sign-in screen, never back on the
+// screen the person just lost access to.
+templ signOut() {
+	<form method="post" action="/auth/logout">
+		<button type="submit" class="am-signout">Sign out</button>
+	</form>
 }
 
 templ navLabel(item NavItem) {

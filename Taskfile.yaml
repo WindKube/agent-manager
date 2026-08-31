@@ -309,6 +309,15 @@ tasks:
     cmds:
       - docker compose up --build
 
+  infra:up:
+    desc: "Only what the hub depends on and does not build (compose.infra.yaml)"
+    # Detached, unlike `up`: the point of the infrastructure half is that it stays
+    # up across as many restarts of the roles as you like. Then
+    # `docker compose up api web fetcher` cycles the application without taking
+    # Postgres, MinIO and the identity provider down with it.
+    cmds:
+      - docker compose -f compose.infra.yaml up -d --build
+
   down:
     cmds:
       - docker compose down -v

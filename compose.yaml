@@ -1,5 +1,12 @@
 # One command, under five minutes, no cloud account (SC-001).
 #
+# This file holds the roles this project builds. Everything it depends on and
+# does not build — Postgres, MinIO, the identity provider, the migrations — is in
+# compose.infra.yaml, pulled in below through Compose's top-level `include:`, so
+# `docker compose up` with no arguments and no -f still brings up the whole
+# system. `docker compose -f compose.infra.yaml up -d` brings up only the
+# dependencies, which is how you restart a role without cycling the database.
+#
 # The env blocks below ARE the credential boundary (constitution principle II).
 # Read them as a table: `web` has no DATABASE_URL and no BLOB_URL, `api` holds a
 # read-only object-store key, and only `fetcher` holds one that can write. None
@@ -7,6 +14,14 @@
 # role must not read, so adding a line here would not even compile.
 name: agent-manager
 
+include:
+  - compose.infra.yaml
+
+# The anchors below are consumed only by the services in this file, and they have
+# to be declared here: an alias does not resolve across an `include:` boundary
+# (research R4). compose.infra.yaml's one application-image service therefore
+# writes its values out literally rather than importing these — see the note on
+# `migrate-queue` there.
 x-observability: &observability
   AGENT_MANAGER_LOG_LEVEL: info
   AGENT_MANAGER_LOG_FORMAT: console
@@ -50,120 +65,6 @@ x-app-image: &app-image
       COMMIT: compose
 
 services:
-  postgres:
-    image: postgres:16.15-alpine
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: local-development-postgres
-      POSTGRES_DB: agent_manager
-    volumes:
-      - ./deploy/local/postgres-init.sql:/docker-entrypoint-initdb.d/10-agent-manager.sql:ro
-      - postgres-data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d agent_manager"]
-      interval: 3s
-      timeout: 3s
-      retries: 20
-
-  minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
-    command: ["server", "/data", "--console-address", ":9001"]
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    volumes:
-      - minio-data:/data
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 3s
-      timeout: 3s
-      retries: 20
-
-  minio-init:
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
-    depends_on:
-      minio:
-        condition: service_healthy
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-      BUCKET: agent-manager-local
-      WRITER_KEY: am-fetcher
-      WRITER_SECRET: local-development-minio-writer
-      READER_KEY: am-reader
-      READER_SECRET: local-development-minio-reader
-    volumes:
-      - ./deploy/local/minio/policies.sh:/policies.sh:ro
-    entrypoint: ["/bin/sh", "/policies.sh"]
-
-  keycloak:
-    image: quay.io/keycloak/keycloak:26.5
-    command: ["start-dev", "--import-realm"]
-    environment:
-      KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
-      KC_HTTP_PORT: "8083"
-      KC_HEALTH_ENABLED: "true"
-      # The frontchannel URLs (issuer, authorize, device) must be reachable from
-      # the operator's browser; the backchannel ones (token, jwks) from the api
-      # and web containers. BACKCHANNEL_DYNAMIC is what lets one Keycloak answer
-      # both: it derives the backchannel URLs from the request's Host header and
-      # leaves `issuer` alone.
-      KC_HOSTNAME: http://localhost:8083
-      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
-    volumes:
-      - ./deploy/local/keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
-    ports:
-      - "8083:8083"
-    healthcheck:
-      # The image has no curl and no shell utilities to speak of, so the probe is
-      # bash's own /dev/tcp against the management port.
-      test:
-        - CMD-SHELL
-        - >-
-          exec 3<>/dev/tcp/127.0.0.1/9000 &&
-          printf 'GET /health/ready HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n' >&3 &&
-          grep -q UP <&3
-      interval: 5s
-      timeout: 5s
-      retries: 30
-      start_period: 10s
-
-  # ---------------------------------------------------------------------------
-  # Migrations. Two one-shots, chained, and nothing that serves starts until both
-  # have exited 0.
-  # ---------------------------------------------------------------------------
-  migrate-schema:
-    image: arigaio/atlas:1.3.2-community-alpine
-    depends_on:
-      postgres:
-        condition: service_healthy
-    command:
-      - migrate
-      - apply
-      - --dir
-      - file:///migrations
-      - --url
-      - postgres://am_migrate:local-development-am-migrate@postgres:5432/agent_manager?sslmode=disable
-    volumes:
-      - ./internal/store/migrations:/migrations:ro
-
-  migrate-queue:
-    <<: *app-image
-    depends_on:
-      migrate-schema:
-        condition: service_completed_successfully
-    environment:
-      <<: [*observability, *queue-url]
-    command: ["migrate", "queue"]
-    healthcheck:
-      disable: true
-
   # ---------------------------------------------------------------------------
   # Serving roles.
   # ---------------------------------------------------------------------------
@@ -181,10 +82,15 @@ services:
       AGENT_MANAGER_API_ADDR: ":8081"
       AGENT_MANAGER_DATABASE_URL: >-
         postgres://am_api:local-development-am-api@postgres:5432/agent_manager?sslmode=disable
-      AGENT_MANAGER_PUBLIC_BASE_URL: http://localhost:8081
+      AGENT_MANAGER_PUBLIC_BASE_URL: http://localhost:8082
       AGENT_MANAGER_OIDC_REDIRECT_URL: http://localhost:8080/auth/callback
+    # 8082 on the host, 8081 in the container. 8081 is a popular port on a
+    # developer's machine and losing the whole stack to something already bound
+    # there is not worth the symmetry. PUBLIC_BASE_URL above must name the HOST
+    # port: it is what the device flow prints for a person to open and what the
+    # emitted OpenAPI document advertises as this hub's server.
     ports:
-      - "8081:8081"
+      - "8082:8081"
     restart: unless-stopped
 
   web:
@@ -271,6 +177,8 @@ services:
 
   # ---------------------------------------------------------------------------
   # Optional. `docker compose --profile queue-ui up`
+  #
+  # On 8085 because the api took 8082 on the host, which is where this used to be.
   # ---------------------------------------------------------------------------
   queue-ui:
     image: ghcr.io/riverqueue/riverui:0.19.0
@@ -281,10 +189,6 @@ services:
     environment:
       DATABASE_URL: >-
         postgres://am_queue:local-development-am-queue@postgres:5432/river?sslmode=disable
-      RIVER_HOST: ":8082"
+      RIVER_HOST: ":8085"
     ports:
-      - "8082:8082"
-
-volumes:
-  postgres-data:
-  minio-data:
+      - "8085:8085"

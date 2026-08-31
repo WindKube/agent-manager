@@ -1,0 +1,164 @@
+# Everything the hub depends on and does not build: the database, the object
+# store and its bucket policies, the identity provider, and the two migration
+# one-shots that must exit 0 before anything serves.
+#
+# Startable alone, and meant to be:
+#
+#   docker compose -f compose.infra.yaml up -d
+#
+# That is the point of the split. Postgres, MinIO and the identity provider take
+# the bulk of a cold start, and none of them needs cycling to restart a role this
+# project builds. `docker compose up` from the repository root pulls this file in
+# through compose.yaml's `include:`, so a reader who only ever runs the one
+# command never has to know this file exists.
+#
+# `name` is repeated here on purpose. Started alone this file would otherwise take
+# the directory name as its project, and the roles brought up afterwards from
+# compose.yaml would land in a different project with a different network — which
+# fails as "postgres: no such host" rather than as anything about projects.
+name: agent-manager
+
+services:
+  postgres:
+    image: postgres:16.15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: local-development-postgres
+      POSTGRES_DB: agent_manager
+    volumes:
+      - ./deploy/local/postgres-init.sql:/docker-entrypoint-initdb.d/10-agent-manager.sql:ro
+      - postgres-data:/var/lib/postgresql/data
+    # An ephemeral host port, not 5432:5432. Most developers already have a
+    # Postgres listening on 5432, and a port collision there took the whole stack
+    # down over a database nothing in it uses. `docker compose port postgres 5432`
+    # reports where it landed; nothing inside the project uses the host port.
+    ports:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d agent_manager"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      BUCKET: agent-manager-local
+      WRITER_KEY: am-fetcher
+      WRITER_SECRET: local-development-minio-writer
+      READER_KEY: am-reader
+      READER_SECRET: local-development-minio-reader
+    volumes:
+      - ./deploy/local/minio/policies.sh:/policies.sh:ro
+    entrypoint: ["/bin/sh", "/policies.sh"]
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.5
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_PORT: "8083"
+      KC_HEALTH_ENABLED: "true"
+      # The frontchannel URLs (issuer, authorize, device) must be reachable from
+      # the operator's browser; the backchannel ones (token, jwks) from the api
+      # and web containers. BACKCHANNEL_DYNAMIC is what lets one Keycloak answer
+      # both: it derives the backchannel URLs from the request's Host header and
+      # leaves `issuer` alone.
+      KC_HOSTNAME: http://localhost:8083
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+    volumes:
+      - ./deploy/local/keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
+    ports:
+      - "8083:8083"
+    healthcheck:
+      # The image has no curl and no shell utilities to speak of, so the probe is
+      # bash's own /dev/tcp against the management port.
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000 &&
+          printf 'GET /health/ready HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q UP <&3
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # Migrations. Two one-shots, chained, and nothing that serves starts until both
+  # have exited 0.
+  #
+  # They are infrastructure rather than application because what they produce is
+  # the schema every role reads, and because the infrastructure file has to be
+  # startable to a usable state on its own — an empty database is not one.
+  # ---------------------------------------------------------------------------
+  migrate-schema:
+    image: arigaio/atlas:1.3.2-community-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - migrate
+      - apply
+      - --dir
+      - file:///migrations
+      - --url
+      - postgres://am_migrate:local-development-am-migrate@postgres:5432/agent_manager?sslmode=disable
+    volumes:
+      - ./internal/store/migrations:/migrations:ro
+
+  # The queue's migrator is this project's own binary, so this one service in an
+  # otherwise dependency-only file builds the application image.
+  #
+  # It also spells out its image, log settings and queue URL literally, where
+  # every application role reaches for a YAML anchor. Anchors do not resolve
+  # across an `include:` boundary — each file's aliases are resolved within that
+  # file — and the six anchors live in compose.yaml because that is where their
+  # other twelve uses are (research R4). Repeating them here would mean two
+  # copies of a queue DSN free to drift apart; three literal lines with one
+  # consumer will not.
+  migrate-queue:
+    image: agent-manager:local
+    build:
+      context: .
+      args:
+        VERSION: local
+        COMMIT: compose
+    depends_on:
+      migrate-schema:
+        condition: service_completed_successfully
+    environment:
+      AGENT_MANAGER_LOG_LEVEL: info
+      AGENT_MANAGER_LOG_FORMAT: console
+      AGENT_MANAGER_RIVER_DATABASE_URL: >-
+        postgres://am_queue:local-development-am-queue@postgres:5432/river?sslmode=disable
+    command: ["migrate", "queue"]
+    healthcheck:
+      disable: true
+
+volumes:
+  postgres-data:
+  minio-data:

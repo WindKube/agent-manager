@@ -20,10 +20,10 @@ Then:
 | What | Where | Credentials |
 | --- | --- | --- |
 | Web UI | http://localhost:8080 | `kwiatrzyk@example.com` / `password` (Keycloak realm user, catalog admin) |
-| API + OpenAPI | http://localhost:8081/v1 · `/v1/openapi.json` | Bearer token from the device flow below |
+| API + OpenAPI | http://localhost:8082/v1 · `/v1/openapi.json` | Bearer token from the device flow below |
 | MinIO console | http://localhost:9001 | `minioadmin` / `minioadmin` |
 | Keycloak | http://localhost:8083/realms/agent-manager/.well-known/openid-configuration | `admin` / `admin` for the console |
-| River UI (optional) | http://localhost:8082 | `docker compose --profile queue-ui up` |
+| River UI (optional) | http://localhost:8085 | `docker compose --profile queue-ui up` |
 
 A second realm user, `anowak@example.com` / `password`, is in the `eng-security` group and
 therefore a scanner reviewer — use it to exercise the approve/reject path and see the group
@@ -31,25 +31,44 @@ therefore a scanner reviewer — use it to exercise the approve/reject path and 
 
 ## What comes up
 
+Two files, one command. `compose.yaml` names `compose.infra.yaml` through Compose's top-level
+`include:`, so `docker compose up` with no arguments and no `-f` still starts everything below.
+
 ```
-postgres ──┬─ agent_manager   (app schema + outbox)
-           └─ river           (queue only — no app tables, by construction)
-minio ─────── bucket: agent-manager-local
-keycloak ──── OIDC + device grant, two realm users in two groups
-   │
-   ├─ migrate-schema   arigaio/atlas — atlas migrate apply    (runs to completion)
-   └─ migrate-queue    agent-manager migrate queue            (runs to completion)
-          │
-          ├─ api       :8081   REST + OIDC + device flow + the outbox relay
-          ├─ web       :8080   templ + datastar; NO database or object-store credential
-          ├─ fetcher           the only role that can write bundle bytes
-          └─ scanner           reads bytes, writes verdicts
-                 │
-                 └─ seed       one-shot: the design's dataset
+compose.infra.yaml — everything the hub depends on and does not build.
+                     Startable alone: docker compose -f compose.infra.yaml up -d
+
+  postgres ──┬─ agent_manager   (app schema + outbox)
+             └─ river           (queue only — no app tables, by construction)
+  minio ─────── bucket: agent-manager-local
+  keycloak ──── OIDC + device grant, two realm users in two groups
+     │
+     ├─ migrate-schema   arigaio/atlas — atlas migrate apply    (runs to completion)
+     └─ migrate-queue    agent-manager migrate queue            (runs to completion)
+            │
+compose.yaml — the roles this project builds
+            │
+            ├─ api      :8082 → :8081   REST + OIDC + device flow + the outbox relay
+            ├─ web      :8080           templ + datastar; NO database or object-store credential
+            ├─ fetcher                  the only role that can write bundle bytes
+            ├─ scanner                  reads bytes, writes verdicts
+            │     │
+            │     └─ seed               one-shot: the design's dataset
+            └─ queue-ui :8085           optional, --profile queue-ui
 ```
 
 The two migration containers are `depends_on: service_completed_successfully` gates —
-nothing serving starts against an unmigrated schema.
+nothing serving starts against an unmigrated schema. Those gates cross the file boundary:
+`include:` merges both files into one project, so `api` waiting on `migrate-queue` needs no
+change to keep working.
+
+The split is there so the application can be restarted without cycling Postgres, MinIO and
+Keycloak — `task infra:up`, then `docker compose up api web fetcher` as often as you like.
+
+Two host ports are deliberately not mirrored onto the container's. Postgres publishes an
+**ephemeral** one (`docker compose port postgres 5432` reports where it landed) and the api is
+on **8082**: 5432 and 8081 are both commonly already bound on a developer's machine, and losing
+the whole stack to a port nothing inside it uses is not worth the symmetry.
 
 ## The seeded tour
 
@@ -79,14 +98,14 @@ are live. This is the walkthrough behind the "Connect the CLI" screen:
 
 ```bash
 # 1. Request authorisation. The host is bound to the request and shown to the approver.
-curl -s localhost:8081/v1/device/authorize \
+curl -s localhost:8082/v1/device/authorize \
   -H 'content-type: application/json' \
   -d '{"client_id":"agent-manager-cli","host":"'"$(hostname)"'"}' | tee /tmp/da.json
 
 # 2. Open verification_uri_complete in a browser, log in as the realm user, approve.
 
 # 3. Poll. Returns authorization_pending until approved, then a short-lived token.
-curl -s localhost:8081/v1/device/token \
+curl -s localhost:8082/v1/device/token \
   -d grant_type=urn:ietf:params:oauth:grant-type:device_code \
   -d device_code="$(jq -r .device_code /tmp/da.json)" \
   -d client_id=agent-manager-cli | tee /tmp/tok.json
@@ -94,10 +113,10 @@ curl -s localhost:8081/v1/device/token \
 TOKEN=$(jq -r .access_token /tmp/tok.json)
 
 # 4. Only the profiles this identity may read are enumerated.
-curl -s localhost:8081/v1/profiles -H "authorization: Bearer $TOKEN" | jq
+curl -s localhost:8082/v1/profiles -H "authorization: Bearer $TOKEN" | jq
 
 # 5. The resolved lockfile — note the `skipped` array and its reasons.
-curl -s localhost:8081/v1/profiles/example~platform-engineer/revisions/head \
+curl -s localhost:8082/v1/profiles/example~platform-engineer/revisions/head \
   -H "authorization: Bearer $TOKEN" | jq '.entries, .skipped'
 ```
 

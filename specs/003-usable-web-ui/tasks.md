@@ -79,12 +79,12 @@ healthy or completed with no application container present; then start the appli
 against it and assert nothing in infrastructure restarted; then assert the single documented
 command still brings up everything.
 
-- [ ] T011 [US3] Create `compose.infra.yaml` holding `postgres`, `minio`, `minio-init`, `keycloak` (still, at this point), `migrate-schema` and `migrate-queue`, moved verbatim from `compose.yaml` with their volumes, healthchecks and `depends_on` intact (FR-129, FR-130)
-- [ ] T012 [US3] Rewrite `compose.yaml` as `include: [compose.infra.yaml]` plus `api`, `web`, `fetcher`, `scanner`, `seed` and the `queue-ui` profile (FR-129, FR-131). **Move all six YAML anchors** (`x-observability`, `x-queue-url`, `x-oidc`, `x-blob-read`, `x-blob-write`, `x-app-image`) into this file — anchors do not resolve across an `include:` boundary (research R4), and they are consumed only by application services, so nothing needs duplicating
-- [ ] T013 [US3] Preserve the credential-boundary comments and each role's environment block exactly as they read today, and re-check that the `web` block still shows no `DATABASE_URL` and no `BLOB_URL` and that only `fetcher` holds a writer key (FR-133, principle II)
-- [ ] T014 [US3] Give each file a header comment that makes it intelligible read alone (FR-134), and move the `named volumes` block to whichever file declares the services that use it
-- [ ] T015 [P] [US3] Integration test in `internal/cli/compose_test.go` (or a `Taskfile` check) asserting `docker compose -f compose.infra.yaml config` is valid alone, that `docker compose config --services` from `compose.yaml` lists services from both files, and that no service name is declared twice (FR-130, FR-132, SC-110)
-- [ ] T016 [US3] Update `Taskfile.yaml` with an `infra:up` target for the infrastructure-only path, and update `specs/001-agent-manager-hub/quickstart.md`'s "what comes up" tree to match the split
+- [x] T011 [US3] Create `compose.infra.yaml` holding `postgres`, `minio`, `minio-init`, `keycloak` (still, at this point), `migrate-schema` and `migrate-queue`, moved verbatim from `compose.yaml` with their volumes, healthchecks and `depends_on` intact (FR-129, FR-130)
+- [x] T012 [US3] Rewrite `compose.yaml` as `include: [compose.infra.yaml]` plus `api`, `web`, `fetcher`, `scanner`, `seed` and the `queue-ui` profile (FR-129, FR-131). **Move all six YAML anchors** (`x-observability`, `x-queue-url`, `x-oidc`, `x-blob-read`, `x-blob-write`, `x-app-image`) into this file — anchors do not resolve across an `include:` boundary (research R4), and they are consumed only by application services, so nothing needs duplicating
+- [x] T013 [US3] Preserve the credential-boundary comments and each role's environment block exactly as they read today, and re-check that the `web` block still shows no `DATABASE_URL` and no `BLOB_URL` and that only `fetcher` holds a writer key (FR-133, principle II)
+- [x] T014 [US3] Give each file a header comment that makes it intelligible read alone (FR-134), and move the `named volumes` block to whichever file declares the services that use it
+- [x] T015 [P] [US3] Integration test in `internal/cli/compose_test.go` (or a `Taskfile` check) asserting `docker compose -f compose.infra.yaml config` is valid alone, that `docker compose config --services` from `compose.yaml` lists services from both files, and that no service name is declared twice (FR-130, FR-132, SC-110)
+- [x] T016 [US3] Update `Taskfile.yaml` with an `infra:up` target for the infrastructure-only path, and update `specs/001-agent-manager-hub/quickstart.md`'s "what comes up" tree to match the split
 
 **Checkpoint**: the split is in and Keycloak still works. `docker compose up` is unchanged for a
 reader. This is a safe place to stop.

@@ -149,7 +149,7 @@ task up
 ```
 
 That brings up Postgres, MinIO, Keycloak, the migrations, the API, the web UI and the
-fetcher. The UI is on <http://localhost:8080> and the API on <http://localhost:8081>.
+fetcher. The UI is on <http://localhost:8080> and the API on <http://localhost:8082>.
 
 Requires Docker and [Task](https://taskfile.dev). Nothing else is installed on the host —
 the toolchain is pinned in `mise.toml`, and the image has no Node.js in it.

@@ -33,7 +33,7 @@ docker compose up api web fetcher scanner       # the roles, restart at will
 
 ```
 compose.infra.yaml
-  postgres ──┬─ agent_manager   (app schema + outbox)
+  postgres ──┬─ agent_manager   (app schema + outbox)   ephemeral host port
              └─ river           (queue only)
   minio ─────── bucket: agent-manager-local
   dex ───────── OIDC + device grant          178 MB, discovery live in ~1 s
@@ -46,7 +46,7 @@ compose.yaml   (include: compose.infra.yaml)
   fetcher                   the only role that can write bundle bytes
   scanner                   reads bytes, writes verdicts     <-- no longer behind a profile
   seed                      one-shot, the design's dataset   <-- no longer a stub
-  queue-ui                  optional, --profile queue-ui
+  queue-ui :8085            optional, --profile queue-ui
 ```
 
 Three things are different from 001's stack beyond the file split:
@@ -65,7 +65,7 @@ Three things are different from 001's stack beyond the file split:
 | API + OpenAPI | http://localhost:8082/v1 · `/v1/openapi.json` | bearer token from the device flow |
 | Dex discovery | http://localhost:5556/dex/.well-known/openid-configuration | — |
 | MinIO console | http://localhost:9001 | `minioadmin` / `minioadmin` |
-| River UI (optional) | http://localhost:8082 | `docker compose --profile queue-ui up` |
+| River UI (optional) | http://localhost:8085 | `docker compose --profile queue-ui up` |
 
 | User | Password | Group | Role it maps to |
 | --- | --- | --- | --- |

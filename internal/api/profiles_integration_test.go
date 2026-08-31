@@ -61,6 +61,7 @@ func curatePackage(t *testing.T, name string, versions ...curatedVersion) curate
 	}
 	_, err := db.NewInsert().Model(publisher).Exec(ctx)
 	require.NoError(t, err)
+	dropOnCleanup(t, publisher.ID)
 
 	pkg := &models.Package{
 		ID: models.NewID(), PublisherID: publisher.ID, Namespace: "curate", Name: name,
@@ -118,6 +119,78 @@ func curatePackage(t *testing.T, name string, versions ...curatedVersion) curate
 	return out
 }
 
+// dropOnCleanup removes everything one curated publisher put in the catalog.
+//
+// Not tidiness. This package's other files assert catalog TOTALS — that the
+// unfiltered list is exactly the ten seeded packages, that a sort comes out in a
+// known order — and a curated package left behind changes those answers. The
+// suite passed anyway only because Go runs tests in source order by default, so
+// the leak sat downstream of everything that counts. Under `-shuffle=on` it goes
+// red immediately, and a test that depends on its own position in a file is a
+// test that will fail for the next person for a reason that has nothing to do
+// with what they changed.
+//
+// Ordered by dependency, deepest first, because the schema's foreign keys are
+// NO ACTION and will refuse anything else. `latest_version_id` is nulled before
+// the versions go, for the same reason.
+func dropOnCleanup(t *testing.T, publisherID uuid.UUID) {
+	t.Helper()
+
+	t.Cleanup(func() {
+		for _, statement := range []string{
+			`update package set latest_version_id = null where publisher_id = ?`,
+			`delete from profile_entry where package_id in (
+			   select id from package where publisher_id = ?)`,
+			`delete from override where finding_id in (
+			   select f.id from finding f join version v on v.id = f.version_id
+			   join package p on p.id = v.package_id where p.publisher_id = ?)`,
+			`delete from finding where version_id in (
+			   select v.id from version v join package p on p.id = v.package_id
+			   where p.publisher_id = ?)`,
+			`delete from scan where version_id in (
+			   select v.id from version v join package p on p.id = v.package_id
+			   where p.publisher_id = ?)`,
+			`delete from version where package_id in (select id from package where publisher_id = ?)`,
+			`delete from package where publisher_id = ?`,
+			`delete from publisher where id = ?`,
+		} {
+			_, err := db.ExecContext(context.Background(), statement, publisherID)
+			require.NoError(t, err)
+		}
+	})
+}
+
+// dropProfileOnCleanup removes one profile this file created.
+//
+// Same reason as dropOnCleanup: ListProfiles asserts the readable set is exactly
+// what the seed holds, and a profile created here is in it.
+//
+// `forked_from_id` is nulled on any child FIRST. Cleanups run last-registered-
+// first, which is the right order for a fork taken after its upstream — but a
+// fork created by a raw POST rather than through newProfile registers nothing,
+// and then the upstream's own cleanup dies on the lineage constraint. Nulling
+// lineage costs nothing when there is no child and is the difference between a
+// leak and a failure when there is one.
+func dropProfileOnCleanup(t *testing.T, slug string) {
+	t.Helper()
+
+	t.Cleanup(func() {
+		_, err := db.ExecContext(context.Background(),
+			`update profile set forked_from_id = null
+			  where forked_from_id in (select id from profile where slug = ?)`, slug)
+		require.NoError(t, err)
+
+		for _, table := range []string{"profile_entry", "membership", "sync_target", "revision"} {
+			_, err := db.ExecContext(context.Background(),
+				`delete from `+table+` where profile_id in (select id from profile where slug = ?)`,
+				slug)
+			require.NoError(t, err)
+		}
+		_, err = db.ExecContext(context.Background(), `delete from profile where slug = ?`, slug)
+		require.NoError(t, err)
+	})
+}
+
 // ---- HTTP helpers ------------------------------------------------------------
 
 // profilePath escapes the slug the way a generated client does. A slug carries
@@ -173,6 +246,8 @@ func newProfile(t *testing.T, who actor, slug, name string) contract.ProfileDeta
 
 	body := fmt.Sprintf(`{"slug":%q,"name":%q}`, slug, name)
 	sendJSON[contract.Profile](t, who, http.MethodPost, "/v1/profiles", body, http.StatusCreated)
+
+	dropProfileOnCleanup(t, slug)
 	return profileDetail(t, who, slug)
 }
 
@@ -369,6 +444,7 @@ func TestAForkTakesTheUpstreamsEntriesOnceAndNoLaterRevisionOfIt(t *testing.T) {
 	sendJSON[contract.Profile](t, curator, http.MethodPost, "/v1/profiles",
 		fmt.Sprintf(`{"slug":"curate/fork-downstream","name":"Downstream","forkOf":%q}`, upstream),
 		http.StatusCreated)
+	dropProfileOnCleanup(t, "curate/fork-downstream")
 
 	fork := profileDetail(t, curator, "curate/fork-downstream")
 	require.Equal(t, upstream, fork.ForkedFrom, "lineage is recorded")

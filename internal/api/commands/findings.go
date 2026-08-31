@@ -275,13 +275,32 @@ func RejectFinding(ctx context.Context, db bun.IDB, p auth.Principal, in Decisio
 			return fmt.Errorf("version %s carries a finding but no digest, so it cannot be rejected",
 				found.ref())
 		}
+		if found.state == models.FindingStateRejected {
+			// The same refusal Accept makes, for the same reason and with the same
+			// sentinel. Rejection is terminal, so a second one is not a second
+			// decision — and without this the state stayed right while the record
+			// went wrong: both updates re-ran and a second `approve`-domain audit row
+			// landed, so the log showed two rejections of one finding by whoever
+			// double-clicked. An audit log that invents decisions is worse than one
+			// that misses them, because the extra row is indistinguishable from a
+			// real one.
+			return ErrFindingRejected
+		}
 
-		if _, txErr = tx.NewUpdate().Model((*models.Finding)(nil)).
+		res, txErr := tx.NewUpdate().Model((*models.Finding)(nil)).
 			Set("state = ?", models.FindingStateRejected).
 			Set("updated_at = now()").
-			Where("id = ?", in.FindingID).
-			Exec(ctx); txErr != nil {
+			// Belt and braces over the row lock, exactly as Accept does it: the
+			// terminal state is refused by the database and not only by the branch
+			// above, so a lost lock in some later refactor cannot let two concurrent
+			// rejections both write.
+			Where("id = ? and state <> ?", in.FindingID, models.FindingStateRejected).
+			Exec(ctx)
+		if txErr != nil {
 			return fmt.Errorf("reject finding %s: %w", in.FindingID, txErr)
+		}
+		if affected, _ := res.RowsAffected(); affected == 0 {
+			return ErrFindingRejected
 		}
 
 		// `verdict` alone. `version` carries no updated_at column and deliberately

@@ -36,6 +36,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"agent-manager/internal/api/commands"
+	"agent-manager/internal/api/contract"
 	"agent-manager/internal/api/queries"
 	"agent-manager/internal/auth"
 	"agent-manager/internal/blob"
@@ -584,10 +585,22 @@ type auditCase struct {
 // so the assertion is about the row the action wrote and not about a row that
 // happens to sort first.
 //
-// Every mutating action the product can presently perform is here. When a later
-// phase adds one — publishing a revision (T083), sharing a profile (T081), an
-// administration change (US7) — its case belongs in this table rather than in a
-// test of its own: the value of a sweep is that somebody has to look at the list.
+// Every mutating action the product can presently perform is here — every one that
+// is REACHABLE, which is the distinction that matters and the one this list got
+// wrong first time round. `POST /v1/sync` was missing: registered in
+// operations.go, called by the CLI, writing a `sync` row, and absent from a table
+// whose whole value is that it claims to be complete. A list that says it is
+// exhaustive and is not will not be revisited, so the omission was worse than the
+// missing case.
+//
+// commands.ApproveDevice and commands.DenyDevice also write rows and are NOT here,
+// deliberately: neither has a registered HTTP operation yet, so no client can
+// perform them. Their cases belong in the layer that exposes them.
+//
+// When a later phase adds an action — publishing a revision (T083), sharing a
+// profile (T081), an administration change (US7) — its case belongs in this table
+// rather than in a test of its own: the value of a sweep is that somebody has to
+// look at the list.
 func TestEveryMutatingActionWritesExactlyOneAuditRow(t *testing.T) {
 	requireNoSeededData(t)
 	ctx := context.Background()
@@ -704,6 +717,28 @@ func TestEveryMutatingActionWritesExactlyOneAuditRow(t *testing.T) {
 				return who.Email
 			},
 		},
+		{
+			// The CLI's report of what it actually wrote to a machine. It is the one
+			// mutating action on this list whose actor is a person at a terminal
+			// rather than a browser, and its `source` is the host they ran it on —
+			// which is exactly the column FR-050 exists for.
+			action: "the CLI reports a sync", kind: models.AuditKindSync,
+			actorKind: models.ActorKindIdentity,
+			setup: func(t *testing.T) {
+				t.Helper()
+				sweepProfile(t, "sweep-workstation")
+			},
+			drive: func(t *testing.T) string {
+				t.Helper()
+				require.NoError(t, commands.ReportSync(ctx, db, who, contract.SyncReport{
+					Profile:  "sweep-workstation",
+					Revision: 1,
+					Host:     "a-laptop",
+					Targets:  []string{"claude-code"},
+				}))
+				return who.Email
+			},
+		},
 	} {
 		t.Run(tc.action, func(t *testing.T) {
 			if tc.setup != nil {
@@ -736,6 +771,66 @@ func TestEveryMutatingActionWritesExactlyOneAuditRow(t *testing.T) {
 		require.NoError(t, h.scanner.Scan(ctx, outboxScanJob(t, sweepVersion), false))
 		require.Empty(t, auditRowsSince(t, before))
 	})
+
+	// And the third way a second row gets written: not a redelivery and not a
+	// helper, but a person clicking a button twice.
+	//
+	// Rejection is terminal, so the state after the second click is right either
+	// way — which is what made this survive. The LOG was wrong: both updates re-ran
+	// and a second row landed, indistinguishable from a real second decision. Accept
+	// already refused this; reject did not, and the two functions sitting in one
+	// file arguing at length about why they do not share a code path is exactly how
+	// an asymmetry like that goes unnoticed.
+	t.Run("a second rejection of the same finding is refused and writes nothing", func(t *testing.T) {
+		// The very finding the table above rejected, on purpose: this is the row a
+		// real double-click lands on, and re-using it means the case cannot pass by
+		// arranging some gentler state of its own.
+		var finding uuid.UUID
+		require.NoError(t, pool.QueryRow(ctx,
+			`select id from finding where version_id = $1 and rule_id = $2 and state = 'rejected'`,
+			sweepVersion, "SH-SH-001").Scan(&finding))
+
+		before := auditIDs(t)
+		_, err := commands.RejectFinding(ctx, db, who, commands.Decision{
+			FindingID: finding, Note: "the same decision again",
+		})
+		require.ErrorIs(t, err, commands.ErrFindingRejected,
+			"a second rejection was accepted, so the api reported a decision it did not take")
+		require.Empty(t, auditRowsSince(t, before),
+			"the log gained a second rejection of one finding, and the reason recorded "+
+				"for it is now whichever row a reader happens to read")
+	})
+}
+
+// sweepProfile inserts an organisation-visible profile with one revision, so the
+// sync case has something a reader can legitimately have synced.
+//
+// Rows rather than a command, because there is no command: profiles land in the
+// layer after this one (T078-T083). What is under test here is ReportSync writing
+// exactly one audit row, so its input is arranged and only the action goes through
+// the command.
+func sweepProfile(t *testing.T, slug string) {
+	t.Helper()
+
+	profileID := models.NewID()
+	_, err := db.NewInsert().Model(&models.Profile{
+		ID:            profileID,
+		Slug:          slug,
+		Name:          "Sweep workstation",
+		Visibility:    models.ProfileVisibilityOrganisation,
+		DefaultPolicy: models.VersionPolicyPinned,
+	}).Exec(context.Background())
+	require.NoError(t, err)
+
+	_, err = db.NewInsert().Model(&models.Revision{
+		ID:        models.NewID(),
+		ProfileID: profileID,
+		Seq:       1,
+		Lockfile:  json.RawMessage(`{"entries":[]}`),
+		ObjectKey: "profiles/" + slug + "/r1.json",
+		CreatedBy: "sweep",
+	}).Exec(context.Background())
+	require.NoError(t, err)
 }
 
 type auditRow struct{ kind, actorKind, actor, source, text string }

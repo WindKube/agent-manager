@@ -210,8 +210,10 @@ func decisionNotice(raw string) *view.Notice {
 		return &view.Notice{Tone: "warn", Text: "That note is longer than the hub records. " +
 			"Shorten it to " + strconv.Itoa(view.MaxReviewNote) + " characters or fewer."}
 	case decisionBadExpiry:
-		return &view.Notice{Tone: "warn", Text: "An override expires between 1 and 365 days from " +
-			"now, or not at all. Leave the field blank for an override that does not lapse."}
+		return &view.Notice{Tone: "warn", Text: "An override expires between 1 and " +
+			strconv.Itoa(view.MaxOverrideDays) + " days from now. Leave the field blank for the " +
+			"default of " + strconv.Itoa(view.DefaultOverrideDays) + " days — an override that " +
+			"never lapses is not something this hub can record."}
 	case decisionRefused:
 		return &view.Notice{Tone: "dan", Text: "Your role may not decide findings, so nothing " +
 			"was recorded. Approving or rejecting needs the scanner reviewer or the catalog admin role."}
@@ -276,8 +278,10 @@ func (s *Server) decideFinding(c *gin.Context, accept bool) {
 
 	var err error
 	if accept {
-		// days of 0 sends no expiry, so the override does not lapse. That is the
-		// reviewer's silence carried through rather than a lifetime invented here.
+		// days of 0 sends no expiry, and the api then applies its own default. It is
+		// NOT an override that never lapses: nothing in this product can record one
+		// (contract/governance.go, "never unlimited"), so the screen must not offer
+		// one either — see the hint beside the field.
 		_, err = s.deps.Reviewer.AcceptFinding(session(c), id, note, days)
 	} else {
 		_, err = s.deps.Reviewer.RejectFinding(session(c), id, note)
@@ -313,23 +317,21 @@ func (s *Server) decideFinding(c *gin.Context, accept bool) {
 	}
 }
 
-// expiryDays reads the override lifetime. Blank is a valid answer and means "does
-// not lapse", so it is not the same as an unparseable one.
+// expiryDays reads the override lifetime. Blank is a valid answer and means "let
+// the api apply its default", so it is not the same as an unparseable one — and it
+// is not a request for an override that never expires, which no part of this
+// product can record.
 func expiryDays(raw string) (int, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return 0, true
 	}
 	days, err := strconv.Atoi(raw)
-	if err != nil || days < 1 || days > maxOverrideDays {
+	if err != nil || days < 1 || days > view.MaxOverrideDays {
 		return 0, false
 	}
 	return days, true
 }
-
-// maxOverrideDays mirrors the api's own bound. Like the note length, it is a
-// mirror and not the authority.
-const maxOverrideDays = 365
 
 // scannerReturn is where the browser lands after a decision.
 //

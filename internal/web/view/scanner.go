@@ -278,8 +278,12 @@ type Override struct {
 	Reviewer string
 	Note     string
 	Decided  string
-	// Expires is "" when the override does not expire, which is a real state: the
-	// api sends no expiry unless the reviewer stated one.
+	// Expires is when the acceptance lapses. Every override this product can write
+	// has one — the api defaults an unstated lifetime to
+	// DefaultOverrideDays rather than leaving it open (FR-028, and
+	// contract/governance.go says "never unlimited") — so "" here is not "never
+	// expires". It is a row from somewhere this hub did not write it, and the
+	// screen says exactly that rather than inventing a guarantee.
 	Expires string
 }
 
@@ -710,6 +714,22 @@ func Timestamp(at time.Time) string {
 	}
 	return at.UTC().Format("2006-01-02 15:04 UTC")
 }
+
+// DefaultOverrideDays mirrors commands.DefaultOverrideDays, for the one sentence
+// on the screen that has to state what a blank field means. A mirror, not the
+// authority: the api applies it whatever this side says, and this side must never
+// describe a lifetime the api will not grant — which is exactly the defect this
+// constant exists to have prevented.
+const DefaultOverrideDays = 30
+
+// MaxOverrideDays mirrors commands.MaxOverrideDays. It bounds the field so a
+// reviewer is not told to retype a number after choosing it.
+const MaxOverrideDays = 365
+
+// DefaultOverrideDaysText is the same number for the one sentence that prints it.
+// A function rather than a second constant: two numbers that must agree are two
+// numbers that eventually do not.
+func DefaultOverrideDaysText() string { return strconv.Itoa(DefaultOverrideDays) }
 
 // MaxReviewNote mirrors the api's own cap. The screen states it and enforces it so
 // a reviewer is not told to rewrite a note after they have written it, but the api

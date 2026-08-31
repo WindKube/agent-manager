@@ -147,6 +147,32 @@ func New(deps worker.Deps, opts Options) (*Worker, error) {
 		return nil, fmt.Errorf("scanner: %w", err)
 	}
 
+	// The pack that will actually run is checked against its own fixtures before
+	// this role starts, and the pack that will actually run is usually NOT the one
+	// this binary embeds: compose mounts internal/worker/scanner/rulepack at
+	// AGENT_MANAGER_RULEPACK_DIR, and the whole point of rules-as-data is that an
+	// operator tunes one there without a rebuild.
+	//
+	// So the unit test over rules.Builtin() is not the guard it looks like. It
+	// constrains what ships and says nothing about what runs. Without this call, a
+	// mounted rule whose pattern is `.` starts cleanly and flags every package in
+	// the catalog for a reason no reviewer can act on — measured — and a mounted
+	// rule whose fixture paths do not exist starts too, because Load reads pack.yaml
+	// and rules/ and never resolves a fixture.
+	//
+	// Verified unconditionally rather than only for a mounted pack. Two code paths
+	// here would mean the embedded pack is trusted because a test elsewhere covers
+	// it, which is the reasoning that produced this gap; one path costs a few
+	// milliseconds at boot over eight rules and cannot rot.
+	if err := checks.Verify(context.Background(), pack); err != nil {
+		// Refusing to start is the right failure and it is NOT in tension with
+		// rules.Open treating a MISSING directory as a warning. Absent means "the
+		// operator did not mount rules"; present-and-self-contradicting means "the
+		// operator is editing rules and got one wrong", and running different rules
+		// than they wrote is the failure that costs a real finding.
+		return nil, fmt.Errorf("scanner: %w", err)
+	}
+
 	budget := opts.Budget
 	if budget <= 0 {
 		budget = defaultBudget

@@ -45,7 +45,6 @@ import (
 	"agent-manager/internal/worker"
 	"agent-manager/internal/worker/scanner"
 	"agent-manager/internal/worker/scanner/checks"
-	"agent-manager/internal/worker/scanner/rules"
 )
 
 var (
@@ -631,21 +630,20 @@ func TestAVersionWithNoCommittedBytesIsNotScanned(t *testing.T) {
 // movedPackWorker is the same role running a pack whose rules have been tuned: a
 // second worker over a temporary directory, which is also the AGENT_MANAGER_RULEPACK_DIR
 // path in production.
+//
+// The WHOLE pack is copied and only its version overwritten. It used to copy
+// pack.yaml and the rule files alone, which was enough until New() started
+// verifying a mounted pack against its own fixtures — and a pack with no fixtures
+// is now refused, correctly: an operator who mounts one gets a role that will not
+// start rather than a role scanning against rules nobody checked. A test fixture
+// that could not survive that guard was not modelling a pack an operator could
+// actually mount.
 func movedPackWorker(t *testing.T, h harness) *scanner.Worker {
 	t.Helper()
 
-	builtin, err := rules.Builtin()
-	require.NoError(t, err)
-
 	dir := t.TempDir()
+	require.NoError(t, os.CopyFS(dir, os.DirFS("rulepack")))
 	require.NoError(t, os.WriteFile(dir+"/pack.yaml", []byte("packVersion: \"2099.01.01\"\n"), 0o600))
-	require.NoError(t, os.Mkdir(dir+"/rules", 0o700))
-	all := builtin.All()
-	for i := range all {
-		body, readErr := os.ReadFile("rulepack/rules/" + all[i].ID + ".yaml")
-		require.NoError(t, readErr)
-		require.NoError(t, os.WriteFile(dir+"/rules/"+all[i].ID+".yaml", body, 0o600))
-	}
 
 	moved, err := scanner.New(worker.Deps{
 		DB:       db,

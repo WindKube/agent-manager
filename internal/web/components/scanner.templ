@@ -333,7 +333,10 @@ templ overridePanel(override view.Override) {
 			if override.Expires != "" {
 				<div class="am-kv-val">{ override.Expires }</div>
 			} else {
-				<div class="am-kv-val am-kv-none">never — no expiry was stated</div>
+				// Not "never". Every override this hub writes carries an expiry, so a
+				// row without one came from somewhere else, and saying "never" about it
+				// would be this screen inventing a guarantee out of a missing value.
+				<div class="am-kv-val am-kv-none">not recorded</div>
 			}
 		</div>
 		if override.Note != "" {
@@ -394,8 +397,10 @@ templ reviewFooter(s view.Scanner, detail view.FindingDetail) {
 						days
 					</label>
 					<span class="am-review-hint">
-						Leave the expiry blank and the override does not lapse. Approving does not
-						clear the verdict: the version stays flagged with this note against it.
+						Leave the expiry blank for the default of { view.DefaultOverrideDaysText() }
+						days. Every override lapses — this hub cannot record a permanent one.
+						Approving does not clear the verdict: the version stays flagged with this
+						note against it.
 					</span>
 				</div>
 				<div class="am-gate-actions">

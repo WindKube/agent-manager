@@ -696,10 +696,6 @@ type entrySpec struct {
 	// version is the pinned semver for a pinned entry and the range expression for
 	// a range entry. It is empty for a floating one.
 	version string
-	// skipReason, when set, is how the published lockfile reports this entry: the
-	// resolution excluded it and said why (FR-036).
-	skipReason string
-	skipDetail string
 }
 
 type profileSpec struct {
@@ -795,12 +791,13 @@ var designProfiles = []profileSpec{
 			{models.SubjectKindUser, "pkaczmarek@example.com", models.MembershipRoleOwner},
 			{models.SubjectKindGroup, GroupEngSecurity, models.MembershipRoleReviewer},
 		},
+		// The exclusion is not stated here. Under the `approval` gate above, the
+		// resolver reaches this package's flagged 0.8.3 with no acceptance against
+		// it and excludes the entry as `flagged-awaiting-approval` — which is the
+		// design's "awaiting security approval" arrived at from the catalog rather
+		// than asserted beside it.
 		entries: []entrySpec{
-			{
-				pkg: "community/postgres-migration-guard", mode: models.EntryModeLatest,
-				skipReason: "flagged-awaiting-approval",
-				skipDetail: "SH-INJ-011 in SKILL.md",
-			},
+			{pkg: "community/postgres-migration-guard", mode: models.EntryModeLatest},
 		},
 	},
 	{

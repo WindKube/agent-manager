@@ -36,6 +36,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"agent-manager/internal/api"
+	"agent-manager/internal/domain/resolve"
 )
 
 const frozenContract = "../../specs/001-agent-manager-hub/contracts/openapi.yaml"
@@ -386,4 +387,42 @@ func dig(root map[string]any, path ...string) any {
 		next = m[segment]
 	}
 	return next
+}
+
+// TestTheResolverProducesExactlyTheSkipReasonsTheFrozenSchemaAdmits closes the
+// loop the rest of this file opens.
+//
+// internal/domain/resolve is the one place the scan gate is applied (003 T078),
+// so it is the only thing that can put a `reason` into a lockfile. The CLI ships
+// separately from the hub and reports an unrecognised reason verbatim rather than
+// dropping it — which is the right behaviour and also means a seventh reason
+// invented here would reach a user as an untranslated slug, on the exclusion
+// path, where nothing exercises it. The schema is the side that must not move.
+func TestTheResolverProducesExactlyTheSkipReasonsTheFrozenSchemaAdmits(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(filepath.Dir(frozenContract), "lockfile.schema.json"))
+	require.NoError(t, err)
+
+	var schema struct {
+		Properties struct {
+			Skipped struct {
+				Items struct {
+					Properties struct {
+						Reason struct {
+							Enum []string `json:"enum"`
+						} `json:"reason"`
+					} `json:"properties"`
+				} `json:"items"`
+			} `json:"skipped"`
+		} `json:"properties"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &schema))
+
+	frozen := schema.Properties.Skipped.Items.Properties.Reason.Enum
+	require.NotEmpty(t, frozen, "the skip reason enum was not found where this test looks for it")
+
+	produced := make([]string, 0, len(resolve.Reasons()))
+	for _, reason := range resolve.Reasons() {
+		produced = append(produced, string(reason))
+	}
+	require.Equal(t, frozen, produced)
 }

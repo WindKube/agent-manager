@@ -16,6 +16,7 @@ import (
 	"github.com/uptrace/bun/schema"
 	"golang.org/x/tools/go/packages"
 
+	"agent-manager/internal/domain/resolve"
 	"agent-manager/internal/fetch"
 	"agent-manager/internal/store/models"
 )
@@ -254,6 +255,40 @@ func TestFetchSourceKindHoldsExactlyTheSourceKindsTheFetcherCanProduce(t *testin
 	for _, v := range want {
 		require.Truef(t, models.FetchSourceKind(v).Valid(), "fetch.SourceKind %q is not a valid FetchSourceKind", v)
 	}
+}
+
+// TestTheResolversPolicyEnumsHoldExactlyTheValuesTheColumnsDo is the guard the
+// doc comment on internal/domain/resolve promises. That package decides what the
+// scan gate does to every profile entry, and it may not import this one — the
+// constitution keeps internal/domain free of the store — so Gate, Mode and
+// Verdict over there are hand-written copies of three columns declared here.
+//
+// A copy nothing compares is a copy that goes stale, and this one goes stale in
+// the worst possible direction: a fourth gate added to the column would reach
+// resolve.Gate.Valid as an unrecognised value and be refused, so the profile
+// screen and the CLI would stop resolving anything at all the moment an admin
+// selected it.
+func TestTheResolversPolicyEnumsHoldExactlyTheValuesTheColumnsDo(t *testing.T) {
+	// Transcribed from internal/domain/resolve, not derived from it: this is the
+	// side of the comparison that has to be independent.
+	require.Equal(t, []string{
+		string(resolve.GateBlock),
+		string(resolve.GateApproval),
+		string(resolve.GateWarnWithOverride),
+	}, models.EnumTypes()[models.PGScanGate])
+
+	require.Equal(t, []string{
+		string(resolve.ModeLatest),
+		string(resolve.ModePinned),
+		string(resolve.ModeRange),
+	}, models.EnumTypes()[models.PGEntryMode])
+
+	require.Equal(t, []string{
+		string(resolve.VerdictScanning),
+		string(resolve.VerdictClean),
+		string(resolve.VerdictFlagged),
+		string(resolve.VerdictRejected),
+	}, models.EnumTypes()[models.PGVerdict])
 }
 
 func TestEveryEnumTypeHasACase(t *testing.T) {

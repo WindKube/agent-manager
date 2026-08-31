@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-manager.dev/schemas/1.0.0/rulepack.schema.json",
+  "title": "Agent Manager scanner rule",
+  "description": "One YAML document per rule (R2). Rules are data: a new rule instance is a file, a new detection class is a new Go matcher plus a match.kind value. Rules never contain executable logic.",
+  "type": "object",
+  "required": ["id", "severity", "check", "title", "detail", "match", "evidence", "fixtures"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^SH-[A-Z]{2,4}-[0-9]{3}$", "description": "Stable and never reused, e.g. SH-NET-002." },
+    "severity": { "enum": ["low", "medium", "high"] },
+    "check": {
+      "enum": ["manifest-schema", "network-allowlist", "shell-audit", "secret-exfiltration", "prompt-injection", "filesystem-scope", "dependency-pinning"],
+      "description": "Which registered Check consumes this rule."
+    },
+    "title": { "type": "string" },
+    "detail": { "type": "string", "description": "Prose shown in the finding pane. Explains why it is flagged, not just what matched." },
+    "match": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "enum": ["shell-ast", "regex", "schema-path", "dep-manifest"],
+          "description": "Selects the matcher. shell-ast walks mvdan.cc/sh syntax trees; regex is RE2 over instruction files; schema-path targets a JSON pointer; dep-manifest parses package.json / go.mod / requirements.txt."
+        },
+        "command": { "type": "array", "items": { "type": "string" }, "description": "shell-ast: command names to match." },
+        "pattern": { "type": "string", "description": "regex: an RE2 pattern. Backtracking is impossible by construction." },
+        "paths": { "type": "array", "items": { "type": "string" }, "description": "Glob-limited file scope." },
+        "pointer": { "type": "string", "description": "schema-path: JSON pointer into the manifest or expected-capability document." },
+        "extract": { "enum": ["url-argument", "path-argument", "package-spec", "matched-text", "pointer-value"] },
+        "condition": {
+          "enum": ["host-not-in-expected", "path-outside-expected", "version-unpinned", "always", "value-matches"],
+          "description": "Named predicate. Adding one is a Go change; using one is not."
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["quote"],
+      "additionalProperties": false,
+      "properties": {
+        "quote": { "enum": ["matched-node", "matched-line", "schema-error"] },
+        "contextLines": { "type": "integer", "minimum": 0, "maximum": 5, "default": 1 }
+      }
+    },
+    "fixtures": {
+      "type": "object",
+      "required": ["trips", "clean"],
+      "additionalProperties": false,
+      "description": "Every rule ships a bundle that must trip it and one that must not (constitution, Development Workflow). CI fails a rule with either missing.",
+      "properties": {
+        "trips": { "type": "string" },
+        "clean": { "type": "string" }
+      }
+    },
+    "references": { "type": "array", "items": { "type": "string" } }
+  }
+}

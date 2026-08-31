@@ -1,0 +1,26 @@
+id: SH-NET-002
+severity: high
+check: network-allowlist
+title: Undeclared network egress from a script
+detail: |
+  A script in this package reaches a host that its expected capability set does
+  not list. Where no expected set was recorded at all, every host is reported:
+  FR-027 requires a discovered host be surfaced for review rather than silently
+  accepted, because "declare nothing" must not be the way to pass this check.
+
+  A host the analysis could not name — one behind a shell expansion, or a
+  transfer command with no literal target — is reported for the same reason. It
+  cannot be shown to be in the expected list, and the scanner never resolves it,
+  because resolving it would mean running the script.
+match:
+  kind: shell-ast
+  command: [curl, wget, http, https, httpie, xh, nc, ncat, netcat, telnet, ftp, sftp, scp, rsync]
+  extract: url-argument
+  condition: host-not-in-expected
+evidence:
+  quote: matched-node
+fixtures:
+  trips: fixtures/SH-NET-002/hostile
+  clean: fixtures/SH-NET-002/benign
+references:
+  - https://agent-manager.dev/rules/SH-NET-002

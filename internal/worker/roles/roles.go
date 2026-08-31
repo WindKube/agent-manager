@@ -17,14 +17,18 @@ import (
 
 	"agent-manager/internal/worker"
 	"agent-manager/internal/worker/fetcher"
+	"agent-manager/internal/worker/scanner"
 )
 
 // definitions is the one list. It is the ONLY thing that changes when a role is
 // added: not the cobra command, not Build, not the Dockerfile (principle VII).
 //
-//	scanner.Definition(), // T060 — Needs{DB: AccessReadWrite, Blob: AccessRead, Outbound: false}
+// The two roles' Needs are the credential split of principle II, written where a
+// reader can compare them: the fetcher may write bundle bytes and reach the
+// network, the scanner may do neither.
 var definitions = []worker.Definition{
-	fetcher.Definition(),
+	fetcher.Definition(), // Needs{DB: AccessReadWrite, Blob: AccessReadWrite, Outbound: true}
+	scanner.Definition(), // Needs{DB: AccessReadWrite, Blob: AccessRead,      Outbound: false}
 }
 
 // Definitions returns the registered roles in registration order.

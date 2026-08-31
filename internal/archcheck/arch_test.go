@@ -86,7 +86,11 @@ var rules = []rule{
 		name: "the scanner never executes bundle content",
 		why: "constitution principle III and FR-021: static analysis only. os/exec in the scan " +
 			"tree is the exact defect that requirement exists to prevent.",
-		scope:     under("internal/scan"),
+		// Both paths, because the tree moved. contracts/worker.md put the scan
+		// packages under internal/scan; they landed under internal/worker/scanner,
+		// beside the role that runs them, and a rule scoped only to the old path is a
+		// rule that passes because it governs nothing.
+		scope:     anyOf(under("internal/scan"), under("internal/worker/scanner")),
 		forbidden: anyOf(exact("os/exec"), exact("plugin"), exact("net/http")),
 	},
 }

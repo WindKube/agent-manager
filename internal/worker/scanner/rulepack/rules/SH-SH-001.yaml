@@ -1,0 +1,22 @@
+id: SH-SH-001
+severity: high
+check: shell-audit
+title: Script evaluates code it does not ship
+detail: |
+  `eval`, `source` and `.` execute text as shell. Where the text comes from a
+  command substitution, a variable or a downloaded file, the bytes that run are
+  not the bytes anyone reviewed — and this scan's verdict is a statement about
+  the bytes in the bundle only.
+
+  This is the pattern behind every `curl … | bash` install: the archive passes
+  review because the payload is not in it yet.
+match:
+  kind: shell-ast
+  command: [eval, source, "."]
+  extract: matched-text
+  condition: always
+evidence:
+  quote: matched-line
+fixtures:
+  trips: fixtures/SH-SH-001/hostile
+  clean: fixtures/SH-SH-001/benign

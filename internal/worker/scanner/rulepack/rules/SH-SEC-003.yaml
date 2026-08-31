@@ -1,0 +1,24 @@
+id: SH-SEC-003
+severity: high
+check: secret-exfiltration
+title: Credential file named in a script or an instruction
+detail: |
+  This package names a file that holds credentials — an SSH private key, a cloud
+  credential file, a `.netrc`, a `.npmrc`, a `.pgpass`, an `.env`. A package that
+  does its job through the agent's own tools has no reason to name one, and a
+  package that reads one has read a secret whatever it does next.
+
+  The pattern matches PATHS, not words: prose telling a reader to keep their
+  token in a password manager does not trip it, and neither does a variable named
+  `TOKEN`.
+match:
+  kind: regex
+  pattern: '(?i)(?:~|\$HOME|/home/[a-z0-9_.-]+|/root)?/\.(?:aws/credentials|ssh/id_[a-z0-9]+|ssh/authorized_keys|netrc|npmrc|pypirc|pgpass|git-credentials|docker/config\.json|kube/config|env(?:\.[a-z]+)?)\b'
+  paths: ["**/*.md", "**/*.txt", "**/*.rst", "**/*.sh", "**/*.bash", "**/*.zsh"]
+  extract: matched-text
+  condition: always
+evidence:
+  quote: matched-line
+fixtures:
+  trips: fixtures/SH-SEC-003/hostile
+  clean: fixtures/SH-SEC-003/benign

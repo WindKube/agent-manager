@@ -174,14 +174,8 @@ services:
       disable: true
     restart: unless-stopped
 
-  # The registry (internal/worker/roles) has no scanner yet, so `worker run
-  # scanner` exits with "unknown worker" until T071 registers it. Kept behind a
-  # profile so `docker compose up` is green now and the topology is already
-  # wired: the US4 layer deletes the profiles line. Until then:
-  # `--profile workers`.
   scanner:
     <<: *app-image
-    profiles: ["workers"]
     depends_on:
       migrate-queue:
         condition: service_completed_successfully
@@ -192,6 +186,17 @@ services:
       AGENT_MANAGER_DATABASE_URL: >-
         postgres://am_scanner:local-development-am-scanner@postgres:5432/agent_manager?sslmode=disable
       AGENT_MANAGER_RULEPACK_DIR: /etc/agent-manager/rulepack
+    # Detection rules are DATA (constitution, Development Workflow): adding or
+    # tuning one must not require a code change or a rebuild. The mount is what
+    # makes that true of this stack rather than of the design document — edit a
+    # file under internal/worker/scanner/rulepack and restart this one container.
+    #
+    # The image embeds the same pack, so a deployment that mounts nothing still
+    # scans; a scanner with no rules would report every check passing and every
+    # bundle clean, which is the worst answer this system can give. Read-only,
+    # because nothing in the scanner writes rules.
+    volumes:
+      - ./internal/worker/scanner/rulepack:/etc/agent-manager/rulepack:ro
     command: ["worker", "run", "scanner"]
     # A worker has no HTTP listener yet, so the image's HEALTHCHECK — which probes
     # the api's port — would mark it unhealthy forever. T109 adds the metrics and

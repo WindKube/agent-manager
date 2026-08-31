@@ -1,0 +1,26 @@
+id: SH-FS-007
+severity: medium
+check: filesystem-scope
+title: Script writes outside the package's declared scope
+detail: |
+  A script writes to a location that leaves the package tree and that the
+  expected capability set does not cover. Writing inside its own directory is not
+  reported — a package that produces a build output or a cache is doing what
+  packages do — so what is left is the interesting set: an absolute path, a
+  `~`-rooted one, a `..` that climbs out, a glob nobody can enumerate, or a
+  target behind an expansion that only a running shell would resolve.
+
+  The primary location is the first write the script performs; the supporting
+  locations are the rest, because a reviewer decides about the script once and
+  needs to see everything that decision covers.
+match:
+  kind: shell-ast
+  command: [tee, rm, rmdir, mkdir, touch, truncate, chmod, chown, ln, unlink, shred, dd, cp, mv, install, sed]
+  extract: path-argument
+  condition: path-outside-expected
+evidence:
+  quote: matched-node
+  contextLines: 1
+fixtures:
+  trips: fixtures/SH-FS-007/hostile
+  clean: fixtures/SH-FS-007/benign

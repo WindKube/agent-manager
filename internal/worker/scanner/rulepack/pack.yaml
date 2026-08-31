@@ -1,0 +1,10 @@
+# The rule pack this build ships. Rules are data (constitution, Development
+# Workflow): a new rule is a file in rules/ plus its two fixtures, with no Go
+# change and no rebuild.
+#
+# packVersion is the pack's declared identity. What is recorded on every scan is
+# this value with a short digest of the rule content appended, so that editing a
+# rule without bumping this line still moves `scan.pack_version` and the next
+# scan of an already-scanned version runs instead of being suppressed by its own
+# idempotency guard (rules.Pack.Version).
+packVersion: "2026.08.31"

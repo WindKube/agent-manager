@@ -3,7 +3,6 @@ package fetcher
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -13,34 +12,9 @@ import (
 
 	"agent-manager/internal/blob"
 	"agent-manager/internal/domain/pkgspec"
-	"agent-manager/internal/outbox"
 	"agent-manager/internal/store/models"
+	"agent-manager/internal/worker/scanner"
 )
-
-// ScanRequest is the `scan` hand-off payload.
-//
-// The consumer owns a payload's shape, so this belongs in the scanner package and
-// moves there with T060; it is declared here only because the producer cannot
-// enqueue against a type that does not exist yet. The field names are the
-// contract, which is why they are spelled out rather than left to a map literal.
-type ScanRequest struct {
-	VersionID uuid.UUID `json:"versionId"`
-	PackageID uuid.UUID `json:"packageId"`
-
-	// Namespace, not the publisher slug: it is the first object-key segment and
-	// the first half of the rendered package id, and the fetcher needs no other
-	// part of the publisher — the package row is reached by PackageID.
-	Namespace string `json:"namespace"`
-	Name      string `json:"name"`
-	Semver    string `json:"semver"`
-
-	// ObjectKey is the bundle the scanner reads. It is carried rather than
-	// recomputed so the scanner reads the bytes this fetch committed and not
-	// whatever the key would be derived from today.
-	ObjectKey string `json:"objectKey"`
-}
-
-func (ScanRequest) Kind() string { return string(outbox.KindScan) }
 
 // errAlreadyPublished is the transaction finding the version already committed.
 var errAlreadyPublished = errors.New("version already has committed bytes")
@@ -211,26 +185,46 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 		// not published until the scan that will give it a verdict is durably
 		// enqueued, so there is no committed version that nothing will ever scan.
 		//
-		// SubjectVersion is empty on purpose. The scan idempotency key is
-		// (scan, version id, RULE-PACK version), and the rule-pack version is the
-		// scanner's own — a producer that guessed it would suppress the first real
-		// scan or fail to suppress a redelivery.
-		payload, encodeErr := json.Marshal(ScanRequest{
+		// The payload type belongs to the CONSUMER (contracts/worker.md): the scanner
+		// owns the shape it has to be able to read, and its OutboxJob leaves
+		// SubjectVersion empty on purpose, because the scan idempotency key is
+		// (scan, version id, RULE-PACK version) and the rule-pack version is the
+		// scanner's own. A producer that guessed it would suppress the first real scan
+		// or fail to suppress a redelivery.
+		scanJob, scanErr := scanner.Job{
 			VersionID: job.VersionID,
 			PackageID: job.PackageID,
 			Namespace: job.Namespace,
 			Name:      job.Name,
 			Semver:    job.Semver,
 			ObjectKey: commit.Bundle.Key,
-		})
-		if encodeErr != nil {
-			return fmt.Errorf("encode the scan job for %s: %w", job, encodeErr)
+		}.OutboxJob()
+		if scanErr != nil {
+			return fmt.Errorf("enqueue the scan of %s: %w", job, scanErr)
 		}
-		if _, enqueueErr := w.enqueue.Enqueue(ctx, tx, outbox.Job{
-			Kind:      outbox.KindScan,
-			SubjectID: job.VersionID,
-			Payload:   json.RawMessage(payload),
-		}); enqueueErr != nil {
+
+		// FR-030 and 001 US4 scenario 5: publishing a version re-enqueues the
+		// package's already-scanned versions, so a rule pack that has moved on since
+		// they were judged gets to judge them again and a new finding reopens an
+		// approved version.
+		//
+		// It rides this transaction and carries no policy decision. Whether
+		// rescan-on-new-version is enabled is read by the SCANNER, because am_scanner
+		// holds the grant on org_policy and am_fetcher deliberately does not — so the
+		// sweep is enqueued unconditionally and the role that can read the setting is
+		// the role that acts on it. The cost of a disabled policy is one outbox row
+		// and one query per publish.
+		sweepJob, sweepErr := scanner.SweepJob{
+			PackageID:        job.PackageID,
+			TriggerVersionID: job.VersionID,
+			Namespace:        job.Namespace,
+			Name:             job.Name,
+		}.OutboxJob()
+		if sweepErr != nil {
+			return fmt.Errorf("enqueue the rescan sweep of %s/%s: %w", job.Namespace, job.Name, sweepErr)
+		}
+
+		if _, enqueueErr := w.enqueue.Enqueue(ctx, tx, scanJob, sweepJob); enqueueErr != nil {
 			return fmt.Errorf("enqueue the scan of %s: %w", job, enqueueErr)
 		}
 

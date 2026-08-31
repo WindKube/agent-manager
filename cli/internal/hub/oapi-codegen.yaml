@@ -20,10 +20,18 @@ generate:
 
 output-options:
   # The seven operations the CLI uses, listed BY ID rather than by tag. The
-  # emitted document declares eleven; the other four are the package registry
-  # (listPackages, registerPackage, previewPackage, getPackage) and the CLI has
-  # no use for them — generating them puts dead code, dead types and a
+  # emitted document declares many more and every one of them is deliberately
+  # absent: the package registry, the browser's session surface, the governance
+  # screens' reads and decisions, and the profile CURATION operations. All four
+  # groups belong to a person at a screen. The CLI syncs a PUBLISHED revision —
+  # nothing reaches a machine before one exists (FR-033) — so it wants
+  # listProfiles and getRevision and has no business reading a draft profile or
+  # writing one. Generating the rest would put dead code, dead types and a
   # multipart body helper in every amctl binary.
+  #
+  # No count is written here on purpose. The one that used to be said eleven and
+  # was wrong by seventeen within two layers; what matters is the list below, and
+  # `task cli:gen:client` fails if any id on it stops being emitted.
   #
   # Listing ids explicitly, rather than excluding the registry or filtering by
   # tag, is the point: adding an operation to the hub cannot silently widen the

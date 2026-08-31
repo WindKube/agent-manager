@@ -28,6 +28,9 @@ func (s *Server) register() {
 	s.registerProfiles()
 	s.registerBundles()
 	s.registerSync()
+	s.registerScanner()
+	s.registerAudit()
+	s.registerBadges()
 }
 
 // publicSecurity is the empty security requirement that removes the document's
@@ -404,6 +407,209 @@ func (s *Server) registerSync() {
 			"500": s.errorResponse("The request could not be completed."),
 		},
 	}, s.reportSync)
+}
+
+func (s *Server) registerScanner() {
+	huma.Register(s.api, huma.Operation{
+		OperationID: "scannerSummary",
+		Method:      http.MethodGet,
+		Path:        "/v1/scanner/summary",
+		Tags:        []string{"scanner"},
+		Summary:     "The Scanner screen's headline figures",
+		Description: "Versions that reached a verdict in the period, how many packages are quarantined, " +
+			"how many acceptances are still in force and when the first of them lapses, and the " +
+			"median time from a scan starting to its verdict (001 US4 scenario 1). " +
+			"`quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged " +
+			"versions: a superseded flagged version is not quarantining anything, because nothing " +
+			"resolves to it. " +
+			"`nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when " +
+			"there is nothing to report — no active override and no finished scan are different " +
+			"statements from \"expires now\" and \"instant\".",
+		Responses: map[string]*huma.Response{
+			"401": s.errorResponse("No usable session. There is no anonymous view of the scanner."),
+			"422": s.errorResponse("`days` is outside 1..365."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.scannerSummary)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "listFindings",
+		Method:      http.MethodGet,
+		Path:        "/v1/findings",
+		Tags:        []string{"scanner"},
+		Summary:     "Findings, paged and filterable",
+		Description: "One page of findings, highest severity first and newest within a severity, " +
+			"filterable by state and by severity. " +
+			"Each row carries the PRIMARY evidence location only; a finding legitimately has " +
+			"several, and the whole of them is on the detail operation. " +
+			"`verdict` is the subject VERSION's verdict and not the finding's state: an accepted " +
+			"finding leaves its version flagged, because the override is what lets it through and " +
+			"the gate still governs whether it does.",
+		Responses: map[string]*huma.Response{
+			"401": s.errorResponse("No usable session."),
+			"422": s.errorResponse("A filter value is outside its vocabulary."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.listFindings)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "getFinding",
+		Method:      http.MethodGet,
+		Path:        "/v1/findings/{id}",
+		Tags:        []string{"scanner"},
+		Summary:     "One finding, its evidence and every check that ran",
+		Description: "The detail pane of 001 US4 scenario 2: severity, rule, subject, the prose " +
+			"explanation, EVERY evidence location, and EVERY check the raising scan ran — passes " +
+			"included (FR-025). " +
+			"The passes are not padding. A pane showing only failures cannot be told apart from " +
+			"one where nothing else ran, so the absence of a finding would be indistinguishable " +
+			"from the absence of a check, which is the distinction the whole matrix exists for. " +
+			"Evidence and check labels are bundle content and identity-provider content " +
+			"respectively: every consumer renders them escaped (FR-055).",
+		Responses: map[string]*huma.Response{
+			"401": s.errorResponse("No usable session."),
+			"404": s.errorResponse("No such finding."),
+			"422": s.errorResponse("The finding id is not a uuid."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.getFinding)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "acceptFinding",
+		Method:      http.MethodPost,
+		Path:        "/v1/findings/{id}/accept",
+		Tags:        []string{"scanner"},
+		Summary:     "Accept a finding with a recorded note and an expiry",
+		Description: "Approves the finding, records the override carrying the reviewer's identity, their " +
+			"note and an expiry, and writes ONE audit row of kind `approve` — all in one " +
+			"transaction (FR-028, FR-050). " +
+			"The version's verdict is NOT changed. US4 scenario 3 makes the version distributable " +
+			"SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict " +
+			"to clean would make an accepted version indistinguishable from one that never had a " +
+			"finding, under every gate, for ever. " +
+			"Re-accepting an already-accepted finding replaces the decision, which is what a " +
+			"reviewer extending an expiring override does. " +
+			"A rejected finding cannot be accepted: rejection is terminal (409). " +
+			"Requires the scanner-reviewer role. The screen must also hide or disable the action " +
+			"for an identity that lacks it (FR-126) — this refusal is the backstop, not the " +
+			"mechanism.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Accepted. The body carries the finding's new state and the version's verdict.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.FindingDecision{}, "FindingDecision")},
+				},
+			},
+			"400": s.errorResponse("The request body is missing or is not valid JSON."),
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"403": s.errorResponse("This identity may not adjudicate a finding."),
+			"404": s.errorResponse("No such finding."),
+			"409": s.errorResponse("This finding was rejected, which is terminal."),
+			"415": s.errorResponse("The request body must be sent as application/json."),
+			"422": s.errorResponse("The finding id is not a uuid, or the body carries no note."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.acceptFinding)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "rejectFinding",
+		Method:      http.MethodPost,
+		Path:        "/v1/findings/{id}/reject",
+		Tags:        []string{"scanner"},
+		Summary:     "Reject a finding and quarantine its version for good",
+		Description: "Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE " +
+			"audit row — in one transaction. " +
+			"This is TERMINAL and it is not an accept with a different flag. A rejected version " +
+			"cannot be resolved by any profile REGARDLESS OF GATE and is never served at all " +
+			"(FR-029), so there is no expiry to set and no field in which to suggest there is one. " +
+			"An override already recorded on the finding is left in place: it is the record of a " +
+			"decision that really was taken, it stops counting as active, and it can permit " +
+			"nothing once the verdict is terminal. " +
+			"The audit kind is `approve` because `audit_kind` has no `reject` value and adding one " +
+			"is a migration; the row's text is what distinguishes the two. " +
+			"Requires the scanner-reviewer role.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Rejected. The version is quarantined for good.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.FindingDecision{}, "FindingDecision")},
+				},
+			},
+			"400": s.errorResponse("The request body is missing or is not valid JSON."),
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"403": s.errorResponse("This identity may not adjudicate a finding."),
+			"404": s.errorResponse("No such finding."),
+			"415": s.errorResponse("The request body must be sent as application/json."),
+			"422": s.errorResponse("The finding id is not a uuid."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.rejectFinding)
+}
+
+func (s *Server) registerAudit() {
+	huma.Register(s.api, huma.Operation{
+		OperationID: "listAudit",
+		Method:      http.MethodGet,
+		Path:        "/v1/audit",
+		Tags:        []string{"audit"},
+		Summary:     "The audit log, paged, most recent first",
+		Description: "One page of `audit_event`, ordered by when it happened, newest first, served by the " +
+			"index created for exactly that read. " +
+			"There is deliberately no filter. The export below must return the full CURRENT SCOPE " +
+			"(FR-051), and with no filters the current scope is the whole log — a filter added " +
+			"here without being added there would quietly stop that holding. " +
+			"Rows are append-only, enforced by revoked grants rather than by anything in this " +
+			"process (FR-052). `text` quotes package and profile names, so it is rendered escaped.",
+		Responses: map[string]*huma.Response{
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"422": s.errorResponse("`page` or `pageSize` is outside its range."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.listAudit)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "exportAudit",
+		Method:      http.MethodGet,
+		Path:        "/v1/audit/export",
+		Tags:        []string{"audit"},
+		Summary:     "Export the whole audit log",
+		Description: "FR-051: the full current scope, not the visible page. Newline-delimited JSON, one " +
+			"row per line, streamed — the rows are never materialised, because `audit_event` is " +
+			"the one table in this schema designed to grow without bound. " +
+			"NDJSON rather than CSV because an audit row's text quotes names a publisher chose, " +
+			"and a spreadsheet evaluates a cell that begins with `=`. " +
+			"The LAST LINE is a completeness sentinel. A streamed response cannot fail — its " +
+			"status was sent before the first row was read — so a stream that ends without that " +
+			"line was truncated and the export is incomplete.",
+		Responses: map[string]*huma.Response{
+			"200": auditExportResponse(),
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.exportAudit)
+}
+
+func (s *Server) registerBadges() {
+	huma.Register(s.api, huma.Operation{
+		OperationID: "getBadges",
+		Method:      http.MethodGet,
+		Path:        "/v1/badges",
+		Tags:        []string{"navigation"},
+		Summary:     "The application shell's counts",
+		Description: "The three counts the sidebar renders, in one call: packages visible in the catalog, " +
+			"profiles THIS IDENTITY may read, and findings awaiting a decision (FR-121). " +
+			"One operation because the shell renders on every screen, so three would be three " +
+			"round trips per page. Three indexed counts over the base tables and not a " +
+			"projection: principle VIII sanctions exactly one and it is not spent here (research " +
+			"R5). " +
+			"The profile count is the length of the list the Profiles screen shows and cannot be " +
+			"more: a count including a profile the reader cannot open would leak its existence by " +
+			"arithmetic.",
+		Responses: map[string]*huma.Response{
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.getBadges)
 }
 
 // ---- handlers ----------------------------------------------------------------

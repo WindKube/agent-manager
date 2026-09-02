@@ -1,0 +1,27 @@
+id: SH-INJ-011
+severity: high
+check: prompt-injection
+title: Instruction file overrides the agent's own instructions
+detail: |
+  An instruction file tells the agent reading it to disregard what it was told
+  before. That sentence has no legitimate use in a package: a skill describes
+  what it does and when to reach for it, and nothing about that requires
+  countermanding the operator.
+
+  The instruction files are an execution surface with no interpreter in them.
+  This package needs no script to be hostile — the sentence is the attack.
+match:
+  kind: regex
+  # The pattern sits on its own line because it does not fit on one with its key
+  # and cannot be wrapped: YAML folds a wrapped scalar's line break into a space,
+  # and a space inside a regex is a character it matches.
+  pattern:
+    '(?i)\b(?:ignore|disregard|forget|override)\b[^.\n]{0,40}\b(?:all\s+|any\s+)?(?:previous|prior|above|earlier|preceding|system|initial)\b[^.\n]{0,20}\b(?:instruction|instructions|prompt|prompts|rule|rules|direction|directions|guardrail|guardrails)\b'
+  paths: ["**/*.md", "**/*.txt", "**/*.rst"]
+  extract: matched-text
+  condition: always
+evidence:
+  quote: matched-line
+fixtures:
+  trips: fixtures/SH-INJ-011/hostile
+  clean: fixtures/SH-INJ-011/benign

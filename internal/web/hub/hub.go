@@ -26,15 +26,27 @@ import (
 type Client struct {
 	api *apiclient.ClientWithResponses
 	now func() time.Time
+	// mintSecret is the shared secret POST /v1/sessions requires. It is the only
+	// credential this role holds and it buys exactly one operation; it is sent on
+	// that one request and never installed on the client, so nothing else this role
+	// calls can carry it.
+	mintSecret string
 }
 
-// Option tunes the client. There is one, and it exists for the tests: the
-// relative dates the catalog renders are a function of the clock.
+// Option tunes the client.
 type Option func(*Client)
 
 // WithClock fixes the clock the Updated column is rendered against.
 func WithClock(now func() time.Time) Option {
 	return func(c *Client) { c.now = now }
+}
+
+// WithSessionMintSecret gives the client the shared secret the session mint
+// requires (config.Web.SessionMintSecret). Without it MintSession refuses before
+// it reaches the api: there is no default, and an empty value is the api's cue to
+// refuse every mint.
+func WithSessionMintSecret(secret string) Option {
+	return func(c *Client) { c.mintSecret = secret }
 }
 
 // New builds the client. It performs no I/O and does not reach the api, so a

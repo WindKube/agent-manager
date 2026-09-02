@@ -670,7 +670,19 @@ func killUntil(
 		t.Logf("attempt %d: killed with %s (state under test: %t)", i, state, last.hit)
 
 		requireLockWasLeftByTheKilledChild(t, env, run)
-		if between != nil {
+		// Only on a hit. `between` assembles the state under test out of the tree
+		// the killed child left, so it is meaningful only when that tree is the one
+		// the caller asked for. Running it on a MISS built a state nobody describes
+		// and then asserted against it: the aside-window caller renames dest aside,
+		// and on an attempt that overshot to "dest new, record new" that rename
+		// produces dest-absent with the record already naming the version the plan
+		// wants, so the re-run is a no-op, the reclaim path never runs, and
+		// requireTheReRunConverges failed on a diagnostic the sync had no reason to
+		// print. That is the ubuntu-CI flake: this window is reached by one syscall
+		// on top of a real kill (see the test's comment), the kill lands late more
+		// often on a slower runner, and a miss then corrupted the next assertion
+		// instead of being retried.
+		if between != nil && last.hit {
 			between(t, last)
 		}
 		requireTheReRunConverges(t, tg, env)

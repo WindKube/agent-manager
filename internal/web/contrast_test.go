@@ -63,6 +63,82 @@ func TestPaletteMeetsWCAGAA(t *testing.T) {
 	}
 }
 
+// TestAStatusColourIsReadableOnEveryPlainSurfaceItIsPaintedOn extends the sweep
+// to the pairs US4's two screens introduced.
+//
+// The governance screens paint --ok, --warn and --dan as TEXT on an untinted card
+// as well as inside a tinted pill: the headline figures are coloured numbers on
+// --surface, and the check matrix's glyphs are coloured marks on the same. The
+// sweep above only ever checked each status colour against its own tinted
+// background, so those pairs were outside it until now.
+//
+// --sel is not in this list, and its absence is the finding rather than an
+// oversight: --ok reaches 4.44:1 and --warn 4.32:1 on --sel in the light theme,
+// both under AA. That is why the selected row on the Scanner screen tints only the
+// row and every status on it carries its own background — a status colour must
+// never be painted directly on a selection.
+func TestAStatusColourIsReadableOnEveryPlainSurfaceItIsPaintedOn(t *testing.T) {
+	light, dark := palettes(t)
+
+	// The three surfaces a coloured figure or glyph actually lands on. --sel is
+	// excluded deliberately; see this test's comment.
+	plain := []string{"bg", "surface", "surface2"}
+
+	for name, tokens := range map[string]map[string]string{"light": light, "dark": dark} {
+		t.Run(name, func(t *testing.T) {
+			for _, status := range []string{"ok", "warn", "dan"} {
+				for _, bg := range plain {
+					got := contrast(t, tokens[status], tokens[bg])
+					require.GreaterOrEqualf(t, got, aa,
+						"--%s (%s) on --%s (%s) is %.2f:1, below AA's %.1f:1",
+						status, tokens[status], bg, tokens[bg], got, aa)
+				}
+			}
+		})
+	}
+}
+
+// TestEveryColourInTheStylesheetComesFromThePalette is what puts a screen in the
+// sweep by construction rather than by somebody remembering to add it.
+//
+// The two tests above prove the PALETTE meets AA. They say nothing about a rule
+// that reaches past the palette for a literal, and a screen painted with one is
+// outside every assertion in this file while still looking finished. So the
+// declarations that carry text and background colour are required to name a
+// custom property; the tokens themselves, defined in the two :root blocks, are the
+// only place a literal belongs.
+//
+// Shadows and overlays are not in scope: a box-shadow is not a text pair, and the
+// modal's scrim is deliberately a translucent literal.
+func TestEveryColourInTheStylesheetComesFromThePalette(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "assets", "input.css"))
+	require.NoError(t, err)
+
+	css := string(raw)
+	// The token blocks are where the literals live. Cut them out and every
+	// remaining colour declaration must be a var().
+	for _, block := range []*regexp.Regexp{rootRE, darkRE} {
+		if found := block.FindString(css); found != "" {
+			css = strings.Replace(css, found, "", 1)
+		}
+	}
+
+	declarations := regexp.MustCompile(`(?m)^\s*(color|background|background-color|border-color)\s*:\s*([^;]+);`)
+	checked := 0
+	for _, declaration := range declarations.FindAllStringSubmatch(css, -1) {
+		value := strings.TrimSpace(declaration[2])
+		switch value {
+		case "none", "transparent", "inherit", "currentColor", "0 0":
+			continue
+		}
+		checked++
+		require.Containsf(t, value, "var(--",
+			"`%s: %s` is a colour this stylesheet chose rather than one from the palette, "+
+				"so no contrast assertion in this file covers it", declaration[1], value)
+	}
+	require.Greater(t, checked, 40, "the stylesheet was not read")
+}
+
 // TestTheTextRampStaysARamp guards the reason --fg3 exists. Meeting AA by
 // collapsing it onto --fg2 would pass the test above and destroy the hierarchy
 // the design uses to separate a package name from its id.

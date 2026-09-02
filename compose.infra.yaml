@@ -1,0 +1,185 @@
+# Everything the hub depends on and does not build: the database, the object
+# store and its bucket policies, the identity provider, and the two migration
+# one-shots that must exit 0 before anything serves.
+#
+# Startable alone, and meant to be:
+#
+#   docker compose -f compose.infra.yaml up -d
+#
+# That is the point of the split. Postgres, MinIO and the identity provider take
+# the bulk of a cold start, and none of them needs cycling to restart a role this
+# project builds. `docker compose up` from the repository root pulls this file in
+# through compose.yaml's `include:`, so a reader who only ever runs the one
+# command never has to know this file exists.
+#
+# `name` is repeated here on purpose. Started alone this file would otherwise take
+# the directory name as its project, and the roles brought up afterwards from
+# compose.yaml would land in a different project with a different network — which
+# fails as "postgres: no such host" rather than as anything about projects.
+name: agent-manager
+
+services:
+  postgres:
+    image: postgres:16.15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: local-development-postgres
+      POSTGRES_DB: agent_manager
+    volumes:
+      - ./deploy/local/postgres-init.sql:/docker-entrypoint-initdb.d/10-agent-manager.sql:ro
+      - postgres-data:/var/lib/postgresql/data
+    # An ephemeral host port, not 5432:5432. Most developers already have a
+    # Postgres listening on 5432, and a port collision there took the whole stack
+    # down over a database nothing in it uses. `docker compose port postgres 5432`
+    # reports where it landed; nothing inside the project uses the host port.
+    ports:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d agent_manager"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      BUCKET: agent-manager-local
+      WRITER_KEY: am-fetcher
+      WRITER_SECRET: local-development-minio-writer
+      READER_KEY: am-reader
+      READER_SECRET: local-development-minio-reader
+    volumes:
+      - ./deploy/local/minio/policies.sh:/policies.sh:ro
+    entrypoint: ["/bin/sh", "/policies.sh"]
+
+  # ---------------------------------------------------------------------------
+  # Identity. Dex in front of glauth, replacing Keycloak (003 research R1/R2).
+  #
+  # Two images instead of one, and still 462 MB and eight seconds lighter, with
+  # the per-user `groups` claim FR-101 makes non-negotiable. Dex alone cannot
+  # produce it — a `groups:` key on a `staticPasswords` entry is accepted at boot
+  # and silently ignored — so the claim comes from a real directory behind a real
+  # LDAP connector. See specs/003-usable-web-ui/contracts/local-identity.md.
+  # ---------------------------------------------------------------------------
+  dex:
+    image: ghcr.io/dexidp/dex:v2.44.0
+    depends_on:
+      glauth:
+        condition: service_started
+    volumes:
+      - ./deploy/local/dex/config.yaml:/etc/dex/config.docker.yaml:ro
+    # 5556 on both sides, because this is the one service whose published port a
+    # browser and a container both have to name — the issuer is
+    # http://dex:5556/dex and AGENT_MANAGER_OIDC_BROWSER_BASE_URL is
+    # http://localhost:5556/dex. Remapping the host side would make those two
+    # differ in the port as well as the host, for nothing.
+    ports:
+      - "5556:5556"
+    healthcheck:
+      # The discovery path itself, not a TCP connect: Dex binds its listener
+      # before it has finished loading connectors, so a socket that accepts is
+      # not yet a provider that answers. The image has no curl, and busybox has
+      # no /dev/tcp, but it does ship wget — which exits non-zero on a non-2xx
+      # status, so this is a real assertion about the document api and web are
+      # about to fetch.
+      test:
+        - CMD
+        - wget
+        - --quiet
+        - --output-document=/dev/null
+        - http://127.0.0.1:5556/dex/.well-known/openid-configuration
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # No healthcheck, on purpose. Dex is the only thing that talks to glauth, and
+  # Dex's own probe passes without an LDAP round trip — so a directory that is up
+  # but wrong cannot be caught here anyway, and one that is down would only turn
+  # a failed login into a hung boot. On a laptop a stack that starts and then
+  # tells you the directory is wrong beats a stack that never starts.
+  #
+  # The mount path is exact: the image's start script copies its own example
+  # directory in when /app/config/config.cfg is absent, so a typo here looks like
+  # a wrong password rather than a missing file.
+  glauth:
+    image: glauth/glauth:v2.4.0
+    volumes:
+      - ./deploy/local/glauth/glauth.cfg:/app/config/config.cfg:ro
+
+  # ---------------------------------------------------------------------------
+  # Migrations. Two one-shots, chained, and nothing that serves starts until both
+  # have exited 0.
+  #
+  # They are infrastructure rather than application because what they produce is
+  # the schema every role reads, and because the infrastructure file has to be
+  # startable to a usable state on its own — an empty database is not one.
+  # ---------------------------------------------------------------------------
+  migrate-schema:
+    image: arigaio/atlas:1.3.2-community-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - migrate
+      - apply
+      - --dir
+      - file:///migrations
+      - --url
+      - postgres://am_migrate:local-development-am-migrate@postgres:5432/agent_manager?sslmode=disable
+    volumes:
+      - ./internal/store/migrations:/migrations:ro
+
+  # The queue's migrator is this project's own binary, so this one service in an
+  # otherwise dependency-only file builds the application image.
+  #
+  # It also spells out its image, log settings and queue URL literally, where
+  # every application role reaches for a YAML anchor. Anchors do not resolve
+  # across an `include:` boundary — each file's aliases are resolved within that
+  # file — and the six anchors live in compose.yaml because that is where their
+  # other twelve uses are (research R4). Repeating them here would mean two
+  # copies of a queue DSN free to drift apart; three literal lines with one
+  # consumer will not.
+  migrate-queue:
+    image: agent-manager:local
+    build:
+      context: .
+      args:
+        VERSION: local
+        COMMIT: compose
+    depends_on:
+      migrate-schema:
+        condition: service_completed_successfully
+    environment:
+      AGENT_MANAGER_LOG_LEVEL: info
+      AGENT_MANAGER_LOG_FORMAT: console
+      AGENT_MANAGER_RIVER_DATABASE_URL: >-
+        postgres://am_queue:local-development-am-queue@postgres:5432/river?sslmode=disable
+    command: ["migrate", "queue"]
+    healthcheck:
+      disable: true
+
+volumes:
+  postgres-data:
+  minio-data:

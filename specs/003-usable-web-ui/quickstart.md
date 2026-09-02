@@ -33,7 +33,7 @@ docker compose up api web fetcher scanner       # the roles, restart at will
 
 ```
 compose.infra.yaml
-  postgres ──┬─ agent_manager   (app schema + outbox)
+  postgres ──┬─ agent_manager   (app schema + outbox)   ephemeral host port
              └─ river           (queue only)
   minio ─────── bucket: agent-manager-local
   dex ───────── OIDC + device grant          178 MB, discovery live in ~1 s
@@ -46,7 +46,7 @@ compose.yaml   (include: compose.infra.yaml)
   fetcher                   the only role that can write bundle bytes
   scanner                   reads bytes, writes verdicts     <-- no longer behind a profile
   seed                      one-shot, the design's dataset   <-- no longer a stub
-  queue-ui                  optional, --profile queue-ui
+  queue-ui :8085            optional, --profile queue-ui
 ```
 
 Three things are different from 001's stack beyond the file split:
@@ -61,16 +61,26 @@ Three things are different from 001's stack beyond the file split:
 
 | What | Where | Credentials |
 | --- | --- | --- |
-| Web UI | http://localhost:8080 | see the two users below |
+| Web UI | http://localhost:8080 | see the three users below |
 | API + OpenAPI | http://localhost:8082/v1 · `/v1/openapi.json` | bearer token from the device flow |
 | Dex discovery | http://localhost:5556/dex/.well-known/openid-configuration | — |
 | MinIO console | http://localhost:9001 | `minioadmin` / `minioadmin` |
-| River UI (optional) | http://localhost:8082 | `docker compose --profile queue-ui up` |
+| River UI (optional) | http://localhost:8085 | `docker compose --profile queue-ui up` |
 
-| User | Password | Group | Role it maps to |
-| --- | --- | --- | --- |
-| `kwiatrzyk@example.com` | `password` | `eng-platform` | catalog admin |
-| `anowak@example.com` | `password` | `eng-security` | scanner reviewer |
+All three share one password, `local-only-directory-password`. glauth holds only its sha256, so
+the plaintext is spelled exactly once in code — `seed.DirectoryPassword` — and the sign-in
+screen's development hint prints it from there rather than from a second copy.
+
+| User | Group | Role it maps to |
+| --- | --- | --- |
+| `kwiatrzyk@example.com` | `eng-platform` | catalog admin |
+| `anowak@example.com` | `eng-security` | scanner reviewer |
+| `dnowicki@example.com` | `vendors` | **none** — this is FR-117's account |
+
+The third user is not an oversight and their group must stay unmapped. Signing in as them is the
+only way to reach the no-role screen without editing a fixture to break the group-to-role
+coupling — which is the same edit as the bug that screen has to be distinguishable from.
+`internal/seed` asserts the group maps to nothing.
 
 There is **no admin console to visit and no realm to import** — Dex reads one YAML and glauth
 one TOML, both committed under `deploy/local/`.
@@ -93,7 +103,7 @@ anybody. Before this feature, this URL rendered "this screen is not built yet" u
 reading "Krzysztof W. · Platform · Admin".
 
 ```
-2. Click the single sign-in action. Authenticate as kwiatrzyk@example.com / password.
+2. Click the single sign-in action. Authenticate as kwiatrzyk@example.com.
 ```
 
 **Expect**, in order:
@@ -118,6 +128,15 @@ request is refused — the cookie being gone is not the mechanism (FR-114).
 **Expect**: a different role, from a different `groups` claim, through `group_role_map`
 (SC-104). This is the assertion feature 001's research R6 concluded Dex could not support; see
 [research R1](./research.md) for why it can.
+
+```
+5. Sign out, then sign in as dnowicki@example.com.
+```
+
+**Expect**: the no-role screen (FR-117) — signed in, told plainly they hold no role, and told
+which group to ask to have mapped. **Not** an empty catalog, which would read as a hub with
+nothing in it, and not a sign-in failure: their password was accepted and their identity row was
+provisioned. The sidebar chip shows their name with `No role` where a role would be.
 
 ---
 

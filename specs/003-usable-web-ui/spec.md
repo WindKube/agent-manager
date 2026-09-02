@@ -374,10 +374,20 @@ reported figures against the object store's own reported state.
   first start with no manual import step, no admin-console visit and no second command.
 - **FR-105**: The hub's ID-token verification path MUST remain free of provider-specific
   branches, constants and quirks. Which provider runs locally is a configuration choice.
-- **FR-106**: The local stack MUST continue to serve a browser-reachable issuer and
-  authorisation endpoint alongside container-reachable token and key endpoints, with the
-  `iss` claim checked against the configured issuer rather than against the URL the
-  discovery document was fetched from.
+- **FR-106**: The local stack MUST publish one issuer that every container can reach, and MUST
+  make the authorisation endpoint — the one endpoint a browser has to follow — reachable
+  through a separately configured browser-facing base URL. The `iss` claim MUST be checked
+  against the configured issuer rather than against the URL the discovery document was fetched
+  from, and the hub MUST keep supporting a real provider whose discovery document is served
+  from a host other than the one its issuer names.
+
+  **Amended 2026-08-31.** This requirement previously asked for a *browser-reachable* issuer
+  alongside container-reachable token and key endpoints, which is the arrangement Keycloak's
+  backchannel-dynamic hostname mode made possible. Research R2 measured that Dex ignores the
+  request `Host` entirely, so a browser-reachable issuer would publish a `token_endpoint` and a
+  `jwks_uri` naming a host no container can resolve. The split is therefore **inverted**, not
+  dropped, and the clause that carries the security property — the `iss` check against the
+  configured issuer rather than against the fetch URL — is unchanged and tested.
 - **FR-107**: Replacing the local identity provider MUST NOT change the set of scopes,
   claims or grants the hub requires of a real production provider.
 

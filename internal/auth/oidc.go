@@ -2,10 +2,14 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"golang.org/x/oauth2"
 )
 
 // Claims is the subset of an ID token this project reads. `groups` is the input
@@ -45,10 +49,12 @@ type Verifier struct {
 
 // VerifierConfig is what a role needs to verify an ID token.
 //
-// Issuer and DiscoveryURL are separate because in a container network they are
-// not the same host. The `iss` claim and the authorisation endpoint have to be
-// reachable from the operator's browser; the JWKS endpoint has to be reachable
-// from this process. See the OIDC_DISCOVERY_URL note in quickstart.md.
+// Issuer and DiscoveryURL are separate for the provider that serves its
+// discovery document from a host other than the one its `issuer` names. That is
+// a real production shape (FR-106) rather than a workaround: the local stack
+// leaves DiscoveryURL empty, because the provider it runs publishes one issuer
+// every container can reach and the browser's override lands on the
+// authorisation endpoint alone.
 type VerifierConfig struct {
 	// Issuer is the value the `iss` claim must equal. It is the trust anchor and
 	// is never derived from a document fetched over the network.
@@ -73,27 +79,103 @@ func NewVerifier(ctx context.Context, cfg VerifierConfig) (*Verifier, error) {
 		ctx = oidc.ClientContext(ctx, cfg.HTTPClient)
 	}
 
-	discovery := cfg.DiscoveryURL
-	if discovery == "" {
-		discovery = cfg.Issuer
-	}
-	if discovery != cfg.Issuer {
-		// go-oidc otherwise refuses a document whose `issuer` differs from the URL
-		// it was fetched from, which is the whole point of the split. What this
-		// disables is that one string comparison between two values the operator
-		// supplied; signature, audience and expiry verification are untouched, and
-		// the `iss` claim is still checked against cfg.Issuer below.
-		ctx = oidc.InsecureIssuerURLContext(ctx, cfg.Issuer)
-	}
-
-	provider, err := oidc.NewProvider(ctx, discovery)
+	provider, err := discover(ctx, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("oidc discovery against %s: %w", discovery, err)
+		return nil, err
 	}
 	return &Verifier{
 		provider: provider,
 		verifier: provider.Verifier(&oidc.Config{ClientID: cfg.ClientID}),
 	}, nil
+}
+
+// discover fetches the provider metadata and returns a provider built from it.
+//
+// The ordinary case is one URL, and it is the case the local stack now uses:
+// discovery, token and JWKS all live under the issuer, so go-oidc's own check —
+// that the document's `issuer` equals the URL it came from — simply passes.
+//
+// The split case exists for a provider whose metadata lives somewhere else.
+// go-oidc offers two ways to reach one: InsecureIssuerURLContext, which turns
+// that check OFF entirely, or ProviderConfig, which skips discovery and takes
+// the endpoints directly. The second is used here because the check we actually
+// want is neither of the library's: not "the document came from its own issuer",
+// which is false by construction, and not "no check at all", but "the document
+// names the issuer the operator configured". That is asserted below, so a
+// metadata host that starts advertising a third issuer is refused rather than
+// trusted — which the InsecureIssuerURLContext version accepted.
+func discover(ctx context.Context, cfg VerifierConfig) (*oidc.Provider, error) {
+	if cfg.DiscoveryURL == "" || cfg.DiscoveryURL == cfg.Issuer {
+		provider, err := oidc.NewProvider(ctx, cfg.Issuer)
+		if err != nil {
+			return nil, fmt.Errorf("oidc discovery against %s: %w", cfg.Issuer, err)
+		}
+		return provider, nil
+	}
+
+	metadata, err := fetchMetadata(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("oidc discovery against %s: %w", cfg.DiscoveryURL, err)
+	}
+	if metadata.IssuerURL != cfg.Issuer {
+		return nil, fmt.Errorf(
+			"oidc discovery against %s: document names issuer %q, not the configured %q",
+			cfg.DiscoveryURL, metadata.IssuerURL, cfg.Issuer)
+	}
+	return metadata.NewProvider(ctx), nil
+}
+
+func fetchMetadata(ctx context.Context, cfg VerifierConfig) (*oidc.ProviderConfig, error) {
+	wellKnown := strings.TrimSuffix(cfg.DiscoveryURL, "/") + "/.well-known/openid-configuration"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, wellKnown, http.NoBody)
+	if err != nil {
+		return nil, err
+	}
+	httpClient := cfg.HTTPClient
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%s answered %s", wellKnown, resp.Status)
+	}
+	// Bounded, because this is an unauthenticated response that decides which keys
+	// sign the tokens this process trusts. 1 MiB is orders of magnitude above any
+	// real metadata document.
+	metadata := &oidc.ProviderConfig{}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(metadata); err != nil {
+		return nil, fmt.Errorf("decode provider metadata: %w", err)
+	}
+	return metadata, nil
+}
+
+// Endpoint is the authorization and token endpoints the discovery document
+// published, used exactly as published.
+//
+// It is exported for the role that owns the browser's origin: the redirect and
+// the code exchange belong there, and that role cannot import this package —
+// internal/archcheck refuses it, because this package reads the session table and
+// a role that must hold no datastore credential may not link one, not even for an
+// accessor. So the endpoints cross that boundary as a value and the browser flow
+// is built on the other side of it.
+func (v *Verifier) Endpoint() oauth2.Endpoint { return v.provider.Endpoint() }
+
+// VerifyIDToken verifies a token and discards its claims.
+//
+// The caller is the browser callback, which checks the token it just received
+// before asking the api to open a session for it. It reads no claim on purpose:
+// the api verifies the same bytes again and resolves the identity itself, so a
+// claim decoded on that side would be a second, unauthoritative copy of something
+// this side owns.
+func (v *Verifier) VerifyIDToken(ctx context.Context, rawIDToken string) error {
+	_, err := v.Verify(ctx, rawIDToken)
+	return err
 }
 
 // Verify checks the token's signature, issuer, audience and expiry, then returns

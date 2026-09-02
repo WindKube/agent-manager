@@ -28,11 +28,19 @@ type OIDC struct {
 	// not the issuer — a container reaching a browser-facing issuer over the
 	// compose network. Empty means the two are the same, which is the ordinary
 	// case and the one a real IdP presents. See quickstart.md.
-	DiscoveryURL string   `env:"OIDC_DISCOVERY_URL"`
-	ClientID     string   `env:"OIDC_CLIENT_ID"`
-	ClientSecret string   `env:"OIDC_CLIENT_SECRET"`
-	RedirectURL  string   `env:"OIDC_REDIRECT_URL"`
-	Scopes       []string `env:"OIDC_SCOPES" envSeparator:" " envDefault:"openid profile email groups"`
+	DiscoveryURL string `env:"OIDC_DISCOVERY_URL"`
+	// BrowserBaseURL is the base a browser must use to reach the provider when
+	// the issuer is not reachable from a browser — the local stack's provider
+	// answers as `dex:5556` on the compose network and as `localhost:5556` from
+	// the host, and publishes the container form in its discovery document.
+	// Empty means the issuer is browser-reachable, which is the production case.
+	// Read at exactly one place: building the authorization redirect (research
+	// R2).
+	BrowserBaseURL string   `env:"OIDC_BROWSER_BASE_URL"`
+	ClientID       string   `env:"OIDC_CLIENT_ID"`
+	ClientSecret   string   `env:"OIDC_CLIENT_SECRET"`
+	RedirectURL    string   `env:"OIDC_REDIRECT_URL"`
+	Scopes         []string `env:"OIDC_SCOPES" envSeparator:" " envDefault:"openid profile email groups"`
 }
 
 // API owns the relational schema and mediates every mutation. It also hosts the
@@ -49,6 +57,18 @@ type API struct {
 	DeviceCodeTTL    time.Duration `env:"DEVICE_CODE_TTL" envDefault:"10m"`
 	DeviceTokenTTL   time.Duration `env:"DEVICE_TOKEN_TTL" envDefault:"1h"`
 	PublicBaseURL    string        `env:"PUBLIC_BASE_URL" envDefault:"http://localhost:8081"`
+	// SessionMintSecret authenticates the one operation whose caller is a role
+	// rather than a person: the web role asking for a session to be created. It
+	// is the single value both roles hold, so a typo in one role's environment
+	// is a sign-in that fails with nothing wrong on either side alone.
+	//
+	// It has no default, because a default is a shared secret every deployment
+	// knows. Empty means the mint is refused — checked where the session is
+	// minted rather than made `required` here, so that a missing web-integration
+	// secret does not also take down the reads, the health endpoint and the
+	// device flow, and so that the refusal is visible in the api's log where an
+	// operator will look for it.
+	SessionMintSecret string `env:"SESSION_MINT_SECRET"`
 }
 
 // Web reaches data only through the api role. It deliberately has no
@@ -59,6 +79,34 @@ type Web struct {
 
 	Addr       string `env:"WEB_ADDR" envDefault:":8080"`
 	APIBaseURL string `env:"API_BASE_URL,required,notEmpty"`
+	// PublicBaseURL is the origin a browser reaches this role at. It is read for
+	// exactly one decision — whether the two session cookies are marked Secure —
+	// and it is read INSTEAD of the request on purpose: something else may
+	// terminate TLS and forward plain http, so a hub served over https sees no TLS
+	// on any request and would drop the flag exactly where it is needed
+	// (contracts/auth.md's cookie table).
+	PublicBaseURL string `env:"PUBLIC_BASE_URL" envDefault:"http://localhost:8080"`
+	// SessionMintSecret is the api's, held here because web owns the browser's
+	// origin and therefore sets the cookie. See config.API for why it has no
+	// default. This is the only credential web carries, and it buys access to
+	// exactly one operation.
+	SessionMintSecret string `env:"SESSION_MINT_SECRET"`
+	// DevCredentialHint puts the local stack's seeded passwords on the sign-in
+	// screen. FR-119 requires it be stated explicitly and forbids deriving it
+	// from the issuer URL, the host name or the build type: a credential hint
+	// that switches itself on is one misconfiguration away from doing it in
+	// production. Compose sets it; nothing else should.
+	DevCredentialHint bool `env:"WEB_DEV_CREDENTIAL_HINT" envDefault:"false"`
+	// ProviderName is what the operator calls the identity provider, for the
+	// sign-in screen's one action: naming it tells a person which
+	// password-manager entry to reach for.
+	//
+	// Stated or absent, with no default and nothing derived. FR-105 forbids this
+	// hub knowing which provider it is in front of, and an issuer URL is the
+	// obvious thing to derive a name from and the wrong one — "dex" is the
+	// container's name, not the directory's, and a hosted issuer would give the
+	// vendor rather than the organisation. Empty renders neutral wording.
+	ProviderName string `env:"WEB_PROVIDER_NAME"`
 }
 
 // Fetcher is the only role with object-store write access.

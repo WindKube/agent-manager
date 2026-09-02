@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"agent-manager/internal/web"
+	"agent-manager/internal/web/fixture"
 	"agent-manager/internal/web/view"
 )
 
@@ -84,7 +85,11 @@ func TestTheWebRoleSendsTheCallersOwnSessionAndNothingElse(t *testing.T) {
 		seen = append(seen, view.TokenFrom(ctx))
 		return view.CatalogPage{Query: q.Normalise(), PageSize: view.DefaultPageSize}, nil
 	})
-	h := web.New(web.Deps{Catalog: source, Log: zerolog.Nop()}, web.Options{}).Handler()
+	h := web.New(web.Deps{
+		Catalog: source,
+		Viewers: fixture.SignedInViewers(),
+		Log:     zerolog.Nop(),
+	}, web.Options{}).Handler()
 
 	t.Run("the browser's session cookie reaches the source", func(t *testing.T) {
 		seen = nil
@@ -92,12 +97,24 @@ func TestTheWebRoleSendsTheCallersOwnSessionAndNothingElse(t *testing.T) {
 		req.AddCookie(&http.Cookie{Name: "am_session", Value: "the-callers-own-session-token"})
 		h.ServeHTTP(httptest.NewRecorder(), req)
 
-		require.Equal(t, []string{"the-callers-own-session-token"}, seen)
+		require.Equal(t, []string{"the-callers-own-session-token"}, seen,
+			"exactly the caller's cookie, and nothing this role could have minted itself")
 	})
 
-	t.Run("a request with no cookie carries no token, not a substitute", func(t *testing.T) {
+	t.Run("a request with no cookie never reaches the source at all", func(t *testing.T) {
+		// This assertion got STRONGER when the guard arrived, and the change is worth
+		// stating. It used to assert the source was called with an empty token — that
+		// the role forwarded nothing rather than substituting some credential of its
+		// own. Now the guard refuses the request before any source is consulted, so
+		// the property holds one layer earlier: there is no code path from an
+		// unauthenticated request to the api at all, which is a stronger form of the
+		// same principle-II claim than "it calls the api with an empty token".
 		seen = nil
-		get(t, h, "/catalog")
-		require.Equal(t, []string{""}, seen)
+		rec := getSignedOut(t, h, "/catalog")
+
+		require.Empty(t, seen, "an unauthenticated request must not reach the api")
+		require.Equal(t, http.StatusFound, rec.Code)
+		require.Equal(t, "/auth/signin?return=%2Fcatalog", rec.Header().Get("Location"),
+			"and it comes back to the route it asked for (FR-113, SC-105)")
 	})
 }

@@ -86,7 +86,11 @@ var rules = []rule{
 		name: "the scanner never executes bundle content",
 		why: "constitution principle III and FR-021: static analysis only. os/exec in the scan " +
 			"tree is the exact defect that requirement exists to prevent.",
-		scope:     under("internal/scan"),
+		// Both paths, because the tree moved. contracts/worker.md put the scan
+		// packages under internal/scan; they landed under internal/worker/scanner,
+		// beside the role that runs them, and a rule scoped only to the old path is a
+		// rule that passes because it governs nothing.
+		scope:     anyOf(under("internal/scan"), under("internal/worker/scanner")),
 		forbidden: anyOf(exact("os/exec"), exact("plugin"), exact("net/http")),
 	},
 }
@@ -115,6 +119,11 @@ var mayTouchDatastore = []func(string) bool{
 	under("internal/cli"),
 	// The outbox rows and the relay that drains them (R5).
 	under("internal/outbox"),
+	// The one-shot that loads the representative dataset (FR-057). It stands in
+	// for the fetcher as well as the api: a seeded version has to have bytes
+	// behind its object_key, so this is the only package besides internal/worker
+	// that holds the bucket's writer half.
+	under("internal/seed"),
 	// The store and the bucket themselves.
 	under("internal/store"),
 	under("internal/blob"),

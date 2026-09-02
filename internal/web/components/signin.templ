@@ -1,0 +1,125 @@
+package components
+
+import "agent-manager/internal/web/view"
+
+// The sign-in screen (FR-108, FR-109) and the state a signed-in identity that
+// maps to no role lands on (FR-117). contracts/auth.md is authoritative for both,
+// including which of its eleven failures the notice carries.
+//
+// SignInScreen is a whole document rather than a screen inside Layout: the shell's
+// sidebar is navigation to screens a signed-out visitor may not render, and
+// offering it here would be a page of links that all bounce back to this one.
+
+templ SignInScreen(s Shell, in view.SignIn) {
+	<!DOCTYPE html>
+	<html lang="en" data-sm-theme={ s.Theme }>
+		@head(s)
+		<body>
+			<div class="am-signin">
+				<div class="am-signin-card">
+					<div class="am-brand-row">
+						<div class="am-brand-mark"></div>
+						<div class="am-brand-name">{ ProductName }</div>
+					</div>
+					if in.Notice != "" {
+						// The provider's own words can be in here. templ escapes them, and
+						// nothing under internal/web may call templ.Raw (001 FR-055), which
+						// is what makes rendering an upstream string safe at all.
+						<div class="am-signin-alert" id="signin-notice">{ in.Notice }</div>
+					}
+					<p class="am-signin-note">
+						Accounts for { ProductName } live in { in.ProviderName() }. Signing in for the
+						first time is all it takes to be known here — there is no account to create
+						and no password held by this hub.
+					</p>
+					if in.Unavailable {
+						<p class="am-signin-note am-signin-unavailable" id="signin-unavailable">
+							{ in.ProviderName() } cannot be reached from this hub, so there is nothing
+							to try from here yet. This is the hub's problem and not your credentials;
+							tell whoever runs it if it stays that way.
+						</p>
+					} else {
+						<a class="am-btn am-btn-primary am-signin-action" href={ in.LoginHref() }>
+							{ in.Action() }
+						</a>
+					}
+					if in.ShowCredentials() {
+						@credentialHint(in)
+					}
+					<div class="am-signin-foot">
+						@themeToggle(s)
+					</div>
+				</div>
+			</div>
+		</body>
+	</html>
+}
+
+// credentialHint is FR-119's development affordance, behind both of the gates
+// ShowCredentials checks. It says out loud that it is switched on: a hint nobody
+// meant to publish is one an operator has to be able to recognise on sight.
+templ credentialHint(in view.SignIn) {
+	<div class="am-signin-hint" id="signin-dev-credentials">
+		<div class="am-label">Local accounts · development hint</div>
+		<p class="am-signin-note">
+			This hub was started with the credential hint switched on. These accounts exist in the
+			local directory only. Unset the hint before this hub serves anybody.
+		</p>
+		for _, credential := range in.Credentials {
+			<div class="am-cred">
+				<span class="am-mono am-cred-user">{ credential.Username }</span>
+				<span class="am-mono am-cred-pass">{ credential.Password }</span>
+				if credential.Role != "" {
+					<span class="am-cred-role">{ credential.Role }</span>
+				}
+			</div>
+		}
+	</div>
+}
+
+// NoRoleScreen is FR-117: signed in, holding no role.
+//
+// A distinct screen, with a distinct id and distinct copy, and the FIRST sentence
+// of the body is the one that matters — that this hub has content and this viewer
+// may not read it. An empty catalog and an unmapped identity look identical on a
+// screen that only says "nothing here", and the two ask their reader for
+// completely different things: one to register a package, the other to be given a
+// role. 001's am-empty-auth set the precedent for the signed-out state; this is the
+// same distinction one step further in.
+templ NoRoleScreen(n view.NoRole) {
+	<div class="am-header">
+		<div class="am-header-text">
+			<h1 class="am-h1">You hold no role yet</h1>
+			<p class="am-lede">
+				You are signed in. Your identity is not mapped to a role, so this hub will not show
+				you anything until it is.
+			</p>
+		</div>
+	</div>
+	<div class="am-notice am-notice-auth" id="no-mapped-role">
+		<p class="am-note">
+			This is not an empty hub. There are packages, profiles and findings in it; a role is
+			what decides which of them you may read, and yours has not been decided yet.
+		</p>
+		<div class="am-label">Signed in as</div>
+		<p class="am-note am-mono">{ n.Viewer.Email }</p>
+		if len(n.Groups) > 0 {
+			<div class="am-label">Groups your provider sent</div>
+			<div class="am-tagrow">
+				for _, group := range n.Groups {
+					<span class="am-tag am-mono">{ group }</span>
+				}
+			</div>
+			<p class="am-note">
+				Ask whoever administers this hub to map one of these groups to a role. Group names
+				are matched exactly, so quote them as they appear above.
+			</p>
+		} else {
+			<p class="am-note">
+				Your provider sent no group membership with your sign-in, and a group is the only
+				thing this hub maps a role from. Ask whoever administers your identity provider to
+				put you in one, and whoever administers this hub to map that group to a role.
+			</p>
+		}
+	</div>
+}

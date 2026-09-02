@@ -377,3 +377,20 @@ func TokenFrom(ctx context.Context) string {
 	token, _ := ctx.Value(tokenKey{}).(string)
 	return token
 }
+
+// Badges are the sidebar's three counts, scoped to the viewer (FR-121, research
+// R5).
+//
+// A pointer to one of these is what the shell holds, and nil is a request that
+// could not read them. That is not the same as three zeroes: a hub whose api is
+// slow would otherwise render "0 packages" beside a catalog full of them.
+//
+// Three indexed counts from one api operation, called once per full page render
+// and never on a fragment update. Not a projection: principle VIII's single
+// allowance is spent on catalog_entry, and R5 records that the answer to these
+// being slow is to drop a badge rather than to add a second one.
+type Badges struct {
+	Packages     int
+	Profiles     int
+	OpenFindings int
+}

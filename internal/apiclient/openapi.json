@@ -1,6 +1,155 @@
 {
   "components": {
     "schemas": {
+      "AuditEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "description": "The email or subject of the person, or the name of the system role, that acted.",
+            "examples": [
+              "kwiatrzyk@example.com"
+            ],
+            "type": "string"
+          },
+          "actorKind": {
+            "description": "system is a worker with no person behind it, which a screen must not attribute to anybody.",
+            "enum": [
+              "identity",
+              "system"
+            ],
+            "examples": [
+              "identity"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "fetch",
+              "scan",
+              "approve",
+              "profile",
+              "share",
+              "sync",
+              "login",
+              "policy",
+              "role",
+              "category",
+              "secret"
+            ],
+            "examples": [
+              "approve"
+            ],
+            "type": "string"
+          },
+          "occurredAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "source": {
+            "description": "web, cli / \u003chost\u003e or system.",
+            "examples": [
+              "web"
+            ],
+            "type": "string"
+          },
+          "text": {
+            "description": "The human-readable record of what happened. It quotes package and profile names, so it is rendered escaped (FR-055).",
+            "examples": [
+              "override granted for community/aws-cost-explainer@2.0.0"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "occurredAt",
+          "actor",
+          "actorKind",
+          "kind",
+          "text"
+        ],
+        "type": "object"
+      },
+      "AuditPage": {
+        "additionalProperties": false,
+        "properties": {
+          "entries": {
+            "description": "The requested page, most recent first.",
+            "items": {
+              "$ref": "#/components/schemas/AuditEntry"
+            },
+            "type": "array"
+          },
+          "page": {
+            "examples": [
+              1
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "pageSize": {
+            "examples": [
+              50
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Rows in the log. The export returns all of them (FR-051).",
+            "examples": [
+              512
+            ],
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entries",
+          "total",
+          "page",
+          "pageSize"
+        ],
+        "type": "object"
+      },
+      "Badges": {
+        "additionalProperties": false,
+        "properties": {
+          "openFindings": {
+            "description": "Findings awaiting a decision.",
+            "examples": [
+              4
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "packages": {
+            "description": "Packages visible in the catalog — the same figure the catalog's own total reports with no filters applied.",
+            "examples": [
+              10
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "profiles": {
+            "description": "Profiles this identity may read, and no others (FR-044).",
+            "examples": [
+              4
+            ],
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "packages",
+          "profiles",
+          "openFindings"
+        ],
+        "type": "object"
+      },
       "CatalogFacetOption": {
         "additionalProperties": false,
         "properties": {
@@ -401,6 +550,504 @@
         },
         "required": [
           "message"
+        ],
+        "type": "object"
+      },
+      "FindingApproval": {
+        "additionalProperties": false,
+        "properties": {
+          "expiresInDays": {
+            "description": "Days until the acceptance lapses. Defaults to 30 when omitted; never unlimited.",
+            "examples": [
+              12
+            ],
+            "format": "int64",
+            "maximum": 365,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "note": {
+            "description": "Why this risk is accepted. Required: an override with no stated reason is an unexplained exception, and FR-028 asks for a recorded note.",
+            "examples": [
+              "Network call is to our own registry"
+            ],
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "note"
+        ],
+        "type": "object"
+      },
+      "FindingCheck": {
+        "additionalProperties": false,
+        "properties": {
+          "checkId": {
+            "examples": [
+              "network-allowlist"
+            ],
+            "type": "string"
+          },
+          "label": {
+            "description": "The check's own label, as the scan recorded it. A screen that mapped check ids to labels itself would stop naming a check added after it shipped.",
+            "examples": [
+              "Network allowlist"
+            ],
+            "type": "string"
+          },
+          "result": {
+            "enum": [
+              "pass",
+              "fail",
+              "warn"
+            ],
+            "examples": [
+              "fail"
+            ],
+            "type": "string"
+          },
+          "warnCount": {
+            "description": "How many warnings this check raised. Zero unless the result is warn.",
+            "examples": [
+              2
+            ],
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "checkId",
+          "label",
+          "result",
+          "warnCount"
+        ],
+        "type": "object"
+      },
+      "FindingDecision": {
+        "additionalProperties": false,
+        "properties": {
+          "expiresAt": {
+            "description": "When the acceptance lapses. Absent on a rejection, which does not.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "open",
+              "approved",
+              "rejected"
+            ],
+            "examples": [
+              "approved"
+            ],
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "scanning",
+              "clean",
+              "flagged",
+              "rejected"
+            ],
+            "examples": [
+              "flagged"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "verdict"
+        ],
+        "type": "object"
+      },
+      "FindingDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "checks": {
+            "description": "Every check the scan ran and its result, including the ones that passed (FR-025).",
+            "items": {
+              "$ref": "#/components/schemas/FindingCheck"
+            },
+            "type": "array"
+          },
+          "detail": {
+            "description": "Why this was raised, in prose.",
+            "type": "string"
+          },
+          "evidence": {
+            "description": "Every location this finding points at, cause first. Rendered escaped, always (FR-055).",
+            "items": {
+              "$ref": "#/components/schemas/FindingEvidence"
+            },
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "override": {
+            "$ref": "#/components/schemas/FindingOverride",
+            "description": "Present only when a reviewer has accepted this finding."
+          },
+          "packageId": {
+            "examples": [
+              "community/slack-digest"
+            ],
+            "type": "string"
+          },
+          "raisedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "ruleId": {
+            "examples": [
+              "SH-NET-002"
+            ],
+            "type": "string"
+          },
+          "scan": {
+            "$ref": "#/components/schemas/FindingScan"
+          },
+          "severity": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "examples": [
+              "high"
+            ],
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "open",
+              "approved",
+              "rejected"
+            ],
+            "examples": [
+              "open"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "examples": [
+              "Undeclared network egress"
+            ],
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "scanning",
+              "clean",
+              "flagged",
+              "rejected"
+            ],
+            "examples": [
+              "flagged"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "examples": [
+              "0.5.1"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ruleId",
+          "severity",
+          "state",
+          "title",
+          "packageId",
+          "version",
+          "verdict",
+          "raisedAt",
+          "evidence",
+          "checks",
+          "scan"
+        ],
+        "type": "object"
+      },
+      "FindingEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "line": {
+            "description": "Absent when the location names a file without a line.",
+            "examples": [
+              41
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "path": {
+            "examples": [
+              "scripts/digest.sh"
+            ],
+            "type": "string"
+          },
+          "quote": {
+            "type": "string"
+          },
+          "role": {
+            "description": "primary is the location that caused the finding; the rest show its consequences.",
+            "enum": [
+              "primary",
+              "supporting"
+            ],
+            "examples": [
+              "primary"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "role"
+        ],
+        "type": "object"
+      },
+      "FindingOverride": {
+        "additionalProperties": false,
+        "properties": {
+          "decidedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "expiresAt": {
+            "description": "When this acceptance lapses.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "note": {
+            "examples": [
+              "Network call is to our own registry"
+            ],
+            "type": "string"
+          },
+          "reviewer": {
+            "description": "The reviewer's email, or their subject when the identity carries no email.",
+            "examples": [
+              "security-lead@example.dev"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "reviewer",
+          "decidedAt"
+        ],
+        "type": "object"
+      },
+      "FindingRejection": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "description": "Optional reason, recorded in the audit row.",
+            "examples": [
+              "Publisher is shipping a fix in 0.5.2"
+            ],
+            "maxLength": 2000,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "FindingScan": {
+        "additionalProperties": false,
+        "properties": {
+          "finishedAt": {
+            "description": "Absent while the scan is still in flight.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "packVersion": {
+            "description": "The rule-pack version this scan ran. What makes 'rescan needed' a comparison rather than a guess.",
+            "examples": [
+              "1.4.0"
+            ],
+            "type": "string"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "timedOut": {
+            "description": "The scan exceeded its budget. Its verdict is not a clean bill of health (FR-031).",
+            "type": "boolean"
+          },
+          "verdict": {
+            "enum": [
+              "scanning",
+              "clean",
+              "flagged",
+              "rejected"
+            ],
+            "examples": [
+              "flagged"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "packVersion",
+          "startedAt",
+          "verdict",
+          "timedOut"
+        ],
+        "type": "object"
+      },
+      "FindingSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "evidenceLine": {
+            "description": "Absent when the finding names a file without a line.",
+            "examples": [
+              41
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "evidencePath": {
+            "description": "The PRIMARY location's path. Rendered escaped, always: it is bundle content (FR-055).",
+            "examples": [
+              "scripts/digest.sh"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "description": "The finding's identifier, as the detail and decision paths take it.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "packageId": {
+            "description": "namespace/name of the package the subject version belongs to.",
+            "examples": [
+              "community/slack-digest"
+            ],
+            "type": "string"
+          },
+          "raisedAt": {
+            "description": "When the scan that raised this finding recorded it.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "ruleId": {
+            "description": "Stable rule identifier (FR-024).",
+            "examples": [
+              "SH-NET-002"
+            ],
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "examples": [
+              "high"
+            ],
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "open",
+              "approved",
+              "rejected"
+            ],
+            "examples": [
+              "open"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "examples": [
+              "Undeclared network egress"
+            ],
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "scanning",
+              "clean",
+              "flagged",
+              "rejected"
+            ],
+            "examples": [
+              "flagged"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "examples": [
+              "0.5.1"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ruleId",
+          "severity",
+          "state",
+          "title",
+          "packageId",
+          "version",
+          "verdict",
+          "raisedAt"
+        ],
+        "type": "object"
+      },
+      "FindingsPage": {
+        "additionalProperties": false,
+        "properties": {
+          "findings": {
+            "description": "The requested page, already sorted: highest severity first, then newest.",
+            "items": {
+              "$ref": "#/components/schemas/FindingSummary"
+            },
+            "type": "array"
+          },
+          "page": {
+            "description": "The page actually returned, which is clamped into range.",
+            "examples": [
+              1
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "pageSize": {
+            "examples": [
+              20
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Findings matching every filter, across all pages.",
+            "examples": [
+              4
+            ],
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "findings",
+          "total",
+          "page",
+          "pageSize"
         ],
         "type": "object"
       },
@@ -1534,6 +2181,105 @@
         ],
         "type": "object"
       },
+      "ScannerSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "medianScanSeconds": {
+            "description": "Median seconds from a scan starting to its verdict, over the period.",
+            "examples": [
+              18
+            ],
+            "format": "double",
+            "type": "number"
+          },
+          "nearestOverrideExpiry": {
+            "description": "When the first active override lapses. Absent when none is active.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "overridesActive": {
+            "description": "Accepted findings whose override has not expired.",
+            "examples": [
+              1
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "periodDays": {
+            "description": "The window VersionsScanned and MedianSeconds were computed over.",
+            "examples": [
+              30
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "quarantined": {
+            "description": "Packages whose latest visible version is flagged, and so awaits a decision.",
+            "examples": [
+              2
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "versionsScanned": {
+            "description": "Distinct versions that reached a verdict inside the period.",
+            "examples": [
+              1284
+            ],
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "periodDays",
+          "versionsScanned",
+          "quarantined",
+          "overridesActive"
+        ],
+        "type": "object"
+      },
+      "Session": {
+        "additionalProperties": false,
+        "properties": {
+          "expiresAt": {
+            "description": "When the session row expires. This is the value stored, and what a cookie's expiry must match.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "expiresIn": {
+            "description": "Seconds until the session expires, measured on this hub's clock. Use this for a cookie's Max-Age rather than subtracting expiresAt from a local clock.",
+            "examples": [
+              43200
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "token": {
+            "description": "The opaque session token. Returned once; the hub stores only its hash. Sent back as an Authorization bearer credential on every later request.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "expiresAt",
+          "expiresIn"
+        ],
+        "type": "object"
+      },
+      "SessionMintRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "idToken": {
+            "description": "The provider's ID token, exactly as issued. Verified here against the configured issuer, audience and signing keys; the caller's own parsing is not trusted and is not accepted.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "idToken"
+        ],
+        "type": "object"
+      },
       "SyncReport": {
         "additionalProperties": false,
         "properties": {
@@ -1585,6 +2331,64 @@
           "targets"
         ],
         "type": "object"
+      },
+      "Viewer": {
+        "additionalProperties": false,
+        "properties": {
+          "displayName": {
+            "description": "The name a screen shows. Derived by the hub from whichever of name, preferred_username or email the provider populated.",
+            "examples": [
+              "Krzysztof Wiatrzyk"
+            ],
+            "type": "string"
+          },
+          "email": {
+            "description": "May be empty: a provider is not obliged to release an email address, and a screen must cope rather than invent one.",
+            "examples": [
+              "kwiatrzyk@example.dev"
+            ],
+            "type": "string"
+          },
+          "groups": {
+            "description": "The groups claim as the provider sent it, unfiltered. Shown on the no-role screen so a person can say which groups they hold when asking for access.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "hasRole": {
+            "description": "Whether any group this identity holds maps to a role at all (FR-117). False is a screen state, not an error.",
+            "type": "boolean"
+          },
+          "role": {
+            "description": "The most privileged role this identity's groups map to. Absent when none of them maps to anything.",
+            "enum": [
+              "catalog-admin",
+              "scanner-reviewer",
+              "profile-consumer",
+              "read-only"
+            ],
+            "examples": [
+              "catalog-admin"
+            ],
+            "type": "string"
+          },
+          "subject": {
+            "description": "The provider's stable subject identifier for this identity.",
+            "examples": [
+              "CgVrd2lhdHISBGxvY2Fs"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "displayName",
+          "email",
+          "hasRole",
+          "groups"
+        ],
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -1593,6 +2397,12 @@
         "description": "The `access_token` issued by /v1/device/token, or a web session token, sent as `Authorization: Bearer \u003ctoken\u003e`. The token is OPAQUE — one base64url segment of random bytes, with no header, payload or claims. Do not decode one and do not read `exp` from it: a token's lifetime is the `expires_in` returned beside it.",
         "scheme": "bearer",
         "type": "http"
+      },
+      "sessionMintSecret": {
+        "description": "A secret shared between the `serve web` and `serve api` roles, compared in constant time. It authorises minting a session for ANY subject, so it is the most privileged credential this hub accepts. The mint is refused outright when no secret is configured: there is no default and no development bypass.",
+        "in": "header",
+        "name": "X-Session-Mint-Secret",
+        "type": "apiKey"
       }
     }
   },
@@ -1611,6 +2421,179 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/v1/audit": {
+      "get": {
+        "description": "One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. There is deliberately no filter. The export below must return the full CURRENT SCOPE (FR-051), and with no filters the current scope is the whole log — a filter added here without being added there would quietly stop that holding. Rows are append-only, enforced by revoked grants rather than by anything in this process (FR-052). `text` quotes package and profile names, so it is rendered escaped.",
+        "operationId": "listAudit",
+        "parameters": [
+          {
+            "description": "Clamped into range: a page past the end returns the last one.",
+            "explode": false,
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "description": "Clamped into range: a page past the end returns the last one.",
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "default": 50,
+              "format": "int64",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPage"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "`page` or `pageSize` is outside its range."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "The audit log, paged, most recent first",
+        "tags": [
+          "audit"
+        ]
+      }
+    },
+    "/v1/audit/export": {
+      "get": {
+        "description": "FR-051: the full current scope, not the visible page. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.",
+        "operationId": "exportAudit",
+        "responses": {
+          "200": {
+            "content": {
+              "application/x-ndjson": {
+                "schema": {
+                  "contentMediaType": "application/octet-stream",
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The whole audit log, newline-delimited JSON, one row per line, most recent first. The final line is a completeness sentinel: a stream that ends without it was truncated and the export is incomplete.",
+            "headers": {
+              "Content-Disposition": {
+                "description": "Names the download.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Export the whole audit log",
+        "tags": [
+          "audit"
+        ]
+      }
+    },
+    "/v1/badges": {
+      "get": {
+        "description": "The three counts the sidebar renders, in one call: packages visible in the catalog, profiles THIS IDENTITY may read, and findings awaiting a decision (FR-121). One operation because the shell renders on every screen, so three would be three round trips per page. Three indexed counts over the base tables and not a projection: principle VIII sanctions exactly one and it is not spent here (research R5). The profile count is the length of the list the Profiles screen shows and cannot be more: a count including a profile the reader cannot open would leak its existence by arithmetic.",
+        "operationId": "getBadges",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Badges"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "The application shell's counts",
+        "tags": [
+          "navigation"
+        ]
+      }
+    },
     "/v1/bundles/{publisher}/{name}/{version}": {
       "get": {
         "description": "Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate (FR-029).",
@@ -1865,6 +2848,430 @@
         "summary": "Poll for the issued token",
         "tags": [
           "device"
+        ]
+      }
+    },
+    "/v1/findings": {
+      "get": {
+        "description": "One page of findings, highest severity first and newest within a severity, filterable by state and by severity. Each row carries the PRIMARY evidence location only; a finding legitimately has several, and the whole of them is on the detail operation. `verdict` is the subject VERSION's verdict and not the finding's state: an accepted finding leaves its version flagged, because the override is what lets it through and the gate still governs whether it does.",
+        "operationId": "listFindings",
+        "parameters": [
+          {
+            "description": "Mutually exclusive single selection. Defaults to all: the screen's open-only view says so by passing it, rather than the API applying a filter the caller cannot see.",
+            "explode": false,
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "default": "all",
+              "description": "Mutually exclusive single selection. Defaults to all: the screen's open-only view says so by passing it, rather than the API applying a filter the caller cannot see.",
+              "enum": [
+                "all",
+                "open",
+                "approved",
+                "rejected"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Mutually exclusive single selection.",
+            "explode": false,
+            "in": "query",
+            "name": "severity",
+            "schema": {
+              "default": "all",
+              "description": "Mutually exclusive single selection.",
+              "enum": [
+                "all",
+                "low",
+                "medium",
+                "high"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Clamped into range: a page past the end returns the last one.",
+            "explode": false,
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "description": "Clamped into range: a page past the end returns the last one.",
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "default": 20,
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingsPage"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No usable session."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A filter value is outside its vocabulary."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Findings, paged and filterable",
+        "tags": [
+          "scanner"
+        ]
+      }
+    },
+    "/v1/findings/{id}": {
+      "get": {
+        "description": "The detail pane of 001 US4 scenario 2: severity, rule, subject, the prose explanation, EVERY evidence location, and EVERY check the raising scan ran — passes included (FR-025). The passes are not padding. A pane showing only failures cannot be told apart from one where nothing else ran, so the absence of a finding would be indistinguishable from the absence of a check, which is the distinction the whole matrix exists for. Evidence and check labels are bundle content and identity-provider content respectively: every consumer renders them escaped (FR-055).",
+        "operationId": "getFinding",
+        "parameters": [
+          {
+            "description": "The finding's identifier, as the findings list returns it.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The finding's identifier, as the findings list returns it.",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingDetail"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No usable session."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such finding."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The finding id is not a uuid."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "One finding, its evidence and every check that ran",
+        "tags": [
+          "scanner"
+        ]
+      }
+    },
+    "/v1/findings/{id}/accept": {
+      "post": {
+        "description": "Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.",
+        "operationId": "acceptFinding",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FindingApproval"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingDecision"
+                }
+              }
+            },
+            "description": "Accepted. The body carries the finding's new state and the version's verdict."
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is missing or is not valid JSON."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity may not adjudicate a finding."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such finding."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This finding was rejected, which is terminal."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body must be sent as application/json."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The finding id is not a uuid, or the body carries no note."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Accept a finding with a recorded note and an expiry",
+        "tags": [
+          "scanner"
+        ]
+      }
+    },
+    "/v1/findings/{id}/reject": {
+      "post": {
+        "description": "Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.",
+        "operationId": "rejectFinding",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FindingRejection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingDecision"
+                }
+              }
+            },
+            "description": "Rejected. The version is quarantined for good."
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is missing or is not valid JSON."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity may not adjudicate a finding."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such finding."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body must be sent as application/json."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The finding id is not a uuid."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Reject a finding and quarantine its version for good",
+        "tags": [
+          "scanner"
         ]
       }
     },
@@ -2596,6 +4003,216 @@
         ]
       }
     },
+    "/v1/scanner/summary": {
+      "get": {
+        "description": "Versions that reached a verdict in the period, how many packages are quarantined, how many acceptances are still in force and when the first of them lapses, and the median time from a scan starting to its verdict (001 US4 scenario 1). `quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged versions: a superseded flagged version is not quarantining anything, because nothing resolves to it. `nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when there is nothing to report — no active override and no finished scan are different statements from \"expires now\" and \"instant\".",
+        "operationId": "scannerSummary",
+        "parameters": [
+          {
+            "description": "The window the scanned count and the median are computed over. The design's card says 30 days; the parameter is what keeps that caption a value rather than a constant (FR-121).",
+            "explode": false,
+            "in": "query",
+            "name": "days",
+            "schema": {
+              "default": 30,
+              "description": "The window the scanned count and the median are computed over. The design's card says 30 days; the parameter is what keeps that caption a value rather than a constant (FR-121).",
+              "format": "int64",
+              "maximum": 365,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScannerSummary"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No usable session. There is no anonymous view of the scanner."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "`days` is outside 1..365."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "The Scanner screen's headline figures",
+        "tags": [
+          "scanner"
+        ]
+      }
+    },
+    "/v1/sessions": {
+      "post": {
+        "description": "The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.",
+        "operationId": "createSession",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionMintRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            },
+            "description": "Minted. The token is in this body and nowhere else on this side: the row holds only its sha256."
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is missing or is not valid JSON."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The shared secret is missing or is not the one this hub holds."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body must be sent as application/json."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The body carries no ID token, or the ID token did not verify. The second case is deliberately unexplained: which check failed is not something to tell whoever presented the token."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Too many refused mints from this address."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This hub cannot mint sessions: no shared secret is configured, or the identity provider could not be reached to verify the token."
+          }
+        },
+        "security": [
+          {
+            "sessionMintSecret": []
+          }
+        ],
+        "summary": "Mint a browser session from a verified ID token",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/v1/sessions/current": {
+      "delete": {
+        "description": "Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction (FR-114, FR-115). Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.",
+        "operationId": "deleteSession",
+        "responses": {
+          "204": {
+            "description": "Signed out."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token. Also what a session that had already expired gets, and what a second concurrent sign-out gets — the caller clears its cookie either way, so the two need not be told apart."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Sign out",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
     "/v1/sync": {
       "post": {
         "description": "Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.",
@@ -2660,6 +4277,48 @@
           "profiles"
         ]
       }
+    },
+    "/v1/viewer": {
+      "get": {
+        "description": "The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL (FR-117) — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate (FR-118).",
+        "operationId": "getViewer",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Viewer"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token. There is no anonymous viewer."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Who this request is acting as",
+        "tags": [
+          "identity"
+        ]
+      }
     }
   },
   "security": [
@@ -2668,6 +4327,10 @@
     }
   ],
   "tags": [
+    {
+      "description": "What happened, who caused it, and the export of all of it.",
+      "name": "audit"
+    },
     {
       "description": "Immutable version content.",
       "name": "bundles"
@@ -2681,8 +4344,20 @@
       "name": "device"
     },
     {
+      "description": "Who a request is acting as, and the sessions that say so.",
+      "name": "identity"
+    },
+    {
+      "description": "Counts the application shell renders.",
+      "name": "navigation"
+    },
+    {
       "description": "What this identity may read, and how it resolves.",
       "name": "profiles"
+    },
+    {
+      "description": "Findings, their evidence, and the decisions taken on them.",
+      "name": "scanner"
     },
     {
       "description": "Probes a supervisor calls. Unauthenticated.",

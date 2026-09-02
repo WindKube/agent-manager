@@ -1638,3 +1638,85 @@ func TestAProfileThatLandedNothingIsNotReportedAsSynced(t *testing.T) {
 	require.NoError(t, cerr)
 	require.Empty(t, reports, "no audit row may claim a revision this machine does not have")
 }
+
+// ---------------------------------------------------------------- convergence when the disk disagrees with the record
+
+// SC-008 for the state a record-only "unchanged" decision cannot see: the record
+// claims the locked version and the destination is GONE.
+//
+// internal/plan is a pure function of the lockfile, the record and the comparer
+// (plan/doc.go), so the disk is not one of its inputs and it labels such an entry
+// OpUnchanged. Before internal/apply's presentAndGone, those entries were copied
+// straight into the result and `sync` reported "nothing to do" over an empty
+// path — FR-021's worst failure, reported success having written nothing, and
+// permanent: the record and the lockfile agree forever, so no later run would fix
+// it either.
+//
+// Two ways in, and this test uses the second because it is the one a user can
+// reach without a debugger:
+//
+//   - a sync killed after the record write and before the staging discard, then
+//     one rename. That is interrupt_test.go's aside-window state, and hitting it
+//     on purpose needs a real kill.
+//   - somebody deletes an installed skill directory. Identical from here, and it
+//     is the ordinary case: the record still names the version, nothing is there.
+func TestASyncReinstallsADestinationTheRecordClaimsAndTheDiskHasLost(t *testing.T) {
+	tg := startSyncFake(t)
+	env := newSyncEnv(t, tg)
+
+	code, _, diag, err := env.run(t, output.FormatHuman, baselineFlags(tg))
+	require.NoError(t, err, diag.String())
+	require.Equal(t, CodeChanged, code)
+
+	// Pick a directory the first sync actually installed, rather than naming one:
+	// a fixture rename would otherwise turn this test green by testing nothing.
+	entries, err := os.ReadDir(env.skillsRoot())
+	require.NoError(t, err)
+	require.NotEmpty(t, entries, "the first sync installed nothing, so this test has no subject")
+	victim := filepath.Join(env.skillsRoot(), entries[0].Name())
+
+	before := treeSnapshot(t, victim)
+	require.NotEmpty(t, before, "the subject must have had content to lose")
+	require.NoError(t, os.RemoveAll(victim))
+
+	// The record is untouched, so it still claims the locked version at a path
+	// that is now absent. This is the state under test.
+	code, result, diag, err := env.run(t, output.FormatHuman, baselineFlags(tg))
+	require.NoError(t, err, diag.String())
+
+	require.Equal(t, CodeChanged, code,
+		"a machine whose tree no longer matches its record has NOT converged, so this run changed something")
+	require.NotContains(t, result.String(), "nothing to do",
+		"reporting nothing to do over a destination that is gone is FR-021's worst failure")
+	require.Contains(t, diag.String(), "but nothing is there; re-installing",
+		"apply.guard's absent-destination branch is the one that must have run")
+	require.NotContains(t, diag.String(), "--force",
+		"an ABSENT destination needs no override: there is nothing to verify as unmodified")
+
+	require.DirExists(t, victim)
+	// Content, not mtime: a reinstall legitimately writes new timestamps, so the
+	// claim here is that the same paths came back with the same bytes and modes.
+	requireSameContent(t, "the reinstalled entry", before, treeSnapshot(t, victim))
+
+	// And it is convergent, not oscillating: a third run has nothing left to do.
+	code, result, diag, err = env.run(t, output.FormatHuman, baselineFlags(tg))
+	require.NoError(t, err, diag.String())
+	require.Equal(t, CodeNoChanges, code)
+	require.Contains(t, result.String(), "nothing to do")
+}
+
+// requireSameContent compares two snapshots on everything except mtime. It is
+// separate from requireUnchanged, which asserts NO WRITE HAPPENED and must keep
+// comparing mtime — that is the only channel that sees an in-place rewrite of
+// identical bytes (see idempotence_test.go). Here a write is expected and the
+// question is whether it restored the same tree.
+func requireSameContent(t *testing.T, what string, want, got map[string]treeEntry) {
+	t.Helper()
+	require.Equal(t, len(want), len(got), "%s: the path set differs", what)
+	for path, w := range want {
+		g, ok := got[path]
+		require.True(t, ok, "%s: %s did not come back", what, path)
+		w.ModTime, g.ModTime = time.Time{}, time.Time{}
+		require.Equal(t, w, g, "%s: %s came back different", what, path)
+	}
+}

@@ -54,6 +54,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -356,8 +357,30 @@ func (a *Applier) Apply(ctx context.Context, p plan.Plan) (*Result, error) {
 		return res, err
 	}
 
-	res.Unchanged = p.Unchanged
+	// An entry the plan calls unchanged is unchanged ACCORDING TO THE RECORD,
+	// which is the only thing the plan can consult: internal/plan is a pure
+	// function of the lockfile, the record and the comparer, deliberately (see
+	// plan/doc.go). The disk is not one of its inputs, so a destination that is
+	// GONE while the record still names the locked version arrives here labelled
+	// "unchanged", and copying it into the result reports success over an empty
+	// path — the failure FR-021 calls the worst this tool can have.
+	//
+	// SC-008 is what makes this a defect rather than a nicety: the install tree
+	// must match the lockfile after a sync interrupted at any point and re-run,
+	// and a kill after the record write and before the staging discard leaves
+	// exactly this state. guard() already knows the answer — given a From and no
+	// destination it warns and re-installs — so the fix is to let those entries
+	// reach it rather than to restate the rule here.
+	//
+	// FR-025 still holds: this adds one Lstat per unchanged entry and no write
+	// when the destination is there.
+	unchanged, gone := a.presentAndGone(p.Unchanged)
+	res.Unchanged = unchanged
 	writes := p.Writes()
+	if len(gone) > 0 {
+		writes = append(writes, gone...)
+		slices.SortFunc(writes, plan.ChangeOrder)
+	}
 	for i := range writes {
 		c := writes[i]
 		if err := a.mayContinue(ctx); err != nil {
@@ -744,6 +767,32 @@ type destState struct {
 //
 // The marker is read through an *os.Root opened on the destination, so a symlink
 // planted where the marker should be cannot make amctl read a file elsewhere.
+// presentAndGone splits the changes the plan called unchanged by whether the
+// destination the record claims is actually there.
+//
+// A path that cannot be INSPECTED counts as present. Guessing "absent" from a
+// failed Lstat would reinstall over something this function could not identify,
+// and the write path re-inspects the destination under the containment root
+// anyway — so an entry that really is broken reaches guard() and is reported
+// there, with the reason, instead of being silently overwritten from here.
+func (a *Applier) presentAndGone(unchanged []plan.Change) (present, gone []plan.Change) {
+	for i := range unchanged {
+		c := unchanged[i]
+		cont, err := a.cfg.Home.Contains(c.Dest)
+		if err != nil {
+			present = append(present, c)
+			continue
+		}
+		st, err := inspectDest(cont)
+		if err != nil || st.exists {
+			present = append(present, c)
+			continue
+		}
+		gone = append(gone, c)
+	}
+	return present, gone
+}
+
 func inspectDest(cont Contained) (destState, error) {
 	info, err := os.Lstat(cont.Dest)
 	switch {

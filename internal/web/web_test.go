@@ -9,10 +9,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/a-h/templ"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
 	"agent-manager/internal/web"
+	"agent-manager/internal/web/components"
 	"agent-manager/internal/web/fixture"
 	"agent-manager/internal/web/view"
 )
@@ -20,17 +22,52 @@ import (
 func handler(t *testing.T, source web.CatalogSource) http.Handler {
 	t.Helper()
 
-	deps := web.Deps{Catalog: source, Log: zerolog.Nop()}
+	// A screen test must say who is looking, because Deps.Viewers fails closed when
+	// nil and the guard would send every route here to the sign-in screen. The
+	// signed-out and no-role variants are exercised by the tests that are about
+	// those states, with their own source.
+	deps := web.Deps{Catalog: source, Viewers: fixture.SignedInViewers(), Log: zerolog.Nop()}
 	// A source that can also answer for one package backs the detail screen. The
 	// hostile source below deliberately cannot, which is what makes /packages/...
 	// a 404 rather than a nil dereference in the escaping test.
 	if packages, ok := source.(web.PackageSource); ok {
 		deps.Packages = packages
 	}
+	// Same shape for the two governance screens, and for the sidebar counts. The
+	// fixture answers all three reads and deliberately cannot answer a decision, so
+	// deps.Reviewer stays nil here and the screen renders what a hub with no
+	// reviewer wired renders.
+	if scanner, ok := source.(web.ScannerSource); ok {
+		deps.Scanner = scanner
+	}
+	if audit, ok := source.(web.AuditSource); ok {
+		deps.Audit = audit
+	}
+	if badges, ok := source.(web.BadgeSource); ok {
+		deps.Badges = badges
+	}
 	return web.New(deps, web.Options{}).Handler()
 }
 
+// get is an ordinary request from somebody who is signed in.
+//
+// It carries a session cookie because the guard reads one BEFORE it asks the
+// viewer source who this is — no cookie is not "a viewer to resolve", it is a
+// visitor with nothing to resolve, and the guard redirects without calling the
+// api. The value is opaque here: the api is what would recognise it, and the
+// fixture source answers the same viewer whatever it is handed.
 func get(t *testing.T, h http.Handler, target string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, target, http.NoBody)
+	req.AddCookie(&http.Cookie{Name: "am_session", Value: "screen-test-session"})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+// getSignedOut is the same request from somebody with no session at all, for the
+// tests that are about that state rather than about a screen.
+func getSignedOut(t *testing.T, h http.Handler, target string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, target, http.NoBody))
@@ -45,9 +82,68 @@ func TestShell(t *testing.T) {
 		for _, want := range []string{
 			"Workspace", "Security", "Administration", "Onboarding",
 			"Catalog", "Profiles", "Scanner", "Audit log", "Storage", "Organization",
-			"Connect the CLI", "am-nav-badge-alert", "Krzysztof W.", "Platform · Admin",
+			"Connect the CLI", "am-nav-badge-alert",
 		} {
 			require.Containsf(t, body, want, "sidebar is missing %q", want)
+		}
+	})
+
+	// This subtest used to assert "Krzysztof W." and "Platform · Admin" were on the
+	// page. They were compiled into shell.templ, so it asserted that the shell
+	// claimed an identity no request had resolved — the defect this feature exists
+	// to remove (FR-116, SC-106).
+	//
+	// The component-level form of that property is asserted exhaustively next door
+	// in identity_test.go: every screen, in both viewer states, plus a scan of the
+	// source for the literal that is only rendered in a state no test enters. What
+	// is left for a ROUTER test is the half none of those can see — that the
+	// identity on a routed page came from the viewer source this router was handed.
+	//
+	// So two routers are built over two different viewers and each page must carry
+	// its own and not the other's. An identity compiled into the router could not
+	// vary that way, and neither could one the router substituted when a source
+	// answered something it did not like.
+	t.Run("the chip on a routed page is the viewer that request resolved", func(t *testing.T) {
+		ada, bo := fixture.SignedInViewer(), fixture.UnmappedViewer()
+
+		for _, who := range []struct {
+			viewers web.ViewerSource
+			mine    *view.Viewer
+			theirs  *view.Viewer
+		}{
+			{fixture.SignedInViewers(), ada, bo},
+			// Signed in holding no role still resolves an identity, and the FR-117
+			// screen the guard renders instead of the catalog carries the same chip.
+			{fixture.UnmappedViewers(), bo, ada},
+		} {
+			own := web.New(web.Deps{
+				Catalog: fixture.New(),
+				Viewers: who.viewers,
+				Log:     zerolog.Nop(),
+			}, web.Options{}).Handler()
+			body := get(t, own, "/catalog").Body.String()
+
+			require.Contains(t, body, `<div class="am-avatar">`+who.mine.Initials()+`</div>`)
+			require.Contains(t, body, who.mine.DisplayName)
+			require.NotContainsf(t, body, who.theirs.DisplayName,
+				"a page resolved for %q carries %q, so something other than the request "+
+					"decided who is looking", who.mine.DisplayName, who.theirs.DisplayName)
+		}
+	})
+
+	// And the other side of it: with nobody resolved there is no chip, because no
+	// screen is reached at all. A chip with empty fields would be the compiled-in
+	// chip with its literals deleted.
+	t.Run("a request that resolved nobody reaches no shell at all", func(t *testing.T) {
+		signedOut := web.New(web.Deps{
+			Catalog: fixture.New(),
+			Viewers: fixture.SignedOutViewers(),
+			Log:     zerolog.Nop(),
+		}, web.Options{}).Handler()
+
+		body := getSignedOut(t, signedOut, "/catalog").Body.String()
+		for _, forbidden := range []string{"am-avatar", "am-viewer-name", "am-viewer-role", "am-signout", "am-sidebar"} {
+			require.NotContainsf(t, body, forbidden, "the router rendered %q without a resolved session", forbidden)
 		}
 	})
 
@@ -103,6 +199,7 @@ func TestTheme(t *testing.T) {
 	t.Run("the cookie is read server-side, so the first paint is already right", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/catalog", http.NoBody)
 		req.AddCookie(&http.Cookie{Name: "am_theme", Value: "dark"})
+		req.AddCookie(&http.Cookie{Name: "am_session", Value: "screen-test-session"})
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
 		require.Contains(t, rec.Body.String(), `data-sm-theme="dark"`)
@@ -135,6 +232,9 @@ func postTheme(t *testing.T, h http.Handler, form url.Values) *httptest.Response
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/theme", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	// The toggle lives in the shell, so the only person who can submit this form is
+	// one the guard already resolved.
+	req.AddCookie(&http.Cookie{Name: "am_session", Value: "screen-test-session"})
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	return rec
@@ -495,4 +595,180 @@ func TestBothVariantsRenderForEverySeededPackage(t *testing.T) {
 
 	require.Positive(t, plugins, "the fixtures must contain a plugin")
 	require.Positive(t, skills, "and a standalone skill, or this test proves one variant")
+}
+
+// ---- the viewer, sign-in and the no-role state (US2) -------------------------
+
+// These render the components directly rather than through the router. The shell's
+// viewer is a prop with no default (FR-116), so a signed-in page is a page a
+// caller supplied a viewer to, and driving it through the router would test how
+// this layer's handler resolves one instead of what the shell does with it.
+
+func shellBody(t *testing.T, viewer *view.Viewer, body templ.Component) string {
+	t.Helper()
+
+	shell := components.Shell{
+		Title: "Catalog", Theme: "light", Next: "dark", Active: "catalog", Return: "/catalog",
+		AppCSS: "/static/app.css", AppJS: "/static/app.js", VendorJS: "/static/vendor/datastar.js",
+		Viewer: viewer,
+	}
+
+	var out strings.Builder
+	ctx := templ.WithChildren(context.Background(), body)
+	require.NoError(t, components.Layout(shell).Render(ctx, &out))
+	return out.String()
+}
+
+func TestTheShellRendersTheResolvedViewerAndNothingWhenThereIsNone(t *testing.T) {
+	screen := components.Placeholder("Catalog", "Everything registered in this hub.")
+
+	t.Run("a resolved viewer reaches the chip, initials included", func(t *testing.T) {
+		viewer := fixture.SignedInViewer()
+		body := shellBody(t, viewer, screen)
+
+		require.Contains(t, body, viewer.DisplayName)
+		require.Contains(t, body, `<div class="am-avatar">AF</div>`,
+			"the avatar must be derived from the resolved name, not carried beside it")
+		require.Contains(t, body, "Catalog admin", "the chip's role is the resolved role, humanised")
+	})
+
+	t.Run("a viewer holding no role is labelled as holding none rather than left blank", func(t *testing.T) {
+		body := shellBody(t, fixture.UnmappedViewer(), screen)
+		require.Contains(t, body, `<div class="am-viewer-role">No role</div>`)
+	})
+
+	t.Run("signed out renders no chip at all — no placeholder, no initials, no Guest", func(t *testing.T) {
+		body := shellBody(t, fixture.SignedOutViewer(), screen)
+
+		for _, forbidden := range []string{"am-avatar", "am-viewer-id", "am-viewer-name", "am-viewer-role"} {
+			require.NotContainsf(t, body, forbidden, "the signed-out shell rendered %q", forbidden)
+		}
+		require.NotContains(t, body, "Guest")
+		// The theme toggle is not part of the viewer's identity and must survive.
+		require.Contains(t, body, "am-theme-toggle")
+	})
+
+	t.Run("sign-out is offered to a viewer and is a POST form rather than a link", func(t *testing.T) {
+		signedIn := shellBody(t, fixture.SignedInViewer(), screen)
+		require.Contains(t, signedIn, `<form method="post" action="/auth/logout">`)
+		require.NotContains(t, signedIn, `href="/auth/logout"`,
+			"a GET sign-out is triggerable by any image tag on any page")
+
+		require.NotContains(t, shellBody(t, fixture.SignedOutViewer(), screen), "/auth/logout",
+			"there is nothing to sign out of")
+	})
+}
+
+func signInBody(t *testing.T, in view.SignIn) string {
+	t.Helper()
+
+	shell := components.Shell{
+		Title: "Sign in", Theme: "light", Next: "dark", Return: "/auth/signin",
+		AppCSS: "/static/app.css", AppJS: "/static/app.js", VendorJS: "/static/vendor/datastar.js",
+	}
+
+	var out strings.Builder
+	require.NoError(t, components.SignInScreen(shell, in).Render(context.Background(), &out))
+	return out.String()
+}
+
+func TestTheSignInScreenOffersOneActionAndNoAccountOfItsOwn(t *testing.T) {
+	in := view.SignIn{Provider: "the corporate directory", Return: "/scanner"}
+	body := signInBody(t, in)
+
+	t.Run("it names the hub, names the provider and offers one way in", func(t *testing.T) {
+		require.Contains(t, body, components.ProductName)
+		require.Contains(t, body, "the corporate directory")
+		require.Contains(t, body, `href="/auth/login?return=%2Fscanner"`)
+		require.Equal(t, 1, strings.Count(body, "/auth/login"),
+			"one action, so there is no second path a person can be led down")
+	})
+
+	// FR-109. A password field on this screen would be a password this hub holds,
+	// and a registration form would be an account this hub owns; there is neither,
+	// and both are the kind of thing a copy edit adds back without noticing.
+	t.Run("it holds no password field and no way to create an account", func(t *testing.T) {
+		require.NotContains(t, body, `type="password"`)
+		require.NotContains(t, body, `name="password"`)
+
+		// Asserted by counting rather than by absence: this page has exactly one form
+		// and it is the theme toggle, so a second one is a field somebody added for a
+		// credential this hub is not allowed to hold.
+		require.Equal(t, 1, strings.Count(body, "<form"))
+		require.Contains(t, body, `<form method="post" action="/theme">`)
+
+		for _, forbidden := range []string{"Sign up", "Register", "Create account", "Create an account"} {
+			require.NotContainsf(t, body, forbidden, "the sign-in screen offers %q", forbidden)
+		}
+	})
+
+	t.Run("an unreachable provider is stated and no failing button is offered", func(t *testing.T) {
+		unavailable := signInBody(t, view.SignIn{Provider: "the corporate directory", Unavailable: true})
+		require.Contains(t, unavailable, `id="signin-unavailable"`)
+		require.NotContains(t, unavailable, "/auth/login")
+	})
+
+	t.Run("a provider's own words reach the page escaped", func(t *testing.T) {
+		hostile := signInBody(t, view.SignIn{
+			Provider: `<script>alert('provider')</script>`,
+			Notice:   `The provider refused: <img src=x onerror=alert('why')>`,
+		})
+		require.NotContains(t, hostile, `<script>alert('provider')</script>`)
+		require.NotContains(t, hostile, `<img src=x onerror=alert('why')>`)
+		require.Contains(t, hostile, `&lt;script&gt;alert(&#39;provider&#39;)&lt;/script&gt;`)
+		require.Contains(t, hostile, `&lt;img src=x onerror=alert(&#39;why&#39;)&gt;`)
+	})
+}
+
+// FR-119: the hint is switched on explicitly or it is not switched on. The
+// negative case is the whole requirement — a hint that appears because a list
+// happened to be populated is a hint that appears in production.
+func TestLocalCredentialsAppearOnlyBehindTheExplicitFlag(t *testing.T) {
+	credentials := []view.Credential{
+		{Username: "someone@local.invalid", Password: "a-local-only-password", Role: "catalog-admin"},
+	}
+
+	t.Run("with the flag set, the accounts are on the page", func(t *testing.T) {
+		body := signInBody(t, view.SignIn{DevCredentialHint: true, Credentials: credentials})
+		require.Contains(t, body, `id="signin-dev-credentials"`)
+		require.Contains(t, body, "someone@local.invalid")
+		require.Contains(t, body, "a-local-only-password")
+	})
+
+	t.Run("credentials supplied without the flag render nothing", func(t *testing.T) {
+		body := signInBody(t, view.SignIn{Credentials: credentials})
+		require.NotContains(t, body, `id="signin-dev-credentials"`)
+		require.NotContains(t, body, "someone@local.invalid")
+		require.NotContains(t, body, "a-local-only-password")
+	})
+
+	t.Run("the flag set with nothing to show renders nothing", func(t *testing.T) {
+		require.NotContains(t, signInBody(t, view.SignIn{DevCredentialHint: true}),
+			`id="signin-dev-credentials"`)
+	})
+}
+
+// FR-117. The assertion that matters is the last one: this screen must not be
+// mistakable for a hub with nothing in it, because the two ask their reader for
+// completely different things.
+func TestTheNoRoleStateSaysSoRatherThanRenderingAnEmptyHub(t *testing.T) {
+	viewer := fixture.UnmappedViewer()
+	body := shellBody(t, viewer, components.NoRoleScreen(view.NoRole{Viewer: *viewer, Groups: viewer.Groups}))
+
+	require.Contains(t, body, `id="no-mapped-role"`)
+	require.Contains(t, body, viewer.Email, "they are signed in, and as whom is what they have to quote")
+	require.Contains(t, body, "contractors-eu", "the groups are what they have to ask about")
+	require.Contains(t, body, "This is not an empty hub")
+
+	// The signed-out empty state and this one are different markup as well as
+	// different copy, so neither a reader nor a test can take one for the other.
+	require.NotContains(t, body, `id="catalog-signed-out"`)
+	require.NotContains(t, body, "am-empty")
+
+	t.Run("a viewer whose provider sent no groups is told that specifically", func(t *testing.T) {
+		bare := view.Viewer{DisplayName: "No Groups", Email: "none@fixture.invalid"}
+		body := shellBody(t, &bare, components.NoRoleScreen(view.NoRole{Viewer: bare, Groups: bare.Groups}))
+		require.Contains(t, body, "sent no group membership")
+		require.NotContains(t, body, "am-tagrow", "there is nothing to list")
+	})
 }

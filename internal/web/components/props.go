@@ -15,11 +15,15 @@ import (
 )
 
 // NavItem is one sidebar entry.
+//
+// It carries no count. The counts are per-viewer and per-request and live on the
+// Shell, because a badge on a package-level var is a badge that is the same number
+// for everybody who ever loads the page — which is what FR-121 is about, and what
+// the design's compiled-in 10 / 4 / 4 were.
 type NavItem struct {
 	ID    string
 	Label string
 	Href  string
-	Badge string
 	// Alert renders the badge in --dan. The scanner's open-findings count is the
 	// only badge the design colours.
 	Alert bool
@@ -31,16 +35,16 @@ type NavGroup struct {
 	Items []NavItem
 }
 
-// Nav is the design's sidebar (docs/design/agent-manager.dc.html lines 938-943).
-// The badge counts are the design's seed values; the layer that owns each screen
-// replaces them with real ones.
+// Nav is the design's sidebar (docs/design/agent-manager.dc.html lines 938-943),
+// and it is the STRUCTURE only. What each entry counts is Shell.Badge's answer for
+// that entry's id, resolved per request from the api.
 var Nav = []NavGroup{
 	{Label: "Workspace", Items: []NavItem{
-		{ID: "catalog", Label: "Catalog", Href: "/catalog", Badge: "10"},
-		{ID: "profiles", Label: "Profiles", Href: "/profiles", Badge: "4"},
+		{ID: "catalog", Label: "Catalog", Href: "/catalog"},
+		{ID: "profiles", Label: "Profiles", Href: "/profiles"},
 	}},
 	{Label: "Security", Items: []NavItem{
-		{ID: "scanner", Label: "Scanner", Href: "/scanner", Badge: "4", Alert: true},
+		{ID: "scanner", Label: "Scanner", Href: "/scanner", Alert: true},
 		{ID: "audit", Label: "Audit log", Href: "/audit"},
 	}},
 	{Label: "Administration", Items: []NavItem{
@@ -51,6 +55,15 @@ var Nav = []NavGroup{
 		{ID: "cli", Label: "Connect the CLI", Href: "/cli"},
 	}},
 }
+
+// ProductName is what this product calls itself.
+//
+// A constant because two surfaces render it — the sidebar's brand and the sign-in
+// screen — and because the identity sweep next to internal/web's contrast test
+// has to exempt exactly one pair of capitalised words from "that is a person's
+// name". An exemption that is a constant is one identifier; an exemption that is
+// a spelling is a place for a second one to be added quietly.
+const ProductName = "Agent Manager"
 
 // Shell is everything the layout needs that is not the screen itself.
 type Shell struct {
@@ -70,6 +83,45 @@ type Shell struct {
 	AppCSS   string
 	AppJS    string
 	VendorJS string
+	// Viewer is who this request resolved as, or nil when it resolved nobody.
+	//
+	// A pointer, with no default and no fallback (FR-116). The alternative — a
+	// Viewer value — has a zero form that renders a chip with an empty name over an
+	// empty role, which is the compiled-in chip again with its literals deleted:
+	// still an identity no screen verified. nil renders no chip at all, so a caller
+	// that forgets to resolve a viewer produces a page that is visibly missing
+	// something rather than a page that is quietly lying.
+	Viewer *view.Viewer
+	// Badges are the sidebar's three counts as this request read them, or nil when
+	// it could not. Nil renders no badges rather than three zeroes: a count of zero
+	// is a fact about the hub and must be earned (FR-121).
+	Badges *view.Badges
+}
+
+// Badge is the count beside one nav entry, and "" when there is none to show.
+//
+// Absent rather than zero, in both directions: nil badges are a request that could
+// not read the counts, and a genuine zero is nothing worth a badge. The design
+// draws a badge on three entries and the other four never had one.
+func (s Shell) Badge(id string) string {
+	if s.Badges == nil {
+		return ""
+	}
+	var count int
+	switch id {
+	case "catalog":
+		count = s.Badges.Packages
+	case "profiles":
+		count = s.Badges.Profiles
+	case "scanner":
+		count = s.Badges.OpenFindings
+	default:
+		return ""
+	}
+	if count <= 0 {
+		return ""
+	}
+	return strconv.Itoa(count)
 }
 
 func (s Shell) ToggleIcon() string {
@@ -330,3 +382,62 @@ func ImportTabSelectedExpr(tab view.ImportTab) string {
 func ImportMarkStyle(entry view.ImportEntry) string {
 	return "width:12px;flex:0 0 12px;font-size:11px;color:var(--" + entry.Tone() + ")"
 }
+
+// ---- the two governance screens ----------------------------------------------
+
+// tone maps a view model's tone onto the four the stylesheet paints, and refuses
+// anything else.
+//
+// The guard is not paranoia about the call sites — every tone on these screens is
+// produced by a method in internal/web/view over a closed switch. It is here
+// because these classes are the one place a value derived from api data reaches a
+// class attribute rather than a text node, and templ escapes the attribute but
+// cannot know that `am-pill-` plus a rule pack's string is not a class this
+// stylesheet has ever heard of. An unknown tone renders neutral, which is legible
+// in both themes; a passed-through one renders unstyled, which is not.
+func tone(want string) string {
+	switch want {
+	case "ok", "warn", "dan":
+		return want
+	default:
+		return "neutral"
+	}
+}
+
+// PillClass is the shared pill: severity, finding state, version verdict and audit
+// kind are all one shape in the design, so they are one class here and the tone is
+// what separates them.
+func PillClass(want string) string { return "am-pill am-pill-" + tone(want) }
+
+func SeverityClass(severity view.Severity) string { return PillClass(severity.Tone()) }
+
+func FindingStateClass(state view.FindingState) string { return PillClass(state.Tone()) }
+
+func VerdictClass(verdict view.Verdict) string { return PillClass(verdict.Tone()) }
+
+func AuditKindClass(row view.AuditRow) string { return PillClass(row.KindTone()) }
+
+// CheckMarkClass colours the matrix's glyph. The glyph itself already carries the
+// result, so the colour is reinforcement rather than the only signal.
+func CheckMarkClass(check view.Check) string {
+	return "am-chk-mark am-chk-mark-" + tone(check.Result.Tone())
+}
+
+// StatValueClass tones one headline figure. An untoned figure reads in --fg, which
+// is the design's default for the two that are counts rather than warnings.
+func StatValueClass(card view.StatCard) string {
+	if card.Tone == "" {
+		return "am-stat-value"
+	}
+	return "am-stat-value am-stat-value-" + tone(card.Tone)
+}
+
+// NoticeClass tones the banner a decision leaves behind.
+func NoticeClass(notice view.Notice) string {
+	return "am-gov-notice am-gov-notice-" + tone(notice.Tone)
+}
+
+// ReviewNoteLimit is the note field's maxlength, as a string for the attribute. It
+// mirrors the api's cap so a reviewer is stopped while typing rather than after
+// submitting; the api is still what decides.
+func ReviewNoteLimit() string { return strconv.Itoa(view.MaxReviewNote) }

@@ -151,7 +151,6 @@ func (e LockfileSchemaVersion) Valid() bool {
 
 // Defines values for LockfileTargets.
 const (
-	LockfileTargetsAgentsMd   LockfileTargets = "agents-md"
 	LockfileTargetsClaudeCode LockfileTargets = "claude-code"
 	LockfileTargetsCodex      LockfileTargets = "codex"
 )
@@ -159,8 +158,6 @@ const (
 // Valid indicates whether the value is a known member of the LockfileTargets enum.
 func (e LockfileTargets) Valid() bool {
 	switch e {
-	case LockfileTargetsAgentsMd:
-		return true
 	case LockfileTargetsClaudeCode:
 		return true
 	case LockfileTargetsCodex:
@@ -301,7 +298,6 @@ func (e ProfileVisibility) Valid() bool {
 
 // Defines values for SyncReportTargets.
 const (
-	SyncReportTargetsAgentsMd   SyncReportTargets = "agents-md"
 	SyncReportTargetsClaudeCode SyncReportTargets = "claude-code"
 	SyncReportTargetsCodex      SyncReportTargets = "codex"
 )
@@ -309,8 +305,6 @@ const (
 // Valid indicates whether the value is a known member of the SyncReportTargets enum.
 func (e SyncReportTargets) Valid() bool {
 	switch e {
-	case SyncReportTargetsAgentsMd:
-		return true
 	case SyncReportTargetsClaudeCode:
 		return true
 	case SyncReportTargetsCodex:
@@ -790,7 +784,7 @@ type ClientInterface interface {
 
 	// DeviceTokenWithBody Poll for the issued token
 	//
-	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042).
+	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -799,7 +793,7 @@ type ClientInterface interface {
 
 	// DeviceTokenWithFormdataBody Poll for the issued token
 	//
-	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042).
+	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
 	//
 	// Takes a body of the `application/x-www-form-urlencoded` content type.
 	//
@@ -903,7 +897,7 @@ func (c *Client) DeviceAuthorize(ctx context.Context, body DeviceAuthorizeJSONRe
 
 // DeviceTokenWithBody Poll for the issued token
 //
-// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042).
+// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
 //
 // Takes any type of body and a specified content type.
 //
@@ -922,7 +916,7 @@ func (c *Client) DeviceTokenWithBody(ctx context.Context, contentType string, bo
 
 // DeviceTokenWithFormdataBody Poll for the issued token
 //
-// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042).
+// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
 //
 // Takes a body of the `application/x-www-form-urlencoded` content type.
 //
@@ -1364,7 +1358,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeviceTokenWithBodyWithResponse Poll for the issued token
 	//
-	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042).
+	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -1373,7 +1367,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeviceTokenWithFormdataBodyWithResponse Poll for the issued token
 	//
-	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042).
+	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
 	//
 	// Takes a body of the `application/x-www-form-urlencoded` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -1506,10 +1500,14 @@ type DeviceAuthorizeResponse struct {
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *DeviceAuthorization
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *Error
 	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
 	ApplicationproblemJSON422 *Error
-	// ApplicationproblemJSON501 the response for an HTTP 501 `application/problem+json` response
-	ApplicationproblemJSON501 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
 	// Headers429 the parsed response headers for an HTTP 429 response
 	Headers429 *DeviceAuthorizeResponse429Headers
 }
@@ -1519,14 +1517,24 @@ func (r DeviceAuthorizeResponse) GetJSON200() *DeviceAuthorization {
 	return r.JSON200
 }
 
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r DeviceAuthorizeResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r DeviceAuthorizeResponse) GetApplicationproblemJSON415() *Error {
+	return r.ApplicationproblemJSON415
+}
+
 // GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
 func (r DeviceAuthorizeResponse) GetApplicationproblemJSON422() *Error {
 	return r.ApplicationproblemJSON422
 }
 
-// GetApplicationproblemJSON501 returns the response for an HTTP 501 `application/problem+json` response
-func (r DeviceAuthorizeResponse) GetApplicationproblemJSON501() *Error {
-	return r.ApplicationproblemJSON501
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r DeviceAuthorizeResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
 }
 
 // GetBody returns the raw response body bytes
@@ -1565,8 +1573,10 @@ type DeviceTokenResponse struct {
 	JSON200 *DeviceToken
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *DeviceTokenError
-	// ApplicationproblemJSON501 the response for an HTTP 501 `application/problem+json` response
-	ApplicationproblemJSON501 *Error
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -1579,9 +1589,14 @@ func (r DeviceTokenResponse) GetJSON400() *DeviceTokenError {
 	return r.JSON400
 }
 
-// GetApplicationproblemJSON501 returns the response for an HTTP 501 `application/problem+json` response
-func (r DeviceTokenResponse) GetApplicationproblemJSON501() *Error {
-	return r.ApplicationproblemJSON501
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r DeviceTokenResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r DeviceTokenResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
 }
 
 // GetBody returns the raw response body bytes
@@ -1894,7 +1909,7 @@ func (c *ClientWithResponses) DeviceAuthorizeWithResponse(ctx context.Context, b
 
 // DeviceTokenWithBodyWithResponse Poll for the issued token
 //
-// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042).
+// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -1909,7 +1924,7 @@ func (c *ClientWithResponses) DeviceTokenWithBodyWithResponse(ctx context.Contex
 
 // DeviceTokenWithFormdataBodyWithResponse Poll for the issued token
 //
-// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042).
+// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
 //
 // Takes a body of the `application/x-www-form-urlencoded` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -2088,6 +2103,20 @@ func ParseDeviceAuthorizeResponse(rsp *http.Response) (*DeviceAuthorizeResponse,
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -2098,12 +2127,12 @@ func ParseDeviceAuthorizeResponse(rsp *http.Response) (*DeviceAuthorizeResponse,
 	case rsp.StatusCode == 429:
 		break // No content-type
 
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSON501 = &dest
+		response.ApplicationproblemJSON500 = &dest
 
 	}
 
@@ -2144,19 +2173,26 @@ func ParseDeviceTokenResponse(rsp *http.Response) (*DeviceTokenResponse, error) 
 		}
 		response.JSON200 = &dest
 
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+	case rsp.Header.Get("Content-Type") == "application/json" && rsp.StatusCode == 400:
 		var dest DeviceTokenError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON400 = &dest
 
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+	case rsp.Header.Get("Content-Type") == "application/problem+json" && rsp.StatusCode == 400:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSON501 = &dest
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
 
 	}
 

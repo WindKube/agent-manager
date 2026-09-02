@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"agent-manager/internal/web/components"
+	"agent-manager/internal/web/view"
 )
 
 // FR-054: the theme is persisted per viewer and read server-side, so the first
@@ -99,7 +100,12 @@ func localPath(raw string) string {
 func (s *Server) shell(c *gin.Context, title, active string) components.Shell {
 	theme := themeFor(c)
 	return components.Shell{
-		Title:    title,
+		Title: title,
+		// The ONLY source of an identity on any screen (FR-116). The zero value is
+		// the signed-out state and renders no chip at all; nothing else may supply
+		// one, and there is no default.
+		Viewer:   viewerFor(c),
+		Badges:   s.badges(c),
 		Theme:    theme,
 		Next:     otherTheme(theme),
 		Active:   active,
@@ -107,6 +113,38 @@ func (s *Server) shell(c *gin.Context, title, active string) components.Shell {
 		AppCSS:   assetURL("app.css"),
 		AppJS:    assetURL("app.js"),
 		VendorJS: assetURL("vendor/datastar.js"),
+	}
+}
+
+// badges reads the sidebar's three counts for one page render (FR-121, research R5).
+//
+// Once per FULL page, and never on a datastar fragment update — the fragment
+// handlers patch elements and never reach this function, which is what keeps the
+// count to one extra call per navigation rather than one per keystroke.
+//
+// A failure is not an error to render: it returns nil, the sidebar shows no counts,
+// and the screen the reader asked for still arrives. The alternative — three zeroes
+// — would put "0 packages" beside a catalog full of them, which is the same class of
+// lie as the compiled-in 10 / 4 / 4 these replaced.
+func (s *Server) badges(c *gin.Context) *view.Badges {
+	viewer := viewerFor(c)
+	if s.deps.Badges == nil || viewer == nil || !viewer.HasRole {
+		// No source, nobody resolved, or an identity holding no role. The last is not
+		// a courtesy: the counts are scoped to what the caller may see, and a viewer
+		// with no role may see nothing, so the call would spend a round trip to learn
+		// what this side already knows.
+		return nil
+	}
+
+	counts, err := s.deps.Badges.Badges(session(c))
+	if err != nil {
+		logFrom(c).Debug().Err(err).Msg("read the sidebar counts")
+		return nil
+	}
+	return &view.Badges{
+		Packages:     counts.Packages,
+		Profiles:     counts.Profiles,
+		OpenFindings: counts.OpenFindings,
 	}
 }
 

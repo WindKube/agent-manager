@@ -24,6 +24,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/uptrace/bun"
 
+	"agent-manager/internal/api/commands"
 	"agent-manager/internal/auth"
 	"agent-manager/internal/blob"
 )
@@ -61,6 +62,24 @@ type Deps struct {
 	Sessions auth.Resolver
 	Probes   []Probe
 	Log      zerolog.Logger
+
+	// IDTokens verifies the ID token a session mint presents (FR-111). It is an
+	// interface and it may be nil: constructing a verifier performs OIDC discovery
+	// over the network, so whether that happens at boot, lazily, or not at all is
+	// the role bootstrap's decision — and a nil one refuses the mint rather than
+	// taking every other operation down with it.
+	IDTokens commands.IDTokenVerifier
+	// SessionMintSecret authenticates the one operation whose caller is a role
+	// rather than a person. It lives in Deps and not Options because it is a
+	// credential, and because Document() must emit the same bytes whatever a
+	// deployment holds.
+	//
+	// EMPTY means the mint is refused outright — no default, no development
+	// bypass. config.API deliberately does not mark the variable `required`, so
+	// that a missing web-integration secret does not also take down the reads, the
+	// health endpoint and the device flow; the consequence is that this is the only
+	// place the contract exists, and commands.SessionMint is where it is enforced.
+	SessionMintSecret string
 }
 
 // Options is the run-time configuration of the surface itself.
@@ -74,6 +93,10 @@ type Options struct {
 	// DeviceCodeTTL and DeviceTokenTTL are advertised by the device endpoints.
 	DeviceCodeTTL  time.Duration
 	DeviceTokenTTL time.Duration
+	// SessionTTL is how long a minted browser session lasts. The api decides it,
+	// not the web role: the row's expires_at is what a session actually is, and a
+	// caller that could choose it could choose forever.
+	SessionTTL time.Duration
 	// HealthTimeout caps how long a dependency probe may take before the role
 	// reports itself unready.
 	HealthTimeout time.Duration
@@ -92,6 +115,12 @@ func (o Options) withDefaults() Options {
 	if o.DeviceTokenTTL <= 0 {
 		o.DeviceTokenTTL = time.Hour
 	}
+	if o.SessionTTL <= 0 {
+		// The same default config.API carries. Duplicated deliberately: New is
+		// reachable from a test and from Document with no config in sight, and a
+		// zero here would otherwise reach commands.Login, which refuses it.
+		o.SessionTTL = 12 * time.Hour
+	}
 	return o
 }
 
@@ -106,6 +135,10 @@ type Server struct {
 	// deviceLimiter caps how many device authorisations one caller may open. It is
 	// per process and therefore per replica; see device.go for what that costs.
 	deviceLimiter *rateLimiter
+	// mintLimiter caps REFUSED session mints per caller address. Separate from
+	// deviceLimiter because it counts a different thing on a different budget; see
+	// limitSessionMint.
+	mintLimiter *rateLimiter
 }
 
 // New assembles the router. It performs no I/O, so a zero Deps is a valid
@@ -126,6 +159,8 @@ func New(deps Deps, opts Options) *Server {
 		opts:          opts,
 		engine:        engine,
 		deviceLimiter: newRateLimiter(deviceAuthorizeBurst, deviceAuthorizeWindow, deviceAuthorizeMaxKeys),
+		mintLimiter: newRateLimiter(sessionMintFailureBurst, sessionMintFailureWindow,
+			sessionMintFailureMaxKeys),
 	}
 	srv.api = humagin.New(engine, humaConfig(opts))
 	srv.api.UseMiddleware(srv.authenticate)

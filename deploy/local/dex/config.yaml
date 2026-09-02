@@ -1,0 +1,84 @@
+# The local identity provider. Dex in front of glauth; see
+# specs/003-usable-web-ui/contracts/local-identity.md and research R1/R2.
+
+# Container-reachable, and used verbatim for discovery, token and JWKS. This is
+# the reverse of the Keycloak arrangement it replaces: Keycloak published a
+# browser-reachable issuer and derived the backchannel from each request's Host
+# header (KC_HOSTNAME_BACKCHANNEL_DYNAMIC). Dex ignores the request Host
+# entirely, so a `localhost` issuer would hand api and web a token_endpoint and a
+# jwks_uri naming a host no container can reach. Instead the issuer is the one
+# every container can reach and the browser gets one override,
+# AGENT_MANAGER_OIDC_BROWSER_BASE_URL, on the single endpoint whose only job is
+# to be clicked. Measured as a complete round trip in R2.
+issuer: http://dex:5556/dex
+
+# A laptop IdP with no state worth preserving across a restart.
+storage:
+  type: memory
+
+web:
+  http: 0.0.0.0:5556
+
+oauth2:
+  # One fewer click; the consent screen teaches nothing about this product.
+  skipApprovalScreen: true
+
+staticClients:
+  - id: agent-manager
+    name: Agent Manager
+    secret: local-only-oidc-client-secret
+    # The web role's origin. Both spellings, because a browser that was opened on
+    # 127.0.0.1 stays on 127.0.0.1 and Dex compares redirect URIs literally.
+    redirectURIs:
+      - http://localhost:8080/auth/callback
+      - http://127.0.0.1:8080/auth/callback
+
+  - id: agent-manager-cli
+    name: Agent Manager CLI
+    # The CLI ships no secret, so it authenticates as a public client and uses
+    # the device grant rather than a redirect.
+    public: true
+
+# NOTE the absence of `staticPasswords`. A `groups:` key on a staticPasswords
+# entry is accepted at boot with no warning, logged nowhere, and silently
+# ignored — feature 001's R6 measured that, and 003's R1 re-measured it on
+# v2.44.0. The LDAP connector is the only mechanism here that produces a per-user
+# `groups` claim.
+connectors:
+  - type: ldap
+    id: ldap
+    name: LDAP
+    config:
+      host: glauth:3893
+      # Plaintext LDAP on a private compose network on somebody's laptop.
+      insecureNoSSL: true
+      bindDN: cn=serviceuser,ou=svcaccts,dc=example,dc=dev
+      bindPW: local-only-dex-bind-password
+
+      userSearch:
+        baseDN: dc=example,dc=dev
+        filter: "(objectClass=posixAccount)"
+        username: mail
+        # camelCase, not `uidnumber`. glauth's attribute names are camelCase and
+        # Dex's lookup is case-sensitive; the lowercase spelling reads more
+        # naturally and fails with
+        #   ldap: entry "cn=…" missing following required attribute(s): ["uidnumber"]
+        # which reads like a missing directory field rather than a typo.
+        idAttr: uidNumber
+        emailAttr: mail
+        nameAttr: cn
+
+      groupSearch:
+        baseDN: dc=example,dc=dev
+        userMatchers:
+          # glauth answers a group search with full member DNs in
+          # `uniqueMember`. The textbook POSIX pairing — memberUid against the
+          # username — finds nothing and produces `groups search returned no
+          # groups`: a SUCCESSFUL login carrying no groups, which is exactly the
+          # silent claim loss this feature exists to prevent.
+          - userAttr: DN
+            groupAttr: uniqueMember
+        # `ou`, not `cn`. glauth's group entries have no `cn` at all, so `cn`
+        # fails with `group entity "ou=eng-platform,…" missing required attribute
+        # "cn"` AFTER the group was found — misleading, because the search worked.
+        nameAttr: ou

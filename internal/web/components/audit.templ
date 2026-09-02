@@ -1,0 +1,115 @@
+package components
+
+import (
+	"strconv"
+
+	"agent-manager/internal/web/view"
+)
+
+// AuditScreen is 001 FR-050 through FR-052 as a screen: one row per
+// state-changing action, naming actor, kind, text and source, append-only, with
+// the full export beside it.
+//
+// The rows carry package, profile and host names a publisher or an operator chose,
+// so every cell is interpolated and therefore escaped (001 FR-055, FR-127).
+//
+// Nothing here dedupes. A version scanned three times under three rule packs has
+// three `scan` rows, and that history is the reason the pack version is recorded
+// at all — collapsing rows by subject would hide exactly the sequence somebody
+// opens this screen to reconstruct.
+templ AuditScreen(a view.Audit) {
+	<div class="am-header">
+		<div class="am-header-text">
+			<h1 class="am-h1">Audit log</h1>
+			<p class="am-lede">
+				Who fetched, approved, shared or synced what, and from which host. One row per
+				action, appended and never rewritten.
+			</p>
+		</div>
+		if a.ExportAvailable {
+			<div class="am-actions">
+				// The export is the full current scope and not this page (001 FR-051), which
+				// is why the link carries no page number. It streams, so a large log arrives
+				// as it is read rather than after the api has assembled all of it.
+				<a class="am-btn" href={ view.AuditExportHref } download="audit-log.ndjson">
+					Export the whole log
+				</a>
+			</div>
+		}
+	</div>
+	if a.SignedOut {
+		<div class="am-empty am-empty-auth" id="audit-signed-out">
+			Sign in to read the audit log. The hub has no anonymous view.
+		</div>
+	} else if a.Refused {
+		<div class="am-empty am-empty-auth" id="audit-refused">
+			Your role may not read the audit log. This is not an empty log: it records every
+			action taken in this hub, and a role is what decides whether you may read it.
+		</div>
+	} else if a.Unavailable {
+		<div class="am-notice am-notice-dan" id="audit-unavailable">
+			<p class="am-note">
+				The hub's api did not answer, so no rows could be read. This is not an empty audit
+				log — the table is append-only, so "empty" would mean nothing has ever happened in
+				this hub. Retry in a moment.
+			</p>
+		</div>
+	} else {
+		<div class="am-card">
+			<div class="am-section-head">
+				<div class="am-section-title">Events</div>
+				<div class="am-section-note">{ a.Count() }</div>
+			</div>
+			<div class="am-audit-row am-audit-head">
+				<div>Time</div>
+				<div>Actor</div>
+				<div>Event</div>
+				<div>Source</div>
+			</div>
+			for _, row := range a.Rows {
+				<div class="am-audit-row">
+					<div class="am-mono am-audit-time">{ row.At }</div>
+					<div class="am-audit-actor">
+						<span>{ row.Actor }</span>
+						if row.ActorNote() != "" {
+							// A system actor is labelled as one. 001 FR-050 names `fetcher` and
+							// `scanner` as actors, and a screen that let them read as usernames
+							// would attribute a machine's action to a person with that name.
+							<span class="am-audit-actor-kind">{ row.ActorNote() }</span>
+						}
+					</div>
+					<div class="am-audit-event">
+						<span class={ AuditKindClass(row) }>{ row.Kind }</span>
+						<span class="am-audit-text">{ row.Text }</span>
+					</div>
+					<div class="am-mono am-audit-source">{ row.SourceLabel() }</div>
+				</div>
+			}
+			if a.Empty() {
+				// FR-122: what would be here, and how it gets here. An audit row is written
+				// by an action, never by a person visiting this screen.
+				<div class="am-empty" id="audit-empty">
+					No events recorded. A row is appended here by every state-changing action —
+					signing in, registering a package, a scan reaching a verdict, a reviewer
+					deciding a finding, a machine syncing a profile. Take one of those and it will
+					appear, newest first.
+				</div>
+			}
+			if a.Pages() > 1 {
+				<div class="am-pager">
+					<span>Page { strconv.Itoa(a.CurrentPage()) } of { strconv.Itoa(a.Pages()) }</span>
+					if a.CurrentPage() > 1 {
+						<a class="am-pager-link" href={ view.AuditPageHref(a.CurrentPage() - 1) }>Previous</a>
+					} else {
+						<span class="am-pager-link am-pager-off">Previous</span>
+					}
+					if a.CurrentPage() < a.Pages() {
+						<a class="am-pager-link" href={ view.AuditPageHref(a.CurrentPage() + 1) }>Next</a>
+					} else {
+						<span class="am-pager-link am-pager-off">Next</span>
+					}
+				</div>
+			}
+		</div>
+	}
+}

@@ -155,7 +155,7 @@ in the feature's `plan.md` Complexity Tracking table.
 | Object storage | `gocloud.dev/blob` (`s3blob` against MinIO/S3, `memblob` and `fileblob` in tests and dev); `bucket.As()` for the raw S3 client the Storage screen's bucket-settings report needs |
 | Bundles | `archive/tar`, `archive/zip`, `klauspost/compress/zstd`, `crypto/sha256` |
 | Web UI | `a-h/templ` components, `starfederation/datastar-go` for reactivity, Tailwind standalone binary. **No Node.js in any image.** |
-| Identity | `coreos/go-oidc/v3` + `golang.org/x/oauth2`, RFC 8628 device flow; Dex locally |
+| Identity | `coreos/go-oidc/v3` + `golang.org/x/oauth2`, RFC 8628 device flow; locally **Dex in front of glauth**. The directory is not optional: Dex's static-password connector emits no `groups` claim, and that claim is the sole input to the group-to-role map (003 R1) |
 | Scanner analysis | `santhosh-tekuri/jsonschema/v6`, `goccy/go-yaml`, `mvdan.cc/sh/v3/syntax`, stdlib `regexp` (RE2) |
 | Config / CLI / logs | `caarlos0/env/v11`, `spf13/cobra`, `rs/zerolog` |
 | Tests | `stretchr/testify`, `testcontainers-go` |
@@ -212,10 +212,24 @@ project owner to change.
 Versioning is semantic: MAJOR for removing or redefining a principle, MINOR for adding a
 principle or a materially new constraint, PATCH for wording and clarification.
 
-**Version**: 1.3.0 | **Ratified**: 2026-08-27 | **Last Amended**: 2026-08-27
+**Version**: 1.3.1 | **Ratified**: 2026-08-27 | **Last Amended**: 2026-08-31
 
 ### Amendment record
 
+- **1.3.1** (2026-08-31) — No principle changed. Recorded, because the repository spent a
+  feature out of step with this document and nothing said so: principle VI and the Technology
+  Constraints table both name **Dex** as the local identity substitute, and feature 001's
+  research R6 overrode that with Keycloak on a measurement — Dex's static-password connector
+  emits no `groups` claim, and the claim is the sole input to the group-to-role map. The
+  override was correct on its evidence and was never brought here, so for one feature the
+  constitution named one provider and the stack ran another. Feature 003 restores the letter
+  of this document by measurement in the other direction: R6's finding still reproduces, but
+  it was a property of one connector rather than of the provider, and Dex in front of a
+  directory (glauth) does emit a per-user claim — at 268 MB against 730 MB and under a second
+  against nine. Two infrastructure images now stand where one did, which principle VI's final
+  clause already excludes from principle I. The lesson this entry exists to record is
+  procedural, not technical: an override of a named constraint belongs in this record when it
+  is taken, whether or not it is later reversed.
 - **1.3.0** (2026-08-27) — Added principle IX: the job queue moves to its own PostgreSQL
   database with a separate connection URL, and the transactional-enqueue guarantee lost to
   that split is rebuilt with an outbox table and a relay. Delivery becomes explicitly

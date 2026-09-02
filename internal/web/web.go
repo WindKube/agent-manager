@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"regexp"
@@ -23,6 +24,7 @@ import (
 
 	"agent-manager/internal/logging"
 	"agent-manager/internal/web/components"
+	"agent-manager/internal/web/hub"
 	"agent-manager/internal/web/view"
 )
 
@@ -73,6 +75,47 @@ type Registrar interface {
 	Register(ctx context.Context, registration view.Registration) (view.ImportResult, error)
 }
 
+// ScannerSource is the Scanner screen's door to the api (US4).
+//
+// Three reads and no decision, for the reason Registrar is separate from
+// CatalogSource: internal/web/fixture can honestly answer all three of these and
+// must not be able to answer an accept, and an interface a stand-in cannot
+// honestly satisfy is one every screen test then exercises as a claim.
+type ScannerSource interface {
+	ScannerSummary(ctx context.Context, days int) (hub.ScannerSummary, error)
+	Findings(ctx context.Context, q hub.FindingQuery) (hub.FindingsPage, error)
+	Finding(ctx context.Context, id string) (hub.FindingDetail, error)
+}
+
+// Reviewer is the two decisions a scanner reviewer can take (001 FR-028).
+//
+// Separate from ScannerSource precisely because it writes: a fixture that could
+// approve a finding would be claiming it had recorded an override, an audit row
+// and a version state it cannot touch.
+type Reviewer interface {
+	AcceptFinding(ctx context.Context, id, note string, days int) (hub.Decision, error)
+	RejectFinding(ctx context.Context, id, note string) (hub.Decision, error)
+}
+
+// AuditSource is the audit screen and its export (001 FR-050, FR-051).
+//
+// AuditExport hands back a LIVE body and the caller owns the Close. The audit table
+// is the one table designed to grow without bound, so this signature exists to keep
+// the export a stream all the way to the browser.
+type AuditSource interface {
+	Audit(ctx context.Context, page int) (hub.AuditPage, error)
+	AuditExport(ctx context.Context) (io.ReadCloser, string, error)
+}
+
+// BadgeSource is the sidebar's three counts (FR-121, research R5).
+//
+// One operation, read once per full page render and never on a fragment update.
+// Nil means a shell with no badges on it, which is the honest rendering of counts
+// this request could not read — not three zeroes.
+type BadgeSource interface {
+	Badges(ctx context.Context) (hub.Badges, error)
+}
+
 // Deps is what the role is handed. Every field is narrow on purpose: there is no
 // database handle and no bucket to reach for.
 type Deps struct {
@@ -83,13 +126,65 @@ type Deps struct {
 	// Registrar is optional. Nil means the modal renders and refuses to submit,
 	// which is what a screen test wants and is not a state a deployment is in.
 	Registrar Registrar
-	Log       zerolog.Logger
+	// Auth is the door to the identity provider. Nil is a role whose provider could
+	// not be discovered at boot: /auth/signin then says the provider cannot be
+	// reached and offers no action, rather than a button known to fail.
+	Auth AuthProvider
+	// Viewers resolves who each request is acting as, on EVERY request (FR-118).
+	//
+	// Nil fails closed: the guard sends every protected route to the sign-in screen.
+	// A screen test that wants a signed-in shell has to supply one (SC-106) — there
+	// is no default viewer and there must not be one.
+	Viewers ViewerSource
+	// Sessions is the api's session mint and its sign-out. Nil means sign-in cannot
+	// complete, which the callback renders as the hub's own failure.
+	Sessions SessionMinter
+	// Scanner backs the Scanner screen. Nil renders its unavailable state rather
+	// than an empty one: a screen with no source is not a hub with no findings.
+	Scanner ScannerSource
+	// Reviewer is the accept and reject pair. Nil means the screen renders and
+	// refuses to record, which is what a screen test gets and is not a state a
+	// deployment is in.
+	Reviewer Reviewer
+	// Audit backs the audit log and its export.
+	Audit AuditSource
+	// Badges backs the sidebar counts. Nil is a sidebar with no counts.
+	Badges BadgeSource
+	Log    zerolog.Logger
 }
 
 // Options is the run-time configuration of the surface itself.
 type Options struct {
 	// Addr is the listen address, e.g. ":8080".
 	Addr string
+	// PublicBaseURL is the origin a browser reaches this role at. It is read for
+	// exactly one decision — whether the two cookies are marked Secure — and it is
+	// read instead of the request on purpose: see secureCookie.
+	PublicBaseURL string
+	// ProviderName is what the operator calls the identity provider, for the
+	// sign-in screen's one action. Empty renders the neutral wording — naming it
+	// tells a person which password-manager entry to reach for, and nothing else in
+	// this role branches on it. It is a label an operator states or does without:
+	// deriving one from the issuer URL would be the provider-specific quirk FR-105
+	// forbids.
+	ProviderName string
+	// DevCredentialHint puts the local stack's seeded logins on the sign-in screen
+	// (FR-119). It is an explicit flag and is never derived from the issuer, the
+	// host name or the build type.
+	DevCredentialHint bool
+	// DevCredentials is what the hint above prints, handed in rather than spelled
+	// anywhere under internal/web: a username or an address written into this role
+	// would be the compiled-in identity FR-116 and SC-106 forbid, and it would
+	// reach every visitor the moment that flag flipped. Ignored unless the flag is
+	// set.
+	DevCredentials []view.Credential
+	// OIDCCookieKey signs the round-trip cookie. Empty means one is drawn at boot,
+	// which is the right default for a single process: the cookie lives 90 seconds,
+	// so a restart costs at most one person one retry, and there is no key material
+	// in the environment to leak. A deployment running more than one web replica
+	// behind a load balancer MUST set the same value on each, or a sign-in that
+	// starts on one and returns to another finds no round trip in flight.
+	OIDCCookieKey []byte
 }
 
 // Server is the assembled router. It owns no connections.
@@ -97,6 +192,10 @@ type Server struct {
 	deps   Deps
 	opts   Options
 	engine *gin.Engine
+	// secureCookie and oidcKey are decided once, at construction: a per-request
+	// decision about either is a per-request opportunity to get one of them wrong.
+	secureCookie bool
+	oidcKey      []byte
 }
 
 // New assembles the router. It performs no I/O.
@@ -107,9 +206,19 @@ func New(deps Deps, opts Options) *Server {
 
 	engine := gin.New()
 	engine.HandleMethodNotAllowed = true
-	engine.Use(correlation(deps.Log), recovery())
 
-	srv := &Server{deps: deps, opts: opts, engine: engine}
+	srv := &Server{
+		deps:         deps,
+		opts:         opts,
+		engine:       engine,
+		secureCookie: secureCookie(opts.PublicBaseURL),
+		oidcKey:      oidcSigningKey(opts.OIDCCookieKey),
+	}
+	// The guard is global, so a route added by a later layer is protected by
+	// default and opting out means editing the one list that names the
+	// unauthenticated set. It runs after correlation so its own log lines and its
+	// redirect carry the request's id.
+	engine.Use(correlation(deps.Log), recovery(), srv.guard())
 	srv.register()
 	return srv
 }
@@ -133,7 +242,24 @@ func (s *Server) register() {
 	// router as two segments anyway.
 	s.engine.GET("/packages/:namespace/:name", s.packageDetail)
 
+	// The two governance screens (US4). Both are plain renders; the two decisions
+	// are POST forms that redirect, so a browser reload cannot re-approve anything.
+	s.engine.GET("/scanner", s.scanner)
+	s.engine.POST("/scanner/findings/:id/accept", s.acceptFinding)
+	s.engine.POST("/scanner/findings/:id/reject", s.rejectFinding)
+	s.engine.GET("/audit", s.audit)
+	s.engine.GET("/audit/export", s.auditExport)
+
 	s.engine.POST("/theme", s.setTheme)
+
+	// Sign-in (US2). These four and only these four are exempt from the guard,
+	// together with /healthz and /static — contracts/auth.md fixes that set.
+	// /auth/logout is a POST because a GET sign-out fires from any image tag on any
+	// page, on any origin.
+	s.engine.GET("/auth/signin", s.signin)
+	s.engine.GET("/auth/login", s.login)
+	s.engine.GET("/auth/callback", s.callback)
+	s.engine.POST("/auth/logout", s.logout)
 
 	s.engine.GET("/static/*path", serveStatic)
 
@@ -156,11 +282,9 @@ type screen struct {
 var placeholders = []screen{
 	{path: "/profiles", nav: "profiles", title: "Profiles", lede: "Named sets of packages a machine can sync."},
 	{path: "/profiles/:slug", nav: "profiles", title: "Profile", lede: "The packages in one profile, their pins and their targets."},
-	{path: "/scanner", nav: "scanner", title: "Scanner", lede: "Open findings, their evidence and the reviewer's decision."},
 	{path: "/cli", nav: "cli", title: "Connect the CLI", lede: "Pair a machine with the hub through the device flow."},
 	{path: "/org", nav: "org", title: "Organization", lede: "Identity provider, group-to-role mapping and policy."},
 	{path: "/storage", nav: "storage", title: "Storage", lede: "Bucket layout, object counts and recent fetch outcomes."},
-	{path: "/audit", nav: "audit", title: "Audit log", lede: "Every state-changing action, one row each."},
 }
 
 func (s *Server) placeholder(sc screen) gin.HandlerFunc {

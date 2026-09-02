@@ -18,6 +18,69 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AuditEntryActorKind.
+const (
+	Identity AuditEntryActorKind = "identity"
+	System   AuditEntryActorKind = "system"
+)
+
+// Valid indicates whether the value is a known member of the AuditEntryActorKind enum.
+func (e AuditEntryActorKind) Valid() bool {
+	switch e {
+	case Identity:
+		return true
+	case System:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditEntryKind.
+const (
+	AuditEntryKindApprove  AuditEntryKind = "approve"
+	AuditEntryKindCategory AuditEntryKind = "category"
+	AuditEntryKindFetch    AuditEntryKind = "fetch"
+	AuditEntryKindLogin    AuditEntryKind = "login"
+	AuditEntryKindPolicy   AuditEntryKind = "policy"
+	AuditEntryKindProfile  AuditEntryKind = "profile"
+	AuditEntryKindRole     AuditEntryKind = "role"
+	AuditEntryKindScan     AuditEntryKind = "scan"
+	AuditEntryKindSecret   AuditEntryKind = "secret"
+	AuditEntryKindShare    AuditEntryKind = "share"
+	AuditEntryKindSync     AuditEntryKind = "sync"
+)
+
+// Valid indicates whether the value is a known member of the AuditEntryKind enum.
+func (e AuditEntryKind) Valid() bool {
+	switch e {
+	case AuditEntryKindApprove:
+		return true
+	case AuditEntryKindCategory:
+		return true
+	case AuditEntryKindFetch:
+		return true
+	case AuditEntryKindLogin:
+		return true
+	case AuditEntryKindPolicy:
+		return true
+	case AuditEntryKindProfile:
+		return true
+	case AuditEntryKindRole:
+		return true
+	case AuditEntryKindScan:
+		return true
+	case AuditEntryKindSecret:
+		return true
+	case AuditEntryKindShare:
+		return true
+	case AuditEntryKindSync:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CatalogPackageKind.
 const (
 	CatalogPackageKindPlugin CatalogPackageKind = "plugin"
@@ -111,6 +174,246 @@ const (
 func (e DeviceTokenRequestGrantType) Valid() bool {
 	switch e {
 	case UrnIetfParamsOauthGrantTypeDeviceCode:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FindingCheckResult.
+const (
+	Fail FindingCheckResult = "fail"
+	Pass FindingCheckResult = "pass"
+	Warn FindingCheckResult = "warn"
+)
+
+// Valid indicates whether the value is a known member of the FindingCheckResult enum.
+func (e FindingCheckResult) Valid() bool {
+	switch e {
+	case Fail:
+		return true
+	case Pass:
+		return true
+	case Warn:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FindingDecisionState.
+const (
+	FindingDecisionStateApproved FindingDecisionState = "approved"
+	FindingDecisionStateOpen     FindingDecisionState = "open"
+	FindingDecisionStateRejected FindingDecisionState = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the FindingDecisionState enum.
+func (e FindingDecisionState) Valid() bool {
+	switch e {
+	case FindingDecisionStateApproved:
+		return true
+	case FindingDecisionStateOpen:
+		return true
+	case FindingDecisionStateRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FindingDecisionVerdict.
+const (
+	FindingDecisionVerdictClean    FindingDecisionVerdict = "clean"
+	FindingDecisionVerdictFlagged  FindingDecisionVerdict = "flagged"
+	FindingDecisionVerdictRejected FindingDecisionVerdict = "rejected"
+	FindingDecisionVerdictScanning FindingDecisionVerdict = "scanning"
+)
+
+// Valid indicates whether the value is a known member of the FindingDecisionVerdict enum.
+func (e FindingDecisionVerdict) Valid() bool {
+	switch e {
+	case FindingDecisionVerdictClean:
+		return true
+	case FindingDecisionVerdictFlagged:
+		return true
+	case FindingDecisionVerdictRejected:
+		return true
+	case FindingDecisionVerdictScanning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FindingDetailSeverity.
+const (
+	FindingDetailSeverityHigh   FindingDetailSeverity = "high"
+	FindingDetailSeverityLow    FindingDetailSeverity = "low"
+	FindingDetailSeverityMedium FindingDetailSeverity = "medium"
+)
+
+// Valid indicates whether the value is a known member of the FindingDetailSeverity enum.
+func (e FindingDetailSeverity) Valid() bool {
+	switch e {
+	case FindingDetailSeverityHigh:
+		return true
+	case FindingDetailSeverityLow:
+		return true
+	case FindingDetailSeverityMedium:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FindingDetailState.
+const (
+	FindingDetailStateApproved FindingDetailState = "approved"
+	FindingDetailStateOpen     FindingDetailState = "open"
+	FindingDetailStateRejected FindingDetailState = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the FindingDetailState enum.
+func (e FindingDetailState) Valid() bool {
+	switch e {
+	case FindingDetailStateApproved:
+		return true
+	case FindingDetailStateOpen:
+		return true
+	case FindingDetailStateRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FindingDetailVerdict.
+const (
+	FindingDetailVerdictClean    FindingDetailVerdict = "clean"
+	FindingDetailVerdictFlagged  FindingDetailVerdict = "flagged"
+	FindingDetailVerdictRejected FindingDetailVerdict = "rejected"
+	FindingDetailVerdictScanning FindingDetailVerdict = "scanning"
+)
+
+// Valid indicates whether the value is a known member of the FindingDetailVerdict enum.
+func (e FindingDetailVerdict) Valid() bool {
+	switch e {
+	case FindingDetailVerdictClean:
+		return true
+	case FindingDetailVerdictFlagged:
+		return true
+	case FindingDetailVerdictRejected:
+		return true
+	case FindingDetailVerdictScanning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FindingEvidenceRole.
+const (
+	Primary    FindingEvidenceRole = "primary"
+	Supporting FindingEvidenceRole = "supporting"
+)
+
+// Valid indicates whether the value is a known member of the FindingEvidenceRole enum.
+func (e FindingEvidenceRole) Valid() bool {
+	switch e {
+	case Primary:
+		return true
+	case Supporting:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FindingScanVerdict.
+const (
+	FindingScanVerdictClean    FindingScanVerdict = "clean"
+	FindingScanVerdictFlagged  FindingScanVerdict = "flagged"
+	FindingScanVerdictRejected FindingScanVerdict = "rejected"
+	FindingScanVerdictScanning FindingScanVerdict = "scanning"
+)
+
+// Valid indicates whether the value is a known member of the FindingScanVerdict enum.
+func (e FindingScanVerdict) Valid() bool {
+	switch e {
+	case FindingScanVerdictClean:
+		return true
+	case FindingScanVerdictFlagged:
+		return true
+	case FindingScanVerdictRejected:
+		return true
+	case FindingScanVerdictScanning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FindingSummarySeverity.
+const (
+	FindingSummarySeverityHigh   FindingSummarySeverity = "high"
+	FindingSummarySeverityLow    FindingSummarySeverity = "low"
+	FindingSummarySeverityMedium FindingSummarySeverity = "medium"
+)
+
+// Valid indicates whether the value is a known member of the FindingSummarySeverity enum.
+func (e FindingSummarySeverity) Valid() bool {
+	switch e {
+	case FindingSummarySeverityHigh:
+		return true
+	case FindingSummarySeverityLow:
+		return true
+	case FindingSummarySeverityMedium:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FindingSummaryState.
+const (
+	FindingSummaryStateApproved FindingSummaryState = "approved"
+	FindingSummaryStateOpen     FindingSummaryState = "open"
+	FindingSummaryStateRejected FindingSummaryState = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the FindingSummaryState enum.
+func (e FindingSummaryState) Valid() bool {
+	switch e {
+	case FindingSummaryStateApproved:
+		return true
+	case FindingSummaryStateOpen:
+		return true
+	case FindingSummaryStateRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FindingSummaryVerdict.
+const (
+	FindingSummaryVerdictClean    FindingSummaryVerdict = "clean"
+	FindingSummaryVerdictFlagged  FindingSummaryVerdict = "flagged"
+	FindingSummaryVerdictRejected FindingSummaryVerdict = "rejected"
+	FindingSummaryVerdictScanning FindingSummaryVerdict = "scanning"
+)
+
+// Valid indicates whether the value is a known member of the FindingSummaryVerdict enum.
+func (e FindingSummaryVerdict) Valid() bool {
+	switch e {
+	case FindingSummaryVerdictClean:
+		return true
+	case FindingSummaryVerdictFlagged:
+		return true
+	case FindingSummaryVerdictRejected:
+		return true
+	case FindingSummaryVerdictScanning:
 		return true
 	default:
 		return false
@@ -672,6 +975,78 @@ func (e SyncReportTargets) Valid() bool {
 	}
 }
 
+// Defines values for ViewerRole.
+const (
+	CatalogAdmin    ViewerRole = "catalog-admin"
+	ProfileConsumer ViewerRole = "profile-consumer"
+	ReadOnly        ViewerRole = "read-only"
+	ScannerReviewer ViewerRole = "scanner-reviewer"
+)
+
+// Valid indicates whether the value is a known member of the ViewerRole enum.
+func (e ViewerRole) Valid() bool {
+	switch e {
+	case CatalogAdmin:
+		return true
+	case ProfileConsumer:
+		return true
+	case ReadOnly:
+		return true
+	case ScannerReviewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListFindingsParamsState.
+const (
+	ListFindingsParamsStateAll      ListFindingsParamsState = "all"
+	ListFindingsParamsStateApproved ListFindingsParamsState = "approved"
+	ListFindingsParamsStateOpen     ListFindingsParamsState = "open"
+	ListFindingsParamsStateRejected ListFindingsParamsState = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the ListFindingsParamsState enum.
+func (e ListFindingsParamsState) Valid() bool {
+	switch e {
+	case ListFindingsParamsStateAll:
+		return true
+	case ListFindingsParamsStateApproved:
+		return true
+	case ListFindingsParamsStateOpen:
+		return true
+	case ListFindingsParamsStateRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListFindingsParamsSeverity.
+const (
+	ListFindingsParamsSeverityAll    ListFindingsParamsSeverity = "all"
+	ListFindingsParamsSeverityHigh   ListFindingsParamsSeverity = "high"
+	ListFindingsParamsSeverityLow    ListFindingsParamsSeverity = "low"
+	ListFindingsParamsSeverityMedium ListFindingsParamsSeverity = "medium"
+)
+
+// Valid indicates whether the value is a known member of the ListFindingsParamsSeverity enum.
+func (e ListFindingsParamsSeverity) Valid() bool {
+	switch e {
+	case ListFindingsParamsSeverityAll:
+		return true
+	case ListFindingsParamsSeverityHigh:
+		return true
+	case ListFindingsParamsSeverityLow:
+		return true
+	case ListFindingsParamsSeverityMedium:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListPackagesParamsKind.
 const (
 	ListPackagesParamsKindAll    ListPackagesParamsKind = "all"
@@ -814,6 +1189,77 @@ func (e RegisterPackageMultipartBodyVisibility) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// AuditEntry defines model for AuditEntry.
+type AuditEntry struct {
+	// Actor The email or subject of the person, or the name of the system role, that acted.
+	//
+	// Examples: kwiatrzyk@example.com
+	Actor string `json:"actor"`
+
+	// ActorKind system is a worker with no person behind it, which a screen must not attribute to anybody.
+	//
+	// Examples: identity
+	ActorKind AuditEntryActorKind `json:"actorKind"`
+	Id        openapi_types.UUID  `json:"id"`
+
+	// Kind Examples: approve
+	Kind       AuditEntryKind `json:"kind"`
+	OccurredAt time.Time      `json:"occurredAt"`
+
+	// Source web, cli / <host> or system.
+	//
+	// Examples: web
+	Source *string `json:"source,omitempty"`
+
+	// Text The human-readable record of what happened. It quotes package and profile names, so it is rendered escaped (FR-055).
+	//
+	// Examples: override granted for community/aws-cost-explainer@2.0.0
+	Text string `json:"text"`
+}
+
+// AuditEntryActorKind system is a worker with no person behind it, which a screen must not attribute to anybody.
+//
+// Examples: identity
+type AuditEntryActorKind string
+
+// AuditEntryKind Examples: approve
+type AuditEntryKind string
+
+// AuditPage defines model for AuditPage.
+type AuditPage struct {
+	// Entries The requested page, most recent first.
+	Entries []AuditEntry `json:"entries"`
+
+	// Page Examples: 1
+	Page int64 `json:"page"`
+
+	// PageSize Examples: 50
+	PageSize int64 `json:"pageSize"`
+
+	// Total Rows in the log. The export returns all of them (FR-051).
+	//
+	// Examples: 512
+	Total int64 `json:"total"`
+}
+
+// Badges defines model for Badges.
+type Badges struct {
+	// OpenFindings Findings awaiting a decision.
+	//
+	// Examples: 4
+	OpenFindings int64 `json:"openFindings"`
+
+	// Packages Packages visible in the catalog — the same figure the catalog's own total reports with no filters applied.
+	//
+	// Examples: 10
+	Packages int64 `json:"packages"`
+
+	// Profiles Profiles this identity may read, and no others (FR-044).
+	//
+	// Examples: 4
+	Profiles int64 `json:"profiles"`
 }
 
 // CatalogFacetOption defines model for CatalogFacetOption.
@@ -1037,6 +1483,247 @@ type ErrorDetail struct {
 
 	// Value The offending value, echoed back.
 	Value interface{} `json:"value,omitempty"`
+}
+
+// FindingApproval defines model for FindingApproval.
+type FindingApproval struct {
+	// ExpiresInDays Days until the acceptance lapses. Defaults to 30 when omitted; never unlimited.
+	//
+	// Examples: 12
+	ExpiresInDays *int64 `json:"expiresInDays,omitempty"`
+
+	// Note Why this risk is accepted. Required: an override with no stated reason is an unexplained exception, and FR-028 asks for a recorded note.
+	//
+	// Examples: Network call is to our own registry
+	Note string `json:"note"`
+}
+
+// FindingCheck defines model for FindingCheck.
+type FindingCheck struct {
+	// CheckId Examples: network-allowlist
+	CheckId string `json:"checkId"`
+
+	// Label The check's own label, as the scan recorded it. A screen that mapped check ids to labels itself would stop naming a check added after it shipped.
+	//
+	// Examples: Network allowlist
+	Label string `json:"label"`
+
+	// Result Examples: fail
+	Result FindingCheckResult `json:"result"`
+
+	// WarnCount How many warnings this check raised. Zero unless the result is warn.
+	//
+	// Examples: 2
+	WarnCount int64 `json:"warnCount"`
+}
+
+// FindingCheckResult Examples: fail
+type FindingCheckResult string
+
+// FindingDecision defines model for FindingDecision.
+type FindingDecision struct {
+	// ExpiresAt When the acceptance lapses. Absent on a rejection, which does not.
+	ExpiresAt *time.Time         `json:"expiresAt,omitempty"`
+	Id        openapi_types.UUID `json:"id"`
+
+	// State Examples: approved
+	State FindingDecisionState `json:"state"`
+
+	// Verdict Examples: flagged
+	Verdict FindingDecisionVerdict `json:"verdict"`
+}
+
+// FindingDecisionState Examples: approved
+type FindingDecisionState string
+
+// FindingDecisionVerdict Examples: flagged
+type FindingDecisionVerdict string
+
+// FindingDetail defines model for FindingDetail.
+type FindingDetail struct {
+	// Checks Every check the scan ran and its result, including the ones that passed (FR-025).
+	Checks []FindingCheck `json:"checks"`
+
+	// Detail Why this was raised, in prose.
+	Detail *string `json:"detail,omitempty"`
+
+	// Evidence Every location this finding points at, cause first. Rendered escaped, always (FR-055).
+	Evidence []FindingEvidence  `json:"evidence"`
+	Id       openapi_types.UUID `json:"id"`
+
+	// Override Present only when a reviewer has accepted this finding.
+	Override *FindingOverride `json:"override,omitempty"`
+
+	// PackageId Examples: community/slack-digest
+	PackageId string    `json:"packageId"`
+	RaisedAt  time.Time `json:"raisedAt"`
+
+	// RuleId Examples: SH-NET-002
+	RuleId string      `json:"ruleId"`
+	Scan   FindingScan `json:"scan"`
+
+	// Severity Examples: high
+	Severity FindingDetailSeverity `json:"severity"`
+
+	// State Examples: open
+	State FindingDetailState `json:"state"`
+
+	// Title Examples: Undeclared network egress
+	Title string `json:"title"`
+
+	// Verdict Examples: flagged
+	Verdict FindingDetailVerdict `json:"verdict"`
+
+	// Version Examples: 0.5.1
+	Version string `json:"version"`
+}
+
+// FindingDetailSeverity Examples: high
+type FindingDetailSeverity string
+
+// FindingDetailState Examples: open
+type FindingDetailState string
+
+// FindingDetailVerdict Examples: flagged
+type FindingDetailVerdict string
+
+// FindingEvidence defines model for FindingEvidence.
+type FindingEvidence struct {
+	// Line Absent when the location names a file without a line.
+	//
+	// Examples: 41
+	Line *int64 `json:"line,omitempty"`
+
+	// Path Examples: scripts/digest.sh
+	Path  string  `json:"path"`
+	Quote *string `json:"quote,omitempty"`
+
+	// Role primary is the location that caused the finding; the rest show its consequences.
+	//
+	// Examples: primary
+	Role FindingEvidenceRole `json:"role"`
+}
+
+// FindingEvidenceRole primary is the location that caused the finding; the rest show its consequences.
+//
+// Examples: primary
+type FindingEvidenceRole string
+
+// FindingOverride defines model for FindingOverride.
+type FindingOverride struct {
+	DecidedAt time.Time `json:"decidedAt"`
+
+	// ExpiresAt When this acceptance lapses.
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+
+	// Note Examples: Network call is to our own registry
+	Note *string `json:"note,omitempty"`
+
+	// Reviewer The reviewer's email, or their subject when the identity carries no email.
+	//
+	// Examples: security-lead@example.dev
+	Reviewer string `json:"reviewer"`
+}
+
+// FindingRejection defines model for FindingRejection.
+type FindingRejection struct {
+	// Note Optional reason, recorded in the audit row.
+	//
+	// Examples: Publisher is shipping a fix in 0.5.2
+	Note *string `json:"note,omitempty"`
+}
+
+// FindingScan defines model for FindingScan.
+type FindingScan struct {
+	// FinishedAt Absent while the scan is still in flight.
+	FinishedAt *time.Time `json:"finishedAt,omitempty"`
+
+	// PackVersion The rule-pack version this scan ran. What makes 'rescan needed' a comparison rather than a guess.
+	//
+	// Examples: 1.4.0
+	PackVersion string    `json:"packVersion"`
+	StartedAt   time.Time `json:"startedAt"`
+
+	// TimedOut The scan exceeded its budget. Its verdict is not a clean bill of health (FR-031).
+	TimedOut bool `json:"timedOut"`
+
+	// Verdict Examples: flagged
+	Verdict FindingScanVerdict `json:"verdict"`
+}
+
+// FindingScanVerdict Examples: flagged
+type FindingScanVerdict string
+
+// FindingSummary defines model for FindingSummary.
+type FindingSummary struct {
+	// EvidenceLine Absent when the finding names a file without a line.
+	//
+	// Examples: 41
+	EvidenceLine *int64 `json:"evidenceLine,omitempty"`
+
+	// EvidencePath The PRIMARY location's path. Rendered escaped, always: it is bundle content (FR-055).
+	//
+	// Examples: scripts/digest.sh
+	EvidencePath *string `json:"evidencePath,omitempty"`
+
+	// Id The finding's identifier, as the detail and decision paths take it.
+	Id openapi_types.UUID `json:"id"`
+
+	// PackageId namespace/name of the package the subject version belongs to.
+	//
+	// Examples: community/slack-digest
+	PackageId string `json:"packageId"`
+
+	// RaisedAt When the scan that raised this finding recorded it.
+	RaisedAt time.Time `json:"raisedAt"`
+
+	// RuleId Stable rule identifier (FR-024).
+	//
+	// Examples: SH-NET-002
+	RuleId string `json:"ruleId"`
+
+	// Severity Examples: high
+	Severity FindingSummarySeverity `json:"severity"`
+
+	// State Examples: open
+	State FindingSummaryState `json:"state"`
+
+	// Title Examples: Undeclared network egress
+	Title string `json:"title"`
+
+	// Verdict Examples: flagged
+	Verdict FindingSummaryVerdict `json:"verdict"`
+
+	// Version Examples: 0.5.1
+	Version string `json:"version"`
+}
+
+// FindingSummarySeverity Examples: high
+type FindingSummarySeverity string
+
+// FindingSummaryState Examples: open
+type FindingSummaryState string
+
+// FindingSummaryVerdict Examples: flagged
+type FindingSummaryVerdict string
+
+// FindingsPage defines model for FindingsPage.
+type FindingsPage struct {
+	// Findings The requested page, already sorted: highest severity first, then newest.
+	Findings []FindingSummary `json:"findings"`
+
+	// Page The page actually returned, which is clamped into range.
+	//
+	// Examples: 1
+	Page int64 `json:"page"`
+
+	// PageSize Examples: 20
+	PageSize int64 `json:"pageSize"`
+
+	// Total Findings matching every filter, across all pages.
+	//
+	// Examples: 4
+	Total int64 `json:"total"`
 }
 
 // Health defines model for Health.
@@ -1592,6 +2279,57 @@ type ProfileList struct {
 	Profiles []Profile `json:"profiles"`
 }
 
+// ScannerSummary defines model for ScannerSummary.
+type ScannerSummary struct {
+	// MedianScanSeconds Median seconds from a scan starting to its verdict, over the period.
+	//
+	// Examples: 18
+	MedianScanSeconds *float64 `json:"medianScanSeconds,omitempty"`
+
+	// NearestOverrideExpiry When the first active override lapses. Absent when none is active.
+	NearestOverrideExpiry *time.Time `json:"nearestOverrideExpiry,omitempty"`
+
+	// OverridesActive Accepted findings whose override has not expired.
+	//
+	// Examples: 1
+	OverridesActive int64 `json:"overridesActive"`
+
+	// PeriodDays The window VersionsScanned and MedianSeconds were computed over.
+	//
+	// Examples: 30
+	PeriodDays int64 `json:"periodDays"`
+
+	// Quarantined Packages whose latest visible version is flagged, and so awaits a decision.
+	//
+	// Examples: 2
+	Quarantined int64 `json:"quarantined"`
+
+	// VersionsScanned Distinct versions that reached a verdict inside the period.
+	//
+	// Examples: 1284
+	VersionsScanned int64 `json:"versionsScanned"`
+}
+
+// Session defines model for Session.
+type Session struct {
+	// ExpiresAt When the session row expires. This is the value stored, and what a cookie's expiry must match.
+	ExpiresAt time.Time `json:"expiresAt"`
+
+	// ExpiresIn Seconds until the session expires, measured on this hub's clock. Use this for a cookie's Max-Age rather than subtracting expiresAt from a local clock.
+	//
+	// Examples: 43200
+	ExpiresIn int64 `json:"expiresIn"`
+
+	// Token The opaque session token. Returned once; the hub stores only its hash. Sent back as an Authorization bearer credential on every later request.
+	Token string `json:"token"`
+}
+
+// SessionMintRequest defines model for SessionMintRequest.
+type SessionMintRequest struct {
+	// IdToken The provider's ID token, exactly as issued. Verified here against the configured issuer, audience and signing keys; the caller's own parsing is not trusted and is not accepted.
+	IdToken string `json:"idToken"`
+}
+
 // SyncReport defines model for SyncReport.
 type SyncReport struct {
 	// Host Hostname the sync landed on, for the audit row.
@@ -1618,6 +2356,66 @@ type SyncReport struct {
 
 // SyncReportTargets defines model for SyncReport.Targets.
 type SyncReportTargets string
+
+// Viewer defines model for Viewer.
+type Viewer struct {
+	// DisplayName The name a screen shows. Derived by the hub from whichever of name, preferred_username or email the provider populated.
+	//
+	// Examples: Krzysztof Wiatrzyk
+	DisplayName string `json:"displayName"`
+
+	// Email May be empty: a provider is not obliged to release an email address, and a screen must cope rather than invent one.
+	//
+	// Examples: kwiatrzyk@example.dev
+	Email string `json:"email"`
+
+	// Groups The groups claim as the provider sent it, unfiltered. Shown on the no-role screen so a person can say which groups they hold when asking for access.
+	Groups []string `json:"groups"`
+
+	// HasRole Whether any group this identity holds maps to a role at all (FR-117). False is a screen state, not an error.
+	HasRole bool `json:"hasRole"`
+
+	// Role The most privileged role this identity's groups map to. Absent when none of them maps to anything.
+	//
+	// Examples: catalog-admin
+	Role *ViewerRole `json:"role,omitempty"`
+
+	// Subject The provider's stable subject identifier for this identity.
+	//
+	// Examples: CgVrd2lhdHISBGxvY2Fs
+	Subject string `json:"subject"`
+}
+
+// ViewerRole The most privileged role this identity's groups map to. Absent when none of them maps to anything.
+//
+// Examples: catalog-admin
+type ViewerRole string
+
+// ListAuditParams defines parameters for ListAudit.
+type ListAuditParams struct {
+	// Page Clamped into range: a page past the end returns the last one.
+	Page     *int64 `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int64 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
+// ListFindingsParams defines parameters for ListFindings.
+type ListFindingsParams struct {
+	// State Mutually exclusive single selection. Defaults to all: the screen's open-only view says so by passing it, rather than the API applying a filter the caller cannot see.
+	State *ListFindingsParamsState `form:"state,omitempty" json:"state,omitempty"`
+
+	// Severity Mutually exclusive single selection.
+	Severity *ListFindingsParamsSeverity `form:"severity,omitempty" json:"severity,omitempty"`
+
+	// Page Clamped into range: a page past the end returns the last one.
+	Page     *int64 `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int64 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
+// ListFindingsParamsState defines parameters for ListFindings.
+type ListFindingsParamsState string
+
+// ListFindingsParamsSeverity defines parameters for ListFindings.
+type ListFindingsParamsSeverity string
 
 // ListPackagesParams defines parameters for ListPackages.
 type ListPackagesParams struct {
@@ -1728,17 +2526,32 @@ type PreviewPackageMultipartBody struct {
 	Archive openapi_types.File `json:"archive"`
 }
 
+// ScannerSummaryParams defines parameters for ScannerSummary.
+type ScannerSummaryParams struct {
+	// Days The window the scanned count and the median are computed over. The design's card says 30 days; the parameter is what keeps that caption a value rather than a constant (FR-121).
+	Days *int64 `form:"days,omitempty" json:"days,omitempty"`
+}
+
 // DeviceAuthorizeJSONRequestBody defines body for DeviceAuthorize for application/json ContentType.
 type DeviceAuthorizeJSONRequestBody = DeviceAuthorizeRequest
 
 // DeviceTokenFormdataRequestBody defines body for DeviceToken for application/x-www-form-urlencoded ContentType.
 type DeviceTokenFormdataRequestBody = DeviceTokenRequest
 
+// AcceptFindingJSONRequestBody defines body for AcceptFinding for application/json ContentType.
+type AcceptFindingJSONRequestBody = FindingApproval
+
+// RejectFindingJSONRequestBody defines body for RejectFinding for application/json ContentType.
+type RejectFindingJSONRequestBody = FindingRejection
+
 // RegisterPackageMultipartRequestBody defines body for RegisterPackage for multipart/form-data ContentType.
 type RegisterPackageMultipartRequestBody RegisterPackageMultipartBody
 
 // PreviewPackageMultipartRequestBody defines body for PreviewPackage for multipart/form-data ContentType.
 type PreviewPackageMultipartRequestBody PreviewPackageMultipartBody
+
+// CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
+type CreateSessionJSONRequestBody = SessionMintRequest
 
 // ReportSyncJSONRequestBody defines body for ReportSync for application/json ContentType.
 type ReportSyncJSONRequestBody = SyncReport
@@ -1817,6 +2630,27 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 // The interface specification for the client above.
 type ClientInterface interface {
 
+	// ListAudit The audit log, paged, most recent first
+	//
+	// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. There is deliberately no filter. The export below must return the full CURRENT SCOPE (FR-051), and with no filters the current scope is the whole log — a filter added here without being added there would quietly stop that holding. Rows are append-only, enforced by revoked grants rather than by anything in this process (FR-052). `text` quotes package and profile names, so it is rendered escaped.
+	//
+	// Corresponds with GET /v1/audit (the `ListAudit` operationId).
+	ListAudit(ctx context.Context, params *ListAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExportAudit Export the whole audit log
+	//
+	// FR-051: the full current scope, not the visible page. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
+	//
+	// Corresponds with GET /v1/audit/export (the `ExportAudit` operationId).
+	ExportAudit(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetBadges The application shell's counts
+	//
+	// The three counts the sidebar renders, in one call: packages visible in the catalog, profiles THIS IDENTITY may read, and findings awaiting a decision (FR-121). One operation because the shell renders on every screen, so three would be three round trips per page. Three indexed counts over the base tables and not a projection: principle VIII sanctions exactly one and it is not spent here (research R5). The profile count is the length of the list the Profiles screen shows and cannot be more: a count including a profile the reader cannot open would leak its existence by arithmetic.
+	//
+	// Corresponds with GET /v1/badges (the `GetBadges` operationId).
+	GetBadges(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetBundle Download an immutable version bundle
 	//
 	// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate (FR-029).
@@ -1859,6 +2693,56 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /v1/device/token (the `DeviceToken` operationId).
 	DeviceTokenWithFormdataBody(ctx context.Context, body DeviceTokenFormdataRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListFindings Findings, paged and filterable
+	//
+	// One page of findings, highest severity first and newest within a severity, filterable by state and by severity. Each row carries the PRIMARY evidence location only; a finding legitimately has several, and the whole of them is on the detail operation. `verdict` is the subject VERSION's verdict and not the finding's state: an accepted finding leaves its version flagged, because the override is what lets it through and the gate still governs whether it does.
+	//
+	// Corresponds with GET /v1/findings (the `ListFindings` operationId).
+	ListFindings(ctx context.Context, params *ListFindingsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetFinding One finding, its evidence and every check that ran
+	//
+	// The detail pane of 001 US4 scenario 2: severity, rule, subject, the prose explanation, EVERY evidence location, and EVERY check the raising scan ran — passes included (FR-025). The passes are not padding. A pane showing only failures cannot be told apart from one where nothing else ran, so the absence of a finding would be indistinguishable from the absence of a check, which is the distinction the whole matrix exists for. Evidence and check labels are bundle content and identity-provider content respectively: every consumer renders them escaped (FR-055).
+	//
+	// Corresponds with GET /v1/findings/{id} (the `GetFinding` operationId).
+	GetFinding(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AcceptFindingWithBody Accept a finding with a recorded note and an expiry
+	//
+	// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/findings/{id}/accept (the `AcceptFinding` operationId).
+	AcceptFindingWithBody(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AcceptFinding Accept a finding with a recorded note and an expiry
+	//
+	// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/findings/{id}/accept (the `AcceptFinding` operationId).
+	AcceptFinding(ctx context.Context, id openapi_types.UUID, body AcceptFindingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RejectFindingWithBody Reject a finding and quarantine its version for good
+	//
+	// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/findings/{id}/reject (the `RejectFinding` operationId).
+	RejectFindingWithBody(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RejectFinding Reject a finding and quarantine its version for good
+	//
+	// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/findings/{id}/reject (the `RejectFinding` operationId).
+	RejectFinding(ctx context.Context, id openapi_types.UUID, body RejectFindingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// Health Liveness and readiness
 	//
@@ -1913,6 +2797,38 @@ type ClientInterface interface {
 	// Corresponds with GET /v1/profiles/{slug}/revisions/{revision} (the `GetRevision` operationId).
 	GetRevision(ctx context.Context, slug string, revision string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ScannerSummary The Scanner screen's headline figures
+	//
+	// Versions that reached a verdict in the period, how many packages are quarantined, how many acceptances are still in force and when the first of them lapses, and the median time from a scan starting to its verdict (001 US4 scenario 1). `quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged versions: a superseded flagged version is not quarantining anything, because nothing resolves to it. `nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when there is nothing to report — no active override and no finished scan are different statements from "expires now" and "instant".
+	//
+	// Corresponds with GET /v1/scanner/summary (the `ScannerSummary` operationId).
+	ScannerSummary(ctx context.Context, params *ScannerSummaryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateSessionWithBody Mint a browser session from a verified ID token
+	//
+	// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/sessions (the `CreateSession` operationId).
+	CreateSessionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateSession Mint a browser session from a verified ID token
+	//
+	// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/sessions (the `CreateSession` operationId).
+	CreateSession(ctx context.Context, body CreateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteSession Sign out
+	//
+	// Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction (FR-114, FR-115). Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.
+	//
+	// Corresponds with DELETE /v1/sessions/current (the `DeleteSession` operationId).
+	DeleteSession(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ReportSyncWithBody Report a completed sync
 	//
 	// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
@@ -1930,6 +2846,64 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /v1/sync (the `ReportSync` operationId).
 	ReportSync(ctx context.Context, body ReportSyncJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetViewer Who this request is acting as
+	//
+	// The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL (FR-117) — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate (FR-118).
+	//
+	// Corresponds with GET /v1/viewer (the `GetViewer` operationId).
+	GetViewer(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
+// ListAudit The audit log, paged, most recent first
+//
+// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. There is deliberately no filter. The export below must return the full CURRENT SCOPE (FR-051), and with no filters the current scope is the whole log — a filter added here without being added there would quietly stop that holding. Rows are append-only, enforced by revoked grants rather than by anything in this process (FR-052). `text` quotes package and profile names, so it is rendered escaped.
+//
+// Corresponds with GET /v1/audit (the `ListAudit` operationId).
+func (c *Client) ListAudit(ctx context.Context, params *ListAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAuditRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ExportAudit Export the whole audit log
+//
+// FR-051: the full current scope, not the visible page. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
+//
+// Corresponds with GET /v1/audit/export (the `ExportAudit` operationId).
+func (c *Client) ExportAudit(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExportAuditRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetBadges The application shell's counts
+//
+// The three counts the sidebar renders, in one call: packages visible in the catalog, profiles THIS IDENTITY may read, and findings awaiting a decision (FR-121). One operation because the shell renders on every screen, so three would be three round trips per page. Three indexed counts over the base tables and not a projection: principle VIII sanctions exactly one and it is not spent here (research R5). The profile count is the length of the list the Profiles screen shows and cannot be more: a count including a profile the reader cannot open would leak its existence by arithmetic.
+//
+// Corresponds with GET /v1/badges (the `GetBadges` operationId).
+func (c *Client) GetBadges(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetBadgesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
 }
 
 // GetBundle Download an immutable version bundle
@@ -2015,6 +2989,116 @@ func (c *Client) DeviceTokenWithBody(ctx context.Context, contentType string, bo
 // Corresponds with POST /v1/device/token (the `DeviceToken` operationId).
 func (c *Client) DeviceTokenWithFormdataBody(ctx context.Context, body DeviceTokenFormdataRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeviceTokenRequestWithFormdataBody(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListFindings Findings, paged and filterable
+//
+// One page of findings, highest severity first and newest within a severity, filterable by state and by severity. Each row carries the PRIMARY evidence location only; a finding legitimately has several, and the whole of them is on the detail operation. `verdict` is the subject VERSION's verdict and not the finding's state: an accepted finding leaves its version flagged, because the override is what lets it through and the gate still governs whether it does.
+//
+// Corresponds with GET /v1/findings (the `ListFindings` operationId).
+func (c *Client) ListFindings(ctx context.Context, params *ListFindingsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListFindingsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetFinding One finding, its evidence and every check that ran
+//
+// The detail pane of 001 US4 scenario 2: severity, rule, subject, the prose explanation, EVERY evidence location, and EVERY check the raising scan ran — passes included (FR-025). The passes are not padding. A pane showing only failures cannot be told apart from one where nothing else ran, so the absence of a finding would be indistinguishable from the absence of a check, which is the distinction the whole matrix exists for. Evidence and check labels are bundle content and identity-provider content respectively: every consumer renders them escaped (FR-055).
+//
+// Corresponds with GET /v1/findings/{id} (the `GetFinding` operationId).
+func (c *Client) GetFinding(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetFindingRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AcceptFindingWithBody Accept a finding with a recorded note and an expiry
+//
+// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/findings/{id}/accept (the `AcceptFinding` operationId).
+func (c *Client) AcceptFindingWithBody(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAcceptFindingRequestWithBody(c.Server, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AcceptFinding Accept a finding with a recorded note and an expiry
+//
+// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/findings/{id}/accept (the `AcceptFinding` operationId).
+func (c *Client) AcceptFinding(ctx context.Context, id openapi_types.UUID, body AcceptFindingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAcceptFindingRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RejectFindingWithBody Reject a finding and quarantine its version for good
+//
+// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/findings/{id}/reject (the `RejectFinding` operationId).
+func (c *Client) RejectFindingWithBody(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRejectFindingRequestWithBody(c.Server, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RejectFinding Reject a finding and quarantine its version for good
+//
+// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/findings/{id}/reject (the `RejectFinding` operationId).
+func (c *Client) RejectFinding(ctx context.Context, id openapi_types.UUID, body RejectFindingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRejectFindingRequest(c.Server, id, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2148,6 +3232,78 @@ func (c *Client) GetRevision(ctx context.Context, slug string, revision string, 
 	return c.Client.Do(req)
 }
 
+// ScannerSummary The Scanner screen's headline figures
+//
+// Versions that reached a verdict in the period, how many packages are quarantined, how many acceptances are still in force and when the first of them lapses, and the median time from a scan starting to its verdict (001 US4 scenario 1). `quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged versions: a superseded flagged version is not quarantining anything, because nothing resolves to it. `nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when there is nothing to report — no active override and no finished scan are different statements from "expires now" and "instant".
+//
+// Corresponds with GET /v1/scanner/summary (the `ScannerSummary` operationId).
+func (c *Client) ScannerSummary(ctx context.Context, params *ScannerSummaryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewScannerSummaryRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateSessionWithBody Mint a browser session from a verified ID token
+//
+// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/sessions (the `CreateSession` operationId).
+func (c *Client) CreateSessionWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSessionRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateSession Mint a browser session from a verified ID token
+//
+// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/sessions (the `CreateSession` operationId).
+func (c *Client) CreateSession(ctx context.Context, body CreateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSessionRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteSession Sign out
+//
+// Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction (FR-114, FR-115). Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.
+//
+// Corresponds with DELETE /v1/sessions/current (the `DeleteSession` operationId).
+func (c *Client) DeleteSession(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteSessionRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ReportSyncWithBody Report a completed sync
 //
 // Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
@@ -2184,6 +3340,143 @@ func (c *Client) ReportSync(ctx context.Context, body ReportSyncJSONRequestBody,
 		return nil, err
 	}
 	return c.Client.Do(req)
+}
+
+// GetViewer Who this request is acting as
+//
+// The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL (FR-117) — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate (FR-118).
+//
+// Corresponds with GET /v1/viewer (the `GetViewer` operationId).
+func (c *Client) GetViewer(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetViewerRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// NewListAuditRequest constructs an http.Request for the ListAudit method
+func NewListAuditRequest(server string, params *ListAuditParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/audit")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "page", *params.Page, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.PageSize != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "pageSize", *params.PageSize, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewExportAuditRequest constructs an http.Request for the ExportAudit method
+func NewExportAuditRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/audit/export")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetBadgesRequest constructs an http.Request for the GetBadges method
+func NewGetBadgesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/badges")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
 }
 
 // NewGetBundleRequest constructs an http.Request for the GetBundle method
@@ -2295,6 +3588,224 @@ func NewDeviceTokenRequestWithBody(server string, contentType string, body io.Re
 	}
 
 	operationPath := fmt.Sprintf("/v1/device/token")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListFindingsRequest constructs an http.Request for the ListFindings method
+func NewListFindingsRequest(server string, params *ListFindingsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/findings")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "state", *params.State, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Severity != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "severity", *params.Severity, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "page", *params.Page, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.PageSize != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "pageSize", *params.PageSize, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetFindingRequest constructs an http.Request for the GetFinding method
+func NewGetFindingRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/findings/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewAcceptFindingRequest calls the generic AcceptFinding builder with application/json body
+func NewAcceptFindingRequest(server string, id openapi_types.UUID, body AcceptFindingJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAcceptFindingRequestWithBody(server, id, "application/json", bodyReader)
+}
+
+// NewAcceptFindingRequestWithBody constructs an http.Request for the AcceptFinding method, with any body, and a specified content type
+func NewAcceptFindingRequestWithBody(server string, id openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/findings/%s/accept", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRejectFindingRequest calls the generic RejectFinding builder with application/json body
+func NewRejectFindingRequest(server string, id openapi_types.UUID, body RejectFindingJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRejectFindingRequestWithBody(server, id, "application/json", bodyReader)
+}
+
+// NewRejectFindingRequestWithBody constructs an http.Request for the RejectFinding method, with any body, and a specified content type
+func NewRejectFindingRequestWithBody(server string, id openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/findings/%s/reject", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -2658,6 +4169,127 @@ func NewGetRevisionRequest(server string, slug string, revision string) (*http.R
 	return req, nil
 }
 
+// NewScannerSummaryRequest constructs an http.Request for the ScannerSummary method
+func NewScannerSummaryRequest(server string, params *ScannerSummaryParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/scanner/summary")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Days != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "days", *params.Days, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateSessionRequest calls the generic CreateSession builder with application/json body
+func NewCreateSessionRequest(server string, body CreateSessionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateSessionRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateSessionRequestWithBody constructs an http.Request for the CreateSession method, with any body, and a specified content type
+func NewCreateSessionRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/sessions")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteSessionRequest constructs an http.Request for the DeleteSession method
+func NewDeleteSessionRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/sessions/current")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewReportSyncRequest calls the generic ReportSync builder with application/json body
 func NewReportSyncRequest(server string, body ReportSyncJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -2694,6 +4326,33 @@ func NewReportSyncRequestWithBody(server string, contentType string, body io.Rea
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetViewerRequest constructs an http.Request for the GetViewer method
+func NewGetViewerRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/viewer")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -2742,6 +4401,33 @@ func WithBaseURL(baseURL string) ClientOption {
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
 
+	// ListAuditWithResponse The audit log, paged, most recent first
+	//
+	// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. There is deliberately no filter. The export below must return the full CURRENT SCOPE (FR-051), and with no filters the current scope is the whole log — a filter added here without being added there would quietly stop that holding. Rows are append-only, enforced by revoked grants rather than by anything in this process (FR-052). `text` quotes package and profile names, so it is rendered escaped.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/audit (the `ListAudit` operationId).
+	ListAuditWithResponse(ctx context.Context, params *ListAuditParams, reqEditors ...RequestEditorFn) (*ListAuditResponse, error)
+
+	// ExportAuditWithResponse Export the whole audit log
+	//
+	// FR-051: the full current scope, not the visible page. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/audit/export (the `ExportAudit` operationId).
+	ExportAuditWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ExportAuditResponse, error)
+
+	// GetBadgesWithResponse The application shell's counts
+	//
+	// The three counts the sidebar renders, in one call: packages visible in the catalog, profiles THIS IDENTITY may read, and findings awaiting a decision (FR-121). One operation because the shell renders on every screen, so three would be three round trips per page. Three indexed counts over the base tables and not a projection: principle VIII sanctions exactly one and it is not spent here (research R5). The profile count is the length of the list the Profiles screen shows and cannot be more: a count including a profile the reader cannot open would leak its existence by arithmetic.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/badges (the `GetBadges` operationId).
+	GetBadgesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetBadgesResponse, error)
+
 	// GetBundleWithResponse Download an immutable version bundle
 	//
 	// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate (FR-029).
@@ -2786,6 +4472,60 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /v1/device/token (the `DeviceToken` operationId).
 	DeviceTokenWithFormdataBodyWithResponse(ctx context.Context, body DeviceTokenFormdataRequestBody, reqEditors ...RequestEditorFn) (*DeviceTokenResponse, error)
+
+	// ListFindingsWithResponse Findings, paged and filterable
+	//
+	// One page of findings, highest severity first and newest within a severity, filterable by state and by severity. Each row carries the PRIMARY evidence location only; a finding legitimately has several, and the whole of them is on the detail operation. `verdict` is the subject VERSION's verdict and not the finding's state: an accepted finding leaves its version flagged, because the override is what lets it through and the gate still governs whether it does.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/findings (the `ListFindings` operationId).
+	ListFindingsWithResponse(ctx context.Context, params *ListFindingsParams, reqEditors ...RequestEditorFn) (*ListFindingsResponse, error)
+
+	// GetFindingWithResponse One finding, its evidence and every check that ran
+	//
+	// The detail pane of 001 US4 scenario 2: severity, rule, subject, the prose explanation, EVERY evidence location, and EVERY check the raising scan ran — passes included (FR-025). The passes are not padding. A pane showing only failures cannot be told apart from one where nothing else ran, so the absence of a finding would be indistinguishable from the absence of a check, which is the distinction the whole matrix exists for. Evidence and check labels are bundle content and identity-provider content respectively: every consumer renders them escaped (FR-055).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/findings/{id} (the `GetFinding` operationId).
+	GetFindingWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetFindingResponse, error)
+
+	// AcceptFindingWithBodyWithResponse Accept a finding with a recorded note and an expiry
+	//
+	// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/findings/{id}/accept (the `AcceptFinding` operationId).
+	AcceptFindingWithBodyWithResponse(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AcceptFindingResponse, error)
+
+	// AcceptFindingWithResponse Accept a finding with a recorded note and an expiry
+	//
+	// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/findings/{id}/accept (the `AcceptFinding` operationId).
+	AcceptFindingWithResponse(ctx context.Context, id openapi_types.UUID, body AcceptFindingJSONRequestBody, reqEditors ...RequestEditorFn) (*AcceptFindingResponse, error)
+
+	// RejectFindingWithBodyWithResponse Reject a finding and quarantine its version for good
+	//
+	// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/findings/{id}/reject (the `RejectFinding` operationId).
+	RejectFindingWithBodyWithResponse(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RejectFindingResponse, error)
+
+	// RejectFindingWithResponse Reject a finding and quarantine its version for good
+	//
+	// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/findings/{id}/reject (the `RejectFinding` operationId).
+	RejectFindingWithResponse(ctx context.Context, id openapi_types.UUID, body RejectFindingJSONRequestBody, reqEditors ...RequestEditorFn) (*RejectFindingResponse, error)
 
 	// HealthWithResponse Liveness and readiness
 	//
@@ -2850,6 +4590,42 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/profiles/{slug}/revisions/{revision} (the `GetRevision` operationId).
 	GetRevisionWithResponse(ctx context.Context, slug string, revision string, reqEditors ...RequestEditorFn) (*GetRevisionResponse, error)
 
+	// ScannerSummaryWithResponse The Scanner screen's headline figures
+	//
+	// Versions that reached a verdict in the period, how many packages are quarantined, how many acceptances are still in force and when the first of them lapses, and the median time from a scan starting to its verdict (001 US4 scenario 1). `quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged versions: a superseded flagged version is not quarantining anything, because nothing resolves to it. `nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when there is nothing to report — no active override and no finished scan are different statements from "expires now" and "instant".
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/scanner/summary (the `ScannerSummary` operationId).
+	ScannerSummaryWithResponse(ctx context.Context, params *ScannerSummaryParams, reqEditors ...RequestEditorFn) (*ScannerSummaryResponse, error)
+
+	// CreateSessionWithBodyWithResponse Mint a browser session from a verified ID token
+	//
+	// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/sessions (the `CreateSession` operationId).
+	CreateSessionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSessionResponse, error)
+
+	// CreateSessionWithResponse Mint a browser session from a verified ID token
+	//
+	// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/sessions (the `CreateSession` operationId).
+	CreateSessionWithResponse(ctx context.Context, body CreateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSessionResponse, error)
+
+	// DeleteSessionWithResponse Sign out
+	//
+	// Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction (FR-114, FR-115). Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/sessions/current (the `DeleteSession` operationId).
+	DeleteSessionWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*DeleteSessionResponse, error)
+
 	// ReportSyncWithBodyWithResponse Report a completed sync
 	//
 	// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
@@ -2867,6 +4643,187 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /v1/sync (the `ReportSync` operationId).
 	ReportSyncWithResponse(ctx context.Context, body ReportSyncJSONRequestBody, reqEditors ...RequestEditorFn) (*ReportSyncResponse, error)
+
+	// GetViewerWithResponse Who this request is acting as
+	//
+	// The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL (FR-117) — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate (FR-118).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/viewer (the `GetViewer` operationId).
+	GetViewerWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetViewerResponse, error)
+}
+
+type ListAuditResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AuditPage
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListAuditResponse) GetJSON200() *AuditPage {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListAuditResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r ListAuditResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ListAuditResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListAuditResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAuditResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAuditResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListAuditResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ExportAuditResponse200Headers the declared response headers of an HTTP 200 response for ExportAudit
+type ExportAuditResponse200Headers struct {
+	ContentDisposition *string
+}
+
+type ExportAuditResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ExportAuditResponse200Headers
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ExportAuditResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ExportAuditResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ExportAuditResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ExportAuditResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExportAuditResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ExportAuditResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetBadgesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Badges
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetBadgesResponse) GetJSON200() *Badges {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetBadgesResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r GetBadgesResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetBadgesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetBadgesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetBadgesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetBadgesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
 }
 
 // GetBundleResponse200Headers the declared response headers of an HTTP 200 response for GetBundle
@@ -3071,6 +5028,324 @@ func (r DeviceTokenResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r DeviceTokenResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListFindingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *FindingsPage
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListFindingsResponse) GetJSON200() *FindingsPage {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListFindingsResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r ListFindingsResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ListFindingsResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListFindingsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListFindingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListFindingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListFindingsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetFindingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *FindingDetail
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetFindingResponse) GetJSON200() *FindingDetail {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetFindingResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetFindingResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r GetFindingResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r GetFindingResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetFindingResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetFindingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetFindingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetFindingResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type AcceptFindingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *FindingDecision
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Error
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r AcceptFindingResponse) GetJSON200() *FindingDecision {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r AcceptFindingResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r AcceptFindingResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r AcceptFindingResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r AcceptFindingResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r AcceptFindingResponse) GetApplicationproblemJSON409() *Error {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r AcceptFindingResponse) GetApplicationproblemJSON415() *Error {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r AcceptFindingResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r AcceptFindingResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r AcceptFindingResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r AcceptFindingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AcceptFindingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r AcceptFindingResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RejectFindingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *FindingDecision
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RejectFindingResponse) GetJSON200() *FindingDecision {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r RejectFindingResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r RejectFindingResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r RejectFindingResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r RejectFindingResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r RejectFindingResponse) GetApplicationproblemJSON415() *Error {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r RejectFindingResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r RejectFindingResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r RejectFindingResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RejectFindingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RejectFindingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RejectFindingResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -3525,6 +5800,206 @@ func (r GetRevisionResponse) ContentType() string {
 	return ""
 }
 
+type ScannerSummaryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ScannerSummary
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ScannerSummaryResponse) GetJSON200() *ScannerSummary {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ScannerSummaryResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r ScannerSummaryResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ScannerSummaryResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ScannerSummaryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ScannerSummaryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ScannerSummaryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ScannerSummaryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateSessionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Session
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON429 the response for an HTTP 429 `application/problem+json` response
+	ApplicationproblemJSON429 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+	// ApplicationproblemJSON503 the response for an HTTP 503 `application/problem+json` response
+	ApplicationproblemJSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CreateSessionResponse) GetJSON200() *Session {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r CreateSessionResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CreateSessionResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r CreateSessionResponse) GetApplicationproblemJSON415() *Error {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CreateSessionResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON429 returns the response for an HTTP 429 `application/problem+json` response
+func (r CreateSessionResponse) GetApplicationproblemJSON429() *Error {
+	return r.ApplicationproblemJSON429
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r CreateSessionResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSON503 returns the response for an HTTP 503 `application/problem+json` response
+func (r CreateSessionResponse) GetApplicationproblemJSON503() *Error {
+	return r.ApplicationproblemJSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateSessionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateSessionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateSessionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateSessionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteSessionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DeleteSessionResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r DeleteSessionResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteSessionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteSessionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteSessionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteSessionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ReportSyncResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -3585,6 +6060,106 @@ func (r ReportSyncResponse) ContentType() string {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
 	return ""
+}
+
+type GetViewerResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Viewer
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetViewerResponse) GetJSON200() *Viewer {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetViewerResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r GetViewerResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetViewerResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetViewerResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetViewerResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetViewerResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ListAuditWithResponse The audit log, paged, most recent first
+//
+// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. There is deliberately no filter. The export below must return the full CURRENT SCOPE (FR-051), and with no filters the current scope is the whole log — a filter added here without being added there would quietly stop that holding. Rows are append-only, enforced by revoked grants rather than by anything in this process (FR-052). `text` quotes package and profile names, so it is rendered escaped.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/audit (the `ListAudit` operationId).
+func (c *ClientWithResponses) ListAuditWithResponse(ctx context.Context, params *ListAuditParams, reqEditors ...RequestEditorFn) (*ListAuditResponse, error) {
+	rsp, err := c.ListAudit(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAuditResponse(rsp)
+}
+
+// ExportAuditWithResponse Export the whole audit log
+//
+// FR-051: the full current scope, not the visible page. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/audit/export (the `ExportAudit` operationId).
+func (c *ClientWithResponses) ExportAuditWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ExportAuditResponse, error) {
+	rsp, err := c.ExportAudit(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExportAuditResponse(rsp)
+}
+
+// GetBadgesWithResponse The application shell's counts
+//
+// The three counts the sidebar renders, in one call: packages visible in the catalog, profiles THIS IDENTITY may read, and findings awaiting a decision (FR-121). One operation because the shell renders on every screen, so three would be three round trips per page. Three indexed counts over the base tables and not a projection: principle VIII sanctions exactly one and it is not spent here (research R5). The profile count is the length of the list the Profiles screen shows and cannot be more: a count including a profile the reader cannot open would leak its existence by arithmetic.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/badges (the `GetBadges` operationId).
+func (c *ClientWithResponses) GetBadgesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetBadgesResponse, error) {
+	rsp, err := c.GetBadges(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetBadgesResponse(rsp)
 }
 
 // GetBundleWithResponse Download an immutable version bundle
@@ -3660,6 +6235,96 @@ func (c *ClientWithResponses) DeviceTokenWithFormdataBodyWithResponse(ctx contex
 		return nil, err
 	}
 	return ParseDeviceTokenResponse(rsp)
+}
+
+// ListFindingsWithResponse Findings, paged and filterable
+//
+// One page of findings, highest severity first and newest within a severity, filterable by state and by severity. Each row carries the PRIMARY evidence location only; a finding legitimately has several, and the whole of them is on the detail operation. `verdict` is the subject VERSION's verdict and not the finding's state: an accepted finding leaves its version flagged, because the override is what lets it through and the gate still governs whether it does.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/findings (the `ListFindings` operationId).
+func (c *ClientWithResponses) ListFindingsWithResponse(ctx context.Context, params *ListFindingsParams, reqEditors ...RequestEditorFn) (*ListFindingsResponse, error) {
+	rsp, err := c.ListFindings(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListFindingsResponse(rsp)
+}
+
+// GetFindingWithResponse One finding, its evidence and every check that ran
+//
+// The detail pane of 001 US4 scenario 2: severity, rule, subject, the prose explanation, EVERY evidence location, and EVERY check the raising scan ran — passes included (FR-025). The passes are not padding. A pane showing only failures cannot be told apart from one where nothing else ran, so the absence of a finding would be indistinguishable from the absence of a check, which is the distinction the whole matrix exists for. Evidence and check labels are bundle content and identity-provider content respectively: every consumer renders them escaped (FR-055).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/findings/{id} (the `GetFinding` operationId).
+func (c *ClientWithResponses) GetFindingWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetFindingResponse, error) {
+	rsp, err := c.GetFinding(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetFindingResponse(rsp)
+}
+
+// AcceptFindingWithBodyWithResponse Accept a finding with a recorded note and an expiry
+//
+// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/findings/{id}/accept (the `AcceptFinding` operationId).
+func (c *ClientWithResponses) AcceptFindingWithBodyWithResponse(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AcceptFindingResponse, error) {
+	rsp, err := c.AcceptFindingWithBody(ctx, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAcceptFindingResponse(rsp)
+}
+
+// AcceptFindingWithResponse Accept a finding with a recorded note and an expiry
+//
+// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/findings/{id}/accept (the `AcceptFinding` operationId).
+func (c *ClientWithResponses) AcceptFindingWithResponse(ctx context.Context, id openapi_types.UUID, body AcceptFindingJSONRequestBody, reqEditors ...RequestEditorFn) (*AcceptFindingResponse, error) {
+	rsp, err := c.AcceptFinding(ctx, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAcceptFindingResponse(rsp)
+}
+
+// RejectFindingWithBodyWithResponse Reject a finding and quarantine its version for good
+//
+// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/findings/{id}/reject (the `RejectFinding` operationId).
+func (c *ClientWithResponses) RejectFindingWithBodyWithResponse(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RejectFindingResponse, error) {
+	rsp, err := c.RejectFindingWithBody(ctx, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRejectFindingResponse(rsp)
+}
+
+// RejectFindingWithResponse Reject a finding and quarantine its version for good
+//
+// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/findings/{id}/reject (the `RejectFinding` operationId).
+func (c *ClientWithResponses) RejectFindingWithResponse(ctx context.Context, id openapi_types.UUID, body RejectFindingJSONRequestBody, reqEditors ...RequestEditorFn) (*RejectFindingResponse, error) {
+	rsp, err := c.RejectFinding(ctx, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRejectFindingResponse(rsp)
 }
 
 // HealthWithResponse Liveness and readiness
@@ -3767,6 +6432,66 @@ func (c *ClientWithResponses) GetRevisionWithResponse(ctx context.Context, slug 
 	return ParseGetRevisionResponse(rsp)
 }
 
+// ScannerSummaryWithResponse The Scanner screen's headline figures
+//
+// Versions that reached a verdict in the period, how many packages are quarantined, how many acceptances are still in force and when the first of them lapses, and the median time from a scan starting to its verdict (001 US4 scenario 1). `quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged versions: a superseded flagged version is not quarantining anything, because nothing resolves to it. `nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when there is nothing to report — no active override and no finished scan are different statements from "expires now" and "instant".
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/scanner/summary (the `ScannerSummary` operationId).
+func (c *ClientWithResponses) ScannerSummaryWithResponse(ctx context.Context, params *ScannerSummaryParams, reqEditors ...RequestEditorFn) (*ScannerSummaryResponse, error) {
+	rsp, err := c.ScannerSummary(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseScannerSummaryResponse(rsp)
+}
+
+// CreateSessionWithBodyWithResponse Mint a browser session from a verified ID token
+//
+// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/sessions (the `CreateSession` operationId).
+func (c *ClientWithResponses) CreateSessionWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSessionResponse, error) {
+	rsp, err := c.CreateSessionWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSessionResponse(rsp)
+}
+
+// CreateSessionWithResponse Mint a browser session from a verified ID token
+//
+// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/sessions (the `CreateSession` operationId).
+func (c *ClientWithResponses) CreateSessionWithResponse(ctx context.Context, body CreateSessionJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSessionResponse, error) {
+	rsp, err := c.CreateSession(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSessionResponse(rsp)
+}
+
+// DeleteSessionWithResponse Sign out
+//
+// Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction (FR-114, FR-115). Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/sessions/current (the `DeleteSession` operationId).
+func (c *ClientWithResponses) DeleteSessionWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*DeleteSessionResponse, error) {
+	rsp, err := c.DeleteSession(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteSessionResponse(rsp)
+}
+
 // ReportSyncWithBodyWithResponse Report a completed sync
 //
 // Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
@@ -3795,6 +6520,154 @@ func (c *ClientWithResponses) ReportSyncWithResponse(ctx context.Context, body R
 		return nil, err
 	}
 	return ParseReportSyncResponse(rsp)
+}
+
+// GetViewerWithResponse Who this request is acting as
+//
+// The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL (FR-117) — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate (FR-118).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/viewer (the `GetViewer` operationId).
+func (c *ClientWithResponses) GetViewerWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetViewerResponse, error) {
+	rsp, err := c.GetViewer(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetViewerResponse(rsp)
+}
+
+// ParseListAuditResponse parses an HTTP response from a ListAuditWithResponse call
+func ParseListAuditResponse(rsp *http.Response) (*ListAuditResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAuditResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AuditPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseExportAuditResponse parses an HTTP response from a ExportAuditWithResponse call
+func ParseExportAuditResponse(rsp *http.Response) (*ExportAuditResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExportAuditResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ExportAuditResponse200Headers
+		if values := rsp.Header.Values("Content-Disposition"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Content-Disposition", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ContentDisposition = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetBadgesResponse parses an HTTP response from a GetBadgesWithResponse call
+func ParseGetBadgesResponse(rsp *http.Response) (*GetBadgesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetBadgesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Badges
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
 }
 
 // ParseGetBundleResponse parses an HTTP response from a GetBundleWithResponse call
@@ -3971,6 +6844,264 @@ func ParseDeviceTokenResponse(rsp *http.Response) (*DeviceTokenResponse, error) 
 			return nil, err
 		}
 		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListFindingsResponse parses an HTTP response from a ListFindingsWithResponse call
+func ParseListFindingsResponse(rsp *http.Response) (*ListFindingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListFindingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest FindingsPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetFindingResponse parses an HTTP response from a GetFindingWithResponse call
+func ParseGetFindingResponse(rsp *http.Response) (*GetFindingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetFindingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest FindingDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAcceptFindingResponse parses an HTTP response from a AcceptFindingWithResponse call
+func ParseAcceptFindingResponse(rsp *http.Response) (*AcceptFindingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AcceptFindingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest FindingDecision
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRejectFindingResponse parses an HTTP response from a RejectFindingWithResponse call
+func ParseRejectFindingResponse(rsp *http.Response) (*RejectFindingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RejectFindingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest FindingDecision
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
@@ -4327,6 +7458,164 @@ func ParseGetRevisionResponse(rsp *http.Response) (*GetRevisionResponse, error) 
 	return response, nil
 }
 
+// ParseScannerSummaryResponse parses an HTTP response from a ScannerSummaryWithResponse call
+func ParseScannerSummaryResponse(rsp *http.Response) (*ScannerSummaryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ScannerSummaryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ScannerSummary
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateSessionResponse parses an HTTP response from a CreateSessionWithResponse call
+func ParseCreateSessionResponse(rsp *http.Response) (*CreateSessionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateSessionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Session
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteSessionResponse parses an HTTP response from a DeleteSessionWithResponse call
+func ParseDeleteSessionResponse(rsp *http.Response) (*DeleteSessionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteSessionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseReportSyncResponse parses an HTTP response from a ReportSyncWithResponse call
 func ParseReportSyncResponse(rsp *http.Response) (*ReportSyncResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -4364,6 +7653,46 @@ func ParseReportSyncResponse(rsp *http.Response) (*ReportSyncResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetViewerResponse parses an HTTP response from a GetViewerWithResponse call
+func ParseGetViewerResponse(rsp *http.Response) (*GetViewerResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetViewerResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Viewer
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

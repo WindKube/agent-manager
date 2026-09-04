@@ -6,34 +6,20 @@ import (
 	"github.com/99designs/keyring"
 )
 
-// fallbackHints say what usually stops a platform's own credential store from
-// opening. They are hints and are labelled as such in the message, because
-// keyring.Open DISCARDS the opener's error — it returns its own ErrNoAvailImpl
-// however the backend failed — so amctl can name which backend did not open but
-// genuinely cannot say why. Guessing in the message without saying it is a
-// guess is how a user spends an afternoon on the wrong cause.
+// fallbackHints say what usually stops a platform's own credential store
+// from opening. They are hints, labelled as such in the message, since
+// keyring.Open discards the opener's own error and amctl can only name
+// which backend did not open, not why.
 var fallbackHints = map[keyring.BackendType]string{
 	keyring.SecretServiceBackend: "no Secret Service is running on the session bus (a headless or SSH session), or the login keyring is locked",
 	keyring.KeychainBackend:      "the login keychain is locked, or access was denied",
 }
 
-// fallbackWarning is FR-003's report, or "" when there is nothing to report.
-//
-// Three things it must get right, and each has a wrong version that reads
-// perfectly well:
-//
-//  1. It names the backend that ACTUALLY OPENED. R1 measured that a
-//     CGO_ENABLED=0 darwin build lands on `pass`, not on a file, because
-//     pass.go is `!windows` and precedes FileBackend in keyring's own order. A
-//     message that says "falling back to a file" is therefore a lie on the one
-//     platform this warning exists for, and no test catches it unless the test
-//     asserts the words.
-//  2. It names what was EXPECTED instead, from the same `required` table
-//     backends.go's build-time guard uses — not from runtime.GOOS reasoning
-//     duplicated here.
-//  3. It says where the token is going, because "we fell back" without a
-//     destination is not actionable. Only the file case is a path; `pass` is a
-//     GPG store somewhere else entirely.
+// fallbackWarning reports a fallback, or "" when there is nothing to
+// report. It names the backend that actually opened (a CGO_ENABLED=0 darwin
+// build lands on `pass`, not a file, since pass.go precedes FileBackend in
+// keyring's own order), what was expected instead (from the same `required`
+// table backends.go's build-time guard uses), and where the token is going.
 func fallbackWarning(goos string, available, notOpened []keyring.BackendType, chosen keyring.BackendType, fileDir string) string {
 	want, recorded := required[goos]
 	if recorded {
@@ -57,8 +43,8 @@ func fallbackWarning(goos string, available, notOpened []keyring.BackendType, ch
 
 // fallbackReason explains why the expected store was not the one used. There
 // are exactly two shapes, and they are different facts: the backend is not in
-// this binary at all (a build problem — R1's static darwin), or it is in the
-// binary and would not open (a machine problem).
+// this binary at all (a build problem, e.g. a static darwin binary), or it is
+// in the binary and would not open (a machine problem).
 func fallbackReason(goos string, want, available, notOpened []keyring.BackendType) string {
 	if err := Verify(goos, available); err != nil {
 		return err.Error() + "."

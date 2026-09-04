@@ -251,7 +251,7 @@ pin, publish a revision, and assert `amctl sync` writes exactly what the screen 
 - [x] T087 [US5] Delete the `/profiles` and `/profiles/:slug` entries from the `placeholders` list in `internal/web/web.go`
 - [x] T088 [US5] Wire the profiles sidebar badge to the readable-profile count from T069
 - [x] T089 [P] [US5] Integration test asserting each of 001 US5 scenarios 2, 3 and 4 — one per gate mode — changes what resolves, and that the screen's policy note matches
-- [ ] T090 [P] [US5] End-to-end test: publish a revision through the UI, run the real CLI's sync, assert what it writes matches what the screen displayed
+- [x] T090 [P] [US5] End-to-end test: publish a revision through the UI, run the real CLI's sync, assert what it writes matches what the screen displayed
 
 **Checkpoint**: three routes still show placeholders.
 

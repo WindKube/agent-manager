@@ -56,7 +56,7 @@ const jobTimeout = 10 * time.Minute
 func Definition() worker.Definition {
 	return worker.Definition{
 		Name:   RoleName,
-		Queues: map[string]int{river.QueueDefault: Concurrency},
+		Queues: map[string]int{outbox.QueueFetch: Concurrency},
 		Needs: worker.Needs{
 			DB:       worker.AccessReadWrite,
 			Blob:     worker.AccessReadWrite,

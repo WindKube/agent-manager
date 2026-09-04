@@ -26,7 +26,6 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/riverqueue/river"
 	"github.com/uptrace/bun"
 
 	"agent-manager/internal/store/models"
@@ -55,18 +54,25 @@ func (k Kind) Valid() bool {
 	}
 }
 
+// Queue names, one per worker role. A kind rides the queue its worker actually
+// registers — no kind may share river.QueueDefault, or a worker that never
+// registers that queue's job kind starves on jobs it cannot run.
+const (
+	QueueFetch = "fetch"
+	QueueScan  = "scan"
+)
+
 // queueByKind names the River queue a kind is delivered to. The outbox row carries
-// no queue column, so the mapping lives here: one line per kind that wants a queue
-// of its own, added alongside the kind. Anything absent rides River's default
-// queue, which is what the roles declare until one needs isolation.
-var queueByKind = map[Kind]string{}
+// no queue column, so the mapping lives here.
+var queueByKind = map[Kind]string{
+	KindFetch:       QueueFetch,
+	KindScan:        QueueScan,
+	KindRescanSweep: QueueScan,
+}
 
 // Queue is the River queue a kind is delivered to.
 func Queue(k Kind) string {
-	if q, ok := queueByKind[k]; ok {
-		return q
-	}
-	return river.QueueDefault
+	return queueByKind[k]
 }
 
 // Job is one queued unit of work as the caller describes it.

@@ -36,6 +36,7 @@ import (
 
 	"agent-manager/internal/bundle"
 	"agent-manager/internal/config"
+	"agent-manager/internal/outbox"
 	"agent-manager/internal/worker"
 	"agent-manager/internal/worker/scanner/checks"
 	"agent-manager/internal/worker/scanner/rules"
@@ -71,7 +72,7 @@ const sweepTimeout = 30 * time.Minute
 func Definition() worker.Definition {
 	return worker.Definition{
 		Name:   RoleName,
-		Queues: map[string]int{river.QueueDefault: Concurrency},
+		Queues: map[string]int{outbox.QueueScan: Concurrency},
 		Needs: worker.Needs{
 			DB:       worker.AccessReadWrite,
 			Blob:     worker.AccessRead,

@@ -67,6 +67,7 @@ func (s *Server) importRegister(c *gin.Context) {
 		Ref:          c.PostForm("ref"),
 		Subdirectory: c.PostForm("subdirectory"),
 		Publisher:    c.PostForm("publisher"),
+		Version:      c.PostForm("version"),
 		Category:     c.PostForm("category"),
 		Visibility:   c.PostForm("visibility"),
 	}

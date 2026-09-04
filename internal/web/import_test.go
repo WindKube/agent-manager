@@ -3,16 +3,55 @@ package web_test
 import (
 	"bytes"
 	"context"
+	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	"agent-manager/internal/web"
 	"agent-manager/internal/web/components"
 	"agent-manager/internal/web/fixture"
 	"agent-manager/internal/web/view"
 )
+
+// registrar is a web.Registrar stand-in that records what it was asked to
+// register, so a test can assert what the form actually sent rather than only
+// that the request succeeded.
+type registrar struct {
+	got view.Registration
+}
+
+func (r *registrar) Preview(context.Context, view.Archive) (view.ImportPreview, error) {
+	return view.ImportPreview{}, nil
+}
+
+func (r *registrar) Register(_ context.Context, registration view.Registration) (view.ImportResult, error) {
+	r.got = registration
+	return view.ImportResult{Registered: true, ID: "example/thing", Version: registration.Version}, nil
+}
+
+// postMultipart submits the import form the way a browser does: multipart, not
+// urlencoded, which is what the archive field requires.
+func postMultipart(t *testing.T, h http.Handler, fields map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	for name, value := range fields {
+		require.NoError(t, form.WriteField(name, value))
+	}
+	require.NoError(t, form.Close())
+
+	req := httptest.NewRequest(http.MethodPost, "/catalog/import", &body)
+	req.Header.Set("Content-Type", form.FormDataContentType())
+	req.AddCookie(&http.Cookie{Name: "am_session", Value: "screen-test-session"})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
 
 // The registration modal (T046). What can regress silently is the markup the R7
 // budget and FR-055 depend on, which is what this asserts.
@@ -31,7 +70,7 @@ func TestTheImportModalIsOnTheCatalogAndCostsNoRoundTrip(t *testing.T) {
 		// trip, with nothing else looking different.
 		for _, signal := range []string{
 			"_importOpen", "_importTab", "_importFile",
-			"_importURL", "_importRef", "_importSubdir", "_importPublisher",
+			"_importURL", "_importRef", "_importSubdir", "_importPublisher", "_importVersion",
 		} {
 			require.Containsf(t, body, `&#34;`+signal+`&#34;`, "%s is missing from the initial signal state", signal)
 			require.NotContainsf(t, body, `&#34;`+strings.TrimPrefix(signal, "_")+`&#34;:`,
@@ -155,6 +194,38 @@ func TestTheEntryMarkAndItsColourCannotDisagree(t *testing.T) {
 			require.Contains(t, components.ImportMarkStyle(tc.entry), "var(--"+tc.tone+")")
 		})
 	}
+}
+
+func TestTheImportFormHasAVersionFieldAndAUsablePublisherPlaceholder(t *testing.T) {
+	body := get(t, handler(t, fixture.New()), "/catalog").Body.String()
+
+	require.Contains(t, body, `id="import-version"`)
+	require.Contains(t, body, `name="version"`)
+	require.Contains(t, body, `placeholder="1.0.0"`)
+	// The api refuses anything that is not "<namespace>/<team>" — "example" alone
+	// was a placeholder nobody could actually submit.
+	require.Contains(t, body, `placeholder="example/platform"`)
+}
+
+// TestUploadingASkillCanBeRegisteredNowThatVersionIsOnTheForm is GAP 2: a
+// SKILL.md manifest carries no version, so the api refuses the upload unless
+// the form supplies one.
+func TestUploadingASkillCanBeRegisteredNowThatVersionIsOnTheForm(t *testing.T) {
+	reg := &registrar{}
+	h := web.New(web.Deps{
+		Registrar: reg, Viewers: fixture.SignedInViewers(), Log: zerolog.Nop(),
+	}, web.Options{}).Handler()
+
+	rec := postMultipart(t, h, map[string]string{
+		"publisher": "example/platform",
+		"name":      "release-notes",
+		"version":   "1.0.0",
+		"category":  "Documentation",
+	})
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "1.0.0", reg.got.Version)
+	require.Contains(t, rec.Body.String(), "1.0.0")
 }
 
 func TestTheCatalogStillRendersWithoutAPreview(t *testing.T) {

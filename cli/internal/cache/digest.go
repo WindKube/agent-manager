@@ -9,10 +9,8 @@ import (
 	"strings"
 )
 
-// Digest is a sha256 value stored as raw bytes so the lockfile's
-// `sha256:<hex>` spelling and the header's `sha-256=<base64>` spelling can
-// never be compared as unequal strings for the same value. Digest is
-// comparable, so `==` is the digest check; do NOT compare formatted strings.
+// Digest is a sha256 value stored as raw bytes, not as one of its string
+// encodings, so `==` is always the correct equality check.
 type Digest struct {
 	raw [sha256.Size]byte
 }
@@ -45,9 +43,8 @@ func digestFromSlice(b []byte) (Digest, error) {
 	return d, nil
 }
 
-// ParseLockfileDigest reads the lockfile encoding, `sha256:<64 lowercase hex>`.
-// Uppercase hex is refused rather than folded, since accepting it would hide
-// a hub bug that violates the schema behind a working sync.
+// ParseLockfileDigest reads `sha256:<64 lowercase hex>`. Uppercase is refused
+// rather than folded, so a schema-violating hub bug is not hidden.
 func ParseLockfileDigest(s string) (Digest, error) {
 	rest, ok := strings.CutPrefix(s, lockfileScheme)
 	if !ok {
@@ -67,11 +64,9 @@ func ParseLockfileDigest(s string) (Digest, error) {
 	return digestFromSlice(b)
 }
 
-// ParseHeaderDigest reads the RFC 3230 `Digest` response header value,
-// `sha-256=<base64>`. The algorithm token is matched case-insensitively
-// (RFC 3230 spells it uppercase); the base64 payload is not, since base64url
-// decodes the same characters to different bytes. Both padded and unpadded
-// standard base64 are accepted.
+// ParseHeaderDigest reads RFC 3230's `sha-256=<base64>` header value. The
+// base64 payload is matched case-sensitively, since base64url decodes the
+// same characters to different bytes.
 func ParseHeaderDigest(s string) (Digest, error) {
 	eq := strings.IndexByte(s, '=')
 	if eq < 0 || !strings.EqualFold(s[:eq+1], headerScheme) {
@@ -95,25 +90,21 @@ func ParseHeaderDigest(s string) (Digest, error) {
 	return digestFromSlice(b)
 }
 
-// IsZero reports whether d is the uninitialised zero value, which Get/Put
-// must refuse since two zero digests would otherwise compare equal.
+// IsZero reports whether d is the uninitialised zero value.
 func (d Digest) IsZero() bool { return d == Digest{} }
 
 // Hex is the 64 lowercase hex characters, without a scheme.
 func (d Digest) Hex() string { return hex.EncodeToString(d.raw[:]) }
 
-// Lockfile is the lockfile / state-record encoding, `sha256:<64 hex>`.
+// Lockfile is `sha256:<64 hex>`, the lockfile / state-record encoding.
 func (d Digest) Lockfile() string { return lockfileScheme + d.Hex() }
 
-// Header is the RFC 3230 header encoding, `sha-256=<padded base64>`. Emitted
-// lowercase and padded to match the contract's regex exactly.
+// Header is `sha-256=<padded base64>`, the RFC 3230 header encoding.
 func (d Digest) Header() string {
 	return headerScheme + base64.StdEncoding.EncodeToString(d.raw[:])
 }
 
-// FileName is the cache's on-disk key, `sha256-<64 hex>`.
+// FileName is `sha256-<64 hex>`, the cache's on-disk key.
 func (d Digest) FileName() string { return fileScheme + d.Hex() }
 
-// String is the lockfile encoding, because that is the form a user has seen:
-// it is what the lockfile and the installation record show.
 func (d Digest) String() string { return d.Lockfile() }

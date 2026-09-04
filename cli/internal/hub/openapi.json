@@ -644,7 +644,7 @@
             "type": "string"
           },
           "requestedRef": {
-            "description": "The reference as submitted, credentials already redacted. Rendered escaped (FR-055).",
+            "description": "The reference as submitted, credentials already redacted.",
             "examples": [
               "https://github.com/example/terraform-review"
             ],
@@ -5853,7 +5853,7 @@
     },
     "/v1/storage": {
       "get": {
-        "description": "001 FR-053: object count, compressed size, region, the key layout for skills/ and profiles/, the bucket's own versioning, object-lock, encryption, write-access and retention settings, and the most recent ingestion attempts with an outcome. The screen reports what the bucket reports: this system configures and surfaces object lock and retention, it does not enforce them, so a setting the bucket declines to answer comes back UNKNOWN rather than a guessed default. Restricted to catalog-admin, the role this hub's other administration screens use.",
+        "description": "Object count, compressed size, region, the key layout for skills/ and profiles/, the bucket's own versioning, object-lock, encryption, write-access and retention settings, and the most recent ingestion attempts with an outcome. The screen reports what the bucket reports: this system configures and surfaces object lock and retention, it does not enforce them, so a setting the bucket declines to answer comes back UNKNOWN rather than a guessed default. Restricted to catalog-admin, the role this hub's other administration screens use.",
         "operationId": "getStorage",
         "responses": {
           "200": {

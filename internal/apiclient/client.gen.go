@@ -1956,7 +1956,7 @@ type FetchAttemptSummary struct {
 	OccurredAt time.Time                  `json:"occurredAt"`
 	Outcome    FetchAttemptSummaryOutcome `json:"outcome"`
 
-	// RequestedRef The reference as submitted, credentials already redacted. Rendered escaped (FR-055).
+	// RequestedRef The reference as submitted, credentials already redacted.
 	//
 	// Examples: https://github.com/example/terraform-review
 	RequestedRef string                        `json:"requestedRef"`
@@ -3813,7 +3813,7 @@ type ClientInterface interface {
 
 	// GetStorage The object store's own state
 	//
-	// 001 FR-053: object count, compressed size, region, the key layout for skills/ and profiles/, the bucket's own versioning, object-lock, encryption, write-access and retention settings, and the most recent ingestion attempts with an outcome. The screen reports what the bucket reports: this system configures and surfaces object lock and retention, it does not enforce them, so a setting the bucket declines to answer comes back UNKNOWN rather than a guessed default. Restricted to catalog-admin, the role this hub's other administration screens use.
+	// Object count, compressed size, region, the key layout for skills/ and profiles/, the bucket's own versioning, object-lock, encryption, write-access and retention settings, and the most recent ingestion attempts with an outcome. The screen reports what the bucket reports: this system configures and surfaces object lock and retention, it does not enforce them, so a setting the bucket declines to answer comes back UNKNOWN rather than a guessed default. Restricted to catalog-admin, the role this hub's other administration screens use.
 	//
 	// Corresponds with GET /v1/storage (the `GetStorage` operationId).
 	GetStorage(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4536,7 +4536,7 @@ func (c *Client) DeleteSession(ctx context.Context, reqEditors ...RequestEditorF
 
 // GetStorage The object store's own state
 //
-// 001 FR-053: object count, compressed size, region, the key layout for skills/ and profiles/, the bucket's own versioning, object-lock, encryption, write-access and retention settings, and the most recent ingestion attempts with an outcome. The screen reports what the bucket reports: this system configures and surfaces object lock and retention, it does not enforce them, so a setting the bucket declines to answer comes back UNKNOWN rather than a guessed default. Restricted to catalog-admin, the role this hub's other administration screens use.
+// Object count, compressed size, region, the key layout for skills/ and profiles/, the bucket's own versioning, object-lock, encryption, write-access and retention settings, and the most recent ingestion attempts with an outcome. The screen reports what the bucket reports: this system configures and surfaces object lock and retention, it does not enforce them, so a setting the bucket declines to answer comes back UNKNOWN rather than a guessed default. Restricted to catalog-admin, the role this hub's other administration screens use.
 //
 // Corresponds with GET /v1/storage (the `GetStorage` operationId).
 func (c *Client) GetStorage(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6349,7 +6349,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetStorageWithResponse The object store's own state
 	//
-	// 001 FR-053: object count, compressed size, region, the key layout for skills/ and profiles/, the bucket's own versioning, object-lock, encryption, write-access and retention settings, and the most recent ingestion attempts with an outcome. The screen reports what the bucket reports: this system configures and surfaces object lock and retention, it does not enforce them, so a setting the bucket declines to answer comes back UNKNOWN rather than a guessed default. Restricted to catalog-admin, the role this hub's other administration screens use.
+	// Object count, compressed size, region, the key layout for skills/ and profiles/, the bucket's own versioning, object-lock, encryption, write-access and retention settings, and the most recent ingestion attempts with an outcome. The screen reports what the bucket reports: this system configures and surfaces object lock and retention, it does not enforce them, so a setting the bucket declines to answer comes back UNKNOWN rather than a guessed default. Restricted to catalog-admin, the role this hub's other administration screens use.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -9159,7 +9159,7 @@ func (c *ClientWithResponses) DeleteSessionWithResponse(ctx context.Context, req
 
 // GetStorageWithResponse The object store's own state
 //
-// 001 FR-053: object count, compressed size, region, the key layout for skills/ and profiles/, the bucket's own versioning, object-lock, encryption, write-access and retention settings, and the most recent ingestion attempts with an outcome. The screen reports what the bucket reports: this system configures and surfaces object lock and retention, it does not enforce them, so a setting the bucket declines to answer comes back UNKNOWN rather than a guessed default. Restricted to catalog-admin, the role this hub's other administration screens use.
+// Object count, compressed size, region, the key layout for skills/ and profiles/, the bucket's own versioning, object-lock, encryption, write-access and retention settings, and the most recent ingestion attempts with an outcome. The screen reports what the bucket reports: this system configures and surfaces object lock and retention, it does not enforce them, so a setting the bucket declines to answer comes back UNKNOWN rather than a guessed default. Restricted to catalog-admin, the role this hub's other administration screens use.
 //
 // Returns a wrapper object for the known response body format(s).
 //

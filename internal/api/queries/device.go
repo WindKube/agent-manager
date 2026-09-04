@@ -13,8 +13,7 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// DeviceCodeStatus is why a user code is, or is not, awaiting a decision
-// (001 FR-042).
+// DeviceCodeStatus is why a user code is, or is not, awaiting a decision.
 type DeviceCodeStatus int
 
 const (
@@ -24,25 +23,19 @@ const (
 	DeviceCodeUnknown
 	// DeviceCodeExpired ran out its validity before it was decided.
 	DeviceCodeExpired
-	// DeviceCodeDecided is approved, consumed or denied: no longer pending. One
-	// value for all three, the same way commands.ErrUserCodeUndecidable is one
-	// error for them — a viewer needs to know a code will never work again, not
-	// which of the three ways it stopped.
+	// DeviceCodeDecided is approved, consumed or denied: no longer pending.
 	DeviceCodeDecided
 )
 
-// PendingDeviceAuthorization is what FR-041 requires the approving human see
-// before deciding: the requesting host and when the code expires.
+// PendingDeviceAuthorization is what the approving human sees before deciding:
+// the requesting host and when the code expires.
 type PendingDeviceAuthorization struct {
 	RequestingHost string
 	ExpiresAt      time.Time
 }
 
-// normaliseUserCode mirrors commands package's own normaliseUserCode. It cannot
-// call that one instead: commands already imports this package (principle
-// VIII — a command may read before it writes), so this package importing
-// commands back would be a cycle. The two must be kept in step by hand;
-// commands/device.go carries the full reasoning for what this forgives.
+// normaliseUserCode mirrors commands.normaliseUserCode. It is duplicated
+// rather than imported to avoid a cycle: commands already imports this package.
 func normaliseUserCode(typed string) string {
 	var out strings.Builder
 	out.Grow(len(typed) + 1)
@@ -72,11 +65,9 @@ from device_authorization
 where user_code = ?`
 
 // LookupDeviceCode classifies a user code for display before it is decided.
-//
-// It performs no write. Expiry here is a read-time classification against the
+// It performs no write: expiry here is a read-time classification against the
 // database's clock, not the state transition commands.ConsumeDevice performs
-// when a row is actually swept — a code can read as expired here long before
-// anything ever sets its stored state to `expired`.
+// when a row is actually swept.
 func LookupDeviceCode(ctx context.Context, db bun.IDB, userCode string) (PendingDeviceAuthorization, DeviceCodeStatus, error) {
 	code := normaliseUserCode(userCode)
 	if code == "" {

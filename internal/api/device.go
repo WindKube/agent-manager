@@ -297,9 +297,8 @@ func (s *Server) deviceToken(ctx context.Context, in *deviceTokenInput) (*device
 
 // ---- GET /v1/device/authorizations/{user_code} and its approval --------------
 //
-// Both need a browser session and nothing beyond it (contracts/openapi-additions.md,
-// US6): approving a machine's login is not an organisation-role decision, so
-// neither handler calls requireRole.
+// Both need a browser session and nothing beyond it: approving a machine's login
+// is not an organisation-role decision, so neither handler calls requireRole.
 
 type lookupDeviceCodeInput struct {
 	UserCode string `path:"user_code" doc:"The code the CLI printed."`
@@ -349,12 +348,10 @@ func (s *Server) approveDeviceCode(ctx context.Context, in *approveDeviceCodeInp
 	host, err := commands.ApproveDevice(ctx, s.deps.DB, principal, in.UserCode)
 	if err != nil {
 		if errors.Is(err, commands.ErrUserCodeUndecidable) {
-			// A SEPARATE, non-authoritative read taken after the refusal, purely to
-			// word the response: commands.ApproveDevice's guard is the UPDATE's WHERE
-			// clause, not a prior read, and it collapses unknown, expired and
-			// already-decided into one sentinel on purpose. The approval itself
-			// already stood or fell on that transactional guard; this lookup only
-			// decides which of FR-042's three distinguishable messages to print.
+			// A separate, non-authoritative read taken after the refusal, purely to
+			// word the response: the approval already stood or fell on the
+			// transactional guard above, and this lookup only picks which message to
+			// print.
 			_, status, lookupErr := queries.LookupDeviceCode(ctx, s.deps.DB, in.UserCode)
 			if lookupErr != nil {
 				return nil, fail(log, lookupErr)
@@ -366,18 +363,10 @@ func (s *Server) approveDeviceCode(ctx context.Context, in *approveDeviceCodeInp
 	return &approveDeviceCodeOutput{Body: contract.ApprovedDeviceAuthorization{RequestingHost: host}}, nil
 }
 
-// deviceCodeRefusal renders the three refusals FR-042 requires be distinguishable
-// to the viewer.
-//
-// It says nothing about the fourth refusal the device flow carries — approval by
-// an identity other than the requester — because device_authorization binds a
-// host, never a requester identity: POST /v1/device/authorize carries a
-// client_id and a host and no identity at all, so nothing here could tell that
-// case apart from these three without inventing a binding this schema does not
-// have. commands.ApproveDevice's own comment explains why the naive check was
-// never implementable, and why that is not a gap: any signed-in identity may
-// approve a pending code, and the host shown to them, the audit row this writes,
-// and the code's single use are what stand in for it.
+// deviceCodeRefusal renders the three distinguishable device-code refusals.
+// There is no fourth case for approval by a different identity:
+// device_authorization binds a host, never a requester identity, so that reads
+// exactly like DeviceCodeDecided.
 func deviceCodeRefusal(status queries.DeviceCodeStatus) error {
 	switch status {
 	case queries.DeviceCodeExpired:

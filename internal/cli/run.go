@@ -158,11 +158,8 @@ func runWeb(ctx context.Context) error {
 		// answers only the first.
 		Profiles: client,
 		Curator:  client,
-		// The Connect-the-CLI screen (US6). Same client again, again because
-		// reading a pending authorisation and recording an approval are two
-		// different claims a fixture might honestly answer one of and not the other.
-		Device: client,
-		Log:    log,
+		Device:   client,
+		Log:      log,
 	}, web.Options{
 		Addr: cfg.Addr,
 		// Read for exactly one decision — the Secure flag on both cookies — and read
@@ -170,8 +167,6 @@ func runWeb(ctx context.Context) error {
 		// talk this role out of it.
 		PublicBaseURL: cfg.PublicBaseURL,
 		// The api's own address, for the command the Connect-the-CLI screen prints.
-		// A distinct field from PublicBaseURL above: that one is THIS role's origin,
-		// the browser's; this one is the api's, which is where a CLI actually talks.
 		HubURL: cfg.HubURL,
 		// FR-119's ONE gate. The hint is shown because an operator asked for it in
 		// this variable and for no other reason: nothing below derives it from the

@@ -72,13 +72,9 @@ func correlation(base zerolog.Logger) gin.HandlerFunc {
 
 // logSafePath is what a request log line names as the path.
 //
-// The device approval routes carry a user code IN the path, and a user code is a
-// bearer-equivalent secret for the length of its validity (commands.userCodeLength's
-// entropy note): a literal path in a log line would put it there in plain text on
-// every request, matched or not. gin sets c.FullPath() to the ROUTE TEMPLATE —
-// "/v1/device/authorizations/:user_code", never the value a caller sent — once a
-// route has matched, so using it for these two routes logs which endpoint was hit
-// without ever repeating the secret.
+// The device approval routes carry a bearer-equivalent user code in the path.
+// gin's c.FullPath() returns the route template, never the value a caller
+// sent, so using it for those two routes avoids logging the secret.
 func logSafePath(c *gin.Context) string {
 	if full := c.FullPath(); full != "" && strings.Contains(full, ":user_code") {
 		return full

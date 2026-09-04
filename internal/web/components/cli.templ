@@ -2,12 +2,8 @@ package components
 
 import "agent-manager/internal/web/view"
 
-// CLIScreen is the Connect-the-CLI screen (003 US6): a code entry form, the
-// pending authorisation it names, and the one confirm action.
-//
-// Every string on this screen that could have come from a machine — the
-// requesting host — is interpolated and therefore escaped, the same rule every
-// other screen in this hub follows for package-derived content (FR-055, FR-127).
+// CLIScreen is the Connect-the-CLI screen: a code entry form, the pending
+// authorisation it names, and the one confirm action.
 templ CLIScreen(s view.CLI) {
 	<div class="am-header">
 		<div class="am-header-text">
@@ -79,8 +75,8 @@ templ cliCodeForm(s view.CLI) {
 	</form>
 }
 
-// cliPending is the confirm step: the host and the countdown, exactly what
-// FR-041 requires the viewer see before they decide.
+// cliPending is the confirm step: the host and the countdown the viewer must
+// see before they decide.
 templ cliPending(s view.CLI) {
 	<div class="am-gov-card" id="cli-pending">
 		<div class="am-label">Requesting machine</div>
@@ -96,9 +92,8 @@ templ cliPending(s view.CLI) {
 	</div>
 }
 
-// cliNoPending is 001 US6 scenario 4: with no code looked up, the screen states
-// the real command and the real hub address, both read from configuration —
-// never a placeholder.
+// cliNoPending is the state with no code looked up: the real command and hub
+// address, read from configuration.
 templ cliNoPending(s view.CLI) {
 	<div class="am-gov-card" id="cli-no-pending">
 		if s.Command == "" {

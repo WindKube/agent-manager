@@ -14,16 +14,12 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The Connect-the-CLI screen (US6): a code entry form, the pending
-// authorisation it names, and the one confirm action.
+// The Connect-the-CLI screen: a code entry form, the pending authorisation it
+// names, and the one confirm action.
 //
-// Post-redirect-get, like the Scanner screen's two decisions: confirming a code
-// changes stored state, so a browser's reload button must not be able to repeat
-// it. The redirect carries an outcome token and never the user code — the
-// SAME reason the api never logs it (internal/api/middleware.go): it is a
-// bearer-equivalent secret for the length of its validity, and a value this
-// role put in a redirect URL is a value that reaches a browser history and a
-// referrer header.
+// Confirming is post-redirect-get, and the redirect carries an outcome token
+// and never the user code — a value in a redirect URL reaches browser history
+// and a referrer header, and the code is bearer-equivalent for its validity.
 
 func (s *Server) cli(c *gin.Context) {
 	screen := view.CLI{
@@ -40,7 +36,6 @@ func (s *Server) cli(c *gin.Context) {
 	}
 
 	if s.deps.Device == nil {
-		// A deployment always wires one. This is a screen test that did not.
 		screen.Unavailable = true
 		s.renderCLI(c, http.StatusBadGateway, screen)
 		return
@@ -107,7 +102,7 @@ func (s *Server) confirmDeviceCode(c *gin.Context) {
 }
 
 // backToCLI redirects to the empty form carrying an outcome token the screen
-// looks its copy up from (never the user code itself: see the package comment).
+// looks its copy up from, never the user code itself.
 func (s *Server) backToCLI(c *gin.Context, outcome, host string) {
 	values := url.Values{"outcome": {outcome}}
 	if host != "" {
@@ -142,10 +137,8 @@ func cliNotice(outcome, host string) *view.Notice {
 	}
 }
 
-// cliLoginCommand is the REAL command a person runs (FR-041 scenario 4), never
-// a placeholder: empty HubURL means this role was not told the api's address,
-// and the screen says that plainly rather than printing a command that starts
-// wrong.
+// cliLoginCommand is the real command a person runs. Empty HubURL means this
+// role was not told the api's address, and the screen says so plainly.
 func cliLoginCommand(hubURL string) string {
 	if hubURL == "" {
 		return ""

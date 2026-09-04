@@ -10,14 +10,12 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The Connect-the-CLI screen's door to the api (US6), through the generated
-// client and nothing else.
+// The Connect-the-CLI screen's door to the api, through the generated client
+// and nothing else.
 
-// The three refusals FR-042 requires be distinguishable to the viewer. A fourth
-// — approval by an identity other than the requester — does not exist as a
-// separate case here: device_authorization binds a host, never a requester
-// identity, so the api answers it exactly like ErrDeviceCodeDecided
-// (internal/api/device.go's deviceCodeRefusal carries the full reasoning).
+// The three distinguishable device-code refusals. There is no separate
+// wrong-identity case: device_authorization binds a host, never a requester
+// identity, so the api answers that exactly like ErrDeviceCodeDecided.
 var (
 	ErrDeviceCodeUnknown = errors.New("no such device authorisation")
 	ErrDeviceCodeExpired = errors.New("this code has expired")

@@ -137,6 +137,8 @@ type ProfileCurator interface {
 // ScannerSource/Reviewer's split — a fixture that could honestly answer the
 // lookup could just as honestly record the confirm, since neither claims
 // anything about a role this identity might lack.
+// DeviceSource is the Connect-the-CLI screen's door to the api: looking a
+// pending authorisation up and confirming it.
 type DeviceSource interface {
 	LookupDeviceCode(ctx context.Context, userCode string) (view.PendingDeviceAuthorization, error)
 	ApproveDeviceCode(ctx context.Context, userCode string) (string, error)
@@ -185,8 +187,7 @@ type Deps struct {
 	Audit AuditSource
 	// Badges backs the sidebar counts. Nil is a sidebar with no counts.
 	Badges BadgeSource
-	// Device backs the Connect-the-CLI screen. Nil renders its unavailable state
-	// rather than an empty one, matching Scanner's own nil-source convention.
+	// Device backs the Connect-the-CLI screen. Nil renders its unavailable state.
 	Device DeviceSource
 	Log    zerolog.Logger
 	// Profiles backs the Profiles screens' two reads. Nil renders their
@@ -231,10 +232,8 @@ type Options struct {
 	// starts on one and returns to another finds no round trip in flight.
 	OIDCCookieKey []byte
 	// HubURL is the address `amctl login --hub` should name — the same value
-	// config.API.PublicBaseURL holds on the api role. It is printed on the
-	// Connect-the-CLI screen and nowhere else. This role holds no door onto the
-	// api's own configuration (principle II), so the operator states it here too;
-	// compose.yaml is what keeps the two in step.
+	// config.API.PublicBaseURL holds on the api role. Printed on the
+	// Connect-the-CLI screen and nowhere else.
 	HubURL string
 }
 
@@ -315,10 +314,8 @@ func (s *Server) register() {
 	s.engine.POST("/profiles/sharing", s.shareProfile)
 	s.engine.POST("/profiles/targets", s.setTargets)
 	s.engine.POST("/profiles/revisions", s.publishRevision)
-	// The Connect-the-CLI screen (US6). The confirm action is its own route and
-	// never carries the user code in its own path, for the reason the api's
-	// lookup and approve operations do not log theirs (internal/api/middleware.go):
-	// a user code is bearer-equivalent for the length of its validity.
+	// The confirm action never carries the user code in its own path: it is
+	// bearer-equivalent for the length of its validity.
 	s.engine.GET("/cli", s.cli)
 	s.engine.POST("/cli/confirm", s.confirmDeviceCode)
 

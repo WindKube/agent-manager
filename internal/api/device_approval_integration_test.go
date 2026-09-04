@@ -1,7 +1,7 @@
 //go:build integration
 
-// The browser half of the device flow (T091-T093, T097, T098): lookupDeviceCode
-// and approveDeviceCode against a real Postgres.
+// The browser half of the device flow: lookupDeviceCode and approveDeviceCode
+// against a real Postgres.
 package api_test
 
 import (
@@ -22,8 +22,7 @@ import (
 	"agent-manager/internal/blob"
 )
 
-// deviceApprovalHandler is deviceHandler with a logger this suite can inspect,
-// for the one requirement that is about what is NOT in a response: the log line.
+// deviceApprovalHandler is deviceHandler with a logger this suite can inspect.
 func deviceApprovalHandler(t *testing.T, log zerolog.Logger) http.Handler {
 	t.Helper()
 
@@ -72,13 +71,8 @@ func TestLookupDeviceCodeNeedsASession(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, rec.Code, rec.Body.String())
 }
 
-// TestTheThreeRefusalsAreDistinguishableAndTheFourthIsNot is T093/T098: unknown,
-// expired and already-decided must read differently to the viewer, and approval
-// by an identity other than the requester must not be a fourth distinguishable
-// case. There is no such case to distinguish: this schema binds a device
-// authorisation to a host, never to a requester identity — the request that opens
-// one carries a client_id and a host and no identity at all (commands.ApproveDevice's
-// own comment) — so any signed-in identity may approve a pending code.
+// There is no requester identity in this schema to compare an approver
+// against, so any signed-in identity may approve a pending code.
 func TestTheThreeRefusalsAreDistinguishableAndTheFourthIsNot(t *testing.T) {
 	h := deviceHandler(t, api.Options{})
 
@@ -118,9 +112,7 @@ func TestTheThreeRefusalsAreDistinguishableAndTheFourthIsNot(t *testing.T) {
 		first := request(t, h, http.MethodPost, approvePath(out.UserCode), kw.token, "")
 		require.Equal(t, http.StatusOK, first.Code, first.Body.String())
 
-		// `an` is a different identity from `kw`, the one that just approved. This
-		// must be the SAME status and the SAME body shape as "already decided"
-		// above, not a distinct refusal naming who approved it first.
+		// `an` is a different identity from `kw`, the one that just approved.
 		second := request(t, h, http.MethodPost, approvePath(out.UserCode), an.token, "")
 		require.Equal(t, http.StatusConflict, second.Code, second.Body.String())
 
@@ -156,7 +148,6 @@ func TestApproveDeviceCodeWritesOneLoginAuditRowAndCompletesTheFlow(t *testing.T
 	require.Contains(t, text, "dev-laptop-10")
 	require.Equal(t, "cli / dev-laptop-10", source)
 
-	// T097: the CLI's next poll succeeds, and the issued token can call the api.
 	pollRec := pollDeviceToken(t, h, deviceClientID, out.DeviceCode)
 	require.Equal(t, http.StatusOK, pollRec.Code, pollRec.Body.String())
 	var token contract.DeviceToken
@@ -167,17 +158,8 @@ func TestApproveDeviceCodeWritesOneLoginAuditRowAndCompletesTheFlow(t *testing.T
 	require.Equal(t, http.StatusOK, profiles.Code, profiles.Body.String())
 }
 
-// TestApprovalPathParameterNeverAppearsInTheRequestLog is T091's own requirement:
-// a user code is bearer-equivalent for the length of its validity, and the api's
-// PER-REQUEST log line — the one every route gets, from the path it was served
-// at — must never print it, matched or not.
-//
 // deviceAuthorize logs the fresh user code once, by design, on the request that
-// MINTS it (device.go: an operator watching this endpoint needs to correlate a
-// code with the host it was bound to). That single, deliberate line is not what
-// this test is about; only the generic per-request "request" line — the one that
-// would otherwise repeat the path verbatim on every later lookup and approval of
-// the SAME code — is asserted against.
+// mints it, so only the generic per-request "request" line is asserted here.
 func TestApprovalPathParameterNeverAppearsInTheRequestLog(t *testing.T) {
 	var logged bytes.Buffer
 	log := zerolog.New(&logged)

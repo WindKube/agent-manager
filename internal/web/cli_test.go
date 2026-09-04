@@ -16,11 +16,8 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// T095-T096, T098: the Connect-the-CLI screen.
-
 // device is a web.DeviceSource whose answer a test sets directly, and which
-// records every user code it was asked to decide — the only way to assert that a
-// refusal refused BEFORE any call reached a source.
+// records every user code it was asked to decide.
 type device struct {
 	pending view.PendingDeviceAuthorization
 	err     error
@@ -85,9 +82,6 @@ func TestCLIScreenEscapesAMachineSuppliedHost(t *testing.T) {
 	require.Contains(t, body, "&lt;script&gt;")
 }
 
-// TestCLIScreenDistinguishesTheThreeRefusals is T098: unknown, expired and
-// already-decided must be three different screens, not one generic "invalid
-// code" (001 FR-042, 003 T093).
 func TestCLIScreenDistinguishesTheThreeRefusals(t *testing.T) {
 	for _, tt := range []struct {
 		name   string
@@ -106,8 +100,7 @@ func TestCLIScreenDistinguishesTheThreeRefusals(t *testing.T) {
 		})
 	}
 
-	// And the four screens above are pairwise distinct ids: no two share one, which
-	// is what makes a screen-test assertion on any one of them meaningful.
+	// The four screens above are pairwise distinct ids.
 	ids := map[string]bool{"cli-unknown": true, "cli-expired": true, "cli-decided": true, "cli-pending": true}
 	require.Len(t, ids, 4)
 }
@@ -128,9 +121,6 @@ func TestCLIScreenSignedOutMidLookupGoesToSignIn(t *testing.T) {
 	require.Contains(t, rec.Header().Get("Location"), "/auth/signin")
 }
 
-// TestConfirmDeviceCodeIsPostRedirectGet is T095/T098: a decision is a POST that
-// redirects, so the browser's reload button cannot repeat it, and the user code
-// travels in the FORM body, never in the redirect's URL (see internal/web/cli.go).
 func TestConfirmDeviceCodeIsPostRedirectGet(t *testing.T) {
 	source := &device{approvedHost: "dev-laptop-01"}
 	rec := post(t, cliHandler(source), "/cli/confirm", url.Values{"user_code": {"HKQ2-9FTL"}})

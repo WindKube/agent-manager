@@ -868,7 +868,7 @@ func (s *Server) registerStorage() {
 		Path:        "/v1/storage",
 		Tags:        []string{"storage"},
 		Summary:     "The object store's own state",
-		Description: "001 FR-053: object count, compressed size, region, the key layout for skills/ " +
+		Description: "Object count, compressed size, region, the key layout for skills/ " +
 			"and profiles/, the bucket's own versioning, object-lock, encryption, write-access and " +
 			"retention settings, and the most recent ingestion attempts with an outcome. " +
 			"The screen reports what the bucket reports: this system configures and surfaces object " +

@@ -169,6 +169,8 @@ func sweep() []sweptScreen {
 		// The Storage screen (US7 scenario 2), swept empty for the same reason: a
 		// fetch's requested reference is operator-supplied and person-shaped by
 		// nature, so only the chrome is exercised here.
+		// The Storage screen, swept empty for the same reason: a fetch's requested
+		// reference is operator-supplied and person-shaped by nature.
 		inShell("StorageScreen", func() templ.Component { return components.StorageScreen(view.Storage{}) }),
 		{
 			name: "NoRoleScreen",

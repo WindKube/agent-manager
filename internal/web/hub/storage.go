@@ -8,19 +8,8 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The Storage screen's door to the api (US7 scenario 2; 001 FR-053).
-
-// Storage reads GET /v1/storage.
-//
-// It returns view.Storage directly rather than a hub-owned intermediate: unlike
-// the two governance screens, there is exactly one caller and no rendering
-// decision this package would otherwise have to make twice.
-//
-// ReadCacheHitRate is absent on every answer this hub has ever seen, and it is
-// carried through as absent rather than turned into a caption here: sync_event
-// (the row a sync report writes) has no cache-hit column at all today, so the
-// api can only ever send none — and the day it can, this method must not be
-// the reason the screen keeps saying "unknown".
+// Storage reads GET /v1/storage and returns view.Storage directly: there is
+// exactly one caller, so no separate hub-owned type is worth the indirection.
 func (c *Client) Storage(ctx context.Context) (view.Storage, error) {
 	resp, err := c.api.GetStorageWithResponse(ctx)
 	if err != nil {

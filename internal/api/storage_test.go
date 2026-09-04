@@ -11,20 +11,14 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The storage surface's role gate, with no database.
-//
-// Same construction as profiles_test.go and governance_test.go: the handler is
-// handed Deps with a nil database and a nil bucket, so anything that reached the
-// query would panic on one of those and answer 500. A 403 from these cases is
-// therefore proof the refusal came first, and needs no container to demonstrate.
+// storageHandler is handed Deps with a nil database and a nil bucket, so
+// anything that reached the query would panic and answer 500 — a 403 is proof
+// the role check ran first.
 func storageHandler(t *testing.T, principal auth.Principal) http.Handler {
 	t.Helper()
 	return handler(t, api.Deps{Sessions: resolver{principal: principal}})
 }
 
-// The Storage screen is administration (US7): only catalog-admin, the role the
-// hub's other administration screens use, unlike the profile and scanner
-// surfaces which several roles share.
 func TestReadingTheStorageReportIsRefusedToEveryRoleButCatalogAdmin(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -32,9 +26,9 @@ func TestReadingTheStorageReportIsRefusedToEveryRoleButCatalogAdmin(t *testing.T
 		want int
 	}{
 		{
+			// Past the role check and into the query, which has no database or
+			// bucket; getting past 403 is the assertion, not the 500.
 			name: "a catalog admin reads the storage report",
-			// Past the role check and into the query, which has no database or bucket.
-			// The status is not the assertion here; getting past 403 is.
 			role: models.OrgRoleCatalogAdmin,
 			want: http.StatusInternalServerError,
 		},
@@ -68,8 +62,8 @@ func TestReadingTheStorageReportIsRefusedToEveryRoleButCatalogAdmin(t *testing.T
 	}
 }
 
-// FR-126/FR-117: the refusal names what would have worked, so a person with no
-// mapped group can tell that from holding the wrong one.
+// The refusal names what would have worked, so a person with no mapped group
+// can tell that from holding the wrong one.
 func TestTheStorageRefusalNamesTheRoleThatWouldHaveWorked(t *testing.T) {
 	h := storageHandler(t, auth.Principal{Subject: "sub-x", Role: models.OrgRoleReadOnly})
 

@@ -14,14 +14,6 @@ import (
 	"agent-manager/internal/blob"
 )
 
-// The Storage screen's read (001 FR-053; 003 US7 scenario 2, US8 scenario 3).
-//
-// Every figure comes from the object store itself or from stored rows — nothing
-// here is a constant in the product. A setting the bucket declines to answer is
-// UNKNOWN and never a default: this system configures and surfaces object lock
-// and retention, it does not enforce them, so guessing a protection that may not
-// be there would be the worse lie.
-
 const (
 	// maxStorageObjects bounds the listing this report walks. A production bucket
 	// can hold far more objects than a report should hold in memory at once; past
@@ -68,33 +60,25 @@ func Storage(ctx context.Context, db bun.IDB, bucket blob.Inspector) (contract.S
 	}
 	report.RecentFetches = fetches
 
-	// sync_event (internal/store/models.SyncEvent) carries no cache-hit figure at
-	// all — a report's only fields are the profile, the revision and the host —
-	// so there is nothing to compute a rate from. Unknown is the honest answer;
-	// zero would claim every CLI read missed the cache.
+	// models.SyncEvent carries no cache-hit figure, so there is nothing to
+	// compute a rate from; unknown, not zero.
 	report.ReadCacheHitRate = nil
 
 	return report, nil
 }
 
-// bucketSettings reads the bucket's own settings through the raw S3 client
-// (blob.Bucket.As's escape hatch), so no second client is constructed.
-//
-// A store that is not S3 at all — memblob in a unit test — cannot produce one,
-// and every setting below is UNKNOWN for exactly that reason. This is not a
-// fallback path bolted on for tests: it is the same answer a real bucket gives
-// when the api's read-only key lacks a Get*Configuration permission, which is
-// why the two are not distinguished here.
+// bucketSettings reads the bucket's own settings through the raw S3 client, so
+// no second client is constructed. A store that is not S3 — memblob in a unit
+// test — cannot produce one, which is deliberately the same answer a real
+// bucket gives when the api's read-only key lacks a permission: every setting
+// below is unknown either way.
 func bucketSettings(ctx context.Context, bucket blob.Inspector) contract.BucketSettings {
 	settings := contract.BucketSettings{
 		Versioning: unknownSetting(),
 		ObjectLock: unknownSetting(),
 		Encryption: unknownSetting(),
 		Retention:  unknownSetting(),
-		// Known always: this is the role's OWN credential, not the bucket's report.
-		// The api process is handed a read-only object-store key by construction
-		// (compose's x-blob-read), and only `worker fetcher` is ever handed one
-		// that can write (constitution principle II).
+		// This role's own credential, not the bucket's report, so always known.
 		WriteAccess: contract.BucketSetting{Known: true, Value: "read-only; only the fetcher role can write"},
 	}
 
@@ -165,9 +149,6 @@ func retentionValue(rules []types.LifecycleRule) string {
 	return "no expiration rule"
 }
 
-// fetchAttemptSelect mirrors auditSelect's shape: one row type, read by one page
-// and nothing else, so a screen and any future export cannot describe the same
-// row differently.
 const fetchAttemptSelect = `
 select
   fat.id,

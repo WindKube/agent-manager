@@ -153,11 +153,8 @@ type BadgeSource interface {
 	Badges(ctx context.Context) (hub.Badges, error)
 }
 
-// StorageSource is the Storage screen's one read (US7 scenario 2; 001 FR-053).
-//
-// It returns the view type directly, unlike ScannerSource and AuditSource: there
-// is exactly one caller and no rendering decision a hub-owned intermediate would
-// let this package avoid making twice.
+// StorageSource is the Storage screen's one read. It returns the view type
+// directly, unlike ScannerSource and AuditSource: there is exactly one caller.
 type StorageSource interface {
 	Storage(ctx context.Context) (view.Storage, error)
 }

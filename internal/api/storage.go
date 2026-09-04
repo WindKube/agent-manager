@@ -9,15 +9,12 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The Storage screen's read (001 FR-053, 003 US7 scenario 2).
-
 type storageOutput struct {
 	Body contract.StorageReport
 }
 
 // getStorage answers GET /v1/storage, gated to catalog-admin like the hub's
-// other administration screens (Organization); the operator this report is for
-// holds that role.
+// other administration screens.
 func (s *Server) getStorage(ctx context.Context, _ *struct{}) (*storageOutput, error) {
 	principal, _ := PrincipalFrom(ctx)
 	if err := requireRole(principal.Role, "read the storage report", models.OrgRoleCatalogAdmin); err != nil {

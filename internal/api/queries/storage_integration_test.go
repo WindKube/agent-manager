@@ -13,18 +13,14 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The Storage screen's read against a real Postgres and a plain (non-S3) bucket
-// (001 FR-053, 003 US7 scenario 2).
+// Shares benchDB, the container catalog_bench_integration_test.go's TestMain
+// already starts and migrates, rather than a second container this test needs
+// nothing more than.
 //
-// It shares benchDB, the container catalog_bench_integration_test.go's TestMain
-// already starts and migrates — a second container in this package would be a
-// second thing to wait for, for a test that needs nothing the first doesn't
-// already have.
-//
-// memblob is the point of the bucket half, not a shortcut around one: it cannot
-// produce an *s3.Client, so it is the same answer a real bucket gives the api's
-// read-only key when a Get*Configuration call is refused — proving the unknown
-// path without a live S3 account to withhold a permission from.
+// memblob is the point of the bucket half: it cannot produce an *s3.Client, so
+// it is the same answer a real bucket gives the api's read-only key when a
+// setting call is refused, proving the unknown path with no live S3 account
+// needed.
 func TestStorageCountsByPrefixAndReportsUnknownSettingsOverAPlainBucket(t *testing.T) {
 	ctx := t.Context()
 

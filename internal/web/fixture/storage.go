@@ -7,13 +7,10 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// Storage implements web.StorageSource (US7 scenario 2), transcribed from
-// docs/design/agent-manager.dc.html's storageStats, bucketSettings and fetches
-// at lines 1191-1211.
+// Storage implements web.StorageSource for the screen tests.
 //
-// ReadCacheHitRate is left "" rather than the design's 96%: the real api can
-// never answer that figure today (sync_event carries no cache column), and a
-// fixture that showed one would be a screen test exercising a claim the product
+// ReadCacheHitRate is left "": the real api can never answer that figure
+// today, and a fixture that showed one would exercise a claim the product
 // cannot make.
 func (c *Catalog) Storage(context.Context) (view.Storage, error) {
 	now := fixtureNow()

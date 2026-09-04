@@ -6,13 +6,9 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// StorageScreen is US7 scenario 2 and 001 FR-053 as a screen: every figure read
-// from the object store itself or from stored rows, and a bucket setting the
-// store declines to answer rendered as Unknown rather than a guessed default.
-//
-// A requested reference and a fetch's error detail are publisher- or
-// operator-supplied text, so they are interpolated and therefore escaped
-// (001 FR-055, FR-127) like everything else under internal/web.
+// StorageScreen reports what the object store itself holds and what it
+// reports about its own settings. A requested reference and a fetch's error
+// detail are operator-supplied text, rendered escaped.
 templ StorageScreen(s view.Storage) {
 	<div class="am-header">
 		<div class="am-header-text">
@@ -51,8 +47,8 @@ templ StorageScreen(s view.Storage) {
 	}
 }
 
-// storageStats is the headline row. Each figure is computed by the api from the
-// object store or stored rows (FR-121); none of it is a constant in the product.
+// storageStats is the headline row, computed by the api from the object store
+// or stored rows.
 templ storageStats(s view.Storage) {
 	<div class="am-stats" id="storage-summary">
 		for _, card := range s.Cards() {

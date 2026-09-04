@@ -132,6 +132,16 @@ type ProfileCurator interface {
 	PublishRevision(ctx context.Context, slug, note string) (hub.PublishedRevision, error)
 }
 
+// DeviceSource is the Connect-the-CLI screen's door to the api (US6): looking a
+// pending authorisation up and confirming it. One interface for both, unlike
+// ScannerSource/Reviewer's split — a fixture that could honestly answer the
+// lookup could just as honestly record the confirm, since neither claims
+// anything about a role this identity might lack.
+type DeviceSource interface {
+	LookupDeviceCode(ctx context.Context, userCode string) (view.PendingDeviceAuthorization, error)
+	ApproveDeviceCode(ctx context.Context, userCode string) (string, error)
+}
+
 // BadgeSource is the sidebar's three counts (FR-121, research R5).
 //
 // One operation, read once per full page render and never on a fragment update.
@@ -175,6 +185,9 @@ type Deps struct {
 	Audit AuditSource
 	// Badges backs the sidebar counts. Nil is a sidebar with no counts.
 	Badges BadgeSource
+	// Device backs the Connect-the-CLI screen. Nil renders its unavailable state
+	// rather than an empty one, matching Scanner's own nil-source convention.
+	Device DeviceSource
 	Log    zerolog.Logger
 	// Profiles backs the Profiles screens' two reads. Nil renders their
 	// unavailable state, the same way a nil Scanner does.
@@ -217,6 +230,12 @@ type Options struct {
 	// behind a load balancer MUST set the same value on each, or a sign-in that
 	// starts on one and returns to another finds no round trip in flight.
 	OIDCCookieKey []byte
+	// HubURL is the address `amctl login --hub` should name — the same value
+	// config.API.PublicBaseURL holds on the api role. It is printed on the
+	// Connect-the-CLI screen and nowhere else. This role holds no door onto the
+	// api's own configuration (principle II), so the operator states it here too;
+	// compose.yaml is what keeps the two in step.
+	HubURL string
 }
 
 // Server is the assembled router. It owns no connections.
@@ -296,6 +315,12 @@ func (s *Server) register() {
 	s.engine.POST("/profiles/sharing", s.shareProfile)
 	s.engine.POST("/profiles/targets", s.setTargets)
 	s.engine.POST("/profiles/revisions", s.publishRevision)
+	// The Connect-the-CLI screen (US6). The confirm action is its own route and
+	// never carries the user code in its own path, for the reason the api's
+	// lookup and approve operations do not log theirs (internal/api/middleware.go):
+	// a user code is bearer-equivalent for the length of its validity.
+	s.engine.GET("/cli", s.cli)
+	s.engine.POST("/cli/confirm", s.confirmDeviceCode)
 
 	s.engine.POST("/theme", s.setTheme)
 
@@ -327,7 +352,6 @@ type screen struct {
 }
 
 var placeholders = []screen{
-	{path: "/cli", nav: "cli", title: "Connect the CLI", lede: "Pair a machine with the hub through the device flow."},
 	{path: "/org", nav: "org", title: "Organization", lede: "Identity provider, group-to-role mapping and policy."},
 	{path: "/storage", nav: "storage", title: "Storage", lede: "Bucket layout, object counts and recent fetch outcomes."},
 }

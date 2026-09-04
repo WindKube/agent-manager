@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"strings"
 	"time"
 
@@ -83,6 +84,11 @@ func (o Object) Hex() string { return hex.EncodeToString(o.Digest[:]) }
 // internal/worker.Build).
 type Bucket struct {
 	bucket *gcblob.Bucket
+	// name and region come off the URL Open was given: the host is the bucket
+	// name and `region` is the one query parameter compose.yaml's s3:// URL
+	// carries. Both are "" for mem:// and file://, which the Storage screen
+	// renders as unknown rather than guessing one.
+	name, region string
 }
 
 // Open dials the bucket named by a gocloud URL: s3://…, mem://, file:///….
@@ -94,7 +100,12 @@ func Open(ctx context.Context, bucketURL string) (*Bucket, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open bucket: %w", err)
 	}
-	return &Bucket{bucket: b}, nil
+	name, region := "", ""
+	if parsed, parseErr := url.Parse(bucketURL); parseErr == nil {
+		name = parsed.Host
+		region = parsed.Query().Get("region")
+	}
+	return &Bucket{bucket: b, name: name, region: region}, nil
 }
 
 // Reader returns the read half. The returned value's dynamic type implements
@@ -113,6 +124,23 @@ func (b *Bucket) Writer() Writer { return writer{bucket: b.bucket} }
 // so exposing it through the read interface would hand every read-only role a way
 // around the credential split this package exists to enforce.
 func (b *Bucket) As(i any) bool { return b.bucket.As(i) }
+
+// Inspector is read access plus the raw-client escape hatch, Name and Region —
+// handed only to the Storage screen's query, the one caller that needs to
+// describe the bucket itself rather than merely read its objects. It excludes
+// Writer: holding this cannot reach a write, whatever As's driver client can do.
+type Inspector interface {
+	Reader
+	As(i any) bool
+	Name() string
+	Region() string
+	ListLimited(ctx context.Context, prefix string, limit int) ([]Attributes, bool, error)
+}
+
+// Inspector returns the read-and-describe half.
+func (b *Bucket) Inspector() Inspector {
+	return inspector{reader: reader{bucket: b.bucket}, bucket: b, name: b.name, region: b.region}
+}
 
 func (b *Bucket) Close() error {
 	if err := b.bucket.Close(); err != nil {
@@ -168,6 +196,42 @@ func (r reader) List(ctx context.Context, prefix string) ([]Attributes, error) {
 		}
 		if err != nil {
 			return nil, fmt.Errorf("list %s: %w", prefix, err)
+		}
+		if obj.IsDir {
+			continue
+		}
+		out = append(out, Attributes{Key: obj.Key, Size: obj.Size, ModTime: obj.ModTime})
+	}
+}
+
+type inspector struct {
+	reader
+	bucket       *Bucket
+	name, region string
+}
+
+func (i inspector) As(v any) bool  { return i.bucket.As(v) }
+func (i inspector) Name() string   { return i.name }
+func (i inspector) Region() string { return i.region }
+
+// ListLimited lists at most limit objects under prefix and reports whether the
+// bucket held more. It exists beside List for the one caller with no bound on
+// the bucket it is describing: a production bucket can hold far more objects
+// than a report should ever hold in memory at once.
+func (r reader) ListLimited(ctx context.Context, prefix string, limit int) ([]Attributes, bool, error) {
+	it := r.bucket.List(&gcblob.ListOptions{Prefix: prefix})
+
+	var out []Attributes
+	for {
+		if len(out) >= limit {
+			return out, true, nil
+		}
+		obj, err := it.Next(ctx)
+		if errors.Is(err, io.EOF) {
+			return out, false, nil
+		}
+		if err != nil {
+			return nil, false, fmt.Errorf("list %s: %w", prefix, err)
 		}
 		if obj.IsDir {
 			continue

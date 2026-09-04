@@ -7,51 +7,31 @@ import (
 	"time"
 )
 
-// ErrCredential marks a stored credential amctl refuses to use: a blob it
-// cannot decode, a schema version from a newer amctl, or a record that names a
-// different hub than the one asked for.
+// ErrCredential marks a stored credential amctl refuses to use: undecodable,
+// a newer schema version, or a mismatched hub.
 var ErrCredential = errors.New("stored credential is unusable")
 
-// schemaVersion is the on-disk shape of one stored credential; a format
-// change should be a migration or a named refusal, never a silent
-// half-filled decode.
-const schemaVersion = 1
+const schemaVersion = 1 // a format change is a migration or a named refusal, never a silent half-decode
 
-// Credential is one hub's bearer token as amctl holds it. ExpiresAt exists
-// because the hub's tokens are opaque with no claims to read, so the only
-// source of a lifetime is the `expires_in` returned beside it at issue time.
-//
-// The type carries String and GoString so a Credential reaching %v, %s or
-// %#v cannot print the token, and `json:"-"` on Token guards the other
-// serialiser: json.Marshal ignores String and GoString entirely, so a
-// Credential handed to the JSON renderer would otherwise emit the raw
-// token. The on-disk shape is the separate storedCredential below; this tag
-// is the only one on this type, since nothing here is a wire format.
+// Credential is one hub's bearer token; ExpiresAt exists only because the
+// tokens are opaque, so `expires_in` at issue time is the sole source of a
+// lifetime. String/GoString exist so %v/%s/%#v never print Token, and
+// `json:"-"` on Token stops json.Marshal doing the same (it ignores the
+// Stringer methods entirely) — the on-disk shape is storedCredential below.
 type Credential struct {
-	// Hub is the canonical hub URL this token authenticates against. Stored
-	// and compared on load, so a credential can never be handed to the
-	// wrong hub.
-	Hub string
-	// Token is the bearer token. Never rendered, logged or marshalled.
-	Token string `json:"-"`
-	// ExpiresAt is when the token stops working. The zero value means the
-	// issuer named no lifetime, not "already expired".
-	ExpiresAt time.Time
-	// IssuedAt is when amctl obtained it, for `status` to report age.
-	IssuedAt time.Time
-	// Identity is who the hub says this token belongs to, when learned.
-	// Empty is normal: the token endpoint does not return one.
-	Identity string
+	Hub string // stored and compared on load, so a token can never reach the wrong hub
 
-	// fromEnv marks a credential that came from TokenEnvVar; Store.Save
-	// refuses to persist one. Unexported so only this package can set it.
-	fromEnv bool
+	Token string `json:"-"` // never rendered, logged or marshalled
+
+	ExpiresAt time.Time // zero means "no stated lifetime", not "already expired"
+	IssuedAt  time.Time // for `status` to report age
+	Identity  string    // empty is normal: the token endpoint doesn't return one
+
+	fromEnv bool // came from TokenEnvVar; Store.Save refuses to persist it
 }
 
-// Issued builds a Credential from what the device token endpoint returned.
-// expiresIn <= 0 leaves ExpiresAt at its zero value rather than computing an
-// expiry in the past, since "no stated lifetime" and "already elapsed" are
-// different facts.
+// Issued leaves ExpiresAt zero for expiresIn <= 0, since "no stated
+// lifetime" and "already elapsed" are different facts.
 func Issued(hubURL, token string, expiresIn int64, now time.Time) Credential {
 	c := Credential{Hub: hubURL, Token: token, IssuedAt: now}
 	if expiresIn > 0 {
@@ -60,17 +40,13 @@ func Issued(hubURL, token string, expiresIn int64, now time.Time) Credential {
 	return c
 }
 
-// Expired reports whether the credential's stated lifetime has passed. A
-// credential with no recorded expiry is never expired.
+// Expired: a credential with no recorded expiry is never expired.
 func (c Credential) Expired(now time.Time) bool {
 	return !c.ExpiresAt.IsZero() && !now.Before(c.ExpiresAt)
 }
 
-// FromEnvironment reports whether this credential came from TokenEnvVar
-// rather than a store, which is what makes it unsavable.
 func (c Credential) FromEnvironment() bool { return c.fromEnv }
 
-// String implements fmt.Stringer without the token.
 func (c Credential) String() string {
 	expiry := "no stated expiry"
 	if !c.ExpiresAt.IsZero() {
@@ -83,13 +59,10 @@ func (c Credential) String() string {
 	return fmt.Sprintf("credential for %s as %s, token redacted, %s", c.Hub, identity, expiry)
 }
 
-// GoString implements fmt.GoStringer, because %#v is what a hurried debug
-// print reaches for and it ignores String.
-func (c Credential) GoString() string { return "credentials.Credential{" + c.String() + "}" }
+func (c Credential) GoString() string { return "credentials.Credential{" + c.String() + "}" } // %#v ignores String
 
-// storedCredential is the JSON amctl puts in a keyring item. Timestamps are
-// RFC 3339 strings, omitted when zero, so an absent lifetime stays absent
-// through a round trip instead of becoming a timestamp in the year 1.
+// storedCredential is the JSON in a keyring item; timestamps are RFC 3339
+// strings, omitted when zero, so an absent lifetime round-trips as absent.
 type storedCredential struct {
 	SchemaVersion int    `json:"schema_version"`
 	Hub           string `json:"hub"`
@@ -115,11 +88,9 @@ func encodeCredential(c Credential) ([]byte, error) {
 	return json.Marshal(s)
 }
 
-// decodeCredential turns a stored blob back into a Credential, refusing
-// rather than guessing. A stored credential naming a different hub than
-// hubURL is refused: the item key is a digest of the URL, so a mismatch
-// means a hand-edited store or a collision, and handing one hub's token to
-// another would be the worst thing this package could do.
+// decodeCredential refuses a stored hub mismatch: the item key is a digest
+// of the URL, so a mismatch means a hand-edited store or a collision, and
+// handing one hub's token to another is the worst thing this package could do.
 func decodeCredential(blob []byte, hubURL string) (Credential, error) {
 	var s storedCredential
 	if err := json.Unmarshal(blob, &s); err != nil {
@@ -148,9 +119,8 @@ func decodeCredential(blob []byte, hubURL string) (Credential, error) {
 	return c, nil
 }
 
-// parseStoredTime refuses an unparseable timestamp rather than defaulting it
-// to zero, since zero means "no stated expiry" and silently falling back to
-// it would turn a corrupt record into a token that never expires.
+// parseStoredTime refuses an unparseable timestamp rather than defaulting
+// to zero, which would turn a corrupt record into a token that never expires.
 func parseStoredTime(value, field, hubURL string) (time.Time, error) {
 	if value == "" {
 		return time.Time{}, nil

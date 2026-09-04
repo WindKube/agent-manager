@@ -5,15 +5,13 @@ import (
 	"os"
 )
 
-// TokenEnvVar supplies a bearer token directly, bypassing every store. One
-// variable rather than one per hub, since the case this exists for — CI, a
-// container, a machine with no credential store and no TTY — talks to one hub.
+// TokenEnvVar bypasses every store; one variable, since the case it exists
+// for (CI, a container, no credential store, no TTY) talks to one hub.
 //
 //nolint:gosec // G101: this is the NAME of an environment variable, not a credential.
 const TokenEnvVar = "AMCTL_TOKEN"
 
-// Source says where a credential came from, rendered in `login` and
-// `status`'s `store` field.
+// Source says where a credential came from, for `login`/`status`'s `store` field.
 type Source string
 
 const (
@@ -25,33 +23,23 @@ const (
 type Resolved struct {
 	Credential Credential
 	Source     Source
-	// Location is the human phrase for a result's `store` field.
-	Location string
+	Location   string // human phrase for a result's `store` field
 }
 
-// Resolver reads the credential for a hub: the environment first, a store
-// second. Open is a function and not a *Store so the store is never opened
-// at all when the environment supplies a token, since opening one has side
-// effects (creating the credentials directory, a keychain dialog, shelling
-// out to `pass`, a fallback warning) that TokenEnvVar exists to avoid.
+// Resolver tries the environment, then a store. Open is a func, not a
+// *Store, so opening (a keychain dialog, shelling to `pass`, a fallback
+// warning) never happens when the environment already supplied a token.
 type Resolver struct {
-	// Open constructs the store. Called at most once per Resolve, and not
-	// at all when TokenEnvVar is set.
-	Open func() (*Store, error)
-	// LookupEnv defaults to os.LookupEnv.
-	LookupEnv func(string) (string, bool)
+	Open      func() (*Store, error)      // called at most once, never when TokenEnvVar is set
+	LookupEnv func(string) (string, bool) // defaults to os.LookupEnv
 }
 
-// NewResolver is the production wiring: the environment, then a store
-// opened lazily from opts.
 func NewResolver(opts Options) Resolver {
 	return Resolver{Open: func() (*Store, error) { return Open(opts) }}
 }
 
-// Resolve returns the credential for hubURL. The bool is false when there is
-// none, which is not an error. Resolve deliberately does not reject an
-// expired credential: whether an expiry in the past is fatal is the verb's
-// decision, and Credential.Expired is how a caller asks.
+// Resolve's bool is false for "none", not an error; an expired credential
+// is returned as-is — Credential.Expired is how a caller checks.
 func (r Resolver) Resolve(hubURL string) (Resolved, bool, error) {
 	if hubURL == "" {
 		return Resolved{}, false, fmt.Errorf("cannot resolve a credential without a hub")
@@ -63,8 +51,7 @@ func (r Resolver) Resolve(hubURL string) (Resolved, bool, error) {
 	}
 	if token, ok := lookup(TokenEnvVar); ok && token != "" {
 		return Resolved{
-			// ExpiresAt stays zero: the environment states no lifetime.
-			Credential: Credential{Hub: hubURL, Token: token, fromEnv: true},
+			Credential: Credential{Hub: hubURL, Token: token, fromEnv: true}, // ExpiresAt zero: env states no lifetime
 			Source:     SourceEnvironment,
 			Location:   TokenEnvVar,
 		}, true, nil

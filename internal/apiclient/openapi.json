@@ -4786,7 +4786,7 @@
     },
     "/v1/organization/categories/{id}": {
       "delete": {
-        "description": "Always refuses (409): am_api holds no DELETE grant on category, for the same reason deleteGroupRoleMapping refuses. Requires the catalog-admin role.",
+        "description": "Writes one `category` audit row. Refuses with 409 when a package still carries the category — the foreign key has no ON DELETE clause, so this is the database's own refusal. Requires the catalog-admin role.",
         "operationId": "deleteCategory",
         "parameters": [
           {
@@ -4801,7 +4801,7 @@
         ],
         "responses": {
           "204": {
-            "description": "No Content"
+            "description": "Deleted."
           },
           "401": {
             "content": {
@@ -4823,6 +4823,16 @@
             },
             "description": "This identity may not administer the organisation. Requires the catalog-admin role."
           },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such category."
+          },
           "409": {
             "content": {
               "application/problem+json": {
@@ -4831,7 +4841,7 @@
                 }
               }
             },
-            "description": "Deleting a category is not supported by this deployment's database grants."
+            "description": "The category is still assigned to at least one package."
           }
         },
         "summary": "Delete a category",
@@ -5155,7 +5165,7 @@
     },
     "/v1/organization/mappings/{id}": {
       "delete": {
-        "description": "Always refuses (409): am_api holds no DELETE grant on group_role_map, and widening it is a decision for the project owner, not a request handler's. Requires the catalog-admin role.",
+        "description": "Writes one `role` audit row. Requires the catalog-admin role.",
         "operationId": "deleteGroupRoleMapping",
         "parameters": [
           {
@@ -5171,7 +5181,7 @@
         ],
         "responses": {
           "204": {
-            "description": "No Content"
+            "description": "Removed."
           },
           "401": {
             "content": {
@@ -5193,7 +5203,7 @@
             },
             "description": "This identity may not administer the organisation. Requires the catalog-admin role."
           },
-          "409": {
+          "404": {
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -5201,7 +5211,7 @@
                 }
               }
             },
-            "description": "Deleting a mapping is not supported by this deployment's database grants."
+            "description": "No such mapping."
           }
         },
         "summary": "Remove a group-to-role mapping",

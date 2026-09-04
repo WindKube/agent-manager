@@ -3887,7 +3887,7 @@ type ClientInterface interface {
 
 	// DeleteCategory Delete a category
 	//
-	// Always refuses (409): am_api holds no DELETE grant on category, for the same reason deleteGroupRoleMapping refuses. Requires the catalog-admin role.
+	// Writes one `category` audit row. Refuses with 409 when a package still carries the category — the foreign key has no ON DELETE clause, so this is the database's own refusal. Requires the catalog-admin role.
 	//
 	// Corresponds with DELETE /v1/organization/categories/{id} (the `DeleteCategory` operationId).
 	DeleteCategory(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -3951,7 +3951,7 @@ type ClientInterface interface {
 
 	// DeleteGroupRoleMapping Remove a group-to-role mapping
 	//
-	// Always refuses (409): am_api holds no DELETE grant on group_role_map, and widening it is a decision for the project owner, not a request handler's. Requires the catalog-admin role.
+	// Writes one `role` audit row. Requires the catalog-admin role.
 	//
 	// Corresponds with DELETE /v1/organization/mappings/{id} (the `DeleteGroupRoleMapping` operationId).
 	DeleteGroupRoleMapping(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4561,7 +4561,7 @@ func (c *Client) CreateCategory(ctx context.Context, body CreateCategoryJSONRequ
 
 // DeleteCategory Delete a category
 //
-// Always refuses (409): am_api holds no DELETE grant on category, for the same reason deleteGroupRoleMapping refuses. Requires the catalog-admin role.
+// Writes one `category` audit row. Refuses with 409 when a package still carries the category — the foreign key has no ON DELETE clause, so this is the database's own refusal. Requires the catalog-admin role.
 //
 // Corresponds with DELETE /v1/organization/categories/{id} (the `DeleteCategory` operationId).
 func (c *Client) DeleteCategory(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -4705,7 +4705,7 @@ func (c *Client) CreateGroupRoleMapping(ctx context.Context, body CreateGroupRol
 
 // DeleteGroupRoleMapping Remove a group-to-role mapping
 //
-// Always refuses (409): am_api holds no DELETE grant on group_role_map, and widening it is a decision for the project owner, not a request handler's. Requires the catalog-admin role.
+// Writes one `role` audit row. Requires the catalog-admin role.
 //
 // Corresponds with DELETE /v1/organization/mappings/{id} (the `DeleteGroupRoleMapping` operationId).
 func (c *Client) DeleteGroupRoleMapping(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -7175,7 +7175,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteCategoryWithResponse Delete a category
 	//
-	// Always refuses (409): am_api holds no DELETE grant on category, for the same reason deleteGroupRoleMapping refuses. Requires the catalog-admin role.
+	// Writes one `category` audit row. Refuses with 409 when a package still carries the category — the foreign key has no ON DELETE clause, so this is the database's own refusal. Requires the catalog-admin role.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -7247,7 +7247,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteGroupRoleMappingWithResponse Remove a group-to-role mapping
 	//
-	// Always refuses (409): am_api holds no DELETE grant on group_role_map, and widening it is a decision for the project owner, not a request handler's. Requires the catalog-admin role.
+	// Writes one `role` audit row. Requires the catalog-admin role.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -8603,6 +8603,8 @@ type DeleteCategoryResponse struct {
 	ApplicationproblemJSON401 *Error
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
 	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
 	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
 	ApplicationproblemJSON409 *Error
 }
@@ -8615,6 +8617,11 @@ func (r DeleteCategoryResponse) GetApplicationproblemJSON401() *Error {
 // GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
 func (r DeleteCategoryResponse) GetApplicationproblemJSON403() *Error {
 	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DeleteCategoryResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
 }
 
 // GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
@@ -8982,8 +8989,8 @@ type DeleteGroupRoleMappingResponse struct {
 	ApplicationproblemJSON401 *Error
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
 	ApplicationproblemJSON403 *Error
-	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
-	ApplicationproblemJSON409 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -8996,9 +9003,9 @@ func (r DeleteGroupRoleMappingResponse) GetApplicationproblemJSON403() *Error {
 	return r.ApplicationproblemJSON403
 }
 
-// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
-func (r DeleteGroupRoleMappingResponse) GetApplicationproblemJSON409() *Error {
-	return r.ApplicationproblemJSON409
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DeleteGroupRoleMappingResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
 }
 
 // GetBody returns the raw response body bytes
@@ -10721,7 +10728,7 @@ func (c *ClientWithResponses) CreateCategoryWithResponse(ctx context.Context, bo
 
 // DeleteCategoryWithResponse Delete a category
 //
-// Always refuses (409): am_api holds no DELETE grant on category, for the same reason deleteGroupRoleMapping refuses. Requires the catalog-admin role.
+// Writes one `category` audit row. Refuses with 409 when a package still carries the category — the foreign key has no ON DELETE clause, so this is the database's own refusal. Requires the catalog-admin role.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -10841,7 +10848,7 @@ func (c *ClientWithResponses) CreateGroupRoleMappingWithResponse(ctx context.Con
 
 // DeleteGroupRoleMappingWithResponse Remove a group-to-role mapping
 //
-// Always refuses (409): am_api holds no DELETE grant on group_role_map, and widening it is a decision for the project owner, not a request handler's. Requires the catalog-admin role.
+// Writes one `role` audit row. Requires the catalog-admin role.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -12178,6 +12185,13 @@ func ParseDeleteCategoryResponse(rsp *http.Response) (*DeleteCategoryResponse, e
 		}
 		response.ApplicationproblemJSON403 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -12473,12 +12487,12 @@ func ParseDeleteGroupRoleMappingResponse(rsp *http.Response) (*DeleteGroupRoleMa
 		}
 		response.ApplicationproblemJSON403 = &dest
 
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSON409 = &dest
+		response.ApplicationproblemJSON404 = &dest
 
 	}
 

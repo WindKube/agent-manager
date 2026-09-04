@@ -1119,18 +1119,18 @@ func (s *Server) registerOrganization() {
 	}, s.createGroupRoleMapping)
 
 	huma.Register(s.api, huma.Operation{
-		OperationID: "deleteGroupRoleMapping",
-		Method:      http.MethodDelete,
-		Path:        "/v1/organization/mappings/{id}",
-		Tags:        []string{"organization"},
-		Summary:     "Remove a group-to-role mapping",
-		Description: "Always refuses (409): am_api holds no DELETE grant on group_role_map, and " +
-			"widening it is a decision for the project owner, not " +
-			"a request handler's. Requires the catalog-admin role.",
+		OperationID:   "deleteGroupRoleMapping",
+		Method:        http.MethodDelete,
+		Path:          "/v1/organization/mappings/{id}",
+		Tags:          []string{"organization"},
+		Summary:       "Remove a group-to-role mapping",
+		DefaultStatus: http.StatusNoContent,
+		Description:   "Writes one `role` audit row. Requires the catalog-admin role.",
 		Responses: map[string]*huma.Response{
+			"204": {Description: "Removed."},
 			"401": orgUnauthorized,
 			"403": orgForbidden,
-			"409": s.errorResponse("Deleting a mapping is not supported by this deployment's database grants."),
+			"404": s.errorResponse("No such mapping."),
 		},
 	}, s.deleteGroupRoleMapping)
 
@@ -1197,17 +1197,21 @@ func (s *Server) registerOrganization() {
 	}, s.updateCategory)
 
 	huma.Register(s.api, huma.Operation{
-		OperationID: "deleteCategory",
-		Method:      http.MethodDelete,
-		Path:        "/v1/organization/categories/{id}",
-		Tags:        []string{"organization"},
-		Summary:     "Delete a category",
-		Description: "Always refuses (409): am_api holds no DELETE grant on category, for the same " +
-			"reason deleteGroupRoleMapping refuses. Requires the catalog-admin role.",
+		OperationID:   "deleteCategory",
+		Method:        http.MethodDelete,
+		Path:          "/v1/organization/categories/{id}",
+		Tags:          []string{"organization"},
+		Summary:       "Delete a category",
+		DefaultStatus: http.StatusNoContent,
+		Description: "Writes one `category` audit row. Refuses with 409 when a package still " +
+			"carries the category — the foreign key has no ON DELETE clause, so this is the " +
+			"database's own refusal. Requires the catalog-admin role.",
 		Responses: map[string]*huma.Response{
+			"204": {Description: "Deleted."},
 			"401": orgUnauthorized,
 			"403": orgForbidden,
-			"409": s.errorResponse("Deleting a category is not supported by this deployment's database grants."),
+			"404": s.errorResponse("No such category."),
+			"409": s.errorResponse("The category is still assigned to at least one package."),
 		},
 	}, s.deleteCategory)
 }

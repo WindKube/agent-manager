@@ -115,12 +115,6 @@ func (c *Client) CreateMapping(ctx context.Context, groupName, role string) (vie
 }
 
 // DeleteMapping deletes DELETE /v1/organization/mappings/{id}.
-//
-// It always fails: am_api holds no DELETE grant on group_role_map, so the api
-// always answers 409. See commands.ErrDeleteUnsupported's comment. This method
-// exists so the screen's form posts through the same door as every other
-// action, and so a test can prove the refusal comes from the api and not from a
-// control this role never offered.
 func (c *Client) DeleteMapping(ctx context.Context, groupName string) error {
 	resp, err := c.api.DeleteGroupRoleMappingWithResponse(ctx, groupName)
 	if err != nil {
@@ -167,8 +161,8 @@ func (c *Client) UpdateCategory(ctx context.Context, id, name string) (view.Orga
 	}, nil
 }
 
-// DeleteCategory deletes DELETE /v1/organization/categories/{id}. It always
-// fails, for the same reason DeleteMapping does.
+// DeleteCategory deletes DELETE /v1/organization/categories/{id}. Refuses with
+// a 409 when a package still carries the category.
 func (c *Client) DeleteCategory(ctx context.Context, id string) error {
 	parsed, err := uuid.Parse(id)
 	if err != nil {

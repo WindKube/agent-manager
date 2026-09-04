@@ -192,9 +192,7 @@ templ orgMappings(s view.Org) {
 				<div></div>
 				<div class="am-org-actions">
 					<form method="post" action={ view.MappingDeleteHref(mapping.GroupName) }>
-						<button type="submit" class="am-btn" disabled aria-disabled="true" title={ view.DeleteMappingReason }>
-							Remove
-						</button>
+						<button type="submit" class="am-btn">Remove</button>
 					</form>
 				</div>
 			</div>
@@ -220,7 +218,6 @@ templ orgMappings(s view.Org) {
 			</div>
 			<button type="submit" class="am-btn am-btn-primary">Add mapping</button>
 		</form>
-		<span class="am-toggle-note">{ view.DeleteMappingReason }</span>
 	</section>
 }
 
@@ -247,11 +244,16 @@ templ orgCategories(s view.Org) {
 				<div class="am-org-cell-mono">{ category.Slug }</div>
 				<div>{ strconv.Itoa(category.Count) }</div>
 				<div class="am-org-actions">
-					<form method="post" action={ view.CategoryDeleteHref(category.ID) }>
-						<button type="submit" class="am-btn" disabled aria-disabled="true" title={ view.DeleteCategoryReason }>
+					if category.Count == 0 {
+						<form method="post" action={ view.CategoryDeleteHref(category.ID) }>
+							<button type="submit" class="am-btn">Delete</button>
+						</form>
+					} else {
+						<button type="button" class="am-btn" disabled aria-disabled="true"
+							title="A category still assigned to a package cannot be deleted.">
 							Delete
 						</button>
-					</form>
+					}
 				</div>
 			</div>
 		}
@@ -267,6 +269,5 @@ templ orgCategories(s view.Org) {
 			</div>
 			<button type="submit" class="am-btn am-btn-primary">Add category</button>
 		</form>
-		<span class="am-toggle-note">{ view.DeleteCategoryReason }</span>
 	</section>
 }

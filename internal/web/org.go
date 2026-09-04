@@ -165,10 +165,17 @@ func (s *Server) deleteMapping(c *gin.Context) {
 	if !s.orgAccessGuard(c) {
 		return
 	}
-	// The screen already renders this action disabled with view.DeleteMappingReason:
-	// no DELETE grant on group_role_map. Answered the same way, not with a round
-	// trip that can only ever come back 409.
-	s.backToOrg(c, view.OrgNoticeConflict, view.DeleteMappingReason)
+	if s.deps.Organization == nil {
+		s.backToOrg(c, view.OrgNoticeUnavailable, "")
+		return
+	}
+
+	groupName := c.Param("id")
+	if err := s.deps.Organization.DeleteMapping(session(c), groupName); err != nil {
+		s.orgSaveFailed(c, err)
+		return
+	}
+	s.backToOrg(c, view.OrgNoticeMappingDeleted, "")
 }
 
 func (s *Server) createCategory(c *gin.Context) {
@@ -210,8 +217,17 @@ func (s *Server) deleteCategory(c *gin.Context) {
 	if !s.orgAccessGuard(c) {
 		return
 	}
-	// Same reasoning as deleteMapping: no DELETE grant on category either.
-	s.backToOrg(c, view.OrgNoticeConflict, view.DeleteCategoryReason)
+	if s.deps.Organization == nil {
+		s.backToOrg(c, view.OrgNoticeUnavailable, "")
+		return
+	}
+
+	id := c.Param("id")
+	if err := s.deps.Organization.DeleteCategory(session(c), id); err != nil {
+		s.orgSaveFailed(c, err)
+		return
+	}
+	s.backToOrg(c, view.OrgNoticeCategoryDeleted, "")
 }
 
 // orgSaveFailed maps a write's refusal onto the redirect's notice token.

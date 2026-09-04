@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/uptrace/bun"
 
 	"agent-manager/internal/api/contract"
@@ -219,11 +220,8 @@ var ErrInvalidRole = errors.New(
 // missing name, a name with nothing left after slugifying.
 var ErrValidation = errors.New("invalid request")
 
-// ErrDeleteUnsupported is returned by the two deletes below.
-var ErrDeleteUnsupported = errors.New(
-	"am_api holds no DELETE grant on this table; widening it is a change to " +
-		"least privilege between roles and needs the project owner's decision, " +
-		"not a request handler's")
+// ErrMappingNotFound is returned when no mapping holds the given group name.
+var ErrMappingNotFound = errors.New("no such mapping")
 
 // CreateMapping upserts a group's role and writes one `role` audit row. It is an
 // upsert rather than a strict create because a mapping is keyed on the group
@@ -259,8 +257,21 @@ func CreateMapping(ctx context.Context, db bun.IDB, p auth.Principal,
 	return out, nil
 }
 
-// DeleteMapping always refuses: see ErrDeleteUnsupported.
-func DeleteMapping(context.Context, string) error { return ErrDeleteUnsupported }
+// DeleteMapping removes a group's mapping and writes one `role` audit row.
+func DeleteMapping(ctx context.Context, db bun.IDB, p auth.Principal, groupName string) error {
+	return db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		res, txErr := tx.NewDelete().Model((*models.GroupRoleMap)(nil)).
+			Where("group_name = ?", groupName).
+			Exec(ctx)
+		if txErr != nil {
+			return fmt.Errorf("remove mapping %q: %w", groupName, txErr)
+		}
+		if affected, _ := res.RowsAffected(); affected == 0 {
+			return ErrMappingNotFound
+		}
+		return writeOrgAudit(ctx, tx, p, models.AuditKindRole, fmt.Sprintf("removed mapping for group %q", groupName))
+	})
+}
 
 // ---- categories -----------------------------------------------------------------
 
@@ -270,6 +281,10 @@ var ErrCategoryNotFound = errors.New("no such category")
 // ErrCategoryExists is returned when a category's name or slug collides with an
 // existing one.
 var ErrCategoryExists = errors.New("a category with that name already exists")
+
+// ErrCategoryInUse is returned when a category is still assigned to at least
+// one package.
+var ErrCategoryInUse = errors.New("category is still assigned to at least one package")
 
 // CreateCategory adds a category to the curated vocabulary and writes one
 // `category` audit row.
@@ -343,8 +358,37 @@ func UpdateCategory(ctx context.Context, db bun.IDB, p auth.Principal,
 	return out, nil
 }
 
-// DeleteCategory always refuses: see ErrDeleteUnsupported.
-func DeleteCategory(context.Context, string) error { return ErrDeleteUnsupported }
+// DeleteCategory removes a category and writes one `category` audit row.
+// Refuses with ErrCategoryInUse when a package still carries it — the
+// package.category_id foreign key has no ON DELETE clause, so that refusal is
+// the database's own, not a check duplicated here.
+func DeleteCategory(ctx context.Context, db bun.IDB, p auth.Principal, id string) error {
+	return db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		res, txErr := tx.NewDelete().Model((*models.Category)(nil)).
+			Where("id = ?", id).
+			Exec(ctx)
+		if txErr != nil {
+			if isForeignKeyViolation(txErr) {
+				return ErrCategoryInUse
+			}
+			return fmt.Errorf("delete category %s: %w", id, txErr)
+		}
+		if affected, _ := res.RowsAffected(); affected == 0 {
+			return ErrCategoryNotFound
+		}
+		return writeOrgAudit(ctx, tx, p, models.AuditKindCategory, fmt.Sprintf("deleted category %s", id))
+	})
+}
+
+// isForeignKeyViolation reports whether err is Postgres 23503, the sqlstate a
+// delete gets when another table still references the row.
+func isForeignKeyViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	return pgErr.Code == "23503"
+}
 
 // slugify is the same shape resolveCategory's lookup already expects: lowercase,
 // non-alphanumeric runs collapsed to one hyphen, trimmed.

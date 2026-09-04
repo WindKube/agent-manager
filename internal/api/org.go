@@ -153,11 +153,12 @@ type deleteMappingInput struct {
 }
 
 func (s *Server) deleteGroupRoleMapping(ctx context.Context, in *deleteMappingInput) (*struct{}, error) {
-	if err := s.requireOrgAdmin(ctx, "remove a group-to-role mapping"); err != nil {
+	principal, _ := PrincipalFrom(ctx)
+	if err := requireRole(principal.Role, "remove a group-to-role mapping", orgAdminRoles...); err != nil {
 		return nil, err
 	}
-	if err := commands.DeleteMapping(ctx, in.GroupName); err != nil {
-		return nil, huma.Error409Conflict(err.Error())
+	if err := commands.DeleteMapping(ctx, s.deps.DB, principal, in.GroupName); err != nil {
+		return nil, orgFailure(ctx, err)
 	}
 	return &struct{}{}, nil
 }
@@ -221,11 +222,12 @@ type deleteCategoryInput struct {
 }
 
 func (s *Server) deleteCategory(ctx context.Context, in *deleteCategoryInput) (*struct{}, error) {
-	if err := s.requireOrgAdmin(ctx, "delete a category"); err != nil {
+	principal, _ := PrincipalFrom(ctx)
+	if err := requireRole(principal.Role, "delete a category", orgAdminRoles...); err != nil {
 		return nil, err
 	}
-	if err := commands.DeleteCategory(ctx, in.ID); err != nil {
-		return nil, huma.Error409Conflict(err.Error())
+	if err := commands.DeleteCategory(ctx, s.deps.DB, principal, in.ID); err != nil {
+		return nil, orgFailure(ctx, err)
 	}
 	return &struct{}{}, nil
 }
@@ -241,9 +243,9 @@ func orgFailure(ctx context.Context, err error) error {
 		errors.Is(err, commands.ErrInvalidRole),
 		errors.Is(err, commands.ErrValidation):
 		return huma.Error422UnprocessableEntity(err.Error())
-	case errors.Is(err, commands.ErrCategoryExists):
+	case errors.Is(err, commands.ErrCategoryExists), errors.Is(err, commands.ErrCategoryInUse):
 		return huma.Error409Conflict(err.Error())
-	case errors.Is(err, commands.ErrCategoryNotFound):
+	case errors.Is(err, commands.ErrCategoryNotFound), errors.Is(err, commands.ErrMappingNotFound):
 		return huma.Error404NotFound(err.Error())
 	default:
 		return fail(logging.From(ctx), err)

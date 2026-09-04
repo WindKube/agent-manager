@@ -33,12 +33,14 @@ type organization struct {
 	mappingCalls []struct{ group, role string }
 	mappingErr   error
 
-	categoryCalls  []string
-	categoryErr    error
-	renameCalls    []struct{ id, name string }
-	renameErr      error
-	deleteMapping  []string
-	deleteCategory []string
+	categoryCalls     []string
+	categoryErr       error
+	renameCalls       []struct{ id, name string }
+	renameErr         error
+	deleteMapping     []string
+	deleteMappingErr  error
+	deleteCategory    []string
+	deleteCategoryErr error
 }
 
 func (o *organization) Organization(context.Context) (view.Organization, error) { return o.data, o.err }
@@ -60,7 +62,7 @@ func (o *organization) CreateMapping(_ context.Context, groupName, role string) 
 
 func (o *organization) DeleteMapping(_ context.Context, groupName string) error {
 	o.deleteMapping = append(o.deleteMapping, groupName)
-	return errors.New("am_api holds no DELETE grant on group_role_map")
+	return o.deleteMappingErr
 }
 
 func (o *organization) CreateCategory(_ context.Context, name string) (view.OrganizationCategory, error) {
@@ -75,7 +77,7 @@ func (o *organization) UpdateCategory(_ context.Context, id, name string) (view.
 
 func (o *organization) DeleteCategory(_ context.Context, id string) error {
 	o.deleteCategory = append(o.deleteCategory, id)
-	return errors.New("am_api holds no DELETE grant on category")
+	return o.deleteCategoryErr
 }
 
 func orgHandler(source *organization, viewers web.ViewerSource) http.Handler {
@@ -179,12 +181,20 @@ func TestTheRotateSecretActionIsAlwaysDisabledAndExplainsWhy(t *testing.T) {
 	require.Contains(t, body, `disabled`)
 }
 
-// TestDeleteActionsAreAlwaysDisabledAndExplainWhy proves no DELETE grant on
-// group_role_map or category means the screen never offers a working delete.
-func TestDeleteActionsAreAlwaysDisabledAndExplainWhy(t *testing.T) {
-	body := html.UnescapeString(get(t, orgHandler(&organization{data: sampleOrg()}, fixture.SignedInViewers()), "/org").Body.String())
-	require.Contains(t, body, view.DeleteMappingReason)
-	require.Contains(t, body, view.DeleteCategoryReason)
+// TestDeleteActionsAreEnabledUnlessACategoryIsInUse proves a mapping's remove
+// action is always offered, and a category's delete is offered only while its
+// count is zero — the one case the screen can know is refused before
+// submitting.
+func TestDeleteActionsAreEnabledUnlessACategoryIsInUse(t *testing.T) {
+	data := sampleOrg()
+	data.Categories = append(data.Categories, view.OrganizationCategory{
+		ID: "22222222-2222-2222-2222-222222222222", Name: "Unused", Slug: "unused", Count: 0,
+	})
+	body := get(t, orgHandler(&organization{data: data}, fixture.SignedInViewers()), "/org").Body.String()
+
+	require.Contains(t, body, `action="/org/mappings/eng-platform/delete"`)
+	require.Contains(t, body, `action="/org/categories/22222222-2222-2222-2222-222222222222/delete"`)
+	require.Contains(t, body, "still assigned to a package cannot be deleted")
 }
 
 // TestAnOrganizationChangeFromAnIdentityWithoutTheRoleReachesNoApi proves a
@@ -230,23 +240,36 @@ func TestCreatingAMappingReachesTheApi(t *testing.T) {
 	require.Equal(t, "scanner-reviewer", source.mappingCalls[0].role)
 }
 
-// TestDeletingAMappingOrCategoryAlwaysRefusesWithoutCallingTheApi mirrors
-// rotateSecret: the screen already explained the action is disabled, so a
-// hand-crafted post is answered the same way, not by asking the api a question
-// whose answer is already known.
-func TestDeletingAMappingOrCategoryAlwaysRefusesWithoutCallingTheApi(t *testing.T) {
+// TestDeletingAMappingOrCategoryReachesTheApi proves the delete forms post
+// through to the hub, the same as every other mutation on this screen.
+func TestDeletingAMappingOrCategoryReachesTheApi(t *testing.T) {
 	source := &organization{data: sampleOrg()}
 	h := orgHandler(source, fixture.SignedInViewers())
 
 	rec := post(t, h, "/org/mappings/eng-platform/delete", url.Values{})
 	require.Equal(t, http.StatusSeeOther, rec.Code)
-	require.Contains(t, rec.Header().Get("Location"), "saved=conflict")
-	require.Empty(t, source.deleteMapping, "the delete handler must not call the api's DeleteMapping")
+	require.Contains(t, rec.Header().Get("Location"), "saved=mapping-deleted")
+	require.Equal(t, []string{"eng-platform"}, source.deleteMapping)
 
 	rec = post(t, h, "/org/categories/11111111-1111-1111-1111-111111111111/delete", url.Values{})
 	require.Equal(t, http.StatusSeeOther, rec.Code)
-	require.Contains(t, rec.Header().Get("Location"), "saved=conflict")
-	require.Empty(t, source.deleteCategory, "the delete handler must not call the api's DeleteCategory")
+	require.Contains(t, rec.Header().Get("Location"), "saved=category-deleted")
+	require.Equal(t, []string{"11111111-1111-1111-1111-111111111111"}, source.deleteCategory)
+}
+
+// TestDeletingACategoryStillInUseIsRefused proves the api's 409 for a
+// still-referenced category reaches the screen as a warning, not a silent
+// success.
+func TestDeletingACategoryStillInUseIsRefused(t *testing.T) {
+	source := &organization{
+		data:              sampleOrg(),
+		deleteCategoryErr: errors.New("category is still assigned to at least one package"),
+	}
+	h := orgHandler(source, fixture.SignedInViewers())
+
+	rec := post(t, h, "/org/categories/11111111-1111-1111-1111-111111111111/delete", url.Values{})
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	require.Contains(t, rec.Header().Get("Location"), "detail=category")
 }
 
 func TestRotatingTheSecretAlwaysRefusesWithoutCallingTheApi(t *testing.T) {

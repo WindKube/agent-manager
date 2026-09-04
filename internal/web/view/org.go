@@ -129,15 +129,6 @@ const SecretRotationReason = "The identity provider's client secret is this role
 	"environment configuration. This hub holds no provider-side registration for a rotation " +
 	"to act on, so nothing here can generate a new one."
 
-// DeleteMappingReason and DeleteCategoryReason are why those two actions are
-// always disabled, for the same reason as SecretRotationReason: this
-// deployment's database grants hold no DELETE on either table, and widening one
-// is a decision for the project owner, not a request handler's.
-const (
-	DeleteMappingReason  = "Removing a mapping is not supported by this deployment's database grants."
-	DeleteCategoryReason = "Deleting a category is not supported by this deployment's database grants."
-)
-
 // OrgNotice is the outcome of a save, said once at the top of the screen —
 // the same pattern scanner.go's decisionNotice follows, and for the same
 // reason: a token in a redirect's query string, looked up here rather than
@@ -147,8 +138,10 @@ type OrgNotice string
 const (
 	OrgNoticePolicySaved     OrgNotice = "policy-saved"
 	OrgNoticeMappingSaved    OrgNotice = "mapping-saved"
+	OrgNoticeMappingDeleted  OrgNotice = "mapping-deleted"
 	OrgNoticeCategorySaved   OrgNotice = "category-saved"
 	OrgNoticeCategoryRenamed OrgNotice = "category-renamed"
+	OrgNoticeCategoryDeleted OrgNotice = "category-deleted"
 	OrgNoticeRefused         OrgNotice = "refused"
 	OrgNoticeInvalid         OrgNotice = "invalid"
 	OrgNoticeConflict        OrgNotice = "conflict"
@@ -167,11 +160,16 @@ func OrgNoticeFrom(raw, detail string) *Notice {
 	case OrgNoticeMappingSaved:
 		return &Notice{Tone: "ok", Text: "Mapping saved. It takes effect at that group's next " +
 			"token refresh, with no re-login required."}
+	case OrgNoticeMappingDeleted:
+		return &Notice{Tone: "ok", Text: "Mapping removed. That group holds no role in this hub " +
+			"from its next token refresh."}
 	case OrgNoticeCategorySaved:
 		return &Notice{Tone: "ok", Text: "Category added. Publishers can choose it at registration " +
 			"from now on."}
 	case OrgNoticeCategoryRenamed:
 		return &Notice{Tone: "ok", Text: "Category renamed."}
+	case OrgNoticeCategoryDeleted:
+		return &Notice{Tone: "ok", Text: "Category deleted."}
 	case OrgNoticeRefused:
 		return &Notice{Tone: "dan", Text: "Your role may not administer the organisation, so " +
 			"nothing was saved."}
@@ -196,9 +194,8 @@ func OrgNoticeFrom(raw, detail string) *Notice {
 	}
 }
 
-// MappingDeleteHref links a mapping row's disabled remove form, url.PathEscape'd
-// the way PackageHref escapes a package id: a no-op on any group name that could
-// exist, insurance against one that should not have been accepted.
+// MappingDeleteHref links a mapping row's remove form, url.PathEscape'd the way
+// PackageHref escapes a package id.
 func MappingDeleteHref(groupName string) string {
 	return "/org/mappings/" + url.PathEscape(groupName) + "/delete"
 }

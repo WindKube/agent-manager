@@ -160,17 +160,28 @@ func TestAnInvalidRoleIsRefusedAndWritesNoRow(t *testing.T) {
 	require.Equal(t, beforeCount, auditRowCount(t))
 }
 
-// TestDeletingAMappingAlwaysRefusesAndWritesNoRow is the DELETE-grant
-// limitation: am_api holds no DELETE grant on group_role_map, so this is a 409
-// by construction, not by a bug this branch could fix without widening a
-// database role.
-func TestDeletingAMappingAlwaysRefusesAndWritesNoRow(t *testing.T) {
-	beforeCount := auditRowCount(t)
-	send(t, kw, http.MethodDelete, "/v1/organization/mappings/eng-platform", "", http.StatusConflict)
-	require.Equal(t, beforeCount, auditRowCount(t))
+// TestDeletingAMappingWritesOneRoleAuditRowAndRemovesTheRow proves the delete
+// is real: the row is gone afterward, and a second delete of the same group
+// answers 404 rather than a silent no-op success.
+func TestDeletingAMappingWritesOneRoleAuditRowAndRemovesTheRow(t *testing.T) {
+	sendJSON[contract.GroupRoleMapping](t, kw, http.MethodPost, "/v1/organization/mappings",
+		`{"groupName":"eng-org-delete-test","role":"read-only"}`, http.StatusOK)
 
-	// And the mapping is still there — the refusal really did nothing.
-	require.Equal(t, models.OrgRoleCatalogAdmin, principalFor(t, kw).Role)
+	beforeCount := auditRowCount(t)
+	send(t, kw, http.MethodDelete, "/v1/organization/mappings/eng-org-delete-test", "", http.StatusNoContent)
+	require.Equal(t, beforeCount+1, auditRowCount(t))
+
+	kind, _, _ := lastAuditRow(t)
+	require.Equal(t, "role", kind)
+
+	mappings := sendJSON[[]contract.GroupRoleMapping](t, kw, http.MethodGet, "/v1/organization/mappings", "", http.StatusOK)
+	for _, m := range mappings {
+		require.NotEqual(t, "eng-org-delete-test", m.GroupName, "the mapping must be gone after the delete")
+	}
+
+	// A second delete of the same, now-absent, group is a 404, not a repeat
+	// success.
+	send(t, kw, http.MethodDelete, "/v1/organization/mappings/eng-org-delete-test", "", http.StatusNotFound)
 }
 
 // TestCreatingACategoryWritesOneCategoryAuditRowAndACollidingNameConflicts
@@ -207,16 +218,43 @@ func TestCreatingACategoryWritesOneCategoryAuditRowAndACollidingNameConflicts(t 
 	require.Equal(t, beforeCount+1, auditRowCount(t))
 }
 
-// TestDeletingACategoryAlwaysRefusesAndWritesNoRow mirrors the mapping case's
-// own DELETE-grant limitation.
-func TestDeletingACategoryAlwaysRefusesAndWritesNoRow(t *testing.T) {
+// TestDeletingACategoryWritesOneCategoryAuditRowAndRemovesTheRow proves an
+// unreferenced category can really be deleted.
+func TestDeletingACategoryWritesOneCategoryAuditRowAndRemovesTheRow(t *testing.T) {
 	const name = "Org Screen Delete Test Category"
 	category := sendJSON[contract.OrganizationCategory](t, kw, http.MethodPost, "/v1/organization/categories",
 		fmt.Sprintf(`{"name":%q}`, name), http.StatusOK)
+
+	beforeCount := auditRowCount(t)
+	send(t, kw, http.MethodDelete, "/v1/organization/categories/"+category.ID, "", http.StatusNoContent)
+	require.Equal(t, beforeCount+1, auditRowCount(t))
+
+	kind, _, _ := lastAuditRow(t)
+	require.Equal(t, "category", kind)
+
+	send(t, kw, http.MethodDelete, "/v1/organization/categories/"+category.ID, "", http.StatusNotFound)
+}
+
+// TestDeletingACategoryStillAssignedToAPackageRefusesAndWritesNoRow proves the
+// refusal is the database's own foreign key, not a check this handler could
+// forget: the category is left assigned to a real package.
+func TestDeletingACategoryStillAssignedToAPackageRefusesAndWritesNoRow(t *testing.T) {
+	const name = "Org Screen In-Use Test Category"
+	category := sendJSON[contract.OrganizationCategory](t, kw, http.MethodPost, "/v1/organization/categories",
+		fmt.Sprintf(`{"name":%q}`, name), http.StatusOK)
+	// Registered before seedGatePackage's own cleanup below, so t.Cleanup's LIFO
+	// order runs the package's cleanup FIRST: the category_id foreign key must be
+	// gone before this can delete the category row.
 	t.Cleanup(func() {
 		_, err := db.ExecContext(context.Background(), `delete from category where id = ?`, category.ID)
 		require.NoError(t, err)
 	})
+
+	seedGatePackage(t, "org-category-in-use",
+		gateVersion{semver: "1.0.0", verdict: models.VerdictClean, latest: true})
+	_, err := db.ExecContext(context.Background(), `update package set category_id = ? where id = (
+		select id from package where namespace = 'gate' and name = 'org-category-in-use')`, category.ID)
+	require.NoError(t, err)
 
 	beforeCount := auditRowCount(t)
 	send(t, kw, http.MethodDelete, "/v1/organization/categories/"+category.ID, "", http.StatusConflict)

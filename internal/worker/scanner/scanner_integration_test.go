@@ -42,14 +42,16 @@ import (
 	"agent-manager/internal/bundle"
 	"agent-manager/internal/store/migrations"
 	"agent-manager/internal/store/models"
+	"agent-manager/internal/store/storetest"
 	"agent-manager/internal/worker"
 	"agent-manager/internal/worker/scanner"
 	"agent-manager/internal/worker/scanner/checks"
 )
 
 var (
-	pool *pgxpool.Pool
-	db   *bun.DB
+	pool     *pgxpool.Pool
+	db       *bun.DB // superuser: fixtures and assertions
+	workerDB *bun.DB // am_scanner: the worker under test
 )
 
 func TestMain(m *testing.M) {
@@ -84,8 +86,8 @@ func runSuite(m *testing.M) (int, error) {
 		return 0, fmt.Errorf("container endpoint: %w", err)
 	}
 
-	pool, err = pgxpool.New(ctx, fmt.Sprintf(
-		"postgres://postgres:postgres@%s/agent_manager?sslmode=disable", endpoint))
+	dsn := fmt.Sprintf("postgres://postgres:postgres@%s/agent_manager?sslmode=disable", endpoint)
+	pool, err = pgxpool.New(ctx, dsn)
 	if err != nil {
 		return 0, fmt.Errorf("open pool: %w", err)
 	}
@@ -106,6 +108,16 @@ func runSuite(m *testing.M) (int, error) {
 
 	db = bun.NewDB(sqldb, pgdialect.New())
 	db.RegisterModel(models.All()...)
+
+	// The worker under test runs as am_scanner, not the superuser this suite
+	// connects as, so a statement that only works under a superuser's implicit
+	// SELECT is caught here rather than in production.
+	var workerClose func()
+	workerDB, workerClose, err = storetest.RoleDB(ctx, dsn, "am_scanner")
+	if err != nil {
+		return 0, fmt.Errorf("open am_scanner pool: %w", err)
+	}
+	defer workerClose()
 
 	return m.Run(), nil
 }
@@ -179,7 +191,7 @@ func newHarness(t *testing.T) harness {
 	// hands over. There is deliberately NO BlobWrite: the scanner never writes
 	// bundle bytes, and New refuses to start if one arrives.
 	w, err := scanner.New(worker.Deps{
-		DB:       db,
+		DB:       workerDB,
 		BlobRead: bucket.Reader(),
 		Log:      zerolog.New(io.Discard),
 	}, scanner.Options{})
@@ -713,7 +725,7 @@ func movedPackWorker(t *testing.T, h harness) *scanner.Worker {
 	require.NoError(t, os.WriteFile(dir+"/pack.yaml", []byte("packVersion: \"2099.01.01\"\n"), 0o600))
 
 	moved, err := scanner.New(worker.Deps{
-		DB:       db,
+		DB:       workerDB,
 		BlobRead: h.bucket.Reader(),
 		Log:      zerolog.New(io.Discard),
 	}, scanner.Options{RulepackDir: dir, Budget: 30 * time.Second})

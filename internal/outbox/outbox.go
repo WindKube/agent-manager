@@ -182,7 +182,11 @@ func (Writer) Enqueue(ctx context.Context, tx bun.IDB, jobs ...Job) ([]uuid.UUID
 		})
 	}
 
-	if _, err := tx.NewInsert().Model(&rows).Exec(ctx); err != nil {
+	// am_fetcher and am_scanner hold INSERT-only on outbox — no SELECT — and bun
+	// appends RETURNING for every `default:`-tagged column unless told not to,
+	// which that grant refuses. am_api, the other caller, never reads the
+	// returned columns either, so suppressing it costs nothing there.
+	if _, err := tx.NewInsert().Model(&rows).Returning("NULL").Exec(ctx); err != nil {
 		return nil, fmt.Errorf("insert outbox rows: %w", err)
 	}
 

@@ -39,7 +39,9 @@ func writeFetchAudit(ctx context.Context, tx bun.IDB, text string) error {
 		Text:      text,
 		Source:    auditSource,
 	}
-	if _, err := tx.NewInsert().Model(event).Exec(ctx); err != nil {
+	// am_fetcher holds INSERT-only on audit_event — no SELECT — and bun appends
+	// RETURNING for OccurredAt's `default:` tag unless told not to.
+	if _, err := tx.NewInsert().Model(event).Returning("NULL").Exec(ctx); err != nil {
 		return fmt.Errorf("write the fetch audit row: %w", err)
 	}
 	return nil

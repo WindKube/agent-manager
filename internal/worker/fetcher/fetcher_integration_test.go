@@ -53,13 +53,15 @@ import (
 	"agent-manager/internal/fetch"
 	"agent-manager/internal/store/migrations"
 	"agent-manager/internal/store/models"
+	"agent-manager/internal/store/storetest"
 	"agent-manager/internal/worker"
 	"agent-manager/internal/worker/fetcher"
 )
 
 var (
-	pool *pgxpool.Pool
-	db   *bun.DB
+	pool     *pgxpool.Pool
+	db       *bun.DB // superuser: fixtures and assertions
+	workerDB *bun.DB // am_fetcher: the worker under test
 )
 
 func TestMain(m *testing.M) {
@@ -94,8 +96,8 @@ func runSuite(m *testing.M) (int, error) {
 		return 0, fmt.Errorf("container endpoint: %w", err)
 	}
 
-	pool, err = pgxpool.New(ctx, fmt.Sprintf(
-		"postgres://postgres:postgres@%s/agent_manager?sslmode=disable", endpoint))
+	dsn := fmt.Sprintf("postgres://postgres:postgres@%s/agent_manager?sslmode=disable", endpoint)
+	pool, err = pgxpool.New(ctx, dsn)
 	if err != nil {
 		return 0, fmt.Errorf("open pool: %w", err)
 	}
@@ -115,6 +117,16 @@ func runSuite(m *testing.M) (int, error) {
 
 	db = bun.NewDB(sqldb, pgdialect.New())
 	db.RegisterModel(models.All()...)
+
+	// The worker under test runs as am_fetcher, not the superuser this suite
+	// connects as, so a statement that only works under a superuser's implicit
+	// SELECT is caught here rather than in production.
+	var workerClose func()
+	workerDB, workerClose, err = storetest.RoleDB(ctx, dsn, "am_fetcher")
+	if err != nil {
+		return 0, fmt.Errorf("open am_fetcher pool: %w", err)
+	}
+	defer workerClose()
 
 	return m.Run(), nil
 }
@@ -220,7 +232,7 @@ func newHarness(t *testing.T, allowlist []string) harness {
 	// what the bootstrap hands over. BlobWrite is present because this role and no
 	// other declares AccessReadWrite.
 	w, err := fetcher.New(worker.Deps{
-		DB:        db,
+		DB:        workerDB,
 		BlobRead:  bucket.Reader(),
 		BlobWrite: bucket.Writer(),
 		Fetch:     client,

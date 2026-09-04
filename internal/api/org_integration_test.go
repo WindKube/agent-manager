@@ -135,6 +135,32 @@ func TestRequireSignedBundlesExcludesAnUnsignedVersionFromTheNextResolution(t *t
 			"whatever its verdict")
 }
 
+// TestAllowPersonalProfilesGatesPrivateVisibilityCreation covers the toggle
+// profile_gate_integration_test.go and the require-signed-bundles test above
+// do not: off refuses a private-visibility create outright, on lets the same
+// request through, with nothing else about the request having changed.
+func TestAllowPersonalProfilesGatesPrivateVisibilityCreation(t *testing.T) {
+	before := currentPolicy(t)
+	t.Cleanup(func() { restorePolicy(t, before) })
+
+	const slug = "org-personal-profile-gate-test"
+
+	send(t, kw, http.MethodPut, "/v1/organization/policy",
+		`{"scanGate":"warn-with-override","requireSignedBundles":false,"communityNeedsReview":false,`+
+			`"rescanOnNewVersion":false,"allowPersonalProfiles":false}`, http.StatusOK)
+	raw := send(t, kw, http.MethodPost, "/v1/profiles",
+		fmt.Sprintf(`{"slug":%q,"name":"Personal gate","visibility":"private"}`, slug),
+		http.StatusUnprocessableEntity)
+	require.Contains(t, strings.ToLower(string(raw)), "private profiles are disabled")
+
+	send(t, kw, http.MethodPut, "/v1/organization/policy",
+		`{"scanGate":"warn-with-override","requireSignedBundles":false,"communityNeedsReview":false,`+
+			`"rescanOnNewVersion":false,"allowPersonalProfiles":true}`, http.StatusOK)
+	sendJSON[contract.Profile](t, kw, http.MethodPost, "/v1/profiles",
+		fmt.Sprintf(`{"slug":%q,"name":"Personal gate","visibility":"private"}`, slug), http.StatusCreated)
+	dropProfileOnCleanup(t, slug)
+}
+
 func TestCreatingAMappingWritesOneRoleAuditRow(t *testing.T) {
 	t.Cleanup(func() {
 		_, err := db.ExecContext(context.Background(),

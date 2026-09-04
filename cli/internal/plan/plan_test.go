@@ -255,8 +255,6 @@ func (w want) check(t *testing.T, p Plan) {
 	require.Equal(t, w.skipped, skipLines(p.Skipped), "Skipped")
 }
 
-// ---- T037: every transition ----
-
 func TestEveryTransitionBetweenTheLockfileAndTheRecord(t *testing.T) {
 	t.Parallel()
 
@@ -558,8 +556,6 @@ func TestEveryTransitionBetweenTheLockfileAndTheRecord(t *testing.T) {
 	}
 }
 
-// ---- FR-011: the hub's skip reasons, including ones this build does not know ----
-
 func TestEverySkippedEntryIsReportedWithTheHubsOwnReason(t *testing.T) {
 	t.Parallel()
 
@@ -602,12 +598,10 @@ func TestEverySkippedEntryIsReportedWithTheHubsOwnReason(t *testing.T) {
 	require.False(t, p.Skipped[0].Recognised)
 	require.Equal(t, detail, p.Skipped[1].Detail)
 
-	// A skip is not a change: FR-011 is a report, not an action. One add, and
-	// nothing at all derived from the two skips.
+	// A skip is not a change: a report, not an action. One add, and nothing
+	// at all derived from the two skips.
 	require.Equal(t, 1, p.ChangeCount())
 }
-
-// ---- FR-009: the deciding side holds no version ordering ----
 
 func TestTheChangeSetDoesNotDependOnTheVersionComparer(t *testing.T) {
 	t.Parallel()
@@ -1025,13 +1019,13 @@ func TestConflictErrorIsNilWhenThereIsNothingToRefuse(t *testing.T) {
 	require.NotErrorIs(t, p.ConflictError(), missing)
 }
 
-// TestCaseFoldedDestinationsAreRefusedAgainstTheRealLayout drives the REAL
+// TestCaseFoldedDestinationsAreRefusedAgainstTheRealLayout drives the real
 // registry rather than this file's single-dash test target, because the
-// hand-derived source of truth for FR-023 is layout's `<namespace>--<name>` and
-// nothing else. Two ids that differ only in the case of their namespace are two
-// paths on ext4 and one directory on APFS — half the release matrix — where the
-// second install silently overwrites the first and the record ends up with two
-// rows for one tree.
+// hand-derived source of truth is layout's `<namespace>--<name>` and nothing
+// else. Two ids that differ only in the case of their namespace are two
+// paths on ext4 and one directory on APFS, where the second install
+// silently overwrites the first and the record ends up with two rows for
+// one tree.
 //
 // The two Place calls are asserted to SUCCEED and to differ only by case first:
 // if layout ever starts refusing an uppercase namespace, this test would

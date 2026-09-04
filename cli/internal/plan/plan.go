@@ -18,18 +18,17 @@ import (
 // An error means the target refuses to route that entry — a reserved directory
 // name, a dot-prefixed name, a plugin where the target supports skills only.
 // It is a refusal, never a hint to sanitise: a name amctl quietly rewrote
-// would not match the record it later prunes against (FR-028).
+// would not match the record it later prunes against.
 type DestFunc func(id string, kind record.Kind) (string, error)
 
-// Target is one agent target as seen by THIS build.
+// Target is one agent target as seen by this build.
 //
-// The two failure shapes are deliberately distinct, and conflating them is the
-// specific mistake this type exists to prevent. A target the PROFILE turned
-// off produces removals (FR-030) and is a normal outcome. A target the CLIENT
-// cannot write produces a refusal (research gate R2): `codex`'s constructor
-// returns an error wrapping layout.ErrR2Unresolved because its on-disk layout
-// is documented but unobserved, and writing to a path the agent does not read
-// reports success and does nothing. Telling a user pinned to codex that their
+// The two failure shapes are deliberately distinct. A target the profile
+// turned off produces removals and is a normal outcome. A target the client
+// cannot write produces a refusal: `codex`'s constructor returns an error
+// wrapping layout.ErrR2Unresolved because its on-disk layout is documented
+// but unobserved, and writing to a path the agent does not read reports
+// success and does nothing. Telling a user pinned to codex that their
 // profile excluded it would send them to fix the wrong thing.
 type Target struct {
 	// Name is the target's contract spelling, e.g. "claude-code".
@@ -44,24 +43,17 @@ type Target struct {
 	// matching on a message.
 	Err error
 
-	// Withdrawn is the THIRD outcome, and the split from Err is the decision
-	// this field exists to record: a target that is known, deliberately never
-	// going to be implemented, and therefore REPORTED rather than refused.
+	// Withdrawn is the third outcome: a target that is known, deliberately
+	// never going to be implemented, and therefore reported rather than
+	// refused. Err is a target awaiting a measurement (the user can fix it by
+	// turning the target off); Withdrawn is a target awaiting a design that
+	// will not come, on both sides, with no user-side fix — the target list
+	// is the hub's, and `agents-md` is the lockfile schema's own example
+	// value. See internal/layout's withdrawnTargets for the full argument.
 	//
-	// Err is a target awaiting a MEASUREMENT — codex has a plausible layout and
-	// writing to the wrong one of two candidate directories would report success
-	// and do nothing — so it refuses, and the user can fix it by turning codex
-	// off. Withdrawn is a target awaiting a DESIGN that will not come, on both
-	// sides, and there is nothing the user can do about it: the target list is
-	// the hub's, and `agents-md` is the lockfile schema's own example value. A
-	// refusal there would make the seeded catalogue unsyncable over a value the
-	// hub itself suggests, with no user-side fix. See internal/layout's
-	// withdrawnTargets for the full argument.
-	//
-	// It is NOT a licence to install nothing and exit 0, which is the failure
-	// gate R2 exists to prevent: a profile whose targets are ALL withdrawn or
-	// unwritable has an empty writable set and is refused with
-	// ConflictNoWritableTarget.
+	// It is not a licence to install nothing and exit 0: a profile whose
+	// targets are all withdrawn or unwritable has an empty writable set and
+	// is refused with ConflictNoWritableTarget.
 	Withdrawn error
 }
 
@@ -70,19 +62,19 @@ type Target struct {
 type Op string
 
 // The five operations. Remove is a [Removal], not a [Change], because a
-// removal carries the record's removable-path set and its retention list and a
-// change does not.
+// removal carries the record's removable-path set and its retention list and
+// a change does not.
 const (
 	OpAdd       Op = "add"
 	OpUpgrade   Op = "upgrade"
 	OpDowngrade Op = "downgrade"
 
-	// OpReplace is a write whose version did not move: the hub republished the
-	// same version with different bytes, or the two versions order equal but
-	// differ textually (build metadata, `1.0` against `1.0.0`), or the comparer
-	// could form no opinion. The digest differs, so the entry must be written;
-	// "upgrade" and "downgrade" would both be claims about a direction nobody
-	// established.
+	// OpReplace is a write whose version did not move: the hub republished
+	// the same version with different bytes, or the two versions order equal
+	// but differ textually (build metadata, `1.0` against `1.0.0`), or the
+	// comparer could form no opinion. The digest differs, so the entry must
+	// be written; "upgrade" and "downgrade" would both be claims about a
+	// direction nobody established.
 	OpReplace Op = "replace"
 
 	OpUnchanged Op = "unchanged"
@@ -94,10 +86,11 @@ type Installed struct {
 	Version string
 	Digest  record.Digest
 
-	// Fingerprinted reports whether the recorded entry carries an R4
+	// Fingerprinted reports whether the recorded entry carries a
 	// fingerprint, i.e. whether internal/apply can tell a modified path from
-	// an untouched one for it. False means unverifiable — which is NOT the same
-	// as unmodified, and must be refused naming --force rather than overwritten.
+	// an untouched one for it. False means unverifiable, which is not the
+	// same as unmodified, and must be refused naming --force rather than
+	// overwritten.
 	Fingerprinted bool
 }
 
@@ -120,19 +113,20 @@ type Change struct {
 	Version string
 	Digest  record.Digest
 
-	// Resolution is the hub's account of HOW it resolved: latest, pinned or
-	// range. Reporting only — FR-009 forbids re-deriving a version from it.
+	// Resolution is the hub's account of how it resolved: latest, pinned or
+	// range. Reporting only; this package never re-derives a version from it.
 	Resolution string
 
-	// Verdict is the scan verdict the hub recorded: clean or flagged. A flagged
-	// entry present in `entries` rather than `skipped` resolved under an
-	// override or a warn-with-override gate; the hub decided that, not this CLI.
+	// Verdict is the scan verdict the hub recorded: clean or flagged. A
+	// flagged entry present in `entries` rather than `skipped` resolved
+	// under an override or a warn-with-override gate; the hub decided that,
+	// not this CLI.
 	Verdict string
 
 	// Signature is the source's signature provenance, absent when it carried
 	// none. Verified is false until Sigstore verification ships, so a false
-	// value MUST NOT be rendered as a pass, as a tick, or as "unsigned" — none
-	// of those is a fact that has been checked.
+	// value must not be rendered as a pass, as a tick, or as "unsigned" —
+	// none of those is a fact that has been checked.
 	Signature *Signature
 
 	// From is what the record claims is installed. Nil exactly when Op is
@@ -145,28 +139,27 @@ type Change struct {
 }
 
 // Signature mirrors the lockfile's optional signature block. The lockfile's
-// `verified` is itself optional, and absent and false mean the same thing here:
-// nothing has been checked. Sigstore verification has not shipped, so
-// Verified is false for every entry today, and the schema's instruction is
-// explicit — never render a false value as a pass. Not a tick, and not the word
-// "unsigned" either: neither is a fact anyone established.
+// `verified` is itself optional, and absent and false mean the same thing
+// here: nothing has been checked. Sigstore verification has not shipped, so
+// Verified is false for every entry today; never render a false value as a
+// pass, a tick, or "unsigned" — none of those is a fact anyone established.
 type Signature struct {
 	Ref      string
 	Verified bool
 }
 
-// RemoveReason says why an installed entry is going away. The two reasons are
-// reported differently and must not be merged: one is the profile's content
-// changing, the other is a target being switched off (FR-030).
+// RemoveReason says why an installed entry is going away. The two main
+// reasons are reported differently and must not be merged: one is the
+// profile's content changing, the other is a target being switched off.
 type RemoveReason string
 
 const (
-	// RemoveLeftProfile: the profile's lockfile no longer lists the package, or
-	// the hub now refuses to serve the version (FR-027).
+	// RemoveLeftProfile: the profile's lockfile no longer lists the package,
+	// or the hub now refuses to serve the version.
 	RemoveLeftProfile RemoveReason = "no-longer-in-profile"
 
-	// RemoveTargetDisabled: the profile no longer enables the target the entry
-	// was installed under (FR-030).
+	// RemoveTargetDisabled: the profile no longer enables the target the
+	// entry was installed under.
 	RemoveTargetDisabled RemoveReason = "target-disabled"
 
 	// RemoveRelocated: the same package under the same target now routes to a
@@ -179,8 +172,8 @@ const (
 )
 
 // Claim is one profile's stake in a package: who wants it, at what version,
-// under which target. Used both for FR-012's "name both profiles and both
-// versions" and for a removal's retention list.
+// under which target. Used both for a version-split conflict, which must
+// name both profiles and both versions, and for a removal's retention list.
 type Claim struct {
 	Profile string
 	Target  record.Target
@@ -199,9 +192,9 @@ type Removal struct {
 	Reason  RemoveReason
 
 	// Paths is exactly record.Entry.RemovablePaths(): the destination and its
-	// `.amctl-old` sibling, two literal names. FR-028 holds by construction
-	// because this is a list and never a pattern — a glob over a directory the
-	// CLI does not own is how you delete somebody's hand-written skill.
+	// `.amctl-old` sibling, two literal names, never a pattern — a glob over
+	// a directory the CLI does not own is how you delete somebody's
+	// hand-written skill.
 	Paths []string
 
 	// RetainedBy names the other stakes in this same destination that survive
@@ -220,47 +213,44 @@ type Removal struct {
 func (r Removal) RemovesFromDisk() bool { return len(r.RetainedBy) == 0 }
 
 // ConflictKind is why a plan refuses. Every kind here is detectable without
-// touching the filesystem; the modified-path conflict of FR-029 is not, and
-// lives in internal/apply.
+// touching the filesystem; the modified-path conflict is not, and lives in
+// internal/apply.
 type ConflictKind string
 
 const (
-	// ConflictVersionSplit is FR-012: two profiles resolve one package to two
-	// different versions. They would land in one directory, so the second write
-	// would silently define what the first profile got.
+	// ConflictVersionSplit: two profiles resolve one package to two different
+	// versions. They would land in one directory, so the second write would
+	// silently define what the first profile got.
 	ConflictVersionSplit ConflictKind = "version-split"
 
-	// ConflictDestCollision is two DIFFERENT package ids routed to one
-	// destination. FR-023 requires colliding names across publishers to land in
-	// distinct directories, so this is a layout defect rather than a user error
-	// — but it is refused here because the record keys removals by destination
-	// and would otherwise attribute one directory to two packages.
+	// ConflictDestCollision is two different package ids routed to one
+	// destination — a layout defect rather than a user error, refused here
+	// because the record keys removals by destination and would otherwise
+	// attribute one directory to two packages.
 	ConflictDestCollision ConflictKind = "destination-collision"
 
-	// ConflictTargetUnwritable is a target the profile enables and this build
-	// cannot write: research gate R2 is open for it. Err wraps
-	// layout.ErrR2Unresolved. Warn-and-continue is exactly the failure the gate
-	// exists to stop, because a target that installs nothing while the command
-	// exits 0 reports success.
+	// ConflictTargetUnwritable is a target the profile enables and this
+	// build cannot write. Err wraps layout.ErrR2Unresolved. Warn-and-continue
+	// is exactly the failure this exists to stop: a target that installs
+	// nothing while the command exits 0 reports success.
 	ConflictTargetUnwritable ConflictKind = "target-unwritable"
 
 	// ConflictTargetUnknown is a target this build has never heard of. The
 	// contract's enum still carries `agents-md`, which no longer has an
-	// implementation, and a newer hub may add more. Unknown is refused rather
-	// than ignored for the same reason as unwritable: silence looks like success.
+	// implementation, and a newer hub may add more. Unknown is refused
+	// rather than ignored for the same reason as unwritable: silence looks
+	// like success.
 	ConflictTargetUnknown ConflictKind = "target-unknown"
 
 	// ConflictNoWritableTarget is a profile that enabled targets and none of
-	// them survived: every one was unknown, gated or withdrawn. It exists
-	// because a withdrawn target is reported rather than refused, which without
-	// this check would let a profile naming only withdrawn targets install
-	// nothing and exit 0 — the exact warn-and-continue outcome gate R2 was
-	// opened to stop.
+	// them survived: every one was unknown, gated or withdrawn. A withdrawn
+	// target is reported rather than refused, which without this check would
+	// let a profile naming only withdrawn targets install nothing and exit 0.
 	ConflictNoWritableTarget ConflictKind = "no-writable-target"
 
-	// ConflictUnroutable is an entry the target refused to route, or one whose
-	// id, kind or digest is unusable: an id that is not exactly two non-empty
-	// segments, a kind outside skill|plugin, a digest that is not
+	// ConflictUnroutable is an entry the target refused to route, or one
+	// whose id, kind or digest is unusable: an id that is not exactly two
+	// non-empty segments, a kind outside skill|plugin, a digest that is not
 	// sha256:<64 hex>. Refused, never repaired.
 	ConflictUnroutable ConflictKind = "unroutable-entry"
 )
@@ -278,9 +268,9 @@ type Conflict struct {
 	// Dest is set for a destination collision.
 	Dest string
 
-	// Claims is every profile stake involved, sorted. FR-012 requires the
-	// report to name both profiles and both versions, so this is the payload
-	// and not a convenience.
+	// Claims is every profile stake involved, sorted: a version-split report
+	// must name both profiles and both versions, and this is the payload,
+	// not a convenience.
 	Claims []Claim
 
 	// Err is the underlying error where there was one — a target constructor's
@@ -288,11 +278,10 @@ type Conflict struct {
 	// than by string match.
 	Err error
 
-	// Installed is what the record says is on this machine for the package, per
-	// profile, at the moment the conflict is raised. For FR-012 that is the
-	// context a user needs and nothing else can supply: neither of the two
-	// disagreeing versions has been installed yet, so the record can only say
-	// what is there now.
+	// Installed is what the record says is on this machine for the package,
+	// per profile, at the moment the conflict is raised: context a user
+	// needs and nothing else can supply, since neither of the two disagreeing
+	// versions has been installed yet.
 	Installed []Claim
 
 	// Detail is extra human text where no error carried it.
@@ -333,11 +322,10 @@ func (c Conflict) String() string {
 // Plan is what a sync would do. It is the whole answer: a caller needs no
 // second query and must make no second decision.
 //
-// The buckets are the four FR-031 requires --dry-run to report, plus the three
-// that are not actions. Upgrade holds OpUpgrade AND OpReplace: a replacement
-// whose direction did not move forward is still a write, and filing it under
-// Downgrade would raise a rollback alarm about something that did not roll
-// back. [Change.Op] is the precise answer; the bucket is the printed heading.
+// Upgrade holds OpUpgrade and OpReplace: a replacement whose direction did
+// not move forward is still a write, and filing it under Downgrade would
+// raise a rollback alarm about something that did not roll back.
+// [Change.Op] is the precise answer; the bucket is the printed heading.
 type Plan struct {
 	Add       []Change
 	Upgrade   []Change
@@ -346,18 +334,16 @@ type Plan struct {
 	Conflicts []Conflict
 	Skipped   []Skip
 
-	// Unchanged is not one of the six sets the task line names, and it is here
-	// because dropping it makes an entry already at the locked version
-	// indistinguishable from an entry the lockfile never mentioned. FR-025's
-	// idempotence is the claim "the second run's Add, Upgrade, Downgrade and
-	// Remove are all empty AND Unchanged accounts for every entry", which
-	// cannot be stated without it.
+	// Unchanged is here because dropping it makes an entry already at the
+	// locked version indistinguishable from an entry the lockfile never
+	// mentioned. Idempotence is the claim "the second run's Add, Upgrade,
+	// Downgrade and Remove are all empty and Unchanged accounts for every
+	// entry", which cannot be stated without it.
 	Unchanged []Change
 }
 
-// Refuses reports whether the plan must not be applied. FR-012 requires the
-// refusal to happen before anything is written, so a caller checks this before
-// it stages a single byte.
+// Refuses reports whether the plan must not be applied, before a caller
+// stages a single byte.
 func (p Plan) Refuses() bool { return len(p.Conflicts) > 0 }
 
 // ConflictError joins every conflict into one error, preserving the underlying
@@ -379,9 +365,9 @@ func (p Plan) ConflictError() error {
 	return errors.Join(errs...)
 }
 
-// ChangeCount is how many entries the plan would write or remove. It excludes
-// Unchanged and Skipped by definition, and is what selects between FR-036's
-// two success exit codes.
+// ChangeCount is how many entries the plan would write or remove. It
+// excludes Unchanged and Skipped by definition, and selects between the two
+// success exit codes.
 func (p Plan) ChangeCount() int {
 	return len(p.Add) + len(p.Upgrade) + len(p.Downgrade) + len(p.Remove)
 }
@@ -390,15 +376,15 @@ func (p Plan) ChangeCount() int {
 // no-op: it has something to say.
 func (p Plan) IsNoOp() bool { return p.ChangeCount() == 0 && !p.Refuses() }
 
-// Writes is every entry a sync would write — Add, Upgrade and Downgrade — for
-// a caller that stages them all the same way and does not care which heading an
-// entry printed under.
+// Writes is every entry a sync would write — Add, Upgrade and Downgrade —
+// for a caller that stages them all the same way and does not care which
+// heading an entry printed under.
 //
-// It is re-sorted rather than concatenated, and that is not tidiness. Which
-// bucket an entry lands in depends on the version comparer, which is reporting;
-// concatenating the buckets would therefore make the ORDER OF WORK depend on
-// the comparer, and FR-009's whole claim is that it cannot. The sort key is the
-// same one the buckets use: target, then package id, then profile.
+// It is re-sorted rather than concatenated. Which bucket an entry lands in
+// depends on the version comparer, which is reporting; concatenating the
+// buckets would make the order of work depend on the comparer, which it must
+// not. The sort key is the same one the buckets use: target, then package
+// id, then profile.
 func (p Plan) Writes() []Change {
 	out := make([]Change, 0, len(p.Add)+len(p.Upgrade)+len(p.Downgrade))
 	out = append(out, p.Add...)

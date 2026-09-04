@@ -12,8 +12,8 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/record"
 )
 
-// This file is the DECIDING side of FR-009. It asks two questions about
-// versions and digests and no others:
+// This file is the deciding side: it asks two questions about versions and
+// digests and no others:
 //
 //	installed.Version == locked.Version    // string equality
 //	installed.Digest  == locked.Digest     // 32 bytes, not a formatted string
@@ -133,7 +133,7 @@ func Compute(in Inputs) (Plan, error) {
 		}
 	}
 
-	// Pass 2: the hub's own exclusions, verbatim (FR-011).
+	// Pass 2: the hub's own exclusions, verbatim.
 	for _, lf := range lockfiles {
 		for _, s := range lf.Skipped {
 			p.Skipped = append(p.Skipped, Skip{
@@ -315,12 +315,11 @@ func (b *builder) route(profile string, t record.Target, target Target, e hub.Lo
 	return d, nil
 }
 
-// versionSplits is FR-012. Grouping is by package id across ALL profiles and
-// targets, not per target: the requirement is about a set of profiles
-// disagreeing, and a disagreement that only bites under one target is the same
-// disagreement. The digest arm catches the subtler shape — one version, two
-// byte-sets — which is one directory with two possible contents just as much
-// as two versions are.
+// versionSplits groups by package id across all profiles and targets, not
+// per target: a disagreement that only bites under one target is still a
+// disagreement between profiles. The digest arm catches the subtler shape —
+// one version, two byte-sets — which is one directory with two possible
+// contents just as much as two versions are.
 func (b *builder) versionSplits(rec *record.Record, desired map[entryKey]desiredEntry, order []entryKey) {
 	byID := map[string][]desiredEntry{}
 	var ids []string
@@ -353,11 +352,10 @@ func (b *builder) versionSplits(rec *record.Record, desired map[entryKey]desired
 	}
 }
 
-// destCollisions is the negative control for FR-023. Two different packages
-// routed to one directory is a layout defect rather than a user error, but it
-// is refused here because the record attributes a destination to an entry and
-// two entries cannot own one path: whichever pruned second would delete the
-// other's live install.
+// destCollisions catches two different packages routed to one directory: a
+// layout defect rather than a user error, but refused here because the
+// record attributes a destination to an entry and two entries cannot own one
+// path — whichever pruned second would delete the other's live install.
 func (b *builder) destCollisions(desired map[entryKey]desiredEntry, order []entryKey) {
 	type destKey struct {
 		target record.Target
@@ -369,13 +367,11 @@ func (b *builder) destCollisions(desired map[entryKey]desiredEntry, order []entr
 	for _, key := range order {
 		d := desired[key]
 		// layout.DestCollisionKey, not the raw path: `Acme/x` and `acme/x` are
-		// two directories on ext4 and ONE on APFS, which is half the release
-		// matrix. Comparing the paths as strings finds no collision, both
-		// entries install, and the second one's swap overwrites the first — with
-		// the record then holding two rows for one directory, so pruning either
-		// would delete the other's live install. The refusal is unconditional
-		// rather than filesystem-dependent, for the reason internal/layout gives
-		// for the id charset: one lockfile must behave the same on both
+		// two directories on ext4 and one on APFS. Comparing the paths as
+		// strings finds no collision, both entries install, and the second
+		// one's swap overwrites the first, leaving the record holding two
+		// rows for one directory. The refusal is unconditional rather than
+		// filesystem-dependent: one lockfile must behave the same on both
 		// platforms.
 		dk := destKey{target: d.key.target, dest: layout.DestCollisionKey(d.dest)}
 		if _, seen := byDest[dk]; !seen {
@@ -479,12 +475,11 @@ func removalOf(profile string, e record.Entry, reason RemoveReason) Removal {
 
 // retain works out which removals may touch the filesystem.
 //
-// More than one profile claiming one destination is LEGITIMATE: two profiles
-// may include the same package at the same version, in which case one directory
-// exists and both own it. Removing it because one of them dropped the package
-// would delete an install the other still wants, and the next sync would put
-// the bytes back but not anything the user changed inside. So a removal whose
-// destination is still claimed drops the record row and stops there.
+// More than one profile claiming one destination is legitimate: two profiles
+// may include the same package at the same version, in which case one
+// directory exists and both own it. Removing it because one of them dropped
+// the package would delete an install the other still wants. So a removal
+// whose destination is still claimed drops the record row and stops there.
 //
 // Two sources of a surviving claim, and both are needed:
 //   - a recorded entry at the same destination that is not itself being removed
@@ -501,13 +496,13 @@ func retain(rec *record.Record, removals []Removal, desired map[entryKey]desired
 		removing[entryKey{profile: r.Profile, target: r.Target, id: r.ID}] = struct{}{}
 	}
 	// Keyed by layout.DestCollisionKey for the same reason destCollisions is:
-	// on a case-insensitive filesystem a removal of `<root>/Acme--x` unlinks the
-	// directory a desired `<root>/acme--x` was just installed into. destCollisions
-	// cannot see that pair — it is one desired entry and one recorded one, not
-	// two desired ones — so the retention check is the only thing between the
-	// prune and somebody's live install. Retaining across case on a
-	// case-SENSITIVE filesystem leaves a directory behind instead of removing
-	// it, which is the harmless direction of the same mistake.
+	// on a case-insensitive filesystem a removal of `<root>/Acme--x` unlinks
+	// the directory a desired `<root>/acme--x` was just installed into.
+	// destCollisions cannot see that pair — one desired entry, one recorded
+	// one, not two desired ones — so this retention check is the only thing
+	// between the prune and somebody's live install. Retaining across case
+	// on a case-sensitive filesystem leaves a directory behind instead of
+	// removing it, the harmless direction of the same mistake.
 	byDest := map[string][]Claim{}
 	for key := range desired {
 		d := desired[key]
@@ -562,11 +557,11 @@ func retain(rec *record.Record, removals []Removal, desired map[entryKey]desired
 	return out
 }
 
-// installedClaims names what the record says is installed for a package, per
-// profile. record.ByID exists for exactly this: at the moment FR-012 fires
-// neither of the two versions has been installed yet, so the record cannot
-// decide the conflict — it can only say what the machine currently has, which
-// is the first thing a user asks when told two profiles disagree.
+// installedClaims names what the record says is installed for a package,
+// per profile. At the moment a version-split conflict fires, neither of the
+// two versions has been installed yet, so the record can only say what the
+// machine currently has — the first thing a user asks when told two
+// profiles disagree.
 func installedClaims(rec *record.Record, id string) []Claim {
 	if rec == nil {
 		return nil
@@ -704,12 +699,11 @@ func profileOf(r *record.Record, slug string) (record.Profile, bool) {
 	return r.ProfileBySlug(slug)
 }
 
-// validateID is the two-segment rule. The lockfile schema describes this field
-// as "publisher/name" and that description is wrong in a way that has shipped
-// three times: the first segment is the NAMESPACE, and two publishers may share
-// one. Nothing here depends on which it is — only that there are exactly two
-// non-empty segments, because everything downstream (the bundle URL, the
-// directory name, FR-023's distinctness) splits on that single slash.
+// validateID is the two-segment rule. The lockfile schema describes this
+// field as "publisher/name", but the first segment is actually the
+// namespace, and two publishers may share one. Nothing here depends on which
+// it is — only that there are exactly two non-empty segments, since
+// everything downstream splits on that single slash.
 func validateID(id string) error {
 	ns, name, ok := strings.Cut(id, "/")
 	if !ok || ns == "" || name == "" || strings.Contains(name, "/") {

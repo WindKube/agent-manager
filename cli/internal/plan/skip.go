@@ -1,14 +1,13 @@
 package plan
 
 // Skip is one entry the hub resolved and then excluded, carried through with
-// the hub's own reason (FR-011).
+// the hub's own reason.
 //
-// Reason is the hub's raw string. It is NOT an enum of this package's making,
-// and that is load-bearing: this CLI ships separately from the hub, the hub may
-// add a reason, and an unrecognised value must be reported verbatim rather than
-// dropped or folded into an "other" bucket. Dropping it makes a package
-// silently absent from a machine, which is the failure FR-011 exists to
-// prevent; folding it into "other" tells the user a lie that reads like a fact.
+// Reason is the hub's raw string, not an enum of this package's making: this
+// CLI ships separately from the hub, the hub may add a reason, and an
+// unrecognised value must be reported verbatim rather than dropped or
+// folded into an "other" bucket, which would either silently hide a package
+// or tell the user a lie that reads like a fact.
 type Skip struct {
 	Profile string
 	ID      string
@@ -21,9 +20,9 @@ type Skip struct {
 	// came from the hub, and do not pretend to explain it".
 	Recognised bool
 
-	// Detail and WouldHaveResolvedTo are the lockfile's optionals. FR-011 asks
-	// for the version the entry would have resolved to, so it is reported when
-	// the hub supplied it and left empty rather than guessed when it did not.
+	// Detail and WouldHaveResolvedTo are the lockfile's optionals, reported
+	// when the hub supplied them and left empty rather than guessed when it
+	// did not.
 	Detail              string
 	WouldHaveResolvedTo string
 }

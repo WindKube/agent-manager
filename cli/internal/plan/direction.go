@@ -5,9 +5,9 @@ import (
 	"strings"
 )
 
-// This file is the REPORTING side of FR-009 and the only place in the CLI
-// where an ordering on version strings may exist. Masterminds/semver may be
-// imported here and nowhere else (T042b).
+// This file is the reporting side and the only place in the CLI where an
+// ordering on version strings may exist. Masterminds/semver may be imported
+// here and nowhere else.
 //
 // The distinction that makes that safe, and it is not a wording trick:
 //

@@ -316,7 +316,7 @@ screen survives, because a not-found screen is a real screen.
 - [ ] T118 [P] Role-gating pass: every action a role does not permit is absent or disabled with its reason across all seven screens (FR-126)
 - [ ] T119 [P] Update `README.md` — the role/credential table, the two-file compose topology, and the identity provider
 - [ ] T120 [P] Write `specs/003-usable-web-ui/quickstart.md`'s validations into the repo's own test suite where they are assertions rather than prose
-- [ ] T121 Delete `internal/web/fixture`'s design-mock viewer values now that every screen test supplies its own
+- [x] T121 Delete `internal/web/fixture`'s design-mock viewer values now that every screen test supplies its own
 - [ ] T122 [P] Metrics for the paths this feature adds: sign-in outcomes, session mint failures, scan duration (001 T109's histogram now has data)
 - [ ] T123 Run the full `quickstart.md` by hand once, on a clean checkout, on `aarch64`. Every measurement in `research.md` was taken there and the stack should be proven there rather than assumed onto it
 - [ ] T124 Re-run `internal/archcheck` and the credential-boundary boot test (001 T035 / SC-006) — a feature that adds a login is exactly the feature likely to hand the web role a datastore credential by accident (FR-111, SC-110)

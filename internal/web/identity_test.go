@@ -165,6 +165,10 @@ func sweep() []sweptScreen {
 		// accommodate data that was never the risk.
 		inShell("ProfilesScreen", func() templ.Component { return components.ProfilesScreen(view.Profiles{}) }),
 		inShell("ProfileScreen", func() templ.Component { return components.ProfileScreen(view.Profile{}) }),
+		// The Connect-the-CLI screen (US6). Swept empty for the same reason: the
+		// requesting host is machine-shaped data from a source, not chrome, so the
+		// pattern is checked against the copy around it and not against a fixture host.
+		inShell("CLIScreen", func() templ.Component { return components.CLIScreen(view.CLI{}) }),
 		{
 			name: "NoRoleScreen",
 			// The one screen whose body renders the viewer itself. Signed out there is

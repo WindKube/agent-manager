@@ -1,31 +1,17 @@
-// Package layout turns a lockfile entry into the paths one agent reads.
+// Package layout turns a lockfile entry into the paths one agent reads. It is
+// pure: strings in, paths out, so a destination's containment check can run
+// before anything is opened.
 //
-// It is PURE: strings in, paths out. Nothing here stats, opens, creates or
-// removes anything, and that is a requirement rather than a preference. A
-// layout that touched the disk could only be tested for the paths it managed
-// to create, never for the ones it would choose — and FR-020's containment
-// check (T042a) has to run on a destination BEFORE anything opens it, which is
-// impossible if deriving the destination is itself an open.
-//
-// # What this package deliberately does NOT do
-//
-//   - It does not read the environment. CLAUDE_CONFIG_DIR arrives as a Config
-//     field. internal/cmd owns home and environment resolution (FR-039), and a
-//     package that fell back to os.Getenv or os.UserHomeDir would route around
-//     the refusal FR-039 requires before any network call.
-//   - It does not check that a destination is inside the user's home (FR-020).
-//     That check must run on the RESOLVED path at the moment of writing, in
-//     internal/apply: agent directories are frequently symlinks into a dotfiles
-//     repo, so a path that is inside the home as a string may not be as an
-//     inode. Re-deriving containment from a string here would be a check that
-//     passes on the wrong evidence.
-//   - It does not sanitise. Every unusable name is refused, naming the id and
-//     the reason. A name amctl quietly rewrote would not match the record it
-//     later prunes against (FR-028), and two different packages rewritten to
-//     one name is FR-023 broken by the very code meant to satisfy it.
-//   - It does not install plugins, for any target. See Request.Kind.
-//   - It does not resolve or compare versions (FR-009). Version is carried
-//     verbatim into the marker and never parsed.
+// It does not read the environment: CLAUDE_CONFIG_DIR arrives as a Config
+// field, since internal/cmd owns home and environment resolution. It does not
+// check that a destination is inside the user's home; that check must run on
+// the resolved path at the moment of writing, in internal/apply, because
+// agent directories are frequently symlinks and a path inside the home as a
+// string may not be as an inode. It does not sanitise: every unusable name is
+// refused, naming the id and the reason, since a name amctl quietly rewrote
+// would not match the record it later prunes against. It does not install
+// plugins for any target (see Request.Kind), and it does not resolve or
+// compare versions; Version is carried verbatim into the marker.
 package layout
 
 import (
@@ -40,8 +26,7 @@ import (
 )
 
 // ErrPackageID marks a lockfile entry id that cannot become a directory name.
-// Refusing here is the EARLY gate: record.Validate refuses the same ids when
-// the record is written, but by then bytes are already on disk.
+// Refusing here is the early gate, before any bytes reach disk.
 var ErrPackageID = errors.New("unusable package id")
 
 // ErrDirName marks a skill directory name that must never be written.
@@ -51,74 +36,29 @@ var ErrDirName = errors.New("unusable skill directory name")
 var ErrKindUnsupported = errors.New("entry kind not installable")
 
 const (
-	// DirSeparator joins the namespace and the name in a skill directory name:
-	// `acme/code-review` installs to `acme--code-review`.
-	//
-	// WHY TWO HYPHENS, and why the scheme is what it is (FR-023).
-	//
-	// Gate R2 measured that claude-code keys a skill by its DIRECTORY name and
-	// not by the `name:` in its frontmatter — two directories with identical
-	// frontmatter both loaded, each advertised under its own directory name. So
-	// the directory name is the user-visible identity, and FR-023 ("two packages
-	// whose names collide across publishers MUST install to distinct
-	// directories") is satisfiable by naming alone, with no bundle rewriting.
-	// It also means the name has to READ well: a user sees `acme--code-review`
-	// and `globex--code-review` side by side in their skills list and has to be
-	// able to tell which is which and invoke one of them.
-	//
-	// The namespace is ALWAYS present, never only on collision. Disambiguating
-	// on demand would make a package's destination depend on the rest of the
-	// catalog: an unrelated package appearing under another namespace would
-	// rename an already-installed directory, which means an uninstall and a
-	// reinstall of something that did not change (FR-025), a stale record
-	// destination, and a skill whose name changed under the user for reasons
-	// they cannot see.
-	//
-	// A single separator cannot work. Both segments may legitimately contain
-	// `-`, `.`, `_` and `+` (see idSegmentAllowed), so with any single-character
-	// separator `acme-code/review` and `acme/code-review` produce the SAME
-	// directory name — two different packages, one directory, one overwriting
-	// the other and prune deleting the survivor. That is FR-023 violated by the
-	// disambiguator. `--` is refused INSIDE a segment (see validateIDSegment),
-	// which makes the first `--` unambiguously the separator and the mapping
-	// injective. The cost is refusing a package whose namespace or name contains
-	// a double hyphen; the refusal is loud and names the reason, which is the
-	// direction to fail in.
-	//
-	// It stays inside the lowercase-alphanumeric-and-hyphen alphabet the Agent
-	// Skills format expects, which is why it is `--` and not `@`, `:` or `__`.
-	// R2's consequence is explicit that the separator must be conservative
-	// because Codex may enforce naming rules claude-code ignores; `:` is a path
-	// separator to enough tools to be unusable, `@` already means `<skill>@<source>` in
-	// claude-code's own plugin vocabulary, and `_` is not in the hub's
-	// object-key charset at all so it buys nothing the hyphen does not.
-	//
-	// REJECTED: nesting, `skills/<namespace>/<name>/SKILL.md`. It is the obvious
-	// answer and it is unmeasured in the direction that fails silently — R2
-	// observed loading only at one level, and two independent accounts of Codex
-	// state its skills root is scanned exactly one level deep, non-recursively.
-	// A nested skill that does not load reports success and does nothing, which
-	// is the worst failure this tool has.
-	//
-	// NOT ESTABLISHED: no `--` name was planted and observed loading. R2's
-	// probes were single-segment names (`amctl-probe`). The scheme is the most
-	// conservative disambiguation available — same charset, one extra hyphen —
-	// but confirming that claude-code lists `acme--code-review` is owed on the
-	// release-matrix runners (T063) alongside the darwin roots.
+	// DirSeparator joins the namespace and the name in a skill directory
+	// name: `acme/code-review` installs to `acme--code-review`. claude-code
+	// keys a skill by its directory name, not the `name:` in its frontmatter,
+	// so the directory name is the user-visible identity and namespacing it
+	// always (not only on collision) avoids renaming an already-installed
+	// directory when an unrelated package appears. A single-character
+	// separator cannot work: both segments may contain `-`, `.`, `_` and `+`,
+	// so `acme-code/review` and `acme/code-review` would collide on one
+	// directory. `--` is refused inside a segment (see validateIDSegment),
+	// making the first occurrence unambiguously the separator. It stays
+	// inside the lowercase-alphanumeric-and-hyphen alphabet the Agent Skills
+	// format expects, unlike `@` (claude-code's own plugin syntax) or `:` (a
+	// path separator to too many tools).
 	DirSeparator = "--"
 
 	// StagingDirName is the extraction staging directory, a sibling of the
-	// destination as gate R3 requires: an agent directory is often a symlink
-	// into a dotfiles repo on another mount, and same-filesystem staging is the
-	// only thing that makes the install a rename at all. It is named here
-	// because it is a path this package must refuse to install a package to,
-	// and a second literal in internal/apply is how the two drift apart.
+	// destination: agent directories are often symlinks onto another mount,
+	// and same-filesystem staging is what makes install a rename at all.
 	StagingDirName = ".amctl-staging"
 
-	// MaxDirNameBytes is the longest directory name any target accepts. 255
-	// bytes is the strictest of the filesystems in the release matrix (ext4 255
-	// bytes, APFS 255 characters), so applying it everywhere keeps one record
-	// readable on every platform.
+	// MaxDirNameBytes is the strictest limit among the supported filesystems
+	// (ext4 255 bytes, APFS 255 characters), applied everywhere so one record
+	// stays readable on every platform.
 	MaxDirNameBytes = 255
 
 	// MarkerSchemaVersion is the version of the marker format this build writes
@@ -126,20 +66,11 @@ const (
 	MarkerSchemaVersion = 1
 )
 
-// Package is a lockfile entry id split into its two segments.
-//
-// THE TRAP: the first segment is the NAMESPACE, not the publisher slug. A
-// publisher slug is itself two segments (`example/platform`) and its namespace
-// is the first of them (`example`). The lockfile schema's `"description":
-// "publisher/name"` on the entry id, and the bundle path's `{publisher}`
-// parameter, are both wrong in the same way; the parameter's own description
-// ("the publishing namespace, as it appears in the catalog") is the accurate
-// half. An id built from a slug would produce a three-segment bundle URL where
-// the contract has two, and the 404 looks exactly like a missing package.
-//
-// This is also why FR-023 is about `namespace/name` and not about the
-// publisher: two publishers may share one namespace, so the publisher is not
-// the thing that disambiguates.
+// Package is a lockfile entry id split into its two segments. The first
+// segment is the namespace, not the publisher slug: a publisher slug is
+// itself two segments (`example/platform`) whose first is the namespace. An
+// id built from the slug would produce a three-segment bundle URL where the
+// contract expects two.
 type Package struct {
 	Namespace string
 	Name      string
@@ -148,13 +79,10 @@ type Package struct {
 // ID is the lockfile spelling, `namespace/name`.
 func (p Package) ID() string { return p.Namespace + "/" + p.Name }
 
-// ParsePackageID splits a lockfile entry id and refuses everything that cannot
-// safely become one directory name.
-//
-// An id that is not exactly two non-empty segments is an error, never joined,
-// truncated or padded: either repair addresses a different package than the one
-// the lockfile named, and the resulting install would be recorded under an id
-// that does not exist.
+// ParsePackageID splits a lockfile entry id and refuses everything that
+// cannot safely become one directory name. An id that is not exactly two
+// non-empty segments is an error, never repaired: a repaired id would
+// address a different package than the one the lockfile named.
 func ParsePackageID(id string) (Package, error) {
 	ns, name, ok := strings.Cut(id, "/")
 	switch {
@@ -179,26 +107,12 @@ func ParsePackageID(id string) (Package, error) {
 // Package that came from ParsePackageID.
 func (p Package) DirName() string { return p.Namespace + DirSeparator + p.Name }
 
-// idSegmentAllowed reports whether r may appear after the first character of an
-// id segment.
-//
-// HAND-DERIVED from the hub's own object-key segment pattern,
-// `^[A-Za-z0-9][A-Za-z0-9._+-]*$` in the hub module's internal/blob/keys.go,
-// which every namespace, package name and version in the catalog must satisfy
-// to have a bundle object at all. A package whose segment falls outside it
-// cannot exist in the store, so accepting more here would only widen what this
-// package has to defend. The pattern is restated rather than imported because
-// the hub is a separate module and importing it would put the server in this
-// binary's dependency graph; if the hub ever widens its charset, this is the
-// place that has to widen with it.
-//
-// It also answers the platform question outright: every character that is
-// awkward in a filename anywhere is already outside this set — `/ \ : * ? " < >
-// |`, every control character, and space. Refusing them EVERYWHERE rather than
-// only where the filesystem does is deliberate: R4 made the record
-// separator-independent on purpose, and a charset that varied by GOOS would
-// mean a profile that installs on one platform and refuses on another, with the
-// same lockfile.
+// idSegmentAllowed reports whether r may appear after the first character of
+// an id segment. Hand-derived from the hub's own object-key segment pattern,
+// `^[A-Za-z0-9][A-Za-z0-9._+-]*$`, restated rather than imported since the hub
+// is a separate module. Refusing every filename-awkward character everywhere,
+// not only where a given filesystem requires it, keeps a profile's install
+// behaviour the same across platforms.
 func idSegmentAllowed(r rune) bool {
 	return isAlnum(r) || r == '.' || r == '_' || r == '+' || r == '-'
 }
@@ -209,8 +123,8 @@ func isAlnum(r rune) bool {
 
 func validateIDSegment(id, what, seg string) error {
 	for i, r := range seg {
-		// The leading-character rule is the hub's too, and it alone rules out
-		// "", ".", ".." and a leading separator.
+		// This leading-character rule alone rules out "", ".", ".." and a
+		// leading separator.
 		if i == 0 && !isAlnum(r) {
 			return fmt.Errorf("%w: %s %q of id %q must start with a letter or digit",
 				ErrPackageID, what, seg, id)
@@ -223,8 +137,6 @@ func validateIDSegment(id, what, seg string) error {
 	if strings.Contains(seg, "..") {
 		return fmt.Errorf("%w: %s %q of id %q contains a parent-directory reference", ErrPackageID, what, seg, id)
 	}
-	// Without this the namespace/name split of a directory name is ambiguous
-	// and two distinct packages can land in one directory. See DirSeparator.
 	if strings.Contains(seg, DirSeparator) {
 		return fmt.Errorf("%w: %s %q of id %q contains %q, which separates the namespace from the name in a "+
 			"directory name and cannot appear inside either", ErrPackageID, what, seg, id, DirSeparator)
@@ -233,13 +145,10 @@ func validateIDSegment(id, what, seg string) error {
 }
 
 // reservedDeviceNames are the DOS device names, refused as a path component
-// with or without an extension. amctl does not run on Windows; the names come
-// out of a HUB LOCKFILE, which is data authored elsewhere and read on machines
-// amctl does not control, so the refusal is about what the hub may serve rather
-// than about what this binary runs on. A composed DirName always contains
-// DirSeparator and so can never be one of these, but the guarantee must not
-// depend on the separator: ValidateDirName is the last check before a path is
-// built, and it is called on names this package did not compose.
+// with or without an extension. amctl does not run on Windows, but the names
+// come out of a hub lockfile authored elsewhere, and ValidateDirName is
+// called on names this package did not compose, so the refusal must not
+// depend on DirSeparator being present.
 var reservedDeviceNames = map[string]struct{}{
 	"con": {}, "prn": {}, "aux": {}, "nul": {},
 	"com0": {}, "com1": {}, "com2": {}, "com3": {}, "com4": {},
@@ -249,30 +158,15 @@ var reservedDeviceNames = map[string]struct{}{
 }
 
 // ValidateDirName is the portable floor every target's directory name must
-// clear, checked identically on every platform for the reason given on
-// idSegmentAllowed. A target may be stricter — claude-code is, see
-// ValidateClaudeCodeSkillDirName — but nothing may be laxer.
-//
-// What it refuses, and why each refusal is not tidiness:
-//
-//   - A name ending in record.AsideSuffix. R3's atomic swap renames an existing
-//     destination to dest+".amctl-old" before renaming the new tree in, so the
-//     complete set of paths amctl may ever remove for an entry is {dest,
-//     dest+".amctl-old"} — Entry.RemovablePaths, two literal names, no glob. A
-//     package legitimately installed at `x.amctl-old` would sit INSIDE the
-//     removable set of the package at `x`, so pruning one would delete a live
-//     install of the other. R3 makes refusing this internal/layout's
-//     guarantee, which is why it is here and not only in record.validateDest.
-//   - StagingDirName. Extraction stages into a sibling of the destination; a
-//     package installed there would be inside the directory a later run
-//     clears.
-//   - A dot-prefixed name, a trailing dot or a trailing space. Some filesystems
-//     strip trailing dots and spaces from a path component, so a directory
-//     recorded as `foo.` is `foo` on disk: the record then names a path that
-//     does not exist, prune finds nothing to remove, and the files stay
-//     forever.
-//   - A DOS device name, a path traversal, a name containing a separator, and
-//     anything over MaxDirNameBytes.
+// clear, checked identically on every platform. A target may be stricter —
+// claude-code is, see ValidateClaudeCodeSkillDirName — but nothing may be
+// laxer. It refuses a name ending in record.AsideSuffix (the atomic swap's
+// rename target for a replaced destination, which would otherwise sit inside
+// another package's removable set), StagingDirName (a sibling directory a
+// later run clears), a dot-prefixed name, a trailing dot or space (some
+// filesystems strip these, so the recorded path would not exist on disk), a
+// DOS device name, a path traversal, a separator, and anything over
+// MaxDirNameBytes.
 func ValidateDirName(dirName string) error {
 	switch {
 	case dirName == "":
@@ -312,28 +206,17 @@ func ValidateDirName(dirName string) error {
 	return nil
 }
 
-// StagingRoot is the staging directory for a destination: a SIBLING of it, per
-// gate R3. A central staging directory would make the swap's rollback fail with
-// EXDEV exactly when it is needed, and an EXDEV recursive-copy fallback is not
-// atomic, which inverts the one requirement FR-024 exists for.
+// StagingRoot is the staging directory for a destination: a sibling of it, so
+// the swap's rollback rename stays on one filesystem.
 func StagingRoot(dest string) string {
 	return filepath.Join(filepath.Dir(dest), StagingDirName)
 }
 
-// DestCollisionKey is the key under which two destinations are the SAME
-// directory on a case-insensitive filesystem — APFS by default.
-//
-// This is the one FR-023 hazard a per-entry function cannot close. `Acme/x` and
-// `acme/x` are two packages with two distinct destinations on ext4 and one
-// shared directory on a Mac, where the record holds two entries pointing at one
-// tree and pruning either deletes the other's install. Lowercasing the
-// directory name instead would close it by making the two collide on EVERY
-// platform, which is worse and is also the sanitising this package refuses.
-//
-// So the check belongs where the whole set is visible — internal/plan, which
-// already has to refuse two profiles resolving one package to two versions
-// (FR-012) — and this function is what it compares. Nothing here can use it,
-// because nothing here sees more than one entry.
+// DestCollisionKey is the key under which two destinations are the same
+// directory on a case-insensitive filesystem (APFS by default). Lowercasing
+// the directory name itself would "fix" this by colliding on every platform,
+// which is the sanitising this package refuses; the check instead belongs
+// where the whole set of destinations is visible, in internal/plan.
 func DestCollisionKey(dest string) string { return strings.ToLower(dest) }
 
 // Request is one lockfile entry, reduced to what a destination depends on.
@@ -341,28 +224,18 @@ type Request struct {
 	// ID is the lockfile entry id, `namespace/name`.
 	ID string
 
-	// Version is the version the hub resolved, verbatim. It is carried into the
-	// marker and is never parsed or compared (FR-009).
-	//
-	// THE DESTINATION DOES NOT DEPEND ON IT, and that is load-bearing rather
-	// than an omission: a version in the path would make an upgrade a write to
-	// a new directory plus a removal of the old one, two operations with a
-	// window where both or neither exist, instead of R3's single rename of one
-	// directory (FR-024). It also means Place needs no version — it routes on
-	// id and kind alone — so the version is required only where it is actually
-	// used, by Marker.Validate.
+	// Version is the version the hub resolved, verbatim, carried into the
+	// marker and never parsed or compared. The destination deliberately does
+	// not depend on it: a version in the path would turn an upgrade into a
+	// write-then-remove with a window where both or neither exist, instead
+	// of one rename.
 	Version string
 
 	// Kind is the lockfile entry kind. Only record.KindSkill is installable.
-	//
-	// KindPlugin is refused for every target, and structurally rather than
-	// pending work: a claude-code plugin is registered in agent-owned
-	// $CLAUDE_CONFIG_DIR/plugins/installed_plugins.json and a Codex MCP server
-	// is a table in user-owned ~/.codex/config.toml. Installing either means
-	// rewriting a shared file, which cannot be made atomic by rename (FR-024)
-	// and cannot be pruned without removing keys amctl did not write (FR-028).
-	// There is no plugin destination to derive, so Place refuses rather than
-	// returning a path nothing can safely use.
+	// KindPlugin is refused structurally, not as pending work: a claude-code
+	// plugin is registered in an agent-owned JSON file and a Codex MCP
+	// server is a table in a shared TOML file, neither of which can be
+	// swapped by rename or pruned without touching keys amctl did not write.
 	Kind record.Kind
 }
 
@@ -382,44 +255,31 @@ type Placement struct {
 	// advertises the skill under.
 	DirName string
 
-	// Dest is the entry root: the single path the record stores and the only
-	// path prune consults (with its aside sibling).
+	// Dest is the entry root: the single path the record stores and the
+	// only path prune consults (with its aside sibling).
 	Dest string
 
-	// EntryFilePath is the SKILL.md every skill directory must contain. It is
-	// derived for verification and reporting; the bytes come from the bundle
-	// and are never edited — stamping provenance into SKILL.md would rewrite
-	// bytes just verified by digest and break R4's install fingerprint.
+	// EntryFilePath is the SKILL.md every skill directory must contain,
+	// derived for verification and reporting; its bytes come from the
+	// bundle and are never edited.
 	EntryFilePath string
 
-	// MarkerPath is the FR-022 marker, a dotfile beside SKILL.md. R2 confirmed
-	// by observation that a skill directory carrying it loads normally.
+	// MarkerPath is the marker, a dotfile beside SKILL.md.
 	MarkerPath string
 }
 
-// AsidePath is the name R3's swap renames an existing Dest to. It is here so no
-// caller retypes the suffix; record.AsideSuffix is the single definition.
+// AsidePath is the name the atomic swap renames an existing Dest to.
 func (p Placement) AsidePath() string { return p.Dest + record.AsideSuffix }
 
 // StagingRoot is the staging directory for this placement.
 func (p Placement) StagingRoot() string { return StagingRoot(p.Dest) }
 
-// Marker is the on-disk answer to FR-022: which package and version a directory
-// holds, readable with no hub and no network.
-//
-// It is PROVENANCE, NOT AUTHORITY. state.json remains the only thing pruning
-// consults (FR-026, FR-028); nothing may decide a removal from a marker,
-// because a marker is a file inside a directory a user can edit and prune must
-// not be steerable by its own target.
-//
-// It carries no timestamp and no profile slug, and both omissions are
-// deliberate. No timestamp, so the marker's bytes are a function of the entry
-// alone: a re-extraction of the same version produces a byte-identical tree,
-// which keeps R4's fingerprint comparison and idempotence (FR-025) about the
-// package rather than about when it was installed. No profile, because two
-// profiles may claim one destination — record.ClaimantsOf exists for exactly
-// that — so a marker naming one of them would be wrong as soon as the second
-// arrived.
+// Marker is the on-disk answer to which package and version a directory
+// holds, readable with no hub and no network. It is provenance, not
+// authority: state.json remains the only thing pruning consults, since a
+// marker sits inside a directory a user can edit. It carries no timestamp,
+// so re-extracting the same version produces a byte-identical tree, and no
+// profile slug, since two profiles may claim one destination.
 type Marker struct {
 	SchemaVersion int           `json:"schemaVersion"`
 	ID            string        `json:"id"`
@@ -429,8 +289,8 @@ type Marker struct {
 	Digest        record.Digest `json:"digest"`
 }
 
-// Marker builds the marker for this placement. The digest is the bundle digest
-// that was verified before any byte reached the tree (FR-014).
+// Marker builds the marker for this placement. The digest is the bundle
+// digest verified before any byte reached the tree.
 func (p Placement) Marker(digest record.Digest) Marker {
 	return Marker{
 		SchemaVersion: MarkerSchemaVersion,
@@ -455,11 +315,10 @@ func (m Marker) Bytes() ([]byte, error) {
 	return append(b, '\n'), nil
 }
 
-// ParseMarker reads a marker written by this build and refuses anything else.
-// Unknown fields and an unrecognised schema version are errors rather than
-// warnings: a marker is only useful if "what is this directory" has one answer,
-// and a build that guessed at a format it does not know would give a confident
-// wrong one.
+// ParseMarker reads a marker written by this build and refuses anything
+// else. Unknown fields and an unrecognised schema version are errors rather
+// than warnings, since a build that guessed at an unknown format would give
+// a confident wrong answer.
 func ParseMarker(b []byte) (Marker, error) {
 	dec := json.NewDecoder(strings.NewReader(string(b)))
 	dec.DisallowUnknownFields()
@@ -474,8 +333,7 @@ func ParseMarker(b []byte) (Marker, error) {
 }
 
 // Validate checks the marker's shape. It does not check that the directory
-// around it actually holds that package: that is R4's fingerprint, and the
-// record is its source.
+// around it actually holds that package; that is a separate fingerprint check.
 func (m Marker) Validate() error {
 	if m.SchemaVersion != MarkerSchemaVersion {
 		return fmt.Errorf("marker schema version %d is not %d", m.SchemaVersion, MarkerSchemaVersion)

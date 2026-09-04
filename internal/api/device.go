@@ -16,6 +16,7 @@ import (
 
 	"agent-manager/internal/api/commands"
 	"agent-manager/internal/api/contract"
+	"agent-manager/internal/api/queries"
 	"agent-manager/internal/logging"
 )
 
@@ -292,6 +293,100 @@ func (s *Server) deviceToken(ctx context.Context, in *deviceTokenInput) (*device
 		// coarse raises DEVICE_TOKEN_TTL; the honest fix is a refresh grant with a
 		// row to record it in, which is a migration.
 	}}, nil
+}
+
+// ---- GET /v1/device/authorizations/{user_code} and its approval --------------
+//
+// Both need a browser session and nothing beyond it (contracts/openapi-additions.md,
+// US6): approving a machine's login is not an organisation-role decision, so
+// neither handler calls requireRole.
+
+type lookupDeviceCodeInput struct {
+	UserCode string `path:"user_code" doc:"The code the CLI printed."`
+}
+
+type lookupDeviceCodeOutput struct {
+	Body contract.PendingDeviceAuthorization
+}
+
+func (s *Server) lookupDeviceCode(ctx context.Context, in *lookupDeviceCodeInput) (*lookupDeviceCodeOutput, error) {
+	log := logging.From(ctx)
+	if s.deps.DB == nil {
+		return nil, fail(log, fmt.Errorf("no database is configured"))
+	}
+
+	pending, status, err := queries.LookupDeviceCode(ctx, s.deps.DB, in.UserCode)
+	if err != nil {
+		return nil, fail(log, err)
+	}
+	if status != queries.DeviceCodePending {
+		return nil, deviceCodeRefusal(status)
+	}
+	return &lookupDeviceCodeOutput{Body: contract.PendingDeviceAuthorization{
+		RequestingHost: pending.RequestingHost,
+		ExpiresIn:      int(time.Until(pending.ExpiresAt).Seconds()),
+	}}, nil
+}
+
+type approveDeviceCodeInput struct {
+	UserCode string `path:"user_code"`
+}
+
+type approveDeviceCodeOutput struct {
+	Body contract.ApprovedDeviceAuthorization
+}
+
+func (s *Server) approveDeviceCode(ctx context.Context, in *approveDeviceCodeInput) (*approveDeviceCodeOutput, error) {
+	log := logging.From(ctx)
+	principal, ok := PrincipalFrom(ctx)
+	if !ok {
+		return nil, huma.Error401Unauthorized("missing, expired or invalid token")
+	}
+	if s.deps.DB == nil {
+		return nil, fail(log, fmt.Errorf("no database is configured"))
+	}
+
+	host, err := commands.ApproveDevice(ctx, s.deps.DB, principal, in.UserCode)
+	if err != nil {
+		if errors.Is(err, commands.ErrUserCodeUndecidable) {
+			// A SEPARATE, non-authoritative read taken after the refusal, purely to
+			// word the response: commands.ApproveDevice's guard is the UPDATE's WHERE
+			// clause, not a prior read, and it collapses unknown, expired and
+			// already-decided into one sentinel on purpose. The approval itself
+			// already stood or fell on that transactional guard; this lookup only
+			// decides which of FR-042's three distinguishable messages to print.
+			_, status, lookupErr := queries.LookupDeviceCode(ctx, s.deps.DB, in.UserCode)
+			if lookupErr != nil {
+				return nil, fail(log, lookupErr)
+			}
+			return nil, deviceCodeRefusal(status)
+		}
+		return nil, fail(log, err)
+	}
+	return &approveDeviceCodeOutput{Body: contract.ApprovedDeviceAuthorization{RequestingHost: host}}, nil
+}
+
+// deviceCodeRefusal renders the three refusals FR-042 requires be distinguishable
+// to the viewer.
+//
+// It says nothing about the fourth refusal the device flow carries — approval by
+// an identity other than the requester — because device_authorization binds a
+// host, never a requester identity: POST /v1/device/authorize carries a
+// client_id and a host and no identity at all, so nothing here could tell that
+// case apart from these three without inventing a binding this schema does not
+// have. commands.ApproveDevice's own comment explains why the naive check was
+// never implementable, and why that is not a gap: any signed-in identity may
+// approve a pending code, and the host shown to them, the audit row this writes,
+// and the code's single use are what stand in for it.
+func deviceCodeRefusal(status queries.DeviceCodeStatus) error {
+	switch status {
+	case queries.DeviceCodeExpired:
+		return huma.Error410Gone("this code has expired")
+	case queries.DeviceCodeDecided:
+		return huma.Error409Conflict("this code has already been decided")
+	default:
+		return huma.Error404NotFound("no such device authorisation")
+	}
 }
 
 // deviceTokenFailure maps a command's sentinel onto the one RFC 8628 value that

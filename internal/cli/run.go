@@ -160,6 +160,7 @@ func runWeb(ctx context.Context) error {
 		Curator:  client,
 		Device:   client,
 		Log:      log,
+		Storage:  client,
 	}, web.Options{
 		Addr: cfg.Addr,
 		// Read for exactly one decision — the Secure flag on both cookies — and read

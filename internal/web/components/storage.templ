@@ -1,0 +1,148 @@
+package components
+
+import (
+	"strconv"
+
+	"agent-manager/internal/web/view"
+)
+
+// StorageScreen is US7 scenario 2 and 001 FR-053 as a screen: every figure read
+// from the object store itself or from stored rows, and a bucket setting the
+// store declines to answer rendered as Unknown rather than a guessed default.
+//
+// A requested reference and a fetch's error detail are publisher- or
+// operator-supplied text, so they are interpolated and therefore escaped
+// (001 FR-055, FR-127) like everything else under internal/web.
+templ StorageScreen(s view.Storage) {
+	<div class="am-header">
+		<div class="am-header-text">
+			<h1 class="am-h1">Storage</h1>
+			<p class="am-lede">
+				What the object store itself reports: how much it holds, how it is laid out, its own
+				settings, and the most recent attempts to fetch bytes into it.
+			</p>
+		</div>
+	</div>
+	if s.SignedOut {
+		<div class="am-empty am-empty-auth" id="storage-signed-out">
+			Sign in to read the storage report. The hub has no anonymous view.
+		</div>
+	} else if s.Refused {
+		<div class="am-empty am-empty-auth" id="storage-refused">
+			Your role may not read the storage report. This is not an empty bucket: a role is what
+			decides whether you may see what it holds. Ask whoever administers this hub for the
+			catalog admin role.
+		</div>
+	} else if s.Unavailable {
+		<div class="am-notice am-notice-dan" id="storage-unavailable">
+			<p class="am-note">
+				The hub's api did not answer, so nothing here is a statement about the bucket: the
+				object count, the key layout and the bucket's own settings are all unread. Retry in a
+				moment.
+			</p>
+		</div>
+	} else {
+		@storageStats(s)
+		<div class="am-gov">
+			@keyLayout(s)
+			@bucketSettings(s)
+		</div>
+		@recentFetches(s)
+	}
+}
+
+// storageStats is the headline row. Each figure is computed by the api from the
+// object store or stored rows (FR-121); none of it is a constant in the product.
+templ storageStats(s view.Storage) {
+	<div class="am-stats" id="storage-summary">
+		for _, card := range s.Cards() {
+			<div class="am-stat">
+				<div class="am-stat-label">{ card.Label }</div>
+				<div class={ StatValueClass(card) }>{ card.Value }</div>
+				<div class="am-stat-note">{ card.Note }</div>
+			</div>
+		}
+	</div>
+}
+
+templ keyLayout(s view.Storage) {
+	<section class="am-gov-card">
+		<div class="am-section-head">
+			<div class="am-section-title">Key layout</div>
+		</div>
+		for _, row := range s.KeyLayout {
+			<div class="am-kv">
+				<div class="am-kv-key am-mono">{ row.Prefix }/</div>
+				<div class="am-kv-val">{ objectCount(row.Objects) }</div>
+			</div>
+		}
+	</section>
+}
+
+templ bucketSettings(s view.Storage) {
+	<section class="am-gov-card">
+		<div class="am-section-head">
+			<div class="am-section-title">Bucket settings</div>
+		</div>
+		for _, row := range s.Bucket.Rows() {
+			<div class="am-kv">
+				<div class="am-kv-key">{ row.Label }</div>
+				<div class={ bucketSettingClass(row.Setting) }>{ row.Setting.Label() }</div>
+			</div>
+		}
+	</section>
+}
+
+func objectCount(n int) string {
+	if n == 1 {
+		return "1 object"
+	}
+	return strconv.Itoa(n) + " objects"
+}
+
+// bucketSettingClass reuses am-kv-none's muted, italic treatment for Unknown: it
+// is already what this page uses for "a value this screen genuinely does not
+// have", one row up, for a scan still running or an override never recorded.
+func bucketSettingClass(setting view.BucketSetting) string {
+	if !setting.Known {
+		return "am-kv-val am-kv-none"
+	}
+	return "am-kv-val"
+}
+
+templ recentFetches(s view.Storage) {
+	<div class="am-card">
+		<div class="am-section-head">
+			<div class="am-section-title">Recent fetches</div>
+		</div>
+		// The four columns line up with the audit log's own row grid (time, a short
+		// tag, the main text, an outcome) rather than a second near-identical one.
+		<div class="am-audit-row am-audit-head">
+			<div>Time</div>
+			<div>Kind</div>
+			<div>Reference</div>
+			<div>Outcome</div>
+		</div>
+		for _, row := range s.RecentFetches {
+			<div class="am-audit-row">
+				<div class="am-mono am-audit-time">{ row.At }</div>
+				<div class="am-audit-actor">
+					<span class="am-audit-actor-kind">{ row.Kind }</span>
+				</div>
+				<div class="am-audit-event">
+					<span class="am-audit-text am-mono">{ row.Ref }</span>
+					if row.Detail != "" {
+						<span class="am-audit-text">{ row.Detail }</span>
+					}
+				</div>
+				<div><span class={ PillClass(row.OutcomeTone()) }>{ row.OutcomeLabel() }</span></div>
+			</div>
+		}
+		if s.Empty() {
+			<div class="am-empty" id="storage-fetches-empty">
+				No fetches recorded yet. Register a package from a repository, an archive URL or an
+				upload and its attempt — successful or not — will appear here, newest first.
+			</div>
+		}
+	</div>
+}

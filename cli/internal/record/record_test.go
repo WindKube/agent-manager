@@ -314,10 +314,9 @@ func TestARecordForOneHubIsRefusedAgainstAnother(t *testing.T) {
 	require.ErrorIs(t, err, record.ErrHubMismatch)
 }
 
-// A corrupt record must NOT be read as empty. "Empty" means "prune nothing,
-// reinstall everything", which leaves an installed tree on disk that FR-028
-// then makes permanently unremovable — the directory listing that would find
-// it again is exactly what FR-028 forbids.
+// A corrupt record must not be read as empty. "Empty" means "prune nothing,
+// reinstall everything", which would leave an installed tree on disk
+// permanently unremovable.
 func TestACorruptRecordIsRefusedAndNeverTreatedAsEmpty(t *testing.T) {
 	t.Parallel()
 
@@ -443,8 +442,8 @@ func TestNoReaderEverObservesATornRecord(t *testing.T) {
 	wg.Wait()
 }
 
-// FR-025: a second run against an unchanged hub makes no filesystem
-// modification. That has to be true of the record too, not only of the tree.
+// A second run against an unchanged hub makes no filesystem modification;
+// that has to be true of the record too, not only of the tree.
 func TestSavingAnUnchangedRecordWritesNothing(t *testing.T) {
 	t.Parallel()
 
@@ -469,10 +468,8 @@ func TestSavingAnUnchangedRecordWritesNothing(t *testing.T) {
 	require.True(t, wrote, "a changed record must be written")
 }
 
-// FR-028 by construction: the complete set of paths amctl may remove for an
-// entry is two literal names derived from one recorded destination. No glob
-// exists, and none is needed, because gate R3 fixed the interrupted swap's
-// leftover as a deterministic sibling.
+// The complete set of paths amctl may remove for an entry is two literal
+// names derived from one recorded destination; no glob exists or is needed.
 func TestRemovablePathsIsTheDestinationAndItsDeterministicAside(t *testing.T) {
 	t.Parallel()
 
@@ -525,8 +522,6 @@ func TestTwoProfilesMayClaimOneDestination(t *testing.T) {
 	require.Equal(t, []string{"team-a", "team-b"}, []string{claims[0].Profile, claims[1].Profile})
 	require.Empty(t, got.ClaimantsOf(skillDest("something-else")))
 
-	// ByID names both profiles, which is the shape FR-012's report needs even
-	// though the decision itself is internal/plan's.
 	byID := got.ByID("acme/code-review")
 	require.Len(t, byID, 2)
 	require.Equal(t, "1.2.0", byID[0].Entry.Version)
@@ -750,9 +745,8 @@ func TestDigestEncoding(t *testing.T) {
 	})
 
 	// Every rejected spelling below is a real encoding of a real digest
-	// somewhere in this system. Accepting any of them here would make the
-	// field able to hold two spellings of one value, which is the thing that
-	// turns FR-014's comparison into a check that silently never matches.
+	// elsewhere in this system; accepting any of them would let the field
+	// hold two spellings of one value.
 	for _, tc := range []struct{ name, body string }{
 		{"the response header's base64 encoding", `"sha-256=q6urq6urq6urq6urq6urq6urq6urq6urq6urq6urq6s="`},
 		{"the cache's filename encoding", `"sha256-` + digestHex + `"`},

@@ -312,8 +312,8 @@ screen survives, because a not-found screen is a real screen.
 - [ ] T114 [P] **[SC-101]** Timed test from a clean checkout to signed-in-with-data through `docker compose up`, asserting under five minutes (FR-125, SC-101)
 - [x] T115 [P] **[SC-109]** Contrast audit extended from three screens to ten, both themes (FR-128, 001 SC-009)
 - [x] T116 [P] **[FR-127]** Extend 001's escaping assertions to every screen this feature adds, including identity-provider error text, and confirm the `templ.Raw` ban still holds under `internal/web`
-- [ ] T117 [P] Empty-state pass: every new screen renders an empty state naming what would appear and how to bring it about, distinguishable in copy **and in markup id** from an error and from an authorisation refusal (FR-122). Follow the `am-empty-auth` precedent the catalog already set
-- [ ] T118 [P] Role-gating pass: every action a role does not permit is absent or disabled with its reason across all seven screens (FR-126)
+- [x] T117 [P] Empty-state pass: every new screen renders an empty state naming what would appear and how to bring it about, distinguishable in copy **and in markup id** from an error and from an authorisation refusal (FR-122). Follow the `am-empty-auth` precedent the catalog already set
+- [x] T118 [P] Role-gating pass: every action a role does not permit is absent or disabled with its reason across all seven screens (FR-126)
 - [ ] T119 [P] Update `README.md` — the role/credential table, the two-file compose topology, and the identity provider
 - [ ] T120 [P] Write `specs/003-usable-web-ui/quickstart.md`'s validations into the repo's own test suite where they are assertions rather than prose
 - [x] T121 Delete `internal/web/fixture`'s design-mock viewer values now that every screen test supplies its own

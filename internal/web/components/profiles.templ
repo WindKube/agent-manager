@@ -271,8 +271,8 @@ templ entryRow(p view.Profile, entry view.ProfileEntryRow) {
 		}
 		if !p.Permissions.Curate {
 			<div class="am-entry-actions">
-				<button type="button" class="am-btn" disabled aria-disabled="true">Float to latest</button>
-				<button type="button" class="am-btn" disabled aria-disabled="true">Pin</button>
+				<button type="button" class="am-btn" disabled aria-disabled="true" title={ view.CurateDisabledReason }>Float to latest</button>
+				<button type="button" class="am-btn" disabled aria-disabled="true" title={ view.CurateDisabledReason }>Pin</button>
 			</div>
 		} else {
 			<div class="am-entry-actions">
@@ -367,9 +367,9 @@ templ targetsPanel(p view.Profile) {
 							}
 						} else {
 							if target.Enabled {
-								<input type="checkbox" checked disabled/>
+								<input type="checkbox" checked disabled title={ view.CurateDisabledReason }/>
 							} else {
-								<input type="checkbox" disabled/>
+								<input type="checkbox" disabled title={ view.CurateDisabledReason }/>
 							}
 						}
 						<span>{ target.Label() }</span>

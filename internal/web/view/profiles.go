@@ -335,6 +335,10 @@ type ProfilePermissions struct {
 	Publish bool
 }
 
+// CurateDisabledReason is why the float and pin controls are disabled for a
+// viewer whose role on this profile does not include curating it.
+const CurateDisabledReason = "Your role on this profile may not change its entries."
+
 // Profile is the detail screen.
 type Profile struct {
 	Slug        string

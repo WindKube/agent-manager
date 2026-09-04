@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -130,8 +131,8 @@ func TestProfilesListEmptyStateNamesWhatWouldAppear(t *testing.T) {
 	require.Contains(t, body, `id="profiles-empty"`)
 }
 
-// TestProfilesThreeEmptyStatesAreDistinguishable: an empty hub, a role refusal
-// and an unreachable api must never render alike.
+// TestProfilesThreeEmptyStatesAreDistinguishable: an empty hub, a role refusal,
+// no usable session, and an unreachable api must never render alike.
 func TestProfilesThreeEmptyStatesAreDistinguishable(t *testing.T) {
 	for _, state := range []struct {
 		name   string
@@ -140,13 +141,22 @@ func TestProfilesThreeEmptyStatesAreDistinguishable(t *testing.T) {
 		status int
 	}{
 		{name: "genuinely empty", source: &profiles{}, id: `id="profiles-empty"`, status: http.StatusOK},
+		{name: "no usable session", source: &profiles{err: view.ErrSignedOut}, id: `id="profiles-signed-out"`, status: http.StatusOK},
 		{name: "refused by role", source: &profiles{err: hub.ErrForbidden}, id: `id="profiles-refused"`, status: http.StatusForbidden},
 		{name: "api unreachable", source: &profiles{err: errBoom}, id: `id="profiles-unavailable"`, status: http.StatusBadGateway},
 	} {
 		t.Run(state.name, func(t *testing.T) {
 			rec := get(t, profHandler(state.source, fixture.SignedInViewers(), nil), "/profiles")
 			require.Equal(t, state.status, rec.Code)
-			require.Contains(t, rec.Body.String(), state.id)
+			body := rec.Body.String()
+			require.Contains(t, body, state.id)
+
+			for _, other := range []string{"profiles-empty", "profiles-signed-out", "profiles-refused", "profiles-unavailable"} {
+				if strings.Contains(state.id, other) {
+					continue
+				}
+				require.NotContainsf(t, body, `id="`+other+`"`, "this state also renders %q", other)
+			}
 		})
 	}
 
@@ -266,6 +276,10 @@ func TestProfileWritesAreGatedByRole(t *testing.T) {
 	body := get(t, h, "/profiles/example/platform-engineer").Body.String()
 	require.NotContains(t, body, "Save targets")
 	require.Contains(t, body, `id="profile-publish-not-permitted"`)
+	require.Contains(t, body, view.CurateDisabledReason,
+		"the disabled float and pin controls must say why, not just refuse silently")
+	require.NotContains(t, body, `id="share-role"`,
+		"a role that may not share this profile must not be offered the sharing form")
 
 	rec := post(t, h, "/profiles/entries/pin", url.Values{
 		"slug": {"example/platform-engineer"}, "id": {"community/postgres-migration-guard"}, "version": {"0.8.3"},

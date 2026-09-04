@@ -315,7 +315,7 @@ screen survives, because a not-found screen is a real screen.
 - [x] T117 [P] Empty-state pass: every new screen renders an empty state naming what would appear and how to bring it about, distinguishable in copy **and in markup id** from an error and from an authorisation refusal (FR-122). Follow the `am-empty-auth` precedent the catalog already set
 - [x] T118 [P] Role-gating pass: every action a role does not permit is absent or disabled with its reason across all seven screens (FR-126)
 - [ ] T119 [P] Update `README.md` — the role/credential table, the two-file compose topology, and the identity provider
-- [ ] T120 [P] Write `specs/003-usable-web-ui/quickstart.md`'s validations into the repo's own test suite where they are assertions rather than prose
+- [x] T120 [P] Write `specs/003-usable-web-ui/quickstart.md`'s validations into the repo's own test suite where they are assertions rather than prose
 - [x] T121 Delete `internal/web/fixture`'s design-mock viewer values now that every screen test supplies its own
 - [ ] T122 [P] Metrics for the paths this feature adds: sign-in outcomes, session mint failures, scan duration (001 T109's histogram now has data)
 - [ ] T123 Run the full `quickstart.md` by hand once, on a clean checkout, on `aarch64`. Every measurement in `research.md` was taken there and the stack should be proven there rather than assumed onto it

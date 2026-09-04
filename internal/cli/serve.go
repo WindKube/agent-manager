@@ -136,11 +136,12 @@ func runAPI(ctx context.Context) error {
 		Log:     log,
 		Storage: bucket.Inspector(),
 	}, api.Options{
-		Addr:           cfg.Addr,
-		PublicBaseURL:  cfg.PublicBaseURL,
-		DeviceCodeTTL:  cfg.DeviceCodeTTL,
-		DeviceTokenTTL: cfg.DeviceTokenTTL,
-		SessionTTL:     cfg.SessionTTL,
+		Addr:                  cfg.Addr,
+		PublicBaseURL:         cfg.PublicBaseURL,
+		DeviceVerificationURL: cfg.DeviceVerificationURL,
+		DeviceCodeTTL:         cfg.DeviceCodeTTL,
+		DeviceTokenTTL:        cfg.DeviceTokenTTL,
+		SessionTTL:            cfg.SessionTTL,
 	})
 
 	return server.Run(ctx)

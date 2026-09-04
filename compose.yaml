@@ -112,12 +112,14 @@ services:
       AGENT_MANAGER_DATABASE_URL: >-
         postgres://am_api:local-development-am-api@postgres:5432/agent_manager?sslmode=disable
       AGENT_MANAGER_PUBLIC_BASE_URL: http://localhost:8082
+      AGENT_MANAGER_DEVICE_VERIFICATION_URL: http://localhost:8080/cli
       AGENT_MANAGER_OIDC_REDIRECT_URL: http://localhost:8080/auth/callback
     # 8082 on the host, 8081 in the container. 8081 is a popular port on a
     # developer's machine and losing the whole stack to something already bound
     # there is not worth the symmetry. PUBLIC_BASE_URL above must name the HOST
-    # port: it is what the device flow prints for a person to open and what the
-    # emitted OpenAPI document advertises as this hub's server.
+    # port: it is what the emitted OpenAPI document advertises as this hub's
+    # server. DEVICE_VERIFICATION_URL is the web role's /cli screen, where a
+    # person actually types the device code in.
     ports:
       - "8082:8081"
     restart: unless-stopped

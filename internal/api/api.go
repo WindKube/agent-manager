@@ -100,6 +100,9 @@ type Options struct {
 	// document's single server entry and is what the device flow's
 	// verification_uri is built from.
 	PublicBaseURL string
+	// DeviceVerificationURL is the page a human opens to enter the device code —
+	// the web role's /cli screen, not this role's own origin.
+	DeviceVerificationURL string
 	// DeviceCodeTTL and DeviceTokenTTL are advertised by the device endpoints.
 	DeviceCodeTTL  time.Duration
 	DeviceTokenTTL time.Duration

@@ -57,6 +57,10 @@ type API struct {
 	DeviceCodeTTL    time.Duration `env:"DEVICE_CODE_TTL" envDefault:"10m"`
 	DeviceTokenTTL   time.Duration `env:"DEVICE_TOKEN_TTL" envDefault:"1h"`
 	PublicBaseURL    string        `env:"PUBLIC_BASE_URL" envDefault:"http://localhost:8081"`
+	// DeviceVerificationURL is the web role's /cli screen — the page a human
+	// opens to type in the device code. It is NOT derived from PublicBaseURL
+	// (this role's own origin, which serves no such page) or from the request.
+	DeviceVerificationURL string `env:"DEVICE_VERIFICATION_URL" envDefault:"http://localhost:8080/cli"`
 	// SessionMintSecret authenticates the one operation whose caller is a role
 	// rather than a person: the web role asking for a session to be created. It
 	// is the single value both roles hold, so a typo in one role's environment

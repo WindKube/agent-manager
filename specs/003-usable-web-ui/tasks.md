@@ -239,18 +239,18 @@ through the browser. Five routes still show placeholders.
 **Independent Test**: build a profile from registered packages through the UI alone, toggle a
 pin, publish a revision, and assert `amctl sync` writes exactly what the screen displayed.
 
-- [ ] T078 [P] [US5] `GET /v1/profiles/{slug}` in `internal/api/queries/profile_detail.go` — entries, resolved versions, each entry's scan state, and **the gate's effect computed by calling the existing resolution logic**, not by restating the gate rules in a query. Two implementations of the gate is how the screen and the CLI start disagreeing
-- [ ] T079 [P] [US5] `POST /v1/profiles` in `internal/api/commands/profiles.go`
-- [ ] T080 [US5] `PUT /v1/profiles/{slug}/entries` — float or pin per package, not durable until a revision is published (001 US5 scenario 1)
-- [ ] T081 [P] [US5] `PUT /v1/profiles/{slug}/sharing` — members and identity-provider groups at the four role levels, forks not inheriting future revisions (001 FR-038)
-- [ ] T082 [P] [US5] `PUT /v1/profiles/{slug}/targets` — targets affect only what a client writes, never what the server stores (001 US5 scenario 7)
-- [ ] T083 [US5] `POST /v1/profiles/{slug}/revisions` — a new sequential immutable revision; the previous stays readable; republishing a number is refused, not overwritten (principle IV)
-- [ ] T084 [US5] Regenerate the client and add the operations to `internal/web/hub/`
+- [x] T078 [P] [US5] `GET /v1/profiles/{slug}` in `internal/api/queries/profile_detail.go` — entries, resolved versions, each entry's scan state, and **the gate's effect computed by calling the existing resolution logic**, not by restating the gate rules in a query. Two implementations of the gate is how the screen and the CLI start disagreeing
+- [x] T079 [P] [US5] `POST /v1/profiles` in `internal/api/commands/profiles.go`
+- [x] T080 [US5] `PUT /v1/profiles/{slug}/entries` — float or pin per package, not durable until a revision is published (001 US5 scenario 1)
+- [x] T081 [P] [US5] `PUT /v1/profiles/{slug}/sharing` — members and identity-provider groups at the four role levels, forks not inheriting future revisions (001 FR-038)
+- [x] T082 [P] [US5] `PUT /v1/profiles/{slug}/targets` — targets affect only what a client writes, never what the server stores (001 US5 scenario 7)
+- [x] T083 [US5] `POST /v1/profiles/{slug}/revisions` — a new sequential immutable revision; the previous stays readable; republishing a number is refused, not overwritten (principle IV)
+- [x] T084 [US5] Regenerate the client and add the operations to `internal/web/hub/`
 - [x] T085 [US5] Write `internal/web/components/profiles.templ` and `internal/web/view/profiles.go` — the list, with each profile's package count, visibility and latest revision, showing exactly the readable set (001 FR-044)
 - [x] T086 [US5] Write the profile detail screen — per-entry pin toggle, scan state, the policy note stating what the gate did, sharing, targets, and publish
 - [x] T087 [US5] Delete the `/profiles` and `/profiles/:slug` entries from the `placeholders` list in `internal/web/web.go`
 - [x] T088 [US5] Wire the profiles sidebar badge to the readable-profile count from T069
-- [ ] T089 [P] [US5] Integration test asserting each of 001 US5 scenarios 2, 3 and 4 — one per gate mode — changes what resolves, and that the screen's policy note matches
+- [x] T089 [P] [US5] Integration test asserting each of 001 US5 scenarios 2, 3 and 4 — one per gate mode — changes what resolves, and that the screen's policy note matches
 - [ ] T090 [P] [US5] End-to-end test: publish a revision through the UI, run the real CLI's sync, assert what it writes matches what the screen displayed
 
 **Checkpoint**: three routes still show placeholders.

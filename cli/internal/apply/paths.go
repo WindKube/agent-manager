@@ -14,10 +14,10 @@ import (
 // renaming things next to somebody's files.
 var ErrDest = errors.New("unusable install destination")
 
-// dirPerm and markerPerm are requested, not enforced: the umask applies on top,
-// and that is deliberate. R4 records the fingerprint mode from lstat on the file
-// as written, so a mode this process could not actually produce must never be
-// forced here.
+// dirPerm and markerPerm are requested, not enforced: the umask applies on
+// top, and that is deliberate. The fingerprint records the mode from lstat
+// on the file as written, so a mode this process could not actually produce
+// must never be forced here.
 const (
 	dirPerm    os.FileMode = 0o755
 	markerPerm os.FileMode = 0o644
@@ -55,13 +55,13 @@ func splitDest(dest string) (parent, name string, err error) {
 // relInParent returns p as a name usable against a root opened at parent, and
 // refuses anything that is not underneath it.
 //
-// This is the structural half of gate R3's cross-device finding. An atomic
-// install by rename requires the staged tree and the destination on one
-// filesystem, and the only construction that guarantees that is a sibling —
-// hence layout.StagingRoot. A path elsewhere in the tree may happen to be on the
-// same filesystem today and will not be on the machine where ~/.claude is a
-// symlink into a dotfiles repo on another mount, so it is refused here rather
-// than left to fail as EXDEV on somebody else's laptop.
+// An atomic install by rename requires the staged tree and the destination
+// on one filesystem, and the only construction that guarantees that is a
+// sibling — hence layout.StagingRoot. A path elsewhere in the tree may
+// happen to be on the same filesystem today and will not be on a machine
+// where ~/.claude is a symlink into a dotfiles repo on another mount, so it
+// is refused here rather than left to fail as EXDEV on somebody else's
+// laptop.
 func relInParent(parent, p, dest string) (string, error) {
 	if p == "" {
 		return "", fmt.Errorf("%w: no staged tree was given for %s", ErrStagingPlacement, dest)

@@ -1,51 +1,50 @@
 package apply
 
-// This file is T042: execute a plan.Plan. It is the only thing in amctl that
-// puts a package on disk, and the ORDER below is the whole of FR-024, FR-025
-// and FR-028. Read it before changing anything here.
+// This file executes a plan.Plan. It is the only thing in amctl that puts a
+// package on disk, and the order below matters:
 //
 //	per entry:  contain -> guard -> fetch -> stage -> hash -> SWAP -> RECORD
 //	per run:    refuse on conflicts BEFORE the first entry; prune staging last
 //
-// WHY THE RECORD IS LAST, AND WHY IT IS PER ENTRY. Last, because a record
-// written before the swap describes a tree that does not exist yet, and a crash
-// between the two leaves a lie on disk that prune would act on. Per entry, and
-// not once at the end, because the interruption case has to CONVERGE: a run
-// killed after entry three's swap must leave three recorded entries, not three
-// unrecorded directories that the next run's FR-028 guard would then refuse as
-// somebody else's files. record.Save writes nothing when the bytes are
+// The record is written last, and per entry. Last, because a record written
+// before the swap describes a tree that does not exist yet, and a crash
+// between the two leaves a lie on disk that prune would act on. Per entry,
+// and not once at the end, because the interruption case has to converge: a
+// run killed after entry three's swap must leave three recorded entries, not
+// three unrecorded directories that the next run's guard would then refuse
+// as somebody else's files. record.Save writes nothing when the bytes are
 // unchanged, so the per-entry write costs nothing on an idempotent run.
 //
-// The residual one-entry window — swap done, record write not yet — is closed by
-// the FR-022 marker: a destination carrying amctl's own marker for the same id
-// and target is amctl's leftover from an interrupted run and is adopted rather
-// than refused. That is the only place a marker influences a decision, and it
-// influences an OVERWRITE, never a removal. Prune consults state.json and
-// nothing else (FR-028).
+// The residual one-entry window — swap done, record write not yet — is
+// closed by the provenance marker: a destination carrying amctl's own
+// marker for the same id and target is amctl's leftover from an interrupted
+// run and is adopted rather than refused. That is the only place a marker
+// influences a decision, and it influences an overwrite, never a removal.
+// Prune consults state.json and nothing else.
 //
-// WHAT THIS FILE DELIBERATELY DOES NOT DO:
+// What this file deliberately does not do:
 //
-//   - It does not download. Bundle bytes arrive through BundleSource, already
-//     digest-verified (FR-014) by internal/hub, which is the only place that
-//     check may live. Nothing here re-checks it and nothing here may accept an
-//     io.Reader, because a reader is something a caller could hand over
+//   - It does not download. Bundle bytes arrive through BundleSource,
+//     already digest-verified by internal/hub, which is the only place that
+//     check may live. Nothing here re-checks it and nothing here may accept
+//     an io.Reader, because a reader is something a caller could hand over
 //     unverified.
-//   - It does not resolve a version, order two versions or read a range
-//     (FR-009). Change.Version is carried verbatim from the hub's lockfile into
-//     the marker and the record.
-//   - It does not compute a destination. Change.Dest comes from internal/layout
-//     through internal/plan, both pure. This file checks the destination and
-//     writes to it.
-//   - It does not remove anything from the agent tree. Removals are T048's
+//   - It does not resolve a version, order two versions or read a range.
+//     Change.Version is carried verbatim from the hub's lockfile into the
+//     marker and the record.
+//   - It does not compute a destination. Change.Dest comes from
+//     internal/layout through internal/plan, both pure. This file checks
+//     the destination and writes to it.
+//   - It does not remove anything from the agent tree. Removals are
 //     prune.go, reached through the Pruner seam; with no pruner wired, a
-//     planned removal is REPORTED AS NOT DONE and makes the run's error
-//     non-nil. A sync that reports success while having removed nothing is the
-//     failure this package exists to prevent.
-//   - It does not hash a tree. R4's fingerprint is internal/record's algorithm
-//     (T049), reached through the Fingerprinter seam. With no fingerprinter,
-//     entries are recorded unfingerprinted — which the record permits and which
-//     later reads as "unverifiable", i.e. a refusal naming --force, never an
-//     assumption of unmodified.
+//     planned removal is reported as not done and makes the run's error
+//     non-nil. A sync that reports success while having removed nothing is
+//     the failure this package exists to prevent.
+//   - It does not hash a tree. The fingerprint is internal/record's
+//     algorithm, reached through the Fingerprinter seam. With no
+//     fingerprinter, entries are recorded unfingerprinted, which the record
+//     permits and which later reads as "unverifiable", i.e. a refusal
+//     naming --force, never an assumption of unmodified.
 
 import (
 	"context"
@@ -63,25 +62,25 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/record"
 )
 
-// ErrOutsideHome is FR-020: a destination whose RESOLVED path is not inside the
+// ErrOutsideHome marks a destination whose resolved path is not inside the
 // invoking user's home. See Home for what "resolved" means and why it is not
 // the same question as "is this path lexically under $HOME".
 var ErrOutsideHome = errors.New("destination resolves outside the invoking user's home")
 
-// ErrUnrecorded is FR-028: something is at the destination and amctl's own
-// record does not claim it. Overwriting it would destroy a file amctl did not
-// write, which is the one thing the record exists to make impossible.
+// ErrUnrecorded marks a destination where something exists and amctl's own
+// record does not claim it. Overwriting it would destroy a file amctl did
+// not write, which is the one thing the record exists to make impossible.
 var ErrUnrecorded = errors.New("destination exists and is not in amctl's installation record")
 
-// ErrModified is FR-029: the destination is amctl's, and it has changed since
+// ErrModified marks a destination that is amctl's, and has changed since
 // amctl wrote it. The entry is preserved and reported.
 var ErrModified = errors.New("destination has been modified since it was installed")
 
-// ErrUnverifiable is FR-029's fail-closed half: the destination is amctl's, and
-// whether it has changed CANNOT be established — the record carries no
-// fingerprint, or this build has no verifier for the one it carries. Assuming
-// unmodified is the direction that deletes somebody's work, so it is not
-// available; the refusal names --force.
+// ErrUnverifiable is the fail-closed case: the destination is amctl's, and
+// whether it has changed cannot be established — the record carries no
+// fingerprint, or this build has no verifier for the one it carries.
+// Assuming unmodified is the direction that deletes somebody's work, so it
+// is not available; the refusal names --force.
 var ErrUnverifiable = errors.New("destination cannot be verified as unmodified")
 
 // ErrPruneUnavailable is what a planned removal becomes in a build with no
@@ -105,55 +104,56 @@ type Logger interface {
 //
 // It takes a plan.Change and not a URL, an id or a hub reference, because
 // building the bundle path is internal/hub's — and the bundle path's
-// `{publisher}` parameter is the NAMESPACE, a trap this package must not be in
-// a position to fall into. The caller (internal/cmd/sync.go) holds the lockfile
-// entries that hub.ParseBundleRef needs and is the right place to pair them
-// with a downloader.
+// `{publisher}` parameter is the namespace, a trap this package must not be
+// in a position to fall into. The caller (internal/cmd/sync.go) holds the
+// lockfile entries that hub.ParseBundleRef needs and is the right place to
+// pair them with a downloader.
 //
-// The contract on the returned bytes: they hash to Change.Digest, and that was
-// checked before they were handed over (FR-014). Nothing here verifies it
-// again, so an implementation that skips the check breaks FR-014 silently.
+// The contract on the returned bytes: they hash to Change.Digest, and that
+// was checked before they were handed over. Nothing here verifies it again,
+// so an implementation that skips the check breaks that guarantee silently.
 type BundleSource interface {
 	Bundle(ctx context.Context, c plan.Change) ([]byte, error)
 }
 
-// Fingerprinter is internal/record's R4 mechanism (T049), injected because the
-// algorithm belongs to the record and the record must be able to change it
-// without this file knowing.
+// Fingerprinter is internal/record's fingerprinting mechanism, injected
+// because the algorithm belongs to the record and the record must be able
+// to change it without this file knowing.
 //
-// It is two calls because R4 requires two moments and they are not
-// interchangeable: content is hashed from the STAGED tree, before the swap,
+// It is two calls because that requires two moments and they are not
+// interchangeable: content is hashed from the staged tree, before the swap,
 // where the extractor's caps have just bounded what can be read; permission
-// bits and kinds are read with lstat from the entry AS ACTUALLY WRITTEN, after
-// the swap, never from the archive header — measured, under umask 0027 a
-// requested 0755 lands as 0750, so recording the header's mode reports a mode
-// conflict on every executable file on the very next sync.
+// bits and kinds are read with lstat from the entry as actually written,
+// after the swap, never from the archive header — measured, under umask
+// 0027 a requested 0755 lands as 0750, so recording the header's mode
+// reports a mode conflict on every executable file on the very next sync.
 type Fingerprinter interface {
 	Hash(staged *Staged) (record.Fingerprint, error)
 	Modes(dest string, fp record.Fingerprint) (record.Fingerprint, error)
 }
 
-// Verifier answers FR-029 for an entry the record already claims.
+// Verifier answers whether an entry the record already claims has been
+// modified.
 //
-// Modifications names every path under e.Dest that differs from what the record
-// says was installed, entry-root-relative. An empty slice means unmodified, and
-// only that verdict permits an overwrite; an error means unverifiable, which is
-// a refusal.
+// Modifications names every path under e.Dest that differs from what the
+// record says was installed, entry-root-relative. An empty slice means
+// unmodified, and only that verdict permits an overwrite; an error means
+// unverifiable, which is a refusal.
 type Verifier interface {
 	Modifications(e record.Entry) ([]string, error)
 }
 
-// Pruner executes one planned removal (T048's prune.go, FR-027/FR-028). It
-// reports whether anything was removed from disk.
+// Pruner executes one planned removal (prune.go). It reports whether
+// anything was removed from disk.
 type Pruner interface {
 	Remove(ctx context.Context, r plan.Removal) (bool, error)
 }
 
-// ProfileState is what the record needs about a profile and the plan does not
-// carry: the resolved revision and the targets actually written.
+// ProfileState is what the record needs about a profile and the plan does
+// not carry: the resolved revision and the targets actually written.
 //
-// Revision must be the RESOLVED number (FR-013). `head` is a request, not a
-// state, and record.Profile refuses anything below 1.
+// Revision must be the resolved number. `head` is a request, not a state,
+// and record.Profile refuses anything below 1.
 type ProfileState struct {
 	Slug     string
 	Revision int
@@ -183,8 +183,8 @@ type Config struct {
 
 	// Now defaults to time.Now. It stamps Profile.InstalledAt, and only when
 	// the profile's entries or revision actually change: refreshing it on an
-	// unchanged sync would rewrite state.json on every run and make FR-025
-	// false of the record while being true of the tree.
+	// unchanged sync would rewrite state.json on every run and make
+	// idempotence false of the record while being true of the tree.
 	Now func() time.Time
 
 	// Continue is asked, before each entry, whether this run may still write.
@@ -255,11 +255,11 @@ type EntryError struct {
 
 	Err error
 
-	// Refusal marks a failure that happened BEFORE anything was staged and that
-	// the user can act on: a containment failure, an unrecorded destination, an
-	// unverifiable or modified destination. internal/cmd maps it to FR-036's
-	// "refusal the user can fix" exit code; everything else is an unexpected
-	// failure.
+	// Refusal marks a failure that happened before anything was staged and
+	// that the user can act on: a containment failure, an unrecorded
+	// destination, an unverifiable or modified destination. internal/cmd
+	// maps it to the "refusal the user can fix" exit code; everything else
+	// is an unexpected failure.
 	Refusal bool
 }
 
@@ -277,9 +277,8 @@ func (e *EntryError) Error() string {
 
 func (e *EntryError) Unwrap() error { return e.Err }
 
-// Result is what one Apply did, entry by entry. It is the input to the partial
-// report a failed sync owes (plan.md Risks): which entries landed, which are
-// untouched, and why.
+// Result is what one Apply did, entry by entry: which entries landed, which
+// are untouched, and why.
 type Result struct {
 	Installed []Installed
 	Unchanged []plan.Change
@@ -305,9 +304,9 @@ type Result struct {
 	// entry fails on Swap's step 1.
 	Leftovers []string
 
-	// RecordWrites counts the times state.json actually changed on disk. Zero
-	// on a fully idempotent run, which is what makes FR-025 assertable about
-	// the record and not only about the tree.
+	// RecordWrites counts the times state.json actually changed on disk.
+	// Zero on a fully idempotent run, which is what makes idempotence
+	// assertable about the record and not only about the tree.
 	RecordWrites int
 }
 
@@ -344,10 +343,9 @@ func (r *Result) Err() error {
 // Result is the partial report, and discarding it loses the account of what
 // landed.
 //
-// A plan with conflicts is refused before a single byte is staged (FR-012,
-// FR-023, R2's unwritable target). That check is first for a reason — a
-// version-split conflict discovered halfway through has already installed one
-// of the two versions.
+// A plan with conflicts is refused before a single byte is staged. That
+// check is first for a reason: a version-split conflict discovered halfway
+// through has already installed one of the two versions.
 func (a *Applier) Apply(ctx context.Context, p plan.Plan) (*Result, error) {
 	res := &Result{}
 	if p.Refuses() {
@@ -357,23 +355,23 @@ func (a *Applier) Apply(ctx context.Context, p plan.Plan) (*Result, error) {
 		return res, err
 	}
 
-	// An entry the plan calls unchanged is unchanged ACCORDING TO THE RECORD,
-	// which is the only thing the plan can consult: internal/plan is a pure
-	// function of the lockfile, the record and the comparer, deliberately (see
-	// plan/doc.go). The disk is not one of its inputs, so a destination that is
-	// GONE while the record still names the locked version arrives here labelled
-	// "unchanged", and copying it into the result reports success over an empty
-	// path — the failure FR-021 calls the worst this tool can have.
+	// An entry the plan calls unchanged is unchanged according to the
+	// record, which is the only thing the plan can consult: internal/plan
+	// is a pure function of the lockfile, the record and the comparer,
+	// deliberately (see plan/doc.go). The disk is not one of its inputs, so
+	// a destination that is gone while the record still names the locked
+	// version arrives here labelled "unchanged", and copying it into the
+	// result would report success over an empty path.
 	//
-	// SC-008 is what makes this a defect rather than a nicety: the install tree
-	// must match the lockfile after a sync interrupted at any point and re-run,
-	// and a kill after the record write and before the staging discard leaves
-	// exactly this state. guard() already knows the answer — given a From and no
-	// destination it warns and re-installs — so the fix is to let those entries
-	// reach it rather than to restate the rule here.
+	// The install tree must match the lockfile after a sync interrupted at
+	// any point and re-run, and a kill after the record write and before
+	// the staging discard leaves exactly this state. guard() already knows
+	// the answer — given a From and no destination it warns and
+	// re-installs — so the fix is to let those entries reach it rather than
+	// to restate the rule here.
 	//
-	// FR-025 still holds: this adds one Lstat per unchanged entry and no write
-	// when the destination is there.
+	// Idempotence still holds: this adds one Lstat per unchanged entry and
+	// no write when the destination is there.
 	unchanged, gone := a.presentAndGone(p.Unchanged)
 	res.Unchanged = unchanged
 	writes := p.Writes()
@@ -531,9 +529,10 @@ func (a *Applier) install(ctx context.Context, c plan.Change, cont Contained) (*
 	}, nil
 }
 
-// hash takes R4's content half from the staged tree. A fingerprinter that fails
-// FAILS THE ENTRY: an entry installed with no fingerprint can never be checked
-// for modification afterwards, so continuing would trade FR-029 for one install.
+// hash takes the content half of the fingerprint from the staged tree. A
+// fingerprinter that fails fails the entry: an entry installed with no
+// fingerprint can never be checked for modification afterwards, so
+// continuing would trade that guarantee for one install.
 func (a *Applier) hash(staged *Staged) (record.Fingerprint, error) {
 	if a.cfg.Fingerprints == nil {
 		return record.Fingerprint{}, nil
@@ -545,12 +544,13 @@ func (a *Applier) hash(staged *Staged) (record.Fingerprint, error) {
 	return fp, nil
 }
 
-// modes fills in the lstat half, AFTER the swap. A failure here does NOT fail
-// the entry — the entry is installed and readable, and failing it would report a
-// broken install for a working one — but the fingerprint is then dropped rather
-// than half-written, because a partial fingerprint would report every unrecorded
-// file as an addition on the next run. An absent fingerprint reads as
-// unverifiable, which is a refusal naming --force: the safe direction.
+// modes fills in the lstat half, after the swap. A failure here does not
+// fail the entry — the entry is installed and readable, and failing it
+// would report a broken install for a working one — but the fingerprint is
+// then dropped rather than half-written, because a partial fingerprint
+// would report every unrecorded file as an addition on the next run. An
+// absent fingerprint reads as unverifiable, which is a refusal naming
+// --force: the safe direction.
 func (a *Applier) modes(c plan.Change, fp record.Fingerprint) record.Fingerprint {
 	if a.cfg.Fingerprints == nil {
 		return record.Fingerprint{}
@@ -571,18 +571,18 @@ func (a *Applier) discard(c plan.Change, staged *Staged) {
 	}
 }
 
-// markerFor builds FR-022's provenance marker.
+// markerFor builds the provenance marker.
 //
-// The marker is assembled here rather than carried on the plan because the plan
-// is pure and the marker is a file: layout owns its shape (Marker, its schema
-// version and MarkerFileName), this owns writing it. It is written INTO the
-// staged tree so it arrives with the same single rename as the rest of the entry
-// (FR-024) and is inside R4's fingerprint of the tree as installed.
+// The marker is assembled here rather than carried on the plan because the
+// plan is pure and the marker is a file: layout owns its shape (Marker, its
+// schema version and MarkerFileName), this owns writing it. It is written
+// into the staged tree so it arrives with the same single rename as the
+// rest of the entry and is inside the fingerprint of the tree as installed.
 //
-// MarkerFileName assumes the entry root is a DIRECTORY, which is true of every
-// shipped target — R2 ships claude-code skills only. A target whose unit is a
-// single file needs a decision about where its provenance goes, and this is the
-// line that has to change; it is not a silent assumption elsewhere.
+// MarkerFileName assumes the entry root is a directory, which is true of
+// every shipped target today. A target whose unit is a single file needs a
+// decision about where its provenance goes, and this is the line that has
+// to change; it is not a silent assumption elsewhere.
 func markerFor(c plan.Change) ([]byte, error) {
 	m := layout.Marker{
 		SchemaVersion: layout.MarkerSchemaVersion,
@@ -599,9 +599,9 @@ func markerFor(c plan.Change) ([]byte, error) {
 	return b, nil
 }
 
-// guard is FR-028 and FR-029 at the one moment they can be enforced: after the
-// destination has been proven to be inside the home and before anything is
-// staged into it.
+// guard enforces the record and modification checks at the one moment they
+// can be: after the destination has been proven to be inside the home and
+// before anything is staged into it.
 //
 // Swap is unconditional by design — it replaces whatever is at the destination,
 // including a symlink — so this function is the only thing standing between a
@@ -622,11 +622,12 @@ func (a *Applier) guard(c plan.Change, cont Contained) error {
 		return nil
 
 	case st.symlink:
-		// amctl never creates a symlink at a destination — extraction refuses
-		// symlink members (FR-019) — so this is somebody else's. It is refused
-		// rather than followed, and replaced rather than written through when
-		// --force is given: following it is exactly how amctl would write
-		// outside the home without ever constructing a path outside it.
+		// amctl never creates a symlink at a destination — extraction
+		// refuses symlink members — so this is somebody else's. It is
+		// refused rather than followed, and replaced rather than written
+		// through when --force is given: following it is exactly how amctl
+		// would write outside the home without ever constructing a path
+		// outside it.
 		return a.override(fmt.Errorf("%w: %s is a symlink to %s, which amctl did not create",
 			ErrUnrecorded, c.Dest, orUnknown(st.linkTarget)),
 			"%s: --force is replacing the symlink %s -> %s; whatever it points at is left alone",
@@ -648,38 +649,35 @@ func (a *Applier) guard(c plan.Change, cont Contained) error {
 	case st.marker != nil && st.marker.ID == c.ID && st.marker.Target == c.Target &&
 		st.marker.Version == c.Version && st.marker.Digest == c.Digest &&
 		(c.From.Version != c.Version || c.From.Digest != c.Digest):
-		// The record and the tree disagree, and the TREE is already exactly what
-		// this change installs. The only thing that produces that state is a run
-		// killed between the swap and the record write, and the FR-022 marker —
-		// amctl's own file, written into the staged tree before the swap — is
-		// the proof.
+		// The record and the tree disagree, and the tree is already exactly
+		// what this change installs. The only thing that produces that
+		// state is a run killed between the swap and the record write, and
+		// the provenance marker — amctl's own file, written into the staged
+		// tree before the swap — is the proof.
 		//
-		// The branch above does the same for an entry the record does not claim
-		// at all; this is the same interruption on a WRITE, where the record
-		// still names what was there before. Without it, verifyUnmodified demands
-		// a positive unmodified verdict for bytes that are no longer on disk,
-		// gets none, and refuses — so `sync` exits non-zero forever on a machine
-		// whose tree is already correct, until a human passes --force. T046
-		// measured exactly that.
+		// The branch above does the same for an entry the record does not
+		// claim at all; this is the same interruption on a write, where the
+		// record still names what was there before. Without it,
+		// verifyUnmodified demands a positive unmodified verdict for bytes
+		// that are no longer on disk, gets none, and refuses — so `sync`
+		// exits non-zero forever on a machine whose tree is already
+		// correct, until a human passes --force.
 		//
-		// THE PREDICATE IS "the marker names this exact change and the record
-		// does not", not "the versions differ". The version inequality alone was
-		// wrong on plan.OpReplace: the hub may republish one version with new
-		// bytes, and plan.change emits a write for it whose From.Version EQUALS
-		// c.Version and whose From.Digest does not. That write is a real
-		// interruption case and the version test could not see it, so the
-		// republish refused forever — the same non-convergence this branch was
-		// added to remove. Comparing DIGESTS on both sides covers upgrade,
-		// downgrade and republish with one rule.
+		// The predicate is "the marker names this exact change and the
+		// record does not", not "the versions differ". The version
+		// inequality alone was wrong on plan.OpReplace: the hub may
+		// republish one version with new bytes, and plan.change emits a
+		// write for it whose From.Version equals c.Version and whose
+		// From.Digest does not. Comparing digests on both sides covers
+		// upgrade, downgrade and republish with one rule.
 		//
-		// The guard is deliberately narrow, and comparing the marker's digest
-		// makes it narrower than the version test was rather than wider: the
-		// tree must be byte-for-byte the install this change would perform. It
-		// never widens to "the marker says it is ours, so overwrite" — that
-		// would silence verifyUnmodified for every upgrade and hand back the
-		// user-edit protection it exists to give. The record-and-tree
-		// disagreement is what keeps it to the interrupted case: when the two
-		// agree there is no change to apply at all.
+		// The guard is deliberately narrow: the tree must be byte-for-byte
+		// the install this change would perform. It never widens to "the
+		// marker says it is ours, so overwrite" — that would silence
+		// verifyUnmodified for every upgrade and hand back the user-edit
+		// protection it exists to give. The record-and-tree disagreement is
+		// what keeps it to the interrupted case: when the two agree there
+		// is no change to apply at all.
 		a.cfg.Log.Warnf("%s: %s already holds %s and amctl's marker for it, but the record still names %s; "+
 			"a previous sync was interrupted between the install and the record write, so the record is being caught up",
 			c.ID, c.Dest, c.Version, describeFrom(c))
@@ -762,13 +760,13 @@ type destState struct {
 	marker     *layout.Marker
 }
 
-// inspectDest lstats the destination and, when it is a directory, reads the
-// FR-022 marker out of it.
+// inspectDest lstats the destination and, when it is a directory, reads
+// the marker out of it.
 //
-// The marker is read through an *os.Root opened on the destination, so a symlink
-// planted where the marker should be cannot make amctl read a file elsewhere.
-// presentAndGone splits the changes the plan called unchanged by whether the
-// destination the record claims is actually there.
+// The marker is read through an *os.Root opened on the destination, so a
+// symlink planted where the marker should be cannot make amctl read a file
+// elsewhere. presentAndGone splits the changes the plan called unchanged by
+// whether the destination the record claims is actually there.
 //
 // A path that cannot be INSPECTED counts as present. Guessing "absent" from a
 // failed Lstat would reinstall over something this function could not identify,
@@ -834,8 +832,8 @@ func inspectDest(cont Contained) (destState, error) {
 	return st, nil
 }
 
-// applyRemovals routes the plan's removals: the ones the plan itself resolved by
-// dropping a record row, and the ones that need prune.go.
+// applyRemovals routes the plan's removals: the ones the plan itself
+// resolved by dropping a record row, and the ones that need prune.go.
 func (a *Applier) applyRemovals(ctx context.Context, p plan.Plan, res *Result) {
 	for i := range p.Remove {
 		r := p.Remove[i]
@@ -1002,35 +1000,33 @@ func upsertEntry(entries []record.Entry, e record.Entry) []record.Entry {
 }
 
 // pruneStaging removes the shared .amctl-staging directory beside each
-// destination this run touched, once, and only when it is empty. Best effort: an
-// empty directory left behind is tidiness, not correctness.
+// destination this run touched, once, and only when it is empty. Best
+// effort: an empty directory left behind is tidiness, not correctness.
+//
 // sweepAsides removes the `.amctl-old` beside every destination this plan
 // mentions, and it is the reason a failed step 5 is survivable.
 //
-// THE BUG THIS EXISTS FOR. Swap's step 5 is non-fatal — an open handle or a
-// permission quirk in the OLD tree must not fail an install that already
-// landed — and the only other code that removes an aside is Swap's step 1,
-// which runs solely when an entry is being WRITTEN. Once the record write lands
-// the entry is Unchanged on every later run, so Swap is never called for it
-// again and the leftover is permanent: a complete copy of the old version
-// sitting in ~/.claude/skills beside the live one, which the agent may well
-// load. Worse, step 1 is FATAL on an aside it cannot remove, so the entry then
+// Swap's step 5 is non-fatal — an open handle or a permission quirk in the
+// old tree must not fail an install that already landed — and the only
+// other code that removes an aside is Swap's step 1, which runs solely when
+// an entry is being written. Once the record write lands the entry is
+// Unchanged on every later run, so Swap is never called for it again and
+// the leftover is permanent: a complete copy of the old version sitting in
+// ~/.claude/skills beside the live one, which the agent may well load.
+// Worse, step 1 is fatal on an aside it cannot remove, so the entry then
 // refuses every future change until somebody deletes the directory by hand.
+// Sweeping the whole plan rather than only its writes is what closes that:
+// a converged run still passes through here.
 //
-// Sweeping the whole plan rather than only its writes is what closes that: a
-// converged run still passes through here, and convergence is exactly the state
-// the leftover survives into.
-//
-// WHAT IT REFUSES TO DO. It never removes an aside whose destination is ABSENT.
-// That is the one shape in which the aside holds the only complete copy of the
-// entry — a crash in Swap's single-rename window between steps 2 and 3 — and
-// Swap's step 1 reclaims it by renaming it back. Deleting it here would destroy
+// It never removes an aside whose destination is absent. That is the one
+// shape in which the aside holds the only complete copy of the entry — a
+// crash in Swap's single-rename window between steps 2 and 3 — and Swap's
+// step 1 reclaims it by renaming it back. Deleting it here would destroy
 // the version the record claims. It also runs every path through
-// Home.Contains first, so FR-020 is checked on the resolved path before
-// anything is unlinked, and it derives the path as dest+AsideSuffix rather than
-// by listing the directory, so what it may remove stays exactly
-// record.Entry.RemovablePaths() and FR-028 holds by construction (FR-028's
-// failure mode is a glob that matches somebody's hand-written skill).
+// Home.Contains first, and it derives the path as dest+AsideSuffix rather
+// than by listing the directory, so what it may remove stays exactly
+// record.Entry.RemovablePaths() — a glob here could match somebody's
+// hand-written skill.
 func (a *Applier) sweepAsides(p plan.Plan, res *Result) {
 	res.Leftovers = nil
 	for _, dest := range plannedDests(p) {
@@ -1123,54 +1119,52 @@ func (a *Applier) pruneStaging(p plan.Plan) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// FR-020 containment
-// ---------------------------------------------------------------------------
-
-// Home is the invoking user's home directory, and the answer to FR-020: amctl
-// installs under it and writes nothing outside it.
+// Home is the invoking user's home directory: amctl installs under it and
+// writes nothing outside it.
 //
-// THE CHECK IS ON THE RESOLVED PATH, NOT THE REQUESTED ONE. An agent directory
-// is frequently a symlink into a dotfiles repo, so `$HOME/.claude/skills/x` says
-// nothing about where the bytes land; `~/.claude -> /etc/whatever` is precisely
-// how amctl would write outside the home without ever constructing a path
-// outside it. Contains therefore resolves the deepest EXISTING prefix of a
-// destination and requires THAT to be inside the resolved home.
+// The check is on the resolved path, not the requested one. An agent
+// directory is frequently a symlink into a dotfiles repo, so
+// `$HOME/.claude/skills/x` says nothing about where the bytes land;
+// `~/.claude -> /etc/whatever` is precisely how amctl would write outside
+// the home without ever constructing a path outside it. Contains therefore
+// resolves the deepest existing prefix of a destination and requires that
+// to be inside the resolved home.
 //
-// WHY THIS IS NOT os.Root DOING IT STRUCTURALLY, WHICH IS THE OBVIOUS DESIGN
-// AND IS WRONG. Measured on go1.26, linux/arm64, with a root opened on the home:
+// This is not os.Root doing it structurally, which is the obvious design
+// and is wrong. Measured on go1.26, linux/arm64, with a root opened on the
+// home:
 //
 //	~/.x -> dotfiles/claude          (relative, inside)  Root.Lstat  -> nil
 //	~/.x -> ../outside               (relative, escapes) Root.Lstat  -> "path escapes from parent"
 //	~/.x -> /home/u/dotfiles/claude  (ABSOLUTE, inside)  Root.Lstat  -> "path escapes from parent"
 //
-// os.Root refuses every ABSOLUTE symlink target, wherever it points, because it
-// has no way to re-anchor an absolute path inside the root. `ln -s
-// ~/dotfiles/claude ~/.claude` expands to an absolute target, so a structural
-// root check on the home would refuse the commonest dotfiles setup there is —
-// the exact case R3 says must keep working, and the case that turns a
-// containment check into "no symlinks". So the entry-root check is
+// os.Root refuses every absolute symlink target, wherever it points,
+// because it has no way to re-anchor an absolute path inside the root.
+// `ln -s ~/dotfiles/claude ~/.claude` expands to an absolute target, so a
+// structural root check on the home would refuse the commonest dotfiles
+// setup there is — the case that must keep working, and the case that
+// turns a containment check into "no symlinks". So the entry-root check is
 // filepath.EvalSymlinks plus a component-wise prefix comparison: a string
 // comparison, named as one.
 //
-// THE STRUCTURAL HALF THAT SURVIVES, and it is the larger half by volume:
-// everything BELOW a checked destination is confined by *os.Root and not by any
-// string. archive.Extract creates the staged tree through a root and refuses
-// symlink members (FR-019); Stage opens .amctl-staging through a root on the
-// parent, having lstat-ed it for a planted symlink; Swap performs every rename,
-// remove and stat through a root on the destination's parent. So the resolution
-// check governs one path per entry — the entry root — and the root governs every
-// path inside it.
+// The structural half that survives, and it is the larger half by volume:
+// everything below a checked destination is confined by *os.Root and not
+// by any string. archive.Extract creates the staged tree through a root
+// and refuses symlink members; Stage opens .amctl-staging through a root
+// on the parent, having lstat-ed it for a planted symlink; Swap performs
+// every rename, remove and stat through a root on the destination's
+// parent. So the resolution check governs one path per entry — the entry
+// root — and the root governs every path inside it.
 //
-// WHAT IS NOT CLOSED: the window between resolving a prefix and writing through
-// it. A local attacker who can create symlinks inside the agent tree while a
-// sync is running can move a checked destination afterwards. What bounds it is
-// the per-home lock (FR-038), the fact that the tree is the user's own, and
-// Swap's refusal to follow a symlink at the destination — it renames the link
-// aside and installs beside it, so a link planted at the leaf redirects nothing.
-// A TOCTOU-free version needs the destination's parent opened as a root by this
-// type and handed to Stage and Swap, which is a change to their signatures and
-// not to their behaviour.
+// What is not closed: the window between resolving a prefix and writing
+// through it. A local attacker who can create symlinks inside the agent
+// tree while a sync is running can move a checked destination afterwards.
+// What bounds it is the per-home lock, the fact that the tree is the
+// user's own, and Swap's refusal to follow a symlink at the destination —
+// it renames the link aside and installs beside it, so a link planted at
+// the leaf redirects nothing. A TOCTOU-free version needs the destination's
+// parent opened as a root by this type and handed to Stage and Swap, which
+// is a change to their signatures and not to their behaviour.
 type Home struct {
 	requested string
 	resolved  string
@@ -1184,20 +1178,20 @@ type Contained struct {
 	// and removes and re-adds the entry forever.
 	Dest string
 
-	// Resolved is Dest with every existing symlink resolved. It is what FR-020
-	// was checked on and what a diagnostic should name; nothing is written to
-	// it, because writing to it would silently bypass a symlink the user put
+	// Resolved is Dest with every existing symlink resolved. It is what was
+	// checked and what a diagnostic should name; nothing is written to it,
+	// because writing to it would silently bypass a symlink the user put
 	// there on purpose.
 	Resolved string
 }
 
 // OpenHome resolves dir and returns the containment check for it.
 //
-// dir must be absolute and must exist. Neither is checked here as a courtesy:
-// FR-039 requires the refusal for an unset or unwritable home to name the
-// variable and to happen before any network request, and that check is
-// internal/cmd.ResolveHome's. This one refuses a home it cannot resolve because
-// an unresolvable home makes every containment answer meaningless.
+// dir must be absolute and must exist. Neither is checked here as a
+// courtesy: the refusal for an unset or unwritable home naming the variable,
+// before any network request, is internal/cmd.ResolveHome's. This one
+// refuses a home it cannot resolve because an unresolvable home makes every
+// containment answer meaningless.
 func OpenHome(dir string) (*Home, error) {
 	if dir == "" {
 		return nil, fmt.Errorf("%w: no home directory given", ErrOutsideHome)

@@ -1,14 +1,15 @@
-// T042a — FR-020: nothing is written outside the invoking user's home, and the
-// check is on the RESOLVED path.
+// Nothing is written outside the invoking user's home, and the check is
+// on the resolved path.
 //
-// Symlinked agent directories are what make this a real question rather than a
-// tautology. `~/.claude` is frequently a symlink into a dotfiles repo, so a
-// destination that is lexically under $HOME says nothing about where the bytes
-// land, and `~/.claude -> /etc/whatever` is how amctl would write outside the
-// home without ever constructing a path outside it. Both directions are
-// asserted here: a link OUT is refused, a link to another place INSIDE the home
-// still works. Only asserting the first would leave a check that means "no
-// symlinks", which breaks the setup R3 says is common.
+// Symlinked agent directories are what make this a real question rather
+// than a tautology. `~/.claude` is frequently a symlink into a dotfiles
+// repo, so a destination that is lexically under $HOME says nothing about
+// where the bytes land, and `~/.claude -> /etc/whatever` is how amctl
+// would write outside the home without ever constructing a path outside
+// it. Both directions are asserted here: a link out is refused, a link to
+// another place inside the home still works. Only asserting the first
+// would leave a check that means "no symlinks", which breaks a common
+// dotfiles setup.
 //
 // The destinations in this file come from internal/layout's real registry, not
 // from a hand-written path, so what is proved is about the paths amctl actually
@@ -96,13 +97,11 @@ func syncInto(t *testing.T, home, id string) (*Result, error) {
 	return f.applier(t).Apply(context.Background(), planOf(c))
 }
 
-// ---------------------------------------------------------------------------
 // the two symlink directions
-// ---------------------------------------------------------------------------
 
-// TestSyncRefusesAnAgentDirectorySymlinkedOutOfTheHome is the FR-020 case that
-// matters: every path amctl constructs is under $HOME and the bytes would land
-// in /etc.
+// TestSyncRefusesAnAgentDirectorySymlinkedOutOfTheHome is the case that
+// matters: every path amctl constructs is under $HOME and the bytes would
+// land in /etc.
 func TestSyncRefusesAnAgentDirectorySymlinkedOutOfTheHome(t *testing.T) {
 	requireSymlinks(t)
 	f := newContainFixture(t)
@@ -123,9 +122,10 @@ func TestSyncRefusesAnAgentDirectorySymlinkedOutOfTheHome(t *testing.T) {
 	require.Empty(t, entries, "not even the skills directory was created through the link")
 }
 
-// TestSyncFollowsAnAgentDirectorySymlinkedElsewhereInsideTheHome is the other
-// half, and without it the check above would be indistinguishable from "amctl
-// refuses symlinks" — which breaks the dotfiles-repo setup R3 calls common.
+// TestSyncFollowsAnAgentDirectorySymlinkedElsewhereInsideTheHome is the
+// other half, and without it the check above would be indistinguishable
+// from "amctl refuses symlinks" — which breaks a common dotfiles-repo
+// setup.
 //
 // The link is ABSOLUTE on purpose: that is what `ln -s ~/dotfiles/claude
 // ~/.claude` produces, and it is the case a structural os.Root check refuses.
@@ -204,9 +204,7 @@ func TestOsRootRefusesAnAbsoluteSymlinkEvenInsideTheRoot(t *testing.T) {
 	require.ErrorIs(t, err, ErrOutsideHome)
 }
 
-// ---------------------------------------------------------------------------
 // the check happens before anything is opened
-// ---------------------------------------------------------------------------
 
 func TestContainsRefusesBeforeAnythingIsCreated(t *testing.T) {
 	f := newContainFixture(t)
@@ -261,9 +259,7 @@ func TestContainsReportsTheResolvedPathItCheckedAndTheRequestedPathToWrite(t *te
 		"the resolved path is what FR-020 was checked on")
 }
 
-// ---------------------------------------------------------------------------
 // the walk over a completed sync, and the proof that it can fail
-// ---------------------------------------------------------------------------
 
 // TestACompletedSyncTouchesNoPathOutsideTheHome walks the real filesystem after
 // a real multi-entry sync.
@@ -363,9 +359,9 @@ func walkTree(t *testing.T, root string) map[string]string {
 	return out
 }
 
-// escapedPaths is every path under sandbox that changed since before and is NOT
-// inside home. It is the assertion FR-020 needs: a difference taken over the
-// real filesystem, not over what the CLI said it did.
+// escapedPaths is every path under sandbox that changed since before and
+// is not inside home: a difference taken over the real filesystem, not
+// over what the CLI said it did.
 //
 // The home's own PARENT chain is exempt because a sandbox is not a real machine:
 // the parent of a home is created by whatever made the home. Nothing else is.

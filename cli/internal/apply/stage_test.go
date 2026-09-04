@@ -1,9 +1,9 @@
-// T040's tests. The extractor's own behaviour — caps, refused member kinds,
-// path validation — is internal/archive's suite; what is tested here is what
-// Stage adds on top: WHERE the tree lands, that a leftover from an interrupted
-// run is cleared rather than tripped over, that the provenance marker arrives
-// with the same rename the rest of the entry does, and that a planted staging
-// directory cannot steer the extraction.
+// The extractor's own behaviour — caps, refused member kinds, path
+// validation — is internal/archive's suite; what is tested here is what
+// Stage adds on top: where the tree lands, that a leftover from an
+// interrupted run is cleared rather than tripped over, that the provenance
+// marker arrives with the same rename the rest of the entry does, and that
+// a planted staging directory cannot steer the extraction.
 
 package apply
 
@@ -106,11 +106,11 @@ func requestFor(t *testing.T, f stageFixture, bundle []byte) StageRequest {
 	return StageRequest{Dest: f.dest, Digest: d, Bundle: bundle}
 }
 
-// TestStageExtractsIntoASiblingOfTheDestination is gate R3's staging decision as
-// an assertion: <dest-parent>/.amctl-staging/sha256-<hex>, never a central
-// ~/.agent-manager/staging. Same-filesystem staging is the only thing that makes
-// the install a rename, and an agent directory is frequently a symlink into a
-// dotfiles repo on another mount.
+// TestStageExtractsIntoASiblingOfTheDestination asserts the staging
+// decision: <dest-parent>/.amctl-staging/sha256-<hex>, never a central
+// ~/.agent-manager/staging. Same-filesystem staging is the only thing that
+// makes the install a rename, and an agent directory is frequently a
+// symlink into a dotfiles repo on another mount.
 func TestStageExtractsIntoASiblingOfTheDestination(t *testing.T) {
 	f := newStageFixture(t)
 	bundle := skillBundle(t)
@@ -178,10 +178,10 @@ func TestStageThenSwapInstallsTheEntry(t *testing.T) {
 	require.Len(t, entries, 1, "a completed install leaves the entry and nothing else")
 }
 
-// TestStageClearsALeftoverStagedTree is what makes an interrupted run converge
-// (SC-008). The negative control is the second half: internal/archive requires
-// its destination to be ABSENT, so without the RemoveAll every re-run of an
-// entry that died during extraction would fail forever.
+// TestStageClearsALeftoverStagedTree is what makes an interrupted run
+// converge. The negative control is the second half: internal/archive
+// requires its destination to be absent, so without the RemoveAll every
+// re-run of an entry that died during extraction would fail forever.
 func TestStageClearsALeftoverStagedTree(t *testing.T) {
 	f := newStageFixture(t)
 	req := requestFor(t, f, skillBundle(t))
@@ -268,10 +268,10 @@ func TestStageEnforcesTheExtractorsCaps(t *testing.T) {
 	}
 }
 
-// TestStageWritesTheProvenanceMarkerIntoTheStagedTree — FR-022. It has to be in
-// the staged tree: a write into the destination after the swap would be a second
-// mutation with its own window, and it would fall outside R4's fingerprint of
-// the tree as installed.
+// TestStageWritesTheProvenanceMarkerIntoTheStagedTree. It has to be in the
+// staged tree: a write into the destination after the swap would be a
+// second mutation with its own window, and it would fall outside the
+// fingerprint of the tree as installed.
 func TestStageWritesTheProvenanceMarkerIntoTheStagedTree(t *testing.T) {
 	f := newStageFixture(t)
 	req := requestFor(t, f, skillBundle(t))
@@ -337,11 +337,12 @@ func TestStageRefusesAMarkerNameThatIsNotAFilename(t *testing.T) {
 	}
 }
 
-// TestStageRefusesASymlinkedStagingDirectory is the FR-020 hole that
+// TestStageRefusesASymlinkedStagingDirectory is the containment hole that
 // os.MkdirAll followed by os.OpenRoot on the full path would leave open:
-// os.OpenRoot resolves its own argument normally, so a planted .amctl-staging
-// symlink would confine the root to wherever it points and every extracted byte
-// would land there, with no path outside the home ever constructed.
+// os.OpenRoot resolves its own argument normally, so a planted
+// .amctl-staging symlink would confine the root to wherever it points and
+// every extracted byte would land there, with no path outside the home
+// ever constructed.
 func TestStageRefusesASymlinkedStagingDirectory(t *testing.T) {
 	outside := t.TempDir()
 	f := newStageFixture(t)
@@ -443,9 +444,10 @@ func TestPruneStagingRootRemovesOnlyAnEmptyStagingDirectory(t *testing.T) {
 	require.NoError(t, PruneStagingRoot(f.dest), "an absent staging root is not an error")
 }
 
-// TestStagedOpenRootReadsTheStagedTreeAndCannotEscapeIt. R4 hashes the staged
-// content before the swap, and it must read through a root so that a symlink
-// planted in the staged tree cannot walk the hasher out of it.
+// TestStagedOpenRootReadsTheStagedTreeAndCannotEscapeIt. The fingerprint
+// hashes the staged content before the swap, and it must read through a
+// root so that a symlink planted in the staged tree cannot walk the hasher
+// out of it.
 func TestStagedOpenRootReadsTheStagedTreeAndCannotEscapeIt(t *testing.T) {
 	f := newStageFixture(t)
 	staged, err := Stage(context.Background(), requestFor(t, f, skillBundle(t)))

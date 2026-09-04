@@ -1,16 +1,16 @@
-// T042 and T042b: the boundaries this codebase's security model is made of,
-// compiled rather than remembered.
+// The boundaries this codebase's security model is made of, compiled
+// rather than remembered.
 //
 // Two of them:
 //
-//   - FR-009, T042b. The hub resolves; the CLI does not. Masterminds/semver may
-//     be imported only by internal/plan's reporting code, never by anything
-//     that chooses a version. A second implementation of resolution here would
-//     be a second answer, and the two would eventually disagree.
-//   - FR-020/FR-028, T042. internal/apply is the only package that mutates the
-//     agent tree, and it may not decide where the tree is.
+//   - The hub resolves; the CLI does not. Masterminds/semver may be
+//     imported only by internal/plan's reporting code, never by anything
+//     that chooses a version. A second implementation of resolution here
+//     would be a second answer, and the two would eventually disagree.
+//   - internal/apply is the only package that mutates the agent tree, and
+//     it may not decide where the tree is.
 //
-// # MECHANISM, AND WHAT IT CANNOT SEE
+// # Mechanism, and what it cannot see
 //
 // The scan is go/parser over this module's source, from the stdlib. The hub's
 // internal/archcheck uses golang.org/x/tools/go/packages for the same job;
@@ -19,8 +19,8 @@
 // and internal/leakscan already scan this way, so this is the module's
 // established mechanism rather than a new one.
 //
-// What that costs, stated because a boundary nobody knows the limits of is worse
-// than none:
+// What that costs, stated because a boundary nobody knows the limits of is
+// worse than none:
 //
 //   - It sees DIRECT imports only. A package that reaches semver through
 //     internal/plan links semver into its binary and is not reported. That is
@@ -40,16 +40,16 @@
 //     fixtures and must be able to write anywhere; what covers behaviour is
 //     containment_test.go's walk over a real sync, not this file.
 //
-// A BLANKET BAN ON os.Remove/os.Rename/os.WriteFile ACROSS THE MODULE WAS
-// REJECTED, and the task line that proposed it is wrong on the facts.
-// internal/cache, internal/record, internal/credentials and internal/cmd's lock
-// all legitimately write — to ~/.agent-manager and to the credential file, which
-// are amctl's OWN state and not an agent's tree. Exempting four packages of
-// twelve would measure nothing, and the three named calls do not cover the
-// writes anyway — internal/apply and internal/archive mutate through *os.Root,
-// so a grep for `os.Rename` misses `root.Rename` entirely. The rule that is
-// actually true is the conjunction below: knowing where the agent tree is AND
-// mutating it is internal/apply's alone.
+// A blanket ban on os.Remove/os.Rename/os.WriteFile across the module was
+// rejected: internal/cache, internal/record, internal/credentials and
+// internal/cmd's lock all legitimately write — to ~/.agent-manager and to
+// the credential file, which are amctl's own state and not an agent's
+// tree. Exempting four packages of twelve would measure nothing, and the
+// three named calls do not cover the writes anyway — internal/apply and
+// internal/archive mutate through *os.Root, so a grep for `os.Rename`
+// misses `root.Rename` entirely. The rule that is actually true is the
+// conjunction below: knowing where the agent tree is and mutating it is
+// internal/apply's alone.
 
 package apply
 
@@ -70,8 +70,8 @@ import (
 
 const cliModule = "github.com/WindKube/agent-manager/cli"
 
-// semverModule is the version-resolution library FR-009 keeps out of the CLI.
-// The prefix is matched rather than the exact path so that a major-version
+// semverModule is the version-resolution library kept out of the CLI. The
+// prefix is matched rather than the exact path so that a major-version
 // bump — .../semver/v4 — does not walk through the boundary.
 const semverModule = "github.com/Masterminds/semver"
 
@@ -85,10 +85,11 @@ var mutatingCalls = map[string]bool{
 	"OpenFile": true,
 }
 
-// destinationDerivation is internal/layout's API for deciding WHERE an entry
-// goes. internal/apply must never call it: the mutator receives destinations, it
-// does not compute them, and that is what keeps FR-020's check on one path per
-// entry rather than on every path a mutator might invent.
+// destinationDerivation is internal/layout's API for deciding where an
+// entry goes. internal/apply must never call it: the mutator receives
+// destinations, it does not compute them, and that is what keeps the
+// containment check on one path per entry rather than on every path a
+// mutator might invent.
 var destinationDerivation = map[string]bool{
 	"layout.NewRegistry":      true,
 	"layout.NewClaudeCode":    true,
@@ -182,14 +183,14 @@ func scanModule(t *testing.T, root, module string) map[string]*pkgInfo {
 // destination-derivation rule asks whether internal/apply so much as MENTIONS
 // layout.NewRegistry.
 //
-// `mutators` is only a SelectorExpr in the FUNCTION position of a CallExpr. It
-// used to be every SelectorExpr whose final name matched, which counted a FIELD
-// READ as a mutation: `p.Remove` in internal/plan's compute.go — a read of
-// Plan.Remove, the slice of removals — made the pure planning package register
-// as a mutator and therefore unable to import internal/layout at all. That is
-// what kept layout.DestCollisionKey, written for internal/plan and documented
-// as belonging there, from ever being called; the FR-023 case-folding hazard it
-// closes was open the whole time.
+// `mutators` is only a SelectorExpr in the function position of a
+// CallExpr. It used to be every SelectorExpr whose final name matched,
+// which counted a field read as a mutation: `p.Remove` in internal/plan's
+// compute.go — a read of Plan.Remove, the slice of removals — made the
+// pure planning package register as a mutator and therefore unable to
+// import internal/layout at all. That is what kept layout.DestCollisionKey,
+// written for internal/plan and documented as belonging there, from ever
+// being called; the case-folding hazard it closes was open the whole time.
 //
 // What the narrowing gives up is a mutating function used as a VALUE —
 // `defer r.Remove` or passing os.RemoveAll to something. No such use exists in
@@ -234,9 +235,7 @@ func moduleRootOf(t *testing.T) string {
 	}
 }
 
-// ---------------------------------------------------------------------------
 // the rules
-// ---------------------------------------------------------------------------
 
 type boundary struct {
 	name string
@@ -409,9 +408,7 @@ func sortedKeys[V any](m map[string]V) []string {
 	return out
 }
 
-// ---------------------------------------------------------------------------
 // the assertions
-// ---------------------------------------------------------------------------
 
 func TestImportBoundaries(t *testing.T) {
 	pkgs := scanModule(t, moduleRootOf(t), cliModule)
@@ -477,10 +474,10 @@ func TestTheScanSeesWhatTheRulesAreAbout(t *testing.T) {
 	require.NotNil(t, pkgs[cliModule+"/internal/cmd"], "the apply-import rule's one permitted package")
 }
 
-// TestSemverIsNotADependencyYetAndTheRuleIsATripwire says out loud what the
-// FR-009 rule is currently worth. Masterminds/semver is not in go.mod at all —
+// TestSemverIsNotADependencyYetAndTheRuleIsATripwire says out loud what
+// this rule is currently worth. Masterminds/semver is not in go.mod at all —
 // internal/plan implements semver 2.0.0 §10/§11 ordering itself, in
-// direction.go, for reporting — so the rule is a TRIPWIRE rather than a
+// direction.go, for reporting — so the rule is a tripwire rather than a
 // constraint on existing code. TestBoundariesFireOnASyntheticViolation is what
 // proves the tripwire is armed.
 func TestSemverIsNotADependencyYetAndTheRuleIsATripwire(t *testing.T) {

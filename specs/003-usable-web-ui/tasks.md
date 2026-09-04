@@ -320,7 +320,7 @@ screen survives, because a not-found screen is a real screen.
 - [ ] T122 [P] Metrics for the paths this feature adds: sign-in outcomes, session mint failures, scan duration (001 T109's histogram now has data)
 - [ ] T123 Run the full `quickstart.md` by hand once, on a clean checkout, on `aarch64`. Every measurement in `research.md` was taken there and the stack should be proven there rather than assumed onto it
 - [x] T124 Re-run `internal/archcheck` and the credential-boundary boot test (001 T035 / SC-006) — a feature that adds a login is exactly the feature likely to hand the web role a datastore credential by accident (FR-111, SC-110)
-- [ ] T125 Update the constitution's amendment record with the Dex note from T028
+- [x] T125 Update the constitution's amendment record with the Dex note from T028
 
 ---
 

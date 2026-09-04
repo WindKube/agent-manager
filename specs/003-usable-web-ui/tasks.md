@@ -308,7 +308,7 @@ screen survives, because a not-found screen is a real screen.
 
 ## Phase 10: Polish & Cross-Cutting
 
-- [ ] T113 **[SC-102]** Automated navigation sweep in `internal/web/nomock_test.go` — walk every navigation entry in both themes and fail on placeholder copy, on a compiled-in identity, and on a badge value that is not computed (FR-120, FR-121, SC-102). This is the criterion; the quickstart table is for the first time, this test is for every time after
+- [x] T113 **[SC-102]** Automated navigation sweep in `internal/web/nomock_test.go` — walk every navigation entry in both themes and fail on placeholder copy, on a compiled-in identity, and on a badge value that is not computed (FR-120, FR-121, SC-102). This is the criterion; the quickstart table is for the first time, this test is for every time after
 - [ ] T114 [P] **[SC-101]** Timed test from a clean checkout to signed-in-with-data through `docker compose up`, asserting under five minutes (FR-125, SC-101)
 - [x] T115 [P] **[SC-109]** Contrast audit extended from three screens to ten, both themes (FR-128, 001 SC-009)
 - [x] T116 [P] **[FR-127]** Extend 001's escaping assertions to every screen this feature adds, including identity-provider error text, and confirm the `templ.Raw` ban still holds under `internal/web`

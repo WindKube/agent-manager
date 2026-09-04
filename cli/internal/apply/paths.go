@@ -8,30 +8,22 @@ import (
 	"strings"
 )
 
-// ErrDest marks a destination this package refuses to touch. It fires before
-// anything is opened, because the alternative to refusing a malformed
-// destination is deriving an aside and a staging path from it and then
-// renaming things next to somebody's files.
+// ErrDest marks a destination this package refuses to touch, before
+// anything is opened and before an aside or staging path is derived from it.
 var ErrDest = errors.New("unusable install destination")
 
 // dirPerm and markerPerm are requested, not enforced: the umask applies on
-// top, and that is deliberate. The fingerprint records the mode from lstat
-// on the file as written, so a mode this process could not actually produce
-// must never be forced here.
+// top, so the fingerprint must record the mode from lstat as written, never
+// the mode requested here.
 const (
 	dirPerm    os.FileMode = 0o755
 	markerPerm os.FileMode = 0o644
 )
 
-// splitDest validates a destination and splits it into the parent directory
-// every operation in this package is rooted at, and the leaf name inside it.
-//
-// The suffix check is not tidiness. An entry installed at `<x>.amctl-old` would
-// sit inside the removable set of an entry at `<x>` — RemovablePaths is
-// {dest, dest+AsideSuffix} — so pruning the first would delete a live install of
-// the second. internal/layout guarantees no package is ever placed there and
-// record.Validate refuses to write one; this is the same refusal at the moment
-// of the write, where it is cheapest to be sure.
+// splitDest validates dest and splits it into the parent every operation in
+// this package roots at, and the leaf name. The suffix check matters: an
+// entry at `<x>.amctl-old` would fall inside `<x>`'s removable set, {dest,
+// dest+AsideSuffix}, so pruning `<x>` would delete a live install.
 func splitDest(dest string) (parent, name string, err error) {
 	switch {
 	case dest == "":
@@ -52,16 +44,11 @@ func splitDest(dest string) (parent, name string, err error) {
 	return parent, leaf, nil
 }
 
-// relInParent returns p as a name usable against a root opened at parent, and
-// refuses anything that is not underneath it.
-//
-// An atomic install by rename requires the staged tree and the destination
-// on one filesystem, and the only construction that guarantees that is a
-// sibling — hence layout.StagingRoot. A path elsewhere in the tree may
-// happen to be on the same filesystem today and will not be on a machine
-// where ~/.claude is a symlink into a dotfiles repo on another mount, so it
-// is refused here rather than left to fail as EXDEV on somebody else's
-// laptop.
+// relInParent returns p as a name usable against a root opened at parent,
+// refusing anything not underneath it: an atomic rename-install needs the
+// staged tree and the destination on one filesystem, which only a sibling
+// path guarantees — a path elsewhere may share a filesystem today and fail
+// as EXDEV once ~/.claude is a symlink onto another mount.
 func relInParent(parent, p, dest string) (string, error) {
 	if p == "" {
 		return "", fmt.Errorf("%w: no staged tree was given for %s", ErrStagingPlacement, dest)
@@ -78,11 +65,8 @@ func relInParent(parent, p, dest string) (string, error) {
 	return rel, nil
 }
 
-// syncRootDir fsyncs the directory a root is open on.
-//
-// On darwin Go's os.File.Sync is fcntl(F_FULLFSYNC) rather than fsync(2) — see
-// $GOROOT/src/internal/poll/fd_fsync_darwin.go, citing golang/go#26650 — so the
-// same call is a real barrier on linux and darwin both.
+// syncRootDir fsyncs the directory a root is open on; on darwin
+// os.File.Sync is F_FULLFSYNC (golang/go#26650), a real barrier there too.
 func syncRootDir(root *os.Root) error {
 	d, err := root.Open(".")
 	if err != nil {

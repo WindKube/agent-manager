@@ -16,6 +16,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -317,6 +318,28 @@ func TestNoBrokenRoundTripReachesTheExchangeOrIssuesASession(t *testing.T) {
 			require.Empty(t, cookieNamed(t, rec, sessionCookie), "a session cookie was issued")
 		})
 	}
+}
+
+// TestProviderRefusalDetailIsEscapedOnTheSignInScreen is a real provider refusal,
+// against a round trip that verifies, so providerDetail's text actually reaches
+// the page rather than being short-circuited by an earlier notice.
+func TestProviderRefusalDetailIsEscapedOnTheSignInScreen(t *testing.T) {
+	h := newSignInHarness(t)
+	sealed, round := h.begin(t, "%2Fscanner")
+
+	rec := h.complete(t, sealed, map[string]string{
+		"state":             round.State,
+		"error":             "access_denied",
+		"error_description": url.QueryEscape(`<script>alert(1)</script>`),
+	})
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+	require.Contains(t, body, noticeProviderRefused)
+	require.Contains(t, body, "signin-provider-detail")
+	require.NotContains(t, body, "<script>alert(1)</script>",
+		"the provider's own words must reach the page escaped, not raw")
+	require.Contains(t, body, "&lt;script&gt;")
 }
 
 // TestTheRoundTripIsSingleUseBecauseTheCookieIsGoneAfterIt is the replay half of

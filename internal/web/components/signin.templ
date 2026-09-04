@@ -27,6 +27,9 @@ templ SignInScreen(s Shell, in view.SignIn) {
 						// is what makes rendering an upstream string safe at all.
 						<div class="am-signin-alert" id="signin-notice">{ in.Notice }</div>
 					}
+					if in.Detail != "" {
+						<p class="am-signin-note am-mono" id="signin-provider-detail">{ in.Detail }</p>
+					}
 					<p class="am-signin-note">
 						Accounts for { ProductName } live in { in.ProviderName() }. Signing in for the
 						first time is all it takes to be known here — there is no account to create

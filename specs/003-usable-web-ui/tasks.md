@@ -311,7 +311,7 @@ screen survives, because a not-found screen is a real screen.
 - [ ] T113 **[SC-102]** Automated navigation sweep in `internal/web/nomock_test.go` — walk every navigation entry in both themes and fail on placeholder copy, on a compiled-in identity, and on a badge value that is not computed (FR-120, FR-121, SC-102). This is the criterion; the quickstart table is for the first time, this test is for every time after
 - [ ] T114 [P] **[SC-101]** Timed test from a clean checkout to signed-in-with-data through `docker compose up`, asserting under five minutes (FR-125, SC-101)
 - [x] T115 [P] **[SC-109]** Contrast audit extended from three screens to ten, both themes (FR-128, 001 SC-009)
-- [ ] T116 [P] **[FR-127]** Extend 001's escaping assertions to every screen this feature adds, including identity-provider error text, and confirm the `templ.Raw` ban still holds under `internal/web`
+- [x] T116 [P] **[FR-127]** Extend 001's escaping assertions to every screen this feature adds, including identity-provider error text, and confirm the `templ.Raw` ban still holds under `internal/web`
 - [ ] T117 [P] Empty-state pass: every new screen renders an empty state naming what would appear and how to bring it about, distinguishable in copy **and in markup id** from an error and from an authorisation refusal (FR-122). Follow the `am-empty-auth` precedent the catalog already set
 - [ ] T118 [P] Role-gating pass: every action a role does not permit is absent or disabled with its reason across all seven screens (FR-126)
 - [ ] T119 [P] Update `README.md` — the role/credential table, the two-file compose topology, and the identity provider

@@ -54,6 +54,9 @@ func handler(t *testing.T, source web.CatalogSource) http.Handler {
 	if storage, ok := source.(web.StorageSource); ok {
 		deps.Storage = storage
 	}
+	if org, ok := source.(web.OrganizationSource); ok {
+		deps.Organization = org
+	}
 	return web.New(deps, web.Options{}).Handler()
 }
 

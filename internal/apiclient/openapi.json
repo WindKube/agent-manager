@@ -389,6 +389,50 @@
         ],
         "type": "object"
       },
+      "CreateCategoryRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "examples": [
+              "Productivity"
+            ],
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "CreateMappingRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "groupName": {
+            "examples": [
+              "security-team"
+            ],
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "catalog-admin",
+              "scanner-reviewer",
+              "profile-consumer",
+              "read-only"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "groupName",
+          "role"
+        ],
+        "type": "object"
+      },
       "DeviceAuthorization": {
         "additionalProperties": false,
         "properties": {
@@ -1166,6 +1210,31 @@
         ],
         "type": "object"
       },
+      "GroupRoleMapping": {
+        "additionalProperties": false,
+        "properties": {
+          "groupName": {
+            "examples": [
+              "security-team"
+            ],
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "catalog-admin",
+              "scanner-reviewer",
+              "profile-consumer",
+              "read-only"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "groupName",
+          "role"
+        ],
+        "type": "object"
+      },
       "Health": {
         "additionalProperties": false,
         "properties": {
@@ -1209,6 +1278,22 @@
         },
         "required": [
           "name",
+          "ok"
+        ],
+        "type": "object"
+      },
+      "IdentityConnectionTest": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "description": "The failure reason, in the terms discovery or the JWKS fetch gave. Absent on success.",
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
           "ok"
         ],
         "type": "object"
@@ -1497,6 +1582,155 @@
         "required": [
           "id",
           "reason"
+        ],
+        "type": "object"
+      },
+      "Organization": {
+        "additionalProperties": false,
+        "properties": {
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/OrganizationCategory"
+            },
+            "type": "array"
+          },
+          "mappings": {
+            "items": {
+              "$ref": "#/components/schemas/GroupRoleMapping"
+            },
+            "type": "array"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/OrganizationPolicy"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/OrganizationProvider"
+          }
+        },
+        "required": [
+          "provider",
+          "policy",
+          "mappings",
+          "categories"
+        ],
+        "type": "object"
+      },
+      "OrganizationCategory": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "description": "Packages currently carrying this category.",
+            "examples": [
+              3
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "examples": [
+              "Productivity"
+            ],
+            "type": "string"
+          },
+          "slug": {
+            "examples": [
+              "productivity"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "count"
+        ],
+        "type": "object"
+      },
+      "OrganizationPolicy": {
+        "additionalProperties": false,
+        "properties": {
+          "allowPersonalProfiles": {
+            "type": "boolean"
+          },
+          "communityNeedsReview": {
+            "description": "A version from a non-verified publisher is flagged for review rather than becoming immediately distributable.",
+            "type": "boolean"
+          },
+          "requireSignedBundles": {
+            "description": "A version with no recorded signature reference is excluded from every resolution while this is set.",
+            "type": "boolean"
+          },
+          "rescanOnNewVersion": {
+            "description": "Publishing a version rescans the package's other versions under the running rule pack.",
+            "type": "boolean"
+          },
+          "scanGate": {
+            "description": "What a flagged verdict does to the next resolution.",
+            "enum": [
+              "block",
+              "approval",
+              "warn-with-override"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "scanGate",
+          "requireSignedBundles",
+          "communityNeedsReview",
+          "rescanOnNewVersion",
+          "allowPersonalProfiles"
+        ],
+        "type": "object"
+      },
+      "OrganizationProvider": {
+        "additionalProperties": false,
+        "properties": {
+          "clientId": {
+            "examples": [
+              "agent-manager-web"
+            ],
+            "type": "string"
+          },
+          "deviceAuthorizationEndpoint": {
+            "description": "Absent when discovery could not be completed.",
+            "examples": [
+              "http://dex:5556/dex/device/code"
+            ],
+            "type": "string"
+          },
+          "issuer": {
+            "description": "The trust anchor every ID token is checked against.",
+            "examples": [
+              "http://dex:5556/dex"
+            ],
+            "type": "string"
+          },
+          "scopes": {
+            "description": "Requested at every sign-in.",
+            "examples": [
+              [
+                "openid",
+                "profile",
+                "email",
+                "groups"
+              ]
+            ],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "issuer",
+          "clientId",
+          "scopes"
         ],
         "type": "object"
       },
@@ -3171,6 +3405,56 @@
         ],
         "type": "object"
       },
+      "UpdateCategoryRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "examples": [
+              "Productivity tools"
+            ],
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "UpdatePolicyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "allowPersonalProfiles": {
+            "type": "boolean"
+          },
+          "communityNeedsReview": {
+            "type": "boolean"
+          },
+          "requireSignedBundles": {
+            "type": "boolean"
+          },
+          "rescanOnNewVersion": {
+            "type": "boolean"
+          },
+          "scanGate": {
+            "enum": [
+              "block",
+              "approval",
+              "warn-with-override"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "scanGate",
+          "requireSignedBundles",
+          "communityNeedsReview",
+          "rescanOnNewVersion",
+          "allowPersonalProfiles"
+        ],
+        "type": "object"
+      },
       "Viewer": {
         "additionalProperties": false,
         "properties": {
@@ -4310,6 +4594,691 @@
         "summary": "Liveness and readiness",
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/v1/organization": {
+      "get": {
+        "description": "The Organization screen's whole read. The provider panel's issuer, client id and scopes are this role's own configuration; the device authorisation endpoint is read from that provider's live discovery document, absent when discovery cannot be completed. NEVER carries the client secret, in any form — not the value, not a masked or length-revealing stand-in. Requires the catalog-admin role.",
+        "operationId": "getOrganization",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Organization"
+                }
+              }
+            },
+            "description": "The organisation's current settings."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity may not administer the organisation. Requires the catalog-admin role."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Identity provider settings, policy, mappings and categories",
+        "tags": [
+          "organization"
+        ]
+      }
+    },
+    "/v1/organization/categories": {
+      "get": {
+        "description": "Every category, alphabetically, with how many packages currently carry it. Tags are never here: they stay manifest-derived and there is no tag endpoint anywhere in this document. Requires the catalog-admin role.",
+        "operationId": "listCategories",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OrganizationCategory"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity may not administer the organisation. Requires the catalog-admin role."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "The curated category vocabulary, with counts",
+        "tags": [
+          "organization"
+        ]
+      },
+      "post": {
+        "description": "Writes one `category` audit row. Requires the catalog-admin role.",
+        "operationId": "createCategory",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCategoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationCategory"
+                }
+              }
+            },
+            "description": "Added."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity may not administer the organisation. Requires the catalog-admin role."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A category with that name or slug already exists."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The name is blank, or reduces to no usable slug characters."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Add a category to the vocabulary",
+        "tags": [
+          "organization"
+        ]
+      }
+    },
+    "/v1/organization/categories/{id}": {
+      "delete": {
+        "description": "Always refuses (409): am_api holds no DELETE grant on category, for the same reason deleteGroupRoleMapping refuses. Requires the catalog-admin role.",
+        "operationId": "deleteCategory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity may not administer the organisation. Requires the catalog-admin role."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Deleting a category is not supported by this deployment's database grants."
+          }
+        },
+        "summary": "Delete a category",
+        "tags": [
+          "organization"
+        ]
+      },
+      "patch": {
+        "description": "Writes one `category` audit row. Requires the catalog-admin role.",
+        "operationId": "updateCategory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCategoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationCategory"
+                }
+              }
+            },
+            "description": "Renamed."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity may not administer the organisation. Requires the catalog-admin role."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such category."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A category with that name or slug already exists."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The id is not a uuid, or the name is blank."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Rename a category",
+        "tags": [
+          "organization"
+        ]
+      }
+    },
+    "/v1/organization/identity/secret": {
+      "post": {
+        "description": "Always refuses (409). The client secret is this role's own environment configuration, not a credential this hub holds a provider-side registration for, so there is nothing here for a rotation to act on — see commands.ErrSecretRotationUnsupported. Requires the catalog-admin role.",
+        "operationId": "rotateClientSecret",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity may not administer the organisation. Requires the catalog-admin role."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Secret rotation is not supported: the secret is managed by the deployment environment."
+          }
+        },
+        "summary": "Rotate the identity provider's client secret",
+        "tags": [
+          "organization"
+        ]
+      }
+    },
+    "/v1/organization/identity/test": {
+      "post": {
+        "description": "A real OIDC discovery and signing-key fetch against the configured issuer — not a check that a URL is well formed. Never echoes a secret: it reads none. Requires the catalog-admin role.",
+        "operationId": "testIdentityConnection",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityConnectionTest"
+                }
+              }
+            },
+            "description": "The test ran. `ok` says whether it succeeded; a failure carries the reason."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity may not administer the organisation. Requires the catalog-admin role."
+          }
+        },
+        "summary": "Test the identity provider connection",
+        "tags": [
+          "organization"
+        ]
+      }
+    },
+    "/v1/organization/mappings": {
+      "get": {
+        "description": "Every group_role_map row, alphabetically. Requires the catalog-admin role.",
+        "operationId": "listGroupRoleMappings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GroupRoleMapping"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity may not administer the organisation. Requires the catalog-admin role."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "The group-to-role mapping table",
+        "tags": [
+          "organization"
+        ]
+      },
+      "post": {
+        "description": "Upserts by group name and writes one `role` audit row. A mapping change takes effect at that identity's next request — auth.Sessions.Resolve reads this table on every one, so there is no cache to invalidate. Requires the catalog-admin role.",
+        "operationId": "createGroupRoleMapping",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMappingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupRoleMapping"
+                }
+              }
+            },
+            "description": "Mapped."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity may not administer the organisation. Requires the catalog-admin role."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The group name is blank, or the role is not one of the four the schema allows."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Map a group to a role",
+        "tags": [
+          "organization"
+        ]
+      }
+    },
+    "/v1/organization/mappings/{id}": {
+      "delete": {
+        "description": "Always refuses (409): am_api holds no DELETE grant on group_role_map, and widening it is a decision for the project owner, not a request handler's. Requires the catalog-admin role.",
+        "operationId": "deleteGroupRoleMapping",
+        "parameters": [
+          {
+            "description": "The mapped group's name.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The mapped group's name.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity may not administer the organisation. Requires the catalog-admin role."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Deleting a mapping is not supported by this deployment's database grants."
+          }
+        },
+        "summary": "Remove a group-to-role mapping",
+        "tags": [
+          "organization"
+        ]
+      }
+    },
+    "/v1/organization/policy": {
+      "put": {
+        "description": "Writes org_policy and one `policy` audit row in one transaction. Every toggle changes real downstream behaviour on its next use: the gate and require-signed-bundles are read live by the next profile resolution, community-needs-review and rescan-on-new-version are read live by the scanner. Requires the catalog-admin role.",
+        "operationId": "updatePolicy",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationPolicy"
+                }
+              }
+            },
+            "description": "The policy as saved."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity may not administer the organisation. Requires the catalog-admin role."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The scan gate is not block, approval or warn-with-override."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Change the scan gate and the organisation's policy toggles",
+        "tags": [
+          "organization"
         ]
       }
     },

@@ -286,20 +286,20 @@ rather than only its own row.
 downstream behaviour changes; compare the Storage screen's figures against the object store's
 own reported state.
 
-- [ ] T099 [P] [US7] `GET /v1/organization` in `internal/api/queries/org.go` — provider settings, policy, mappings, categories with counts. It **never returns the client secret**, not even masked in a way that leaks its length
-- [ ] T100 [P] [US7] `POST /v1/organization/identity/test` — the connection test of 001 US7 scenario 1
-- [ ] T101 [US7] `POST /v1/organization/identity/secret` — rotate without revealing the current value, returning the new one once
-- [ ] T102 [US7] `PUT /v1/organization/policy` in `internal/api/commands/org.go`
-- [ ] T103 [001-T100] [US7] **Wire each policy toggle to real downstream behaviour**: the gate change affects the next resolution; signed-bundles refuses a version with no signature reference **and states it is unverified** (001 FR-048a); community-needs-review routes to a queue; the rescan toggle changes the periodic job. A test asserting only the stored row passes while the feature does nothing
-- [ ] T104 [P] [US7] Group-to-role mapping CRUD at `/v1/organization/mappings`
-- [ ] T105 [P] [US7] Category CRUD with counts at `/v1/organization/categories`. **No tag endpoint** — tags are manifest-derived and never admin-editable (001 US7 scenario 5), and an endpoint that could edit them would be the bug
+- [x] T099 [P] [US7] `GET /v1/organization` in `internal/api/queries/org.go` — provider settings, policy, mappings, categories with counts. It **never returns the client secret**, not even masked in a way that leaks its length
+- [x] T100 [P] [US7] `POST /v1/organization/identity/test` — the connection test of 001 US7 scenario 1
+- [x] T101 [US7] `POST /v1/organization/identity/secret` — rotate without revealing the current value, returning the new one once
+- [x] T102 [US7] `PUT /v1/organization/policy` in `internal/api/commands/org.go`
+- [x] T103 [001-T100] [US7] **Wire each policy toggle to real downstream behaviour**: the gate change affects the next resolution; signed-bundles refuses a version with no signature reference **and states it is unverified** (001 FR-048a); community-needs-review routes to a queue; the rescan toggle changes the periodic job. A test asserting only the stored row passes while the feature does nothing
+- [x] T104 [P] [US7] Group-to-role mapping CRUD at `/v1/organization/mappings`
+- [x] T105 [P] [US7] Category CRUD with counts at `/v1/organization/categories`. **No tag endpoint** — tags are manifest-derived and never admin-editable (001 US7 scenario 5), and an endpoint that could edit them would be the bug
 - [x] T106 [P] [US7] `GET /v1/storage` in `internal/api/queries/storage.go` — object count, compressed size, region, CLI read-cache hit rate, key layout for `skills/` and `profiles/`, bucket settings via `bucket.As(&s3Client)`, and recent fetches with outcomes. A figure the bucket declines to report renders as unknown, **never as a default**
 - [x] T107 [US7] Regenerate the client and add the operations to `internal/web/hub/`
-- [ ] T108 [US7] Write `internal/web/components/org.templ` and `internal/web/view/org.go`
+- [x] T108 [US7] Write `internal/web/components/org.templ` and `internal/web/view/org.go`
 - [x] T109 [US7] Write `internal/web/components/storage.templ` and `internal/web/view/storage.go`
-- [ ] T110 [US7] Delete the `/org` and `/storage` entries from `internal/web/web.go` — **and delete the `placeholders` slice, the `screen` type and the `placeholder` handler entirely**, along with `components.Placeholder`. Leaving the machinery in place is how a placeholder comes back
-- [ ] T111 [P] [US7] Test per 001 T102 that each toggle changes downstream behaviour, not just its own row
-- [ ] T112 [P] [US7] Test asserting `getOrganization` never emits the client secret in any form
+- [x] T110 [US7] Delete the `/org` and `/storage` entries from `internal/web/web.go` — **and delete the `placeholders` slice, the `screen` type and the `placeholder` handler entirely**, along with `components.Placeholder`. Leaving the machinery in place is how a placeholder comes back
+- [x] T111 [P] [US7] Test per 001 T102 that each toggle changes downstream behaviour, not just its own row
+- [x] T112 [P] [US7] Test asserting `getOrganization` never emits the client secret in any form
 
 **Checkpoint**: no route reachable from the navigation renders a placeholder. The not-found
 screen survives, because a not-found screen is a real screen.

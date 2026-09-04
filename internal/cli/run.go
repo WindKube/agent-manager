@@ -154,6 +154,11 @@ func runWeb(ctx context.Context) error {
 		Audit:    client,
 		Badges:   client,
 		Log:      log,
+		// The profile screens. Same client again: reading a profile and
+		// curating one are different claims, and the fixture behind screen tests
+		// answers only the first.
+		Profiles: client,
+		Curator:  client,
 	}, web.Options{
 		Addr: cfg.Addr,
 		// Read for exactly one decision — the Secure flag on both cookies — and read

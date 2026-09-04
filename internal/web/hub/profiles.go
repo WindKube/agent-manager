@@ -267,6 +267,23 @@ type LockedEntry struct {
 	Override   *EntryOverride
 }
 
+// Profiles reads GET /v1/profiles: exactly the profiles this identity may read.
+func (c *Client) Profiles(ctx context.Context) ([]ProfileSummary, error) {
+	resp, err := c.api.ListProfilesWithResponse(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list profiles: %w", err)
+	}
+	if resp.JSON200 == nil {
+		return nil, fmt.Errorf("list profiles: %w", governanceError(resp.HTTPResponse, resp.Body))
+	}
+
+	out := make([]ProfileSummary, 0, len(resp.JSON200.Profiles))
+	for i := range resp.JSON200.Profiles {
+		out = append(out, profileSummary(&resp.JSON200.Profiles[i]))
+	}
+	return out, nil
+}
+
 // Profile reads GET /v1/profiles/{slug}.
 func (c *Client) Profile(ctx context.Context, slug string) (ProfileDetail, error) {
 	if err := checkSlug(slug); err != nil {
@@ -311,17 +328,20 @@ func (c *Client) CreateProfile(ctx context.Context, creation ProfileCreation) (P
 			resp.HTTPResponse, resp.Body)
 	}
 
-	created := resp.JSON201
+	return profileSummary(resp.JSON201), nil
+}
+
+func profileSummary(from *apiclient.Profile) ProfileSummary {
 	summary := ProfileSummary{
-		Slug:         created.Slug,
-		Name:         created.Name,
-		PackageCount: int(created.PackageCount),
-		HeadRevision: int(created.HeadRevision),
+		Slug:         from.Slug,
+		Name:         from.Name,
+		PackageCount: int(from.PackageCount),
+		HeadRevision: int(from.HeadRevision),
 	}
-	if created.Visibility != nil {
-		summary.Visibility = string(*created.Visibility)
+	if from.Visibility != nil {
+		summary.Visibility = string(*from.Visibility)
 	}
-	return summary, nil
+	return summary
 }
 
 // SetProfileEntries puts PUT /v1/profiles/{slug}/entries — the WHOLE ordered set,

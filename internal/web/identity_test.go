@@ -79,6 +79,9 @@ var productVocabulary = []string{
 	components.ProductName,
 	"Agent Plugins",
 	"Agent Skills",
+	// The agent directory convention a sync target writes to, not a claim about
+	// who is looking at the page.
+	"Claude Code",
 }
 
 // identityClasses are the design's three identity elements. They are asserted on
@@ -156,6 +159,12 @@ func sweep() []sweptScreen {
 		// refusal wording — which is where a name gets written by hand.
 		inShell("ScannerScreen", func() templ.Component { return components.ScannerScreen(view.Scanner{}) }),
 		inShell("AuditScreen", func() templ.Component { return components.AuditScreen(view.Audit{}) }),
+		// The profile screens, swept empty for the same reason: a member's display
+		// name and a revision's publisher are both person-shaped by nature and both
+		// arrive from a source, so feeding rows in would weaken the patterns to
+		// accommodate data that was never the risk.
+		inShell("ProfilesScreen", func() templ.Component { return components.ProfilesScreen(view.Profiles{}) }),
+		inShell("ProfileScreen", func() templ.Component { return components.ProfileScreen(view.Profile{}) }),
 		{
 			name: "NoRoleScreen",
 			// The one screen whose body renders the viewer itself. Signed out there is

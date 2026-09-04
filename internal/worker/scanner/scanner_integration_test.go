@@ -31,16 +31,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/uptrace/bun"
-	"github.com/uptrace/bun/dialect/pgdialect"
 
 	"agent-manager/internal/blob"
 	"agent-manager/internal/bundle"
-	"agent-manager/internal/store/migrations"
 	"agent-manager/internal/store/models"
 	"agent-manager/internal/store/storetest"
 	"agent-manager/internal/worker"
@@ -66,28 +62,13 @@ func TestMain(m *testing.M) {
 func runSuite(m *testing.M) (int, error) {
 	ctx := context.Background()
 
-	container, err := tcpostgres.Run(ctx, "postgres:16-alpine",
-		tcpostgres.WithDatabase("agent_manager"),
-		tcpostgres.WithUsername("postgres"),
-		tcpostgres.WithPassword("postgres"),
-		tcpostgres.BasicWaitStrategies(),
-	)
+	pg, cleanup, err := storetest.Run(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("start postgres: %w", err)
+		return 0, err
 	}
-	defer func() {
-		if termErr := container.Terminate(ctx); termErr != nil {
-			fmt.Fprintln(os.Stderr, "terminate postgres:", termErr)
-		}
-	}()
+	defer cleanup()
 
-	endpoint, err := container.PortEndpoint(ctx, "5432/tcp", "")
-	if err != nil {
-		return 0, fmt.Errorf("container endpoint: %w", err)
-	}
-
-	dsn := fmt.Sprintf("postgres://postgres:postgres@%s/agent_manager?sslmode=disable", endpoint)
-	pool, err = pgxpool.New(ctx, dsn)
+	pool, err = pg.Pool(ctx, "agent_manager")
 	if err != nil {
 		return 0, fmt.Errorf("open pool: %w", err)
 	}
@@ -96,24 +77,17 @@ func runSuite(m *testing.M) (int, error) {
 	// The checked-in migrations, not the desired state: what ships is the migration
 	// directory, so that is what the scan is tested against — including the
 	// `unique (version_id, pack_version)` key the idempotency test leans on.
-	if applyErr := migrations.Apply(ctx, func(ctx context.Context, statement string) error {
-		_, execErr := pool.Exec(ctx, statement)
-		return execErr
-	}); applyErr != nil {
+	if applyErr := storetest.ApplyMigrations(ctx, pool); applyErr != nil {
 		return 0, applyErr
 	}
 
-	sqldb := stdlib.OpenDBFromPool(pool)
-	defer func() { _ = sqldb.Close() }()
-
-	db = bun.NewDB(sqldb, pgdialect.New())
-	db.RegisterModel(models.All()...)
+	db = storetest.BunDB(pool)
 
 	// The worker under test runs as am_scanner, not the superuser this suite
 	// connects as, so a statement that only works under a superuser's implicit
 	// SELECT is caught here rather than in production.
 	var workerClose func()
-	workerDB, workerClose, err = storetest.RoleDB(ctx, dsn, "am_scanner")
+	workerDB, workerClose, err = storetest.RoleDB(ctx, pg.DSN("agent_manager"), "am_scanner")
 	if err != nil {
 		return 0, fmt.Errorf("open am_scanner pool: %w", err)
 	}

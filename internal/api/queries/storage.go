@@ -1,0 +1,203 @@
+package queries
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/uptrace/bun"
+
+	"agent-manager/internal/api/contract"
+	"agent-manager/internal/blob"
+)
+
+// The Storage screen's read (001 FR-053; 003 US7 scenario 2, US8 scenario 3).
+//
+// Every figure comes from the object store itself or from stored rows — nothing
+// here is a constant in the product. A setting the bucket declines to answer is
+// UNKNOWN and never a default: this system configures and surfaces object lock
+// and retention, it does not enforce them, so guessing a protection that may not
+// be there would be the worse lie.
+
+const (
+	// maxStorageObjects bounds the listing this report walks. A production bucket
+	// can hold far more objects than a report should hold in memory at once; past
+	// this cap the count and size are a lower bound and Truncated says so.
+	maxStorageObjects = 10_000
+	recentFetchLimit  = 20
+)
+
+// Storage answers GET /v1/storage.
+func Storage(ctx context.Context, db bun.IDB, bucket blob.Inspector) (contract.StorageReport, error) {
+	report := contract.StorageReport{
+		KeyLayout:     []contract.StorageKeyCount{},
+		RecentFetches: []contract.FetchAttemptSummary{},
+	}
+
+	attrs, truncated, err := bucket.ListLimited(ctx, "", maxStorageObjects)
+	if err != nil {
+		return contract.StorageReport{}, fmt.Errorf("list the bucket: %w", err)
+	}
+	report.Truncated = truncated
+	report.Region = bucket.Region()
+
+	var skills, profiles int64
+	for _, obj := range attrs {
+		report.ObjectCount++
+		report.CompressedBytes += obj.Size
+		switch {
+		case strings.HasPrefix(obj.Key, blob.SkillsPrefix+"/"):
+			skills++
+		case strings.HasPrefix(obj.Key, blob.ProfilesPrefix+"/"):
+			profiles++
+		}
+	}
+	report.KeyLayout = []contract.StorageKeyCount{
+		{Prefix: blob.SkillsPrefix, Objects: skills},
+		{Prefix: blob.ProfilesPrefix, Objects: profiles},
+	}
+
+	report.Bucket = bucketSettings(ctx, bucket)
+
+	fetches, err := recentFetches(ctx, db)
+	if err != nil {
+		return contract.StorageReport{}, err
+	}
+	report.RecentFetches = fetches
+
+	// sync_event (internal/store/models.SyncEvent) carries no cache-hit figure at
+	// all — a report's only fields are the profile, the revision and the host —
+	// so there is nothing to compute a rate from. Unknown is the honest answer;
+	// zero would claim every CLI read missed the cache.
+	report.ReadCacheHitRate = nil
+
+	return report, nil
+}
+
+// bucketSettings reads the bucket's own settings through the raw S3 client
+// (blob.Bucket.As's escape hatch), so no second client is constructed.
+//
+// A store that is not S3 at all — memblob in a unit test — cannot produce one,
+// and every setting below is UNKNOWN for exactly that reason. This is not a
+// fallback path bolted on for tests: it is the same answer a real bucket gives
+// when the api's read-only key lacks a Get*Configuration permission, which is
+// why the two are not distinguished here.
+func bucketSettings(ctx context.Context, bucket blob.Inspector) contract.BucketSettings {
+	settings := contract.BucketSettings{
+		Versioning: unknownSetting(),
+		ObjectLock: unknownSetting(),
+		Encryption: unknownSetting(),
+		Retention:  unknownSetting(),
+		// Known always: this is the role's OWN credential, not the bucket's report.
+		// The api process is handed a read-only object-store key by construction
+		// (compose's x-blob-read), and only `worker fetcher` is ever handed one
+		// that can write (constitution principle II).
+		WriteAccess: contract.BucketSetting{Known: true, Value: "read-only; only the fetcher role can write"},
+	}
+
+	var client *s3.Client
+	if !bucket.As(&client) || client == nil {
+		return settings
+	}
+	name := aws.String(bucket.Name())
+
+	if out, err := client.GetBucketVersioning(ctx, &s3.GetBucketVersioningInput{Bucket: name}); err == nil {
+		value := "not enabled"
+		if out.Status != "" {
+			value = string(out.Status)
+		}
+		settings.Versioning = contract.BucketSetting{Known: true, Value: value}
+	}
+
+	if out, err := client.GetObjectLockConfiguration(ctx, &s3.GetObjectLockConfigurationInput{Bucket: name}); err == nil &&
+		out.ObjectLockConfiguration != nil {
+		settings.ObjectLock = contract.BucketSetting{Known: true, Value: objectLockValue(out.ObjectLockConfiguration)}
+	}
+
+	if out, err := client.GetBucketEncryption(ctx, &s3.GetBucketEncryptionInput{Bucket: name}); err == nil {
+		settings.Encryption = contract.BucketSetting{Known: true, Value: encryptionValue(out.ServerSideEncryptionConfiguration)}
+	}
+
+	if out, err := client.GetBucketLifecycleConfiguration(ctx, &s3.GetBucketLifecycleConfigurationInput{Bucket: name}); err == nil {
+		settings.Retention = contract.BucketSetting{Known: true, Value: retentionValue(out.Rules)}
+	}
+
+	return settings
+}
+
+func unknownSetting() contract.BucketSetting { return contract.BucketSetting{} }
+
+func objectLockValue(cfg *types.ObjectLockConfiguration) string {
+	if cfg.ObjectLockEnabled != types.ObjectLockEnabledEnabled {
+		return "not enabled"
+	}
+	if cfg.Rule == nil || cfg.Rule.DefaultRetention == nil {
+		return "enabled, no default retention"
+	}
+	retention := cfg.Rule.DefaultRetention
+	mode := strings.ToLower(string(retention.Mode))
+	switch {
+	case retention.Days != nil:
+		return fmt.Sprintf("%s, %d days", mode, *retention.Days)
+	case retention.Years != nil:
+		return fmt.Sprintf("%s, %d years", mode, *retention.Years)
+	default:
+		return mode
+	}
+}
+
+func encryptionValue(cfg *types.ServerSideEncryptionConfiguration) string {
+	if cfg == nil || len(cfg.Rules) == 0 || cfg.Rules[0].ApplyServerSideEncryptionByDefault == nil {
+		return "none"
+	}
+	return string(cfg.Rules[0].ApplyServerSideEncryptionByDefault.SSEAlgorithm)
+}
+
+func retentionValue(rules []types.LifecycleRule) string {
+	for _, rule := range rules {
+		if rule.Expiration != nil && rule.Expiration.Days != nil {
+			return fmt.Sprintf("%d days", *rule.Expiration.Days)
+		}
+	}
+	return "no expiration rule"
+}
+
+// fetchAttemptSelect mirrors auditSelect's shape: one row type, read by one page
+// and nothing else, so a screen and any future export cannot describe the same
+// row differently.
+const fetchAttemptSelect = `
+select
+  fat.id,
+  fat.occurred_at,
+  fat.source_kind::text,
+  fat.requested_ref,
+  fat.outcome::text,
+  coalesce(fat.detail, '')
+from fetch_attempt as fat
+order by fat.occurred_at desc, fat.id desc
+limit ?`
+
+func recentFetches(ctx context.Context, db bun.IDB) ([]contract.FetchAttemptSummary, error) {
+	rows, err := db.QueryContext(ctx, fetchAttemptSelect, recentFetchLimit)
+	if err != nil {
+		return nil, fmt.Errorf("read recent fetches: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := []contract.FetchAttemptSummary{}
+	for rows.Next() {
+		var f contract.FetchAttemptSummary
+		if err := rows.Scan(&f.ID, &f.OccurredAt, &f.SourceKind, &f.RequestedRef, &f.Outcome, &f.Detail); err != nil {
+			return nil, fmt.Errorf("scan a fetch attempt: %w", err)
+		}
+		f.OccurredAt = f.OccurredAt.UTC()
+		out = append(out, f)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read recent fetches: %w", err)
+	}
+	return out, nil
+}

@@ -32,6 +32,7 @@ func (s *Server) register() {
 	s.registerAudit()
 	s.registerBadges()
 	s.registerDeviceApproval()
+	s.registerStorage()
 }
 
 // publicSecurity is the empty security requirement that removes the document's
@@ -858,6 +859,28 @@ func (s *Server) registerDeviceApproval() {
 			"500": s.errorResponse("The request could not be completed."),
 		},
 	}, s.approveDeviceCode)
+}
+
+func (s *Server) registerStorage() {
+	huma.Register(s.api, huma.Operation{
+		OperationID: "getStorage",
+		Method:      http.MethodGet,
+		Path:        "/v1/storage",
+		Tags:        []string{"storage"},
+		Summary:     "The object store's own state",
+		Description: "001 FR-053: object count, compressed size, region, the key layout for skills/ " +
+			"and profiles/, the bucket's own versioning, object-lock, encryption, write-access and " +
+			"retention settings, and the most recent ingestion attempts with an outcome. " +
+			"The screen reports what the bucket reports: this system configures and surfaces object " +
+			"lock and retention, it does not enforce them, so a setting the bucket declines to answer " +
+			"comes back UNKNOWN rather than a guessed default. " +
+			"Restricted to catalog-admin, the role this hub's other administration screens use.",
+		Responses: map[string]*huma.Response{
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"403": s.errorResponse("This identity's role may not read the storage report."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.getStorage)
 }
 
 // ---- handlers ----------------------------------------------------------------

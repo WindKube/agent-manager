@@ -165,6 +165,53 @@
         ],
         "type": "object"
       },
+      "BucketSetting": {
+        "additionalProperties": false,
+        "properties": {
+          "known": {
+            "type": "boolean"
+          },
+          "value": {
+            "description": "The bucket's own answer, in its own words.",
+            "examples": [
+              "enabled"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "known"
+        ],
+        "type": "object"
+      },
+      "BucketSettings": {
+        "additionalProperties": false,
+        "properties": {
+          "encryption": {
+            "$ref": "#/components/schemas/BucketSetting"
+          },
+          "objectLock": {
+            "$ref": "#/components/schemas/BucketSetting"
+          },
+          "retention": {
+            "$ref": "#/components/schemas/BucketSetting"
+          },
+          "versioning": {
+            "$ref": "#/components/schemas/BucketSetting"
+          },
+          "writeAccess": {
+            "$ref": "#/components/schemas/BucketSetting"
+          }
+        },
+        "required": [
+          "versioning",
+          "objectLock",
+          "encryption",
+          "writeAccess",
+          "retention"
+        ],
+        "type": "object"
+      },
       "CatalogFacetOption": {
         "additionalProperties": false,
         "properties": {
@@ -565,6 +612,59 @@
         },
         "required": [
           "message"
+        ],
+        "type": "object"
+      },
+      "FetchAttemptSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "description": "The redacted error message. Empty when Outcome is ok.",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "occurredAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "ok",
+              "invalid-ref",
+              "blocked",
+              "unreachable",
+              "malformed",
+              "too-large",
+              "rejected-member",
+              "extract-timeout"
+            ],
+            "type": "string"
+          },
+          "requestedRef": {
+            "description": "The reference as submitted, credentials already redacted. Rendered escaped (FR-055).",
+            "examples": [
+              "https://github.com/example/terraform-review"
+            ],
+            "type": "string"
+          },
+          "sourceKind": {
+            "enum": [
+              "upload",
+              "git",
+              "archive-url"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "occurredAt",
+          "sourceKind",
+          "requestedRef",
+          "outcome"
         ],
         "type": "object"
       },
@@ -2932,6 +3032,90 @@
         },
         "required": [
           "idToken"
+        ],
+        "type": "object"
+      },
+      "StorageKeyCount": {
+        "additionalProperties": false,
+        "properties": {
+          "objects": {
+            "examples": [
+              430
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "prefix": {
+            "examples": [
+              "skills"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "prefix",
+          "objects"
+        ],
+        "type": "object"
+      },
+      "StorageReport": {
+        "additionalProperties": false,
+        "properties": {
+          "bucket": {
+            "$ref": "#/components/schemas/BucketSettings"
+          },
+          "compressedBytes": {
+            "description": "Total size of the objects counted above, as the bucket reports it.",
+            "examples": [
+              1288490188
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "keyLayout": {
+            "description": "Object counts by top-level prefix: skills/ and profiles/.",
+            "items": {
+              "$ref": "#/components/schemas/StorageKeyCount"
+            },
+            "type": "array"
+          },
+          "objectCount": {
+            "description": "Objects under skills/ and profiles/, counted up to the report's listing cap.",
+            "examples": [
+              482
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "readCacheHitRate": {
+            "description": "Fraction of CLI reads served from a local cache. Absent when no sync report carries this figure.",
+            "format": "double",
+            "type": "number"
+          },
+          "recentFetches": {
+            "description": "The most recent ingestion attempts, successful or not, newest first.",
+            "items": {
+              "$ref": "#/components/schemas/FetchAttemptSummary"
+            },
+            "type": "array"
+          },
+          "region": {
+            "examples": [
+              "us-east-1"
+            ],
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "objectCount",
+          "compressedBytes",
+          "truncated",
+          "keyLayout",
+          "bucket",
+          "recentFetches"
         ],
         "type": "object"
       },
@@ -5664,6 +5848,58 @@
         "summary": "Sign out",
         "tags": [
           "identity"
+        ]
+      }
+    },
+    "/v1/storage": {
+      "get": {
+        "description": "001 FR-053: object count, compressed size, region, the key layout for skills/ and profiles/, the bucket's own versioning, object-lock, encryption, write-access and retention settings, and the most recent ingestion attempts with an outcome. The screen reports what the bucket reports: this system configures and surfaces object lock and retention, it does not enforce them, so a setting the bucket declines to answer comes back UNKNOWN rather than a guessed default. Restricted to catalog-admin, the role this hub's other administration screens use.",
+        "operationId": "getStorage",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageReport"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity's role may not read the storage report."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "The object store's own state",
+        "tags": [
+          "storage"
         ]
       }
     },

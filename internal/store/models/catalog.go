@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 )
@@ -222,88 +223,71 @@ const semverSortPad = "-"
 // The key alphabet is [0-9A-Za-z-] only, which orders the same under C and under
 // en_US.utf8 (both verified against Postgres 16). Declaring the column `collate
 // "C"` makes that independent of the cluster's locale.
-func SemverSort(semver string) (string, error) {
-	core := strings.TrimPrefix(strings.TrimSpace(semver), "v")
-	if core == "" {
-		return "", fmt.Errorf("semver sort %q: empty", semver)
+func SemverSort(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", fmt.Errorf("semver sort %q: empty", raw)
 	}
-	if i := strings.IndexByte(core, '+'); i >= 0 {
+
+	// Masterminds treats major.minor and major alone as valid, defaulting the
+	// missing parts to zero; this format requires all three explicitly.
+	core := strings.TrimPrefix(trimmed, "v")
+	if i := strings.IndexAny(core, "-+"); i >= 0 {
 		core = core[:i]
 	}
-
-	var (
-		prerelease    string
-		hasPrerelease bool
-	)
-	if i := strings.IndexByte(core, '-'); i >= 0 {
-		core, prerelease, hasPrerelease = core[:i], core[i+1:], true
+	if n := strings.Count(core, ".") + 1; n != 3 {
+		return "", fmt.Errorf("semver sort %q: want major.minor.patch, got %d parts", raw, n)
 	}
 
-	parts := strings.Split(core, ".")
-	if len(parts) != 3 {
-		return "", fmt.Errorf("semver sort %q: want major.minor.patch, got %d parts", semver, len(parts))
+	// StrictNewVersion, not NewVersion: the package's own NewVersion coerces a
+	// leading zero (CoerceNewVersion defaults true), which this format forbids.
+	version, err := semver.StrictNewVersion(strings.TrimPrefix(trimmed, "v"))
+	if err != nil {
+		return "", fmt.Errorf("semver sort %q: %w", raw, err)
 	}
 
 	var key strings.Builder
-	for _, part := range parts {
-		padded, err := paddedNumber(part, semverSortNumberWidth)
-		if err != nil {
-			return "", fmt.Errorf("semver sort %q: %w", semver, err)
+	for _, n := range [3]uint64{version.Major(), version.Minor(), version.Patch()} {
+		padded, padErr := paddedNumber(strconv.FormatUint(n, 10), semverSortNumberWidth)
+		if padErr != nil {
+			return "", fmt.Errorf("semver sort %q: %w", raw, padErr)
 		}
 		key.WriteString(padded)
 	}
 
-	if !hasPrerelease {
+	pre := version.Prerelease()
+	if pre == "" {
 		key.WriteByte('1')
 		return key.String(), nil
 	}
-	if prerelease == "" {
-		return "", fmt.Errorf("semver sort %q: trailing hyphen with no prerelease", semver)
-	}
 	key.WriteByte('0')
 
-	for _, ident := range strings.Split(prerelease, ".") {
-		switch {
-		case ident == "":
-			return "", fmt.Errorf("semver sort %q: empty prerelease identifier", semver)
-		case isNumericIdent(ident):
-			padded, err := paddedNumber(ident, semverSortIdentWidth)
-			if err != nil {
-				return "", fmt.Errorf("semver sort %q: %w", semver, err)
+	for _, ident := range strings.Split(pre, ".") {
+		if isNumericIdent(ident) {
+			padded, padErr := paddedNumber(ident, semverSortIdentWidth)
+			if padErr != nil {
+				return "", fmt.Errorf("semver sort %q: %w", raw, padErr)
 			}
 			key.WriteByte('0')
 			key.WriteString(padded)
-		default:
-			if err := validAlnumIdent(ident); err != nil {
-				return "", fmt.Errorf("semver sort %q: %w", semver, err)
-			}
-			if len(ident) > semverSortIdentWidth {
-				return "", fmt.Errorf("semver sort %q: prerelease identifier %q is longer than %d", semver, ident, semverSortIdentWidth)
-			}
-			key.WriteByte('1')
-			key.WriteString(ident)
-			key.WriteString(strings.Repeat(semverSortPad, semverSortIdentWidth-len(ident)))
+			continue
 		}
+		if len(ident) > semverSortIdentWidth {
+			return "", fmt.Errorf("semver sort %q: prerelease identifier %q is longer than %d", raw, ident, semverSortIdentWidth)
+		}
+		key.WriteByte('1')
+		key.WriteString(ident)
+		key.WriteString(strings.Repeat(semverSortPad, semverSortIdentWidth-len(ident)))
 	}
 
 	return key.String(), nil
 }
 
-// paddedNumber left-pads a semver numeric identifier with zeros to width. It
-// refuses anything that would not compare correctly at that width: a non-number,
-// a leading zero (semver forbids it, and it would make two spellings of one
-// number produce two keys), or a value too wide to pad.
+// paddedNumber left-pads an already-valid decimal identifier with zeros to
+// width, refusing one too wide to pad and still compare correctly.
 func paddedNumber(s string, width int) (string, error) {
-	switch {
-	case !isNumericIdent(s):
-		return "", fmt.Errorf("%q is not a number", s)
-	case len(s) > 1 && s[0] == '0':
-		return "", fmt.Errorf("%q has a leading zero", s)
-	case len(s) > width:
+	if len(s) > width {
 		return "", fmt.Errorf("%q has more than %d digits", s, width)
-	}
-	if _, err := strconv.ParseUint(s, 10, 64); err != nil {
-		return "", fmt.Errorf("%q does not fit a uint64: %w", s, err)
 	}
 	return strings.Repeat("0", width-len(s)) + s, nil
 }
@@ -318,16 +302,4 @@ func isNumericIdent(s string) bool {
 		}
 	}
 	return true
-}
-
-func validAlnumIdent(s string) error {
-	for i := range len(s) {
-		c := s[i]
-		switch {
-		case c >= '0' && c <= '9', c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c == '-':
-		default:
-			return fmt.Errorf("prerelease identifier %q holds %q", s, string(c))
-		}
-	}
-	return nil
 }

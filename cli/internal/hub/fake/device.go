@@ -94,7 +94,7 @@ func (h *Hub) deviceAuthorize(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.ClientId == "" || req.Host == "" {
 		// host is required and is shown to the approving human, so approval is an
-		// informed act (FR-041 of the hub spec). An empty one is not a nicety.
+		// informed act. An empty one is not a nicety.
 		writeProblem(w, http.StatusBadRequest, "Bad Request", "client_id and host are required")
 		return
 	}
@@ -135,8 +135,8 @@ func (h *Hub) deviceAuthorize(w http.ResponseWriter, r *http.Request) {
 // terminal answer rather than slow_down.
 func (h *Hub) deviceToken(w http.ResponseWriter, r *http.Request) {
 	// Form-encoded ONLY. RFC 8628 §3.4 fixes it and the real hub enforces it, so
-	// accepting JSON here would pass a test the real hub fails — the R5 violation
-	// this package exists to avoid. Do not "helpfully" add a JSON branch.
+	// accepting JSON here would pass a test the real hub fails. Do not
+	// "helpfully" add a JSON branch.
 	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-www-form-urlencoded") {
 		writeProblem(w, http.StatusUnsupportedMediaType, "Unsupported Media Type",
 			"body must be application/x-www-form-urlencoded")

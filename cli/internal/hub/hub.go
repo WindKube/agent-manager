@@ -6,11 +6,11 @@ package hub
 // properties rather than tidiness:
 //
 //  1. The bearer token is injected in ONE place, an http.RoundTripper scoped
-//     to the hub's own origin, so FR-016 (never send the token to a redirect
-//     target) is a property of the transport instead of a rule that every call
+//     to the hub's own origin, so never sending the token to a redirect
+//     target is a property of the transport instead of a rule that every call
 //     site has to remember.
 //  2. Every answer the hub can give is turned into a Class in ONE place, so
-//     FR-040's four distinguishable failures cannot drift apart between verbs.
+//     its distinguishable failures cannot drift apart between verbs.
 //
 // WHY THIS USES THE RAW ClientInterface AND NOT ClientWithResponses.
 // Measured against the generated file, not assumed: ParseListProfilesResponse
@@ -20,8 +20,7 @@ package hub
 // the transport error the same call returns when nothing answered. Routing
 // through them would classify a load balancer's HTML error page as
 // "unreachable" and send the user hunting a network fault that is not there.
-// Reading and decoding here keeps status, body and cause separable, which is
-// the whole of FR-040.
+// Reading and decoding here keeps status, body and cause separable.
 
 import (
 	"context"
@@ -44,15 +43,15 @@ const (
 	opReportSync      = "reportSync"
 	opDeviceAuthorize = "deviceAuthorize"
 	opDeviceToken     = "deviceToken"
-	// OpGetBundle is exported because bundles.go (T038) issues that call
-	// itself — the generated GetBundleWithResponse reads the whole bundle into
-	// memory before anything can check its digest, which is the opposite of
-	// FR-014 — and its errors must carry the same op name as everything else.
+	// OpGetBundle is exported because bundles.go issues that call itself — the
+	// generated GetBundleWithResponse reads the whole bundle into memory
+	// before anything can check its digest, defeating streaming verification
+	// — and its errors must carry the same op name as everything else.
 	OpGetBundle = "getBundle"
 )
 
-// PlaintextFlagName is the flag that makes an http:// hub acceptable
-// (FR-041). It lives here, beside the refusal that names it, so the flag and
+// PlaintextFlagName is the flag that makes an http:// hub acceptable.
+// It lives here, beside the refusal that names it, so the flag and
 // the message cannot disagree; the command layer registers it.
 const PlaintextFlagName = "allow-plaintext-hub"
 
@@ -63,7 +62,7 @@ const PlaintextFlagName = "allow-plaintext-hub"
 const maxRedirects = 10
 
 // maxBodyBytes caps every JSON body this package reads. The largest real one
-// is a lockfile — tens of kilobytes at the profile sizes R4 measured — so this
+// is a lockfile — tens of kilobytes at the profile sizes measured — so this
 // is four orders of magnitude of headroom, and it exists so that a hostile or
 // broken endpoint cannot make the CLI allocate until it dies. It does NOT
 // apply to a bundle: those never come through here (see Raw).
@@ -72,7 +71,7 @@ const maxBodyBytes = 32 << 20
 // revisionPattern is the contract's own `^(head|[0-9]+)$`. Checked locally
 // only to name the bad argument instead of round-tripping for a 422; it makes
 // no decision about WHICH revision to fetch, which would be the second
-// resolver FR-009 forbids.
+// resolver would be.
 //
 //nolint:gocritic // copied character for character from the frozen contract, so it stays greppable against it.
 var revisionPattern = regexp.MustCompile(`^(head|[0-9]+)$`)
@@ -85,9 +84,9 @@ type Config struct {
 	// take none. It is copied into a closure and never stored in a struct
 	// field; see New for the measurement behind that.
 	Token string
-	// AllowPlaintext accepts an http:// URL (FR-041). There is no
-	// "but it is localhost" exception: a shortcut that fires by itself under
-	// some conditions is a default, and FR-041 exists to stop plaintext being
+	// AllowPlaintext accepts an http:// URL. There is no "but it is
+	// localhost" exception: a shortcut that fires by itself under some
+	// conditions is a default, and this flag exists to stop plaintext being
 	// one.
 	AllowPlaintext bool
 	// HTTPClient supplies the transport, timeouts and TLS configuration when
@@ -104,7 +103,7 @@ type Config struct {
 //
 // It holds no state beyond that: no cached lockfile, nothing to close. Two
 // Hubs for two hub URLs is the supported way to talk to two hubs, which is
-// what FR-006's per-hub credential scoping needs.
+// what per-hub credential scoping needs.
 type Hub struct {
 	base     *url.URL
 	gen      ClientInterface
@@ -114,9 +113,9 @@ type Hub struct {
 
 // New validates the URL, wires the bearer transport and returns a Hub.
 //
-// It makes no network call. FR-039's home check and FR-041's TLS check both
-// have to happen before anything is dialled, and a constructor that probed
-// would make that ordering impossible to guarantee.
+// It makes no network call. The home check and the TLS check both have to
+// happen before anything is dialled, and a constructor that probed would
+// make that ordering impossible to guarantee.
 func New(cfg Config) (*Hub, error) {
 	raw := strings.TrimSpace(cfg.URL)
 	if raw == "" {
@@ -145,7 +144,7 @@ func New(cfg Config) (*Hub, error) {
 	}
 	// Refused rather than ignored, and the offending value is NOT echoed:
 	// net/http copies URL credentials onto every redirect target, which is
-	// FR-016's leak wearing a different hat, and a password echoed into a
+	// the same leak wearing a different hat, and a password echoed into a
 	// refusal lands in whatever captured stderr.
 	if u.User != nil {
 		return nil, fmt.Errorf("%w: hub URL carries credentials in the URL; authenticate with `amctl login`", ErrHubURL)
@@ -174,7 +173,7 @@ func New(cfg Config) (*Hub, error) {
 		// cannot call String() on them (reflect.Value.CanInterface is false for
 		// a field reached through reflection), so the usual "wrap it in a
 		// redacting Stringer" defence does not work here. A func field prints
-		// as an address. This is what keeps FR-007 true for a careless
+		// as an address. This is what keeps the token out of a careless
 		// fmt.Sprintf("%+v", someStructHoldingAHub).
 		token:     func() string { return token },
 		userAgent: agent,
@@ -198,7 +197,7 @@ func (h *Hub) Insecure() bool { return h.insecure }
 // Raw is the generated client, with the bearer transport already wired.
 //
 // It exists for one caller: getBundle, which must stream the response body to
-// compute its digest before a byte reaches the tree (FR-014, FR-019), and so
+// compute its digest before a byte reaches the tree, and so
 // cannot use a wrapper that reads the whole bundle first. Anything else should
 // use a method on Hub, or the classification stops being in one place.
 func (h *Hub) Raw() ClientInterface { return h.gen }
@@ -211,7 +210,7 @@ func (h *Hub) HTTPClient() *http.Client { return h.httpc }
 
 // Health calls /v1/health, which takes no credential.
 //
-// That is what makes it the discriminator FR-040 needs: if Health answers and
+// That is what makes it the discriminator needed: if Health answers and
 // an authenticated call returns 401, the diagnosis is unauthorised rather than
 // unreachable, and the CLI can say which.
 //
@@ -280,7 +279,7 @@ func (h *Hub) GetRevision(ctx context.Context, slug, revision string) (*Lockfile
 
 // ReportSync posts the one sync event for a completed sync (204 on success).
 //
-// FR-033 makes a failure here a warning rather than a failed sync, so the
+// A failure here is a warning rather than a failed sync, so the
 // error is returned plainly for the caller to report on the diagnostic stream
 // and is deliberately not wrapped in anything that looks fatal.
 func (h *Hub) ReportSync(ctx context.Context, report SyncReport) error {
@@ -308,13 +307,13 @@ func (h *Hub) DeviceAuthorize(ctx context.Context, req DeviceAuthorizeRequest) (
 // of it. authorization_pending and slow_down are the normal course of a login
 // and MUST NOT be classified as ClassRequest, or a poll loop would abort on
 // its first tick. Which codes are terminal is the device state machine's
-// decision (T025), so this type reports the code and judges nothing.
+// decision, so this type reports the code and judges nothing.
 type DeviceFlowError struct {
 	Code DeviceTokenErrorError
 }
 
 // Error implements error. It names the code and nothing else — the device code
-// and the user code are credentials under FR-007 and never appear here.
+// and the user code are credentials and never appear here.
 func (e *DeviceFlowError) Error() string {
 	if e.Code == "" {
 		return "deviceToken: hub refused the poll without naming a reason"
@@ -432,7 +431,8 @@ func (h *Hub) opURL(path string) string {
 	return safeURL(&u)
 }
 
-// bearerTransport injects the bearer token, and is the reason FR-016 holds.
+// bearerTransport injects the bearer token, and is the reason it never
+// leaks to a redirect target.
 //
 // WHY THIS IS NOT A RequestEditorFn: the generated client's request editors
 // run once, on the request the client builds. http.Client then follows
@@ -457,7 +457,7 @@ func (h *Hub) opURL(path string) string {
 // self-hosted layout there is — leaks the token with the default client.
 //
 // All three are exactly how a self-hosted hub fronts its object store, and
-// FR-016 has no subdomain, path or port exception. The default leaks the token,
+// There is no subdomain, path or port exception. The default leaks the token,
 // and no line of calling code looks wrong.
 // TestStandardLibraryLeaksOnSameHostAndSubdomainRedirects asserts the default
 // behaviour directly, so if a future Go release changes it this comment fails

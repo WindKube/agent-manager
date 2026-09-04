@@ -9,48 +9,28 @@ import (
 	"sync"
 )
 
-// This file is T044: report one completed sync to the hub, exactly once
-// (FR-032), never retried, and never able to fail the sync (FR-033).
+// This file reports one completed sync to the hub, exactly once, never
+// retried, and never able to fail the sync.
 //
-// # R6, MEASURED RATHER THAN ASSUMED: reportSync is ADDITIVE, not idempotent
+// # reportSync is ADDITIVE on the server, not idempotent
 //
-// The task line says to confirm server-side idempotence before implementing a
-// retry. The hub is in this repository, so it was read rather than guessed, and
-// the answer decides the whole policy below.
-//
-//   - `internal/api/commands/sync.go` ReportSync opens one transaction and does
-//     a plain INSERT of a `models.SyncEvent` whose ID is `models.NewID()` — a
-//     fresh UUID per call — plus one audit row. There is no ON CONFLICT clause,
-//     no natural key lookup and no read of an existing event.
-//   - `internal/store/schema/02-tables.sql` declares
-//     `CREATE TABLE "sync_event" (... PRIMARY KEY ("id"))`. The only other
-//     constraints on it are the three foreign keys
-//     (`internal/store/schema_test.go`). There is no unique index over
-//     (identity_id, profile_id, revision_id, host), so nothing on the server
-//     collapses two identical reports into one row.
-//   - `internal/api/integration_test.go`
-//     TestReportSyncWritesOneSyncEventAndOneAuditRow asserts `before+1` for both
-//     tables after one POST. A second identical POST therefore gives `before+2`.
-//   - The frozen contract carries no idempotency key: POST /v1/sync's body is
-//     profile, revision, host, targets and skipped, and there is no
-//     `Idempotency-Key` header in `contracts/openapi.yaml`.
-//
-// So a duplicate report is ADDITIVE: a second sync_event row and a second audit
-// row for one sync. Hub SC-008 is "every state-changing action produces exactly
-// one audit row — verified by exercising each mutating endpoint and asserting
-// the count delta is one", so a retry is not a harmless duplicate, it is that
-// success criterion broken by this client.
+// The hub's ReportSync handler does a plain INSERT of a sync_event row with a
+// fresh UUID per call, plus one audit row; there is no unique index over
+// (identity, profile, revision, host) and no idempotency key in the frozen
+// contract. So a duplicate report is ADDITIVE: a second sync_event row and a
+// second audit row for one sync, which breaks the hub's own guarantee that
+// every state-changing action produces exactly one audit row.
 //
 // # THE POLICY THAT FOLLOWS: AT MOST ONE ATTEMPT
 //
 // There is NO retry here, and adding one is not an improvement to make later.
 // The failures a retry exists for — a timeout, a connection reset, a 503 read
-// after the body was written — are exactly the failures in which the report may
-// ALREADY have landed. With no idempotency key and no server-side dedup, a
+// after the body was written — are exactly the failures in which the report
+// may ALREADY have landed. With no idempotency key and no server-side dedup, a
 // retry after an ambiguous failure is a coin flip between one row and two, and
-// two is the outcome that makes an audit trail lie. FR-032's "exactly once"
-// is therefore implemented as at-most-once ON THE WIRE, and the missing report
-// is surfaced to a human (FR-033) instead of being papered over.
+// two is the outcome that makes an audit trail lie. "Exactly once" is
+// therefore implemented as at-most-once ON THE WIRE, and a missing report is
+// surfaced to a human instead of being papered over.
 //
 // A 429 with Retry-After looks like the one safe exception, because a rate
 // limiter answers before the handler runs. It is not taken: this file cannot
@@ -60,11 +40,8 @@ import (
 // idempotency key on the endpoint, which is a contract change, not a client
 // one.
 //
-// # WHAT CHANGES IF THE HUB EVER DEDUPES
-//
-// One thing, in one place: Reporter.Report would loop on Class.Retryable().
-// Nothing else here would move, which is why the reason is written down at
-// length rather than left as "no retry".
+// If the hub ever dedupes, one thing changes in one place: Reporter.Report
+// would loop on Class.Retryable(). Nothing else here would move.
 
 // ErrReportInput marks a sync report this client refuses to send, because the
 // hub would answer 422 and the CLI would then report a failed sync report for a
@@ -72,12 +49,12 @@ import (
 var ErrReportInput = errors.New("unusable sync report")
 
 // ErrAlreadyReported marks a second Report call for a sync already reported by
-// this process. It is how FR-032's "exactly once" becomes a property of this
+// this process. It is how "exactly once" becomes a property of this
 // type rather than of the caller's control flow.
 //
 // It is an error and not a silent no-op on purpose: a second call is a bug in
 // the caller, and a bug that returns nil is a bug nobody finds. It is safe to
-// make it loud because FR-033 routes every failure here to a warning, so the
+// make it loud because every failure here routes to a warning, so the
 // worst it can do is print a line — it cannot fail a sync.
 var ErrAlreadyReported = errors.New("this sync has already been reported to the hub")
 
@@ -85,7 +62,7 @@ var ErrAlreadyReported = errors.New("this sync has already been reported to the 
 //
 // Revision is an int and not a string: `head` is a REQUEST, never a state, and
 // the contract types this field as an integer. Whoever asked for `head` must
-// substitute the number the lockfile came back with (FR-013) before it reaches
+// substitute the number the lockfile came back with before it reaches
 // here, and a value below 1 is refused rather than sent.
 type Report struct {
 	// Profile is the profile slug that was synced. One report per profile: the
@@ -100,7 +77,7 @@ type Report struct {
 	Host string
 
 	// Targets is the agent directories actually managed by this sync. The hub
-	// stores nothing per target (hub FR-039) — they land in the audit text —
+	// stores nothing per target — they land in the audit text —
 	// but the field is required and must be non-empty.
 	Targets []string
 
@@ -208,11 +185,11 @@ func NewReporter(h *Hub) (*Reporter, error) {
 	return &Reporter{hub: h, sent: map[reportKey]struct{}{}}, nil
 }
 
-// Report sends one sync report. It makes at most one request and never retries;
-// see the file comment for the R6 measurement that decides that.
+// Report sends one sync report. It makes at most one request and never
+// retries; see the file comment for why.
 //
-// The error is returned plainly, for the caller to put on the diagnostic stream
-// (FR-033). It is deliberately not wrapped in anything that reads as fatal: the
+// The error is returned plainly, for the caller to put on the diagnostic
+// stream. It is deliberately not wrapped in anything that reads as fatal: the
 // bytes are already on disk, and refusing to admit the sync happened would be
 // the wrong correction.
 //

@@ -16,8 +16,8 @@ import (
 // a lockfile entry's `id` is `namespace/name`. The bundle path's `{publisher}`
 // parameter takes the NAMESPACE despite its name.
 //
-// Two publishers sharing one namespace is legal and is modelled here on purpose:
-// FR-023 requires distinct destination directories per `namespace/name`, and a
+// Two publishers sharing one namespace is legal and is modelled here on
+// purpose: the CLI requires distinct destination directories per `namespace/name`, and a
 // catalog with one publisher per namespace cannot exercise it — every test would
 // pass under an implementation that keyed off the publisher instead.
 type pkg struct {
@@ -105,7 +105,7 @@ const (
 
 // futureSkipReason is a value the frozen schema's enum does not contain.
 //
-// FR-011 requires the CLI to report an unrecognised reason VERBATIM rather than
+// The CLI must report an unrecognised reason VERBATIM rather than
 // drop it, because the hub may add one and this client ships separately from it.
 // A fake that only ever served the six legal values could not exercise that, so
 // one profile serves this and the conformance self-test validates that profile
@@ -117,7 +117,7 @@ func catalog() []*pkg {
 	pkgs := []*pkg{
 		// Namespace `acme`, publisher `acme/platform`.
 		{ID: "acme/code-review", Version: "2.4.1", Publisher: "acme/platform", Kind: "skill"},
-		// Namespace `acme` AGAIN, different publisher. FR-023's case.
+		// Namespace `acme` AGAIN, different publisher.
 		{ID: "acme/lint-guard", Version: "1.0.3", Publisher: "acme/security", Kind: "skill"},
 		{ID: "example/doc-writer", Version: "0.9.0", Publisher: "example/platform", Kind: "skill"},
 		{ID: "contoso/stale-digest", Version: "1.0.0", Publisher: "contoso/tools", Kind: "skill"},
@@ -142,10 +142,10 @@ func profiles() []profileSpec {
 	// the shipped target could not exercise ErrR2Unresolved. The first half is
 	// right and the conclusion was wrong: because codex is unwritable by design,
 	// naming it on EVERY profile meant every profile the fake serves is refused,
-	// so the fake could not serve the happy path at all. T045 and T046 — the
-	// idempotence and interruption properties, the two that decide whether the
-	// MVP works — had no syncable profile to run against, and the agent writing
-	// the sync verb had to stand up a rewriting reverse proxy to get one.
+	// so the fake could not serve the happy path at all. The idempotence and
+	// interruption properties had no syncable profile to run against, and the
+	// sync verb's own tests had to stand up a rewriting reverse proxy to get
+	// one.
 	//
 	// The real hub's own seeded lockfile names claude-code only
 	// (internal/api/integration_test.go, storedLockfile), so that is the shipping
@@ -176,8 +176,8 @@ func profiles() []profileSpec {
 						{pkgID: "acme/code-review@2.4.1", resolution: "pinned", verdict: "clean",
 							signature: &hub.LockfileSignature{
 								Ref: ptr("sigstore:acme/code-review@2.4.1"),
-								// FR-048a: false until Sigstore verification ships. The
-								// schema's own words: never render a false value as a pass.
+								// False until Sigstore verification ships. The schema's own
+								// words: never render a false value as a pass.
 								Verified: ptr(false),
 							}},
 						{pkgID: "acme/lint-guard@1.0.3", resolution: "latest", verdict: "flagged",
@@ -189,7 +189,7 @@ func profiles() []profileSpec {
 						{pkgID: "example/doc-writer@0.9.0", resolution: "range", verdict: "clean"},
 					},
 					// Three of the six legal reasons. Every one of these must reach the
-					// user with the hub's own wording (FR-011).
+					// user with the hub's own wording.
 					skipped: []hub.LockfileSkip{
 						{Id: "acme/legacy-helper", Reason: "flagged-awaiting-approval",
 							Detail: ptr("SH-NET-002 in postinstall.sh"), WouldHaveResolvedTo: ptr("1.9.0")},
@@ -222,7 +222,7 @@ func profiles() []profileSpec {
 				revision: 2, gate: "block", targets: writable,
 				// Order matters: one installable entry, then the 403, then another
 				// installable entry. A sync that aborts on the 403 leaves the third
-				// uninstalled, which is what FR-011's mid-sync case is about.
+				// uninstalled, which is what the mid-sync case is about.
 				entries: []entrySpec{
 					{pkgID: "acme/code-review@2.4.1", resolution: "pinned", verdict: "clean"},
 					{pkgID: "contoso/gated@3.1.0", resolution: "pinned", verdict: "flagged"},
@@ -246,7 +246,7 @@ func profiles() []profileSpec {
 			// the point: one that serves bytes, then one whose 307 target refuses.
 			// A client that reads the store's 403 as the hub's scan gate skips the
 			// second entry and exits 0, which is the "installs nothing and reports
-			// success" failure gate R2 exists to prevent.
+			// success" failure this exists to prevent.
 			slug: slugPresignedStale, name: "Pre-signed bundle whose signature the store rejects",
 			visibility: "organisation",
 			revisions: []revisionSpec{{
@@ -262,7 +262,7 @@ func profiles() []profileSpec {
 			// The ErrR2Unresolved case: a lockfile naming a target this client
 			// cannot write. It must be REFUSED with the target named, never
 			// silently skipped — writing nowhere and reporting success is the
-			// exact failure R2 exists to prevent.
+			// exact failure this exists to prevent.
 			slug: slugUnwritable, name: "Names an unwritable target", visibility: "organisation",
 			revisions: []revisionSpec{{
 				revision: 1, gate: "approval", policy: "pinned", targets: unwritable,

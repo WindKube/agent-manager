@@ -16,19 +16,20 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/hub"
 )
 
-// ErrUnsupported is what a [Control] returns for an operation the hub behind it
-// cannot perform. It is the honest answer, and a suite that gets it must skip the
-// case with a named reason rather than treat it as a pass — see R5 in doc.go.
+// ErrUnsupported is what a [Control] returns for an operation the hub behind
+// it cannot perform. It is the honest answer, and a suite that gets it must
+// skip the case with a named reason rather than treat it as a pass — see
+// doc.go.
 var ErrUnsupported = errors.New("this hub cannot be driven that way")
 
-// Control is the human-and-operator half of a hub: the parts no client-facing API
-// exposes. The fake implements all of it in process; T062's adapter over the
-// compose stack implements what the real hub offers and returns [ErrUnsupported]
-// for the rest.
+// Control is the human-and-operator half of a hub: the parts no
+// client-facing API exposes. The fake implements all of it in process; an
+// adapter over a real compose stack implements what the real hub offers and
+// returns [ErrUnsupported] for the rest.
 //
-// This interface exists so a behavioural test can set a case up WITHOUT holding a
-// *fake.Hub. That distinction is the whole of R5: a test that takes a Control can
-// be pointed at the real hub, a test that takes a *fake.Hub can never be.
+// This interface exists so a behavioural test can set a case up WITHOUT
+// holding a *fake.Hub: a test that takes a Control can be pointed at the
+// real hub, a test that takes a *fake.Hub can never be.
 type Control interface {
 	// ApproveDevice plays the human clicking "approve". userCode is the code the
 	// authorize response handed back.
@@ -42,13 +43,13 @@ type Control interface {
 	// Almost certainly [ErrUnsupported] on a real hub, which has no reason to let a
 	// client age its own grant. Suites must expect that.
 	ExpireDevice(userCode string) error
-	// SetHealthy flips /v1/health between 200 ok and 503 unavailable, which is what
-	// FR-040 needs to tell "unauthorised" from "the hub is broken". Distinguishing
+	// SetHealthy flips /v1/health between 200 ok and 503 unavailable, which is
+	// needed to tell "unauthorised" from "the hub is broken". Distinguishing
 	// UNREACHABLE needs no control: close the listener, or use a dead port.
 	SetHealthy(bool) error
-	// SyncReports returns every report the hub accepted, oldest first. FR-033 and
-	// R6 are about there being exactly one row per sync; a suite cannot assert that
-	// without reading the rows back.
+	// SyncReports returns every report the hub accepted, oldest first. There
+	// must be exactly one row per sync; a suite cannot assert that without
+	// reading the rows back.
 	SyncReports() ([]hub.SyncReport, error)
 }
 
@@ -72,31 +73,31 @@ type Fixtures struct {
 	PriorRevision int64
 
 	// SharedNamespaceIDs are two entry ids in ONE namespace published by TWO
-	// different publishers. FR-023's distinct-directory requirement is about
-	// `namespace/name`, and an implementation that keyed off the publisher passes
-	// every test a one-publisher-per-namespace fixture can write.
+	// different publishers. The distinct-directory requirement is about
+	// `namespace/name`, and an implementation that keyed off the publisher
+	// passes every test a one-publisher-per-namespace fixture can write.
 	SharedNamespaceIDs []string
 
 	// DigestMismatch is a profile whose lockfile digest for one entry is the real
-	// digest of some other real bundle. FR-015.
+	// digest of some other real bundle.
 	DigestMismatch string
 	// ForbiddenBundle is a profile whose MIDDLE entry answers 403. The entries
-	// either side must still install (FR-011).
+	// either side must still install.
 	ForbiddenBundle string
 	// ForbiddenEntryID is the id of that middle entry.
 	ForbiddenEntryID string
 	// PresignedBundle is a profile whose bundle answers 307 to a pre-signed URL on
 	// the SAME host. Same host is the point: a cross-host redirect drops the
-	// Authorization header in net/http already, so it passes even with FR-016
-	// unimplemented.
+	// Authorization header in net/http already, so it would pass even with a
+	// broken redirect-leak defence.
 	PresignedBundle string
 	// StalePresignedBundle is the offload path's negative control: a profile
 	// whose SECOND entry answers 307 to a pre-signed URL the object store then
 	// refuses with 403 — an expired signature, clock skew, or a proxy in front
 	// of the store, all of which S3, GCS and MinIO answer 403 for.
 	//
-	// The hub's own 403 means the organisation's scan gate rejected the version
-	// and FR-011 says skip that entry and carry on. The STORE's 403 means the
+	// The hub's own 403 means the organisation's scan gate rejected the
+	// version and the sync verb skips that entry and carries on. The STORE's 403 means the
 	// download failed. Reading the second as the first is how a sync installs
 	// nothing and exits 0. StalePresignedEntryID is the id of that entry; the
 	// first entry serves bytes, so a run that abandons the profile wholesale is
@@ -104,12 +105,12 @@ type Fixtures struct {
 	StalePresignedBundle  string
 	StalePresignedEntryID string
 	// UnknownSkipReason is a profile whose skipped array carries a reason value
-	// this build has never seen. FR-011 says report it verbatim.
+	// this build has never seen. It must be reported verbatim.
 	UnknownSkipReason string
 	// UnwritableTarget is a profile whose lockfile names a target this client
-	// cannot write (codex, gated on gate R2's unmade measurement). It must be
-	// REFUSED with the target named, never silently skipped: writing nowhere and
-	// reporting success is the failure R2 exists to prevent.
+	// cannot write (codex). It must be REFUSED with the target named, never
+	// silently skipped: writing nowhere and reporting success is the failure
+	// this exists to prevent.
 	//
 	// It is a profile of its own rather than a property of every profile. The
 	// earlier fixture named codex on all of them, which meant no profile the fake
@@ -153,8 +154,7 @@ type Options struct {
 	// TokenTTL is `expires_in` beside the access token. Default 1h.
 	TokenTTL time.Duration
 	// TLS serves HTTPS with a self-signed certificate. The CLI refuses a plaintext
-	// hub without an explicit flag (FR-041), so a test of the normal path wants
-	// this on.
+	// hub without an explicit flag, so a test of the normal path wants this on.
 	TLS bool
 }
 
@@ -181,8 +181,8 @@ type tokenInfo struct {
 	host      string
 }
 
-// Hub is the running fake. Tests construct it; they do NOT pass it around — pass
-// [Hub.Target] instead. See R5 in doc.go.
+// Hub is the running fake. Tests construct it; they do NOT pass it around —
+// pass [Hub.Target] instead. See doc.go.
 type Hub struct {
 	opts Options
 	srv  *httptest.Server
@@ -240,8 +240,8 @@ func New(opts Options) *Hub {
 	// times on the hub side, and the fake must not be a fourth place it can hide.
 	mux.HandleFunc("GET /v1/bundles/{namespace}/{name}/{version}", h.getBundle)
 	mux.HandleFunc("POST /v1/sync", h.reportSync)
-	// Not a hub route. It stands in for the object store the 307 points at, on the
-	// SAME host, which is the only shape that can catch the FR-016 leak.
+	// Not a hub route. It stands in for the object store the 307 points at, on
+	// the SAME host, which is the only shape that can catch a redirect leak.
 	mux.HandleFunc("GET /objects/{key...}", h.presigned)
 
 	if h.opts.TLS {
@@ -379,8 +379,9 @@ func (h *Hub) health(w http.ResponseWriter, _ *http.Request) {
 		}}
 		status = http.StatusServiceUnavailable
 	}
-	// No auth on this route, by contract: it is the probe that tells "unreachable"
-	// from "unauthorised" (FR-040), so requiring a token would defeat its purpose.
+	// No auth on this route, by contract: it is the probe that tells
+	// "unreachable" from "unauthorised", so requiring a token would defeat its
+	// purpose.
 	writeJSON(w, status, "application/json", body)
 }
 
@@ -472,7 +473,8 @@ func (h *Hub) getBundle(w http.ResponseWriter, r *http.Request) {
 		loc := "/objects/" + p.objectKey() + "?X-Amz-Expires=60&X-Amz-Signature=" + url.QueryEscape(h.signatures[key])
 		// 307, not 302: the method must survive. The Location is on THIS host on
 		// purpose — net/http strips Authorization across hosts already, so a
-		// cross-host redirect cannot catch the FR-016 bug it is meant to catch.
+		// cross-host redirect cannot catch the redirect-leak bug it is meant to
+		// catch.
 		w.Header().Set("Location", loc)
 		w.WriteHeader(http.StatusTemporaryRedirect)
 	default:
@@ -482,9 +484,10 @@ func (h *Hub) getBundle(w http.ResponseWriter, r *http.Request) {
 
 // presigned stands in for the object store the 307 points at.
 //
-// It REFUSES a request that carries an Authorization header, which is what makes
-// FR-016 testable without a test reaching inside the fake: a client that leaks the
-// bearer to the redirect target gets 400 through the ordinary response path. Real
+// It REFUSES a request that carries an Authorization header, which is what
+// makes the redirect leak testable without a test reaching inside the fake:
+// a client that leaks the bearer to the redirect target gets 400 through the
+// ordinary response path. Real
 // pre-signed object stores behave this way — S3 rejects a request that presents
 // both a query signature and an Authorization header — so this is fidelity, not a
 // trap invented for the test.
@@ -547,7 +550,7 @@ func (h *Hub) reportSync(w http.ResponseWriter, r *http.Request) {
 		return
 	case body.Revision < 1:
 		// `head` is not a revision here. The client must have replaced it with the
-		// number it resolved against (FR-013) and a fake that accepted a string
+		// number it resolved against and a fake that accepted a string
 		// would let that bug through.
 		writeProblem(w, http.StatusUnprocessableEntity, "Unprocessable Entity",
 			"revision must be a positive integer")
@@ -579,8 +582,8 @@ func (h *Hub) reportSync(w http.ResponseWriter, r *http.Request) {
 
 // authorized enforces the bearer on the five authenticated routes. An absent,
 // malformed, unknown or expired token is 401 and they are NOT distinguished in the
-// body: telling a caller which of those it was is a probing oracle, and FR-040's
-// four classes are decided by status code, not by prose.
+// body: telling a caller which of those it was is a probing oracle, and the
+// four failure classes are decided by status code, not by prose.
 func (h *Hub) authorized(w http.ResponseWriter, r *http.Request) bool {
 	raw := r.Header.Get("Authorization")
 	token, ok := strings.CutPrefix(raw, "Bearer ")

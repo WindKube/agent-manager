@@ -13,8 +13,8 @@ import (
 )
 
 // Class is what went wrong with a hub call, at the granularity a person can
-// act on. FR-040 names four that must never be confused — unreachable,
-// unauthorised, forbidden, not-found — and this is that list plus the answers
+// act on. Four must never be confused — unreachable, unauthorised,
+// forbidden, not-found — and this is that list plus the answers
 // the hub actually gives that are none of the four.
 //
 // The two additions that matter, because folding either into ClassUnreachable
@@ -42,8 +42,8 @@ const (
 	ClassUnreachable Class = iota + 1
 	// ClassTLS — something answered but the TLS handshake or certificate chain
 	// was not acceptable. Separate from unreachable because the remedy is a
-	// trust store or a URL, never a network. FR-041 is the reason this is not
-	// silently downgraded.
+	// trust store or a URL, never a network, which is why this is not silently
+	// downgraded.
 	ClassTLS
 	// ClassUnauthorised — 401. No credential, or one the hub will not accept.
 	ClassUnauthorised
@@ -78,7 +78,7 @@ const (
 	// an object that was garbage-collected, which is not "no such version".
 	//
 	// This class exists because ClassForbidden carries a POLICY meaning that
-	// FR-011 turns into "skip this entry and exit 0". Attributing a download
+	// the sync verb turns into "skip this entry and exit 0". Attributing a download
 	// failure to the gate is how a sync installs nothing and reports success.
 	ClassOffload
 )
@@ -102,7 +102,7 @@ var (
 	ErrOffload = errors.New("the object store the hub redirected to refused the bundle")
 
 	// ErrInsecureHub is returned by New for an http:// hub without
-	// Config.AllowPlaintext (FR-041). It is not a Class: no request was made.
+	// Config.AllowPlaintext. It is not a Class: no request was made.
 	ErrInsecureHub = errors.New("hub URL is not https")
 	// ErrHubURL is returned by New for a URL it cannot use at all.
 	ErrHubURL = errors.New("unusable hub URL")
@@ -189,7 +189,7 @@ func (c Class) Retryable() bool {
 //
 // WHAT THIS STRUCT DELIBERATELY DOES NOT HOLD, and must never hold: the
 // *http.Request, the *http.Response, any http.Header, and the bearer token
-// (FR-007). Wrapping the request "for context" is the natural thing to reach
+// Wrapping the request "for context" is the natural thing to reach
 // for and it stringifies the Authorization header into every log line that
 // formats the error with %+v. The fields below are the whole of what a
 // diagnosis needs, and hub_test.go formats each of them with %v and %+v and
@@ -303,7 +303,7 @@ func classifyTransport(op, target string, err error) *OpError {
 	// tls.RecordHeaderError with it rather than wrapping it — client.go:270
 	// converts, and errors.As on the tls type therefore never matches. That is
 	// the exact error for pointing an https:// URL at a plaintext dev hub, i.e.
-	// the mistake FR-041's flag exists to make explicit, so misclassifying it
+	// the mistake the plaintext flag exists to make explicit, so misclassifying it
 	// as "unreachable" would hide the one case with an obvious fix.
 	var certErr *tls.CertificateVerificationError
 	var unknownAuthority x509.UnknownAuthorityError
@@ -431,7 +431,7 @@ func retryAfterSeconds(resp *http.Response) int {
 // The query is not paranoia. getBundle answers 307 with a pre-signed
 // object-store URL whose SIGNATURE IS IN THE QUERY STRING, so a failure
 // against that URL formatted as u.String() writes a working download
-// credential into the log — the same defect FR-007 forbids for the bearer
+// credential into the log — the same defect forbidden for the bearer
 // token, one layer down.
 func safeURL(u *url.URL) string {
 	if u == nil {

@@ -2,14 +2,15 @@ package fake_test
 
 // These tests are in `package fake_test` ON PURPOSE.
 //
-// R5 requires that the same behavioural suite can run against the fake and against
-// T062's compose stack. The mechanism is that a behavioural test accepts a
-// fake.Target — a URL, a token, a client, fixture names and an operator hook — and
-// never a *fake.Hub. Being outside `package fake` makes that a compile error rather
-// than a convention: nothing unexported is reachable from here, so no case written
-// in this file can quietly depend on the fake's internals.
+// The same behavioural suite must be able to run against the fake and
+// against a real compose stack. The mechanism is that a behavioural test
+// accepts a fake.Target — a URL, a token, a client, fixture names and an
+// operator hook — and never a *fake.Hub. Being outside `package fake` makes
+// that a compile error rather than a convention: nothing unexported is
+// reachable from here, so no case written in this file can quietly depend on
+// the fake's internals.
 //
-// When T035+ move these cases into a shared suite, the signature to keep is
+// When these cases move into a shared suite, the signature to keep is
 // `func(t *testing.T, tg fake.Target)`.
 
 import (
@@ -45,7 +46,7 @@ type client struct {
 	t  *testing.T
 	tg fake.Target
 	// follow decides whether redirects are followed. Both settings matter: the
-	// FR-016 case is about what happens on the hop.
+	// redirect-leak case is about what happens on the hop.
 	follow bool
 }
 
@@ -250,9 +251,9 @@ func TestDeviceFlow(t *testing.T) {
 		requireTokenError(t, poll(t, c, auth.DeviceCode), hub.ExpiredToken)
 	})
 
-	// The R5 case in its purest form: RFC 8628 3.4 fixes the token body as
-	// form-encoded and the real hub enforces it. A fake that also accepted JSON
-	// would let a client ship that the real hub rejects.
+	// RFC 8628 3.4 fixes the token body as form-encoded and the real hub
+	// enforces it. A fake that also accepted JSON would let a client ship that
+	// the real hub rejects.
 	t.Run("a JSON body on the token endpoint is refused", func(t *testing.T) {
 		h := fake.New(fastPolls())
 		defer h.Close()
@@ -299,7 +300,7 @@ func TestDeviceFlow(t *testing.T) {
 	})
 }
 
-// ---- auth classification (FR-040)
+// ---- auth classification
 
 func TestAuthenticationClasses(t *testing.T) {
 	h := fake.New(fake.Options{})
@@ -341,7 +342,7 @@ func TestAuthenticationClasses(t *testing.T) {
 
 // ---- bundles
 
-// FR-016: the bearer must not reach the pre-signed target. Both halves are here,
+// The bearer must not reach the pre-signed target. Both halves are here,
 // and the first is the one that matters — net/http's own default PRESERVES
 // Authorization on a same-host redirect, so this asserts the fake would catch a
 // client that relied on that default.
@@ -365,7 +366,7 @@ func TestPresignedRedirect(t *testing.T) {
 		loc, err := url.Parse(r.Header.Get("Location"))
 		require.NoError(t, err)
 		// Same host on purpose: net/http drops Authorization across hosts already,
-		// so a cross-host fixture would pass even with FR-016 unimplemented.
+		// so a cross-host fixture would pass even with a broken redirect-leak defence.
 		require.True(t, loc.Host == "" || loc.Host == mustHost(t, tg.BaseURL))
 		require.NotEmpty(t, loc.Query().Get("X-Amz-Signature"))
 	})
@@ -455,8 +456,8 @@ func TestAnUnknownBundleVersionIs404(t *testing.T) {
 		newClient(t, tg).get("/v1/bundles/nope/nothing/1.0.0", tg.Token).Status)
 }
 
-// The bytes must be a real bundle, not plaintext under a hand-written header:
-// otherwise internal/archive (T013) and the digest check (T038) are never
+// The bytes must be a real bundle, not plaintext under a hand-written
+// header: otherwise internal/archive and the digest check are never
 // exercised and every test above them is decorative.
 func TestServedBundlesExtractUnderTheRealCaps(t *testing.T) {
 	h := fake.New(fake.Options{})
@@ -498,8 +499,8 @@ func TestRevisions(t *testing.T) {
 		require.Equal(t, tg.Fixtures.HeadRevision, head.Revision)
 		require.Equal(t, tg.Fixtures.PriorRevision, prior.Revision)
 		require.NotEqual(t, len(head.Entries), len(prior.Entries))
-		// FR-013: `head` is a request, never a stored value. The body always names
-		// the number it resolved to.
+		// `head` is a request, never a stored value. The body always names the
+		// number it resolved to.
 		require.Positive(t, head.Revision)
 	})
 
@@ -608,9 +609,10 @@ func TestTheFakeFillsInEveryFixture(t *testing.T) {
 	defer h.Close()
 	f := h.Target().Fixtures
 
-	// An empty field is the protocol for "this hub cannot express that case", and a
-	// suite is then required to skip. The FAKE must express all of them, or the
-	// suite skips silently and R5's whole point is lost.
+	// An empty field is the protocol for "this hub cannot express that case",
+	// and a suite is then required to skip. The FAKE must express all of them,
+	// or the suite skips silently and the whole point of behavioural parity is
+	// lost.
 	require.NotEmpty(t, f.Profile)
 	require.NotEmpty(t, f.DigestMismatch)
 	require.NotEmpty(t, f.ForbiddenBundle)
@@ -629,7 +631,7 @@ func TestTLSVariantServesHTTPS(t *testing.T) {
 	defer h.Close()
 	tg := h.Target()
 	require.True(t, strings.HasPrefix(tg.BaseURL, "https://"))
-	// The CLI refuses a plaintext hub without an explicit flag (FR-041), so the
+	// The CLI refuses a plaintext hub without an explicit flag, so the
 	// suite's default hub must be reachable over TLS with the client the Target
 	// hands out and no system trust store involved.
 	require.Equal(t, http.StatusOK, newClient(t, tg).get("/v1/profiles", tg.Token).Status)

@@ -15,13 +15,13 @@ import (
 )
 
 // testToken is the credential every test uses. It is a single distinctive
-// string on purpose: FR-007's assertions are substring greps, and a token that
+// string on purpose: the leak assertions are substring greps, and a token that
 // could occur by accident in a message would make them lie.
 const testToken = "hub-test-token-DO-NOT-LEAK-4a7f9c2e"
 
 // hit is one request as the server saw it. The header values are recorded
 // verbatim — this is the only place in the suite that is allowed to hold the
-// credential, and it is what gives the FR-007 greps a non-empty haystack.
+// credential, and it is what gives the leak-detection greps a non-empty haystack.
 type hit struct {
 	Method      string
 	Path        string
@@ -96,7 +96,7 @@ func writeProblem(w http.ResponseWriter, status int, title, detail string) {
 }
 
 // ---------------------------------------------------------------------------
-// FR-041: TLS required, plaintext only behind an explicit flag.
+// TLS required, plaintext only behind an explicit flag.
 // ---------------------------------------------------------------------------
 
 func TestNewURLPolicy(t *testing.T) {
@@ -153,7 +153,7 @@ func TestNewURLPolicy(t *testing.T) {
 			wantContains: []string{"no scheme"},
 		},
 		{
-			// cmd.ParseHub (T023) is what turns `hub.example.com:8443` into an
+			// cmd.ParseHub is what turns `hub.example.com:8443` into an
 			// https URL. net/url reads it as scheme "hub.example.com", so this
 			// package refuses it rather than inventing a second opinion.
 			name:       "host:port without a scheme is refused",
@@ -165,7 +165,7 @@ func TestNewURLPolicy(t *testing.T) {
 		{name: "whitespace is refused", url: "   ", wantErr: ErrHubURL, wantNotErr: ErrInsecureHub},
 		{name: "no host is refused", url: "https:///v1", wantErr: ErrHubURL, wantNotErr: ErrInsecureHub},
 		{
-			// FR-007's shape one layer down: the refusal must not echo the
+			// The same shape one layer down: the refusal must not echo the
 			// password back into whatever captured stderr.
 			name:         "userinfo is refused and the password is not echoed",
 			url:          "https://alice:s3cr3t-do-not-echo@hub.example.com",
@@ -198,7 +198,7 @@ func TestNewURLPolicy(t *testing.T) {
 				require.NotContains(t, err.Error(), absent)
 			}
 			// A URL refusal happens before anything is dialled, so it is not
-			// one of FR-040's four network classes.
+			// one of the four network classes.
 			require.Equal(t, Class(0), ClassOf(err))
 		})
 	}
@@ -280,7 +280,7 @@ func TestBearerTokenIsSentToTheHub(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// FR-016: the token NEVER reaches a redirect target.
+// The token NEVER reaches a redirect target.
 //
 // Every case here uses a SAME-HOST or SUBDOMAIN redirect. A cross-host
 // redirect is included only as a control, and it is marked as such, because
@@ -646,7 +646,7 @@ func TestNewDoesNotMutateTheCallersHTTPClient(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// FR-040: unreachable / unauthorised / forbidden / not-found, and the answers
+// unreachable / unauthorised / forbidden / not-found, and the answers
 // that are none of the four.
 // ---------------------------------------------------------------------------
 
@@ -943,7 +943,7 @@ func (zeroReader) Read(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// TestHealthIsTheAuthFreeDiscriminator is FR-040's whole point: /v1/health
+// TestHealthIsTheAuthFreeDiscriminator is the classification's whole point: /v1/health
 // needs no credential, so "the hub is unreachable" and "your token is no good"
 // are separable facts rather than one shrug.
 func TestHealthIsTheAuthFreeDiscriminator(t *testing.T) {
@@ -1011,10 +1011,10 @@ func TestHealthIsTheAuthFreeDiscriminator(t *testing.T) {
 func ptr[T any](v T) *T { return &v }
 
 // ---------------------------------------------------------------------------
-// FR-007: no token in any output, including error messages.
+// No token in any output, including error messages.
 // ---------------------------------------------------------------------------
 
-// errorProducer names a way to make this package emit an error, so the FR-007
+// errorProducer names a way to make this package emit an error, so the leak
 // grep runs over every error value the wrapper can produce rather than over
 // one convenient example.
 type errorProducer struct {
@@ -1248,7 +1248,7 @@ func TestPresignedQueryIsNotInAnError(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
-	// This is the call bundles.go (T038) makes, on the same table.
+	// This is the call bundles.go makes, on the same table.
 	classified := ClassifyStatus(OpGetBundle, resp, body, http.StatusOK)
 	requireClass(t, classified, ClassForbidden)
 
@@ -1345,7 +1345,7 @@ func TestGetRevisionChecksItsArgumentsBeforeDialling(t *testing.T) {
 		{name: "a negative number is refused", slug: "platform-baseline", revision: "-1"},
 		{name: "a decimal is refused", slug: "platform-baseline", revision: "1.0"},
 		{
-			// FR-009: the CLI does not resolve. "latest" is not a revision the
+			// The CLI does not resolve. "latest" is not a revision the
 			// contract knows, and silently mapping it to head would be this
 			// package deciding something.
 			name: "latest is refused rather than mapped to head",
@@ -1379,8 +1379,8 @@ func TestGetRevisionChecksItsArgumentsBeforeDialling(t *testing.T) {
 func TestGetRevisionReturnsTheLockfileVerbatim(t *testing.T) {
 	t.Parallel()
 
-	// An unrecognised skip reason must survive to the caller: FR-011 says
-	// report it verbatim, and this client ships separately from the hub.
+	// An unrecognised skip reason must survive to the caller: it must be
+	// reported verbatim, and this client ships separately from the hub.
 	const body = `{
 	  "schemaVersion": "1.0.0",
 	  "profile": {"slug": "platform-baseline", "name": "Platform baseline"},

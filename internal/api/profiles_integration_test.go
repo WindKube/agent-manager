@@ -181,7 +181,7 @@ func dropProfileOnCleanup(t *testing.T, slug string) {
 		require.NoError(t, err)
 
 		for _, table := range []string{"profile_entry", "membership", "sync_target", "revision"} {
-			_, err := db.ExecContext(context.Background(),
+			_, err = db.ExecContext(context.Background(),
 				`delete from `+table+` where profile_id in (select id from profile where slug = ?)`,
 				slug)
 			require.NoError(t, err)

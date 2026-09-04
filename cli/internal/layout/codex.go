@@ -5,53 +5,27 @@ import (
 	"path/filepath"
 )
 
-// Target `codex` — documented but not observed; unshipped, gated on one
-// measurement. OpenAI's current documentation places the user-scope skills
-// root at $HOME/.agents/skills/<name>/SKILL.md, the same Agent Skills format
-// claude-code reads. That is the only in-scope row: the repo-scope roots are
-// project trees outside the user's home, and the admin row needs root.
-//
-// It is gated rather than shipped because the path recently moved and the
-// stale answer (~/.codex/skills) is still the widely published one; whether
-// that path is still read as a fallback, and which one an installed Codex
-// version actually reads, is unconfirmed. Writing to the wrong one would
-// report success while installing nothing. Codex was not available in this
-// environment to test.
-//
-// MCP servers are out of scope structurally: a Codex MCP server is a table
-// inside ~/.codex/config.toml, a file the user owns and hand-edits, which
-// cannot be swapped atomically by rename or pruned without touching a key
-// amctl may not have written.
+// Target `codex` — gated, not shipped: OpenAI documents the user-scope
+// skills root as $HOME/.agents/skills/<name>/SKILL.md, but the previously
+// documented ~/.codex/skills is still widely published and unconfirmed as
+// dead, and no Codex install was available here to test which one loads.
 const (
-	// CodexHomeEnv relocates Codex's config directory only; it is not the
-	// skills root, which is under the OS home directory.
-	CodexHomeEnv = "CODEX_HOME"
-
-	// CodexHomeDirName is the config directory relative to the user's home
-	// when CodexHomeEnv is unset.
-	CodexHomeDirName = ".codex"
-
-	// codexAgentsDirName is the cross-tool skills root documented by OpenAI.
-	codexAgentsDirName = ".agents"
+	CodexHomeEnv       = "CODEX_HOME" // relocates Codex's config dir, not the skills root
+	CodexHomeDirName   = ".codex"
+	codexAgentsDirName = ".agents" // cross-tool skills root OpenAI documents
 )
 
-// CodexUserSkillsRoot is the user-scope skills root OpenAI documents,
-// relative to the OS home directory (not under CodexHomeEnv). A real
-// function rather than a constant so closing the gate is one line in
-// NewCodex.
+// CodexUserSkillsRoot is a function, not a constant, so closing the gate is one line in NewCodex.
 func CodexUserSkillsRoot(homeDir string) string {
 	return filepath.Join(homeDir, codexAgentsDirName, skillsSubdir)
 }
 
-// Codex resolves paths for the `codex` target. UserSkillsRoot is populated
-// only once the gate is closed; until then NewCodex never returns a value.
+// Codex resolves paths for the `codex` target, populated only once the gate is closed.
 type Codex struct {
-	// UserSkillsRoot is $HOME/.agents/skills.
 	UserSkillsRoot string
 }
 
-// NewCodex refuses to build the target until the layout above is confirmed
-// against a real Codex installation.
+// NewCodex refuses to build the target until confirmed against a real Codex install.
 func NewCodex(string, string) (*Codex, error) {
 	return nil, fmt.Errorf(
 		"codex: %w — the layout is documented as $HOME/.agents/skills/<name>/SKILL.md "+

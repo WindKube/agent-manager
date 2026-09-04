@@ -6,13 +6,10 @@ import (
 )
 
 // Clock is the whole of this package's access to time, so a fake can prove
-// polling timing without actually waiting for it. No file but this one may
-// call time.Now, time.Sleep or time.After.
+// polling timing without waiting for it.
 type Clock interface {
 	Now() time.Time
-	// Wait blocks for d, returning nil when the whole of d elapsed and
-	// ctx.Err() when the context ended first, so a cancelled login and a hub
-	// refusal stay distinguishable to the caller.
+	// Wait returns ctx.Err() if the context ends before d elapses, else nil.
 	Wait(ctx context.Context, d time.Duration) error
 }
 

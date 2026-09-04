@@ -27,8 +27,7 @@ func Codes() []ErrorCode {
 }
 
 // Continues reports whether c means the client should poll again. An
-// unrecognised code does not continue, since the safe reading of an unknown
-// refusal is that it is a refusal, not a hub that hasn't answered yet.
+// unrecognised code does not continue.
 func (c ErrorCode) Continues() bool {
 	switch c {
 	case CodeAuthorizationPending, CodeSlowDown:
@@ -40,29 +39,21 @@ func (c ErrorCode) Continues() bool {
 	}
 }
 
-// Terminal reports whether c is one of the three declared final codes. The
-// empty code is neither terminal nor continuing on its own.
 func (c ErrorCode) Terminal() bool { return c != "" && !c.Continues() }
 
-// The failures a device authorisation can end in, as sentinels so a caller
-// can match with errors.Is.
+// The failures a device authorisation can end in, as sentinels for errors.Is.
 var (
-	ErrDenied = errors.New("device authorisation was denied")
-	// ErrExpired is returned both for the hub's expired_token and for this
-	// package noticing the expiry itself against the clock.
-	ErrExpired      = errors.New("device code expired before it was approved")
-	ErrInvalidGrant = errors.New("hub rejected the device code")
-	// ErrUnknownRefusal covers a code this build does not know, or none at all.
+	ErrDenied         = errors.New("device authorisation was denied")
+	ErrExpired        = errors.New("device code expired before it was approved")
+	ErrInvalidGrant   = errors.New("hub rejected the device code")
 	ErrUnknownRefusal = errors.New("hub refused the poll with an unrecognised code")
-	// ErrProtocol covers a hub response that cannot drive a device flow at
-	// all: no device code, no verification URI, a non-positive expires_in.
-	ErrProtocol    = errors.New("device authorisation response is not usable")
-	ErrNoTransport = errors.New("no device transport given")
-	ErrNoClock     = errors.New("no clock given")
+	ErrProtocol       = errors.New("device authorisation response is not usable")
+	ErrNoTransport    = errors.New("no device transport given")
+	ErrNoClock        = errors.New("no clock given")
 )
 
 // terminalError maps a terminal code onto its sentinel, quoting an
-// unrecognised code verbatim since this client ships separately from the hub.
+// unrecognised code verbatim.
 func terminalError(code ErrorCode) error {
 	switch code {
 	case CodeAccessDenied:

@@ -1572,6 +1572,12 @@ func (e RegisterPackageMultipartBodyVisibility) Valid() bool {
 	}
 }
 
+// ApprovedDeviceAuthorization defines model for ApprovedDeviceAuthorization.
+type ApprovedDeviceAuthorization struct {
+	// RequestingHost Examples: dev-laptop-01
+	RequestingHost string `json:"requestingHost"`
+}
+
 // AuditEntry defines model for AuditEntry.
 type AuditEntry struct {
 	// Actor The email or subject of the person, or the name of the system role, that acted.
@@ -2540,6 +2546,19 @@ type PackageVersionDistTag string
 // PackageVersionVerdict Examples: clean
 type PackageVersionVerdict string
 
+// PendingDeviceAuthorization defines model for PendingDeviceAuthorization.
+type PendingDeviceAuthorization struct {
+	// ExpiresIn Seconds until this code expires.
+	//
+	// Examples: 420
+	ExpiresIn int64 `json:"expiresIn"`
+
+	// RequestingHost The host bound to this authorisation at issue. Shown before approval so it is an informed act.
+	//
+	// Examples: dev-laptop-01
+	RequestingHost string `json:"requestingHost"`
+}
+
 // PreviewCapability defines model for PreviewCapability.
 type PreviewCapability struct {
 	// Detail The publisher's scoping, e.g. hosts for network.
@@ -3376,6 +3395,20 @@ type ClientInterface interface {
 	// Corresponds with GET /v1/bundles/{publisher}/{name}/{version} (the `GetBundle` operationId).
 	GetBundle(ctx context.Context, publisher string, name string, version string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// LookupDeviceCode Look up a pending device authorisation
+	//
+	// Shows the requesting host and remaining validity BEFORE the viewer confirms (FR-041), so approval is an informed act. Refuses distinguishably when the code is unknown, expired or already decided (FR-042). The path parameter is a bearer-equivalent secret for the length of its validity and is never logged verbatim (see the api role's correlation middleware).
+	//
+	// Corresponds with GET /v1/device/authorizations/{user_code} (the `LookupDeviceCode` operationId).
+	LookupDeviceCode(ctx context.Context, userCode string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ApproveDeviceCode Approve a pending device authorisation
+	//
+	// The confirm action (US6). Moves the code from pending to approved in one transaction and writes the `login` audit row naming the host, source `cli / <host>` (FR-050). Single-use: a second approval of the same code refuses the same way any already-decided code does.
+	//
+	// Corresponds with POST /v1/device/authorizations/{user_code}/approve (the `ApproveDeviceCode` operationId).
+	ApproveDeviceCode(ctx context.Context, userCode string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// DeviceAuthorizeWithBody Begin device authorisation
 	//
 	// Opens an RFC 8628 device authorisation. Returns a user code for the human to type on the hub's verification page and a device code for the client to poll with. Nothing is authorised until a human approves that user code, so the response is not a credential grant — it is a pending request.
@@ -3728,6 +3761,40 @@ func (c *Client) GetBadges(ctx context.Context, reqEditors ...RequestEditorFn) (
 // Corresponds with GET /v1/bundles/{publisher}/{name}/{version} (the `GetBundle` operationId).
 func (c *Client) GetBundle(ctx context.Context, publisher string, name string, version string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetBundleRequest(c.Server, publisher, name, version)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// LookupDeviceCode Look up a pending device authorisation
+//
+// Shows the requesting host and remaining validity BEFORE the viewer confirms (FR-041), so approval is an informed act. Refuses distinguishably when the code is unknown, expired or already decided (FR-042). The path parameter is a bearer-equivalent secret for the length of its validity and is never logged verbatim (see the api role's correlation middleware).
+//
+// Corresponds with GET /v1/device/authorizations/{user_code} (the `LookupDeviceCode` operationId).
+func (c *Client) LookupDeviceCode(ctx context.Context, userCode string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewLookupDeviceCodeRequest(c.Server, userCode)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ApproveDeviceCode Approve a pending device authorisation
+//
+// The confirm action (US6). Moves the code from pending to approved in one transaction and writes the `login` audit row naming the host, source `cli / <host>` (FR-050). Single-use: a second approval of the same code refuses the same way any already-decided code does.
+//
+// Corresponds with POST /v1/device/authorizations/{user_code}/approve (the `ApproveDeviceCode` operationId).
+func (c *Client) ApproveDeviceCode(ctx context.Context, userCode string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewApproveDeviceCodeRequest(c.Server, userCode)
 	if err != nil {
 		return nil, err
 	}
@@ -4542,6 +4609,74 @@ func NewGetBundleRequest(server string, publisher string, name string, version s
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewLookupDeviceCodeRequest constructs an http.Request for the LookupDeviceCode method
+func NewLookupDeviceCodeRequest(server string, userCode string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "user_code", userCode, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/device/authorizations/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewApproveDeviceCodeRequest constructs an http.Request for the ApproveDeviceCode method
+func NewApproveDeviceCodeRequest(server string, userCode string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "user_code", userCode, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/device/authorizations/%s/approve", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -5721,6 +5856,24 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/bundles/{publisher}/{name}/{version} (the `GetBundle` operationId).
 	GetBundleWithResponse(ctx context.Context, publisher string, name string, version string, reqEditors ...RequestEditorFn) (*GetBundleResponse, error)
 
+	// LookupDeviceCodeWithResponse Look up a pending device authorisation
+	//
+	// Shows the requesting host and remaining validity BEFORE the viewer confirms (FR-041), so approval is an informed act. Refuses distinguishably when the code is unknown, expired or already decided (FR-042). The path parameter is a bearer-equivalent secret for the length of its validity and is never logged verbatim (see the api role's correlation middleware).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/device/authorizations/{user_code} (the `LookupDeviceCode` operationId).
+	LookupDeviceCodeWithResponse(ctx context.Context, userCode string, reqEditors ...RequestEditorFn) (*LookupDeviceCodeResponse, error)
+
+	// ApproveDeviceCodeWithResponse Approve a pending device authorisation
+	//
+	// The confirm action (US6). Moves the code from pending to approved in one transaction and writes the `login` audit row naming the host, source `cli / <host>` (FR-050). Single-use: a second approval of the same code refuses the same way any already-decided code does.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/device/authorizations/{user_code}/approve (the `ApproveDeviceCode` operationId).
+	ApproveDeviceCodeWithResponse(ctx context.Context, userCode string, reqEditors ...RequestEditorFn) (*ApproveDeviceCodeResponse, error)
+
 	// DeviceAuthorizeWithBodyWithResponse Begin device authorisation
 	//
 	// Opens an RFC 8628 device authorisation. Returns a user code for the human to type on the hub's verification page and a device code for the client to poll with. Nothing is authorised until a human approves that user code, so the response is not a credential grant — it is a pending request.
@@ -6273,6 +6426,158 @@ func (r GetBundleResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetBundleResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type LookupDeviceCodeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PendingDeviceAuthorization
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Error
+	// ApplicationproblemJSON410 the response for an HTTP 410 `application/problem+json` response
+	ApplicationproblemJSON410 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r LookupDeviceCodeResponse) GetJSON200() *PendingDeviceAuthorization {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r LookupDeviceCodeResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r LookupDeviceCodeResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r LookupDeviceCodeResponse) GetApplicationproblemJSON409() *Error {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON410 returns the response for an HTTP 410 `application/problem+json` response
+func (r LookupDeviceCodeResponse) GetApplicationproblemJSON410() *Error {
+	return r.ApplicationproblemJSON410
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r LookupDeviceCodeResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r LookupDeviceCodeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r LookupDeviceCodeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r LookupDeviceCodeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r LookupDeviceCodeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ApproveDeviceCodeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ApprovedDeviceAuthorization
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Error
+	// ApplicationproblemJSON410 the response for an HTTP 410 `application/problem+json` response
+	ApplicationproblemJSON410 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ApproveDeviceCodeResponse) GetJSON200() *ApprovedDeviceAuthorization {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ApproveDeviceCodeResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r ApproveDeviceCodeResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r ApproveDeviceCodeResponse) GetApplicationproblemJSON409() *Error {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON410 returns the response for an HTTP 410 `application/problem+json` response
+func (r ApproveDeviceCodeResponse) GetApplicationproblemJSON410() *Error {
+	return r.ApplicationproblemJSON410
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ApproveDeviceCodeResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ApproveDeviceCodeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ApproveDeviceCodeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ApproveDeviceCodeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ApproveDeviceCodeResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -8086,6 +8391,36 @@ func (c *ClientWithResponses) GetBundleWithResponse(ctx context.Context, publish
 	return ParseGetBundleResponse(rsp)
 }
 
+// LookupDeviceCodeWithResponse Look up a pending device authorisation
+//
+// Shows the requesting host and remaining validity BEFORE the viewer confirms (FR-041), so approval is an informed act. Refuses distinguishably when the code is unknown, expired or already decided (FR-042). The path parameter is a bearer-equivalent secret for the length of its validity and is never logged verbatim (see the api role's correlation middleware).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/device/authorizations/{user_code} (the `LookupDeviceCode` operationId).
+func (c *ClientWithResponses) LookupDeviceCodeWithResponse(ctx context.Context, userCode string, reqEditors ...RequestEditorFn) (*LookupDeviceCodeResponse, error) {
+	rsp, err := c.LookupDeviceCode(ctx, userCode, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseLookupDeviceCodeResponse(rsp)
+}
+
+// ApproveDeviceCodeWithResponse Approve a pending device authorisation
+//
+// The confirm action (US6). Moves the code from pending to approved in one transaction and writes the `login` audit row naming the host, source `cli / <host>` (FR-050). Single-use: a second approval of the same code refuses the same way any already-decided code does.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/device/authorizations/{user_code}/approve (the `ApproveDeviceCode` operationId).
+func (c *ClientWithResponses) ApproveDeviceCodeWithResponse(ctx context.Context, userCode string, reqEditors ...RequestEditorFn) (*ApproveDeviceCodeResponse, error) {
+	rsp, err := c.ApproveDeviceCode(ctx, userCode, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseApproveDeviceCodeResponse(rsp)
+}
+
 // DeviceAuthorizeWithBodyWithResponse Begin device authorisation
 //
 // Opens an RFC 8628 device authorisation. Returns a user code for the human to type on the hub's verification page and a device code for the client to poll with. Nothing is authorised until a human approves that user code, so the response is not a credential grant — it is a pending request.
@@ -8809,6 +9144,128 @@ func ParseGetBundleResponse(rsp *http.Response) (*GetBundleResponse, error) {
 			headers.ETag = &value
 		}
 		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseLookupDeviceCodeResponse parses an HTTP response from a LookupDeviceCodeWithResponse call
+func ParseLookupDeviceCodeResponse(rsp *http.Response) (*LookupDeviceCodeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &LookupDeviceCodeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PendingDeviceAuthorization
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 410:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON410 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseApproveDeviceCodeResponse parses an HTTP response from a ApproveDeviceCodeWithResponse call
+func ParseApproveDeviceCodeResponse(rsp *http.Response) (*ApproveDeviceCodeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ApproveDeviceCodeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ApprovedDeviceAuthorization
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 410:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON410 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
 	}
 
 	return response, nil

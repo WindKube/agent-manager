@@ -1,46 +1,16 @@
 // Package cache is the digest-addressed store for bundle bytes at
-// `~/.agent-manager/cache/sha256-<digest>` (FR-017). It needs no invalidation:
-// plan.md's second load-bearing fact is that bundle bytes are immutable, so a
-// key uniquely determines its content forever, and the only question a reader
-// can ask is whether the bytes on disk still ARE that content.
+// `~/.agent-manager/cache/sha256-<digest>`. Bundle bytes are immutable, so a
+// key needs no invalidation, only a check that the bytes on disk still match it.
 //
-// What this package deliberately does NOT do:
+// It never repairs a corrupt entry, only deletes it: every entry is
+// reconstructible from the hub, so discarding is always safe. It never hands
+// out a path for reading, only verified bytes, to avoid a TOCTOU between the
+// check and the use. It is not the staging directory used for atomic install:
+// staging must be same-filesystem as its destination for os.Rename to work,
+// while this cache holds bytes fetched once and reused across hubs/profiles/targets.
 //
-//   - It never repairs. A cache entry whose bytes no longer hash to its key is
-//     deleted, not patched, not re-verified against something else, not used
-//     "because it is probably fine". Every entry is reconstructible from the
-//     hub by definition, so discarding is always the recoverable direction and
-//     is the only one that keeps FR-017 true.
-//   - It never hands out a path for reading. Verifying a file and then
-//     returning its name is a TOCTOU: the thing verified and the thing used
-//     must be the same thing, so Get returns the bytes it hashed. Root() exists
-//     for error messages only.
-//   - It does not bound its own size. See "Eviction" below.
-//   - It is NOT the staging directory, and the two must never be merged.
-//     Staging is a sibling of the destination (`<dest-parent>/.amctl-staging/`)
-//     because gate R3 measured `os.Rename` across filesystems: agent
-//     directories are frequently symlinks into a dotfiles repo on another
-//     mount, and same-filesystem staging is the only thing that makes the
-//     atomic swap a rename at all. This cache is central precisely because it
-//     is NOT renamed into place — it holds compressed bundle bytes that are
-//     read, verified and copied out, so the same bytes fetched for two hubs,
-//     two profiles or two targets are stored once. Moving staging in here to
-//     "unify the two digest-addressed directories" reintroduces the EXDEV
-//     failure exactly where R3's rollback needs a rename to work.
-//
-// # Eviction
-//
-// There is none, and no task in this feature owns adding one. The consequence
-// is honest and monotone: every version ever fetched stays until someone
-// deletes the directory, bounded per entry by MaxBundleBytes (25 MiB, the hub's
-// upload cap) and in practice by how often a catalogue churns. A machine
-// syncing a large catalogue for a year accumulates real disk. Whoever adds it
-// needs a last-used signal, and atime is not one — `relatime` and `noatime`
-// make it unreliable — so it needs either an mtime touch on every hit (a write
-// on the read path, deliberately not done here) or a sidecar of last-use
-// timestamps. Until then the supported answer is `rm -rf ~/.agent-manager/cache`,
-// which is always safe, and the natural home for a real `--prune-cache` is US5
-// (T055/T056), the only story that already reasons about cache contents.
+// There is no eviction. Every version ever fetched stays until the directory
+// is deleted by hand (`rm -rf ~/.agent-manager/cache`), which is always safe.
 package cache
 
 import (
@@ -57,73 +27,55 @@ import (
 )
 
 const (
-	// DirName is the cache's directory name under `~/.agent-manager`. It is
-	// deliberately NOT per hub: the same version fetched from two hubs is the
-	// same bytes, and keying by hub would double the disk for no gain
-	// (plan.md, storage table).
+	// DirName is not per hub: the same version fetched from two hubs is the
+	// same bytes, so keying by hub would double the disk for no gain.
 	DirName = "cache"
 
-	// MaxBundleBytes caps what a single entry may be, on both the write and
-	// the read path. The number is the hub's own compressed upload limit
-	// (`internal/bundle.DefaultMaxCompressedBytes`, 25 MiB) — the same NUMBER
-	// on purpose and independent CODE on purpose, for the reason plan.md's
-	// Complexity Tracking gives about the extractor: the CLI is the last hop
-	// and must not trust the hub, and a shared module means a shared bug.
+	// MaxBundleBytes mirrors the hub's own compressed upload limit, kept as an
+	// independent constant (not a shared module) since the CLI must not trust
+	// the hub to enforce it.
 	MaxBundleBytes int64 = 25 << 20
 
 	// DefaultTempMaxAge is how old a leftover temp file must be before
 	// collection removes it. See CollectTempsOlderThan.
 	DefaultTempMaxAge = 24 * time.Hour
 
-	// tempPrefix marks a file as a partial write of ours. Collection matches on
-	// it, so it must never be a prefix of a finished entry's name
-	// (`sha256-<hex>`).
+	// tempPrefix must never be a prefix of a finished entry's name (`sha256-<hex>`).
 	tempPrefix = ".amctl-tmp-"
 
 	dirMode = 0o700
 )
 
-// ErrMiss means "this digest is not usable from cache". It covers an absent
-// entry and a discarded one alike, because a caller deciding whether to
-// download cannot act on the difference; `--offline` (FR-018) reports the
-// digest either way. Errors from Get and Verify always wrap it, so
-// errors.Is(err, ErrMiss) is the test — never an os.IsNotExist on Root().
+// ErrMiss means "this digest is not usable from cache", covering both an
+// absent entry and a discarded one, since a caller deciding whether to
+// download cannot act on the difference. Errors from Get and Verify always
+// wrap it, so errors.Is(err, ErrMiss) is the test.
 var ErrMiss = errors.New("not in cache")
 
-// ErrCorrupt marks the subset of misses that had bytes on disk which failed the
-// re-hash and were discarded. Returned joined with ErrMiss, so a caller that
-// only wants to know whether to download matches ErrMiss and a caller that
-// wants to TELL the user their cache was corrupt matches ErrCorrupt.
+// ErrCorrupt marks the subset of misses that had bytes on disk which failed
+// the re-hash and were discarded. Joined onto ErrMiss.
 var ErrCorrupt = errors.New("cache entry did not match its digest and was discarded")
 
-// ErrTooLarge is returned by Put/PutReader for a bundle over the cap. On the
-// read path an oversize entry is a corrupt entry: it cannot be what the hub
-// served, so it is discarded rather than reported as too large.
+// ErrTooLarge is returned by Put/PutReader for a bundle over the cap.
 var ErrTooLarge = errors.New("bundle exceeds the cache's size cap")
 
 // Cache is a directory of digest-addressed bundle bytes. It holds no state
-// beyond its configuration, so concurrent use from multiple goroutines — and
-// multiple processes — is safe; see PutReader on how writers race.
+// beyond its configuration, so concurrent use from multiple goroutines and
+// processes is safe; see PutReader on how writers race.
 type Cache struct {
 	dir      string
 	maxBytes int64
 }
 
 // Dir is the cache directory under an already-resolved `~/.agent-manager`.
-//
-// This package does NOT resolve the home directory itself. FR-039 requires the
-// refusal for an unset or unwritable home to name the variable, and that check
-// belongs to `internal/cmd`'s home resolution, before any network call. A cache
-// that quietly fell back to `os.UserHomeDir` would route around it.
+// This package does not resolve the home directory itself; that check
+// belongs to internal/cmd's home resolution, before any network call.
 func Dir(agentManagerHome string) string {
 	return filepath.Join(agentManagerHome, DirName)
 }
 
-// New returns a cache rooted at dir with the default size cap.
-//
-// It creates nothing. A read against a machine that has never synced must not
-// fabricate directories — `status --offline` reports a miss instead. The
-// directory is created by the first write.
+// New returns a cache rooted at dir with the default size cap. It creates
+// nothing; the directory is created by the first write.
 func New(dir string) *Cache {
 	return NewWithLimit(dir, MaxBundleBytes)
 }
@@ -138,26 +90,22 @@ func NewWithLimit(dir string, maxBytes int64) *Cache {
 	return &Cache{dir: dir, maxBytes: maxBytes}
 }
 
-// Root is the cache directory, for error messages and diagnostics. It is not a
-// read handle: see the package comment on why no path is handed out for
-// reading.
+// Root is the cache directory, for error messages and diagnostics only; it is
+// not a read handle (see the package comment).
 func (c *Cache) Root() string { return c.dir }
 
 func (c *Cache) path(d Digest) string { return filepath.Join(c.dir, d.FileName()) }
 
-// Get returns the bytes stored under d, having re-hashed them first (FR-017).
-//
-// The returned slice IS the slice that was hashed — not a re-read of the file —
-// so nothing can change between the check and the use. A mismatch discards the
-// entry and reports a miss; the caller downloads again.
+// Get returns the bytes stored under d, having re-hashed them first. The
+// returned slice is the slice that was hashed, not a re-read of the file, so
+// nothing can change between check and use. A mismatch discards the entry
+// and reports a miss.
 func (c *Cache) Get(d Digest) ([]byte, error) {
 	return c.load(d, true)
 }
 
 // Verify reports whether a trustworthy entry for d exists, without retaining
-// its bytes. Same discard-on-mismatch rule as Get. This is the honest form of
-// "is it cached": an existence check that does not re-hash would answer a
-// question FR-017 does not allow anyone to ask.
+// its bytes. Same discard-on-mismatch rule as Get.
 func (c *Cache) Verify(d Digest) error {
 	_, err := c.load(d, false)
 	return err
@@ -169,9 +117,8 @@ func (c *Cache) load(d Digest, keep bool) ([]byte, error) {
 	}
 	p := c.path(d)
 
-	// A missing cache directory is a miss, not an error: New creates nothing, so
-	// a machine that has never synced reaches here with no directory at all,
-	// and open reports the same fs.ErrNotExist for both.
+	// A missing cache directory is a miss, not an error: open reports the same
+	// fs.ErrNotExist whether the entry or the whole directory is absent.
 	f, err := os.Open(p) //nolint:gosec // p is c.dir joined with a parsed digest's canonical file name
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -181,16 +128,10 @@ func (c *Cache) load(d Digest, keep bool) ([]byte, error) {
 	}
 	defer func() { _ = f.Close() }()
 
-	// fstat on the handle we will actually read, not an lstat of the name: the
-	// thing checked and the thing used must be the same object.
-	//
-	// A cache entry that is not a regular file cannot be what the hub served, so
-	// it is discarded on the same grounds as an oversize one. It is not merely
-	// tidiness: a directory named `sha256-<hex>` makes every read of that digest
-	// fail with EISDIR forever — a permanent poison for one bundle that no
-	// re-download can clear — and a symlink at that name would have the read
-	// follow it out of the cache directory. The re-hash still makes either safe;
-	// this makes both self-healing.
+	// fstat on the handle actually read, not an lstat of the name, so the thing
+	// checked and the thing used are the same object. A non-regular entry
+	// (e.g. a directory squatting at the name, which would otherwise poison
+	// that digest with EISDIR forever) is discarded like an oversize one.
 	st, err := f.Stat()
 	if err != nil {
 		return nil, fmt.Errorf("stat of cache entry %s: %w", p, err)
@@ -203,17 +144,16 @@ func (c *Cache) load(d Digest, keep bool) ([]byte, error) {
 	var buf []byte
 	var sink io.Writer = h
 	if keep {
-		// Cap the buffer's growth by pre-sizing from the stat; the LimitReader
-		// below is what actually bounds it, because the file may still grow.
+		// Pre-size from stat; the LimitReader below is what actually bounds it,
+		// since the file may still grow.
 		if st.Size() > 0 && st.Size() <= c.maxBytes {
 			buf = make([]byte, 0, st.Size())
 		}
 		sink = io.MultiWriter(h, &sliceWriter{buf: &buf})
 	}
 
-	// maxBytes+1 so an oversize file is detected rather than silently truncated
-	// into a hash that then cannot match — a truncating read would report a
-	// digest mismatch and blame the bytes for the reader's own cap.
+	// maxBytes+1 so an oversize file is detected rather than silently
+	// truncated into a hash that then just fails to match.
 	n, err := io.Copy(sink, io.LimitReader(f, c.maxBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("reading cache entry %s: %w", p, err)
@@ -236,21 +176,11 @@ func (c *Cache) load(d Digest, keep bool) ([]byte, error) {
 }
 
 // discard removes an entry that has just been proven unusable and returns the
-// error the caller should report: reason, marked ErrCorrupt and ErrMiss so the
-// caller re-downloads.
-//
-// A failed removal is REPORTED, joined onto that miss. An earlier version
-// swallowed it, reasoning that "the caller's outcome is the same either way —
-// the entry is unusable and the bundle is re-downloaded". That is true of this
-// call and false of the next one: if the entry survives, every future read of
-// the digest finds the same corruption and re-downloads again, forever.
-//
-// errors.Join, so errors.Is still sees ErrCorrupt and ErrMiss and no caller has
-// to learn about the removal to keep working.
-//
-// RemoveAll rather than Remove only so that a directory-shaped squatter at an
-// entry name can be cleared; the name is always the `sha256-<hex>` spelling of
-// a parsed Digest, never a caller's string, so the recursion has nowhere to go.
+// error the caller should report, marked ErrCorrupt and ErrMiss. A failed
+// removal is reported too (joined on), since a surviving corrupt entry would
+// otherwise fail every future read of the digest the same way forever.
+// RemoveAll rather than Remove so a directory-shaped squatter can be cleared;
+// the name is always a parsed Digest's own spelling, never a caller's string.
 func (c *Cache) discard(d Digest, reason error) error {
 	miss := fmt.Errorf("%w: %w: %w", reason, ErrCorrupt, ErrMiss)
 	if err := os.RemoveAll(c.path(d)); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -270,28 +200,14 @@ func (c *Cache) Put(d Digest, b []byte) error {
 	return c.PutReader(d, bytes.NewReader(b))
 }
 
-// PutReader streams r into the cache under d.
-//
-// Temp file, hash while streaming, verify, fsync, rename. Each step is load
-// bearing:
-//
-//   - Writing to the final name directly is how a killed process leaves a
-//     truncated file that looks whole — and a whole-looking short file passes
-//     every check except the digest, which is why the digest check exists;
-//     but the file would still be re-read and re-hashed on every future run
-//     forever. The temp name means an interrupted write is invisible to Get.
-//   - The hash is computed on the bytes as they are WRITTEN, not by re-reading
-//     the temp afterwards. Re-reading verifies the page cache, not the file.
-//   - The fsync of the temp is not decoration. R3's finding for T040 applies
-//     verbatim here: fsyncing a directory makes the entry DURABLE, not the
-//     CONTENT, so on a delayed-allocation filesystem a crash just after the
-//     rename can leave the final name present and zero length — precisely the
-//     whole-looking truncated entry this whole dance exists to prevent.
-//
-// Two processes fetching the same bundle each write their own temp and rename
-// onto the same final name; the rename is atomic and both wrote byte-identical,
-// digest-verified content, so the loser is harmless. A POSIX reader holding the
-// replaced inode open keeps reading identical bytes.
+// PutReader streams r into the cache under d: write to a temp file, hash
+// while streaming, verify, fsync, then rename into place. Writing the final
+// name directly would let a killed process leave a truncated file that
+// re-hashes wrong forever; fsync before rename matters because syncing the
+// directory makes the entry durable but not its content, and a crash right
+// after rename can otherwise leave a zero-length final file. Two processes
+// racing to fetch the same bundle each rename byte-identical, verified
+// content onto the same name, so the loser is harmless.
 func (c *Cache) PutReader(d Digest, r io.Reader) error {
 	if d.IsZero() {
 		return errors.New("refusing to write the zero digest: it was never parsed or computed")
@@ -300,8 +216,6 @@ func (c *Cache) PutReader(d Digest, r io.Reader) error {
 		return fmt.Errorf("creating cache directory %s: %w", c.dir, err)
 	}
 
-	// The temp name carries the prefix so collection can recognise it and the
-	// digest so a human can see what it was; the random suffix is os.CreateTemp's.
 	tmp, err := os.CreateTemp(c.dir, tempPrefix+d.FileName()+"-*")
 	if err != nil {
 		return fmt.Errorf("creating cache temp file in %s: %w", c.dir, err)
@@ -342,18 +256,15 @@ func (c *Cache) PutReader(d Digest, r io.Reader) error {
 	committed = true
 
 	c.syncDir()
-	// Collection runs on the write path only: it is one readdir of a small
-	// directory, and the write path has already paid for a network fetch, so a
-	// leaked temp is always collected by the next download without any caller
-	// having to remember to wire this up.
+	// Runs on the write path only, piggybacking on a fetch that already paid
+	// for a network round trip, so a leaked temp is always eventually collected.
 	_, _ = c.CollectTemps()
 	return nil
 }
 
-// syncDir makes the new directory entry durable. Non-fatal, matching R3's
-// treatment of the same step in the swap: the entry is already installed and
-// correct, and a filesystem that refuses the fsync (some network mounts) must
-// not fail an otherwise complete write.
+// syncDir makes the new directory entry durable. Non-fatal: the entry is
+// already installed and correct, and a filesystem that refuses the fsync
+// (some network mounts) must not fail an otherwise complete write.
 func (c *Cache) syncDir() {
 	f, err := os.Open(c.dir) //nolint:gosec // the cache directory this Cache was constructed with
 	if err != nil {
@@ -368,30 +279,13 @@ func (c *Cache) CollectTemps() (int, error) {
 	return c.CollectTempsOlderThan(DefaultTempMaxAge)
 }
 
-// CollectTempsOlderThan removes temp files last modified more than age ago, and
-// returns how many it removed.
-//
-// The criterion is AGE, not PID liveness. A temp name could carry the writing
-// process's PID, but liveness of a PID is meaningless across a container
-// boundary and wrong after PID reuse — the same trap T024's lock documents — so
-// this reads no PID and makes no liveness claim. Age is sound in one direction
-// only, which is the direction that matters: a temp file untouched for a day is
-// certainly dead, because a download that has not written a byte in 24 hours is
-// not in progress.
-//
-// What it does NOT catch, deliberately: a temp file younger than age, including
-// one from a process killed a second ago (it is collected by a later run); and
-// what it would wrongly catch — a genuinely live download stalled for over a
-// day — costs only that download, which fails its rename and is retried, never
-// a finished entry.
-//
-// A prefix match over a directory listing is acceptable HERE and forbidden in
-// prune (FR-028) for a reason worth stating: amctl creates and owns this whole
-// directory, so every name in it is one amctl wrote. An agent's skills
-// directory is shared with the user's own hand-written files, which is why
-// removal there walks the installation record instead. Names that do not carry
-// tempPrefix — a finished `sha256-<hex>` entry, or anything a stranger left —
-// are never touched.
+// CollectTempsOlderThan removes temp files last modified more than age ago,
+// and returns how many it removed. The criterion is age, not PID liveness,
+// since a PID is meaningless across a container boundary and wrong after PID
+// reuse; a temp file untouched for a day is certainly dead, since no download
+// stays silent that long while still in progress. A prefix match over a
+// directory listing is safe here (unlike in prune) because amctl owns this
+// whole directory, so every name in it is one amctl wrote.
 func (c *Cache) CollectTempsOlderThan(age time.Duration) (int, error) {
 	entries, err := os.ReadDir(c.dir)
 	if err != nil {

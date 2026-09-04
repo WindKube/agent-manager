@@ -39,15 +39,16 @@ type Options struct {
 	// PersistentPreRunE so an unknown value is refused once, centrally.
 	Output string
 	// Offline is --offline: complete from the cache or fail naming what is
-	// missing (FR-018). Never a silent degradation to a partial install.
+	// missing. Never a silent degradation to a partial install.
 	Offline bool
 	// Verbose is -v: diagnostics to the diagnostic stream, never to the
 	// result stream.
 	Verbose bool
-	// AllowPlaintextHub is --allow-plaintext-hub, FR-041's explicit opt-in for an
-	// http:// hub. It is not registered under a literal here: hub.New composes the
-	// refusal message that names the flag, so the two must be one string or the
-	// error tells a user to pass a flag that does not exist.
+	// AllowPlaintextHub is --allow-plaintext-hub, the explicit opt-in for an
+	// http:// hub. It is not registered under a literal here: hub.New
+	// composes the refusal message that names the flag, so the two must be
+	// one string or the error tells a user to pass a flag that does not
+	// exist.
 	AllowPlaintextHub bool
 
 	// Outcome is what the verb achieved. It is consulted only when the verb
@@ -167,7 +168,7 @@ func Main(args []string, result, diag io.Writer) Code {
 	if err != nil {
 		// SilenceErrors is on, so this is the only place an error is printed,
 		// and it goes to the diagnostic stream: an error text on the result
-		// stream would corrupt the JSON document a script is reading (FR-035).
+		// stream would corrupt the JSON document a script is reading.
 		opts.Streams().Errorf("%v", err)
 	}
 	return ExitCode(opts.Outcome, err)

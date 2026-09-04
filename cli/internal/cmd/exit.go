@@ -5,12 +5,12 @@ import (
 	"fmt"
 )
 
-// Code is a process exit status. FR-036 requires four distinguishable
-// outcomes; these are them, and there are no others. The numbers follow the
-// convention every convergence tool in this space already established
-// (terraform's -detailed-exitcode, puppet's --detailed-exitcodes): the steady
-// state is 0, and "I changed something" is a distinct non-error code above the
-// error codes rather than below them.
+// Code is a process exit status: four distinguishable outcomes, and there
+// are no others. The numbers follow the convention every convergence tool
+// in this space already established (terraform's -detailed-exitcode,
+// puppet's --detailed-exitcodes): the steady state is 0, and "I changed
+// something" is a distinct non-error code above the error codes rather
+// than below them.
 type Code int
 
 const (
@@ -42,10 +42,9 @@ const (
 	CodeChanged Code = 2
 
 	// CodeRefused — the CLI refused, and the user can fix it: an unwritable
-	// HOME (FR-039), a plaintext hub URL without the flag (FR-041), a
-	// conflicting managed file without --force (FR-029), a concurrent sync
-	// (FR-038), an unknown --output value, a missing token with no TTY
-	// (FR-037).
+	// HOME, a plaintext hub URL without the flag, a conflicting managed
+	// file without --force, a concurrent sync, an unknown --output value, a
+	// missing token with no TTY.
 	//
 	// Distinguished by: a human reading the message, and by a wrapper script
 	// deciding whether retrying could ever help. Retrying a refusal is

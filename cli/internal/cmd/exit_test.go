@@ -43,7 +43,7 @@ func TestExitCodesAreDistinct(t *testing.T) {
 	})
 
 	t.Run("success with no changes is the only zero", func(t *testing.T) {
-		// FR-036's whole point: a script under `set -e` must not abort on the
+		// The whole point: a script under `set -e` must not abort on the
 		// steady state, and must be able to tell it from every other outcome.
 		require.Equal(t, 0, int(CodeNoChanges))
 		for _, c := range []Code{CodeFailure, CodeChanged, CodeRefused} {
@@ -105,7 +105,7 @@ func TestMainExitCodes(t *testing.T) {
 		{"version succeeds with nothing changed", []string{"version"}, CodeNoChanges},
 		{"a stub verb exits zero", []string{"status"}, CodeNoChanges},
 		// sync is no longer a stub: with no --hub it refuses, before any
-		// request, which is FR-039's ordering seen from the exit code.
+		// request.
 		{"sync with no hub is a refusal", []string{"sync"}, CodeRefused},
 		{"no arguments prints help and exits zero", nil, CodeNoChanges},
 		{"an unknown output format is a refusal", []string{"--output", "yaml", "version"}, CodeRefused},
@@ -121,8 +121,8 @@ func TestMainExitCodes(t *testing.T) {
 }
 
 func TestEveryVerbIsWiredAndExitsZero(t *testing.T) {
-	// T002's contract: five verbs, each reachable and each exiting 0. When a
-	// real implementation replaces a stub this test keeps the verb reachable.
+	// Five verbs, each reachable and each exiting 0. When a real
+	// implementation replaces a stub this test keeps the verb reachable.
 	for _, verb := range []string{"login", "logout", "sync", "status", "version"} {
 		t.Run(verb+" is reachable", func(t *testing.T) {
 			root, _ := NewRootCmd(&bytes.Buffer{}, &bytes.Buffer{})
@@ -186,14 +186,13 @@ func TestVersionPrintsAndStaysOffTheDiagnosticStream(t *testing.T) {
 }
 
 func TestDiagnosticsNeverReachTheResultStream(t *testing.T) {
-	// FR-035, at the level the verbs will inherit: a stub warns, and the
-	// result stream stays empty rather than gaining an unparseable line.
+	// At the level the verbs will inherit: a stub warns, and the result
+	// stream stays empty rather than gaining an unparseable line.
 	//
 	// The verb here has to be one that is still a stub, so it moves as each
-	// user story lands — it was `login` until T030 implemented it. When the
-	// last stub goes, replace it with a verb whose real diagnostic this can
-	// assert; the property being tested belongs to output.Streams and not to
-	// any one verb.
+	// user story lands. When the last stub goes, replace it with a verb
+	// whose real diagnostic this can assert; the property being tested
+	// belongs to output.Streams and not to any one verb.
 	var result, diag bytes.Buffer
 	require.Equal(t, CodeNoChanges, Main([]string{"--output", "json", "status"}, &result, &diag))
 	require.Empty(t, result.String())

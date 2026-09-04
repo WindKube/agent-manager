@@ -34,18 +34,18 @@ const clientID = "agent-manager-cli"
 // not share a clock, and a package-level hook is the thing that makes a suite
 // order-dependent for reasons that look like a race in the code under test.
 type loginDeps struct {
-	// clock is the device flow's whole access to time. The production value is
-	// device.System(); a test injects one whose Wait returns without sleeping,
-	// which is what makes FR-002's "never faster than told" provable in
-	// microseconds. The INTERVAL still comes off the wire either way — nothing
-	// here tells the state machine how long to wait.
+	// clock is the device flow's whole access to time. The production value
+	// is device.System(); a test injects one whose Wait returns without
+	// sleeping, which is what makes "never faster than told" provable in
+	// microseconds. The interval still comes off the wire either way —
+	// nothing here tells the state machine how long to wait.
 	clock device.Clock
 	// httpClient is the transport for the hub. nil means net/http's default;
 	// the fake hub over TLS hands a test a client that trusts its self-signed
 	// certificate, and a test that built its own would fail for a reason that
 	// has nothing to do with login.
 	httpClient *http.Client
-	// hostname supplies the machine name bound to the authorisation (FR-001).
+	// hostname supplies the machine name bound to the authorisation.
 	hostname func() (string, error)
 	// backends overrides the credential store order. nil means the policy
 	// order, credentials.AllowedBackends().
@@ -64,30 +64,29 @@ func productionLoginDeps() loginDeps {
 
 // newLoginCmd builds `amctl login`.
 //
-// THE NO-TTY CONTRACT (FR-037), decided here because login is the only verb
-// that talks to a human mid-operation and is therefore the one people assume is
+// The no-TTY contract, decided here because login is the only verb that
+// talks to a human mid-operation and is therefore the one people assume is
 // interactive.
 //
-// login RUNS with no TTY. It is FR-037's first clause and not its second: the
-// device authorisation grant exists precisely so that the machine needing a
-// credential never has to collect one. Nothing here reads stdin, nothing
-// prompts, and nothing branches on whether a stream is a terminal — a verb that
-// behaved differently under a pipe would make the CI path the untested one.
-// TestLoginNeedsNoTerminal is the assertion, and
-// TestNoVerbReachesForATerminalOrStandardInput is the mechanical gate that
-// keeps it true for files written later.
+// login runs with no TTY: the device authorisation grant exists precisely
+// so that the machine needing a credential never has to collect one.
+// Nothing here reads stdin, nothing prompts, and nothing branches on
+// whether a stream is a terminal — a verb that behaved differently under a
+// pipe would make the CI path the untested one. TestLoginNeedsNoTerminal is
+// the assertion, and TestNoVerbReachesForATerminalOrStandardInput is the
+// mechanical gate that keeps it true for files written later.
 //
-// The one question login would otherwise have to ask is WHICH HUB, and with no
-// TTY there is nobody to ask, so it refuses naming --hub (FR-037's second
-// clause, exit CodeRefused). There is no environment variable for the hub and
-// no stored default: inventing either here would be inventing contract, and a
-// login that silently picked a hub is a credential written for a hub the
+// The one question login would otherwise have to ask is which hub, and
+// with no TTY there is nobody to ask, so it refuses naming --hub (exit
+// CodeRefused). There is no environment variable for the hub and no stored
+// default: inventing either here would be inventing contract, and a login
+// that silently picked a hub is a credential written for a hub the
 // operator did not name.
 //
-// What login deliberately does NOT do: open a browser. That is the interaction
-// FR-037 is about — it needs a session and a display, it is unwanted on a
-// server, and a --no-browser flag would only exist to switch off something that
-// should not have been the default. amctl prints the URL and the code; opening
+// What login deliberately does not do: open a browser. That interaction
+// needs a session and a display, is unwanted on a server, and a
+// --no-browser flag would only exist to switch off something that should
+// not have been the default. amctl prints the URL and the code; opening
 // them is the human's move, and the human may not even be at this machine.
 func newLoginCmd(opts *Options) *cobra.Command {
 	return &cobra.Command{
@@ -108,19 +107,19 @@ func newLoginCmd(opts *Options) *cobra.Command {
 
 // runLogin is `login` with its outside world as an argument.
 //
-// The ORDER below is FR-039 and is the whole reason Prepare exists: the home
-// directory and the hub URL are validated, and the credential store is opened
-// AND CHECKED, before any packet leaves — so a machine that cannot store the
+// The order below is the whole reason Prepare exists: the home directory
+// and the hub URL are validated, and the credential store is opened and
+// checked, before any packet leaves — so a machine that cannot store the
 // token never sends a human to a browser to approve one. It costs a 0700
-// directory and one Lstat on a login that then fails, and buys the FR-003/FR-004
-// refusals arriving before the ten-minute authorisation window rather than after
-// it.
+// directory and one Lstat on a login that then fails, and buys the
+// store-permission refusals arriving before the ten-minute authorisation
+// window rather than after it.
 //
-// Opening the store is NOT enough on its own, which is the mistake this comment
-// used to describe as fixed: credentials.Open walks backends and warns, and
-// touches no item, so the mode gate only ran inside Save — after the code had
-// been shown and the approval spent. store.Check is the pre-flight, and
-// Store.Check's own comment carries the measurement.
+// Opening the store is not enough on its own: credentials.Open walks
+// backends and warns, and touches no item, so the mode gate only ran
+// inside Save — after the code had been shown and the approval spent.
+// store.Check is the pre-flight, and Store.Check's own comment carries the
+// measurement.
 func runLogin(ctx context.Context, opts *Options, deps loginDeps) error {
 	s := opts.Streams()
 
@@ -140,10 +139,10 @@ func runLogin(ctx context.Context, opts *Options, deps loginDeps) error {
 			UserAgent:      userAgent(),
 		})
 		if err != nil {
-			// hub.ErrInsecureHub and hub.ErrHubURL are both the user's to fix,
-			// and hub.New's message already names --allow-plaintext-hub
-			// (FR-041). Refuse marks it CodeRefused; unmarked it would exit 1
-			// alongside the genuine bugs.
+			// hub.ErrInsecureHub and hub.ErrHubURL are both the user's to
+			// fix, and hub.New's message already names
+			// --allow-plaintext-hub. Refuse marks it CodeRefused; unmarked
+			// it would exit 1 alongside the genuine bugs.
 			return Refuse(err)
 		}
 		if client.Insecure() {
@@ -155,30 +154,32 @@ func runLogin(ctx context.Context, opts *Options, deps loginDeps) error {
 			return err
 		}
 		if err = store.Check(target.URL); err != nil {
-			// FR-004 before the device flow, not after it. Save runs the same
-			// check as a post-condition and must keep doing so — the file could
-			// change underneath a long login — but by then a human has approved
-			// a grant that cannot be stored.
+			// Before the device flow, not after it. Save runs the same
+			// check as a post-condition and must keep doing so — the file
+			// could change underneath a long login — but by then a human
+			// has approved a grant that cannot be stored.
 			return storeFailure(err)
 		}
 		if token, ok := lookupEnv(deps.lookupEnv)(credentials.TokenEnvVar); ok && token != "" {
-			// Not a refusal: storing a credential is still the right outcome and
-			// the token in the environment is still what every other verb will
-			// use (FR-005). Saying so is the difference between a user believing
-			// this login took effect and knowing it did not.
+			// Not a refusal: storing a credential is still the right
+			// outcome and the token in the environment is still what
+			// every other verb will use. Saying so is the difference
+			// between a user believing this login took effect and
+			// knowing it did not.
 			s.Warnf("%s is set, so every other command will use that token in preference to the credential this login stores",
 				credentials.TokenEnvVar)
 		}
 
 		flow, err := device.Begin(ctx, hubTransport{h: client}, deps.clock, device.AuthorizeRequest{
 			ClientID: clientID,
-			// FR-001: the hub shows this to the approving human, so approval is
+			// The hub shows this to the approving human, so approval is
 			// an informed act rather than a click on an anonymous request.
 			Host: host,
-			// Scope is deliberately EMPTY. The contract says an omitted scope
-			// means the client's default, and the hub is the authority on what
-			// this client may do (FR-009). A scope list hardcoded here is a
-			// second opinion that starts wrong the day the hub adds a scope.
+			// Scope is deliberately empty. The contract says an omitted
+			// scope means the client's default, and the hub is the
+			// authority on what this client may do. A scope list
+			// hardcoded here is a second opinion that starts wrong the
+			// day the hub adds a scope.
 		})
 		if err != nil {
 			return err
@@ -198,15 +199,15 @@ func runLogin(ctx context.Context, opts *Options, deps loginDeps) error {
 		// token; there is nothing in it to parse.
 		cred := credentials.Issued(target.URL, tok.AccessToken(), int64(tok.ExpiresIn.Seconds()), deps.clock.Now())
 
-		// IDENTITY is the machine, not a person, and that is a limitation
-		// rather than a choice. None of the six frozen endpoints returns one:
-		// the token response carries access_token, token_type, expires_in and
-		// an optional refresh_token, there is no whoami operation, and
+		// Identity is the machine, not a person, and that is a limitation
+		// rather than a choice. None of the frozen endpoints returns one:
+		// the token response carries access_token, token_type, expires_in
+		// and an optional refresh_token, there is no whoami operation, and
 		// /v1/profiles describes profiles rather than the caller. So the
 		// honest answer to "who am I now" is the thing this login actually
 		// established — this host, bound to the grant the human approved.
-		// Inventing a person here, or leaving it empty so the renderer says
-		// "as ", would both be worse than saying what is true.
+		// Inventing a person here, or leaving it empty so the renderer
+		// says "as ", would both be worse than saying what is true.
 		cred.Identity = host
 		if err := store.Save(cred); err != nil {
 			return storeFailure(err)
@@ -224,51 +225,54 @@ func runLogin(ctx context.Context, opts *Options, deps loginDeps) error {
 	})
 }
 
-// showAuthorization writes the user code and the verification URL for a human
-// to act on. It is the one place in amctl where a credential is deliberately
-// written to a stream, so the reasoning is here in full.
+// showAuthorization writes the user code and the verification URL for a
+// human to act on. It is the one place in amctl where a credential is
+// deliberately written to a stream, so the reasoning is here in full.
 //
-// WHICH STREAM, AND WHY IT IS NOT THE RESULT STREAM.
+// Which stream, and why it is not the result stream.
 //
-// The diagnostic stream, in BOTH output formats, unconditionally.
+// The diagnostic stream, in both output formats, unconditionally.
 //
-//   - FR-035 requires `--output json` to leave stdout one parseable document.
-//     A code printed into the middle of that document breaks every scripted
-//     caller, and there is no way to defer it: the code is only useful BEFORE
-//     the result exists, because by the time login has a result the code has
-//     already been redeemed. So under json it cannot be on stdout.
-//   - It must not be on stdout under `human` either, even though it could be.
-//     A destination that depends on --output means a script that switches
-//     formats for readability suddenly finds prose on the stream it parses, and
-//     it means the two formats have different security properties. One
-//     destination, always.
-//   - "Invisible to someone piping stdout to a file" is the objection, and it
-//     is backwards: stderr is precisely the stream that stays on the terminal
-//     when stdout is redirected, which is where the human doing the approving
-//     is looking. `2>/dev/null` hides it, and a user who discarded diagnostics
-//     asked for that.
-//   - FR-007 permits exactly this. The user code may not reach a LOG, a REPORT
-//     or an ERROR: this is none of the three. It is one live write to the
-//     interactive stream by the verb whose entire job is to show it — the rule
-//     internal/leakscan states and enforces. That is also why it does not go
-//     through Warnf (it is not a warning and must not be prefixed as one) or
-//     Debugf (which is dropped without -v, and a login whose code appears only
-//     under -v cannot be completed).
+//   - `--output json` must leave stdout one parseable document. A code
+//     printed into the middle of that document breaks every scripted
+//     caller, and there is no way to defer it: the code is only useful
+//     before the result exists, because by the time login has a result
+//     the code has already been redeemed. So under json it cannot be on
+//     stdout.
+//   - It must not be on stdout under `human` either, even though it
+//     could be. A destination that depends on --output means a script
+//     that switches formats for readability suddenly finds prose on the
+//     stream it parses, and it means the two formats have different
+//     security properties. One destination, always.
+//   - "Invisible to someone piping stdout to a file" is the objection,
+//     and it is backwards: stderr is precisely the stream that stays on
+//     the terminal when stdout is redirected, which is where the human
+//     doing the approving is looking. `2>/dev/null` hides it, and a user
+//     who discarded diagnostics asked for that.
+//   - This is permitted: the user code may not reach a log, a report or
+//     an error, and this is none of the three. It is one live write to
+//     the interactive stream by the verb whose entire job is to show
+//     it — the rule internal/leakscan states and enforces. That is also
+//     why it does not go through Warnf (it is not a warning and must not
+//     be prefixed as one) or Debugf (which is dropped without -v, and a
+//     login whose code appears only under -v cannot be completed).
 //
 // One Write for the whole block, so a concurrent warning cannot interleave into
 // the middle of the code a human is reading.
 //
-// Note for whoever next greps this file: verification_uri_complete embeds the
-// user code as a `?user_code=` query parameter, which is the exact shape
-// internal/leakscan's credentialAssignment pattern hunts for. That is correct
-// and it is why no test may echo this text into its own output — see
-// login_test.go's note on asserting without printing the haystack.
+// Note for whoever next greps this file: verification_uri_complete embeds
+// the user code as a `?user_code=` query parameter, which is the exact
+// shape internal/leakscan's credentialAssignment pattern hunts for. That
+// is correct and it is why no test may echo this text into its own
+// output — see login_test.go's note on asserting without printing the
+// haystack.
 func showAuthorization(s *output.Streams, f *device.Flow) {
 	w := s.Diag
 	if w == nil {
-		// Nowhere to show it. Nothing to do but let the flow run: the poll may
-		// still succeed if a human learns the code by other means, and there is
-		// no second stream to fall back to that would not violate FR-035.
+		// Nowhere to show it. Nothing to do but let the flow run: the poll
+		// may still succeed if a human learns the code by other means,
+		// and there is no second stream to fall back to that would not
+		// break the one-document-on-stdout contract.
 		return
 	}
 	msg := fmt.Sprintf("\nTo authorise this machine, open\n\n    %s\n\nand enter\n\n    %s\n\n",
@@ -286,13 +290,13 @@ func showAuthorization(s *output.Streams, f *device.Flow) {
 	_, _ = io.WriteString(w, msg)
 }
 
-// machineHostname reads the name the authorisation is bound to (FR-001).
+// machineHostname reads the name the authorisation is bound to.
 //
 // A failure is refused rather than defaulted. The hostname is what the
-// approving human sees, so "unknown" would turn an informed approval into a
-// blind one — the one thing FR-001 exists to prevent. There is deliberately no
-// --host flag: a flag that lets the caller choose what the approver is told is
-// a flag for lying to the approver.
+// approving human sees, so "unknown" would turn an informed approval into
+// a blind one. There is deliberately no --host flag: a flag that lets the
+// caller choose what the approver is told is a flag for lying to the
+// approver.
 func machineHostname(fn func() (string, error)) (string, error) {
 	if fn == nil {
 		return "", errors.New("internal: login has no way to read the hostname")
@@ -307,20 +311,22 @@ func machineHostname(fn func() (string, error)) (string, error) {
 	return host, nil
 }
 
-// openStore opens the credential store, mapping the one failure a user can act
-// on to CodeRefused.
+// openStore opens the credential store, mapping the one failure a user
+// can act on to CodeRefused.
 //
-// ONE, not two: credentials.Open never returns ErrFileMode. It creates the
-// directory, walks the backends and warns, and touches no item, so there is no
-// mode to check yet — a `case errors.Is(err, credentials.ErrFileMode)` here is
-// dead code that reads like coverage of FR-004 and is not. The mode gate is
-// store.Check, called by runLogin before the device flow and by Save after it.
+// One, not two: credentials.Open never returns ErrFileMode. It creates
+// the directory, walks the backends and warns, and touches no item, so
+// there is no mode to check yet — a
+// `case errors.Is(err, credentials.ErrFileMode)` here would be dead code
+// that reads like coverage and is not. The mode gate is store.Check,
+// called by runLogin before the device flow and by Save after it.
 func openStore(home Home, s *output.Streams, backends []keyring.BackendType) (*credentials.Store, error) {
 	store, err := credentials.Open(credentials.Options{
 		StateRoot: home.Root,
-		// FR-003's "reporting the fallback on stderr, never silently". Passing
-		// nil here would drop the warning, which is why it is passed at every
-		// production call site rather than defaulted inside the package.
+		// Reports the fallback on stderr, never silently. Passing nil
+		// here would drop the warning, which is why it is passed at
+		// every production call site rather than defaulted inside the
+		// package.
 		Warnf:    s.Warnf,
 		Backends: backends,
 	})
@@ -346,30 +352,30 @@ func storeFailure(err error) error {
 	return fmt.Errorf("the credential could not be stored: %w", err)
 }
 
-// loginFailure turns the end of a device flow into the sentence a user reads
-// and the exit code a script switches on.
+// loginFailure turns the end of a device flow into the sentence a user
+// reads and the exit code a script switches on.
 //
-// The three device sentinels are refusals the user can fix, so they become
-// CodeRefused with an instruction. Everything else — a transport failure, a hub
-// that is not a hub — is returned UNCHANGED, deliberately: internal/hub has
-// already classified it into FR-040's unreachable / unauthorised / forbidden /
-// not-found, and rewriting the message here would flatten exactly the
-// distinction FR-040 asks for. Note also what none of these can contain: the
-// device code and the user code never appear in a device error (FR-007), so
-// there is nothing to redact on the way out.
+// The three device sentinels are refusals the user can fix, so they
+// become CodeRefused with an instruction. Everything else — a transport
+// failure, a hub that is not a hub — is returned unchanged, deliberately:
+// internal/hub has already classified it into unreachable / unauthorised /
+// forbidden / not-found, and rewriting the message here would flatten
+// exactly that distinction. Note also what none of these can contain: the
+// device code and the user code never appear in a device error, so there
+// is nothing to redact on the way out.
 //
-// CANCELLATION IS DECIDED FIRST, AND DROPS THE CHAIN IT ARRIVED IN. That is the
-// one place this function deliberately throws information away, so here is why.
-// A context cancelled while a poll was in flight comes back through
-// internal/hub's classifyTransport, which classifies a cancelled request as
-// ClassUnreachable — documented and correct for that package, since nothing
-// answered. Wrapping that chain produced "login was interrupted before it was
-// approved: … hub unreachable at https://…: context canceled", and any FR-040
-// consumer switching on hub.ClassOf got "unreachable" for a hub that was
-// answering perfectly. So the sentinel is wrapped rather than the chain:
-// errors.Is(err, context.Canceled) still holds, the exit code is still 1 rather
-// than 2, and no hub diagnosis rides along. What is lost is which endpoint was
-// in flight, which is worth nothing to someone who just pressed Ctrl-C.
+// Cancellation is decided first, and drops the chain it arrived in. That
+// is the one place this function deliberately throws information away, so
+// here is why. A context cancelled while a poll was in flight comes back
+// through internal/hub's classifyTransport, which classifies a cancelled
+// request as ClassUnreachable — documented and correct for that package,
+// since nothing answered. Wrapping that chain produced "login was
+// interrupted before it was approved: … hub unreachable at https://…:
+// context canceled", for a hub that was answering perfectly. So the
+// sentinel is wrapped rather than the chain: errors.Is(err,
+// context.Canceled) still holds, the exit code is still 1 rather than 2,
+// and no hub diagnosis rides along. What is lost is which endpoint was in
+// flight, which is worth nothing to someone who just pressed Ctrl-C.
 //
 // Note the latency on this: no verb installs a signal handler — Main calls
 // root.Execute(), so cmd.Context() is context.Background() and SIGINT kills the
@@ -405,10 +411,9 @@ func lookupEnv(fn func(string) (string, bool)) func(string) (string, bool) {
 
 // hubTransport adapts *hub.Hub to device.Transport.
 //
-// This is the ~25 lines internal/device's package comment promises: that
-// package refuses to import internal/hub so its state machine can be tested
-// with no HTTP in it, and this is the seam that costs. It translates and judges
-// nothing.
+// internal/device refuses to import internal/hub so its state machine can
+// be tested with no HTTP in it, and this is the seam that costs. It
+// translates and judges nothing.
 type hubTransport struct{ h *hub.Hub }
 
 func (t hubTransport) Authorize(ctx context.Context, req device.AuthorizeRequest) (device.Authorization, error) {
@@ -442,28 +447,29 @@ func (t hubTransport) Authorize(ctx context.Context, req device.AuthorizeRequest
 	}, nil
 }
 
-// wireSeconds converts an `expires_in` or `interval` field — an unbounded int64
-// number of seconds on the wire — into a time.Duration, or refuses it.
+// wireSeconds converts an `expires_in` or `interval` field — an unbounded
+// int64 number of seconds on the wire — into a time.Duration, or refuses it.
 //
-// The guard is not theoretical and the multiplication is not safe. time.Duration
-// is int64 NANOSECONDS, so `seconds * time.Second` wraps silently above about
-// 9.22e9 seconds, and a wrapped value can land anywhere — including on a small
-// POSITIVE duration that every downstream check accepts. Measured end to end
-// against a hub answering interval 18446744074: the adapter produced 290.448ms,
-// device.normaliseInterval had nothing to object to (it catches zero and
-// negative, which is all a wrap CAN be caught as), and the client made 18 HTTP
-// polls inside a 5-second window against a hub that had asked for one poll every
-// 584 years. That is FR-002 broken silently, by an unconditional MUST, in the
-// adapter — upstream of the state machine whose own never-polls-faster-than-told
-// assertion would otherwise have caught it.
+// The guard is not theoretical and the multiplication is not safe.
+// time.Duration is int64 nanoseconds, so `seconds * time.Second` wraps
+// silently above about 9.22e9 seconds, landing anywhere — including on a
+// small positive duration that every downstream check accepts. Measured
+// end to end against a hub answering interval 18446744074: the adapter
+// produced 290.448ms, device.normaliseInterval had nothing to object to
+// (it catches zero and negative, which is all a wrap can be caught as),
+// and the client made 18 HTTP polls inside a 5-second window against a
+// hub that had asked for one poll every 584 years — a "never polls faster
+// than told" guarantee broken silently, upstream of the state machine
+// whose own assertion would otherwise have caught it.
 //
-// It REFUSES rather than clamping, and the bound is representability rather than
-// a policy about plausible seconds. Clamping would hand the state machine a
-// number the hub never sent, and this layer translates: judging what an interval
-// SHOULD be is internal/device's job, which is why an interval at or beyond the
-// code's lifetime is refused there and not here. Negative values are bounded
-// too, and not left to device's own negative handling, because the wrap is
-// symmetric: -9223372037 seconds becomes a POSITIVE 292 years.
+// It refuses rather than clamping, and the bound is representability
+// rather than a policy about plausible seconds. Clamping would hand the
+// state machine a number the hub never sent, and this layer translates:
+// judging what an interval should be is internal/device's job, which is
+// why an interval at or beyond the code's lifetime is refused there and
+// not here. Negative values are bounded too, and not left to device's own
+// negative handling, because the wrap is symmetric: -9223372037 seconds
+// becomes a positive 292 years.
 //
 // The error wraps device.ErrProtocol, so it reads and classifies as what it is —
 // a hub sending numbers no client can use — and login reports it unchanged.
@@ -481,8 +487,9 @@ func (t hubTransport) Poll(ctx context.Context, req device.PollRequest) (*device
 		ClientId: req.ClientID, DeviceCode: req.DeviceCode,
 		GrantType: hub.UrnIetfParamsOauthGrantTypeDeviceCode,
 	})
-	// RFC 8628's 400 envelope is the protocol, not a failure of it. Which codes
-	// are terminal is internal/device's decision — do not classify here.
+	// RFC 8628's 400 envelope is the protocol, not a failure of it. Which
+	// codes are terminal is internal/device's decision — do not classify
+	// here.
 	var flow *hub.DeviceFlowError
 	if errors.As(err, &flow) {
 		return nil, device.ErrorCode(flow.Code), nil

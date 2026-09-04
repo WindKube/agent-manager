@@ -13,8 +13,8 @@ import (
 	"time"
 )
 
-// FR-038 refuses concurrent syncs against the same home rather than
-// interleaving them. The mechanism is an O_CREATE|O_EXCL file at
+// Concurrent syncs against the same home are refused rather than
+// interleaved. The mechanism is an O_CREATE|O_EXCL file at
 // `~/.agent-manager/sync.lock`, which is atomic on every platform amctl
 // targets, in the standard library, and needs no build tags.
 //
@@ -29,16 +29,16 @@ import (
 //     record who holds it, and "another amctl is running" without a pid, a
 //     host and a start time is a message nobody can act on.
 //
-// # How a stale lock is decided — the deliverable comment
+// # How a stale lock is decided
 //
-// Staleness is a HEARTBEAT, not a timeout on the sync and not a liveness check
-// on a pid:
+// Staleness is a heartbeat, not a timeout on the sync and not a liveness
+// check on a pid:
 //
 //  1. While a lock is held, the holder rewrites the lock file's mtime every
 //     lockHeartbeat (15s). A lock whose mtime is older than lockStaleAfter
 //     (90s, six heartbeats) is stale.
-//  2. As an ACCELERATOR only, a lock recording our own hostname whose pid is
-//     no longer alive is stale immediately, without waiting out the 90s.
+//  2. As an accelerator only, a lock recording our own hostname whose pid
+//     is no longer alive is stale immediately, without waiting out the 90s.
 //
 // The heartbeat is the correctness argument; the pid check only ever SHORTENS
 // the wait. That asymmetry is deliberate, because every way the pid check can
@@ -104,9 +104,9 @@ var ErrLocked = errors.New("another amctl is syncing this home")
 // Holder is what a lock file records about whoever holds it. It exists so the
 // refusal can name a pid, a host and a start time instead of saying "busy".
 //
-// Nothing here is secret — no token, no hub URL, no credential (FR-007) — and
-// nothing here is trusted for anything but a message and the pid accelerator
-// above.
+// Nothing here is secret — no token, no hub URL, no credential — and
+// nothing here is trusted for anything but a message and the pid
+// accelerator above.
 type Holder struct {
 	// PID is the holder's process id, meaningful only together with Host.
 	PID int `json:"pid"`
@@ -183,12 +183,12 @@ const unknownHost = "?unknown"
 
 // Acquire takes the per-home sync lock, or refuses naming whoever holds it.
 //
-// The refusal is Refuse-marked, so it reaches FR-036's CodeRefused: retrying is
+// The refusal is Refuse-marked, so it reaches CodeRefused: retrying is
 // pointless until the other run finishes, which is exactly what that code
-// means. It does NOT block and it does NOT wait — a sync that queued behind
-// another would be indistinguishable from a hung CLI, and the caller (a cron
-// job, a CI step) is far better placed to decide whether to retry than this
-// function is.
+// means. It does not block and it does not wait — a sync that queued
+// behind another would be indistinguishable from a hung CLI, and the
+// caller (a cron job, a CI step) is far better placed to decide whether to
+// retry than this function is.
 func Acquire(h Home) (*Lock, error) { return acquire(h, defaultLockOptions()) }
 
 func acquire(h Home, o lockOptions) (*Lock, error) {

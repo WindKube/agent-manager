@@ -21,10 +21,11 @@ import (
 // installation record and the shared bundle cache under it.
 const DirName = ".agent-manager"
 
-// LockFileName is the per-home sync lock inside the state root. It is per HOME
-// and not per hub because FR-038 refuses "concurrent syncs against the same
-// home": two hubs can name the same package, and two syncs racing on one
-// skills directory interleave whichever hubs they came from. See lock.go.
+// LockFileName is the per-home sync lock inside the state root. It is per
+// home and not per hub: "concurrent syncs against the same home" is
+// refused because two hubs can name the same package, and two syncs
+// racing on one skills directory interleave whichever hubs they came
+// from. See lock.go.
 const LockFileName = "sync.lock"
 
 // maxDirNameLen bounds a per-hub directory name. It is our own budget rather
@@ -44,8 +45,8 @@ const readablePrefixLen = 32
 const hubDigestLen = 16
 
 // ErrHomeUnset marks a home directory the OS could not tell us about: the
-// platform's home variable is unset or empty. FR-039 requires the refusal to
-// name the variable, which is why homeEnvVar exists.
+// platform's home variable is unset or empty. The refusal must name the
+// variable, which is why homeEnvVar exists.
 var ErrHomeUnset = errors.New("home directory is not set")
 
 // ErrHomeUnwritable marks a home directory that exists but cannot hold amctl's
@@ -92,11 +93,11 @@ type Hub struct {
 	Dir string
 }
 
-// homeEnvVar names the environment variable os.UserHomeDir consults on this
-// platform, so FR-039's refusal names something the user can actually set.
-// Hand-derived from $GOROOT/src/os/file.go, which switches on runtime.GOOS
-// exactly this way; it is a switch rather than a lookup of every variable
-// because naming the wrong one is worse than naming none.
+// homeEnvVar names the environment variable os.UserHomeDir consults on
+// this platform, so the refusal names something the user can actually
+// set. Hand-derived from $GOROOT/src/os/file.go, which switches on
+// runtime.GOOS exactly this way; it is a switch rather than a lookup of
+// every variable because naming the wrong one is worse than naming none.
 func homeEnvVar() string { return homeEnvVarFor(runtime.GOOS) }
 
 func homeEnvVarFor(goos string) string {
@@ -125,19 +126,21 @@ func homeEnvVarFor(goos string) string {
 //     environment, not a state to repair; MkdirAll'ing one produces a home
 //     nothing else on the machine agrees with. Only the single
 //     `.agent-manager` component is created.
-//   - It does not accept `~/.agent-manager` being an ABSOLUTE symlink, even one
-//     pointing back inside the home. Everything here goes through os.Root,
-//     whose openat-based resolution refuses any absolute symlink in the path
-//     (measured on go1.26: "path escapes from parent"); a relative symlink that
-//     stays inside the home is fine and works. This is the safe direction for
-//     FR-020 and it is a genuine usability cost, so the refusal says so. Note
-//     the asymmetry with the AGENT directories, which are frequently symlinks
-//     into a dotfiles repo and are resolved rather than refused — that is
-//     internal/apply's containment check on the resolved path, and this is
-//     amctl's own state root, which has no such convention behind it.
-//   - It does not consult XDG_CONFIG_HOME. R2 measured that Claude Code does
-//     not read it for skills, and a state root that disagreed with the target
-//     root about where "home" is would be worse than either choice alone.
+//   - It does not accept `~/.agent-manager` being an absolute symlink,
+//     even one pointing back inside the home. Everything here goes
+//     through os.Root, whose openat-based resolution refuses any absolute
+//     symlink in the path (measured on go1.26: "path escapes from
+//     parent"); a relative symlink that stays inside the home is fine and
+//     works. This is the safe direction and it is a genuine usability
+//     cost, so the refusal says so. Note the asymmetry with the agent
+//     directories, which are frequently symlinks into a dotfiles repo and
+//     are resolved rather than refused — that is internal/apply's
+//     containment check on the resolved path, and this is amctl's own
+//     state root, which has no such convention behind it.
+//   - It does not consult XDG_CONFIG_HOME. Claude Code has been measured
+//     not to read it for skills, and a state root that disagreed with the
+//     target root about where "home" is would be worse than either choice
+//     alone.
 func ResolveHome() (Home, error) {
 	v := homeEnvVar()
 
@@ -226,11 +229,12 @@ func (h Home) HubDir(hub Hub) string { return filepath.Join(h.Root, hub.Dir) }
 // LockPath is the per-home sync lock's path. See lock.go.
 func (h Home) LockPath() string { return filepath.Join(h.Root, LockFileName) }
 
-// Prepare validates the state root and the hub's identity and ONLY THEN runs
-// work. FR-039 requires both refusals before any network request, and this is
-// how that ordering is made structural instead of remembered: work is the
-// network half, it is an argument, and there is no path through this function
-// that reaches it with an invalid home or an unparseable hub.
+// Prepare validates the state root and the hub's identity and only then
+// runs work. Both refusals must happen before any network request, and
+// this is how that ordering is made structural instead of remembered:
+// work is the network half, it is an argument, and there is no path
+// through this function that reaches it with an invalid home or an
+// unparseable hub.
 //
 // Every verb that touches the network goes through here. A verb that needs no
 // hub (`logout`, `status --offline` against a single hub) may call ResolveHome
@@ -254,10 +258,11 @@ func Prepare(hubURL string, work func(Home, Hub) error) error {
 //
 // What counts as the SAME hub, decided here and nowhere else:
 //
-//   - A missing scheme means https. `hub.example.com` == `https://hub.example.com`,
-//     because a bare host is what people type and the alternative is refusing
-//     it. TLS is FR-041's business (internal/hub), not this function's; the
-//     default being https rather than http is the same decision seen from here.
+//   - A missing scheme means https. `hub.example.com` ==
+//     `https://hub.example.com`, because a bare host is what people type
+//     and the alternative is refusing it. TLS is internal/hub's business,
+//     not this function's; the default being https rather than http is
+//     the same decision seen from here.
 //   - The host is case-folded and a single trailing dot is dropped.
 //     `HUB.example.com.` == `hub.example.com`: DNS is case-insensitive and the
 //     root-anchored form names the same host.
@@ -270,11 +275,11 @@ func Prepare(hubURL string, work func(Home, Hub) error) error {
 //     `https://h/am/` == `https://h/am`. A non-empty path is KEPT and is part
 //     of identity: a self-hosted hub behind a reverse proxy path prefix is a
 //     hub, and two prefixes on one host are two hubs.
-//   - The SCHEME is part of identity. `http://h` != `https://h`. They are
-//     different security contexts, and quietly sharing a state root would let
-//     a plaintext hub (reachable only with FR-041's explicit flag) inherit the
-//     record of packages installed from the TLS one, which is a list of paths
-//     amctl will delete on request.
+//   - The scheme is part of identity. `http://h` != `https://h`. They are
+//     different security contexts, and quietly sharing a state root would
+//     let a plaintext hub (reachable only with an explicit flag) inherit
+//     the record of packages installed from the TLS one, which is a list
+//     of paths amctl will delete on request.
 //
 // What is refused rather than normalised: userinfo (credentials do not belong
 // in a directory name or in a string that gets logged), a query or fragment (a
@@ -334,10 +339,10 @@ func ParseHub(raw string) (Hub, error) {
 	canonical := scheme + "://" + host + port + p
 	dir := hubDirName(canonical)
 	// A backstop, not a formality. hubDirName is written so that its output
-	// cannot be hostile — the prefix is whitelisted and the last character is
-	// always hex — but the whole point of T023 is that this one function has a
-	// blast radius, so the invariant is asserted rather than argued. If this
-	// ever fires it is amctl's bug, not the user's, so it is NOT a refusal.
+	// cannot be hostile — the prefix is whitelisted and the last character
+	// is always hex — but this one function has a blast radius, so the
+	// invariant is asserted rather than argued. If this ever fires it is
+	// amctl's bug, not the user's, so it is not a refusal.
 	if err := validatePathComponent(dir); err != nil {
 		return Hub{}, fmt.Errorf("internal: derived an unusable directory name for %q: %w", canonical, err)
 	}

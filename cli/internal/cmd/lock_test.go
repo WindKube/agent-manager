@@ -82,10 +82,10 @@ func TestReleaseIsIdempotent(t *testing.T) {
 	require.NoError(t, l.Release())
 }
 
-// FR-038: refuse, do not interleave and do not wait. This is the two-goroutine
-// (really two in-process acquisitions) form: it proves the O_EXCL exclusion, the
-// exit code and the message. It does NOT prove exclusion across processes —
-// TestASecondPROCESSRefusesAndNamesTheHolder does that.
+// Refuse, do not interleave and do not wait. This is the two-goroutine
+// (really two in-process acquisitions) form: it proves the O_EXCL
+// exclusion, the exit code and the message. It does not prove exclusion
+// across processes — TestASecondPROCESSRefusesAndNamesTheHolder does that.
 func TestASecondAcquireRefusesNamingTheHolder(t *testing.T) {
 	h := lockHome(t)
 
@@ -112,8 +112,7 @@ func TestASecondAcquireRefusesNamingTheHolder(t *testing.T) {
 	require.Contains(t, msg, h.LockPath())
 	require.Contains(t, msg, first.Holder().AcquiredAt.UTC().Format(time.RFC3339))
 
-	// FR-007's neighbourhood: the refusal is printed, so it must carry nothing
-	// but process facts.
+	// The refusal is printed, so it must carry nothing but process facts.
 	require.NotContains(t, msg, "token")
 	require.NotContains(t, msg, first.Holder().Token)
 

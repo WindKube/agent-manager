@@ -15,14 +15,13 @@ import (
 	"agent-manager/internal/store"
 )
 
-// Config is the credential set the worker bootstrap may draw on.
-//
-// Nothing here is `required`: which credentials a role must have is stated by its
-// Needs, and Build fails fast when a declared need has no credential behind it.
-// Marking them required in the env struct instead would force every role to carry
-// every credential, which is exactly the coupling principle II forbids. Per-role
-// knobs (the rule-pack directory, the scan budget) stay in the role's own struct
-// in internal/config and are read by its Definition, not here.
+// Config is the credential set the worker bootstrap may draw on. Nothing here
+// is `required`: which credentials a role must have is stated by its Needs,
+// and Build fails fast when a declared need has no credential behind it.
+// Marking them required in the env struct instead would force every role to
+// carry every credential it does not use. Per-role knobs (the rule-pack
+// directory, the scan budget) stay in the role's own struct in
+// internal/config, read by its Definition, not here.
 type Config struct {
 	config.Observability
 
@@ -41,9 +40,9 @@ type Built struct {
 	bucket *blob.Bucket
 }
 
-// Queue is the pool River works against. It is opened alongside the application
-// handle (two URLs, two pools — principle IX), so it is nil for a role that
-// declares no database access.
+// Queue is the pool River works against. It is opened alongside the
+// application handle, so it is nil for a role that declares no database
+// access.
 func (b *Built) Queue() *pgxpool.Pool {
 	if b.store == nil {
 		return nil
@@ -66,16 +65,11 @@ func (b *Built) Close() error {
 	return errors.Join(errs...)
 }
 
-// Build constructs exactly what def.Needs declares, and nothing else.
-//
-// The two rules that make this the enforcement point for principle II:
-//
-//   - An undeclared capability comes back nil. A role that did not declare
-//     Blob: AccessReadWrite gets a nil BlobWrite, which panics on first use in a
-//     test rather than quietly widening the role's reach in production.
-//   - A declared capability with no credential behind it is a startup error, not a
-//     nil. Failing fast here is the difference between a container that will not
-//     start and a worker that silently does half its job.
+// Build constructs exactly what def.Needs declares, and nothing else. An
+// undeclared capability comes back nil: a role that did not declare Blob:
+// AccessReadWrite gets a nil BlobWrite, which panics on first use in a test
+// rather than quietly widening the role's reach in production. A declared
+// capability with no credential behind it is a startup error, not a nil.
 func Build(ctx context.Context, def Definition, cfg Config, log zerolog.Logger) (*Built, error) {
 	if def.Name == "" {
 		return nil, errors.New("worker definition has no name")
@@ -87,10 +81,8 @@ func Build(ctx context.Context, def Definition, cfg Config, log zerolog.Logger) 
 		if cfg.DatabaseURL == "" {
 			return nil, fmt.Errorf("worker %s declares DB: %s but AGENT_MANAGER_DATABASE_URL is empty", def.Name, def.Needs.DB)
 		}
-		// The queue URL is required alongside it because store.Open opens both pools
-		// together and a worker with no queue is not a worker. The two URLs stay two
-		// parameters: one URL for both is the defect that signature exists to make
-		// impossible to express.
+		// Required alongside it because store.Open opens both pools
+		// together, and a worker with no queue is not a worker.
 		if cfg.RiverDatabaseURL == "" {
 			return nil, fmt.Errorf("worker %s declares DB: %s but AGENT_MANAGER_RIVER_DATABASE_URL is empty", def.Name, def.Needs.DB)
 		}
@@ -121,7 +113,7 @@ func Build(ctx context.Context, def Definition, cfg Config, log zerolog.Logger) 
 		built.bucket = bucket
 		built.Deps.BlobRead = bucket.Reader()
 
-		// The write half only for AccessReadWrite. This single branch is the whole
+		// The write half only for AccessReadWrite: this branch is the whole
 		// of "the fetcher is the only role with object-store write access".
 		if def.Needs.Blob == AccessReadWrite {
 			built.Deps.BlobWrite = bucket.Writer()

@@ -33,6 +33,7 @@ func (s *Server) register() {
 	s.registerBadges()
 	s.registerDeviceApproval()
 	s.registerStorage()
+	s.registerOrganization()
 }
 
 // publicSecurity is the empty security requirement that removes the document's
@@ -986,6 +987,234 @@ func (s *Server) reportSync(ctx context.Context, in *reportSyncInput) (*struct{}
 
 // The device flow's two handlers, its request and response types and its rate
 // limit live in device.go.
+
+func (s *Server) registerOrganization() {
+	orgForbidden := s.errorResponse("This identity may not administer the organisation. Requires the catalog-admin role.")
+	orgUnauthorized := s.errorResponse("Missing, expired or invalid token.")
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "getOrganization",
+		Method:      http.MethodGet,
+		Path:        "/v1/organization",
+		Tags:        []string{"organization"},
+		Summary:     "Identity provider settings, policy, mappings and categories",
+		Description: "The Organization screen's whole read. The provider panel's issuer, " +
+			"client id and scopes are this role's own configuration; the device authorisation " +
+			"endpoint is read from that provider's live discovery document, absent when discovery " +
+			"cannot be completed. " +
+			"NEVER carries the client secret, in any form — not the value, not a masked or " +
+			"length-revealing stand-in. Requires the catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "The organisation's current settings.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.Organization{}, "Organization")},
+				},
+			},
+			"401": orgUnauthorized,
+			"403": orgForbidden,
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.getOrganization)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "testIdentityConnection",
+		Method:      http.MethodPost,
+		Path:        "/v1/organization/identity/test",
+		Tags:        []string{"organization"},
+		Summary:     "Test the identity provider connection",
+		Description: "A real OIDC discovery and signing-key fetch against the configured issuer " +
+			"— not a check that a URL is well formed. Never echoes a secret: " +
+			"it reads none. Requires the catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "The test ran. `ok` says whether it succeeded; a failure carries the reason.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.IdentityConnectionTest{}, "IdentityConnectionTest")},
+				},
+			},
+			"401": orgUnauthorized,
+			"403": orgForbidden,
+		},
+	}, s.testIdentityConnection)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "rotateClientSecret",
+		Method:      http.MethodPost,
+		Path:        "/v1/organization/identity/secret",
+		Tags:        []string{"organization"},
+		Summary:     "Rotate the identity provider's client secret",
+		Description: "Always refuses (409). The client secret is this role's own environment " +
+			"configuration, not a credential this hub holds a provider-side registration for, so " +
+			"there is nothing here for a rotation to act on — see commands.ErrSecretRotationUnsupported. " +
+			"Requires the catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"401": orgUnauthorized,
+			"403": orgForbidden,
+			"409": s.errorResponse("Secret rotation is not supported: the secret is managed by the deployment environment."),
+		},
+	}, s.rotateClientSecret)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "updatePolicy",
+		Method:      http.MethodPut,
+		Path:        "/v1/organization/policy",
+		Tags:        []string{"organization"},
+		Summary:     "Change the scan gate and the organisation's policy toggles",
+		Description: "Writes org_policy and one `policy` audit row in one transaction. " +
+			"Every toggle changes real downstream behaviour on its next use: the " +
+			"gate and require-signed-bundles are read live by the next profile resolution, " +
+			"community-needs-review and rescan-on-new-version are read live by the scanner. " +
+			"Requires the catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "The policy as saved.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.OrganizationPolicy{}, "OrganizationPolicy")},
+				},
+			},
+			"401": orgUnauthorized,
+			"403": orgForbidden,
+			"422": s.errorResponse("The scan gate is not block, approval or warn-with-override."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.updatePolicy)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "listGroupRoleMappings",
+		Method:      http.MethodGet,
+		Path:        "/v1/organization/mappings",
+		Tags:        []string{"organization"},
+		Summary:     "The group-to-role mapping table",
+		Description: "Every group_role_map row, alphabetically. Requires the catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"401": orgUnauthorized,
+			"403": orgForbidden,
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.listGroupRoleMappings)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "createGroupRoleMapping",
+		Method:      http.MethodPost,
+		Path:        "/v1/organization/mappings",
+		Tags:        []string{"organization"},
+		Summary:     "Map a group to a role",
+		Description: "Upserts by group name and writes one `role` audit row. " +
+			"A mapping change takes effect at that identity's next request — auth.Sessions.Resolve " +
+			"reads this table on every one, so there is no cache to invalidate. Requires the " +
+			"catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Mapped.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.GroupRoleMapping{}, "GroupRoleMapping")},
+				},
+			},
+			"401": orgUnauthorized,
+			"403": orgForbidden,
+			"422": s.errorResponse("The group name is blank, or the role is not one of the four the schema allows."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.createGroupRoleMapping)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID:   "deleteGroupRoleMapping",
+		Method:        http.MethodDelete,
+		Path:          "/v1/organization/mappings/{id}",
+		Tags:          []string{"organization"},
+		Summary:       "Remove a group-to-role mapping",
+		DefaultStatus: http.StatusNoContent,
+		Description:   "Writes one `role` audit row. Requires the catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"204": {Description: "Removed."},
+			"401": orgUnauthorized,
+			"403": orgForbidden,
+			"404": s.errorResponse("No such mapping."),
+		},
+	}, s.deleteGroupRoleMapping)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "listCategories",
+		Method:      http.MethodGet,
+		Path:        "/v1/organization/categories",
+		Tags:        []string{"organization"},
+		Summary:     "The curated category vocabulary, with counts",
+		Description: "Every category, alphabetically, with how many packages currently carry it. " +
+			"Tags are never here: they stay manifest-derived and there is no " +
+			"tag endpoint anywhere in this document. Requires the catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"401": orgUnauthorized,
+			"403": orgForbidden,
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.listCategories)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "createCategory",
+		Method:      http.MethodPost,
+		Path:        "/v1/organization/categories",
+		Tags:        []string{"organization"},
+		Summary:     "Add a category to the vocabulary",
+		Description: "Writes one `category` audit row. Requires the " +
+			"catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Added.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.OrganizationCategory{}, "OrganizationCategory")},
+				},
+			},
+			"401": orgUnauthorized,
+			"403": orgForbidden,
+			"409": s.errorResponse("A category with that name or slug already exists."),
+			"422": s.errorResponse("The name is blank, or reduces to no usable slug characters."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.createCategory)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "updateCategory",
+		Method:      http.MethodPatch,
+		Path:        "/v1/organization/categories/{id}",
+		Tags:        []string{"organization"},
+		Summary:     "Rename a category",
+		Description: "Writes one `category` audit row. Requires the catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Renamed.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.OrganizationCategory{}, "OrganizationCategory")},
+				},
+			},
+			"401": orgUnauthorized,
+			"403": orgForbidden,
+			"404": s.errorResponse("No such category."),
+			"409": s.errorResponse("A category with that name or slug already exists."),
+			"422": s.errorResponse("The id is not a uuid, or the name is blank."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.updateCategory)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID:   "deleteCategory",
+		Method:        http.MethodDelete,
+		Path:          "/v1/organization/categories/{id}",
+		Tags:          []string{"organization"},
+		Summary:       "Delete a category",
+		DefaultStatus: http.StatusNoContent,
+		Description: "Writes one `category` audit row. Refuses with 409 when a package still " +
+			"carries the category — the foreign key has no ON DELETE clause, so this is the " +
+			"database's own refusal. Requires the catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"204": {Description: "Deleted."},
+			"401": orgUnauthorized,
+			"403": orgForbidden,
+			"404": s.errorResponse("No such category."),
+			"409": s.errorResponse("The category is still assigned to at least one package."),
+		},
+	}, s.deleteCategory)
+}
 
 // ---- document helpers -------------------------------------------------------
 

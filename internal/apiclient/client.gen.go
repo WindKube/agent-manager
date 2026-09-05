@@ -123,6 +123,30 @@ func (e CatalogPackageVerdict) Valid() bool {
 	}
 }
 
+// Defines values for CreateMappingRequestRole.
+const (
+	CreateMappingRequestRoleCatalogAdmin    CreateMappingRequestRole = "catalog-admin"
+	CreateMappingRequestRoleProfileConsumer CreateMappingRequestRole = "profile-consumer"
+	CreateMappingRequestRoleReadOnly        CreateMappingRequestRole = "read-only"
+	CreateMappingRequestRoleScannerReviewer CreateMappingRequestRole = "scanner-reviewer"
+)
+
+// Valid indicates whether the value is a known member of the CreateMappingRequestRole enum.
+func (e CreateMappingRequestRole) Valid() bool {
+	switch e {
+	case CreateMappingRequestRoleCatalogAdmin:
+		return true
+	case CreateMappingRequestRoleProfileConsumer:
+		return true
+	case CreateMappingRequestRoleReadOnly:
+		return true
+	case CreateMappingRequestRoleScannerReviewer:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DeviceTokenTokenType.
 const (
 	Bearer DeviceTokenTokenType = "Bearer"
@@ -477,6 +501,30 @@ func (e FindingSummaryVerdict) Valid() bool {
 	}
 }
 
+// Defines values for GroupRoleMappingRole.
+const (
+	GroupRoleMappingRoleCatalogAdmin    GroupRoleMappingRole = "catalog-admin"
+	GroupRoleMappingRoleProfileConsumer GroupRoleMappingRole = "profile-consumer"
+	GroupRoleMappingRoleReadOnly        GroupRoleMappingRole = "read-only"
+	GroupRoleMappingRoleScannerReviewer GroupRoleMappingRole = "scanner-reviewer"
+)
+
+// Valid indicates whether the value is a known member of the GroupRoleMappingRole enum.
+func (e GroupRoleMappingRole) Valid() bool {
+	switch e {
+	case GroupRoleMappingRoleCatalogAdmin:
+		return true
+	case GroupRoleMappingRoleProfileConsumer:
+		return true
+	case GroupRoleMappingRoleReadOnly:
+		return true
+	case GroupRoleMappingRoleScannerReviewer:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatus.
 const (
 	HealthStatusOk          HealthStatus = "ok"
@@ -672,6 +720,27 @@ func (e LockfileSkipReason) Valid() bool {
 	case UnsignedAndSignaturesRequired:
 		return true
 	case VersionRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrganizationPolicyScanGate.
+const (
+	OrganizationPolicyScanGateApproval         OrganizationPolicyScanGate = "approval"
+	OrganizationPolicyScanGateBlock            OrganizationPolicyScanGate = "block"
+	OrganizationPolicyScanGateWarnWithOverride OrganizationPolicyScanGate = "warn-with-override"
+)
+
+// Valid indicates whether the value is a known member of the OrganizationPolicyScanGate enum.
+func (e OrganizationPolicyScanGate) Valid() bool {
+	switch e {
+	case OrganizationPolicyScanGateApproval:
+		return true
+	case OrganizationPolicyScanGateBlock:
+		return true
+	case OrganizationPolicyScanGateWarnWithOverride:
 		return true
 	default:
 		return false
@@ -1413,24 +1482,45 @@ func (e SyncReportTargets) Valid() bool {
 	}
 }
 
+// Defines values for UpdatePolicyRequestScanGate.
+const (
+	UpdatePolicyRequestScanGateApproval         UpdatePolicyRequestScanGate = "approval"
+	UpdatePolicyRequestScanGateBlock            UpdatePolicyRequestScanGate = "block"
+	UpdatePolicyRequestScanGateWarnWithOverride UpdatePolicyRequestScanGate = "warn-with-override"
+)
+
+// Valid indicates whether the value is a known member of the UpdatePolicyRequestScanGate enum.
+func (e UpdatePolicyRequestScanGate) Valid() bool {
+	switch e {
+	case UpdatePolicyRequestScanGateApproval:
+		return true
+	case UpdatePolicyRequestScanGateBlock:
+		return true
+	case UpdatePolicyRequestScanGateWarnWithOverride:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ViewerRole.
 const (
-	CatalogAdmin    ViewerRole = "catalog-admin"
-	ProfileConsumer ViewerRole = "profile-consumer"
-	ReadOnly        ViewerRole = "read-only"
-	ScannerReviewer ViewerRole = "scanner-reviewer"
+	ViewerRoleCatalogAdmin    ViewerRole = "catalog-admin"
+	ViewerRoleProfileConsumer ViewerRole = "profile-consumer"
+	ViewerRoleReadOnly        ViewerRole = "read-only"
+	ViewerRoleScannerReviewer ViewerRole = "scanner-reviewer"
 )
 
 // Valid indicates whether the value is a known member of the ViewerRole enum.
 func (e ViewerRole) Valid() bool {
 	switch e {
-	case CatalogAdmin:
+	case ViewerRoleCatalogAdmin:
 		return true
-	case ProfileConsumer:
+	case ViewerRoleProfileConsumer:
 		return true
-	case ReadOnly:
+	case ViewerRoleReadOnly:
 		return true
-	case ScannerReviewer:
+	case ViewerRoleScannerReviewer:
 		return true
 	default:
 		return false
@@ -1815,6 +1905,22 @@ type CatalogPage struct {
 	// Examples: 10
 	Total int64 `json:"total"`
 }
+
+// CreateCategoryRequest defines model for CreateCategoryRequest.
+type CreateCategoryRequest struct {
+	// Name Examples: Productivity
+	Name string `json:"name"`
+}
+
+// CreateMappingRequest defines model for CreateMappingRequest.
+type CreateMappingRequest struct {
+	// GroupName Examples: security-team
+	GroupName string                   `json:"groupName"`
+	Role      CreateMappingRequestRole `json:"role"`
+}
+
+// CreateMappingRequestRole defines model for CreateMappingRequest.Role.
+type CreateMappingRequestRole string
 
 // DeviceAuthorization defines model for DeviceAuthorization.
 type DeviceAuthorization struct {
@@ -2210,6 +2316,16 @@ type FindingsPage struct {
 	Total int64 `json:"total"`
 }
 
+// GroupRoleMapping defines model for GroupRoleMapping.
+type GroupRoleMapping struct {
+	// GroupName Examples: security-team
+	GroupName string               `json:"groupName"`
+	Role      GroupRoleMappingRole `json:"role"`
+}
+
+// GroupRoleMappingRole defines model for GroupRoleMapping.Role.
+type GroupRoleMappingRole string
+
 // Health defines model for Health.
 type Health struct {
 	// Checks One entry per dependency this role needs.
@@ -2228,6 +2344,13 @@ type HealthCheck struct {
 	// Name Examples: database
 	Name string `json:"name"`
 	Ok   bool   `json:"ok"`
+}
+
+// IdentityConnectionTest defines model for IdentityConnectionTest.
+type IdentityConnectionTest struct {
+	// Detail The failure reason, in the terms discovery or the JWKS fetch gave. Absent on success.
+	Detail *string `json:"detail,omitempty"`
+	Ok     bool    `json:"ok"`
 }
 
 // Lockfile defines model for Lockfile.
@@ -2371,6 +2494,70 @@ type LockfileSkip struct {
 
 // LockfileSkipReason Examples: flagged-awaiting-approval
 type LockfileSkipReason string
+
+// Organization defines model for Organization.
+type Organization struct {
+	Categories []OrganizationCategory `json:"categories"`
+	Mappings   []GroupRoleMapping     `json:"mappings"`
+	Policy     OrganizationPolicy     `json:"policy"`
+	Provider   OrganizationProvider   `json:"provider"`
+}
+
+// OrganizationCategory defines model for OrganizationCategory.
+type OrganizationCategory struct {
+	// Count Packages currently carrying this category.
+	//
+	// Examples: 3
+	Count int64              `json:"count"`
+	Id    openapi_types.UUID `json:"id"`
+
+	// Name Examples: Productivity
+	Name string `json:"name"`
+
+	// Slug Examples: productivity
+	Slug string `json:"slug"`
+}
+
+// OrganizationPolicy defines model for OrganizationPolicy.
+type OrganizationPolicy struct {
+	AllowPersonalProfiles bool `json:"allowPersonalProfiles"`
+
+	// CommunityNeedsReview A version from a non-verified publisher is flagged for review rather than becoming immediately distributable.
+	CommunityNeedsReview bool `json:"communityNeedsReview"`
+
+	// RequireSignedBundles A version with no recorded signature reference is excluded from every resolution while this is set.
+	RequireSignedBundles bool `json:"requireSignedBundles"`
+
+	// RescanOnNewVersion Publishing a version rescans the package's other versions under the running rule pack.
+	RescanOnNewVersion bool `json:"rescanOnNewVersion"`
+
+	// ScanGate What a flagged verdict does to the next resolution.
+	ScanGate OrganizationPolicyScanGate `json:"scanGate"`
+}
+
+// OrganizationPolicyScanGate What a flagged verdict does to the next resolution.
+type OrganizationPolicyScanGate string
+
+// OrganizationProvider defines model for OrganizationProvider.
+type OrganizationProvider struct {
+	// ClientId Examples: agent-manager-web
+	ClientId string `json:"clientId"`
+
+	// DeviceAuthorizationEndpoint Absent when discovery could not be completed.
+	//
+	// Examples: http://dex:5556/dex/device/code
+	DeviceAuthorizationEndpoint *string `json:"deviceAuthorizationEndpoint,omitempty"`
+
+	// Issuer The trust anchor every ID token is checked against.
+	//
+	// Examples: http://dex:5556/dex
+	Issuer string `json:"issuer"`
+
+	// Scopes Requested at every sign-in.
+	//
+	// Examples: ["openid","profile","email","groups"]
+	Scopes []string `json:"scopes"`
+}
 
 // PackageCapabilities defines model for PackageCapabilities.
 type PackageCapabilities struct {
@@ -3213,6 +3400,24 @@ type SyncReport struct {
 // SyncReportTargets defines model for SyncReport.Targets.
 type SyncReportTargets string
 
+// UpdateCategoryRequest defines model for UpdateCategoryRequest.
+type UpdateCategoryRequest struct {
+	// Name Examples: Productivity tools
+	Name string `json:"name"`
+}
+
+// UpdatePolicyRequest defines model for UpdatePolicyRequest.
+type UpdatePolicyRequest struct {
+	AllowPersonalProfiles bool                        `json:"allowPersonalProfiles"`
+	CommunityNeedsReview  bool                        `json:"communityNeedsReview"`
+	RequireSignedBundles  bool                        `json:"requireSignedBundles"`
+	RescanOnNewVersion    bool                        `json:"rescanOnNewVersion"`
+	ScanGate              UpdatePolicyRequestScanGate `json:"scanGate"`
+}
+
+// UpdatePolicyRequestScanGate defines model for UpdatePolicyRequest.ScanGate.
+type UpdatePolicyRequestScanGate string
+
 // Viewer defines model for Viewer.
 type Viewer struct {
 	// DisplayName The name a screen shows. Derived by the hub from whichever of name, preferred_username or email the provider populated.
@@ -3399,6 +3604,18 @@ type AcceptFindingJSONRequestBody = FindingApproval
 
 // RejectFindingJSONRequestBody defines body for RejectFinding for application/json ContentType.
 type RejectFindingJSONRequestBody = FindingRejection
+
+// CreateCategoryJSONRequestBody defines body for CreateCategory for application/json ContentType.
+type CreateCategoryJSONRequestBody = CreateCategoryRequest
+
+// UpdateCategoryJSONRequestBody defines body for UpdateCategory for application/json ContentType.
+type UpdateCategoryJSONRequestBody = UpdateCategoryRequest
+
+// CreateGroupRoleMappingJSONRequestBody defines body for CreateGroupRoleMapping for application/json ContentType.
+type CreateGroupRoleMappingJSONRequestBody = CreateMappingRequest
+
+// UpdatePolicyJSONRequestBody defines body for UpdatePolicy for application/json ContentType.
+type UpdatePolicyJSONRequestBody = UpdatePolicyRequest
 
 // RegisterPackageMultipartRequestBody defines body for RegisterPackage for multipart/form-data ContentType.
 type RegisterPackageMultipartRequestBody RegisterPackageMultipartBody
@@ -3635,6 +3852,127 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /v1/health (the `Health` operationId).
 	Health(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetOrganization Identity provider settings, policy, mappings and categories
+	//
+	// The Organization screen's whole read. The provider panel's issuer, client id and scopes are this role's own configuration; the device authorisation endpoint is read from that provider's live discovery document, absent when discovery cannot be completed. NEVER carries the client secret, in any form — not the value, not a masked or length-revealing stand-in. Requires the catalog-admin role.
+	//
+	// Corresponds with GET /v1/organization (the `GetOrganization` operationId).
+	GetOrganization(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListCategories The curated category vocabulary, with counts
+	//
+	// Every category, alphabetically, with how many packages currently carry it. Tags are never here: they stay manifest-derived and there is no tag endpoint anywhere in this document. Requires the catalog-admin role.
+	//
+	// Corresponds with GET /v1/organization/categories (the `ListCategories` operationId).
+	ListCategories(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateCategoryWithBody Add a category to the vocabulary
+	//
+	// Writes one `category` audit row. Requires the catalog-admin role.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/organization/categories (the `CreateCategory` operationId).
+	CreateCategoryWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateCategory Add a category to the vocabulary
+	//
+	// Writes one `category` audit row. Requires the catalog-admin role.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/organization/categories (the `CreateCategory` operationId).
+	CreateCategory(ctx context.Context, body CreateCategoryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteCategory Delete a category
+	//
+	// Writes one `category` audit row. Refuses with 409 when a package still carries the category — the foreign key has no ON DELETE clause, so this is the database's own refusal. Requires the catalog-admin role.
+	//
+	// Corresponds with DELETE /v1/organization/categories/{id} (the `DeleteCategory` operationId).
+	DeleteCategory(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateCategoryWithBody Rename a category
+	//
+	// Writes one `category` audit row. Requires the catalog-admin role.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /v1/organization/categories/{id} (the `UpdateCategory` operationId).
+	UpdateCategoryWithBody(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateCategory Rename a category
+	//
+	// Writes one `category` audit row. Requires the catalog-admin role.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /v1/organization/categories/{id} (the `UpdateCategory` operationId).
+	UpdateCategory(ctx context.Context, id openapi_types.UUID, body UpdateCategoryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RotateClientSecret Rotate the identity provider's client secret
+	//
+	// Always refuses (409). The client secret is this role's own environment configuration, not a credential this hub holds a provider-side registration for, so there is nothing here for a rotation to act on — see commands.ErrSecretRotationUnsupported. Requires the catalog-admin role.
+	//
+	// Corresponds with POST /v1/organization/identity/secret (the `RotateClientSecret` operationId).
+	RotateClientSecret(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TestIdentityConnection Test the identity provider connection
+	//
+	// A real OIDC discovery and signing-key fetch against the configured issuer — not a check that a URL is well formed. Never echoes a secret: it reads none. Requires the catalog-admin role.
+	//
+	// Corresponds with POST /v1/organization/identity/test (the `TestIdentityConnection` operationId).
+	TestIdentityConnection(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListGroupRoleMappings The group-to-role mapping table
+	//
+	// Every group_role_map row, alphabetically. Requires the catalog-admin role.
+	//
+	// Corresponds with GET /v1/organization/mappings (the `ListGroupRoleMappings` operationId).
+	ListGroupRoleMappings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateGroupRoleMappingWithBody Map a group to a role
+	//
+	// Upserts by group name and writes one `role` audit row. A mapping change takes effect at that identity's next request — auth.Sessions.Resolve reads this table on every one, so there is no cache to invalidate. Requires the catalog-admin role.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/organization/mappings (the `CreateGroupRoleMapping` operationId).
+	CreateGroupRoleMappingWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateGroupRoleMapping Map a group to a role
+	//
+	// Upserts by group name and writes one `role` audit row. A mapping change takes effect at that identity's next request — auth.Sessions.Resolve reads this table on every one, so there is no cache to invalidate. Requires the catalog-admin role.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/organization/mappings (the `CreateGroupRoleMapping` operationId).
+	CreateGroupRoleMapping(ctx context.Context, body CreateGroupRoleMappingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteGroupRoleMapping Remove a group-to-role mapping
+	//
+	// Writes one `role` audit row. Requires the catalog-admin role.
+	//
+	// Corresponds with DELETE /v1/organization/mappings/{id} (the `DeleteGroupRoleMapping` operationId).
+	DeleteGroupRoleMapping(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdatePolicyWithBody Change the scan gate and the organisation's policy toggles
+	//
+	// Writes org_policy and one `policy` audit row in one transaction. Every toggle changes real downstream behaviour on its next use: the gate and require-signed-bundles are read live by the next profile resolution, community-needs-review and rescan-on-new-version are read live by the scanner. Requires the catalog-admin role.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /v1/organization/policy (the `UpdatePolicy` operationId).
+	UpdatePolicyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdatePolicy Change the scan gate and the organisation's policy toggles
+	//
+	// Writes org_policy and one `policy` audit row in one transaction. Every toggle changes real downstream behaviour on its next use: the gate and require-signed-bundles are read live by the next profile resolution, community-needs-review and rescan-on-new-version are read live by the scanner. Requires the catalog-admin role.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /v1/organization/policy (the `UpdatePolicy` operationId).
+	UpdatePolicy(ctx context.Context, body UpdatePolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListPackages Browse, search and facet the catalog
 	//
@@ -4139,6 +4477,277 @@ func (c *Client) RejectFinding(ctx context.Context, id openapi_types.UUID, body 
 // Corresponds with GET /v1/health (the `Health` operationId).
 func (c *Client) Health(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewHealthRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetOrganization Identity provider settings, policy, mappings and categories
+//
+// The Organization screen's whole read. The provider panel's issuer, client id and scopes are this role's own configuration; the device authorisation endpoint is read from that provider's live discovery document, absent when discovery cannot be completed. NEVER carries the client secret, in any form — not the value, not a masked or length-revealing stand-in. Requires the catalog-admin role.
+//
+// Corresponds with GET /v1/organization (the `GetOrganization` operationId).
+func (c *Client) GetOrganization(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetOrganizationRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListCategories The curated category vocabulary, with counts
+//
+// Every category, alphabetically, with how many packages currently carry it. Tags are never here: they stay manifest-derived and there is no tag endpoint anywhere in this document. Requires the catalog-admin role.
+//
+// Corresponds with GET /v1/organization/categories (the `ListCategories` operationId).
+func (c *Client) ListCategories(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListCategoriesRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateCategoryWithBody Add a category to the vocabulary
+//
+// Writes one `category` audit row. Requires the catalog-admin role.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/organization/categories (the `CreateCategory` operationId).
+func (c *Client) CreateCategoryWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateCategoryRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateCategory Add a category to the vocabulary
+//
+// Writes one `category` audit row. Requires the catalog-admin role.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/organization/categories (the `CreateCategory` operationId).
+func (c *Client) CreateCategory(ctx context.Context, body CreateCategoryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateCategoryRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteCategory Delete a category
+//
+// Writes one `category` audit row. Refuses with 409 when a package still carries the category — the foreign key has no ON DELETE clause, so this is the database's own refusal. Requires the catalog-admin role.
+//
+// Corresponds with DELETE /v1/organization/categories/{id} (the `DeleteCategory` operationId).
+func (c *Client) DeleteCategory(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteCategoryRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateCategoryWithBody Rename a category
+//
+// Writes one `category` audit row. Requires the catalog-admin role.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /v1/organization/categories/{id} (the `UpdateCategory` operationId).
+func (c *Client) UpdateCategoryWithBody(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateCategoryRequestWithBody(c.Server, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateCategory Rename a category
+//
+// Writes one `category` audit row. Requires the catalog-admin role.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /v1/organization/categories/{id} (the `UpdateCategory` operationId).
+func (c *Client) UpdateCategory(ctx context.Context, id openapi_types.UUID, body UpdateCategoryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateCategoryRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RotateClientSecret Rotate the identity provider's client secret
+//
+// Always refuses (409). The client secret is this role's own environment configuration, not a credential this hub holds a provider-side registration for, so there is nothing here for a rotation to act on — see commands.ErrSecretRotationUnsupported. Requires the catalog-admin role.
+//
+// Corresponds with POST /v1/organization/identity/secret (the `RotateClientSecret` operationId).
+func (c *Client) RotateClientSecret(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRotateClientSecretRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// TestIdentityConnection Test the identity provider connection
+//
+// A real OIDC discovery and signing-key fetch against the configured issuer — not a check that a URL is well formed. Never echoes a secret: it reads none. Requires the catalog-admin role.
+//
+// Corresponds with POST /v1/organization/identity/test (the `TestIdentityConnection` operationId).
+func (c *Client) TestIdentityConnection(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestIdentityConnectionRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListGroupRoleMappings The group-to-role mapping table
+//
+// Every group_role_map row, alphabetically. Requires the catalog-admin role.
+//
+// Corresponds with GET /v1/organization/mappings (the `ListGroupRoleMappings` operationId).
+func (c *Client) ListGroupRoleMappings(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListGroupRoleMappingsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateGroupRoleMappingWithBody Map a group to a role
+//
+// Upserts by group name and writes one `role` audit row. A mapping change takes effect at that identity's next request — auth.Sessions.Resolve reads this table on every one, so there is no cache to invalidate. Requires the catalog-admin role.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/organization/mappings (the `CreateGroupRoleMapping` operationId).
+func (c *Client) CreateGroupRoleMappingWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateGroupRoleMappingRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateGroupRoleMapping Map a group to a role
+//
+// Upserts by group name and writes one `role` audit row. A mapping change takes effect at that identity's next request — auth.Sessions.Resolve reads this table on every one, so there is no cache to invalidate. Requires the catalog-admin role.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/organization/mappings (the `CreateGroupRoleMapping` operationId).
+func (c *Client) CreateGroupRoleMapping(ctx context.Context, body CreateGroupRoleMappingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateGroupRoleMappingRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteGroupRoleMapping Remove a group-to-role mapping
+//
+// Writes one `role` audit row. Requires the catalog-admin role.
+//
+// Corresponds with DELETE /v1/organization/mappings/{id} (the `DeleteGroupRoleMapping` operationId).
+func (c *Client) DeleteGroupRoleMapping(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteGroupRoleMappingRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdatePolicyWithBody Change the scan gate and the organisation's policy toggles
+//
+// Writes org_policy and one `policy` audit row in one transaction. Every toggle changes real downstream behaviour on its next use: the gate and require-signed-bundles are read live by the next profile resolution, community-needs-review and rescan-on-new-version are read live by the scanner. Requires the catalog-admin role.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /v1/organization/policy (the `UpdatePolicy` operationId).
+func (c *Client) UpdatePolicyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdatePolicyRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdatePolicy Change the scan gate and the organisation's policy toggles
+//
+// Writes org_policy and one `policy` audit row in one transaction. Every toggle changes real downstream behaviour on its next use: the gate and require-signed-bundles are read live by the next profile resolution, community-needs-review and rescan-on-new-version are read live by the scanner. Requires the catalog-admin role.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /v1/organization/policy (the `UpdatePolicy` operationId).
+func (c *Client) UpdatePolicy(ctx context.Context, body UpdatePolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdatePolicyRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -5167,6 +5776,376 @@ func NewHealthRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewGetOrganizationRequest constructs an http.Request for the GetOrganization method
+func NewGetOrganizationRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/organization")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListCategoriesRequest constructs an http.Request for the ListCategories method
+func NewListCategoriesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/organization/categories")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateCategoryRequest calls the generic CreateCategory builder with application/json body
+func NewCreateCategoryRequest(server string, body CreateCategoryJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateCategoryRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateCategoryRequestWithBody constructs an http.Request for the CreateCategory method, with any body, and a specified content type
+func NewCreateCategoryRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/organization/categories")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteCategoryRequest constructs an http.Request for the DeleteCategory method
+func NewDeleteCategoryRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/organization/categories/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateCategoryRequest calls the generic UpdateCategory builder with application/json body
+func NewUpdateCategoryRequest(server string, id openapi_types.UUID, body UpdateCategoryJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateCategoryRequestWithBody(server, id, "application/json", bodyReader)
+}
+
+// NewUpdateCategoryRequestWithBody constructs an http.Request for the UpdateCategory method, with any body, and a specified content type
+func NewUpdateCategoryRequestWithBody(server string, id openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/organization/categories/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRotateClientSecretRequest constructs an http.Request for the RotateClientSecret method
+func NewRotateClientSecretRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/organization/identity/secret")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewTestIdentityConnectionRequest constructs an http.Request for the TestIdentityConnection method
+func NewTestIdentityConnectionRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/organization/identity/test")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListGroupRoleMappingsRequest constructs an http.Request for the ListGroupRoleMappings method
+func NewListGroupRoleMappingsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/organization/mappings")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateGroupRoleMappingRequest calls the generic CreateGroupRoleMapping builder with application/json body
+func NewCreateGroupRoleMappingRequest(server string, body CreateGroupRoleMappingJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateGroupRoleMappingRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateGroupRoleMappingRequestWithBody constructs an http.Request for the CreateGroupRoleMapping method, with any body, and a specified content type
+func NewCreateGroupRoleMappingRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/organization/mappings")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteGroupRoleMappingRequest constructs an http.Request for the DeleteGroupRoleMapping method
+func NewDeleteGroupRoleMappingRequest(server string, id string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/organization/mappings/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdatePolicyRequest calls the generic UpdatePolicy builder with application/json body
+func NewUpdatePolicyRequest(server string, body UpdatePolicyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdatePolicyRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewUpdatePolicyRequestWithBody constructs an http.Request for the UpdatePolicy method, with any body, and a specified content type
+func NewUpdatePolicyRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/organization/policy")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListPackagesRequest constructs an http.Request for the ListPackages method
 func NewListPackagesRequest(server string, params *ListPackagesParams) (*http.Request, error) {
 	var err error
@@ -6157,6 +7136,141 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /v1/health (the `Health` operationId).
 	HealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthResponse, error)
+
+	// GetOrganizationWithResponse Identity provider settings, policy, mappings and categories
+	//
+	// The Organization screen's whole read. The provider panel's issuer, client id and scopes are this role's own configuration; the device authorisation endpoint is read from that provider's live discovery document, absent when discovery cannot be completed. NEVER carries the client secret, in any form — not the value, not a masked or length-revealing stand-in. Requires the catalog-admin role.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/organization (the `GetOrganization` operationId).
+	GetOrganizationWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetOrganizationResponse, error)
+
+	// ListCategoriesWithResponse The curated category vocabulary, with counts
+	//
+	// Every category, alphabetically, with how many packages currently carry it. Tags are never here: they stay manifest-derived and there is no tag endpoint anywhere in this document. Requires the catalog-admin role.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/organization/categories (the `ListCategories` operationId).
+	ListCategoriesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListCategoriesResponse, error)
+
+	// CreateCategoryWithBodyWithResponse Add a category to the vocabulary
+	//
+	// Writes one `category` audit row. Requires the catalog-admin role.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/organization/categories (the `CreateCategory` operationId).
+	CreateCategoryWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateCategoryResponse, error)
+
+	// CreateCategoryWithResponse Add a category to the vocabulary
+	//
+	// Writes one `category` audit row. Requires the catalog-admin role.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/organization/categories (the `CreateCategory` operationId).
+	CreateCategoryWithResponse(ctx context.Context, body CreateCategoryJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateCategoryResponse, error)
+
+	// DeleteCategoryWithResponse Delete a category
+	//
+	// Writes one `category` audit row. Refuses with 409 when a package still carries the category — the foreign key has no ON DELETE clause, so this is the database's own refusal. Requires the catalog-admin role.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/organization/categories/{id} (the `DeleteCategory` operationId).
+	DeleteCategoryWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteCategoryResponse, error)
+
+	// UpdateCategoryWithBodyWithResponse Rename a category
+	//
+	// Writes one `category` audit row. Requires the catalog-admin role.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /v1/organization/categories/{id} (the `UpdateCategory` operationId).
+	UpdateCategoryWithBodyWithResponse(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateCategoryResponse, error)
+
+	// UpdateCategoryWithResponse Rename a category
+	//
+	// Writes one `category` audit row. Requires the catalog-admin role.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /v1/organization/categories/{id} (the `UpdateCategory` operationId).
+	UpdateCategoryWithResponse(ctx context.Context, id openapi_types.UUID, body UpdateCategoryJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateCategoryResponse, error)
+
+	// RotateClientSecretWithResponse Rotate the identity provider's client secret
+	//
+	// Always refuses (409). The client secret is this role's own environment configuration, not a credential this hub holds a provider-side registration for, so there is nothing here for a rotation to act on — see commands.ErrSecretRotationUnsupported. Requires the catalog-admin role.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/organization/identity/secret (the `RotateClientSecret` operationId).
+	RotateClientSecretWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*RotateClientSecretResponse, error)
+
+	// TestIdentityConnectionWithResponse Test the identity provider connection
+	//
+	// A real OIDC discovery and signing-key fetch against the configured issuer — not a check that a URL is well formed. Never echoes a secret: it reads none. Requires the catalog-admin role.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/organization/identity/test (the `TestIdentityConnection` operationId).
+	TestIdentityConnectionWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*TestIdentityConnectionResponse, error)
+
+	// ListGroupRoleMappingsWithResponse The group-to-role mapping table
+	//
+	// Every group_role_map row, alphabetically. Requires the catalog-admin role.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/organization/mappings (the `ListGroupRoleMappings` operationId).
+	ListGroupRoleMappingsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListGroupRoleMappingsResponse, error)
+
+	// CreateGroupRoleMappingWithBodyWithResponse Map a group to a role
+	//
+	// Upserts by group name and writes one `role` audit row. A mapping change takes effect at that identity's next request — auth.Sessions.Resolve reads this table on every one, so there is no cache to invalidate. Requires the catalog-admin role.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/organization/mappings (the `CreateGroupRoleMapping` operationId).
+	CreateGroupRoleMappingWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateGroupRoleMappingResponse, error)
+
+	// CreateGroupRoleMappingWithResponse Map a group to a role
+	//
+	// Upserts by group name and writes one `role` audit row. A mapping change takes effect at that identity's next request — auth.Sessions.Resolve reads this table on every one, so there is no cache to invalidate. Requires the catalog-admin role.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/organization/mappings (the `CreateGroupRoleMapping` operationId).
+	CreateGroupRoleMappingWithResponse(ctx context.Context, body CreateGroupRoleMappingJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateGroupRoleMappingResponse, error)
+
+	// DeleteGroupRoleMappingWithResponse Remove a group-to-role mapping
+	//
+	// Writes one `role` audit row. Requires the catalog-admin role.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/organization/mappings/{id} (the `DeleteGroupRoleMapping` operationId).
+	DeleteGroupRoleMappingWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*DeleteGroupRoleMappingResponse, error)
+
+	// UpdatePolicyWithBodyWithResponse Change the scan gate and the organisation's policy toggles
+	//
+	// Writes org_policy and one `policy` audit row in one transaction. Every toggle changes real downstream behaviour on its next use: the gate and require-signed-bundles are read live by the next profile resolution, community-needs-review and rescan-on-new-version are read live by the scanner. Requires the catalog-admin role.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/organization/policy (the `UpdatePolicy` operationId).
+	UpdatePolicyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdatePolicyResponse, error)
+
+	// UpdatePolicyWithResponse Change the scan gate and the organisation's policy toggles
+	//
+	// Writes org_policy and one `policy` audit row in one transaction. Every toggle changes real downstream behaviour on its next use: the gate and require-signed-bundles are read live by the next profile resolution, community-needs-review and rescan-on-new-version are read live by the scanner. Requires the catalog-admin role.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/organization/policy (the `UpdatePolicy` operationId).
+	UpdatePolicyWithResponse(ctx context.Context, body UpdatePolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdatePolicyResponse, error)
 
 	// ListPackagesWithResponse Browse, search and facet the catalog
 	//
@@ -7276,6 +8390,716 @@ func (r HealthResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r HealthResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetOrganizationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Organization
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetOrganizationResponse) GetJSON200() *Organization {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetOrganizationResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetOrganizationResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r GetOrganizationResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetOrganizationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetOrganizationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetOrganizationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetOrganizationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListCategoriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]OrganizationCategory
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListCategoriesResponse) GetJSON200() *[]OrganizationCategory {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListCategoriesResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ListCategoriesResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ListCategoriesResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListCategoriesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListCategoriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListCategoriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListCategoriesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateCategoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *OrganizationCategory
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CreateCategoryResponse) GetJSON200() *OrganizationCategory {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CreateCategoryResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r CreateCategoryResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r CreateCategoryResponse) GetApplicationproblemJSON409() *Error {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CreateCategoryResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r CreateCategoryResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateCategoryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateCategoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateCategoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateCategoryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteCategoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Error
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DeleteCategoryResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r DeleteCategoryResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DeleteCategoryResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r DeleteCategoryResponse) GetApplicationproblemJSON409() *Error {
+	return r.ApplicationproblemJSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteCategoryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteCategoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteCategoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteCategoryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateCategoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *OrganizationCategory
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateCategoryResponse) GetJSON200() *OrganizationCategory {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r UpdateCategoryResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r UpdateCategoryResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r UpdateCategoryResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r UpdateCategoryResponse) GetApplicationproblemJSON409() *Error {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r UpdateCategoryResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r UpdateCategoryResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateCategoryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateCategoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateCategoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateCategoryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RotateClientSecretResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Error
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r RotateClientSecretResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r RotateClientSecretResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r RotateClientSecretResponse) GetApplicationproblemJSON409() *Error {
+	return r.ApplicationproblemJSON409
+}
+
+// GetBody returns the raw response body bytes
+func (r RotateClientSecretResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RotateClientSecretResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RotateClientSecretResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RotateClientSecretResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type TestIdentityConnectionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IdentityConnectionTest
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r TestIdentityConnectionResponse) GetJSON200() *IdentityConnectionTest {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r TestIdentityConnectionResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r TestIdentityConnectionResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetBody returns the raw response body bytes
+func (r TestIdentityConnectionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r TestIdentityConnectionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TestIdentityConnectionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r TestIdentityConnectionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListGroupRoleMappingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]GroupRoleMapping
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListGroupRoleMappingsResponse) GetJSON200() *[]GroupRoleMapping {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListGroupRoleMappingsResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ListGroupRoleMappingsResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ListGroupRoleMappingsResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListGroupRoleMappingsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListGroupRoleMappingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListGroupRoleMappingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListGroupRoleMappingsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateGroupRoleMappingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *GroupRoleMapping
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r CreateGroupRoleMappingResponse) GetJSON200() *GroupRoleMapping {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CreateGroupRoleMappingResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r CreateGroupRoleMappingResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CreateGroupRoleMappingResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r CreateGroupRoleMappingResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateGroupRoleMappingResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateGroupRoleMappingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateGroupRoleMappingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateGroupRoleMappingResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteGroupRoleMappingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DeleteGroupRoleMappingResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r DeleteGroupRoleMappingResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DeleteGroupRoleMappingResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteGroupRoleMappingResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteGroupRoleMappingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteGroupRoleMappingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteGroupRoleMappingResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdatePolicyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *OrganizationPolicy
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdatePolicyResponse) GetJSON200() *OrganizationPolicy {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r UpdatePolicyResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r UpdatePolicyResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r UpdatePolicyResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r UpdatePolicyResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdatePolicyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdatePolicyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdatePolicyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdatePolicyResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -8842,6 +10666,231 @@ func (c *ClientWithResponses) HealthWithResponse(ctx context.Context, reqEditors
 	return ParseHealthResponse(rsp)
 }
 
+// GetOrganizationWithResponse Identity provider settings, policy, mappings and categories
+//
+// The Organization screen's whole read. The provider panel's issuer, client id and scopes are this role's own configuration; the device authorisation endpoint is read from that provider's live discovery document, absent when discovery cannot be completed. NEVER carries the client secret, in any form — not the value, not a masked or length-revealing stand-in. Requires the catalog-admin role.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/organization (the `GetOrganization` operationId).
+func (c *ClientWithResponses) GetOrganizationWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetOrganizationResponse, error) {
+	rsp, err := c.GetOrganization(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetOrganizationResponse(rsp)
+}
+
+// ListCategoriesWithResponse The curated category vocabulary, with counts
+//
+// Every category, alphabetically, with how many packages currently carry it. Tags are never here: they stay manifest-derived and there is no tag endpoint anywhere in this document. Requires the catalog-admin role.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/organization/categories (the `ListCategories` operationId).
+func (c *ClientWithResponses) ListCategoriesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListCategoriesResponse, error) {
+	rsp, err := c.ListCategories(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListCategoriesResponse(rsp)
+}
+
+// CreateCategoryWithBodyWithResponse Add a category to the vocabulary
+//
+// Writes one `category` audit row. Requires the catalog-admin role.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/organization/categories (the `CreateCategory` operationId).
+func (c *ClientWithResponses) CreateCategoryWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateCategoryResponse, error) {
+	rsp, err := c.CreateCategoryWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateCategoryResponse(rsp)
+}
+
+// CreateCategoryWithResponse Add a category to the vocabulary
+//
+// Writes one `category` audit row. Requires the catalog-admin role.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/organization/categories (the `CreateCategory` operationId).
+func (c *ClientWithResponses) CreateCategoryWithResponse(ctx context.Context, body CreateCategoryJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateCategoryResponse, error) {
+	rsp, err := c.CreateCategory(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateCategoryResponse(rsp)
+}
+
+// DeleteCategoryWithResponse Delete a category
+//
+// Writes one `category` audit row. Refuses with 409 when a package still carries the category — the foreign key has no ON DELETE clause, so this is the database's own refusal. Requires the catalog-admin role.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/organization/categories/{id} (the `DeleteCategory` operationId).
+func (c *ClientWithResponses) DeleteCategoryWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteCategoryResponse, error) {
+	rsp, err := c.DeleteCategory(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteCategoryResponse(rsp)
+}
+
+// UpdateCategoryWithBodyWithResponse Rename a category
+//
+// Writes one `category` audit row. Requires the catalog-admin role.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /v1/organization/categories/{id} (the `UpdateCategory` operationId).
+func (c *ClientWithResponses) UpdateCategoryWithBodyWithResponse(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateCategoryResponse, error) {
+	rsp, err := c.UpdateCategoryWithBody(ctx, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateCategoryResponse(rsp)
+}
+
+// UpdateCategoryWithResponse Rename a category
+//
+// Writes one `category` audit row. Requires the catalog-admin role.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /v1/organization/categories/{id} (the `UpdateCategory` operationId).
+func (c *ClientWithResponses) UpdateCategoryWithResponse(ctx context.Context, id openapi_types.UUID, body UpdateCategoryJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateCategoryResponse, error) {
+	rsp, err := c.UpdateCategory(ctx, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateCategoryResponse(rsp)
+}
+
+// RotateClientSecretWithResponse Rotate the identity provider's client secret
+//
+// Always refuses (409). The client secret is this role's own environment configuration, not a credential this hub holds a provider-side registration for, so there is nothing here for a rotation to act on — see commands.ErrSecretRotationUnsupported. Requires the catalog-admin role.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/organization/identity/secret (the `RotateClientSecret` operationId).
+func (c *ClientWithResponses) RotateClientSecretWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*RotateClientSecretResponse, error) {
+	rsp, err := c.RotateClientSecret(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRotateClientSecretResponse(rsp)
+}
+
+// TestIdentityConnectionWithResponse Test the identity provider connection
+//
+// A real OIDC discovery and signing-key fetch against the configured issuer — not a check that a URL is well formed. Never echoes a secret: it reads none. Requires the catalog-admin role.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/organization/identity/test (the `TestIdentityConnection` operationId).
+func (c *ClientWithResponses) TestIdentityConnectionWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*TestIdentityConnectionResponse, error) {
+	rsp, err := c.TestIdentityConnection(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestIdentityConnectionResponse(rsp)
+}
+
+// ListGroupRoleMappingsWithResponse The group-to-role mapping table
+//
+// Every group_role_map row, alphabetically. Requires the catalog-admin role.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/organization/mappings (the `ListGroupRoleMappings` operationId).
+func (c *ClientWithResponses) ListGroupRoleMappingsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListGroupRoleMappingsResponse, error) {
+	rsp, err := c.ListGroupRoleMappings(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListGroupRoleMappingsResponse(rsp)
+}
+
+// CreateGroupRoleMappingWithBodyWithResponse Map a group to a role
+//
+// Upserts by group name and writes one `role` audit row. A mapping change takes effect at that identity's next request — auth.Sessions.Resolve reads this table on every one, so there is no cache to invalidate. Requires the catalog-admin role.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/organization/mappings (the `CreateGroupRoleMapping` operationId).
+func (c *ClientWithResponses) CreateGroupRoleMappingWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateGroupRoleMappingResponse, error) {
+	rsp, err := c.CreateGroupRoleMappingWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateGroupRoleMappingResponse(rsp)
+}
+
+// CreateGroupRoleMappingWithResponse Map a group to a role
+//
+// Upserts by group name and writes one `role` audit row. A mapping change takes effect at that identity's next request — auth.Sessions.Resolve reads this table on every one, so there is no cache to invalidate. Requires the catalog-admin role.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/organization/mappings (the `CreateGroupRoleMapping` operationId).
+func (c *ClientWithResponses) CreateGroupRoleMappingWithResponse(ctx context.Context, body CreateGroupRoleMappingJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateGroupRoleMappingResponse, error) {
+	rsp, err := c.CreateGroupRoleMapping(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateGroupRoleMappingResponse(rsp)
+}
+
+// DeleteGroupRoleMappingWithResponse Remove a group-to-role mapping
+//
+// Writes one `role` audit row. Requires the catalog-admin role.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/organization/mappings/{id} (the `DeleteGroupRoleMapping` operationId).
+func (c *ClientWithResponses) DeleteGroupRoleMappingWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*DeleteGroupRoleMappingResponse, error) {
+	rsp, err := c.DeleteGroupRoleMapping(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteGroupRoleMappingResponse(rsp)
+}
+
+// UpdatePolicyWithBodyWithResponse Change the scan gate and the organisation's policy toggles
+//
+// Writes org_policy and one `policy` audit row in one transaction. Every toggle changes real downstream behaviour on its next use: the gate and require-signed-bundles are read live by the next profile resolution, community-needs-review and rescan-on-new-version are read live by the scanner. Requires the catalog-admin role.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/organization/policy (the `UpdatePolicy` operationId).
+func (c *ClientWithResponses) UpdatePolicyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdatePolicyResponse, error) {
+	rsp, err := c.UpdatePolicyWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdatePolicyResponse(rsp)
+}
+
+// UpdatePolicyWithResponse Change the scan gate and the organisation's policy toggles
+//
+// Writes org_policy and one `policy` audit row in one transaction. Every toggle changes real downstream behaviour on its next use: the gate and require-signed-bundles are read live by the next profile resolution, community-needs-review and rescan-on-new-version are read live by the scanner. Requires the catalog-admin role.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/organization/policy (the `UpdatePolicy` operationId).
+func (c *ClientWithResponses) UpdatePolicyWithResponse(ctx context.Context, body UpdatePolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdatePolicyResponse, error) {
+	rsp, err := c.UpdatePolicy(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdatePolicyResponse(rsp)
+}
+
 // ListPackagesWithResponse Browse, search and facet the catalog
 //
 // One page of the catalog with both facet option sets and the live total, from two statements issued concurrently (R4). The two facets count differently, and the asymmetry is FR-013's: CATEGORIES are disjunctive, so each option is counted with the category filter removed; TAGS are conjunctive, so each option is counted against the current results — the number selecting it actually yields. Browsing requires a session: public anonymous browsing is out of scope (spec.md).
@@ -9944,6 +11993,560 @@ func ParseHealthResponse(rsp *http.Response) (*HealthResponse, error) {
 			return nil, err
 		}
 		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetOrganizationResponse parses an HTTP response from a GetOrganizationWithResponse call
+func ParseGetOrganizationResponse(rsp *http.Response) (*GetOrganizationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetOrganizationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Organization
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListCategoriesResponse parses an HTTP response from a ListCategoriesWithResponse call
+func ParseListCategoriesResponse(rsp *http.Response) (*ListCategoriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListCategoriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []OrganizationCategory
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateCategoryResponse parses an HTTP response from a CreateCategoryWithResponse call
+func ParseCreateCategoryResponse(rsp *http.Response) (*CreateCategoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateCategoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OrganizationCategory
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteCategoryResponse parses an HTTP response from a DeleteCategoryWithResponse call
+func ParseDeleteCategoryResponse(rsp *http.Response) (*DeleteCategoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteCategoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateCategoryResponse parses an HTTP response from a UpdateCategoryWithResponse call
+func ParseUpdateCategoryResponse(rsp *http.Response) (*UpdateCategoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateCategoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OrganizationCategory
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRotateClientSecretResponse parses an HTTP response from a RotateClientSecretWithResponse call
+func ParseRotateClientSecretResponse(rsp *http.Response) (*RotateClientSecretResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RotateClientSecretResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTestIdentityConnectionResponse parses an HTTP response from a TestIdentityConnectionWithResponse call
+func ParseTestIdentityConnectionResponse(rsp *http.Response) (*TestIdentityConnectionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TestIdentityConnectionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IdentityConnectionTest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListGroupRoleMappingsResponse parses an HTTP response from a ListGroupRoleMappingsWithResponse call
+func ParseListGroupRoleMappingsResponse(rsp *http.Response) (*ListGroupRoleMappingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListGroupRoleMappingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []GroupRoleMapping
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateGroupRoleMappingResponse parses an HTTP response from a CreateGroupRoleMappingWithResponse call
+func ParseCreateGroupRoleMappingResponse(rsp *http.Response) (*CreateGroupRoleMappingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateGroupRoleMappingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GroupRoleMapping
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteGroupRoleMappingResponse parses an HTTP response from a DeleteGroupRoleMappingWithResponse call
+func ParseDeleteGroupRoleMappingResponse(rsp *http.Response) (*DeleteGroupRoleMappingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteGroupRoleMappingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdatePolicyResponse parses an HTTP response from a UpdatePolicyWithResponse call
+func ParseUpdatePolicyResponse(rsp *http.Response) (*UpdatePolicyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdatePolicyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OrganizationPolicy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
 
 	}
 

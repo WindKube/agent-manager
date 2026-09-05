@@ -14,6 +14,7 @@ import (
 	"agent-manager/internal/outbox"
 	"agent-manager/internal/store/models"
 	"agent-manager/internal/worker/scanner/checks"
+	"agent-manager/internal/worker/scanner/rules"
 )
 
 // Outcome is what one scan produced. It is returned rather than only logged so a
@@ -100,6 +101,11 @@ func (w *Worker) scan(ctx context.Context, job Job, lastAttempt bool) (Outcome, 
 	}
 	if err != nil {
 		return Outcome{}, fmt.Errorf("scan %s: %w", job, err)
+	}
+
+	result, err = w.applyCommunityReview(ctx, job, result)
+	if err != nil {
+		return Outcome{}, err
 	}
 
 	outcome, err := w.record(ctx, job, result, started)
@@ -231,6 +237,63 @@ func (w *Worker) objectKey(ctx context.Context, job Job) (string, error) {
 // gate that lets such a version be distributed anyway (FR-035). `rejected` is
 // never written here: it is a reviewer's decision (FR-028), not an analysis
 // outcome.
+// communityReviewRuleID marks the synthetic finding applyCommunityReview raises.
+// It is not a rule-pack id: the rule pack owns bundle-content detection
+// (constitution: "scanner rules are data"), and this is organisation policy
+// about the PUBLISHER, not about the bytes.
+const communityReviewRuleID = "ORG-COMMUNITY-REVIEW"
+
+// applyCommunityReview flags a version from a non-verified publisher when the
+// organisation's policy requires it. There is no review-queue state in the
+// schema, so this routes through the mechanism the scanner already has: a
+// flagged version with an open finding a scanner-reviewer must approve.
+//
+// It reads org_policy because am_scanner holds that grant and am_fetcher does
+// not (see Sweeper.rescanEnabled). A missing row is treated as the policy
+// being off, unlike the sweep's own read: an ordinary scan must still complete
+// against a database that carries no policy row at all.
+func (w *Worker) applyCommunityReview(ctx context.Context, job Job, result analysis) (analysis, error) {
+	var needsReview bool
+	err := w.deps.DB.QueryRowContext(ctx,
+		`select community_needs_review from org_policy where id = ?`,
+		models.OrgPolicySingletonID).Scan(&needsReview)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return result, nil
+	case err != nil:
+		return analysis{}, fmt.Errorf("read the community-review policy for %s: %w", job, err)
+	}
+	if !needsReview {
+		return result, nil
+	}
+
+	var verified bool
+	err = w.deps.DB.QueryRowContext(ctx,
+		`select pub.verified from package pkg join publisher pub on pub.id = pkg.publisher_id where pkg.id = ?`,
+		job.PackageID).Scan(&verified)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		// The publish writes package and publisher rows before any scan is enqueued,
+		// so a job whose package no longer joins to one is a payload retrying cannot
+		// fix, not a finding about the bundle.
+		return analysis{}, river.JobCancel(fmt.Errorf("scan %s: no package row %s", job, job.PackageID))
+	case err != nil:
+		return analysis{}, fmt.Errorf("read the publisher for %s: %w", job, err)
+	}
+	if verified {
+		return result, nil
+	}
+
+	result.findings = append(result.findings, checks.Finding{
+		RuleID:   communityReviewRuleID,
+		Severity: rules.SeverityMedium,
+		Title:    "Community source pending review",
+		Detail: "This package's publisher is not verified, and organisation policy requires " +
+			"community sources to be reviewed before they are treated as distributable.",
+	})
+	return result, nil
+}
+
 func verdictOf(result analysis) models.Verdict {
 	switch {
 	case result.timedOut:

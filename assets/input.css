@@ -1986,7 +1986,7 @@
     color: var(--fg2);
   }
 
-  /* The Profiles screens (US5). ---------------------------------------- */
+  /* The Profiles screens. ------------------------------------------------ */
 
   .am-prof-row {
     display: grid;
@@ -2071,5 +2071,92 @@
     align-items: center;
     gap: 8px;
     cursor: pointer;
+  }
+
+  /* The Organization screen: a stack of am-section cards, each holding a form
+     or a small curated table. Reuses .am-field above for its own fields. */
+  .am-org {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 24px 44px 48px;
+  }
+
+  .am-input,
+  .am-select {
+    padding: 9px 11px;
+    border: 1px solid var(--bd);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--fg);
+    font-size: 12.5px;
+    outline: none;
+  }
+
+  .am-toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 0;
+    font-size: 13px;
+    color: var(--fg2);
+  }
+
+  .am-toggle input {
+    margin-top: 2px;
+  }
+
+  .am-toggle-label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .am-toggle-note {
+    font-size: 11.5px;
+    color: var(--fg3);
+  }
+
+  .am-org-row {
+    display: grid;
+    grid-template-columns: minmax(120px, 1.3fr) minmax(90px, 0.9fr) minmax(60px, 0.5fr) minmax(70px, 0.6fr);
+    align-items: center;
+    gap: 12px;
+    padding: 11px 20px;
+    font-size: 13px;
+    border-top: 1px solid var(--bd);
+  }
+
+  .am-org-row-head {
+    background: var(--surface2);
+    border-top: 0;
+    padding: 10px 20px;
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--fg3);
+  }
+
+  .am-org-cell-mono {
+    font-family: var(--font-mono);
+    color: var(--fg2);
+    overflow-wrap: anywhere;
+  }
+
+  .am-org-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  .am-org-form-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px;
+    border-top: 1px solid var(--bd);
+    background: var(--surface2);
   }
 }

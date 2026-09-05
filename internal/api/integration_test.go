@@ -212,10 +212,15 @@ func seed(ctx context.Context) error {
 	// default: a hub whose policy row is missing has no gate, and queries.ErrNoPolicy
 	// refuses rather than guessing. `warn-with-override` is the value the
 	// representative dataset ships, so the fixture starts where an operator does.
+	// AllowPersonalProfiles is true here: most of this suite creates a profile
+	// without stating a visibility, which defaults to private, and the fixture's
+	// job is to exercise those tests' own feature rather than this toggle.
+	// org_integration_test.go's own downstream test turns it off and back on.
 	if err := insert(&models.OrgPolicy{
-		ID:                   models.OrgPolicySingletonID,
-		ScanGate:             models.ScanGateWarnWithOverride,
-		DefaultVersionPolicy: models.VersionPolicyFloatingLatest,
+		ID:                    models.OrgPolicySingletonID,
+		ScanGate:              models.ScanGateWarnWithOverride,
+		DefaultVersionPolicy:  models.VersionPolicyFloatingLatest,
+		AllowPersonalProfiles: true,
 	}); err != nil {
 		return fmt.Errorf("seed org_policy: %w", err)
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"agent-manager/internal/api"
+	"agent-manager/internal/api/commands"
 	"agent-manager/internal/auth"
 	"agent-manager/internal/blob"
 	"agent-manager/internal/config"
@@ -115,6 +116,16 @@ func runAPI(ctx context.Context) error {
 		// development bypass. Nothing above this line enforces that, which is why
 		// commands.SessionMint does.
 		SessionMintSecret: cfg.SessionMintSecret,
+		// The Organization screen's provider panel. ClientSecret is deliberately
+		// absent from this value — commands.IdentityConfig has no field for it —
+		// which is what makes "getOrganization never returns the secret" true by
+		// construction rather than by care taken in a handler.
+		Identity: commands.IdentityConfig{
+			Issuer:       cfg.Issuer,
+			DiscoveryURL: cfg.DiscoveryURL,
+			ClientID:     cfg.ClientID,
+			Scopes:       cfg.Scopes,
+		},
 		Probes: []api.Probe{
 			{Name: "database", Check: handle.Ping},
 			{Name: "objectstore", Check: func(ctx context.Context) error {

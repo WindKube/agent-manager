@@ -85,6 +85,11 @@ type Deps struct {
 	// It is read-and-describe only (blob.Inspector), not the full *blob.Bucket:
 	// this role holds no writer, whatever the driver's own client can do.
 	Storage blob.Inspector
+
+	// Identity is this role's own OIDC configuration, for the Organization
+	// screen's provider panel and connection test. It never carries the client
+	// secret: commands.IdentityConfig has no field for one.
+	Identity commands.IdentityConfig
 }
 
 // Options is the run-time configuration of the surface itself.

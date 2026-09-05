@@ -326,7 +326,7 @@ func setScanGate(t *testing.T, gate models.ScanGate) {
 		`insert into org_policy
 		   (id, scan_gate, default_version_policy, require_signed_bundles,
 		    community_needs_review, rescan_on_new_version, allow_personal_profiles)
-		 values (1, $1, 'floating-latest', false, true, false, true)
+		 values (1, $1, 'floating-latest', false, false, false, true)
 		 on conflict (id) do update set scan_gate = excluded.scan_gate`, string(gate))
 	require.NoError(t, err)
 }

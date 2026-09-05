@@ -147,6 +147,15 @@ func CreateProfile(ctx context.Context, db bun.IDB, p auth.Principal,
 	if in.Name == "" {
 		return contract.Profile{}, refused("a profile needs a name")
 	}
+	if in.Visibility == models.ProfileVisibilityPrivate {
+		policy, err := queries.Policy(ctx, db)
+		if err != nil {
+			return contract.Profile{}, err
+		}
+		if !policy.AllowPersonalProfiles {
+			return contract.Profile{}, refused("private profiles are disabled by organisation policy")
+		}
+	}
 	// The slug becomes an object-store prefix the moment a revision is published,
 	// so it is validated by the same function that will build that key rather
 	// than by a second pattern that could be looser.

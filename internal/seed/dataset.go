@@ -64,7 +64,7 @@ var policy = models.OrgPolicy{
 	RequireSignedBundles:  false,
 	CommunityNeedsReview:  true,
 	RescanOnNewVersion:    true,
-	AllowPersonalProfiles: false,
+	AllowPersonalProfiles: true,
 }
 
 // fileSpec is one file of a seeded tree. Paths are relative to whatever contains

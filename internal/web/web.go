@@ -159,6 +159,23 @@ type StorageSource interface {
 	Storage(ctx context.Context) (view.Storage, error)
 }
 
+// OrganizationSource is the Organization screen's door to the api.
+//
+// One interface for reads and writes, unlike the Scanner/Reviewer split: every
+// mutation here needs the same catalog-admin role as the read, so there is no
+// weaker capability a stand-in could honestly claim by implementing only half
+// of it.
+type OrganizationSource interface {
+	Organization(ctx context.Context) (view.Organization, error)
+	TestIdentityConnection(ctx context.Context) (view.IdentityConnectionTest, error)
+	UpdatePolicy(ctx context.Context, in view.OrganizationPolicy) (view.OrganizationPolicy, error)
+	CreateMapping(ctx context.Context, groupName, role string) (view.GroupRoleMapping, error)
+	DeleteMapping(ctx context.Context, groupName string) error
+	CreateCategory(ctx context.Context, name string) (view.OrganizationCategory, error)
+	UpdateCategory(ctx context.Context, id, name string) (view.OrganizationCategory, error)
+	DeleteCategory(ctx context.Context, id string) error
+}
+
 // Deps is what the role is handed. Every field is narrow on purpose: there is no
 // database handle and no bucket to reach for.
 type Deps struct {
@@ -195,7 +212,6 @@ type Deps struct {
 	Badges BadgeSource
 	// Device backs the Connect-the-CLI screen. Nil renders its unavailable state.
 	Device DeviceSource
-	Log    zerolog.Logger
 	// Profiles backs the Profiles screens' two reads. Nil renders their
 	// unavailable state, the same way a nil Scanner does.
 	Profiles ProfileSource
@@ -208,6 +224,10 @@ type Deps struct {
 	// than an empty one: a screen with no source is not a bucket with nothing in
 	// it.
 	Storage StorageSource
+	// Organization backs the Organization screen. Nil renders its unavailable
+	// state, the same convention Scanner follows.
+	Organization OrganizationSource
+	Log          zerolog.Logger
 }
 
 // Options is the run-time configuration of the surface itself.
@@ -331,6 +351,18 @@ func (s *Server) register() {
 	s.engine.POST("/cli/confirm", s.confirmDeviceCode)
 	s.engine.GET("/storage", s.storage)
 
+	// The Organization screen. Every write is a POST form that redirects, same
+	// reasoning as the Scanner screen's two decisions.
+	s.engine.GET("/org", s.org)
+	s.engine.POST("/org/identity/test", s.testConnection)
+	s.engine.POST("/org/identity/secret", s.rotateSecret)
+	s.engine.POST("/org/policy", s.savePolicy)
+	s.engine.POST("/org/mappings", s.createMapping)
+	s.engine.POST("/org/mappings/:id/delete", s.deleteMapping)
+	s.engine.POST("/org/categories", s.createCategory)
+	s.engine.POST("/org/categories/:id", s.renameCategory)
+	s.engine.POST("/org/categories/:id/delete", s.deleteCategory)
+
 	s.engine.POST("/theme", s.setTheme)
 
 	// Sign-in (US2). These four and only these four are exempt from the guard,
@@ -344,30 +376,7 @@ func (s *Server) register() {
 
 	s.engine.GET("/static/*path", serveStatic)
 
-	// The screens later layers own. They render inside the real shell so the
-	// sidebar is navigable, rather than dead-ending on a 404.
-	for _, screen := range placeholders {
-		s.engine.GET(screen.path, s.placeholder(screen))
-	}
-
 	s.engine.NoRoute(s.notFound)
-}
-
-type screen struct {
-	path  string
-	nav   string
-	title string
-	lede  string
-}
-
-var placeholders = []screen{
-	{path: "/org", nav: "org", title: "Organization", lede: "Identity provider, group-to-role mapping and policy."},
-}
-
-func (s *Server) placeholder(sc screen) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		s.render(c, http.StatusOK, sc.title, sc.nav, components.Placeholder(sc.title, sc.lede))
-	}
 }
 
 func (s *Server) notFound(c *gin.Context) {

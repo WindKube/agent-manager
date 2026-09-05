@@ -14,22 +14,19 @@ import (
 )
 
 // auditActor and auditSource are what a background role writes into the audit
-// log. actor_kind `system` is what separates a role's action from a person's
-// (FR-050), and the actor is the role name rather than a hostname or a container
-// id so the row still reads the same after a redeploy.
+// log: actor_kind `system` separates a role's action from a person's, and the
+// actor is the role name so the row still reads the same after a redeploy.
 const (
 	auditActor  = RoleName
 	auditSource = "system"
 )
 
-// writeFetchAudit inserts the one audit row a fetch is accountable for.
-//
-// It takes a transaction rather than a pool. On the success path that is the
-// publish transaction, so the record of what was stored cannot survive a rolled
-// back publish or go missing after a committed one (FR-050, principle IV).
-//
-// audit_event is append-only and nothing here enforces that: UPDATE, DELETE and
-// TRUNCATE are revoked from am_fetcher in the migration layer (FR-052).
+// writeFetchAudit inserts the one audit row a fetch is accountable for. It
+// takes a transaction rather than a pool — on the success path that is the
+// publish transaction, so the record of what was stored cannot survive a
+// rolled back publish or go missing after a committed one. audit_event is
+// append-only and nothing here enforces that: UPDATE, DELETE and TRUNCATE
+// are revoked from am_fetcher in the migration layer.
 func writeFetchAudit(ctx context.Context, tx bun.IDB, text string) error {
 	event := &models.AuditEvent{
 		ID:        models.NewID(),
@@ -47,13 +44,11 @@ func writeFetchAudit(ctx context.Context, tx bun.IDB, text string) error {
 	return nil
 }
 
-// auditFailure records a fetch that produced no bytes.
-//
-// It runs on its own statement rather than inside a transaction, because the
-// transaction it would have belonged to is the one that did not happen. The
-// reason is in the text and the row's kind is `fetch`: a failed fetch is an
-// ingestion event, never a `finding` row, because a finding is a statement about
-// what a package does and nothing here ever read the package.
+// auditFailure records a fetch that produced no bytes. It runs on its own
+// statement rather than inside a transaction, since the transaction it would
+// have belonged to is the one that did not happen. A failed fetch is an
+// ingestion event, never a `finding` row: a finding is a statement about what
+// a package does, and nothing here ever read the package.
 func (w *Worker) auditFailure(ctx context.Context, job Job, reason Reason, cause error) error {
 	text := fmt.Sprintf("failed to fetch %s from %s: %s", job, describeSource(job.Source), reason)
 	detail := ""
@@ -106,8 +101,8 @@ func outcomeOf(reason Reason) (models.FetchOutcome, bool) {
 	return "", false
 }
 
-// storedText is US1 scenario 6's audit line: what was stored, from where, and
-// what it turned out to contain.
+// storedText is the audit line: what was stored, from where, and what it
+// turned out to contain.
 func storedText(job Job, pkg *pkgspec.Package, commit blob.Commit) string {
 	text := fmt.Sprintf("stored %s (%s) from %s, digest sha256:%s, %d bytes",
 		job, pkg.Kind, describeSource(job.Source),
@@ -116,7 +111,7 @@ func storedText(job Job, pkg *pkgspec.Package, commit blob.Commit) string {
 	if n := len(pkg.Components); n > 0 {
 		text += fmt.Sprintf(", %d %s", n, plural(n, "component"))
 	}
-	// FR-005: what the layout filter discarded is part of the record of what was
+	// What the layout filter discarded is part of the record of what was
 	// ingested, not a detail of the pre-submit preview.
 	if n := len(pkg.Layout.Dropped); n > 0 {
 		text += fmt.Sprintf(", %d %s dropped as outside the spec layout", n, plural(n, "path"))

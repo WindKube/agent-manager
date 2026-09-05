@@ -6,15 +6,11 @@ import (
 )
 
 // matchShell is the `shell-ast` matcher: it reads the commands the parser
-// recovered, not the text of the script.
-//
-// Which arguments are hosts, and which are paths a command reads or writes, is
-// internal/domain/capability's judgement and is reached through its exported
-// extractors. The scanner does not carry a second copy of it: `scp` writing to
-// its last operand unless that operand is a host, `sed` reading unless `-i`, a
-// bare dotted word being a filename rather than a hostname — those have edge
-// cases, and two implementations of them would put a finding and the capabilities
-// panel in disagreement about the same command.
+// recovered, not the text of the script. Which arguments are hosts, and which
+// are paths a command reads or writes, is internal/domain/capability's
+// judgement, reached through its exported extractors — the scanner does not
+// carry a second copy, or a finding and the capabilities panel could disagree
+// about the same command.
 func matchShell(b *Bundle, rule rules.Rule) []hit {
 	wanted := make(map[string]struct{}, len(rule.Match.Command))
 	for _, name := range rule.Match.Command {
@@ -50,9 +46,9 @@ func matchShell(b *Bundle, rule rules.Rule) []hit {
 
 // extractFromCommand yields the values a condition will judge. It returns at
 // least one value for a command the rule selected — the empty string when the
-// extractor found nothing — so that a condition which fails closed on an
-// unresolvable target still sees it. Dropping the command instead would grade
-// `curl "$EXFIL_URL"` as no network reach at all.
+// extractor found nothing — so a condition that fails closed on an
+// unresolvable target still sees it, rather than grading `curl
+// "$EXFIL_URL"` as no network reach at all.
 func extractFromCommand(command *Command, extract rules.Extract) []string {
 	switch extract {
 	case rules.ExtractURLArgument:
@@ -68,9 +64,9 @@ func extractFromCommand(command *Command, extract rules.Extract) []string {
 		return hosts
 
 	case rules.ExtractPathArgument:
-		// Both directions in one pass. A rule that cares about only one of them says
-		// so through its `command` list — `tee` and `rm` write, `cat` and `source`
-		// read — which keeps the direction in the pack rather than in this switch.
+		// Both directions in one pass; a rule that cares about only one says
+		// so through its `command` list, keeping the direction in the pack
+		// rather than in this switch.
 		targets := capability.CommandTargets(command.Command, true)
 		targets = append(targets, capability.CommandTargets(command.Command, false)...)
 		if len(targets) == 0 {
@@ -94,8 +90,8 @@ func quoteOfCommand(command *Command, quote rules.Quote) string {
 		}
 		return command.Node
 	default:
-		// matched-node. A schema-error quote cannot arise here: rules.Load refuses it
-		// on any kind but schema-path.
+		// matched-node. A schema-error quote cannot arise here: rules.Load
+		// refuses it on any kind but schema-path.
 		if command.Node != "" {
 			return command.Node
 		}

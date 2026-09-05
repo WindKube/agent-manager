@@ -53,13 +53,15 @@ import (
 	"agent-manager/internal/fetch"
 	"agent-manager/internal/store/migrations"
 	"agent-manager/internal/store/models"
+	"agent-manager/internal/store/storetest"
 	"agent-manager/internal/worker"
 	"agent-manager/internal/worker/fetcher"
 )
 
 var (
-	pool *pgxpool.Pool
-	db   *bun.DB
+	pool     *pgxpool.Pool
+	db       *bun.DB // superuser: fixtures and assertions
+	workerDB *bun.DB // am_fetcher: the worker under test
 )
 
 func TestMain(m *testing.M) {
@@ -94,8 +96,8 @@ func runSuite(m *testing.M) (int, error) {
 		return 0, fmt.Errorf("container endpoint: %w", err)
 	}
 
-	pool, err = pgxpool.New(ctx, fmt.Sprintf(
-		"postgres://postgres:postgres@%s/agent_manager?sslmode=disable", endpoint))
+	dsn := fmt.Sprintf("postgres://postgres:postgres@%s/agent_manager?sslmode=disable", endpoint)
+	pool, err = pgxpool.New(ctx, dsn)
 	if err != nil {
 		return 0, fmt.Errorf("open pool: %w", err)
 	}
@@ -115,6 +117,16 @@ func runSuite(m *testing.M) (int, error) {
 
 	db = bun.NewDB(sqldb, pgdialect.New())
 	db.RegisterModel(models.All()...)
+
+	// The worker under test runs as am_fetcher, not the superuser this suite
+	// connects as, so a statement that only works under a superuser's implicit
+	// SELECT is caught here rather than in production.
+	var workerClose func()
+	workerDB, workerClose, err = storetest.RoleDB(ctx, dsn, "am_fetcher")
+	if err != nil {
+		return 0, fmt.Errorf("open am_fetcher pool: %w", err)
+	}
+	defer workerClose()
 
 	return m.Run(), nil
 }
@@ -220,7 +232,7 @@ func newHarness(t *testing.T, allowlist []string) harness {
 	// what the bootstrap hands over. BlobWrite is present because this role and no
 	// other declares AccessReadWrite.
 	w, err := fetcher.New(worker.Deps{
-		DB:        db,
+		DB:        workerDB,
 		BlobRead:  bucket.Reader(),
 		BlobWrite: bucket.Writer(),
 		Fetch:     client,
@@ -426,6 +438,7 @@ func TestAGitRegistrationBecomesAStoredVisibleVersionWithAQueuedScan(t *testing.
 	// US1 scenario 6: actor `fetcher`, actor_kind `system`, source `system`, and
 	// the text names the stored version.
 	texts := auditTexts(t, "fetcher", "stored example/platform-toolkit@1.3.0%")
+	require.Equal(t, 1, countRows(t, `select count(*) from fetch_attempt where source_kind = 'git' and outcome = 'ok'`))
 	require.Len(t, texts, 1)
 	require.Contains(t, texts[0], "digest sha256:")
 	require.Contains(t, texts[0], "2 paths dropped as outside the spec layout")
@@ -659,6 +672,7 @@ func TestASSRFRefusalIsRecordedAsAFetchErrorAndNeverAsAFinding(t *testing.T) {
 	// The record of the failure is an audit row of kind `fetch`, and it names the
 	// reason without reproducing a credential.
 	texts := auditTexts(t, "fetcher", "failed to fetch refused/platform-toolkit@1.3.0%")
+	require.Equal(t, 1, countRows(t, `select count(*) from fetch_attempt where outcome = 'blocked'`))
 	require.Len(t, texts, 1)
 	require.Contains(t, texts[0], string(fetcher.ReasonRefused))
 

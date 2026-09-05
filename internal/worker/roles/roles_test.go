@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/riverqueue/river"
 	"github.com/stretchr/testify/require"
 
+	"agent-manager/internal/outbox"
 	"agent-manager/internal/worker"
 	"agent-manager/internal/worker/roles"
 )
@@ -51,7 +51,7 @@ func TestTheFetcherIsRegisteredAsTheOnlyRoleThatMayWriteBundleBytes(t *testing.T
 		Blob:     worker.AccessReadWrite,
 		Outbound: true,
 	}, found.Needs)
-	require.Equal(t, map[string]int{river.QueueDefault: 4}, found.Queues)
+	require.Equal(t, map[string]int{outbox.QueueFetch: 4}, found.Queues)
 	require.NotNil(t, found.Register)
 
 	for _, def := range roles.Definitions() {

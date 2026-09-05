@@ -231,6 +231,9 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 		if auditErr := writeFetchAudit(ctx, tx, storedText(job, pkg, commit)); auditErr != nil {
 			return auditErr
 		}
+		if attemptErr := writeFetchAttempt(ctx, tx, job, models.FetchOutcomeOK, ""); attemptErr != nil {
+			return attemptErr
+		}
 
 		published = true
 		return nil

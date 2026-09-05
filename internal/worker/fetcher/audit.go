@@ -39,7 +39,9 @@ func writeFetchAudit(ctx context.Context, tx bun.IDB, text string) error {
 		Text:      text,
 		Source:    auditSource,
 	}
-	if _, err := tx.NewInsert().Model(event).Exec(ctx); err != nil {
+	// am_fetcher holds INSERT-only on audit_event — no SELECT — and bun appends
+	// RETURNING for OccurredAt's `default:` tag unless told not to.
+	if _, err := tx.NewInsert().Model(event).Returning("NULL").Exec(ctx); err != nil {
 		return fmt.Errorf("write the fetch audit row: %w", err)
 	}
 	return nil
@@ -54,10 +56,54 @@ func writeFetchAudit(ctx context.Context, tx bun.IDB, text string) error {
 // what a package does and nothing here ever read the package.
 func (w *Worker) auditFailure(ctx context.Context, job Job, reason Reason, cause error) error {
 	text := fmt.Sprintf("failed to fetch %s from %s: %s", job, describeSource(job.Source), reason)
+	detail := ""
 	if cause != nil {
-		text += " (" + firstLine(cause.Error()) + ")"
+		detail = firstLine(cause.Error())
+		text += " (" + detail + ")"
 	}
-	return writeFetchAudit(ctx, w.deps.DB, text)
+	if err := writeFetchAudit(ctx, w.deps.DB, text); err != nil {
+		return err
+	}
+	if outcome, ok := outcomeOf(reason); ok {
+		return writeFetchAttempt(ctx, w.deps.DB, job, outcome, detail)
+	}
+	return nil
+}
+
+func writeFetchAttempt(ctx context.Context, tx bun.IDB, job Job, outcome models.FetchOutcome, detail string) error {
+	attempt := &models.FetchAttempt{
+		ID:           models.NewID(),
+		SourceKind:   models.FetchSourceKind(job.Source.Kind),
+		RequestedRef: describeSource(job.Source),
+		Outcome:      outcome,
+		Detail:       detail,
+	}
+	if _, err := tx.NewInsert().Model(attempt).Returning("NULL").Exec(ctx); err != nil {
+		return fmt.Errorf("write the fetch attempt row: %w", err)
+	}
+	return nil
+}
+
+// outcomeOf maps a failure to the outcome the storage screen reports; an internal
+// failure such as a store write is not a fetch outcome and records nothing.
+func outcomeOf(reason Reason) (models.FetchOutcome, bool) {
+	switch reason {
+	case ReasonRefused:
+		return models.FetchOutcomeBlocked, true
+	case ReasonRefNotFound:
+		return models.FetchOutcomeInvalidRef, true
+	case ReasonCredentials, ReasonRemote:
+		return models.FetchOutcomeUnreachable, true
+	case ReasonUnsupported, ReasonArchiveMalformed, ReasonManifestInvalid, ReasonVersionMismatch:
+		return models.FetchOutcomeMalformed, true
+	case ReasonArchiveTooLarge:
+		return models.FetchOutcomeTooLarge, true
+	case ReasonArchiveMemberRejected:
+		return models.FetchOutcomeRejectedMember, true
+	case ReasonArchiveTimeout:
+		return models.FetchOutcomeExtractTimeout, true
+	}
+	return "", false
 }
 
 // storedText is US1 scenario 6's audit line: what was stored, from where, and

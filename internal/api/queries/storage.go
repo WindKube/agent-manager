@@ -2,12 +2,14 @@ package queries
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
 	"github.com/uptrace/bun"
 
 	"agent-manager/internal/api/contract"
@@ -96,23 +98,48 @@ func bucketSettings(ctx context.Context, bucket blob.Inspector) contract.BucketS
 		settings.Versioning = contract.BucketSetting{Known: true, Value: value}
 	}
 
-	if out, err := client.GetObjectLockConfiguration(ctx, &s3.GetObjectLockConfigurationInput{Bucket: name}); err == nil &&
-		out.ObjectLockConfiguration != nil {
+	out, err := client.GetObjectLockConfiguration(ctx, &s3.GetObjectLockConfigurationInput{Bucket: name})
+	switch {
+	case err == nil && out.ObjectLockConfiguration != nil:
 		settings.ObjectLock = contract.BucketSetting{Known: true, Value: objectLockValue(out.ObjectLockConfiguration)}
+	case notConfigured(err):
+		settings.ObjectLock = contract.BucketSetting{Known: true, Value: "not enabled"}
 	}
 
-	if out, err := client.GetBucketEncryption(ctx, &s3.GetBucketEncryptionInput{Bucket: name}); err == nil {
-		settings.Encryption = contract.BucketSetting{Known: true, Value: encryptionValue(out.ServerSideEncryptionConfiguration)}
+	enc, err := client.GetBucketEncryption(ctx, &s3.GetBucketEncryptionInput{Bucket: name})
+	switch {
+	case err == nil:
+		settings.Encryption = contract.BucketSetting{Known: true, Value: encryptionValue(enc.ServerSideEncryptionConfiguration)}
+	case notConfigured(err):
+		settings.Encryption = contract.BucketSetting{Known: true, Value: "none"}
 	}
 
-	if out, err := client.GetBucketLifecycleConfiguration(ctx, &s3.GetBucketLifecycleConfigurationInput{Bucket: name}); err == nil {
-		settings.Retention = contract.BucketSetting{Known: true, Value: retentionValue(out.Rules)}
+	lc, err := client.GetBucketLifecycleConfiguration(ctx, &s3.GetBucketLifecycleConfigurationInput{Bucket: name})
+	switch {
+	case err == nil:
+		settings.Retention = contract.BucketSetting{Known: true, Value: retentionValue(lc.Rules)}
+	case notConfigured(err):
+		settings.Retention = contract.BucketSetting{Known: true, Value: retentionValue(nil)}
 	}
 
 	return settings
 }
 
 func unknownSetting() contract.BucketSetting { return contract.BucketSetting{} }
+
+// S3 answers "this bucket has no such configuration" with an error, which is a
+// known setting, unlike a permission or transport failure.
+func notConfigured(err error) bool {
+	var apiErr smithy.APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	switch apiErr.ErrorCode() {
+	case "ObjectLockConfigurationNotFoundError", "ServerSideEncryptionConfigurationNotFoundError", "NoSuchLifecycleConfiguration":
+		return true
+	}
+	return false
+}
 
 func objectLockValue(cfg *types.ObjectLockConfiguration) string {
 	if cfg.ObjectLockEnabled != types.ObjectLockEnabledEnabled {

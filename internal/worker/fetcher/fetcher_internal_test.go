@@ -338,3 +338,11 @@ func TestTheWorkerRefusesToStartWithoutTheHalfThatWritesBytes(t *testing.T) {
 	})
 	require.ErrorContains(t, err, "no object-store writer")
 }
+
+// The fetch kind is enqueued onto outbox.QueueFetch; a Definition that registered
+// river.QueueDefault instead would never see it delivered.
+func TestTheDefinitionRegistersTheFetchQueue(t *testing.T) {
+	def := Definition()
+
+	require.Contains(t, def.Queues, outbox.QueueFetch)
+}

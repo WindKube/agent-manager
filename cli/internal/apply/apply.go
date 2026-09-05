@@ -417,11 +417,23 @@ func markerFor(c plan.Change) ([]byte, error) {
 	return b, nil
 }
 
-// guard runs the record and modification checks once the destination is
-// proven inside the home and before anything is staged into it. Swap itself
-// is unconditional, replacing whatever is at the destination including a
-// symlink, so this is the only thing standing between a sync and somebody's
-// hand-written skill.
+// guard is FR-028 and FR-029 at the one moment they can be enforced: after the
+// destination has been proven to be inside the home and before anything is
+// staged into it.
+//
+// Swap is unconditional by design — it replaces whatever is at the destination,
+// including a symlink — so this function is the only thing standing between a
+// sync and somebody's hand-written skill.
+// describeClaimants renders the profiles already claiming a destination, for
+// the log line guard prints when this profile is adopting a shared install.
+func describeClaimants(claimants []record.Ref) string {
+	out := claimants[0].Profile + "@" + claimants[0].Entry.Version
+	for i := 1; i < len(claimants); i++ {
+		out += ", " + claimants[i].Profile + "@" + claimants[i].Entry.Version
+	}
+	return out
+}
+
 func (a *Applier) guard(c plan.Change, cont Contained) error {
 	st, err := inspectDest(cont)
 	if err != nil {
@@ -445,8 +457,20 @@ func (a *Applier) guard(c plan.Change, cont Contained) error {
 			c.ID, c.Dest, orUnknown(st.linkTarget))
 
 	case c.From == nil:
-		// The one legitimate case for an unclaimed path is amctl's own
-		// leftover from a run killed between the swap and the record write.
+		// This profile's own record has no row here, but that is not the same
+		// question as whether anything else does. A claimant from ANOTHER
+		// profile means the directory is legitimately shared — plan.Compute's
+		// version-split check has already refused the run if the two disagree
+		// on what belongs there, so reaching this point means they agree, and
+		// this profile is simply adopting an install that already matches.
+		if claimants := a.cfg.Record.ClaimantsOf(c.Dest); len(claimants) > 0 {
+			a.cfg.Log.Debugf("%s: %s is already installed for %s; %s is adopting it",
+				c.ID, c.Dest, describeClaimants(claimants), c.Profile)
+			return nil
+		}
+		// Nothing else claims this path either. The one legitimate case left is
+		// amctl's own leftover from a run killed between the swap and the record
+		// write, which the marker identifies.
 		if st.marker != nil && st.marker.ID == c.ID && st.marker.Target == c.Target {
 			a.cfg.Log.Warnf("%s: %s holds amctl's marker for %s but no record row; a previous sync was "+
 				"interrupted between the install and the record write, so it is being re-installed",

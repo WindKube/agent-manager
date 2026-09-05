@@ -116,12 +116,23 @@ func catalog() []*pkg {
 }
 
 func profiles() []profileSpec {
-	// Which profile gets which target set is load-bearing: naming the
-	// unwritable codex target on EVERY profile (an earlier version's
-	// approach) refuses every profile the fake serves, leaving nothing for
-	// the happy-path/idempotence/interruption tests to run against. Codex
-	// gets its own dedicated refusal-profile instead, matching the real
-	// hub's own seeded lockfile (claude-code only).
+	// TWO target fixtures, and which profile gets which is load-bearing.
+	//
+	// An earlier version put both contract targets on every profile, reasoning
+	// that "the fake serves what the hub may serve" and that a fake naming only
+	// the shipped target could not exercise ErrR2Unresolved. The first half is
+	// right and the conclusion was wrong: because codex is unwritable by design,
+	// naming it on EVERY profile meant every profile the fake serves is refused,
+	// so the fake could not serve the happy path at all. The idempotence and
+	// interruption properties had no syncable profile to run against, and the
+	// sync verb's own tests had to stand up a rewriting reverse proxy to get
+	// one.
+	//
+	// The real hub's own seeded lockfile names claude-code only
+	// (internal/api/integration_test.go, storedLockfile), so that is the shipping
+	// case and it belongs on the profiles that model a working sync. The skip
+	// gets a profile of its own, named for it, so it is still exercised — by a
+	// test that asks for it rather than by every test incidentally.
 	writable := []hub.LockfileTargets{"claude-code"}
 	unwritable := []hub.LockfileTargets{"claude-code", "codex"}
 	return []profileSpec{
@@ -217,7 +228,10 @@ func profiles() []profileSpec {
 			}},
 		},
 		{
-			// ErrR2Unresolved: a target this client can't write must be refused by name, never silently skipped
+			// The ErrR2Unresolved case: a lockfile naming a target this client
+			// cannot write, alongside one it can. codex is reported as a SKIP
+			// naming the target — never silently dropped — while claude-code
+			// still installs.
 			slug: slugUnwritable, name: "Names an unwritable target", visibility: "organisation",
 			revisions: []revisionSpec{{
 				revision: 1, gate: "approval", policy: "pinned", targets: unwritable,

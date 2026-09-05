@@ -1,22 +1,36 @@
 package plan
 
-// Skip is one entry the hub excluded; Reason is the hub's raw string, not an
-// enum, since an unrecognised value must be reported verbatim, never dropped
-// or folded into an "other" bucket.
+import "github.com/WindKube/agent-manager/cli/internal/record"
+
+// Skip is one entry that was resolved and then excluded, either by the hub
+// or by this build because it cannot install the entry's kind or write its
+// target. Reason is a raw string, not an enum, so a value a newer hub adds
+// is still reported verbatim rather than dropped.
 type Skip struct {
 	Profile string
 	ID      string
 
-	Reason string // verbatim from the lockfile
+	// Target is set only for a skip this build decided; empty for a hub skip.
+	Target record.Target
 
-	Recognised bool // one of the six values frozen at build time; false means report, don't explain
+	Reason string
 
-	// Detail and WouldHaveResolvedTo are optionals, left empty rather than guessed when the hub omits them.
+	// Recognised is false when Reason isn't one of the known values below.
+	Recognised bool
+
+	// Detail and WouldHaveResolvedTo are set only for a hub skip.
 	Detail              string
 	WouldHaveResolvedTo string
 }
 
-// The six skip reasons lockfile.schema.json enumerates; a seventh means a newer hub, not a broken one.
+// Reasons this CLI itself excludes an entry.
+const (
+	SkipEntryKindUnsupported = "entry-kind-not-installable"
+
+	SkipTargetUnwritable = "target-unwritable"
+)
+
+// The skip reasons lockfile.schema.json enumerates.
 const (
 	SkipFlaggedBlockedByGate       = "flagged-blocked-by-gate"
 	SkipFlaggedAwaitingApproval    = "flagged-awaiting-approval"

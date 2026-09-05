@@ -68,14 +68,18 @@ func Compute(in Inputs) (Plan, error) {
 	var p Plan
 	b := builder{compare: in.Compare}
 
-	// Pass 1: enabled vs. writable targets. Refusals are collected across all
-	// profiles first, so one unwritable target names every profile once.
+	// Pass 1: which targets does each profile enable, and which can this
+	// build actually write? An unknown target refuses the whole plan
+	// (ConflictTargetUnknown); an unwritable one (resolved.Err) instead
+	// becomes a per-entry Skip in pass 3, so the profile's other targets still install.
 	enabled := make(map[string]map[record.Target]bool, len(lockfiles))
 	writable := make(map[string]map[record.Target]Target, len(lockfiles))
+	unwritable := make(map[string]map[record.Target]error, len(lockfiles))
 	for _, lf := range lockfiles {
 		slug := lf.Profile.Slug
 		enabled[slug] = map[record.Target]bool{}
 		writable[slug] = map[record.Target]Target{}
+		unwritable[slug] = map[record.Target]error{}
 		alreadyRefused := false
 		for _, name := range dedupeTargets(lf.Targets) {
 			t := record.Target(name)
@@ -89,15 +93,13 @@ func Compute(in Inputs) (Plan, error) {
 				// Reported, not refused here — see Target.Withdrawn; the empty-set
 				// check below stops this becoming "installed nothing, exited 0".
 			case resolved.Err != nil:
-				b.targetRefusal(ConflictTargetUnwritable, t, resolved.Err, slug)
-				alreadyRefused = true
+				unwritable[slug][t] = resolved.Err
 			default:
 				writable[slug][t] = resolved
 			}
 		}
-		// Only when nothing else already refuses this profile: the case left is
-		// every named target being WITHDRAWN, which alone is not a refusal, so
-		// without this the sync would install nothing and exit 0.
+		// Only when nothing else already refuses this profile: every target it
+		// named was WITHDRAWN or UNWRITABLE, so without this it would install nothing and exit 0.
 		if len(enabled[slug]) > 0 && len(writable[slug]) == 0 && !alreadyRefused {
 			claims := make([]Claim, 0, len(enabled[slug]))
 			for _, name := range dedupeTargets(lf.Targets) {
@@ -136,7 +138,7 @@ func Compute(in Inputs) (Plan, error) {
 			for _, t := range sortedTargetNames(writable[slug]) {
 				d, err := b.route(slug, t, writable[slug][t], e)
 				if err != nil {
-					continue // already recorded as an unroutable conflict
+					continue // already recorded as an unroutable conflict, or as a skip
 				}
 				if _, dup := desired[d.key]; dup {
 					return Plan{}, fmt.Errorf("%w: profile %s lists %s twice", ErrInputs, slug, e.Id)
@@ -144,10 +146,23 @@ func Compute(in Inputs) (Plan, error) {
 				desired[d.key] = d
 				order = append(order, d.key)
 			}
+			// Every target the profile enabled but this build cannot write:
+			// reported once per such target, never silently dropped.
+			for _, t := range sortedUnwritableTargets(unwritable[slug]) {
+				b.skips = append(b.skips, Skip{
+					Profile: slug, ID: e.Id, Target: t,
+					Reason: SkipTargetUnwritable, Recognised: true,
+					Detail: unwritable[slug][t].Error(),
+				})
+			}
 		}
 	}
 
-	b.versionSplits(in.Record, desired, order)
+	reconciled := make(map[string]bool, len(lockfiles))
+	for _, lf := range lockfiles {
+		reconciled[lf.Profile.Slug] = true
+	}
+	b.versionSplits(in.Record, desired, order, reconciled)
 	b.destCollisions(desired, order)
 
 	// Pass 4: every recorded entry of a profile under reconciliation is either matched or removed.
@@ -169,20 +184,21 @@ func Compute(in Inputs) (Plan, error) {
 				matched[key] = struct{}{}
 				p.appendChange(b.change(d, &e))
 			case wanted:
-				// The destination moved for the same package/target — a layout
-				// change (e.g. disambiguation on a name clash). Emitted as a
-				// removal of the old path plus an add at the new one, not an
-				// "upgrade": folding two paths into one would orphan the old dir.
+				// The destination moved for the same package/target (e.g.
+				// disambiguation on a name clash): a removal of the old path plus
+				// an add at the new one, not an "upgrade" - folding them would orphan the old dir.
 				removals = append(removals, removalOf(slug, e, RemoveRelocated))
 			case !enabled[slug][e.Target]:
 				removals = append(removals, removalOf(slug, e, RemoveTargetDisabled))
 			case writable[slug][e.Target].Dest == nil:
-				// Enabled but unroutable by this build; a conflict already
-				// refuses the plan. A removal here would misreport this as "off".
+				// The target is still enabled but this build cannot write it, so
+				// it is already reported as a skip; a removal here would read as
+				// "the target was turned off".
 				continue
 			case listed[slug][e.ID]:
-				// Still in the profile but unroutable this run; the unroutable
-				// conflict already refuses the plan — not "left the profile".
+				// Still in the profile, but this run could not route it. Already
+				// reported as a skip or conflict; calling it "no longer in the
+				// profile" would send the user to the wrong place.
 				continue
 			default:
 				removals = append(removals, removalOf(slug, e, RemoveLeftProfile))
@@ -201,6 +217,7 @@ func Compute(in Inputs) (Plan, error) {
 
 	p.Remove = retain(in.Record, removals, desired)
 	p.Conflicts = b.conflicts()
+	p.Skipped = append(p.Skipped, b.skips...)
 
 	sortPlan(&p)
 	return p, nil
@@ -211,6 +228,7 @@ type builder struct {
 
 	targetRefusals map[record.Target]*Conflict
 	other          []Conflict
+	skips          []Skip
 }
 
 func (b *builder) targetRefusal(kind ConflictKind, t record.Target, err error, profile string) {
@@ -225,12 +243,24 @@ func (b *builder) targetRefusal(kind ConflictKind, t record.Target, err error, p
 	c.Claims = append(c.Claims, Claim{Profile: profile, Target: t})
 }
 
-// route turns one lockfile entry into a destination, or records the refusal;
-// it refuses rather than repairs, since a rewritten value wouldn't match the record.
+// route turns one lockfile entry into a destination, or records why it could
+// not: a skip when this build simply cannot install the entry's KIND under
+// this target (layout.ErrKindUnsupported) — the other entries in the profile
+// are still installable, so this one poisoned package must not refuse the
+// plan — and a conflict for everything else it validates, which it refuses
+// rather than repairs: a value amctl silently rewrote would not match the
+// record it later prunes against.
 func (b *builder) route(profile string, t record.Target, target Target, e hub.LockfileEntry) (desiredEntry, error) {
 	fail := func(detail string, err error) (desiredEntry, error) {
 		if err == nil {
 			err = errors.New(detail)
+		}
+		if errors.Is(err, layout.ErrKindUnsupported) {
+			b.skips = append(b.skips, Skip{
+				Profile: profile, ID: e.Id, Target: t,
+				Reason: SkipEntryKindUnsupported, Recognised: true, Detail: err.Error(),
+			})
+			return desiredEntry{}, err
 		}
 		b.other = append(b.other, Conflict{
 			Kind: ConflictUnroutable, ID: e.Id, Target: t,
@@ -277,10 +307,21 @@ func (b *builder) route(profile string, t record.Target, target Target, e hub.Lo
 	return d, nil
 }
 
-// versionSplits groups by package id across all profiles and targets (not
-// per target): a disagreement under one target is still a disagreement. The
-// digest arm catches one version with two byte-sets, same problem as two versions.
-func (b *builder) versionSplits(rec *record.Record, desired map[entryKey]desiredEntry, order []entryKey) {
+// versionSplits is FR-012. Grouping is by package id across ALL profiles and
+// targets, not per target: the requirement is about a set of profiles
+// disagreeing, and a disagreement that only bites under one target is the same
+// disagreement. The digest arm catches the subtler shape — one version, two
+// byte-sets — which is one directory with two possible contents just as much
+// as two versions are.
+//
+// A profile need not be part of this run to be one of the two disagreeing:
+// the record still says what it has installed, and dest is a function of id
+// and target alone, so its directory is the same one this run is about to
+// write. reconciled is the set of profiles this run touches at all — a record
+// row for any other profile is folded in as a claim just as live as an active
+// one, or syncing profile B alone could overwrite what profile A installed
+// with no conflict ever raised.
+func (b *builder) versionSplits(rec *record.Record, desired map[entryKey]desiredEntry, order []entryKey, reconciled map[string]bool) {
 	byID := map[string][]desiredEntry{}
 	var ids []string
 	for _, key := range order {
@@ -298,6 +339,24 @@ func (b *builder) versionSplits(rec *record.Record, desired map[entryKey]desired
 			versions[group[i].version] = struct{}{}
 			digests[group[i].digest] = struct{}{}
 		}
+
+		var outsideClaims []Claim
+		if rec != nil {
+			refs := rec.ByID(id)
+			for i := range refs {
+				ref := &refs[i]
+				if reconciled[ref.Profile] {
+					continue // its own row is already in group, or is being replaced by this run
+				}
+				versions[ref.Entry.Version] = struct{}{}
+				digests[ref.Entry.Digest] = struct{}{}
+				outsideClaims = append(outsideClaims, Claim{
+					Profile: ref.Profile, Target: ref.Entry.Target,
+					ID: ref.Entry.ID, Version: ref.Entry.Version,
+				})
+			}
+		}
+
 		if len(versions) < 2 && len(digests) < 2 {
 			continue
 		}
@@ -305,8 +364,9 @@ func (b *builder) versionSplits(rec *record.Record, desired map[entryKey]desired
 		if len(versions) < 2 {
 			detail = "the versions agree but the digests do not, so one directory has two possible contents"
 		}
+		claims := append(claimsOf(group), outsideClaims...)
 		b.other = append(b.other, Conflict{
-			Kind: ConflictVersionSplit, ID: id, Claims: claimsOf(group), Detail: detail,
+			Kind: ConflictVersionSplit, ID: id, Claims: dedupeClaims(claims), Detail: detail,
 			Installed: installedClaims(rec, id),
 		})
 	}
@@ -615,6 +675,15 @@ func dedupeTargets(in []hub.LockfileTargets) []string {
 }
 
 func sortedTargetNames(m map[record.Target]Target) []record.Target {
+	out := make([]record.Target, 0, len(m))
+	for name := range m {
+		out = append(out, name)
+	}
+	slices.Sort(out)
+	return out
+}
+
+func sortedUnwritableTargets(m map[record.Target]error) []record.Target {
 	out := make([]record.Target, 0, len(m))
 	for name := range m {
 		out = append(out, name)

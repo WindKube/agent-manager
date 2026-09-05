@@ -147,22 +147,3 @@ func newVersionCmd(opts *Options) *cobra.Command {
 		},
 	}
 }
-
-// A stub, exiting 0 with a diagnostic-stream note, until status.go lands.
-
-func newStatusCmd(opts *Options) *cobra.Command {
-	return &cobra.Command{
-		Use:   "status",
-		Short: "Report the hub, identity, profiles and any drift",
-		Args:  cobra.NoArgs,
-		RunE:  func(_ *cobra.Command, _ []string) error { return notYet(opts, "status") },
-	}
-}
-
-// notYet keeps a stub at CodeNoChanges with its message off the result
-// stream, so `--output json` emits nothing rather than something unparseable.
-func notYet(opts *Options, verb string) error {
-	opts.Streams().Warnf("%s is not implemented yet", verb)
-	opts.Outcome = CodeNoChanges
-	return nil
-}

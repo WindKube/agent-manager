@@ -152,7 +152,7 @@ func ImportModal(im Import) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</div><div style=\"display:none;padding:18px 24px 0;flex-direction:column;gap:14px\" data-style-display=\"$_importTab === 'url' ? 'flex' : 'none'\"><div style=\"display:flex;flex-direction:column;gap:6px\"><label for=\"import-url\" style=\"font-size:12px;color:var(--fg3)\">Repository or archive URL</label> <input id=\"import-url\" name=\"url\" class=\"am-search\" style=\"font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--surface2)\" placeholder=\"https://github.com/org/plugin or https://.../plugin-1.3.0.zip\" data-bind=\"_importURL\"></div><div style=\"display:flex;gap:12px;flex-wrap:wrap\"><div style=\"flex:1;min-width:160px;display:flex;flex-direction:column;gap:6px\"><label for=\"import-ref\" style=\"font-size:12px;color:var(--fg3)\">Ref</label> <input id=\"import-ref\" name=\"ref\" class=\"am-search\" style=\"font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--surface2)\" placeholder=\"v1.3.0\" data-bind=\"_importRef\"></div><div style=\"flex:1;min-width:160px;display:flex;flex-direction:column;gap:6px\"><label for=\"import-subdir\" style=\"font-size:12px;color:var(--fg3)\">Subdirectory</label> <input id=\"import-subdir\" name=\"subdirectory\" class=\"am-search\" style=\"font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--surface2)\" placeholder=\"plugins/platform-toolkit\" data-bind=\"_importSubdir\"></div></div></div><div style=\"padding:18px 24px 0;display:flex;gap:12px;flex-wrap:wrap\"><div style=\"flex:1;min-width:160px;display:flex;flex-direction:column;gap:6px\"><!--\n\t\t\t\t\t\tThe publisher is a form field and not a derivation. No source carries\n\t\t\t\t\t\tone — a repository has an owner, an archive URL has a host, and neither\n\t\t\t\t\t\tis a namespace this hub chose — and the object key it becomes is\n\t\t\t\t\t\tpermanent, so it is asked for rather than guessed.\n\t\t\t\t\t--><label for=\"import-publisher\" style=\"font-size:12px;color:var(--fg3)\">Publisher</label> <input id=\"import-publisher\" name=\"publisher\" class=\"am-search\" style=\"font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--surface2)\" placeholder=\"example\" data-bind=\"_importPublisher\"></div><div style=\"flex:1;min-width:160px;display:flex;flex-direction:column;gap:6px\"><label for=\"import-category\" style=\"font-size:12px;color:var(--fg3)\">Category</label> <select id=\"import-category\" name=\"category\" class=\"am-search\" style=\"background:var(--surface2);font-size:12.5px\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</div><div style=\"display:none;padding:18px 24px 0;flex-direction:column;gap:14px\" data-style-display=\"$_importTab === 'url' ? 'flex' : 'none'\"><div style=\"display:flex;flex-direction:column;gap:6px\"><label for=\"import-url\" style=\"font-size:12px;color:var(--fg3)\">Repository or archive URL</label> <input id=\"import-url\" name=\"url\" class=\"am-search\" style=\"font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--surface2)\" placeholder=\"https://github.com/org/plugin or https://.../plugin-1.3.0.zip\" data-bind=\"_importURL\"></div><div style=\"display:flex;gap:12px;flex-wrap:wrap\"><div style=\"flex:1;min-width:160px;display:flex;flex-direction:column;gap:6px\"><label for=\"import-ref\" style=\"font-size:12px;color:var(--fg3)\">Ref</label> <input id=\"import-ref\" name=\"ref\" class=\"am-search\" style=\"font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--surface2)\" placeholder=\"v1.3.0\" data-bind=\"_importRef\"></div><div style=\"flex:1;min-width:160px;display:flex;flex-direction:column;gap:6px\"><label for=\"import-subdir\" style=\"font-size:12px;color:var(--fg3)\">Subdirectory</label> <input id=\"import-subdir\" name=\"subdirectory\" class=\"am-search\" style=\"font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--surface2)\" placeholder=\"plugins/platform-toolkit\" data-bind=\"_importSubdir\"></div></div></div><div style=\"padding:18px 24px 0;display:flex;gap:12px;flex-wrap:wrap\"><div style=\"flex:1;min-width:160px;display:flex;flex-direction:column;gap:6px\"><!--\n\t\t\t\t\t\tThe publisher is a form field and not a derivation. No source carries\n\t\t\t\t\t\tone — a repository has an owner, an archive URL has a host, and neither\n\t\t\t\t\t\tis a namespace this hub chose — and the object key it becomes is\n\t\t\t\t\t\tpermanent, so it is asked for rather than guessed.\n\t\t\t\t\t--><label for=\"import-publisher\" style=\"font-size:12px;color:var(--fg3)\">Publisher</label> <input id=\"import-publisher\" name=\"publisher\" class=\"am-search\" style=\"font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--surface2)\" placeholder=\"example/platform\" data-bind=\"_importPublisher\"></div><div style=\"display:none;flex:1;min-width:160px;flex-direction:column;gap:6px\" data-style-display=\"$_importTab === 'upload' ? 'flex' : 'none'\"><!--\n\t\t\t\t\t\tOnly the upload tab needs this: a SKILL.md manifest carries no\n\t\t\t\t\t\tversion, unlike a plugin.json, so nothing can be derived here. On\n\t\t\t\t\t\tthe url tab the ref drives the version instead.\n\t\t\t\t\t--><label for=\"import-version\" style=\"font-size:12px;color:var(--fg3)\">Version</label> <input id=\"import-version\" name=\"version\" class=\"am-search\" style=\"font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--surface2)\" placeholder=\"1.0.0\" data-bind=\"_importVersion\"></div><div style=\"flex:1;min-width:160px;display:flex;flex-direction:column;gap:6px\"><label for=\"import-category\" style=\"font-size:12px;color:var(--fg3)\">Category</label> <select id=\"import-category\" name=\"category\" class=\"am-search\" style=\"background:var(--surface2);font-size:12.5px\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -164,7 +164,7 @@ func ImportModal(im Import) templ.Component {
 			var templ_7745c5c3_Var8 string
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 160, Col: 27}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 176, Col: 27}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 			if templ_7745c5c3_Err != nil {
@@ -177,7 +177,7 @@ func ImportModal(im Import) templ.Component {
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 160, Col: 36}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 176, Col: 36}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
@@ -200,7 +200,7 @@ func ImportModal(im Import) templ.Component {
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue(option.Value)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 168, Col: 35}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 184, Col: 35}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
 			if templ_7745c5c3_Err != nil {
@@ -213,7 +213,7 @@ func ImportModal(im Import) templ.Component {
 			var templ_7745c5c3_Var11 string
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(option.Label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 168, Col: 52}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 184, Col: 52}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
@@ -249,7 +249,7 @@ func ImportModal(im Import) templ.Component {
 		var templ_7745c5c3_Var12 string
 		templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.ResolveAttributeValue(ImportSubmitDisabledExpr())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 197, Col: 53}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 213, Col: 53}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var12)
 		if templ_7745c5c3_Err != nil {
@@ -262,7 +262,7 @@ func ImportModal(im Import) templ.Component {
 		var templ_7745c5c3_Var13 string
 		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.ResolveAttributeValue(ImportSubmitExpr())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 198, Col: 40}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 214, Col: 40}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var13)
 		if templ_7745c5c3_Err != nil {
@@ -378,7 +378,7 @@ func ImportResultBanner(result *view.ImportResult) templ.Component {
 				var templ_7745c5c3_Var18 string
 				templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(result.ID)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 227, Col: 33}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 243, Col: 33}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 				if templ_7745c5c3_Err != nil {
@@ -391,7 +391,7 @@ func ImportResultBanner(result *view.ImportResult) templ.Component {
 				var templ_7745c5c3_Var19 string
 				templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(result.Version)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 227, Col: 52}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 243, Col: 52}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 				if templ_7745c5c3_Err != nil {
@@ -409,7 +409,7 @@ func ImportResultBanner(result *view.ImportResult) templ.Component {
 				var templ_7745c5c3_Var20 string
 				templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(result.Message)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 229, Col: 27}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 245, Col: 27}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 				if templ_7745c5c3_Err != nil {
@@ -468,7 +468,7 @@ func importPreview(p view.ImportPreview) templ.Component {
 			var templ_7745c5c3_Var22 string
 			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(p.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 243, Col: 31}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 259, Col: 31}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 			if templ_7745c5c3_Err != nil {
@@ -481,7 +481,7 @@ func importPreview(p view.ImportPreview) templ.Component {
 			var templ_7745c5c3_Var23 string
 			templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(p.Version)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 243, Col: 45}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 259, Col: 45}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 			if templ_7745c5c3_Err != nil {
@@ -504,7 +504,7 @@ func importPreview(p view.ImportPreview) templ.Component {
 			var templ_7745c5c3_Var24 string
 			templ_7745c5c3_Var24, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(ImportMarkStyle(entry))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 248, Col: 40}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 264, Col: 40}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 			if templ_7745c5c3_Err != nil {
@@ -517,7 +517,7 @@ func importPreview(p view.ImportPreview) templ.Component {
 			var templ_7745c5c3_Var25 string
 			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(entry.Glyph())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 248, Col: 58}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 264, Col: 58}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 			if templ_7745c5c3_Err != nil {
@@ -530,7 +530,7 @@ func importPreview(p view.ImportPreview) templ.Component {
 			var templ_7745c5c3_Var26 string
 			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(entry.Path)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 249, Col: 128}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 265, Col: 128}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 			if templ_7745c5c3_Err != nil {
@@ -543,7 +543,7 @@ func importPreview(p view.ImportPreview) templ.Component {
 			var templ_7745c5c3_Var27 string
 			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(entry.Note)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 250, Col: 78}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 266, Col: 78}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 			if templ_7745c5c3_Err != nil {
@@ -562,7 +562,7 @@ func importPreview(p view.ImportPreview) templ.Component {
 			var templ_7745c5c3_Var28 string
 			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(problem.Where())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 255, Col: 73}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 271, Col: 73}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 			if templ_7745c5c3_Err != nil {
@@ -575,7 +575,7 @@ func importPreview(p view.ImportPreview) templ.Component {
 			var templ_7745c5c3_Var29 string
 			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(problem.Message)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 256, Col: 69}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 272, Col: 69}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 			if templ_7745c5c3_Err != nil {

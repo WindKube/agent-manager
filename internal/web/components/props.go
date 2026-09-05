@@ -200,6 +200,7 @@ func (c Catalog) Signals() string {
 		"_importRef":       "",
 		"_importSubdir":    "",
 		"_importPublisher": "",
+		"_importVersion":   "",
 	}
 	encoded, err := json.Marshal(state)
 	if err != nil {

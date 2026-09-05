@@ -343,6 +343,7 @@ func (s *Server) register() {
 	s.engine.GET("/profiles/*slug", s.profileDetail)
 	s.engine.POST("/profiles/entries/pin", s.pinEntry)
 	s.engine.POST("/profiles/entries/latest", s.floatEntry)
+	s.engine.POST("/profiles/entries/add", s.addEntry)
 	s.engine.POST("/profiles/sharing", s.shareProfile)
 	s.engine.POST("/profiles/targets", s.setTargets)
 	s.engine.POST("/profiles/revisions", s.publishRevision)

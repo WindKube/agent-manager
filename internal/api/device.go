@@ -33,11 +33,6 @@ import (
 // deployed CLI's polling look compliant when it is not.
 const deviceTokenInterval = 5 * time.Second
 
-// devicePath is the page on the hub a human opens to type the user code in. It is
-// the web role's route, not this role's, which is why it is a path joined onto the
-// configured public base URL rather than a route registered here.
-const devicePath = "/device"
-
 // deviceGrantType is fixed by RFC 8628 §3.4 and by the frozen contract's `const`
 // on DeviceTokenRequest.grant_type.
 const deviceGrantType = "urn:ietf:params:oauth:grant-type:device_code"
@@ -210,14 +205,12 @@ func validHost(host string) error {
 
 // verificationURIs builds the two URLs the response advertises.
 //
-// Both are derived from the CONFIGURED public base URL and never from the
-// request's Host header. A client-supplied Host would let a caller choose the
-// address a human is then told to open, which is a phishing primitive handed out
-// by the login endpoint itself. When no base URL is configured the paths are
-// returned bare, which is wrong for a deployment and harmless in a test — and it
-// is a deployment misconfiguration rather than something to guess around.
+// Both are derived from the CONFIGURED verification URL and never from the
+// request's Host header — a client-supplied Host would let a caller choose the
+// address a human is then told to open, a phishing primitive handed out by the
+// login endpoint itself.
 func (s *Server) verificationURIs(userCode string) (verification, complete string) {
-	verification = strings.TrimSuffix(s.opts.PublicBaseURL, "/") + devicePath
+	verification = strings.TrimSuffix(s.opts.DeviceVerificationURL, "/")
 	return verification, verification + "?user_code=" + url.QueryEscape(userCode)
 }
 

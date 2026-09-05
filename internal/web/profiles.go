@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/url"
@@ -130,7 +131,47 @@ func (s *Server) profileDetail(c *gin.Context) {
 
 	screen = profileScreen(detail)
 	screen.Notice = profileNotice(c.Query("notice"))
+	if screen.Permissions.Curate && s.deps.Catalog != nil {
+		screen.AddOptions = s.availablePackages(session(c), detail.Entries)
+	}
 	s.renderProfile(c, http.StatusOK, screen)
+}
+
+// maxAddOptionPages bounds how much of the catalog is walked to build the "Add
+// package" list. The catalog this hub curates is a short, admin-reviewed
+// vocabulary (FR-049), not an open registry, so this is generous rather than
+// tight.
+const maxAddOptionPages = 50
+
+// availablePackages lists every catalog package this profile does not already
+// hold. A catalog read failure yields no options rather than an error: the
+// screen has already rendered on the profile read succeeding, and the Add
+// control degrading to absent is better than the whole page failing on it.
+func (s *Server) availablePackages(ctx context.Context, held []hub.ProfileEntry) []view.ProfileAddOption {
+	holding := make(map[string]struct{}, len(held))
+	for i := range held {
+		holding[held[i].ID] = struct{}{}
+	}
+
+	var options []view.ProfileAddOption
+	q := view.CatalogQuery{Sort: view.SortName, Dir: view.DirAsc}
+	for page := 1; page <= maxAddOptionPages; page++ {
+		q.Page = page
+		result, err := s.deps.Catalog.Catalog(ctx, q)
+		if err != nil {
+			return nil
+		}
+		for i := range result.Rows {
+			row := &result.Rows[i]
+			if _, ok := holding[row.ID]; !ok {
+				options = append(options, view.ProfileAddOption{ID: row.ID, Name: row.Name})
+			}
+		}
+		if page >= result.Pages() {
+			break
+		}
+	}
+	return options
 }
 
 func (s *Server) renderProfile(c *gin.Context, status int, screen view.Profile) {
@@ -151,6 +192,58 @@ func profileSlugForm(c *gin.Context) string {
 }
 
 // ---- the writes -----------------------------------------------------------
+
+// addEntry adds a package the profile does not yet hold, floating latest. An
+// id already held is not an error — the select only ever offers ids the
+// profile lacks, so this is a race rather than a mistake — and it takes the
+// same path as floating an existing entry to latest.
+func (s *Server) addEntry(c *gin.Context) {
+	slug := profileSlugForm(c)
+	id := strings.TrimSpace(c.PostForm("id"))
+
+	if s.deps.Profiles == nil || s.deps.Curator == nil {
+		s.backToProfile(c, slug, profileUnavailable)
+		return
+	}
+	if id == "" {
+		s.backToProfile(c, slug, profileEntryMissing)
+		return
+	}
+
+	ctx := session(c)
+	detail, err := s.deps.Profiles.Profile(ctx, slug)
+	if err != nil {
+		s.profileWriteFailed(c, slug, err)
+		return
+	}
+
+	settings := make([]hub.EntrySetting, 0, len(detail.Entries)+1)
+	found := false
+	for i := range detail.Entries {
+		entry := &detail.Entries[i]
+		setting := entrySettingFor(entry)
+		if entry.ID == id {
+			setting.Mode = "latest"
+			setting.Version = ""
+			found = true
+		}
+		settings = append(settings, setting)
+	}
+	outcome := profileEntryAdded
+	if !found {
+		settings = append(settings, hub.EntrySetting{ID: id, Mode: "latest"})
+	} else {
+		// Already held: nothing new to add, so this is the same outcome floating
+		// an existing entry to latest already reports.
+		outcome = profileEntryUpdated
+	}
+
+	if _, err := s.deps.Curator.SetProfileEntries(ctx, slug, settings); err != nil {
+		s.profileWriteFailed(c, slug, err)
+		return
+	}
+	s.backToProfile(c, slug, outcome)
+}
 
 func (s *Server) pinEntry(c *gin.Context) { s.setEntryMode(c, "pinned") }
 
@@ -303,6 +396,7 @@ type profileOutcome string
 
 const (
 	profileCreated      profileOutcome = "created"
+	profileEntryAdded   profileOutcome = "entry-added"
 	profileEntryUpdated profileOutcome = "entry-updated"
 	profileEntryMissing profileOutcome = "entry-missing"
 	profileShared       profileOutcome = "shared"
@@ -318,6 +412,9 @@ func profileNotice(raw string) *view.Notice {
 	switch profileOutcome(raw) {
 	case profileCreated:
 		return &view.Notice{Tone: "ok", Text: "Profile created. It holds no packages yet."}
+	case profileEntryAdded:
+		return &view.Notice{Tone: "ok", Text: "Package added, floating to latest. Not durable " +
+			"until a revision is published."}
 	case profileEntryUpdated:
 		return &view.Notice{Tone: "ok", Text: "Saved. This is not durable until a revision is " +
 			"published — no machine has seen it yet."}

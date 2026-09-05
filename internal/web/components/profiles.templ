@@ -224,6 +224,27 @@ templ entriesPanel(p view.Profile) {
 				curating it.
 			</div>
 		}
+		if p.Permissions.Curate {
+			if len(p.AddOptions) > 0 {
+				<form method="post" action="/profiles/entries/add" class="am-field-row" style="padding:14px 20px">
+					<input type="hidden" name="slug" value={ p.Slug }/>
+					<div class="am-field">
+						<label class="am-field-label" for="add-package-id">Add package</label>
+						<select id="add-package-id" class="am-search" name="id">
+							for _, option := range p.AddOptions {
+								<option value={ option.ID }>{ option.Name } ({ option.ID })</option>
+							}
+						</select>
+					</div>
+					<button type="submit" class="am-btn am-btn-primary" style="align-self:flex-end">Add, floating latest</button>
+				</form>
+			} else {
+				<div class="am-empty" id="profile-add-empty">
+					Every catalog package is already in this profile, or the catalog could
+					not be read.
+				</div>
+			}
+		}
 	</section>
 }
 

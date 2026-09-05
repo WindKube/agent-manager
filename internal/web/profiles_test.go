@@ -92,6 +92,34 @@ func profHandler(source *profiles, viewers web.ViewerSource, curator web.Profile
 	return web.New(deps, web.Options{}).Handler()
 }
 
+// catalogStub is a fixed catalog page, for the "Add package" tests: they need
+// to state exactly which rows the catalog answers rather than run against the
+// design's ten.
+type catalogStub struct {
+	rows []view.Row
+	err  error
+}
+
+func (c catalogStub) Catalog(_ context.Context, _ view.CatalogQuery) (view.CatalogPage, error) {
+	if c.err != nil {
+		return view.CatalogPage{}, c.err
+	}
+	return view.CatalogPage{Rows: c.rows, Total: len(c.rows), Page: 1, PageSize: view.DefaultPageSize}, nil
+}
+
+// profHandlerWithCatalog is profHandler plus a catalog source, for the "Add
+// package" control: it is the one piece of the profile screen that reads
+// somewhere other than web.ProfileSource.
+func profHandlerWithCatalog(source *profiles, curator web.ProfileCurator, catalog web.CatalogSource) http.Handler {
+	deps := web.Deps{
+		Profiles: source, Catalog: catalog, Viewers: fixture.SignedInViewers(), Log: zerolog.Nop(),
+	}
+	if curator != nil {
+		deps.Curator = curator
+	}
+	return web.New(deps, web.Options{}).Handler()
+}
+
 func baseProfileDetail() hub.ProfileDetail {
 	return hub.ProfileDetail{
 		Slug: "example/platform-engineer", Name: "Platform Engineer",
@@ -262,6 +290,108 @@ func TestProfileEntryFloatRoundTrips(t *testing.T) {
 	require.Len(t, source.entrySets, 1)
 	require.Equal(t, "latest", source.entrySets[0][0].Mode)
 	require.Empty(t, source.entrySets[0][0].Version)
+}
+
+// TestProfileDetailOffersOnlyPackagesNotAlreadyHeld asserts the Add control
+// lists a catalog row exactly once it is not already an entry, and never lists
+// one that already is.
+func TestProfileDetailOffersOnlyPackagesNotAlreadyHeld(t *testing.T) {
+	source := &profiles{detail: baseProfileDetail()}
+	catalog := catalogStub{rows: []view.Row{
+		{ID: "community/postgres-migration-guard", Name: "Postgres Migration Guard"},
+		{ID: "example/adr-writer", Name: "ADR Writer"},
+	}}
+	body := get(t, profHandlerWithCatalog(source, source, catalog), "/profiles/example/platform-engineer").Body.String()
+
+	require.Contains(t, body, `id="add-package-id"`)
+	options := addPackageOptions(t, body)
+	require.Contains(t, options, "ADR Writer")
+	require.NotContains(t, options, "Postgres Migration Guard",
+		"an entry the profile already holds must not also be offered as an addition")
+}
+
+// addPackageOptions returns just the "Add package" select's markup, so a test
+// can assert about its options without a package's name elsewhere on the page
+// (its own entry row, say) producing a false pass.
+func addPackageOptions(t *testing.T, body string) string {
+	t.Helper()
+	start := strings.Index(body, `<select id="add-package-id"`)
+	require.GreaterOrEqual(t, start, 0, "the add-package select is missing")
+	end := strings.Index(body[start:], "</select>")
+	require.GreaterOrEqual(t, end, 0, "the add-package select is unclosed")
+	return body[start : start+end]
+}
+
+// TestProfileDetailAddControlIsAbsentWithoutCatalogOrRole asserts the control
+// degrades to absent rather than to an empty, broken <select> — both when the
+// viewer may not curate and when the catalog cannot be read.
+func TestProfileDetailAddControlIsAbsentWithoutCatalogOrRole(t *testing.T) {
+	t.Run("no curate permission", func(t *testing.T) {
+		detail := baseProfileDetail()
+		detail.Permissions = hub.ProfilePermissions{}
+		source := &profiles{detail: detail}
+		catalog := catalogStub{rows: []view.Row{{ID: "example/adr-writer", Name: "ADR Writer"}}}
+		body := get(t, profHandlerWithCatalog(source, nil, catalog), "/profiles/example/platform-engineer").Body.String()
+		require.NotContains(t, body, `id="add-package-id"`)
+	})
+
+	t.Run("catalog unreachable", func(t *testing.T) {
+		source := &profiles{detail: baseProfileDetail()}
+		catalog := catalogStub{err: errBoom}
+		body := get(t, profHandlerWithCatalog(source, source, catalog), "/profiles/example/platform-engineer").Body.String()
+		require.NotContains(t, body, `id="add-package-id"`)
+		require.Contains(t, body, `id="profile-add-empty"`)
+	})
+}
+
+// TestProfileEntryAddAppendsANewEntryFloatingLatest is GAP 3: a profile
+// created in the UI could never receive a package, because nothing posted to
+// PUT /v1/profiles/{slug}/entries with an id the profile did not already hold.
+func TestProfileEntryAddAppendsANewEntryFloatingLatest(t *testing.T) {
+	source := &profiles{detail: baseProfileDetail()}
+	h := profHandler(source, fixture.SignedInViewers(), source)
+
+	rec := post(t, h, "/profiles/entries/add", url.Values{
+		"slug": {"example/platform-engineer"}, "id": {"example/adr-writer"},
+	})
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	require.Equal(t, "/profiles/example/platform-engineer?notice=entry-added", rec.Header().Get("Location"))
+
+	require.Len(t, source.entrySets, 1)
+	sent := source.entrySets[0]
+	require.Len(t, sent, 2, "the existing entry must still be in the resent set")
+
+	var added, untouched *hub.EntrySetting
+	for i := range sent {
+		switch sent[i].ID {
+		case "example/adr-writer":
+			added = &sent[i]
+		case "community/postgres-migration-guard":
+			untouched = &sent[i]
+		}
+	}
+	require.NotNil(t, added, "the new package was not sent")
+	require.Equal(t, "latest", added.Mode)
+	require.Empty(t, added.Version)
+	require.NotNil(t, untouched, "the existing entry was dropped from the resend")
+}
+
+// TestProfileEntryAddOfAnIDAlreadyHeldFloatsRatherThanDuplicating covers the
+// defensive case: the select only ever offers ids the profile lacks, but a
+// stale page or a race could still submit one it already holds.
+func TestProfileEntryAddOfAnIDAlreadyHeldFloatsRatherThanDuplicating(t *testing.T) {
+	source := &profiles{detail: baseProfileDetail()}
+	h := profHandler(source, fixture.SignedInViewers(), source)
+
+	rec := post(t, h, "/profiles/entries/add", url.Values{
+		"slug": {"example/platform-engineer"}, "id": {"community/postgres-migration-guard"},
+	})
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	require.Equal(t, "/profiles/example/platform-engineer?notice=entry-updated", rec.Header().Get("Location"))
+
+	require.Len(t, source.entrySets, 1)
+	require.Len(t, source.entrySets[0], 1, "the id must not be duplicated in the resent set")
+	require.Equal(t, "latest", source.entrySets[0][0].Mode)
 }
 
 // TestProfileWritesAreGatedByRole asserts a role that may not curate, share

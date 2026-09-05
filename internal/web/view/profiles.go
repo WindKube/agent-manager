@@ -339,6 +339,12 @@ type ProfilePermissions struct {
 // viewer whose role on this profile does not include curating it.
 const CurateDisabledReason = "Your role on this profile may not change its entries."
 
+// ProfileAddOption is one catalog package the "Add package" select can offer.
+type ProfileAddOption struct {
+	ID   string
+	Name string
+}
+
 // Profile is the detail screen.
 type Profile struct {
 	Slug        string
@@ -363,6 +369,11 @@ type Profile struct {
 	Members   []ProfileMemberRow
 	Targets   []ProfileTargetRow
 	Revisions []ProfileRevisionRow
+
+	// AddOptions is every catalog package this profile does not already hold,
+	// for the "Add package" control. Empty for a viewer who may not curate, and
+	// whenever the catalog cannot be read.
+	AddOptions []ProfileAddOption
 
 	GovernanceState
 	// Missing is a slug in the URL that names nothing this identity may read —

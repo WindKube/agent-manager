@@ -13,12 +13,9 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The Organization screen's door to the api.
-//
-// Returns view types directly, the way hub/package.go does: this screen holds
-// almost no rendering decisions of its own — a role name and a scan gate are
-// canonical vocabulary either way — so a second, hub-owned copy of the same
-// fields would only be a struct a handler then copies out of.
+// The Organization screen's door to the api. Returns view types directly, as
+// hub/package.go does: this screen holds almost no rendering decisions of
+// its own, so a second hub-owned copy of the same fields buys nothing.
 
 // Organization reads GET /v1/organization.
 func (c *Client) Organization(ctx context.Context) (view.Organization, error) {
@@ -175,10 +172,9 @@ func (c *Client) DeleteCategory(ctx context.Context, id string) error {
 	return orgError(resp.HTTPResponse, resp.Body)
 }
 
-// orgError adds this screen's validation and conflict cases to governanceError,
-// with the api's own detail text — the reason a role check fails is fixed
-// vocabulary, but the reason a policy save or a mapping is refused is specific
-// to what was submitted, and the screen has to say which.
+// orgError adds this screen's validation and conflict cases to
+// governanceError, with the api's own detail text: the reason a save or a
+// mapping is refused is specific to what was submitted.
 func orgError(resp *http.Response, body []byte) error {
 	if resp != nil {
 		switch resp.StatusCode {

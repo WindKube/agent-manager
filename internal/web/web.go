@@ -1,11 +1,9 @@
 // Package web is the `serve web` role: a gin router rendering templ components,
 // made interactive by datastar.
 //
-// Constitution principle II: this role holds no datastore credential. config.Web
-// has no DatabaseURL and no BlobURL field, nothing here opens a connection, and
-// internal/archcheck fails the build if any package under internal/web imports
-// the store, the blob client, a database driver or anything else outside a named
-// allowlist. Data arrives through a CatalogSource.
+// This role holds no datastore credential: config.Web has no DatabaseURL or
+// BlobURL field, and internal/archcheck fails the build if internal/web imports
+// a store, blob client or database driver. Data arrives through a CatalogSource.
 package web
 
 import (
@@ -30,101 +28,69 @@ import (
 )
 
 func init() {
-	// gin's mode is a package global read on every engine construction, so it is
-	// set once here rather than from New, where parallel callers would race.
+	// A package global, set once here rather than from New to avoid a race.
 	gin.SetMode(gin.ReleaseMode)
 }
 
-// CorrelationHeader carries the id that ties a browser's request to the server's
-// log lines (FR-059). It is the same header the api role echoes.
+// CorrelationHeader carries the id that ties a browser's request to the
+// server's log lines. The api role echoes the same header.
 const CorrelationHeader = "X-Correlation-ID"
 
-// correlationIDPattern is what an inbound id may contain. An id supplied by a
-// client reaches structured log lines and a response header, so an unbounded
-// value is a log-injection and header-splitting vector; anything that does not
-// match is replaced rather than sanitised.
+// correlationIDPattern is what an inbound id may contain: unbounded, it is a
+// log-injection and header-splitting vector, so a non-match is replaced
+// rather than sanitised.
 var correlationIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 
-// CatalogSource is the web role's door to catalog data.
-//
-// internal/web/hub implements it over the generated client; internal/web/fixture
-// still implements it for the screen tests, which need the design's ten rows
-// without a hub behind them. A source reporting view.ErrSignedOut is stating a
-// fact about the caller, not failing: see load.
+// CatalogSource is the web role's door to catalog data. A source reporting
+// view.ErrSignedOut is stating a fact about the caller, not failing.
 type CatalogSource interface {
 	Catalog(ctx context.Context, q view.CatalogQuery) (view.CatalogPage, error)
 }
 
-// PackageSource is the detail screen's door to one package (US3).
-//
-// It is a third interface rather than a second method on CatalogSource for the
-// same reason Registrar is separate: internal/web/fixture implements both of
-// these and internal/web/hub implements all three, and an interface a stand-in
-// cannot honestly satisfy is one every screen test then exercises as a claim.
+// PackageSource is the detail screen's door to one package.
 type PackageSource interface {
 	Package(ctx context.Context, namespace, name string) (view.Package, error)
 }
 
-// Registrar is the modal's door to the two registration operations.
-//
-// It is a second interface rather than two more methods on CatalogSource because
-// internal/web/fixture implements one and must not implement the other: a
-// fixture that could accept a registration would be claiming something it cannot
-// do, and every screen test would then be exercising the claim.
+// Registrar is the import modal's door to the two registration operations,
+// separate from CatalogSource so a fixture need not claim to accept one too.
 type Registrar interface {
 	Preview(ctx context.Context, archive view.Archive) (view.ImportPreview, error)
 	Register(ctx context.Context, registration view.Registration) (view.ImportResult, error)
 }
 
-// ScannerSource is the Scanner screen's door to the api (US4).
-//
-// Three reads and no decision, for the reason Registrar is separate from
-// CatalogSource: internal/web/fixture can honestly answer all three of these and
-// must not be able to answer an accept, and an interface a stand-in cannot
-// honestly satisfy is one every screen test then exercises as a claim.
+// ScannerSource is the Scanner screen's three reads. It excludes the accept
+// and reject decision, which lives on Reviewer.
 type ScannerSource interface {
 	ScannerSummary(ctx context.Context, days int) (hub.ScannerSummary, error)
 	Findings(ctx context.Context, q hub.FindingQuery) (hub.FindingsPage, error)
 	Finding(ctx context.Context, id string) (hub.FindingDetail, error)
 }
 
-// Reviewer is the two decisions a scanner reviewer can take (001 FR-028).
-//
-// Separate from ScannerSource precisely because it writes: a fixture that could
-// approve a finding would be claiming it had recorded an override, an audit row
-// and a version state it cannot touch.
+// Reviewer is the two decisions a scanner reviewer can take, separate from
+// ScannerSource because it writes an audit row a fixture must not fake.
 type Reviewer interface {
 	AcceptFinding(ctx context.Context, id, note string, days int) (hub.Decision, error)
 	RejectFinding(ctx context.Context, id, note string) (hub.Decision, error)
 }
 
-// AuditSource is the audit screen and its export (001 FR-050, FR-051).
-//
-// AuditExport hands back a LIVE body and the caller owns the Close. The audit table
-// is the one table designed to grow without bound, so this signature exists to keep
-// the export a stream all the way to the browser.
+// AuditSource is the audit screen and its export. AuditExport hands back a
+// LIVE body the caller owns the Close of, since the audit table grows without bound.
 type AuditSource interface {
 	Audit(ctx context.Context, page int) (hub.AuditPage, error)
 	AuditExport(ctx context.Context) (io.ReadCloser, string, error)
 }
 
-// ProfileSource is the Profiles screens' two reads.
-//
-// A read-only door for the same reason ScannerSource is separate from
-// Reviewer: internal/web/fixture can honestly answer both of these and must
-// not be able to answer a curation write.
+// ProfileSource is the Profiles screens' two reads, kept separate from
+// ProfileCurator's writes as ScannerSource is from Reviewer.
 type ProfileSource interface {
 	Profiles(ctx context.Context) ([]hub.ProfileSummary, error)
 	Profile(ctx context.Context, slug string) (hub.ProfileDetail, error)
 }
 
 // ProfileCurator is every write the profile screens offer: create, curate,
-// share, target and publish.
-//
-// One interface rather than five narrower ones, because every one of them is
-// gated by the SAME profile's ProfilePermissions and a fixture that could
-// honestly answer one would be claiming a stored write it cannot make for any
-// of them.
+// share, target and publish. One interface, not five, since each is gated by
+// the same profile's ProfilePermissions.
 type ProfileCurator interface {
 	CreateProfile(ctx context.Context, creation hub.ProfileCreation) (hub.ProfileSummary, error)
 	SetProfileEntries(ctx context.Context, slug string, entries []hub.EntrySetting) (hub.ProfileDetail, error)
@@ -133,11 +99,6 @@ type ProfileCurator interface {
 	PublishRevision(ctx context.Context, slug, note string) (hub.PublishedRevision, error)
 }
 
-// DeviceSource is the Connect-the-CLI screen's door to the api (US6): looking a
-// pending authorisation up and confirming it. One interface for both, unlike
-// ScannerSource/Reviewer's split — a fixture that could honestly answer the
-// lookup could just as honestly record the confirm, since neither claims
-// anything about a role this identity might lack.
 // DeviceSource is the Connect-the-CLI screen's door to the api: looking a
 // pending authorisation up and confirming it.
 type DeviceSource interface {
@@ -145,27 +106,19 @@ type DeviceSource interface {
 	ApproveDeviceCode(ctx context.Context, userCode string) (string, error)
 }
 
-// BadgeSource is the sidebar's three counts (FR-121, research R5).
-//
-// One operation, read once per full page render and never on a fragment update.
-// Nil means a shell with no badges on it, which is the honest rendering of counts
-// this request could not read — not three zeroes.
+// BadgeSource is the sidebar's three counts, read once per full page render.
+// Nil means a shell with no badges, not three zeroes.
 type BadgeSource interface {
 	Badges(ctx context.Context) (hub.Badges, error)
 }
 
-// StorageSource is the Storage screen's one read. It returns the view type
-// directly, unlike ScannerSource and AuditSource: there is exactly one caller.
+// StorageSource is the Storage screen's one read.
 type StorageSource interface {
 	Storage(ctx context.Context) (view.Storage, error)
 }
 
-// OrganizationSource is the Organization screen's door to the api.
-//
-// One interface for reads and writes, unlike the Scanner/Reviewer split: every
-// mutation here needs the same catalog-admin role as the read, so there is no
-// weaker capability a stand-in could honestly claim by implementing only half
-// of it.
+// OrganizationSource is the Organization screen's door to the api. Reads and
+// writes share one interface since every mutation needs the same role.
 type OrganizationSource interface {
 	Organization(ctx context.Context) (view.Organization, error)
 	TestIdentityConnection(ctx context.Context) (view.IdentityConnectionTest, error)
@@ -177,56 +130,24 @@ type OrganizationSource interface {
 	DeleteCategory(ctx context.Context, id string) error
 }
 
-// Deps is what the role is handed. Every field is narrow on purpose: there is no
-// database handle and no bucket to reach for.
+// Deps is what the role is handed. Nil on any source renders that screen's
+// unavailable state rather than an empty one or a panic.
 type Deps struct {
-	Catalog CatalogSource
-	// Packages backs the detail screen. Nil renders /packages/... as a 404 rather
-	// than panicking, which is what a screen test that wired only the catalog gets.
-	Packages PackageSource
-	// Registrar is optional. Nil means the modal renders and refuses to submit,
-	// which is what a screen test wants and is not a state a deployment is in.
+	Catalog   CatalogSource
+	Packages  PackageSource
 	Registrar Registrar
-	// Auth is the door to the identity provider. Nil is a role whose provider could
-	// not be discovered at boot: /auth/signin then says the provider cannot be
-	// reached and offers no action, rather than a button known to fail.
-	Auth AuthProvider
-	// Viewers resolves who each request is acting as, on EVERY request (FR-118).
-	//
-	// Nil fails closed: the guard sends every protected route to the sign-in screen.
-	// A screen test that wants a signed-in shell has to supply one (SC-106) — there
-	// is no default viewer and there must not be one.
-	Viewers ViewerSource
-	// Sessions is the api's session mint and its sign-out. Nil means sign-in cannot
-	// complete, which the callback renders as the hub's own failure.
-	Sessions SessionMinter
-	// Scanner backs the Scanner screen. Nil renders its unavailable state rather
-	// than an empty one: a screen with no source is not a hub with no findings.
-	Scanner ScannerSource
-	// Reviewer is the accept and reject pair. Nil means the screen renders and
-	// refuses to record, which is what a screen test gets and is not a state a
-	// deployment is in.
-	Reviewer Reviewer
-	// Audit backs the audit log and its export.
-	Audit AuditSource
-	// Badges backs the sidebar counts. Nil is a sidebar with no counts.
-	Badges BadgeSource
-	// Device backs the Connect-the-CLI screen. Nil renders its unavailable state.
-	Device DeviceSource
-	// Profiles backs the Profiles screens' two reads. Nil renders their
-	// unavailable state, the same way a nil Scanner does.
-	Profiles ProfileSource
-	// Curator is every write the profile screens offer. Nil means both screens
-	// render and refuse to record, which is what a screen test gets and is not a
-	// state a deployment is in.
-	Curator ProfileCurator
-
-	// Storage backs the Storage screen. Nil renders its unavailable state rather
-	// than an empty one: a screen with no source is not a bucket with nothing in
-	// it.
-	Storage StorageSource
-	// Organization backs the Organization screen. Nil renders its unavailable
-	// state, the same convention Scanner follows.
+	Auth      AuthProvider
+	// Viewers resolves who each request is acting as. Nil fails closed.
+	Viewers      ViewerSource
+	Sessions     SessionMinter
+	Scanner      ScannerSource
+	Reviewer     Reviewer
+	Audit        AuditSource
+	Badges       BadgeSource
+	Device       DeviceSource
+	Profiles     ProfileSource
+	Curator      ProfileCurator
+	Storage      StorageSource
 	Organization OrganizationSource
 	Log          zerolog.Logger
 }
@@ -235,37 +156,19 @@ type Deps struct {
 type Options struct {
 	// Addr is the listen address, e.g. ":8080".
 	Addr string
-	// PublicBaseURL is the origin a browser reaches this role at. It is read for
-	// exactly one decision — whether the two cookies are marked Secure — and it is
-	// read instead of the request on purpose: see secureCookie.
+	// PublicBaseURL is read for exactly one decision: see secureCookie.
 	PublicBaseURL string
-	// ProviderName is what the operator calls the identity provider, for the
-	// sign-in screen's one action. Empty renders the neutral wording — naming it
-	// tells a person which password-manager entry to reach for, and nothing else in
-	// this role branches on it. It is a label an operator states or does without:
-	// deriving one from the issuer URL would be the provider-specific quirk FR-105
-	// forbids.
+	// ProviderName is what the operator calls the identity provider. Empty
+	// renders neutral wording; never derived from the issuer URL.
 	ProviderName string
-	// DevCredentialHint puts the local stack's seeded logins on the sign-in screen
-	// (FR-119). It is an explicit flag and is never derived from the issuer, the
-	// host name or the build type.
+	// DevCredentialHint puts the local stack's seeded logins on the sign-in screen.
 	DevCredentialHint bool
-	// DevCredentials is what the hint above prints, handed in rather than spelled
-	// anywhere under internal/web: a username or an address written into this role
-	// would be the compiled-in identity FR-116 and SC-106 forbid, and it would
-	// reach every visitor the moment that flag flipped. Ignored unless the flag is
-	// set.
+	// DevCredentials is what the hint above prints. Ignored unless the flag is set.
 	DevCredentials []view.Credential
-	// OIDCCookieKey signs the round-trip cookie. Empty means one is drawn at boot,
-	// which is the right default for a single process: the cookie lives 90 seconds,
-	// so a restart costs at most one person one retry, and there is no key material
-	// in the environment to leak. A deployment running more than one web replica
-	// behind a load balancer MUST set the same value on each, or a sign-in that
-	// starts on one and returns to another finds no round trip in flight.
+	// OIDCCookieKey signs the round-trip cookie. Empty draws one at boot — a
+	// deployment with more than one web replica MUST set the same value on each.
 	OIDCCookieKey []byte
-	// HubURL is the address `amctl login --hub` should name — the same value
-	// config.API.PublicBaseURL holds on the api role. Printed on the
-	// Connect-the-CLI screen and nowhere else.
+	// HubURL is the address `amctl login --hub` should name.
 	HubURL string
 }
 
@@ -274,8 +177,7 @@ type Server struct {
 	deps   Deps
 	opts   Options
 	engine *gin.Engine
-	// secureCookie and oidcKey are decided once, at construction: a per-request
-	// decision about either is a per-request opportunity to get one of them wrong.
+	// secureCookie and oidcKey are decided once, at construction, not per-request.
 	secureCookie bool
 	oidcKey      []byte
 }
@@ -296,10 +198,8 @@ func New(deps Deps, opts Options) *Server {
 		secureCookie: secureCookie(opts.PublicBaseURL),
 		oidcKey:      oidcSigningKey(opts.OIDCCookieKey),
 	}
-	// The guard is global, so a route added by a later layer is protected by
-	// default and opting out means editing the one list that names the
-	// unauthenticated set. It runs after correlation so its own log lines and its
-	// redirect carry the request's id.
+	// The guard is global, so a new route is protected by default. It runs
+	// after correlation so its own log lines and redirect carry the request's id.
 	engine.Use(correlation(deps.Log), recovery(), srv.guard(), sameOrigin())
 	srv.register()
 	return srv
@@ -318,26 +218,21 @@ func (s *Server) register() {
 	s.engine.POST("/catalog/import/preview", s.importPreview)
 	s.engine.POST("/catalog/import", s.importRegister)
 
-	// Two segments, because a package id IS two segments: `example/platform-toolkit`.
-	// A single :id would have to arrive percent-encoded and would not survive —
-	// gin routes on the DECODED path, so `example%2Fplatform-toolkit` reaches the
-	// router as two segments anyway.
+	// A package id IS two segments: `example/platform-toolkit`. gin routes on
+	// the decoded path, so this splits correctly even if the id arrives encoded.
 	s.engine.GET("/packages/:namespace/:name", s.packageDetail)
 
-	// The two governance screens (US4). Both are plain renders; the two decisions
-	// are POST forms that redirect, so a browser reload cannot re-approve anything.
+	// Both governance decisions are POST forms that redirect, so a reload
+	// cannot re-approve anything.
 	s.engine.GET("/scanner", s.scanner)
 	s.engine.POST("/scanner/findings/:id/accept", s.acceptFinding)
 	s.engine.POST("/scanner/findings/:id/reject", s.rejectFinding)
 	s.engine.GET("/audit", s.audit)
 	s.engine.GET("/audit/export", s.auditExport)
 
-	// The two profile screens. A slug is one segment or several
-	// (`platform-engineer`, or `example/platform-engineer`), so the read route is
-	// a catch-all rather than a fixed segment count. gin will not register a
-	// catch-all beside a sibling of fixed depth, which is why every write route
-	// below carries its slug as a form field instead of a path segment — they sit
-	// in the POST tree, which the GET catch-all never shares.
+	// A slug is one segment or several, so the read route is a catch-all. gin
+	// won't register a catch-all beside a fixed-depth sibling, so every write
+	// route below carries its slug as a form field instead of a path segment.
 	s.engine.GET("/profiles", s.profiles)
 	s.engine.POST("/profiles", s.createProfile)
 	s.engine.GET("/profiles/*slug", s.profileDetail)
@@ -353,8 +248,7 @@ func (s *Server) register() {
 	s.engine.POST("/cli/confirm", s.confirmDeviceCode)
 	s.engine.GET("/storage", s.storage)
 
-	// The Organization screen. Every write is a POST form that redirects, same
-	// reasoning as the Scanner screen's two decisions.
+	// Every Organization write is a POST form that redirects, same as Scanner.
 	s.engine.GET("/org", s.org)
 	s.engine.POST("/org/identity/test", s.testConnection)
 	s.engine.POST("/org/identity/secret", s.rotateSecret)
@@ -367,10 +261,9 @@ func (s *Server) register() {
 
 	s.engine.POST("/theme", s.setTheme)
 
-	// Sign-in (US2). These four and only these four are exempt from the guard,
-	// together with /healthz and /static — contracts/auth.md fixes that set.
-	// /auth/logout is a POST because a GET sign-out fires from any image tag on any
-	// page, on any origin.
+	// These four routes, plus /healthz and /static, are exempt from the guard.
+	// /auth/logout is a POST because a GET sign-out fires from any image tag on
+	// any page, on any origin.
 	s.engine.GET("/auth/signin", s.signin)
 	s.engine.GET("/auth/login", s.login)
 	s.engine.GET("/auth/callback", s.callback)
@@ -386,8 +279,7 @@ func (s *Server) notFound(c *gin.Context) {
 		components.Placeholder("Not found", "There is no screen at this address."))
 }
 
-// health is FR-058's endpoint. The web role has no dependency to probe, which is
-// the whole point of the role: if the process is up, it can serve.
+// health has no dependency to probe: if the process is up, it can serve.
 func (s *Server) health(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "role": "web"})
 }

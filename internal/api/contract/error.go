@@ -2,14 +2,8 @@ package contract
 
 import "net/http"
 
-// Error is the one error shape every operation in this API returns, replacing
-// huma's default ErrorModel. It is RFC 9457 problem details plus the correlation
-// id, so an operator can join a client's error report to the server's logs
-// without asking the client to reproduce it (FR-059).
-//
-// Exactly one exception exists and it is in the frozen contract:
-// /v1/device/token's 400 is the RFC 8628 envelope (DeviceTokenError), because a
-// polling client parses those field names.
+// Error is the one error shape every operation returns (DeviceTokenError
+// is the sole exception): RFC 9457 problem details plus a correlation id.
 type Error struct {
 	Type          string        `json:"type,omitempty" format:"uri" doc:"A URI reference to documentation for this error type."`
 	Title         string        `json:"title" doc:"Short, static summary of the problem type." example:"Not Found"`
@@ -19,15 +13,14 @@ type Error struct {
 	Errors        []ErrorDetail `json:"errors,omitempty" doc:"Per-field detail, when the failure was a validation failure."`
 }
 
-// ErrorDetail locates one validation failure.
 type ErrorDetail struct {
 	Message  string `json:"message" doc:"What is wrong."`
 	Location string `json:"location,omitempty" doc:"Where it is wrong, e.g. body.targets[0] or path.revision."`
 	Value    any    `json:"value,omitempty" doc:"The offending value, echoed back."`
 }
 
-// NewError builds the shape for a status and detail. Title is derived from the
-// status so it is stable across occurrences, as RFC 9457 requires.
+// NewError builds the shape for a status and detail; Title is derived from
+// the status so it stays stable across occurrences.
 func NewError(status int, detail string) *Error {
 	return &Error{Title: http.StatusText(status), Status: status, Detail: detail}
 }
@@ -39,7 +32,6 @@ func (e *Error) Error() string {
 	return e.Title
 }
 
-// GetStatus satisfies huma.StatusError, which is how the status reaches the wire.
 func (e *Error) GetStatus() int { return e.Status }
 
 // ContentType satisfies huma.ContentTypeFilter: RFC 9457 bodies are served as

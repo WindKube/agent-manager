@@ -10,27 +10,19 @@ import (
 	"github.com/uptrace/bun"
 )
 
-// Sessions resolves opaque server-side session tokens. It reads; it never
-// creates one — creating a session is a command (it writes an audit row inside
-// the login transaction), and it lives in internal/api/commands.
+// Sessions resolves opaque server-side session tokens; it never creates one
+// (that's a command in internal/api/commands, which writes an audit row).
 type Sessions struct {
 	db bun.IDB
 }
 
 func NewSessions(db bun.IDB) Sessions { return Sessions{db: db} }
 
-// sessionResolveSQL is one statement: the session, the identity it belongs to,
-// and the roles that identity's groups map to. One statement rather than three
-// because this runs on every authenticated request.
-//
-// Two details that are not stylistic:
-//
-//   - `?` and never `$1`. bun formats placeholders inline and passes no args to
-//     the driver, so a `$N` reaches Postgres unbound (SQLSTATE 42P02).
-//   - the two arrays are rendered as JSON in the statement. bun's raw query path
-//     is database/sql, and pgx's stdlib driver hands a Postgres array over that
-//     seam as its text form, which will not scan into a []string. Asking for JSON
-//     needs no array parser and no driver-specific type.
+// sessionResolveSQL joins the session, its identity and mapped roles in one
+// statement, since this runs on every authenticated request. Two non-stylistic
+// details: `?` not `$1` (bun formats placeholders inline, so `$N` reaches
+// Postgres unbound), and the arrays render as JSON (pgx's stdlib driver
+// won't scan a Postgres array into a []string over database/sql).
 const sessionResolveSQL = `
 select
   i.id,
@@ -47,12 +39,9 @@ from session as s
 join identity as i on i.id = s.identity_id
 where s.token_hash = ? and s.expires_at > now()`
 
-// Resolve exchanges a raw bearer token for a principal.
-//
-// The token is hashed before it reaches the query, so the plaintext never
-// appears in a statement, a query log or a database row. An unknown or expired
-// token is one error, not two: telling them apart tells an attacker whether a
-// token ever existed.
+// Resolve exchanges a raw bearer token for a principal. The token is hashed
+// before it reaches the query, so the plaintext never appears in a
+// statement, a query log or a database row.
 func (s Sessions) Resolve(ctx context.Context, token string) (Principal, error) {
 	if token == "" {
 		return Principal{}, ErrUnauthenticated
@@ -84,11 +73,10 @@ func (s Sessions) Resolve(ctx context.Context, token string) (Principal, error) 
 	return p, nil
 }
 
-// Source values for the audit row's source column (FR-050).
+// Source values for the audit row's source column.
 const (
 	SourceWeb    = "web"
 	SourceSystem = "system"
 )
 
-// CLISource names a machine client's host, which is the form FR-050 requires.
 func CLISource(host string) string { return "cli / " + host }

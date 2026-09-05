@@ -5,22 +5,11 @@ import (
 	"strings"
 )
 
-// The policy notes.
-//
-// These are the sentences the profile screen renders under an entry, and US5
-// scenarios 2 and 3 make them part of the behaviour rather than decoration: the
-// screen must STATE what the gate did. They live here, next to the rules, for the
-// same reason the rules live in one package — a note written in a template is a
-// second account of what happened, and the second account is the one that goes
-// stale.
-//
-// Every note is a whole sentence or two of plain prose, present tense, naming the
-// version and the reason. None of them is safe to interpolate unescaped: they
-// carry FlagDetail, which comes out of a package bundle (FR-055).
+// The sentences the profile screen renders under an entry. They live next
+// to the rules so there's no separate template restating what the gate
+// did. Every note carries FlagDetail verbatim: escape at render.
 
-// dateLayout is date-only and UTC. A policy note is read by a person deciding
-// what to do about an entry, and to the hour is precision they cannot act on and
-// a timezone they would have to reason about.
+// dateLayout is date-only and UTC: an hour or a timezone isn't actionable.
 const dateLayout = "2006-01-02"
 
 func join(parts ...string) string {
@@ -33,8 +22,6 @@ func join(parts ...string) string {
 	return strings.Join(kept, " ")
 }
 
-// flaggedAs names a version and, where the caller supplied one, the finding that
-// flagged it.
 func flaggedAs(candidate Candidate) string {
 	if candidate.FlagDetail == "" {
 		return candidate.Semver
@@ -49,15 +36,13 @@ func expiryPhrase(override *Override) string {
 	return "until " + override.ExpiresAt.UTC().Format(dateLayout)
 }
 
-// lapsedOn is the day an acceptance ran out. Only ever called on one that has:
-// an override with no expiry cannot lapse.
+// lapsedOn is only ever called on an override with an expiry.
 func lapsedOn(override *Override) string {
 	return override.ExpiresAt.UTC().Format(dateLayout)
 }
 
-// noteFlagged is what the screen says about a flagged version that RESOLVED. It
-// is empty for a clean one: a note on every row that mostly says "nothing
-// happened" is a note nobody reads on the row where something did.
+// noteFlagged is empty for a clean version; nobody reads a note that says
+// nothing happened.
 func noteFlagged(gate Gate, candidate Candidate, verdict disposition) string {
 	if candidate.Verdict != VerdictFlagged {
 		return ""
@@ -70,10 +55,8 @@ func noteFlagged(gate Gate, candidate Candidate, verdict disposition) string {
 		return fmt.Sprintf("%s is flagged. %s accepted the finding %s, so it resolves with a warning.",
 			flaggedAs(candidate), verdict.override.Reviewer, expiryPhrase(verdict.override))
 	case candidate.Override != nil:
-		// A lapsed acceptance only reaches here under warn-with-override, which
-		// includes flagged versions anyway. Saying whose it was and when it ran out
-		// is the difference between "nobody has looked at this" and "somebody did,
-		// and the clock ran out on their decision".
+		// Naming whose acceptance lapsed distinguishes "nobody has looked at
+		// this" from "somebody did, and it expired".
 		return fmt.Sprintf(
 			"%s is flagged and the scan gate is warn-with-override, so it resolves with a warning. "+
 				"%s's acceptance expired on %s, so no override is recorded.",
@@ -86,8 +69,7 @@ func noteFlagged(gate Gate, candidate Candidate, verdict disposition) string {
 	}
 }
 
-// notePassedOver is the first half of a downgrade note: why the version the entry
-// wanted was not the version it got.
+// notePassedOver is the first half of a downgrade note.
 func notePassedOver(newest Candidate, reason Reason, resolved string) string {
 	switch reason {
 	case ReasonFlaggedBlockedByGate:
@@ -107,14 +89,11 @@ func notePassedOver(newest Candidate, reason Reason, resolved string) string {
 				"so this entry resolved to %s instead.",
 			newest.Semver, resolved)
 	case ReasonFlaggedAwaitingApproval, ReasonPinTargetMissing:
-		// Neither can produce a downgrade: awaiting-approval stops the walk rather
-		// than falling through it, and a pin is never re-pointed.
 		return ""
 	}
 	return ""
 }
 
-// noteSkipped is what the screen says about an entry the resolution excluded.
 func noteSkipped(candidate Candidate, reason Reason, mode Mode) string {
 	pinned := mode == ModePinned
 

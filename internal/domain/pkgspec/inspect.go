@@ -8,69 +8,50 @@ import (
 	"agent-manager/internal/bundle"
 )
 
-// Package is everything the ingestion path learns from a fetched tree.
-//
-// One function produces it and two callers consume it: the API's pre-submit
-// preview and the fetcher's authoritative pass. That is deliberate — a preview
-// that said "schema valid" and a fetch that then rejected the manifest would be a
-// worse lie than no preview at all.
+// Package is everything the ingestion path learns from a fetched tree. One
+// function produces it and two callers consume it: the api's pre-submit
+// preview and the fetcher's authoritative pass — a preview that said "schema
+// valid" and a fetch that then rejected the manifest would be a worse lie
+// than no preview at all.
 type Package struct {
-	// Kind is decided by which manifest is at the package root, never by a
-	// manifest field.
 	Kind Kind
-
-	// Name is the manifest `name`, which is the catalog's package name.
 	Name string
 
-	// Semver is the manifest `version`, normalised. Empty when the manifest
-	// carried none: `version` is optional in Agent Plugins, so the registration
-	// supplies one (from the ref, or the form) and this is only the manifest's
-	// opinion.
+	// Semver is the manifest `version`, normalised, empty when the manifest
+	// carried none: `version` is optional, so registration supplies one and
+	// this is only the manifest's opinion.
 	Semver string
 
-	// Keywords is the manifest `keywords`, which become the version's tags. Tags
-	// belong to the version and not the package (data-model.md, R1).
-	Keywords []string
-
-	// ManifestObject is `plugin.json` or `SKILL.md` — the object name the manifest
-	// is stored under beside the bundle (FR-006).
+	Keywords       []string
 	ManifestObject string
-
-	// ManifestBytes is the manifest verbatim, as stored beside the bundle.
-	ManifestBytes []byte
+	ManifestBytes  []byte
 
 	// ManifestJSON is what `version.manifest` holds. For a plugin it is
-	// ManifestBytes; for a skill it is the frontmatter rendered as json, because
-	// the column is jsonb and a Markdown file is not json.
+	// ManifestBytes; for a skill it is the frontmatter rendered as json,
+	// because the column is jsonb and a Markdown file is not json.
 	ManifestJSON json.RawMessage
 
 	Plugin *Plugin
 	Skill  *Skill
 	MCP    *MCPConfig
 
-	// Expected is `extensions["dev.agent-manager"]` when the publisher recorded
-	// one. Nil means no expectation, which is the case where every inferred
-	// capability is surfaced for review rather than passing silently (FR-018a).
+	// Expected is `extensions["dev.agent-manager"]` when the publisher
+	// recorded one. Nil means every inferred capability is surfaced for
+	// review rather than passing silently.
 	Expected *AgentManagerExtension
 
-	// Components are derived from the file tree (T038).
 	Components []Component
-
-	// Layout is the drop report FR-005 requires be shown before registration.
-	Layout LayoutReport
-
-	// Files is the filtered tree: exactly what gets packed and stored.
-	Files *bundle.Bundle
+	Layout     LayoutReport
+	Files      *bundle.Bundle
 }
 
-// Inspect filters a fetched tree to the spec layout, validates its manifests and
-// derives its components.
-//
-// The first result is non-nil whenever the layout could be computed, EVEN WHEN
-// err is non-nil. That is what lets the pre-submit preview render the
-// archive-contents panel with the manifest line marked as failing, instead of
-// showing the user an error and no entry list. A caller that intends to publish
-// must check err; a caller that intends to display should use both.
+// Inspect filters a fetched tree to the spec layout, validates its manifests
+// and derives its components. The first result is non-nil whenever the
+// layout could be computed, even when err is non-nil — that lets the
+// pre-submit preview render the archive-contents panel with the manifest
+// line marked as failing, instead of showing the user an error and no entry
+// list. A caller that intends to publish must check err; a caller that
+// intends to display should use both.
 func Inspect(tree *bundle.Bundle, root string) (*Package, error) {
 	validator, err := Default()
 	if err != nil {
@@ -79,7 +60,6 @@ func Inspect(tree *bundle.Bundle, root string) (*Package, error) {
 	return InspectWith(validator, tree, root)
 }
 
-// InspectWith is Inspect against a caller-supplied validator.
 func InspectWith(validator *Validator, tree *bundle.Bundle, root string) (*Package, error) {
 	filtered, err := filterLayout(tree, root)
 	if err != nil {
@@ -108,17 +88,14 @@ func InspectWith(validator *Validator, tree *bundle.Bundle, root string) (*Packa
 	}
 	out.Components = components
 
-	// The manifest-versus-tree check runs after derivation so its message can name
-	// what is actually on disk.
 	if err := filtered.checkDeclaredComponents(schemaIDOf(out), out.Expected, out.MCP); err != nil {
 		return out, err
 	}
 	return out, nil
 }
 
-// readManifests validates the root manifest and mcp.json, filling the Package.
-// The returned string is the note the archive-contents panel shows against the
-// manifest line.
+// readManifests validates the root manifest and mcp.json, filling the
+// Package; the returned string is the note the panel shows against the manifest line.
 func (p *Package) readManifests(validator *Validator, filtered *layout) (string, error) {
 	manifest, ok := filtered.files.Lookup(p.ManifestObject)
 	if !ok {
@@ -182,8 +159,6 @@ func (p *Package) readManifests(validator *Validator, filtered *layout) (string,
 	return "schema valid", nil
 }
 
-// ExpectedCapabilities is the recorded expectation, or nil. It exists so a caller
-// need not reason about whether the extension namespace was present.
 func (p *Package) ExpectedCapabilities() []ExpectedCapability {
 	if p.Expected == nil {
 		return nil
@@ -191,7 +166,6 @@ func (p *Package) ExpectedCapabilities() []ExpectedCapability {
 	return p.Expected.ExpectedCapabilities
 }
 
-// ComponentCount is how many components of a kind were derived.
 func (p *Package) ComponentCount(kind ComponentKind) int {
 	n := 0
 	for _, component := range p.Components {
@@ -217,8 +191,6 @@ func manifestFailureNote(err error) string {
 	return "schema invalid"
 }
 
-// describeLayout renders the archive-contents panel: one line per spec group in
-// the design's order, then one line for everything dropped.
 func describeLayout(filtered *layout, manifestNote string) []LayoutEntry {
 	entries := make([]LayoutEntry, 0, 4+len(filtered.extDirs))
 
@@ -253,7 +225,6 @@ func describeLayout(filtered *layout, manifestNote string) []LayoutEntry {
 		entries = append(entries, *kept)
 	}
 
-	// FR-005's second half. One line, matching the design's `.github/, README.md`.
 	if groups := (LayoutReport{Dropped: filtered.dropped}).DroppedGroups(); len(groups) > 0 {
 		entries = append(entries, LayoutEntry{
 			Path: joinGroups(groups),
@@ -264,9 +235,8 @@ func describeLayout(filtered *layout, manifestNote string) []LayoutEntry {
 	return entries
 }
 
-// mcpNote counts the configured servers without re-validating: the panel has to
-// render even when mcp.json failed its schema, and a count of top-level keys is
-// the honest thing to show then.
+// mcpNote counts servers without re-validating: the panel must render even
+// when mcp.json failed its schema.
 func mcpNote(filtered *layout) string {
 	file, ok := filtered.files.Lookup(MCPConfigFile)
 	if !ok {
@@ -281,8 +251,8 @@ func mcpNote(filtered *layout) string {
 	return plural(len(probe.MCPServers), "server")
 }
 
-// supportEntry is the standalone-skill case: SKILL.md plus its resource
-// directories, which have no group line of their own above.
+// supportEntry: SKILL.md plus its resource directories, with no group line
+// of their own above.
 func supportEntry(filtered *layout) *LayoutEntry {
 	if filtered.kind != KindSkill {
 		return nil

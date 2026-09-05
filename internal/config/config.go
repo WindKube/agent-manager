@@ -1,8 +1,5 @@
-// Package config holds one environment struct per role.
-//
-// Constitution principle II: a role's struct MUST NOT contain a field it has no
-// business reading. Web carries no DatabaseURL and no BlobURL — not an unused
-// field, no field at all — so the credential boundary is visible in the type.
+// Package config holds one environment struct per role, so a role's struct
+// can't contain a field it has no business reading.
 package config
 
 import (
@@ -14,28 +11,15 @@ import (
 
 const EnvPrefix = "AGENT_MANAGER_"
 
-// Observability is shared by every role.
 type Observability struct {
 	LogLevel    string `env:"LOG_LEVEL" envDefault:"info"`
 	LogFormat   string `env:"LOG_FORMAT" envDefault:"json"`
 	MetricsBind string `env:"METRICS_ADDR" envDefault:":9090"`
 }
 
-// OIDC is held only by roles that authenticate people: api and web.
 type OIDC struct {
-	Issuer string `env:"OIDC_ISSUER"`
-	// DiscoveryURL is where the discovery document is fetched from when that is
-	// not the issuer — a container reaching a browser-facing issuer over the
-	// compose network. Empty means the two are the same, which is the ordinary
-	// case and the one a real IdP presents. See quickstart.md.
-	DiscoveryURL string `env:"OIDC_DISCOVERY_URL"`
-	// BrowserBaseURL is the base a browser must use to reach the provider when
-	// the issuer is not reachable from a browser — the local stack's provider
-	// answers as `dex:5556` on the compose network and as `localhost:5556` from
-	// the host, and publishes the container form in its discovery document.
-	// Empty means the issuer is browser-reachable, which is the production case.
-	// Read at exactly one place: building the authorization redirect (research
-	// R2).
+	Issuer         string   `env:"OIDC_ISSUER"`
+	DiscoveryURL   string   `env:"OIDC_DISCOVERY_URL"`
 	BrowserBaseURL string   `env:"OIDC_BROWSER_BASE_URL"`
 	ClientID       string   `env:"OIDC_CLIENT_ID"`
 	ClientSecret   string   `env:"OIDC_CLIENT_SECRET"`
@@ -43,81 +27,45 @@ type OIDC struct {
 	Scopes         []string `env:"OIDC_SCOPES" envSeparator:" " envDefault:"openid profile email groups"`
 }
 
-// API owns the relational schema and mediates every mutation. It also hosts the
-// outbox relay (research R5), which is why it holds the river URL.
 type API struct {
 	Observability
 	OIDC
 
-	Addr             string        `env:"API_ADDR" envDefault:":8081"`
-	DatabaseURL      string        `env:"DATABASE_URL,required,notEmpty"`
-	RiverDatabaseURL string        `env:"RIVER_DATABASE_URL,required,notEmpty"`
-	BlobURL          string        `env:"BLOB_URL,required,notEmpty"`
-	SessionTTL       time.Duration `env:"SESSION_TTL" envDefault:"12h"`
-	DeviceCodeTTL    time.Duration `env:"DEVICE_CODE_TTL" envDefault:"10m"`
-	DeviceTokenTTL   time.Duration `env:"DEVICE_TOKEN_TTL" envDefault:"1h"`
-	PublicBaseURL    string        `env:"PUBLIC_BASE_URL" envDefault:"http://localhost:8081"`
-	// DeviceVerificationURL is the web role's /cli screen — the page a human
-	// opens to type in the device code. It is NOT derived from PublicBaseURL
-	// (this role's own origin, which serves no such page) or from the request.
-	DeviceVerificationURL string `env:"DEVICE_VERIFICATION_URL" envDefault:"http://localhost:8080/cli"`
+	Addr                  string        `env:"API_ADDR" envDefault:":8081"`
+	DatabaseURL           string        `env:"DATABASE_URL,required,notEmpty"`
+	RiverDatabaseURL      string        `env:"RIVER_DATABASE_URL,required,notEmpty"`
+	BlobURL               string        `env:"BLOB_URL,required,notEmpty"`
+	SessionTTL            time.Duration `env:"SESSION_TTL" envDefault:"12h"`
+	DeviceCodeTTL         time.Duration `env:"DEVICE_CODE_TTL" envDefault:"10m"`
+	DeviceTokenTTL        time.Duration `env:"DEVICE_TOKEN_TTL" envDefault:"1h"`
+	PublicBaseURL         string        `env:"PUBLIC_BASE_URL" envDefault:"http://localhost:8081"`
+	DeviceVerificationURL string        `env:"DEVICE_VERIFICATION_URL" envDefault:"http://localhost:8080/cli"`
 	// SessionMintSecret authenticates the one operation whose caller is a role
-	// rather than a person: the web role asking for a session to be created. It
-	// is the single value both roles hold, so a typo in one role's environment
-	// is a sign-in that fails with nothing wrong on either side alone.
-	//
-	// It has no default, because a default is a shared secret every deployment
-	// knows. Empty means the mint is refused — checked where the session is
-	// minted rather than made `required` here, so that a missing web-integration
-	// secret does not also take down the reads, the health endpoint and the
-	// device flow, and so that the refusal is visible in the api's log where an
-	// operator will look for it.
+	// rather than a person: web asking for a session to be minted. It has no
+	// default (a default would be a shared secret every deployment knows);
+	// empty means the mint is refused.
 	SessionMintSecret string `env:"SESSION_MINT_SECRET"`
 }
 
-// Web reaches data only through the api role. It deliberately has no
-// DatabaseURL and no BlobURL field.
 type Web struct {
 	Observability
 	OIDC
 
 	Addr       string `env:"WEB_ADDR" envDefault:":8080"`
 	APIBaseURL string `env:"API_BASE_URL,required,notEmpty"`
-	// PublicBaseURL is the origin a browser reaches this role at. It is read for
-	// exactly one decision — whether the two session cookies are marked Secure —
-	// and it is read INSTEAD of the request on purpose: something else may
-	// terminate TLS and forward plain http, so a hub served over https sees no TLS
-	// on any request and would drop the flag exactly where it is needed
-	// (contracts/auth.md's cookie table).
-	PublicBaseURL string `env:"PUBLIC_BASE_URL" envDefault:"http://localhost:8080"`
-	// SessionMintSecret is the api's, held here because web owns the browser's
-	// origin and therefore sets the cookie. See config.API for why it has no
-	// default. This is the only credential web carries, and it buys access to
-	// exactly one operation.
+	// PublicBaseURL is read INSTEAD of the request to decide whether session
+	// cookies are marked Secure: something upstream may terminate TLS and
+	// forward plain http, so a request alone could miss it.
+	PublicBaseURL     string `env:"PUBLIC_BASE_URL" envDefault:"http://localhost:8080"`
 	SessionMintSecret string `env:"SESSION_MINT_SECRET"`
-	// DevCredentialHint puts the local stack's seeded passwords on the sign-in
-	// screen. FR-119 requires it be stated explicitly and forbids deriving it
-	// from the issuer URL, the host name or the build type: a credential hint
-	// that switches itself on is one misconfiguration away from doing it in
-	// production. Compose sets it; nothing else should.
-	DevCredentialHint bool `env:"WEB_DEV_CREDENTIAL_HINT" envDefault:"false"`
-	// ProviderName is what the operator calls the identity provider, for the
-	// sign-in screen's one action: naming it tells a person which
-	// password-manager entry to reach for.
-	//
-	// Stated or absent, with no default and nothing derived. FR-105 forbids this
-	// hub knowing which provider it is in front of, and an issuer URL is the
-	// obvious thing to derive a name from and the wrong one — "dex" is the
-	// container's name, not the directory's, and a hosted issuer would give the
-	// vendor rather than the organisation. Empty renders neutral wording.
-	ProviderName string `env:"WEB_PROVIDER_NAME"`
-	// HubURL is the address `amctl login --hub` should name — the same value
-	// config.API.PublicBaseURL holds on the api role. Read by the
-	// Connect-the-CLI screen and printed nowhere else.
-	HubURL string `env:"WEB_HUB_URL" envDefault:"http://localhost:8081"`
+	// DevCredentialHint puts the local stack's seeded passwords on the
+	// sign-in screen. Must be stated explicitly, never derived from the
+	// issuer URL, host name or build type.
+	DevCredentialHint bool   `env:"WEB_DEV_CREDENTIAL_HINT" envDefault:"false"`
+	ProviderName      string `env:"WEB_PROVIDER_NAME"`
+	HubURL            string `env:"WEB_HUB_URL" envDefault:"http://localhost:8081"`
 }
 
-// Fetcher is the only role with object-store write access.
 type Fetcher struct {
 	Observability
 
@@ -125,16 +73,14 @@ type Fetcher struct {
 	RiverDatabaseURL string        `env:"RIVER_DATABASE_URL,required,notEmpty"`
 	BlobURL          string        `env:"BLOB_URL,required,notEmpty"`
 	FetchTimeout     time.Duration `env:"FETCH_TIMEOUT" envDefault:"60s"`
-	// OutboundAllowlist exempts specific addresses from the reserved-range and
-	// port rules. Entries are addresses only — `ip`, `ip:port` or CIDR. A
-	// hostname is refused, because allowlisting a name reopens the DNS-rebinding
-	// hole internal/fetch exists to close.
+	// OutboundAllowlist entries are addresses only (`ip`, `ip:port` or CIDR);
+	// a hostname is refused because allowlisting a name would reopen the
+	// DNS-rebinding hole internal/fetch exists to close.
 	OutboundAllowlist []string `env:"OUTBOUND_ALLOWLIST" envSeparator:","`
 	MaxUploadBytes    int64    `env:"MAX_UPLOAD_BYTES" envDefault:"26214400"`
 	GitHubToken       string   `env:"GITHUB_TOKEN"`
 }
 
-// Scanner reads bytes and writes verdicts. It never writes bundle bytes.
 type Scanner struct {
 	Observability
 
@@ -145,13 +91,11 @@ type Scanner struct {
 	ScanBudget       time.Duration `env:"SCAN_BUDGET" envDefault:"120s"`
 }
 
-// Migrate is used by the queue migrator subcommand only.
 type Migrate struct {
 	Observability
 	RiverDatabaseURL string `env:"RIVER_DATABASE_URL,required,notEmpty"`
 }
 
-// Seed loads the design's dataset as a one-shot.
 type Seed struct {
 	Observability
 	DatabaseURL string `env:"DATABASE_URL,required,notEmpty"`

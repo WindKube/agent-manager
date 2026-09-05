@@ -19,12 +19,9 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The Organization screen's mutations.
-//
-// Every command here writes exactly one audit row inside its own transaction,
-// except the two that write nothing at all: TestIdentityConnection performs no
-// mutation, and RotateClientSecret and the two deletes below are refusals — an
-// audited action is one that happened, and nothing here did.
+// The Organization screen's mutations. Every command writes exactly one
+// audit row in its own transaction, except TestIdentityConnection (no
+// mutation) and RotateClientSecret (a refusal — nothing happened).
 
 const (
 	categoryNameConstraint = "category_name_key"
@@ -33,8 +30,8 @@ const (
 
 // ---- identity -------------------------------------------------------------------
 
-// IdentityConfig is what this role is configured with for its own provider —
-// never the client secret, which this package never reads.
+// IdentityConfig never carries the client secret, which this package
+// never reads.
 type IdentityConfig struct {
 	Issuer       string
 	DiscoveryURL string
@@ -42,9 +39,9 @@ type IdentityConfig struct {
 	Scopes       []string
 }
 
-// discoveryDocument is the subset of an OIDC discovery document this screen
-// needs. jwks_uri is fetched too, to make the connection test a real proof of
-// reachability and not merely a well-formed URL.
+// discoveryDocument is the subset of an OIDC discovery document this
+// screen needs; jwks_uri is fetched too, so the connection test proves
+// reachability rather than just a well-formed URL.
 type discoveryDocument struct {
 	Issuer                      string `json:"issuer"`
 	JWKSURI                     string `json:"jwks_uri"`
@@ -56,12 +53,9 @@ const (
 	maxIdentityBytes     = 1 << 20
 )
 
-// fetchDiscovery mirrors internal/auth/oidc.go's own discovery fetch: same
-// bounded read, same rule that the document's issuer must equal the configured
-// one rather than being trusted verbatim. It is duplicated rather than shared
-// because that package reads the session table and internal/api/commands must
-// not import a package with a datastore-shaped API for what is, here, an
-// unauthenticated network probe.
+// fetchDiscovery mirrors internal/auth/oidc.go's fetch: same bounded read,
+// same rule that the document's issuer must equal the configured one
+// rather than being trusted verbatim.
 func fetchDiscovery(ctx context.Context, cfg IdentityConfig) (discoveryDocument, error) {
 	if cfg.Issuer == "" {
 		return discoveryDocument{}, errors.New("no identity provider is configured")
@@ -108,9 +102,8 @@ func getJSON[T any](ctx context.Context, url string) (T, error) {
 	return out, nil
 }
 
-// DeviceAuthorizationEndpoint serves getOrganization's provider panel. Absent
-// rather than an error when discovery cannot be completed: the panel still owes
-// the reader the issuer, client id and scopes this role actually holds.
+// DeviceAuthorizationEndpoint returns "" rather than an error when
+// discovery fails: the panel still owes the reader the rest of the config.
 func DeviceAuthorizationEndpoint(ctx context.Context, cfg IdentityConfig) string {
 	doc, err := fetchDiscovery(ctx, cfg)
 	if err != nil {
@@ -119,9 +112,8 @@ func DeviceAuthorizationEndpoint(ctx context.Context, cfg IdentityConfig) string
 	return doc.DeviceAuthorizationEndpoint
 }
 
-// TestIdentityConnection performs a real OIDC discovery and JWKS fetch against
-// the configured issuer. It reads no stored secret and echoes none: a failure
-// reason names discovery or the key endpoint, never a credential.
+// TestIdentityConnection reads no stored secret and echoes none: a
+// failure reason names discovery or the key endpoint, never a credential.
 func TestIdentityConnection(ctx context.Context, cfg IdentityConfig) contract.IdentityConnectionTest {
 	doc, err := fetchDiscovery(ctx, cfg)
 	if err != nil {
@@ -138,15 +130,10 @@ func TestIdentityConnection(ctx context.Context, cfg IdentityConfig) contract.Id
 	return contract.IdentityConnectionTest{OK: true}
 }
 
-// ErrSecretRotationUnsupported is RotateClientSecret's whole implementation.
-//
-// The client secret is environment configuration (config.API.ClientSecret,
-// research R-none: this hub does not own the identity provider's client
-// registration), so there is no registration for this hub to rotate a secret
-// against. A rotation that only overwrote a local copy would tell the operator
-// it had changed something at the provider, and it would not have. That is worse
-// than refusing plainly, so this is a refusal and not a fake write: no row
-// changes and no audit event is recorded, because nothing happened.
+// ErrSecretRotationUnsupported is RotateClientSecret's whole implementation:
+// the client secret is environment configuration this hub does not own a
+// provider-side registration for, so a "rotation" that only overwrote a
+// local copy would lie about having changed anything at the provider.
 var ErrSecretRotationUnsupported = errors.New(
 	"the identity provider's client secret is managed by the deployment environment " +
 		"(the OIDC_CLIENT_SECRET this role was started with), not by this hub; there is no " +
@@ -157,18 +144,11 @@ func RotateClientSecret(context.Context) error { return ErrSecretRotationUnsuppo
 
 // ---- policy -----------------------------------------------------------------
 
-// ErrInvalidGate is returned when a scan gate is not one of the three the schema
-// allows.
 var ErrInvalidGate = errors.New("scan gate must be block, approval or warn-with-override")
 
 // UpdatePolicy writes every org_policy toggle and one `policy` audit row.
-//
-// Downstream effect is not this command's job to prove: the gate and
-// require_signed_bundles are read live by internal/domain/resolve on every
-// profile resolution (queries.ResolveProfileFacts), community_needs_review and
-// rescan_on_new_version are read live by the scanner (see
-// internal/worker/scanner). This command's only job is to write the row those
-// reads see next.
+// It only writes the row; the gate, signature requirement, and the two
+// scanner toggles are all read live by their consumers on every request.
 func UpdatePolicy(ctx context.Context, db bun.IDB, p auth.Principal,
 	in contract.UpdatePolicyRequest,
 ) (contract.OrganizationPolicy, error) {
@@ -211,8 +191,6 @@ func UpdatePolicy(ctx context.Context, db bun.IDB, p auth.Principal,
 
 // ---- group-to-role mappings ---------------------------------------------------
 
-// ErrInvalidRole is returned when a role is not one of the four the schema
-// allows.
 var ErrInvalidRole = errors.New(
 	"role must be catalog-admin, scanner-reviewer, profile-consumer or read-only")
 
@@ -220,13 +198,11 @@ var ErrInvalidRole = errors.New(
 // missing name, a name with nothing left after slugifying.
 var ErrValidation = errors.New("invalid request")
 
-// ErrMappingNotFound is returned when no mapping holds the given group name.
 var ErrMappingNotFound = errors.New("no such mapping")
 
-// CreateMapping upserts a group's role and writes one `role` audit row. It is an
-// upsert rather than a strict create because a mapping is keyed on the group
-// name alone and re-pointing an existing group at a new role is the same screen
-// action as adding one.
+// CreateMapping upserts a group's role and writes one `role` audit row:
+// re-pointing an existing group at a new role is the same screen action
+// as adding one.
 func CreateMapping(ctx context.Context, db bun.IDB, p auth.Principal,
 	in contract.CreateMappingRequest,
 ) (contract.GroupRoleMapping, error) {
@@ -275,15 +251,10 @@ func DeleteMapping(ctx context.Context, db bun.IDB, p auth.Principal, groupName 
 
 // ---- categories -----------------------------------------------------------------
 
-// ErrCategoryNotFound is returned when no category holds the given id.
 var ErrCategoryNotFound = errors.New("no such category")
 
-// ErrCategoryExists is returned when a category's name or slug collides with an
-// existing one.
 var ErrCategoryExists = errors.New("a category with that name already exists")
 
-// ErrCategoryInUse is returned when a category is still assigned to at least
-// one package.
 var ErrCategoryInUse = errors.New("category is still assigned to at least one package")
 
 // CreateCategory adds a category to the curated vocabulary and writes one
@@ -318,9 +289,7 @@ func CreateCategory(ctx context.Context, db bun.IDB, p auth.Principal,
 	return out, nil
 }
 
-// UpdateCategory renames a category and writes one `category` audit row. Its
-// count is not returned here — the caller already has the read path for that —
-// because a rename does not change how many packages carry the category.
+// UpdateCategory renames a category and writes one `category` audit row.
 func UpdateCategory(ctx context.Context, db bun.IDB, p auth.Principal,
 	id string, in contract.UpdateCategoryRequest,
 ) (contract.OrganizationCategory, error) {
@@ -359,9 +328,8 @@ func UpdateCategory(ctx context.Context, db bun.IDB, p auth.Principal,
 }
 
 // DeleteCategory removes a category and writes one `category` audit row.
-// Refuses with ErrCategoryInUse when a package still carries it — the
-// package.category_id foreign key has no ON DELETE clause, so that refusal is
-// the database's own, not a check duplicated here.
+// ErrCategoryInUse comes from the database's own foreign-key refusal, not
+// a check duplicated here.
 func DeleteCategory(ctx context.Context, db bun.IDB, p auth.Principal, id string) error {
 	return db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		res, txErr := tx.NewDelete().Model((*models.Category)(nil)).
@@ -380,8 +348,7 @@ func DeleteCategory(ctx context.Context, db bun.IDB, p auth.Principal, id string
 	})
 }
 
-// isForeignKeyViolation reports whether err is Postgres 23503, the sqlstate a
-// delete gets when another table still references the row.
+// isForeignKeyViolation reports whether err is Postgres 23503.
 func isForeignKeyViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) {
@@ -390,8 +357,7 @@ func isForeignKeyViolation(err error) bool {
 	return pgErr.Code == "23503"
 }
 
-// slugify is the same shape resolveCategory's lookup already expects: lowercase,
-// non-alphanumeric runs collapsed to one hyphen, trimmed.
+// slugify matches the shape resolveCategory's lookup expects.
 func slugify(name string) string {
 	var b strings.Builder
 	prevHyphen := true // leading hyphens are trimmed by never starting one
@@ -408,9 +374,8 @@ func slugify(name string) string {
 	return strings.TrimSuffix(b.String(), "-")
 }
 
-// writeOrgAudit is the one audit write every mutation in this file that
-// actually mutates something goes through, so the actor derivation cannot drift
-// between them.
+// writeOrgAudit is the one audit write every mutation in this file goes
+// through, so actor derivation can't drift between them.
 func writeOrgAudit(ctx context.Context, tx bun.IDB, p auth.Principal, kind models.AuditKind, text string) error {
 	actor := p.Email
 	if actor == "" {

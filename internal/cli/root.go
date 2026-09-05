@@ -1,5 +1,5 @@
-// Package cli is the cobra tree. Constitution principle I: every deployable
-// unit is a subcommand of this one binary, never a separate build.
+// Package cli is the cobra tree: every deployable unit is a subcommand of
+// this one binary, never a separate build.
 package cli
 
 import (

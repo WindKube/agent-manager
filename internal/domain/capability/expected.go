@@ -8,33 +8,22 @@ import (
 	"agent-manager/internal/domain/pkgspec"
 )
 
-// Expected is T057: the capability set the publisher recorded, read out of a
-// stored `version.manifest` (FR-018a).
+// Expected is the capability set the publisher recorded, read out of a
+// stored `version.manifest`. It returns rows; it does not write them (the
+// scanner does, in the transaction that records the scan), so until a
+// version has been scanned there are rows of neither source.
 //
-// It returns rows. It does not write them — the scanner does, in the transaction
-// that records the scan (T071), because `am_fetcher` holds no grant on
-// `capability` and deliberately never gets one. Until a version has been scanned
-// it therefore has no rows of EITHER source, which is why the detail panel needs
-// a "not scanned yet" state rather than an empty comparison.
-//
-// Nothing here is an enforced permission. An expectation is a claim to compare
-// the inferred set against (FR-027), and where the inferred set exceeds it a
-// finding is raised — by the scanner, not by this function.
-//
-// A nil result with a nil error is the normal case: FR-018a says a publisher MAY
-// record an expected set, and "recorded nothing" is exactly the case where every
-// discovered host is surfaced for review rather than silently accepted.
+// A nil result with a nil error is the normal case: a publisher may record
+// no expected set, in which case every discovered host is surfaced for
+// review rather than silently accepted.
 func Expected(manifest []byte) ([]Capability, error) {
 	raw, ok, err := extensionObject(manifest)
 	if err != nil || !ok {
 		return nil, err
 	}
 
-	// DisallowUnknownFields inside our OWN namespace, matching
-	// pkgspec.Plugin.AgentManager. The published schemas assign no semantics to a
-	// namespace object's contents, so nothing else checks this: a misspelled
-	// `expectedCapabilties` would otherwise be an expectation that silently does
-	// not exist, and the finding it was meant to suppress would never appear.
+	// DisallowUnknownFields: nothing else checks this namespace object's
+	// contents, so a misspelled field would otherwise silently vanish.
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 
@@ -56,17 +45,15 @@ func Expected(manifest []byte) ([]Capability, error) {
 
 func expectedRow(declared pkgspec.ExpectedCapability) (Capability, error) {
 	if !known(declared.Name) {
-		// Fail closed rather than dropping the row. An unrecognised name can never
-		// match anything Infer produces, so keeping it would put an expectation on
-		// the page that suppresses nothing and reads as though it does.
+		// Fail closed rather than dropping the row: an unrecognised name can
+		// never match anything Infer produces.
 		return Capability{}, fmt.Errorf("expected capability %q is not one of %v",
 			declared.Name, Names)
 	}
 
 	level := Level(declared.Level)
 	if declared.Level == "" {
-		// FR-018a records an expectation, and the safe reading of one that names no
-		// level is the one that asks for a human rather than the one that does not.
+		// No level named: the safe reading asks for a human.
 		level = LevelReview
 	}
 	if !level.Valid() {
@@ -82,19 +69,10 @@ func expectedRow(declared pkgspec.ExpectedCapability) (Capability, error) {
 	}), nil
 }
 
-// extensionObject finds this project's namespace object in a stored manifest.
-//
-// TWO places are looked at, because the two specifications name their free-form
-// namespace object differently and a package has only the one its own spec
-// allows. Agent Plugins 1.0.0 has `extensions`, which FR-018a names. Agent Skills
-// frontmatter has no `extensions` key at all — `additionalProperties: false`
-// refuses one — and offers `metadata` instead. Reading only `extensions` would
-// mean a standalone skill could never record an expected set, and FR-027's "no
-// expected set, so surface every host" would be permanent for every skill in the
-// catalog rather than a state a publisher can leave.
-//
-// Both are keyed by the same reverse-domain name, so this is one expectation
-// with two spec-sanctioned homes, not two competing conventions.
+// extensionObject looks in two places: Agent Plugins' `extensions` and
+// Agent Skills' `metadata`, since the two specs name their free-form
+// namespace object differently and a standalone skill has no `extensions`
+// key at all. Both are keyed by the same reverse-domain name.
 func extensionObject(manifest []byte) (json.RawMessage, bool, error) {
 	if len(bytes.TrimSpace(manifest)) == 0 {
 		return nil, false, nil

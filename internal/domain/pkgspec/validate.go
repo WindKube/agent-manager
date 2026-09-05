@@ -11,26 +11,19 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
-// ErrManifestInvalid is the sentinel behind every manifest rejection (FR-004,
-// US1 scenario 3). It is deliberately NOT a scan finding: a manifest that fails
-// its schema means no version is created and nothing is written to object
-// storage, so the failure belongs to ingestion.
+// ErrManifestInvalid is the sentinel behind every manifest rejection. It is
+// deliberately NOT a scan finding: a manifest that fails its schema means no
+// version is created and nothing is written to object storage, so the
+// failure belongs to ingestion.
 var ErrManifestInvalid = errors.New("manifest does not conform to its published schema")
 
-// Problem is one schema violation, addressed by the schema path that rejected it.
-//
-// SchemaPath is the load-bearing field: US1 scenario 3 requires the failure to be
-// reported against the specific schema path, so a publisher is told which rule
-// they broke rather than "invalid manifest".
+// Problem is one schema violation, addressed by the schema path that
+// rejected it — so a publisher is told which rule they broke, not just
+// "invalid manifest".
 type Problem struct {
-	// SchemaPath is a JSON pointer into the schema, e.g.
-	// "/additionalProperties" or "/properties/name/pattern".
-	SchemaPath string
-
-	// InstancePath is a JSON pointer into the manifest, e.g. "/keywords/2".
+	SchemaPath   string
 	InstancePath string
-
-	Message string
+	Message      string
 }
 
 func (p Problem) String() string {
@@ -43,13 +36,8 @@ func (p Problem) String() string {
 
 // ManifestError carries every problem found in one manifest.
 type ManifestError struct {
-	// Manifest is the file that failed: "plugin.json", "mcp.json" or "SKILL.md".
 	Manifest string
-
-	// SchemaID is the `$id` it was validated against, empty when the manifest
-	// named none this project holds.
 	SchemaID string
-
 	Problems []Problem
 }
 
@@ -74,9 +62,8 @@ func manifestError(manifest, schemaID string, problems ...Problem) *ManifestErro
 	return &ManifestError{Manifest: manifest, SchemaID: schemaID, Problems: problems}
 }
 
-// Validator holds the compiled schemas. It is safe for concurrent use and is
-// built once: compiling five schemas per request would be the second most
-// expensive thing in the ingestion path.
+// Validator holds the compiled schemas, safe for concurrent use and built
+// once rather than per request.
 type Validator struct {
 	compiled map[string]*jsonschema.Schema
 }
@@ -87,19 +74,18 @@ var (
 	sharedErr  error
 )
 
-// Default returns the process-wide Validator. The schemas are embedded, so the
-// only way this fails is a build that shipped a broken one — which is why the
-// error is returned rather than panicked, and why every caller reports it.
+// Default returns the process-wide Validator. The error is returned rather
+// than panicked, since the only failure mode is a build that shipped a
+// broken embedded schema.
 func Default() (*Validator, error) {
 	sharedOnce.Do(func() { shared, sharedErr = NewValidator() })
 	return shared, sharedErr
 }
 
-// NewValidator compiles every embedded schema.
 func NewValidator() (*Validator, error) {
 	compiler := jsonschema.NewCompiler()
-	// AssertFormat is left off: `format` is annotation-only in 2020-12 and none of
-	// the vendored schemas uses it. Turning it on would add rules the published
+	// AssertFormat stays off: `format` is annotation-only in 2020-12 and no
+	// vendored schema uses it — turning it on would add rules the published
 	// documents do not state.
 	compiled := make(map[string]*jsonschema.Schema, len(schemaFiles))
 
@@ -114,10 +100,10 @@ func NewValidator() (*Validator, error) {
 			return nil, fmt.Errorf("decode embedded schema %s: %w", id, err)
 		}
 
-		// RE2 has no lookahead, so the published `name` pattern cannot be compiled
-		// as written (name.go). Lift it here and refuse a schema that was supposed
-		// to carry it and no longer does: a dropped security rule must not be a
-		// silent success.
+		// RE2 has no lookahead, so the published `name` pattern cannot compile
+		// as written (name.go). Lift it here and refuse a schema that was
+		// supposed to carry it and no longer does — a dropped rule must not
+		// silently pass.
 		lifted, replacements := liftNameLookahead(doc)
 		if carriesNameLookahead(raw) && replacements == 0 {
 			return nil, fmt.Errorf("schema %s carries the lookahead `name` pattern but no replacement was made", id)
@@ -141,12 +127,10 @@ func NewValidator() (*Validator, error) {
 }
 
 // ValidatePluginManifest validates plugin.json against the published Agent
-// Plugins schema its own `$schema` names (FR-004).
-//
-// It does not accept a manifest that omits `$schema`, or one that names a version
-// this build does not hold: `$schema` is one of the two required fields, and
-// choosing a schema for a manifest that did not choose one is how a
-// non-conformant document gets in through a default.
+// Plugins schema its own `$schema` names. A manifest that omits `$schema`, or
+// names a version this build does not hold, is rejected: choosing a schema
+// for a manifest that did not choose one is how a non-conformant document
+// gets in through a default.
 func (v *Validator) ValidatePluginManifest(raw []byte) (*Plugin, error) {
 	schemaID, err := v.validateAgainstDeclaredSchema(PluginManifest, raw, pluginSchemaIDs)
 	if err != nil {
@@ -157,20 +141,17 @@ func (v *Validator) ValidatePluginManifest(raw []byte) (*Plugin, error) {
 	if err != nil {
 		return nil, err
 	}
-	// The half of the published `name` rule RE2 cannot express, reported at the
-	// same schema path the pattern would have used.
+	// The half of the published `name` rule RE2 cannot express, reported at
+	// the schema path the pattern would have used.
 	if problems := CheckName(plugin.Name); len(problems) > 0 {
 		return nil, manifestError(PluginManifest, schemaID, problems...)
 	}
 	return plugin, nil
 }
 
-// ValidateMCPConfig validates mcp.json.
-//
-// Measured while vendoring (schemas/PROVENANCE.md): mcp.schema.json is IDENTICAL
-// between 1.0.0 and 1.1.0 — both require `{$schema, mcpServers}` — contrary to
-// research.md R1, which said 1.1.0 changed it. So the version dispatch here has
-// exactly one job: accept either `$id`.
+// ValidateMCPConfig validates mcp.json. mcp.schema.json is identical between
+// 1.0.0 and 1.1.0 — both require `{$schema, mcpServers}` — so the version
+// dispatch here has exactly one job: accept either `$id`.
 func (v *Validator) ValidateMCPConfig(raw []byte) (*MCPConfig, error) {
 	schemaID, err := v.validateAgainstDeclaredSchema(MCPConfigFile, raw, mcpSchemaIDs)
 	if err != nil {
@@ -179,8 +160,8 @@ func (v *Validator) ValidateMCPConfig(raw []byte) (*MCPConfig, error) {
 	return decodeMCPConfig(raw, schemaID)
 }
 
-// ValidateSkillFrontmatter validates the YAML frontmatter of a SKILL.md against
-// the project-authored key set. A key outside the set fails validation (R1).
+// ValidateSkillFrontmatter validates the YAML frontmatter of a SKILL.md
+// against the project-authored key set. A key outside the set fails validation.
 func (v *Validator) ValidateSkillFrontmatter(raw []byte) (*Skill, error) {
 	frontmatter, err := splitFrontmatter(raw)
 	if err != nil {
@@ -188,9 +169,8 @@ func (v *Validator) ValidateSkillFrontmatter(raw []byte) (*Skill, error) {
 	}
 
 	// YAML is re-encoded as JSON before validation so the validator sees JSON
-	// types — a YAML `1.0` is a float there and a string here, and a schema that
-	// disagrees with the decoder about the type of a value is a schema that is not
-	// being enforced.
+	// types — a YAML `1.0` is a float there and a string here, and a schema
+	// that disagrees with the decoder about a value's type is not being enforced.
 	doc, err := yamlToJSONDocument(frontmatter)
 	if err != nil {
 		return nil, err
@@ -215,8 +195,6 @@ func (v *Validator) ValidateSkillFrontmatter(raw []byte) (*Skill, error) {
 	return skill, nil
 }
 
-// validateAgainstDeclaredSchema decodes raw, reads its `$schema`, and validates
-// against that schema when it is one of accepted.
 func (v *Validator) validateAgainstDeclaredSchema(manifest string, raw []byte, accepted []string) (string, error) {
 	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
 	if err != nil {
@@ -258,11 +236,9 @@ func (v *Validator) validateAgainstDeclaredSchema(manifest string, raw []byte, a
 	return declared, nil
 }
 
-// problemsFrom flattens a jsonschema failure into Problems.
-//
-// BasicOutput's flat list is used rather than the rendered message because the
-// keyword location IS the schema path US1 scenario 3 asks for; the rendered
-// string buries it in prose.
+// problemsFrom flattens a jsonschema failure into Problems, using
+// BasicOutput's flat list rather than the rendered message: the keyword
+// location IS the schema path, and the rendered string buries it in prose.
 func problemsFrom(err error) []Problem {
 	var verr *jsonschema.ValidationError
 	if !errors.As(err, &verr) {

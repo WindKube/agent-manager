@@ -103,10 +103,11 @@ func TestMainExitCodes(t *testing.T) {
 		want Code
 	}{
 		{"version succeeds with nothing changed", []string{"version"}, CodeNoChanges},
-		{"a stub verb exits zero", []string{"status"}, CodeNoChanges},
-		// sync is no longer a stub: with no --hub it refuses, before any
-		// request.
+		// sync and status both go through Prepare, so a missing --hub refuses
+		// before any request or record read, which is FR-039's ordering seen
+		// from the exit code.
 		{"sync with no hub is a refusal", []string{"sync"}, CodeRefused},
+		{"status with no hub is a refusal", []string{"status"}, CodeRefused},
 		{"no arguments prints help and exits zero", nil, CodeNoChanges},
 		{"an unknown output format is a refusal", []string{"--output", "yaml", "version"}, CodeRefused},
 		{"an unknown flag is a refusal", []string{"--nope", "version"}, CodeRefused},
@@ -121,8 +122,7 @@ func TestMainExitCodes(t *testing.T) {
 }
 
 func TestEveryVerbIsWiredAndExitsZero(t *testing.T) {
-	// Five verbs, each reachable and each exiting 0. When a real
-	// implementation replaces a stub this test keeps the verb reachable.
+	// T002's contract: five verbs, each reachable.
 	for _, verb := range []string{"login", "logout", "sync", "status", "version"} {
 		t.Run(verb+" is reachable", func(t *testing.T) {
 			root, _ := NewRootCmd(&bytes.Buffer{}, &bytes.Buffer{})
@@ -186,17 +186,14 @@ func TestVersionPrintsAndStaysOffTheDiagnosticStream(t *testing.T) {
 }
 
 func TestDiagnosticsNeverReachTheResultStream(t *testing.T) {
-	// At the level the verbs will inherit: a stub warns, and the result
-	// stream stays empty rather than gaining an unparseable line.
-	//
-	// The verb here has to be one that is still a stub, so it moves as each
-	// user story lands. When the last stub goes, replace it with a verb
-	// whose real diagnostic this can assert; the property being tested
-	// belongs to output.Streams and not to any one verb.
+	// FR-035: a refusal is reported on the diagnostic stream, and the result
+	// stream stays empty rather than gaining an unparseable line. status with
+	// no --hub refuses before it ever calls Emit, which is what this needs;
+	// the property being tested belongs to output.Streams and not to this verb.
 	var result, diag bytes.Buffer
-	require.Equal(t, CodeNoChanges, Main([]string{"--output", "json", "status"}, &result, &diag))
+	require.Equal(t, CodeRefused, Main([]string{"--output", "json", "status"}, &result, &diag))
 	require.Empty(t, result.String())
-	require.Contains(t, diag.String(), "status is not implemented yet")
+	require.Contains(t, diag.String(), "--hub is empty")
 }
 
 func TestErrorsGoToTheDiagnosticStream(t *testing.T) {

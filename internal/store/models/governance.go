@@ -10,9 +10,7 @@ import (
 // OrgPolicySingletonID is the only id org_policy may hold.
 const OrgPolicySingletonID int32 = 1
 
-// OrgPolicy is a singleton: one organisation per deployment. The migration layer
-// carries `check (id = 1)`, which is what makes it a singleton at the schema
-// level rather than by convention.
+// OrgPolicy is a singleton: one organisation per deployment.
 type OrgPolicy struct {
 	bun.BaseModel `bun:"table:org_policy,alias:pol"`
 
@@ -27,10 +25,9 @@ type OrgPolicy struct {
 	UpdatedAt             time.Time     `bun:"updated_at,type:timestamptz,notnull,default:now()"`
 }
 
-// AuditEvent is append-only. Nothing in Go enforces that: UPDATE and DELETE are
-// revoked from every database role, since an ORM hook or a convention is
-// bypassed by the first person who needs to fix a typo. OccurredAt is the row's
-// creation instant, which is why there is no separate created_at.
+// AuditEvent is append-only. Nothing in Go enforces that: UPDATE and DELETE
+// are revoked from every database role, since a convention is bypassed by the
+// first person who needs to fix a typo.
 type AuditEvent struct {
 	bun.BaseModel `bun:"table:audit_event,alias:aud"`
 
@@ -43,15 +40,9 @@ type AuditEvent struct {
 	Source     string    `bun:"source,type:text,nullzero"`
 }
 
-// FetchAttempt is one ingestion fetch and how it ended, successful or not. It
-// exists because a refused fetch — an SSRF refusal, a reference that names
-// nothing, a zip bomb — never produces a version row, so a panel of object keys
-// structurally cannot show it, and those are the outcomes an operator most needs
-// to see.
-//
-// This is NOT a second audit log: audit_event answers "who did what" and is
-// append-only by revoke; this answers "what happened to the bytes" for a worker
-// with no actor behind it, so it carries no version_id.
+// FetchAttempt is one ingestion fetch and how it ended, successful or not: a
+// refused fetch (an SSRF refusal, a zip bomb) never produces a version row,
+// so this is the only place an operator can see it.
 type FetchAttempt struct {
 	bun.BaseModel `bun:"table:fetch_attempt,alias:fat"`
 
@@ -62,14 +53,11 @@ type FetchAttempt struct {
 	// is stored with credentials already redacted and rendered escaped.
 	RequestedRef string       `bun:"requested_ref,type:text,notnull"`
 	Outcome      FetchOutcome `bun:"outcome,type:fetch_outcome,notnull"`
-	// Detail is the redacted error message, null when Outcome is `ok`. Everything
-	// a screen filters or colours by is Outcome, not this.
+	// Detail is the redacted error message, null when Outcome is `ok`.
 	Detail string `bun:"detail,type:text,nullzero"`
 }
 
-// SyncEvent is one row per sync, not per package. The per-package fan-out for
-// install counts happens in the nightly aggregation job, so a catalog read
-// never writes.
+// SyncEvent is one row per sync, not per package.
 type SyncEvent struct {
 	bun.BaseModel `bun:"table:sync_event,alias:sev"`
 

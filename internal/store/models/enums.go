@@ -11,9 +11,7 @@ type Enum interface {
 	Valid() bool
 }
 
-// Postgres enum type names. These are the names the `type:` option of each bun
-// struct tag must carry, so Atlas diffs the column against the enum type rather
-// than against text.
+// Postgres enum type names, matching the `type:` option of each bun struct tag.
 const (
 	PGPackageKind       = "package_kind"
 	PGPackageVisibility = "package_visibility"
@@ -44,9 +42,8 @@ const (
 	PGFetchOutcome      = "fetch_outcome"
 )
 
-// enumTypes maps each Postgres enum type to its value set in declaration order.
-// Valid() and EnumDDL both read this map, so the values Postgres accepts and the
-// values Go accepts cannot drift apart.
+// enumTypes maps each Postgres enum type to its value set in declaration
+// order; Valid() and EnumDDL both read this map.
 var enumTypes = map[string][]string{
 	PGPackageKind:       {"plugin", "skill"},
 	PGPackageVisibility: {"organisation", "team", "private"},
@@ -72,16 +69,11 @@ var enumTypes = map[string][]string{
 	PGActorKind:         {"identity", "system"},
 	PGAuditKind: {
 		"fetch", "scan", "approve", "profile", "share", "sync", "login",
-		// The four admin kinds are appended, never interleaved: the migration
-		// that added them is `alter type ... add value`, which appends.
 		"policy", "role", "category", "secret",
 	},
 	PGOutboxState:     {"pending", "delivered"},
 	PGEvidenceRole:    {"primary", "supporting"},
 	PGFetchSourceKind: {"upload", "git", "archive-url"},
-	// fetch_outcome is one value per failure fetch/repourl/bundle can actually
-	// tell apart; it deliberately excludes HTTP status codes and transport
-	// causes, which belong in `detail`.
 	PGFetchOutcome: {
 		"ok", "invalid-ref", "blocked", "unreachable",
 		"malformed", "too-large", "rejected-member", "extract-timeout",
@@ -200,8 +192,7 @@ const (
 
 func (v CapabilityLevel) Valid() bool { return inEnum(PGCapabilityLevel, string(v)) }
 
-// SignatureKind is the signature format. `cosign-bundle` is reserved for when
-// sigstore-go lands.
+// SignatureKind is the signature format.
 type SignatureKind string
 
 const (
@@ -211,9 +202,8 @@ const (
 
 func (v SignatureKind) Valid() bool { return inEnum(PGSignatureKind, string(v)) }
 
-// SignatureResult is the outcome of a verification attempt. Every value is
-// provisional: nothing writes this column until sigstore-go lands, and null
-// means "never attempted".
+// SignatureResult is the outcome of a verification attempt; null means "never
+// attempted".
 type SignatureResult string
 
 const (
@@ -254,8 +244,7 @@ const (
 
 func (v FindingState) Valid() bool { return inEnum(PGFindingState, string(v)) }
 
-// ProfileVisibility is who may see a profile. Deliberately a different value set
-// from PackageVisibility: a profile is shared, not owned by a team.
+// ProfileVisibility is who may see a profile.
 type ProfileVisibility string
 
 const (
@@ -299,34 +288,20 @@ const (
 
 func (v MembershipRole) Valid() bool { return inEnum(PGMembershipRole, string(v)) }
 
-// What each membership role may do to the profile it is held on.
-//
-// These live beside the enum, not in internal/api, because several packages
-// need the same answer and none may import another — a hand-written copy per
-// package is how they'd silently drift apart.
-//
-// The empty role is legitimately common and grants nothing (an
-// organisation-visibility profile is readable by almost everyone, and few
-// readers hold a membership), so every method below fails closed on it.
+// The empty role grants nothing, so every method below fails closed on it.
 
-// MayCurate reports whether this role may change what the profile holds — its
-// entries and its sync targets.
+// MayCurate reports whether this role may change what the profile holds.
 func (v MembershipRole) MayCurate() bool {
 	return v == MembershipRoleOwner || v == MembershipRoleMaintainer
 }
 
-// MayShare reports whether this role may change who the profile is shared with.
-//
-// Owner only, and deliberately narrower than MayCurate: curating what a profile
-// contains and deciding who can see it are different powers, and a maintainer
-// who could re-share would be able to widen an access decision the owner made.
+// MayShare reports whether this role may change who the profile is shared
+// with. Owner only: a maintainer who could re-share could widen an access
+// decision the owner made.
 func (v MembershipRole) MayShare() bool { return v == MembershipRoleOwner }
 
-// MayPublish reports whether this role may publish a revision.
-//
-// A revision is what reaches machines, so this is the sharpest of the three. A
-// consumer may not — they consume what somebody else published — and neither may
-// a reviewer, whose role is to look at a profile rather than to ship it.
+// MayPublish reports whether this role may publish a revision: the sharpest
+// of the three, since a revision is what reaches machines.
 func (v MembershipRole) MayPublish() bool {
 	return v == MembershipRoleOwner || v == MembershipRoleMaintainer
 }
@@ -341,9 +316,8 @@ const (
 
 func (v SubjectKind) Valid() bool { return inEnum(PGSubjectKind, string(v)) }
 
-// SyncTargetKind is a client-side directory convention a profile can be written
-// to. Adding a value is a migration rather than an API-level allowlist, since a
-// dead enum value can still be written directly and then nothing can render it.
+// SyncTargetKind is a client-side directory convention a profile can be
+// written to.
 type SyncTargetKind string
 
 const (
@@ -364,9 +338,7 @@ const (
 
 func (v OrgRole) Valid() bool { return inEnum(PGOrgRole, string(v)) }
 
-// DeviceAuthState is the device-flow lifecycle. Single use comes from the
-// pending -> approved -> consumed transition inside one transaction, which is
-// why there is no boolean here.
+// DeviceAuthState is the device-flow lifecycle.
 type DeviceAuthState string
 
 const (
@@ -401,30 +373,21 @@ const (
 func (v ActorKind) Valid() bool { return inEnum(PGActorKind, string(v)) }
 
 // AuditKind is the class of audited action.
-//
-// The last four are the Organization screen's mutations, kept as four values
-// rather than one `admin` bucket because the audit screen filters by kind and
-// "who changed the scan gate" is not the same question as "who rotated the
-// identity-provider secret".
 type AuditKind string
 
 const (
-	AuditKindFetch   AuditKind = "fetch"
-	AuditKindScan    AuditKind = "scan"
-	AuditKindApprove AuditKind = "approve"
-	AuditKindProfile AuditKind = "profile"
-	AuditKindShare   AuditKind = "share"
-	AuditKindSync    AuditKind = "sync"
-	AuditKindLogin   AuditKind = "login"
-	// AuditKindPolicy covers org_policy as a whole: the scan gate, the default
-	// version policy, and the four booleans beside them.
-	AuditKindPolicy AuditKind = "policy"
-	// AuditKindRole is the group->role map, which can grant catalog-admin.
-	AuditKindRole AuditKind = "role"
-	// AuditKindCategory is the admin-curated category vocabulary.
+	AuditKindFetch    AuditKind = "fetch"
+	AuditKindScan     AuditKind = "scan"
+	AuditKindApprove  AuditKind = "approve"
+	AuditKindProfile  AuditKind = "profile"
+	AuditKindShare    AuditKind = "share"
+	AuditKindSync     AuditKind = "sync"
+	AuditKindLogin    AuditKind = "login"
+	AuditKindPolicy   AuditKind = "policy"
+	AuditKindRole     AuditKind = "role"
 	AuditKindCategory AuditKind = "category"
-	// AuditKindSecret is identity-provider credential rotation. The credential
-	// itself never reaches a row here; the fact that it moved does.
+	// AuditKindSecret is identity-provider credential rotation: the credential
+	// itself never reaches a row here, only the fact that it moved.
 	AuditKindSecret AuditKind = "secret"
 )
 
@@ -439,9 +402,8 @@ const (
 
 func (v OutboxState) Valid() bool { return inEnum(PGOutboxState, string(v)) }
 
-// EvidenceRole separates the location that caused a finding from the ones that
-// show its consequences, since a single location per finding can't render a
-// finding whose cause and effects are on different lines.
+// EvidenceRole separates the location that caused a finding from the ones
+// that show its consequences.
 type EvidenceRole string
 
 const (
@@ -451,9 +413,8 @@ const (
 
 func (v EvidenceRole) Valid() bool { return inEnum(PGEvidenceRole, string(v)) }
 
-// FetchSourceKind mirrors fetch.SourceKind. It is a copy rather than an import:
-// internal/store/models is loaded by the Atlas provider and must stay free of
-// the fetch tree, and internal/fetch must not learn about the database.
+// FetchSourceKind mirrors fetch.SourceKind, copied rather than imported since
+// this package must stay free of the fetch tree.
 type FetchSourceKind string
 
 const (
@@ -465,19 +426,7 @@ const (
 func (v FetchSourceKind) Valid() bool { return inEnum(PGFetchSourceKind, string(v)) }
 
 // FetchOutcome is how one fetch attempt ended, mapped one-to-one to its cause
-// so nothing has to be recovered by parsing `detail`:
-//
-//	ok               a Tree was produced
-//	invalid-ref      repourl.ErrInvalid or fetch.ErrNoSource — nothing was dialled
-//	blocked          fetch.ErrBlocked — the outbound policy refused the address
-//	unreachable      any other failure out of fetch.Client.Do
-//	malformed        bundle.ErrMalformed
-//	too-large        bundle.ErrTooLarge
-//	rejected-member  bundle.ErrRejectedMember
-//	extract-timeout  bundle.ErrTimeout
-//
-// A fetch-side timeout is `unreachable`, not `extract-timeout`: the http
-// client's deadline is indistinguishable from a dead host at this layer.
+// so nothing has to be recovered by parsing `detail`.
 type FetchOutcome string
 
 const (

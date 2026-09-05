@@ -12,10 +12,7 @@ import (
 	"agent-manager/internal/bundle"
 )
 
-// archiveSuffixes are the extensions this source claims. A URL is not sniffed
-// before it is fetched: the decision of which Source handles a reference has to
-// be made from the reference alone, or the registry would have to make a network
-// request to route.
+// archiveSuffixes are the extensions this source claims.
 var archiveSuffixes = []string{".zip", ".tar.gz", ".tgz"}
 
 // ArchiveURLSource fetches a `.zip` or `.tar.gz` straight off a URL.
@@ -24,9 +21,6 @@ type ArchiveURLSource struct {
 }
 
 // NewArchiveURLSource takes the SSRF-hardened client rather than building one.
-// Constructing an http.Client inside a Source is a defect (principle III): the
-// URL is user-supplied, and this is the package that exists to refuse the private
-// addresses it can be made to resolve to.
 func NewArchiveURLSource(client Client) ArchiveURLSource {
 	return ArchiveURLSource{client: client}
 }
@@ -39,8 +33,6 @@ func (ArchiveURLSource) Handles(ref SourceRef) bool {
 	if ref.Kind == SourceArchiveURL {
 		return true
 	}
-	// An unset kind is routed by shape, so a caller that pasted an archive URL into
-	// the URL box reaches this source rather than the git one.
 	return ref.Kind == "" && IsArchiveURL(ref.URL)
 }
 
@@ -69,8 +61,7 @@ func (s ArchiveURLSource) Fetch(ctx context.Context, ref SourceRef) (Tree, error
 
 	resp, err := s.client.Get(ctx, ref.URL)
 	if err != nil {
-		// ErrBlocked travels up unwrapped-as-itself so the fetcher can report an
-		// SSRF refusal as a refusal rather than as "download failed" (US1 scenario 5).
+		// ErrBlocked travels up unwrapped so an SSRF refusal reports as such.
 		return Tree{}, fmt.Errorf("fetch archive: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -91,9 +82,7 @@ func (s ArchiveURLSource) Fetch(ctx context.Context, ref SourceRef) (Tree, error
 	}, nil
 }
 
-// statusError maps a non-2xx answer onto the fetch-error taxonomy. 401 and 403
-// are "we hold no credential" and not "not found": telling them apart is what
-// lets an operator know whether to fix a token or a URL.
+// statusError maps a non-2xx answer onto the fetch-error taxonomy.
 func statusError(resp *http.Response, rawURL string) error {
 	switch {
 	case resp.StatusCode >= 200 && resp.StatusCode <= 299:
@@ -107,9 +96,8 @@ func statusError(resp *http.Response, rawURL string) error {
 	}
 }
 
-// redactURL strips any embedded credential before the URL reaches an audit row or
-// a log line. The client refuses a URL carrying credentials outright, but this
-// value is also rendered on paths that never went through it.
+// redactURL strips any embedded credential before the URL reaches an audit
+// row or log line.
 func redactURL(raw string) string {
 	parsed, err := url.Parse(raw)
 	if err != nil {

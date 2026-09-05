@@ -17,14 +17,14 @@ type VersionParts struct {
 	// Bundle is streamed, never buffered: it is the only part that can be large.
 	Bundle io.Reader
 
-	// ManifestObjectName is plugin.json for a plugin and SKILL.md for a standalone
-	// skill. Empty means plugin.json.
+	// ManifestObjectName is plugin.json for a plugin and SKILL.md for a
+	// standalone skill. Empty means plugin.json.
 	ManifestObjectName string
 	Manifest           []byte
 
-	// Scan and Signature are optional. A version is committed before it is
-	// scanned — the design renders "Scanning" as a visible state — and a signature
-	// is only present when the publisher supplied one (R9).
+	// Scan and Signature are optional: a version is committed before it is
+	// scanned, and a signature is only present when the publisher supplied
+	// one.
 	Scan      []byte
 	Signature []byte
 
@@ -49,11 +49,10 @@ type Commit struct {
 	AlreadyCommitted bool
 }
 
-// Committer publishes versions commit-last (FR-008).
-//
-// It holds both halves because appending to index.json means reading the existing
-// index first — and because only the fetcher role, which declares
-// Blob: AccessReadWrite, ever constructs one.
+// Committer publishes versions commit-last. It holds both halves because
+// appending to index.json means reading the existing index first, and
+// because only the fetcher role, which declares Blob: AccessReadWrite, ever
+// constructs one.
 type Committer struct {
 	read  Reader
 	write Writer
@@ -67,19 +66,17 @@ func NewCommitter(read Reader, write Writer) *Committer {
 	return &Committer{read: read, write: write, now: time.Now, attempt: uuid.NewString}
 }
 
-// Commit writes one version and makes it visible, in that order.
+// Commit writes one version and makes it visible, in that order:
 //
-// The sequence is the guarantee, so it is spelled out rather than inlined:
-//
-//  1. Every part goes to a staging prefix. Nothing under it is reachable through
-//     the index, so a crash anywhere below leaves the version unreadable rather
-//     than half-published.
-//  2. The parts are promoted to their final, semver-scoped keys. A version is
-//     write-once (principle IV), so this can never overwrite live bytes.
-//  3. index.json is written LAST. Until that write lands, Catalog refuses to
-//     resolve the version, and that refusal is what FR-008 asks for.
-//  4. Staging is deleted. It is garbage by then, so a failed cleanup must not fail
-//     a publish that has already committed.
+//  1. Every part goes to a staging prefix. Nothing under it is reachable
+//     through the index, so a crash anywhere below leaves the version
+//     unreadable rather than half-published.
+//  2. The parts are promoted to their final, semver-scoped keys. A version
+//     is write-once, so this can never overwrite live bytes.
+//  3. index.json is written last. Until that write lands, Catalog refuses
+//     to resolve the version.
+//  4. Staging is deleted; a failed cleanup must not fail a publish that has
+//     already committed.
 func (c *Committer) Commit(ctx context.Context, ref VersionRef, parts VersionParts) (Commit, error) {
 	if err := ref.Validate(); err != nil {
 		return Commit{}, err
@@ -91,8 +88,8 @@ func (c *Committer) Commit(ctx context.Context, ref VersionRef, parts VersionPar
 		return Commit{}, fmt.Errorf("commit %s: manifest is empty", ref)
 	}
 
-	// The manifest is plugin.json or SKILL.md and nothing else (FR-006). An
-	// arbitrary name here would let a manifest be promoted over the bundle key.
+	// The manifest is plugin.json or SKILL.md and nothing else: an arbitrary
+	// name here would let a manifest be promoted over the bundle key.
 	manifestName := parts.ManifestObjectName
 	if manifestName == "" {
 		manifestName = ManifestObject
@@ -107,9 +104,9 @@ func (c *Committer) Commit(ctx context.Context, ref VersionRef, parts VersionPar
 		return Commit{}, err
 	}
 
-	// A fetch is delivered at least once (principle IX). A version the index
-	// already names has committed bytes, so the redelivery is a no-op rather than
-	// a second upload — the pointer naming it IS the record that the bytes landed.
+	// A fetch is delivered at least once. A version the index already names
+	// has committed bytes, so the redelivery is a no-op rather than a second
+	// upload — the pointer naming it is the record that the bytes landed.
 	if entry, ok := index.Entry(ref.Semver); ok {
 		return Commit{Ref: ref, Entry: entry, AlreadyCommitted: true}, nil
 	}
@@ -170,10 +167,10 @@ func (c *Committer) Commit(ctx context.Context, ref VersionRef, parts VersionPar
 	index.Name = ref.Name
 	index.Versions = append(index.Versions, entry)
 	index.UpdatedAt = c.now().UTC()
-	// A package's first version always becomes latest: an index that named no
-	// version would leave the CLI's "floating latest" policy with nothing to
-	// resolve. Which of several versions is latest is a catalog decision the caller
-	// makes (dist_tag), never a semver comparison here.
+	// A package's first version always becomes latest, since an index naming
+	// none would leave "floating latest" with nothing to resolve. Which of
+	// several versions is latest is a catalog decision the caller makes,
+	// never a semver comparison here.
 	if parts.Latest || index.Latest == "" {
 		index.Latest = ref.Semver
 	}

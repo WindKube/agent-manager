@@ -12,24 +12,14 @@ import (
 	"agent-manager/internal/outbox"
 )
 
-// Job is the `fetch` outbox payload, and therefore the wire contract between the
-// api role's registration command and this worker.
-//
-// It lives here rather than in internal/api/commands because the consumer owns
-// the shape it must be able to read: a producer-owned payload makes the worker
-// import the API's command layer, which is the wrong direction for a background
-// role.
+// Job is the `fetch` outbox payload: the wire contract between the api
+// role's registration command and this worker.
 type Job struct {
-	// VersionID names the row this fetch fills in. The row already exists —
-	// invisible, digest null — because the R5 idempotency key is
-	// (job_kind, subject_id, subject_version) evaluated against the TARGET ROW, so
-	// there has to be a row to evaluate against when the job is enqueued.
+	// VersionID names the row this fetch fills in; it already exists,
+	// invisible with digest null.
 	VersionID uuid.UUID `json:"versionId"`
 	PackageID uuid.UUID `json:"packageId"`
 
-	// Namespace, not the publisher slug: it is the first object-key segment and
-	// the first half of the rendered package id, and the fetcher needs no other
-	// part of the publisher — the package row is reached by PackageID.
 	Namespace string `json:"namespace"`
 	Name      string `json:"name"`
 	Semver    string `json:"semver"`
@@ -47,30 +37,19 @@ type JobSource struct {
 
 	ArchiveName string `json:"archiveName,omitempty"`
 
-	// Archive carries an uploaded archive's bytes, base64 in the payload's jsonb.
-	//
-	// This is the only transactional door available to it: the api role holds no
-	// blob.Writer — only `worker fetcher` may write bundle bytes (principle II) —
-	// so an upload cannot be staged in object storage by the endpoint that receives
-	// it, and a filesystem hand-off between two containers does not exist. Putting
-	// the bytes in the outbox row keeps FR-001's upload path inside the one
-	// transaction T042 requires: the archive cannot exist without the version row
-	// that describes it, or the reverse.
-	//
-	// The cost is real and bounded: the 25 MB upload cap (FR-001) becomes ~33 MB of
-	// base64 in the outbox row and again in the River job, both of which are pruned.
-	// A dedicated staging table would halve that and needs a migration.
+	// Archive carries an uploaded archive's bytes, base64 in the payload's
+	// jsonb: the only transactional door available, since the api role
+	// holds no blob.Writer.
 	Archive []byte `json:"archive,omitempty"`
 }
 
-// Kind is the River job kind, which is the same string as the outbox `job_kind`.
-// One name, so a worker registers against a single value and the relay needs no
-// mapping.
+// Kind is the River job kind, which is the same string as the outbox
+// `job_kind`.
 func (Job) Kind() string { return string(outbox.KindFetch) }
 
 // Validate rejects a payload this worker could not act on. It runs both at
-// enqueue time, so a bad registration fails the request rather than a job, and at
-// work time, because a payload read out of the queue is input like any other.
+// enqueue time and at work time, since a payload read out of the queue is
+// input like any other.
 func (j Job) Validate() error {
 	switch {
 	case j.VersionID == uuid.Nil:
@@ -99,14 +78,12 @@ func (j Job) Validate() error {
 	return nil
 }
 
-// VersionRef is where this version's objects live (FR-006).
+// VersionRef is where this version's objects live.
 func (j Job) VersionRef() blob.VersionRef {
 	return blob.VersionRef{Namespace: j.Namespace, Name: j.Name, Semver: j.Semver}
 }
 
-// OutboxJob renders the enqueue the registration command performs. The
-// idempotency key it carries is (fetch, version id, semver) — the version's own
-// identity, which is what `digest is not null` on that row then answers.
+// OutboxJob renders the enqueue the registration command performs.
 func (j Job) OutboxJob() (outbox.Job, error) {
 	if err := j.Validate(); err != nil {
 		return outbox.Job{}, err

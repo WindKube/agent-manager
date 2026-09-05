@@ -16,16 +16,14 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// RoleDB opens a bun.DB whose every connection has run `set role` before it is
-// used. A worker integration test that ran its statements over the superuser
-// connection testcontainers hands out would never see a grant the role is
-// missing — the credential-shaped bug this exists to catch (bun appending
-// RETURNING against an INSERT-only role, for one).
+// RoleDB opens a bun.DB whose every connection has run `set role` before it
+// is used. A test that ran its statements over the superuser connection
+// testcontainers hands out would never see a grant the role is missing —
+// e.g. bun appending RETURNING against an INSERT-only role.
 //
 // dsn connects as a superuser, or as anything already a member of role; no
-// password is provisioned for the application roles
-// (20260827150200_roles_and_grants.sql), and `set role` needs none. The caller
-// must call the returned close func to release the pool.
+// password is provisioned for the application roles, and `set role` needs
+// none. The caller must call the returned close func to release the pool.
 func RoleDB(ctx context.Context, dsn, role string) (db *bun.DB, closeFn func(), err error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {

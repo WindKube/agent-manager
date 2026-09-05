@@ -17,12 +17,9 @@ import (
 	"agent-manager/internal/worker/scanner/rules"
 )
 
-// Outcome is what one scan produced. It is returned rather than only logged so a
-// test asserts on the verdict the handler reached rather than on a log line.
+// Outcome is what one scan produced.
 type Outcome struct {
-	// Recorded is false for a redelivery that did nothing. Delivery is
-	// at-least-once (principle IX), so this is the normal outcome of a duplicate,
-	// not an error.
+	// Recorded is false for a redelivery that did nothing, not an error.
 	Recorded bool
 	ScanID   uuid.UUID
 	Verdict  models.Verdict
@@ -32,8 +29,7 @@ type Outcome struct {
 	Duration time.Duration
 }
 
-// errBudgetExceeded is the scan clock, separate from a cancelled caller: a
-// shutdown is not a statement about the bundle.
+// errBudgetExceeded is the scan clock, separate from a cancelled caller.
 var errBudgetExceeded = errors.New("scan exceeded its budget")
 
 // Scan runs the whole pipeline for one job.
@@ -50,16 +46,11 @@ func (w *Worker) scan(ctx context.Context, job Job, lastAttempt bool) (Outcome, 
 		Logger()
 
 	if err := job.Validate(); err != nil {
-		// A payload that names nothing will name nothing on the fourth attempt
-		// either, so the retries are cancelled rather than burned.
+		// A payload that names nothing will name nothing on the fourth
+		// attempt either.
 		return Outcome{}, river.JobCancel(err)
 	}
 
-	// The idempotency guard, answered by the DATA rather than by the queue (R5): a
-	// version with a scan at the running pack version has already been scanned by
-	// these rules, and static analysis of immutable bytes under unchanged rules
-	// cannot reach a different verdict. The queue has no memory to consult and must
-	// not grow one.
 	already, err := outbox.Delivered(ctx, w.deps.DB, outbox.Job{
 		Kind: outbox.KindScan, SubjectID: job.VersionID, SubjectVersion: w.pack.Version(),
 	})
@@ -81,12 +72,8 @@ func (w *Worker) scan(ctx context.Context, job Job, lastAttempt bool) (Outcome, 
 	elapsed := time.Since(started)
 
 	if errors.Is(err, errBudgetExceeded) {
-		// FR-031, both halves. A scan that ran out of time is retried with backoff
-		// and never resolves to `clean`; the version keeps the verdict it had, which
-		// for a first scan is `scanning`. The row that records the timeout is written
-		// only when there is no retry left, because writing it earlier would key a
-		// `scan` row at this pack version and the guard above would then suppress the
-		// very retry FR-031 requires.
+		// The row that records the timeout is written only when there is no
+		// retry left, since writing it earlier would suppress the retry.
 		log.Error().Dur("elapsed", elapsed).Bool("last_attempt", lastAttempt).
 			Msg("scan exceeded its budget")
 		if !lastAttempt {
@@ -137,9 +124,6 @@ type analysis struct {
 
 // analyse reads the bundle and runs the checks. Nothing in it writes.
 func (w *Worker) analyse(ctx context.Context, key string) (analysis, error) {
-	// The budget is a context deadline rather than a watchdog, so every step below
-	// honours it: the blob read, the decompression (internal/bundle carries its own
-	// clock too) and the checks.
 	ctx, cancel := context.WithTimeout(ctx, w.budget)
 	defer cancel()
 
@@ -160,10 +144,8 @@ func (w *Worker) analyse(ctx context.Context, key string) (analysis, error) {
 	return analysis{checks: runs, findings: findings}, nil
 }
 
-// classifyClock separates "the scan ran out of its own budget" from "the process
-// is shutting down". The first is a statement recorded against the version
-// (FR-031); the second is not a statement about the bundle at all and must reach
-// River as the cancellation it is.
+// classifyClock separates "the scan ran out of its own budget" from "the
+// process is shutting down".
 func (w *Worker) classifyClock(ctx context.Context, err error) error {
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return fmt.Errorf("%w of %s: %w", errBudgetExceeded, w.budget, err)
@@ -171,11 +153,9 @@ func (w *Worker) classifyClock(ctx context.Context, err error) error {
 	return err
 }
 
-// read pulls the stored bundle and unpacks it.
-//
-// The caps are re-applied on the way in (bundle.Unpack does it), because a bundle
-// read out of object storage is still bytes off a network: what the extractor
-// refused to extract must not become unpackable later.
+// read pulls the stored bundle and unpacks it. bundle.Unpack re-applies the
+// extraction caps: a bundle read out of object storage is still bytes off a
+// network.
 func (w *Worker) read(ctx context.Context, key string) (*bundle.Bundle, error) {
 	reader, err := w.deps.BlobRead.NewReader(ctx, key)
 	if err != nil {
@@ -190,11 +170,8 @@ func (w *Worker) read(ctx context.Context, key string) (*bundle.Bundle, error) {
 	return tree, nil
 }
 
-// objectKey resolves which bytes to read.
-//
-// The payload's key wins when it has one: it names the object the publish
-// committed, and deriving a key instead would read whatever the layout says today.
-// A rescan carries none, so it comes off the version row.
+// objectKey resolves which bytes to read. The payload's key wins when it has
+// one; a rescan carries none, so it comes off the version row instead.
 func (w *Worker) objectKey(ctx context.Context, job Job) (string, error) {
 	var (
 		key       sql.NullString
@@ -205,17 +182,10 @@ func (w *Worker) objectKey(ctx context.Context, job Job) (string, error) {
 		Scan(&key, &committed)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		// The publish writes the version row and the outbox row in one transaction,
-		// so a job whose row is missing is not a race — it is a payload that no
-		// longer describes anything, and retrying it cannot change that.
 		return "", river.JobCancel(fmt.Errorf("scan %s: no version row %s", job, job.VersionID))
 	case err != nil:
 		return "", fmt.Errorf("scan %s: read version %s: %w", job, job.VersionID, err)
 	case !committed:
-		// A version with no digest has no committed bytes. The scan is enqueued
-		// inside the publish transaction, so this is either a payload from a rolled
-		// back publish or a fetch that never landed; both are the fetcher's business
-		// and neither is a finding about the package (fetcher/errors.go).
 		return "", river.JobCancel(fmt.Errorf("scan %s: version %s has no committed bytes", job, job.VersionID))
 	}
 
@@ -228,30 +198,14 @@ func (w *Worker) objectKey(ctx context.Context, job Job) (string, error) {
 	return key.String, nil
 }
 
-// verdictOf is FR-020's decision, and it is the whole of it: a version with a
-// finding is `flagged` and a version with none is `clean`.
-//
-// A warning-only scan is flagged too. The alternative — pass a version with a
-// medium finding nobody has to look at — would make the findings list a place
-// where things go to be ignored, and `warn-with-override` already exists as the
-// gate that lets such a version be distributed anyway (FR-035). `rejected` is
-// never written here: it is a reviewer's decision (FR-028), not an analysis
-// outcome.
-// communityReviewRuleID marks the synthetic finding applyCommunityReview raises.
-// It is not a rule-pack id: the rule pack owns bundle-content detection
-// (constitution: "scanner rules are data"), and this is organisation policy
-// about the PUBLISHER, not about the bytes.
+// communityReviewRuleID marks the synthetic finding applyCommunityReview
+// raises; it is not a rule-pack id.
 const communityReviewRuleID = "ORG-COMMUNITY-REVIEW"
 
-// applyCommunityReview flags a version from a non-verified publisher when the
-// organisation's policy requires it. There is no review-queue state in the
-// schema, so this routes through the mechanism the scanner already has: a
-// flagged version with an open finding a scanner-reviewer must approve.
-//
-// It reads org_policy because am_scanner holds that grant and am_fetcher does
-// not (see Sweeper.rescanEnabled). A missing row is treated as the policy
-// being off, unlike the sweep's own read: an ordinary scan must still complete
-// against a database that carries no policy row at all.
+// applyCommunityReview flags a version from a non-verified publisher when
+// the organisation's policy requires it, by raising a flagged finding a
+// scanner-reviewer must approve. A missing policy row is treated as the
+// policy being off.
 func (w *Worker) applyCommunityReview(ctx context.Context, job Job, result analysis) (analysis, error) {
 	var needsReview bool
 	err := w.deps.DB.QueryRowContext(ctx,
@@ -273,9 +227,6 @@ func (w *Worker) applyCommunityReview(ctx context.Context, job Job, result analy
 		job.PackageID).Scan(&verified)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		// The publish writes package and publisher rows before any scan is enqueued,
-		// so a job whose package no longer joins to one is a payload retrying cannot
-		// fix, not a finding about the bundle.
 		return analysis{}, river.JobCancel(fmt.Errorf("scan %s: no package row %s", job, job.PackageID))
 	case err != nil:
 		return analysis{}, fmt.Errorf("read the publisher for %s: %w", job, err)

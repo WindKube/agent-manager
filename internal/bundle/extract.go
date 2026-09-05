@@ -14,9 +14,9 @@ import (
 	"strings"
 )
 
-// The four failure kinds a caller must be able to tell apart (spec Edge Cases /
-// Ingestion): a malformed archive, an archive that busts a cap, a member we refuse
-// outright, and an extraction that ran out of wall clock.
+// The four failure kinds a caller must be able to tell apart: a malformed
+// archive, an archive that busts a cap, a member we refuse outright, and an
+// extraction that ran out of wall clock.
 var (
 	ErrMalformed      = errors.New("malformed archive")
 	ErrTooLarge       = errors.New("archive exceeds extraction limits")
@@ -203,11 +203,12 @@ func (c *clockReader) Read(p []byte) (int, error) {
 	return c.r.Read(p)
 }
 
-// Extract sniffs .zip or .tar.gz and extracts under lim. The archive is buffered first:
-// the compressed cap has to be enforced before extraction begins (spec Edge Cases), and
-// zip needs random access anyway. Peak memory is the compressed buffer plus the
-// decompressed tree, so lim.MaxCompressedBytes and lim.MaxDecompressedBytes are also the
-// caller's memory budget per concurrent extraction.
+// Extract sniffs .zip or .tar.gz and extracts under lim. The archive is
+// buffered first: the compressed cap has to be enforced before extraction
+// begins, and zip needs random access anyway. Peak memory is the compressed
+// buffer plus the decompressed tree, so lim.MaxCompressedBytes and
+// lim.MaxDecompressedBytes are also the caller's memory budget per concurrent
+// extraction.
 func Extract(ctx context.Context, r io.Reader, lim Limits) (*Bundle, error) {
 	lim = lim.withDefaults()
 	// The wall-clock budget starts before the first byte is read. Buffering the upload is

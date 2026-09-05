@@ -1,15 +1,14 @@
-// Package blob is this project's object store.
+// Package blob is this project's object store. gocloud.dev/blob is the data
+// path — s3blob against MinIO/S3, memblob in unit tests, fileblob for a
+// container-free dev mode — and this package owns what gocloud does not
+// model: the key layout, sha256 digesting on write, and commit-last
+// visibility.
 //
-// gocloud.dev/blob is the data path — s3blob against MinIO/S3, memblob in unit
-// tests, fileblob for a container-free dev mode — and this package owns the three
-// things gocloud does not model: the key layout from the design, sha256 digesting
-// on write, and commit-last visibility (FR-008).
-//
-// Reader and Writer are separate interfaces AND separate implementations. That is
-// the Go half of constitution principle II: the scanner is handed a Reader whose
-// dynamic type has no write method, so there is no Writer to type-assert back to.
-// One interface with both halves, or a Reader backed by a type that also satisfies
-// Writer, hands that assertion straight back.
+// Reader and Writer are separate interfaces and separate implementations:
+// the scanner is handed a Reader whose dynamic type has no write method, so
+// there is no Writer to type-assert back to. One interface with both
+// halves, or a Reader backed by a type that also satisfies Writer, hands
+// that assertion straight back.
 package blob
 
 import (
@@ -26,9 +25,9 @@ import (
 	gcblob "gocloud.dev/blob"
 	"gocloud.dev/gcerrors"
 
-	// The three drivers this project supports, registered for blob.OpenBucket by
-	// their URL scheme: s3:// in compose and production, mem:// in unit tests,
-	// file:// for a container-free dev mode (R13).
+	// The three drivers this project supports, registered for blob.OpenBucket
+	// by their URL scheme: s3:// in compose and production, mem:// in unit
+	// tests, file:// for a container-free dev mode.
 	_ "gocloud.dev/blob/fileblob"
 	_ "gocloud.dev/blob/memblob"
 	_ "gocloud.dev/blob/s3blob"
@@ -65,11 +64,10 @@ type Writer interface {
 	Delete(ctx context.Context, key string) error
 }
 
-// Object is what one write produced.
-//
-// Digest is computed while the bytes stream past (FR-007). Hashing by re-reading
-// the object afterwards would double the transfer and — worse — would hash
-// whatever the bucket holds at that moment rather than what this call wrote.
+// Object is what one write produced. Digest is computed while the bytes
+// stream past: hashing by re-reading the object afterwards would double the
+// transfer and — worse — would hash whatever the bucket holds at that
+// moment rather than what this call wrote.
 type Object struct {
 	Key    string
 	Size   int64
@@ -116,12 +114,10 @@ func (b *Bucket) Reader() Reader { return reader{bucket: b.bucket} }
 // (constitution principle II).
 func (b *Bucket) Writer() Writer { return writer{bucket: b.bucket} }
 
-// As reaches the driver's own client — R13's escape hatch, used by the Storage
-// screen's bucket-settings report (versioning, object lock, SSE-KMS, retention)
-// so no second S3 client is constructed.
-//
-// It lives on *Bucket and not on Reader deliberately: a raw *s3.Client can write,
-// so exposing it through the read interface would hand every read-only role a way
+// As reaches the driver's own client — an escape hatch used by the Storage
+// screen's bucket-settings report so no second S3 client is constructed. It
+// lives on *Bucket, not on Reader: a raw *s3.Client can write, so exposing
+// it through the read interface would hand every read-only role a way
 // around the credential split this package exists to enforce.
 func (b *Bucket) As(i any) bool { return b.bucket.As(i) }
 
@@ -244,10 +240,9 @@ type writer struct {
 	bucket *gcblob.Bucket
 }
 
-// Write streams src into key and digests it on the way past.
-//
-// The per-call context is cancellable so a failed copy can abort the write rather
-// than commit a truncated object: gocloud's contract is that cancelling the
+// Write streams src into key and digests it on the way past. The per-call
+// context is cancellable so a failed copy can abort the write rather than
+// commit a truncated object: gocloud's contract is that cancelling the
 // context passed to NewWriter aborts, and Close must be called either way.
 func (w writer) Write(ctx context.Context, key string, src io.Reader) (Object, error) {
 	if src == nil {

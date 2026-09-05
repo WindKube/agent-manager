@@ -8,13 +8,9 @@ import (
 	"agent-manager/internal/worker/scanner/rules"
 )
 
-// matchSchema is the `schema-path` matcher: it judges the MANIFEST document
-// rather than any file's text.
-//
-// Two readings, and which one applies is decided by the evidence the rule asks
-// for. A rule quoting a `schema-error` is asking for the manifest to be validated,
-// because the validator is the only thing in this system that produces one. Any
-// other quote means the rule addresses a JSON pointer and judges the value there.
+// matchSchema is the `schema-path` matcher: it judges the manifest document
+// rather than any file's text. A rule quoting `schema-error` asks for the
+// manifest to be validated; any other quote judges a JSON pointer's value.
 func matchSchema(b *Bundle, rule rules.Rule) []hit {
 	manifestPath := b.ManifestObject
 	if manifestPath == "" {
@@ -36,9 +32,6 @@ func matchSchema(b *Bundle, rule rules.Rule) []hit {
 		return hits
 	}
 
-	// The manifest not being json at all is reported by the manifest-schema check,
-	// which is where a document-level failure belongs; a pointer rule has nothing to
-	// address and says nothing.
 	if len(b.Manifest) == 0 || !json.Valid(b.Manifest) {
 		return nil
 	}
@@ -58,8 +51,8 @@ func matchSchema(b *Bundle, rule rules.Rule) []hit {
 	return []hit{{path: manifestPath, quote: rule.Match.Pointer + ": " + rendered, value: rendered}}
 }
 
-// resolvePointer walks an RFC 6901 JSON pointer. The escapes are the two the RFC
-// defines and nothing else: `~1` for a slash inside a key, `~0` for a tilde.
+// resolvePointer walks an RFC 6901 JSON pointer: `~1` for a slash inside a
+// key, `~0` for a tilde.
 func resolvePointer(document any, pointer string) (any, bool) {
 	if pointer == "" || pointer == "/" {
 		return document, true

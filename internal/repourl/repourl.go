@@ -1,12 +1,7 @@
-// Package repourl parses a user-supplied repository reference into its parts.
-//
-// The constitution takes no dependency on the monorepo's go-modules, so this
-// behaviour is the project's own to prove: every shape accepted and every shape
-// rejected is pinned by repourl_test.go rather than inherited.
-//
-// Nothing here touches the network. Whether a host is reachable, public or a
-// disguised loopback address is internal/fetch's problem (FR-002); this package
-// only decides whether a string names a repository at all.
+// Package repourl parses a user-supplied repository reference into its
+// parts. Nothing here touches the network: whether a host is reachable,
+// public or a disguised loopback address is internal/fetch's problem; this
+// package only decides whether a string names a repository at all.
 package repourl
 
 import (
@@ -27,8 +22,7 @@ const DefaultHost = "github.com"
 const maxRawLen = 2048
 
 // maxRefLen and maxSubdirLen bound the two values that can also arrive out of
-// band through With, where maxRawLen never saw them: they come straight from a
-// form field and end up in a database column, a provenance string and a log line.
+// band through With, where maxRawLen never saw them.
 const (
 	maxRefLen    = 256
 	maxSubdirLen = 1024
@@ -92,13 +86,11 @@ func (r Repository) String() string {
 
 // Parse turns a user-supplied reference into a Repository.
 //
-// Accepted: a bare owner/repo, a bare host/owner/repo, an http, https, ssh or git
-// URL, and the scp-style git@host:owner/repo. A ref and a subdirectory may ride
-// along in the forge's own web path (.../tree/<ref>/<subdir>) or in a ?ref= query.
-//
-// Everything else is an error. Nothing is silently repaired: a reference whose
-// owner, repo or subdirectory contains a traversal component is rejected, never
-// cleaned, because a cleaned value fetches something the user did not ask for.
+// Accepted: a bare owner/repo, a bare host/owner/repo, an http, https, ssh or
+// git URL, and the scp-style git@host:owner/repo, with a ref and a
+// subdirectory riding along in the forge's own web path or in a ?ref= query.
+// Nothing is silently repaired: a traversal component is rejected, never
+// cleaned, since a cleaned value fetches something the user did not ask for.
 func Parse(raw string) (Repository, error) {
 	s := strings.TrimSpace(raw)
 	switch {
@@ -137,11 +129,8 @@ func Parse(raw string) (Repository, error) {
 		return Repository{}, err
 	}
 
-	// u.Query() drops the pairs it cannot read along with the error explaining why,
-	// and one of them may be the ref: it discards "ref=%zz", and since Go 1.17 it
-	// abandons the whole query at a ";" separator. Resolving the default branch
-	// because the ref was unreadable publishes bytes from a version the user did
-	// not paste, so an unreadable query is refused rather than half believed.
+	// u.Query() silently drops pairs it cannot read, one of which may be the
+	// ref, so an unreadable query is refused rather than half believed.
 	query, err := url.ParseQuery(u.RawQuery)
 	if err != nil {
 		return Repository{}, fmt.Errorf("%w: query %q cannot be read: %w", ErrInvalid, u.RawQuery, err)
@@ -166,8 +155,6 @@ func Parse(raw string) (Repository, error) {
 	if refErr := validateRef(ref); refErr != nil {
 		return Repository{}, refErr
 	}
-	// Storing the normalised subdirectory rather than discarding it is what keeps
-	// Parse and With from holding different subdirectories for one input.
 	subdir, err = validateSubdir(subdir)
 	if err != nil {
 		return Repository{}, err
@@ -178,12 +165,10 @@ func Parse(raw string) (Repository, error) {
 
 func isControl(r rune) bool { return r < 0x20 || r == 0x7f }
 
-// controlFree rejects what Parse's raw-input guard cannot see. That guard runs
-// before percent-decoding, so "%0a" reaches it as three printable bytes and only
-// becomes a newline once it is a query value or a segment of u.Path; a value
-// supplied through With never passed that guard at all. Ref and Subdir are echoed
-// into provenance strings, audit rows and log lines, and git's check-ref-format
-// forbids a control character in a ref outright.
+// controlFree rejects what Parse's raw-input guard cannot see: that guard
+// runs before percent-decoding, so "%0a" only becomes a newline once it is a
+// query value or path segment, and a value supplied through With never
+// passed that guard at all.
 func controlFree(kind, v string) error {
 	if !utf8.ValidString(v) {
 		return fmt.Errorf("%w: %s is not valid utf-8", ErrInvalid, kind)
@@ -216,13 +201,10 @@ func identity(path string, segments []string) (Repository, error) {
 	return r, nil
 }
 
-// With overlays a ref and a subdirectory supplied out of band — the form fields
-// next to the URL box.
-//
-// Precedence is explicit-wins: a caller who typed a ref meant it, whatever the
-// pasted URL happened to carry. An empty argument means "not supplied" and leaves
-// the parsed value alone; there is no way to blank a parsed ref, because a caller
-// wanting the default branch simply parses a URL without one.
+// With overlays a ref and a subdirectory supplied out of band — the form
+// fields next to the URL box. Precedence is explicit-wins: a caller who
+// typed a ref meant it, whatever the pasted URL happened to carry. An empty
+// argument means "not supplied" and leaves the parsed value alone.
 func (r Repository) With(ref, subdir string) (Repository, error) {
 	if ref != "" {
 		if err := validateRef(ref); err != nil {

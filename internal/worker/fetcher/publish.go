@@ -19,23 +19,16 @@ import (
 // errAlreadyPublished is the transaction finding the version already committed.
 var errAlreadyPublished = errors.New("version already has committed bytes")
 
-// publish is the one transaction FR-008 hangs on.
-//
-// Everything before it is reversible by doing nothing: the bytes are in the
-// bucket but no row points at them, and `visible` is false, so the version is
-// unreadable. This transaction makes the digest, the size, the manifest, the
-// tags, the components, the dist tag, the `visible` flip, the scan hand-off and
-// the audit row land together or not at all. A crash in the middle leaves
-// orphaned objects, which is the failure mode the design chose over a version
-// that is half-published.
-// It returns whether it published, and whether this version took the package's
-// `latest` dist tag.
+// publish is the one transaction the fetch pipeline hangs on: the digest,
+// manifest, components, `visible` flip, scan hand-off and audit row land
+// together or not at all, so a crash in the middle leaves orphaned objects
+// rather than a half-published version. It returns whether it published, and
+// whether this version took the package's `latest` dist tag.
 func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, commit blob.Commit) (published, latest bool, err error) {
 	err = w.deps.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		// The row lock is what closes the window the pre-flight idempotency check
-		// cannot: two deliveries of the same job can both pass that check, and only
-		// one of them may write. `for update` serialises them and the re-read
-		// decides, so the second one finds the digest the first wrote.
+		// `for update` closes the window the pre-flight idempotency check
+		// cannot: two deliveries can both pass that check, and only one may
+		// write.
 		var (
 			sortKey   string
 			committed bool
@@ -46,9 +39,6 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 			job.VersionID).Scan(&sortKey, &committed, &packageID)
 		switch {
 		case errors.Is(lockErr, sql.ErrNoRows):
-			// The registration writes the version row and the outbox row in one
-			// transaction, so a job whose row is missing cannot be a race — it is a
-			// payload that no longer describes anything.
 			return fmt.Errorf("publish %s: no version row %s", job, job.VersionID)
 		case lockErr != nil:
 			return fmt.Errorf("lock version %s: %w", job.VersionID, lockErr)
@@ -59,11 +49,8 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 				job, job.VersionID, packageID, job.PackageID)
 		}
 
-		// Whether this release is the package's newest is decided here rather than
-		// assumed: re-registering an older tag is a legitimate operator action, and
-		// it must not steal `latest` from a higher version. semver_sort is a byte
-		// order that IS semver precedence order, so this is a comparison and not a
-		// parse.
+		// Re-registering an older tag must not steal `latest` from a higher
+		// version.
 		var newest bool
 		if compareErr := tx.QueryRowContext(ctx,
 			`select not exists (
@@ -73,12 +60,9 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 			return fmt.Errorf("compare %s against the package's other versions: %w", job, compareErr)
 		}
 
-		// The package's KIND is settled here and nowhere else. It is decided by which
-		// manifest sits at the tree root, which is knowable only once the bytes are
-		// in hand, so the registration wrote a provisional value — authoritative for
-		// an upload, a default for a URL source. A package with a published version
-		// already keeps its kind: a plugin does not become a skill between releases,
-		// and a tree that claims otherwise is a manifest failure rather than a
+		// The package's kind is settled here: knowable only once the bytes
+		// are in hand. A package with a published version keeps its kind — a
+		// tree that claims otherwise is a manifest failure, not a
 		// correction.
 		derived := models.PackageKind(pkg.Kind)
 		if !derived.Valid() {
@@ -114,8 +98,6 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 		distTag := models.DistTagNone
 		if newest {
 			distTag = models.DistTagLatest
-			// Exactly one version per package carries `latest`, so the incumbent is
-			// demoted in the same transaction that promotes the successor.
 			if _, demoteErr := tx.NewUpdate().Model((*models.Version)(nil)).
 				Set("dist_tag = ?", models.DistTagNone).
 				Where("package_id = ? and id <> ? and dist_tag = ?", job.PackageID, job.VersionID, models.DistTagLatest).
@@ -126,10 +108,9 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 
 		tags := versionTags(pkg.Keywords)
 
-		// `and digest is null` makes this a compare-and-set on top of the row lock.
-		// The lock is what actually serialises the two deliveries; this predicate is
-		// what makes a lost lock a failed update rather than a silent overwrite of
-		// bytes that are supposed to be immutable (FR-007).
+		// `and digest is null` is a compare-and-set: a lost lock fails the
+		// update rather than silently overwriting bytes that are supposed to
+		// be immutable.
 		res, updateErr := tx.NewUpdate().Model((*models.Version)(nil)).
 			Set("digest = ?", commit.Bundle.Digest[:]).
 			Set("size_bytes = ?", commit.Bundle.Size).
@@ -158,12 +139,8 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 			return componentErr
 		}
 
-		// A signature row of kind `none` is registry-side metadata and states that
-		// nothing was supplied (R9). It exists so "unsigned" is a row the UI can
-		// read rather than a missing row it has to interpret, which is what FR-048a
-		// asks for. `capability` is deliberately not written here: am_fetcher holds
-		// no grant on it, and the expected set stays recoverable from
-		// version.manifest.
+		// `capability` is deliberately not written here: am_fetcher holds no
+		// grant on it.
 		if _, signatureErr := tx.NewInsert().Model(&models.Signature{
 			VersionID: job.VersionID,
 			Kind:      models.SignatureKindNone,
@@ -181,16 +158,8 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 			}
 		}
 
-		// The scan hand-off rides the same transaction (principle IX): a version is
-		// not published until the scan that will give it a verdict is durably
-		// enqueued, so there is no committed version that nothing will ever scan.
-		//
-		// The payload type belongs to the CONSUMER (contracts/worker.md): the scanner
-		// owns the shape it has to be able to read, and its OutboxJob leaves
-		// SubjectVersion empty on purpose, because the scan idempotency key is
-		// (scan, version id, RULE-PACK version) and the rule-pack version is the
-		// scanner's own. A producer that guessed it would suppress the first real scan
-		// or fail to suppress a redelivery.
+		// The scan hand-off rides the same transaction, so there is no
+		// committed version that nothing will ever scan.
 		scanJob, scanErr := scanner.Job{
 			VersionID: job.VersionID,
 			PackageID: job.PackageID,
@@ -203,17 +172,10 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 			return fmt.Errorf("enqueue the scan of %s: %w", job, scanErr)
 		}
 
-		// FR-030 and 001 US4 scenario 5: publishing a version re-enqueues the
-		// package's already-scanned versions, so a rule pack that has moved on since
-		// they were judged gets to judge them again and a new finding reopens an
-		// approved version.
-		//
-		// It rides this transaction and carries no policy decision. Whether
-		// rescan-on-new-version is enabled is read by the SCANNER, because am_scanner
-		// holds the grant on org_policy and am_fetcher deliberately does not — so the
-		// sweep is enqueued unconditionally and the role that can read the setting is
-		// the role that acts on it. The cost of a disabled policy is one outbox row
-		// and one query per publish.
+		// Publishing a version re-enqueues the package's already-scanned
+		// versions. Whether rescan-on-new-version is enabled is read by the
+		// scanner: am_scanner holds the grant on org_policy and am_fetcher
+		// deliberately does not.
 		sweepJob, sweepErr := scanner.SweepJob{
 			PackageID:        job.PackageID,
 			TriggerVersionID: job.VersionID,
@@ -248,9 +210,8 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 	return published, latest, nil
 }
 
-// versionTags is the manifest's keywords as the version's tags: deduplicated and
-// ordered, because version_tag is keyed on (version_id, tag) and version.tags is
-// the same set denormalised for the catalog's GIN index (R4).
+// versionTags is the manifest's keywords as the version's tags, deduplicated
+// and ordered.
 func versionTags(keywords []string) []string {
 	out := make([]string, 0, len(keywords))
 	for _, tag := range keywords {
@@ -277,9 +238,7 @@ func insertVersionTags(ctx context.Context, tx bun.IDB, versionID uuid.UUID, tag
 	return nil
 }
 
-// insertComponents writes what the FILE TREE said the version contains. The
-// manifest is not consulted here: no field in either published spec enumerates
-// components (R1), so a component row is evidence about the bytes.
+// insertComponents writes what the file tree said the version contains.
 func insertComponents(ctx context.Context, tx bun.IDB, versionID uuid.UUID, components []pkgspec.Component) error {
 	if len(components) == 0 {
 		return nil
@@ -306,11 +265,9 @@ func insertComponents(ctx context.Context, tx bun.IDB, versionID uuid.UUID, comp
 	return nil
 }
 
-// pgTextArray renders a Go slice as a text[] literal.
-//
-// bun's `array` tag handles this on a model field, but this update is expressed
-// as a Set on a column rather than a whole-model write, and a []string handed to
-// Set arrives as a jsonb-ish string that text[] refuses.
+// pgTextArray renders a Go slice as a text[] literal: this update is a Set on
+// a column rather than a whole-model write, and a []string handed to Set
+// arrives as a jsonb-ish string that text[] refuses.
 func pgTextArray(values []string) string {
 	if len(values) == 0 {
 		return "{}"

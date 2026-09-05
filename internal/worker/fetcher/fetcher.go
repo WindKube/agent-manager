@@ -1,17 +1,8 @@
 // Package fetcher is the `worker fetcher` role: the only role in this system
-// that may write bundle bytes.
-//
-// The pipeline is FR-006 to FR-008 in order, and the order is the guarantee:
-//
-//	fetch -> extract under the R3 caps -> filter to the spec layout ->
-//	validate the manifests -> derive components -> pack tar.zst -> digest ->
-//	commit-last write -> flip `visible` -> outbox a `scan` job -> audit row
-//
-// Everything before the commit is reversible by doing nothing. The commit-last
-// write means a crash anywhere leaves orphaned bytes and no readable version
-// rather than a half-published one (FR-008), and `visible` is flipped in the same
-// transaction as the digest, the components and the scan hand-off, so a version
-// that is readable is a version that is complete.
+// that may write bundle bytes. `visible` flips in the same transaction as
+// the digest and the scan hand-off, so a readable version is always
+// complete; a crash before that leaves orphaned bytes rather than a
+// half-published one.
 package fetcher
 
 import (
@@ -33,26 +24,17 @@ import (
 // RoleName is the argument `agent-manager worker run` takes.
 const RoleName = "fetcher"
 
-// Concurrency is how many fetches run at once.
-//
-// Each in-flight job holds the compressed archive and the decompressed tree in
-// memory (internal/bundle buffers both by design, so the caps are the memory
-// budget), so this number times MaxCompressedBytes + MaxDecompressedBytes is the
-// role's worst-case footprint: 4 x (25 MB + 250 MB) ~ 1.1 GB. Raising it is a
-// memory decision, not a throughput one.
+// Concurrency is how many fetches run at once; raising it is a memory
+// decision, not a throughput one.
 const Concurrency = 4
 
-// jobTimeout bounds one fetch end to end. It is well above the extractor's own
-// 60-second cap because a slow remote is the usual reason a fetch is slow, and the
-// extractor's clock only governs extraction.
+// jobTimeout bounds one fetch end to end, well above the extractor's own
+// cap since a slow remote is the usual reason a fetch is slow.
 const jobTimeout = 10 * time.Minute
 
-// Definition is the whole description of the role (contracts/worker.md).
-//
-// Needs is the narrowest set that works, and the one line that matters is
-// Blob: AccessReadWrite — the bootstrap hands out a blob.Writer for that value and
-// for no other, which is the entire mechanism behind "only the fetcher may write
-// bundle bytes" (principle II).
+// Definition is the whole description of the role. Blob: AccessReadWrite is
+// the entire mechanism behind "only the fetcher may write bundle bytes" —
+// the bootstrap hands out a blob.Writer for that value and no other.
 func Definition() worker.Definition {
 	return worker.Definition{
 		Name:   RoleName,
@@ -86,11 +68,8 @@ type Worker struct {
 	enqueue   outbox.Enqueuer
 }
 
-// New assembles the handler from what the bootstrap handed the role.
-//
-// Every dependency the role declared is required here rather than defaulted: a nil
-// BlobWrite means the Definition and the bootstrap disagree, and defaulting past it
-// would produce a fetcher that fetches and stores nothing.
+// New assembles the handler from what the bootstrap handed the role. A nil
+// dependency here means the Definition and the bootstrap disagree.
 func New(deps worker.Deps) (*Worker, error) {
 	switch {
 	case deps.DB == nil:
@@ -114,8 +93,6 @@ func New(deps worker.Deps) (*Worker, error) {
 
 	return &Worker{
 		deps: deps,
-		// The three FR-001 shapes. Adding an OCI or GitLab source later is a new
-		// file in internal/fetch plus a line here (contracts/worker.md section 3).
 		sources: fetch.NewRegistry(
 			fetch.NewUploadSource(),
 			git,

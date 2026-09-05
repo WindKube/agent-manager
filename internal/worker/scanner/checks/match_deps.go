@@ -10,13 +10,7 @@ import (
 
 // matchDependencies is the `dep-manifest` matcher: it reads dependency
 // declarations out of the three manifests real trees carry, and judges the
-// SPECIFIER rather than the text of the file.
-//
-// The difference matters. `"tar": "^6.0.0"` and `"tar": "6.0.0"` differ by one
-// character and only one of them is a supply-chain hole: a caret range resolves to
-// whatever the registry serves at install time, so the bytes a reviewer approved
-// are not the bytes the next machine gets. A text rule looking for `^` would also
-// match every `^` in every string in the file.
+// specifier rather than the text of the file.
 func matchDependencies(b *Bundle, rule rules.Rule) []hit {
 	var hits []hit
 	for _, file := range b.Artefacts.Files {
@@ -58,9 +52,8 @@ type dependency struct {
 	text       string
 }
 
-// npmDependencyFields are the four dependency maps npm resolves at install time.
-// `bundledDependencies` is absent on purpose: those ship inside the tarball, so
-// they are bytes the scan already read rather than a specifier resolved later.
+// npmDependencyFields are the four dependency maps npm resolves at install
+// time. `bundledDependencies` is absent: those ship inside the tarball.
 var npmDependencyFields = []string{
 	"dependencies", "devDependencies", "optionalDependencies", "peerDependencies",
 }
@@ -73,10 +66,6 @@ func npmDependencies(b *Bundle, filePath string) []dependency {
 
 	var document map[string]json.RawMessage
 	if err := json.Unmarshal(file.Data, &document); err != nil {
-		// A package.json that is not json declares no dependencies this matcher can
-		// read. It is not silently clean either: the file is still read as text by
-		// any regex rule scoped to it, and a manifest that fails its own schema is
-		// the manifest-schema check's business.
 		return nil
 	}
 
@@ -161,11 +150,8 @@ func goDependencies(b *Bundle, filePath string) []dependency {
 // release.
 var rangeOperators = []string{"^", "~", ">", "<", "=>", ">=", "<=", "||", " - ", "*", "x"}
 
-// unpinned reports whether a dependency specifier names one exact release.
-//
-// It is deliberately conservative in the direction of flagging: a specifier this
-// function cannot read is unpinned, because the alternative is a supply-chain
-// finding suppressed by a notation nobody implemented.
+// unpinned reports whether a dependency specifier names one exact release,
+// conservative toward flagging: an unreadable specifier is unpinned.
 func unpinned(value string) bool {
 	_, constraint, found := strings.Cut(value, "@")
 	if !found {
@@ -184,9 +170,8 @@ func unpinned(value string) bool {
 		return false
 	}
 
-	// A git, http or file specifier resolves to whatever that reference holds. A
-	// commit-pinned git URL is arguably exact, and it is still flagged: a reviewer
-	// deciding that is exactly what a finding is for.
+	// A git, http or file specifier resolves to whatever that reference
+	// holds, and is flagged even when commit-pinned.
 	if strings.Contains(constraint, "://") || strings.HasPrefix(constraint, "git") ||
 		strings.HasPrefix(constraint, "github:") || strings.HasPrefix(constraint, "file:") {
 		return true

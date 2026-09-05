@@ -11,46 +11,30 @@ import (
 	"agent-manager/internal/domain/capability"
 )
 
-// The shell audit parses (FR-026), and this file is the whole of what that buys.
-//
-// A text match cannot tell `curl https://evil.example` from a line of prose
-// documenting it, from a commented-out example, or from the string
-// "curl https://evil.example" inside a here-doc that is never run. The parser
-// can, because it reports the tokens the shell itself would see. R2 rejected a
-// regex-only scanner for exactly that reason: "cannot express `curl` to a host
-// absent from the expected set without false positives on comments and strings".
-//
-// It never evaluates anything. An expansion arrives as its own text — `$HOST`
-// stays four characters, `$(cat f)` stays a command substitution — because
-// resolving one means running the script (FR-021, principle III). An unresolved
-// expansion is information: internal/domain/capability grades an indefinite
-// target as Review rather than as absent.
+// This file parses shell rather than text-matching it, so it can tell a real
+// command from prose or a comment describing one. It never evaluates
+// anything: an expansion like `$HOST` arrives as its own text, and
+// internal/domain/capability grades that indefinite target as Review.
 
 // Command is one parsed command with the source it came from.
 type Command struct {
 	capability.Command
 
-	// Node is the source text of the statement, redirections included. It is what
-	// `evidence.quote: matched-node` stores.
+	// Node is the source text of the statement, redirections included, for
+	// `evidence.quote: matched-node`.
 	Node string
 	// Text is the whole source line the command starts on, for
 	// `evidence.quote: matched-line`.
 	Text string
 }
 
-// maxCommandsPerScript bounds one script's contribution.
-//
-// A generated 200 000-line script is a legitimate bundle and an attacker-supplied
-// one is a memory budget; the cap is per file so a bundle of many small scripts is
-// still fully analysed. Reaching it is recorded as a blind spot by the caller, so
-// the truncation cannot read as a clean script.
+// maxCommandsPerScript bounds one script's contribution; reaching it is
+// recorded as a blind spot by the caller.
 const maxCommandsPerScript = 20000
 
 // parseShell walks one script's syntax tree and returns the commands in it.
 func parseShell(filePath string, src []byte) ([]Command, error) {
-	// LangBash rather than LangPOSIX: bundles ship bash, and a bash-only construct
-	// under a POSIX parser is a parse error, which would turn the most common shape
-	// of real script into an unanalysed blind spot.
+	// LangBash, not LangPOSIX: bundles ship bash.
 	parser := syntax.NewParser(syntax.Variant(syntax.LangBash), syntax.KeepComments(false))
 	file, err := parser.Parse(bytes.NewReader(src), filePath)
 	if err != nil {
@@ -70,9 +54,7 @@ func parseShell(filePath string, src []byte) ([]Command, error) {
 		}
 		call, ok := stmt.Cmd.(*syntax.CallExpr)
 		if !ok || len(call.Args) == 0 {
-			// A bare assignment (`FOO=bar`) is a CallExpr with no Args, and every other
-			// command type — if, for, function, subshell — is walked into rather than
-			// recorded: the commands inside it are what act.
+			// A bare assignment (`FOO=bar`) is a CallExpr with no Args.
 			return true
 		}
 
@@ -98,17 +80,15 @@ func parseShell(filePath string, src []byte) ([]Command, error) {
 	return out, nil
 }
 
-// commandName is the command word with its directory dropped: `/usr/bin/curl` is
-// `curl`, matching capability.Command's contract, so a rule naming a command does
-// not have to enumerate the paths it might be invoked through.
+// commandName is the command word with its directory dropped: `/usr/bin/curl`
+// is `curl`.
 func commandName(word *syntax.Word) string {
 	text := wordText(word)
 	if text == "" {
 		return ""
 	}
-	// A command reached through an expansion is not a name this analysis can
-	// resolve; it is returned as its own text so a rule matching command names does
-	// not silently match it, and the `shell` capability records it as indefinite.
+	// An expansion is returned as its own text, so it is graded indefinite
+	// rather than silently matched.
 	if strings.ContainsAny(text, "$`") {
 		return text
 	}
@@ -125,11 +105,8 @@ func wordTexts(words []*syntax.Word) []string {
 	return out
 }
 
-// wordText renders one word as the shell would see it, minus expansion.
-//
-// Quotes are removed — `"$HOME/x"` is `$HOME/x` — because a quote is syntax and
-// not part of the target. Expansions are rendered back with their `$`, which is
-// what internal/domain/capability reads as "indefinite".
+// wordText renders one word as the shell would see it, minus quoting.
+// Expansions are rendered back with their `$`, read as "indefinite".
 func wordText(word *syntax.Word) string {
 	if word == nil {
 		return ""
@@ -167,10 +144,8 @@ func partText(part syntax.WordPart) string {
 	case *syntax.ExtGlob:
 		return value.Pattern.Value
 	default:
-		// Anything this build does not render explicitly still carries a `$`, so it
-		// is read as an expansion and grades as indefinite. Returning "" would grade
-		// an unrecognised construct as no target at all, which is the one direction
-		// this must not fail in.
+		// Anything not rendered explicitly still carries a `$`, so it grades
+		// indefinite rather than as no target at all.
 		return "$"
 	}
 }
@@ -188,8 +163,7 @@ func redirectsOf(stmt *syntax.Stmt) []capability.Redirect {
 		case syntax.RdrIn, syntax.DplIn, syntax.RdrInOut:
 			out = append(out, capability.Redirect{Path: target, Write: false})
 		default:
-			// Here-documents and here-strings name no file, and a duplicated
-			// descriptor names no path either.
+			// Here-documents, here-strings and duplicated descriptors name no path.
 		}
 	}
 	return out

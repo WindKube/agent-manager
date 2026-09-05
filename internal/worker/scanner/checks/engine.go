@@ -10,26 +10,16 @@ import (
 	"agent-manager/internal/worker/scanner/rules"
 )
 
-// The engine: the only Go code that decides whether a rule fires.
-//
-// Every check below is the same three lines — take the rules addressed to me, run
-// them through here, grade the result — so a new rule is a file and a new
-// DETECTION CLASS is a matcher plus a `match.kind` value (R2). That is the shape
-// the constitution's "adding or tuning a rule must not require a code change"
-// demands, and the reason there is no per-rule function anywhere in this package.
+// The engine: the only Go code that decides whether a rule fires. A new
+// detection class is a matcher plus a `match.kind` value, not a per-rule
+// function.
 
-// maxEvidencePerFinding bounds the locations one finding records.
-//
-// The rows come from attacker-controlled content and land in `finding_evidence`,
-// so a script with 50 000 matching lines must not choose how many rows one scan
-// writes. Eight is what the design's evidence pane shows without scrolling; the
-// finding still says how many there were, in its own detail, because a silently
-// truncated list reads as a complete one.
+// maxEvidencePerFinding bounds the locations one finding records: a script
+// with 50 000 matching lines must not choose how many rows one scan writes.
 const maxEvidencePerFinding = 8
 
-// maxFindingsPerRule bounds one rule's findings for one bundle, for the same
-// reason: one finding per matching FILE, and a bundle of 10 000 scripts is a
-// bundle, not a reason for 10 000 rows.
+// maxFindingsPerRule bounds one rule's findings for one bundle: one finding
+// per matching file.
 const maxFindingsPerRule = 25
 
 // hit is one match: where it was, and what the rule extracted there.
@@ -37,16 +27,13 @@ type hit struct {
 	path  string
 	line  int
 	quote string
-	// value is what the condition judged — a host, a path, a dependency spec — kept
-	// so the finding's detail can name it.
+	// value is what the condition judged, kept so the detail can name it.
 	value string
 }
 
 // run applies every rule addressed to one check.
 func run(ctx context.Context, b *Bundle, rs []rules.Rule) ([]Finding, error) {
 	var findings []Finding
-	// Indexed rather than ranged by value: a Rule carries its compiled pattern and
-	// its scope, so copying one per iteration is copying the pack per check.
 	for i := range rs {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -73,22 +60,14 @@ func apply(b *Bundle, rule rules.Rule) ([]Finding, error) {
 	case rules.KindSchemaPath:
 		hits = matchSchema(b, rule)
 	default:
-		// Unreachable: rules.Load refuses a kind this build does not implement, and
-		// it refuses it there so that the failure names the file rather than
-		// appearing as a bundle that scanned clean.
+		// Unreachable: rules.Load refuses a kind this build does not implement.
 		return nil, fmt.Errorf("match.kind %q has no matcher", rule.Match.Kind)
 	}
 	return group(rule, hits), nil
 }
 
-// group turns the matches into findings: one finding per FILE, its first match the
-// primary location and the rest supporting.
-//
-// Per file rather than per match, because a finding is a thing a reviewer decides
-// about once — "this script writes outside the package" — and the other lines are
-// what that decision covers. It is also the shape data-model.md describes for
-// SH-FS-007: one cause at scripts/explain-costs.sh:9, three consequences at 28, 34
-// and 36.
+// group turns the matches into findings: one finding per file, its first
+// match the primary location and the rest supporting.
 func group(rule rules.Rule, hits []hit) []Finding {
 	if len(hits) == 0 {
 		return nil
@@ -135,12 +114,6 @@ func group(rule rules.Rule, hits []hit) []Finding {
 }
 
 // detailFor is the rule's prose plus what this bundle actually matched.
-//
-// The prose comes from the pack and explains WHY the rule exists; the appended
-// sentence is the only per-bundle text a finding carries and it exists so the
-// pane does not make a reader count evidence rows to learn that eight of forty
-// are shown. Values are the bundle's own bytes, so they are clipped, and they are
-// rendered escaped like every other quoted content (FR-055).
 func detailFor(rule rules.Rule, hits []hit) string {
 	detail := strings.TrimSpace(rule.Detail)
 
@@ -188,12 +161,8 @@ func judge(b *Bundle, rule rules.Rule, value string) bool {
 		return rule.Match.Regexp() != nil && rule.Match.Regexp().MatchString(value)
 
 	case rules.ConditionHostNotInExpected:
-		// FR-027, in both of its halves. Where an expected set was recorded, a host
-		// inside it is accepted and every other host is surfaced. Where none was
-		// recorded, EVERY host is surfaced for review rather than silently accepted —
-		// and a host this analysis could not name (an expansion, a transfer command
-		// with no literal target) is surfaced too, because "cannot be shown to be in
-		// the list" is the only sound reading of an unresolvable target.
+		// No declaration means every host is surfaced, not silently accepted;
+		// a host this analysis could not name is surfaced too.
 		if value == "" || capability.Indefinite(value) {
 			return true
 		}
@@ -208,13 +177,9 @@ func judge(b *Bundle, rule rules.Rule, value string) bool {
 			return false
 		}
 		if capability.Indefinite(value) {
-			// A path behind an expansion cannot be shown to stay inside the package,
-			// and a `$HOME`-rooted one usually does not.
 			return true
 		}
 		if capability.InsidePackage(value) && !capability.OverBroad(value) {
-			// Writing inside your own bundle is not a scope escape, and grading it as
-			// one would flag every package that writes a build output.
 			return false
 		}
 		readable, readDeclared := b.ExpectedDetail(capability.FilesystemRead)
@@ -228,18 +193,13 @@ func judge(b *Bundle, rule rules.Rule, value string) bool {
 		return unpinned(value)
 
 	default:
-		// Unreachable for the same reason as the kind switch above.
 		return false
 	}
 }
 
-// hostCovered reports whether a declared expectation covers a discovered host.
-//
-// A leading dot or a leading `*.` in the declaration is read as "this domain and
-// its subdomains", which is the notation every allowlist in the world uses. Bare
-// entries match exactly: `example.com` in the declaration does NOT cover
-// `evil.example.com`, because a suffix match by default is how an allowlist
-// becomes an allow-anything.
+// hostCovered reports whether a declared expectation covers a discovered
+// host. A leading dot or `*.` means "this domain and its subdomains"; bare
+// entries match exactly.
 func hostCovered(host string, declared []string) bool {
 	host = strings.ToLower(strings.TrimSuffix(host, "."))
 	for _, entry := range declared {
@@ -262,8 +222,8 @@ func hostCovered(host string, declared []string) bool {
 	return false
 }
 
-// pathCovered reports whether a declared expectation covers a discovered path. A
-// declared directory covers what is under it; nothing else is inferred.
+// pathCovered reports whether a declared expectation covers a discovered
+// path. A declared directory covers what is under it.
 func pathCovered(target string, declared []string) bool {
 	target = strings.TrimSpace(target)
 	for _, entry := range declared {
@@ -284,20 +244,12 @@ func pathCovered(target string, declared []string) bool {
 	return false
 }
 
-// ruleCheck is every check in this package.
-//
-// There is one implementation because there is one mechanism: take the rules the
-// pack addressed to this id, apply them, grade the result. What differs between
-// the seven is the id, the label a reviewer reads, and — for the shell audit — what
-// counts as a blind spot. If a check ever needs its own Go logic, that logic is a
-// new matcher and a new `match.kind`, not a bespoke Check: a check that analysed
-// something no rule described would be a detection nobody can tune or turn off.
+// ruleCheck is every check in this package: one implementation, one mechanism.
 type ruleCheck struct {
 	id    string
 	label string
-	// blindSpots counts what this check could not analyse. It is added to the warn
-	// count so a file the parser could not read shows as a warning rather than
-	// disappearing into a pass.
+	// blindSpots counts what this check could not analyse, added to the warn
+	// count.
 	blindSpots func(b *Bundle) int
 }
 

@@ -9,17 +9,12 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/record"
 )
 
-// DestFunc maps a package id and kind to a destination path. It is
-// internal/layout's job passed in rather than imported, so this package
-// stays pure and never reads CLAUDE_CONFIG_DIR or the OS home itself. An
-// error means the target refuses the entry — a refusal, never a hint to
-// sanitise: a rewritten name wouldn't match the record it later prunes against.
+// DestFunc maps a package id and kind to a destination path, supplied by the
+// caller so this package stays pure; an error refuses rather than sanitises.
 type DestFunc func(id string, kind record.Kind) (string, error)
 
-// Target is one agent target as seen by this build. A target the profile
-// turned off produces removals (normal); a target the client cannot write
-// produces a refusal (e.g. codex, whose layout is documented but unobserved) —
-// reporting it as "excluded" instead would send the user to fix the wrong thing.
+// Target is one agent target as seen by this build. A target the client
+// cannot write produces a refusal, not a silent "excluded".
 type Target struct {
 	// Name is the target's contract spelling, e.g. "claude-code".
 	Name record.Target
@@ -27,40 +22,32 @@ type Target struct {
 	// Dest routes an entry. Required when Err is nil.
 	Dest DestFunc
 
-	// Err is non-nil when this build cannot write the target. Every entry that
-	// would have routed to it becomes a [Skip] naming Err's message rather than
-	// a [Conflict]: the profile's other targets, and the other profiles being
-	// synced, must still install.
+	// Err is non-nil when this build cannot write the target; every entry
+	// that would route to it becomes a [Skip] rather than a [Conflict].
 	Err error
 
-	// Withdrawn: a known target deliberately never implemented (see
-	// internal/layout's withdrawnTargets), reported rather than refused. Not
-	// a licence to install nothing and exit 0 — an all-withdrawn-or-unwritable
-	// profile is refused with ConflictNoWritableTarget.
+	// Withdrawn: a known target deliberately unimplemented, reported rather
+	// than refused (does not license an all-withdrawn profile to exit 0).
 	Withdrawn error
 }
 
-// Op is what a plan does to one entry. It is finer-grained than the bucket the
-// change lands in: see [Plan].
+// Op is what a plan does to one entry, finer-grained than the bucket the change lands in.
 type Op string
 
-// The five operations. Remove is a [Removal], not a [Change]: it carries a
-// removable-path set and a retention list that a change does not.
+// The five operations. Remove is a [Removal], not a [Change].
 const (
 	OpAdd       Op = "add"
 	OpUpgrade   Op = "upgrade"
 	OpDowngrade Op = "downgrade"
 
-	// OpReplace: version didn't move (republish, textually-differing equal
-	// versions, or no comparer opinion) but the digest differs, so it must be
-	// written — "upgrade"/"downgrade" would claim a direction nobody established.
+	// OpReplace: version didn't move but the digest differs, so it must be
+	// written - "upgrade"/"downgrade" would claim a direction nobody established.
 	OpReplace Op = "replace"
 
 	OpUnchanged Op = "unchanged"
 )
 
-// Installed is what the record says is on disk: the `from` side of a change
-// or the subject of a removal.
+// Installed is what the record says is on disk: the `from` side of a change or removal.
 type Installed struct {
 	Version string
 	Digest  record.Digest
@@ -78,8 +65,7 @@ type Change struct {
 	ID      string
 	Kind    record.Kind
 
-	// Dest is the routed destination; a later prune removes
-	// record.Entry.RemovablePaths(), derived from this value alone.
+	// Dest is the routed destination; a later prune removes RemovablePaths(), derived from it.
 	Dest string
 
 	Version string        // the hub's resolved version for this revision
@@ -87,12 +73,11 @@ type Change struct {
 
 	Resolution string // how the hub resolved (latest/pinned/range); reporting only
 
-	// Verdict: clean or flagged. A flagged entry in `entries` rather than
-	// `skipped` resolved under an override or warn-with-override gate.
+	// Verdict: clean or flagged, under an override or warn-with-override gate.
 	Verdict string
 
-	// Signature is absent when the source carried none. Verified is false
-	// until Sigstore ships — never render false as a pass, tick, or "unsigned".
+	// Signature is absent when the source carried none; Verified is false
+	// until Sigstore ships - never render false as a pass or tick.
 	Signature *Signature
 
 	From *Installed // what the record claims is installed; nil exactly when Op is OpAdd
@@ -100,30 +85,26 @@ type Change struct {
 	Direction Direction // reporting-side label from direction.go; DirectionNone for an add
 }
 
-// Signature mirrors the lockfile's optional signature block; absent and
-// false mean the same thing (nothing checked). Sigstore is unshipped, so
-// Verified is false for every entry today — never render it as a pass or tick.
+// Signature mirrors the lockfile's optional signature block.
 type Signature struct {
 	Ref      string
 	Verified bool
 }
 
 // RemoveReason: the two main reasons are reported differently and must not
-// be merged — one is the profile's content changing, the other a target off.
+// be merged.
 type RemoveReason string
 
 const (
 	RemoveLeftProfile    RemoveReason = "no-longer-in-profile" // lockfile no longer lists it, or hub refuses the version
 	RemoveTargetDisabled RemoveReason = "target-disabled"      // profile no longer enables this target
 
-	// RemoveRelocated: same package/target, new path (e.g. disambiguation on
-	// a name clash) — the entry is reinstalled elsewhere in this plan, so the
-	// old directory would be orphaned without an explicit removal.
+	// RemoveRelocated: same package/target, new path; an explicit removal
+	// avoids orphaning the old directory once it's reinstalled elsewhere.
 	RemoveRelocated RemoveReason = "relocated"
 )
 
-// Claim is one profile's stake in a package, used both for a version-split
-// conflict (naming both profiles and versions) and a removal's retention list.
+// Claim is one profile's stake in a package: a version-split conflict, or a removal's retention list.
 type Claim struct {
 	Profile string
 	Target  record.Target
@@ -142,11 +123,10 @@ type Removal struct {
 	Reason  RemoveReason
 
 	// Paths is exactly record.Entry.RemovablePaths(): two literal names,
-	// never a pattern — a glob over a CLI-unowned dir deletes a hand-written skill.
+	// never a pattern - a glob over a CLI-unowned dir deletes a hand-written skill.
 	Paths []string
 
-	// RetainedBy: non-empty means another stake survives, so drop the record
-	// row and touch NOTHING on disk.
+	// RetainedBy: non-empty means another stake survives, so drop the row and touch nothing on disk.
 	RetainedBy []Claim
 
 	Fingerprinted bool // mirrors Installed.Fingerprinted for the entry being removed
@@ -155,8 +135,7 @@ type Removal struct {
 // RemovesFromDisk reports whether this removal may touch the filesystem.
 func (r Removal) RemovesFromDisk() bool { return len(r.RetainedBy) == 0 }
 
-// ConflictKind is why a plan refuses. Every kind here is detectable without
-// touching the filesystem; the modified-path conflict is not, and lives in internal/apply.
+// ConflictKind is why a plan refuses; every kind here is detectable without touching the filesystem.
 type ConflictKind string
 
 const (
@@ -164,29 +143,19 @@ const (
 	// that would land in one directory, so the second write would silently win.
 	ConflictVersionSplit ConflictKind = "version-split"
 
-	// ConflictDestCollision: two package ids routed to one destination — a
-	// layout defect, refused since the record keys removals by destination.
+	// ConflictDestCollision: two package ids routed to one destination.
 	ConflictDestCollision ConflictKind = "destination-collision"
 
-	// ConflictTargetUnknown is a target this build has never heard of. The
-	// contract's enum still carries `agents-md`, which no longer has an
-	// implementation, and a newer hub may add more. Unknown is refused rather
-	// than ignored for the same reason as unwritable: silence looks like success.
+	// ConflictTargetUnknown is a target this build has never heard of.
+	// Refused rather than ignored - silence would look like success.
 	ConflictTargetUnknown ConflictKind = "target-unknown"
 
 	// ConflictNoWritableTarget: every target a profile enabled was unknown,
-	// gated or withdrawn — without this, an all-withdrawn profile installs
-	// nothing and exits 0.
+	// gated or withdrawn.
 	ConflictNoWritableTarget ConflictKind = "no-writable-target"
 
-	// ConflictUnroutable is an entry whose id, kind or digest is unusable: an id
-	// that is not exactly two non-empty segments, a kind outside skill|plugin,
-	// a digest that is not sha256:<64 hex>. Refused, never repaired.
-	//
-	// A target that refused to route an entry because this build cannot
-	// install that KIND under it (layout.ErrKindUnsupported) is NOT here: that
-	// is a [Skip], because the other entries in the profile are still
-	// installable and one poisoned package must not block them.
+	// ConflictUnroutable is an entry whose id, kind or digest is unusable.
+	// A [Skip] (not this) is a target refusing one KIND under it, since the profile's other entries still install.
 	ConflictUnroutable ConflictKind = "unroutable-entry"
 )
 
@@ -202,8 +171,7 @@ type Conflict struct {
 
 	Err error // underlying error, if any, preserved so a caller can errors.Is rather than string-match
 
-	// Installed: what the record says is on this machine, per profile, at
-	// the moment raised — neither disagreeing version is installed yet.
+	// Installed: what the record says is on this machine, per profile, at the moment raised.
 	Installed []Claim
 
 	Detail string // extra human text where no error carried it
@@ -237,10 +205,7 @@ func (c Conflict) String() string {
 }
 
 // Plan is what a sync would do: the whole answer, needing no second query.
-//
-// Upgrade holds OpUpgrade and OpReplace: a non-forward-moving replacement is
-// still a write, and filing it under Downgrade would raise a false rollback
-// alarm. [Change.Op] is the precise answer; the bucket is the printed heading.
+// [Change.Op] is the precise answer; the bucket below is just the heading.
 type Plan struct {
 	Add       []Change
 	Upgrade   []Change
@@ -249,18 +214,15 @@ type Plan struct {
 	Conflicts []Conflict
 	Skipped   []Skip
 
-	// Unchanged: without it, an entry at the locked version is
-	// indistinguishable from one the lockfile never mentioned — idempotence
-	// needs it to state "Add/Upgrade/Downgrade/Remove empty, Unchanged accounts for everything".
+	// Unchanged: without it, a locked-version entry is indistinguishable
+	// from one the lockfile never mentioned.
 	Unchanged []Change
 }
 
-// Refuses reports whether the plan must not be applied, before a caller
-// stages a single byte.
+// Refuses reports whether the plan must not be applied.
 func (p Plan) Refuses() bool { return len(p.Conflicts) > 0 }
 
-// ConflictError joins every conflict into one error, preserving errors.Is
-// matching (e.g. layout.ErrR2Unresolved). Nil when there are no conflicts.
+// ConflictError joins every conflict into one error, preserving errors.Is matching. Nil when there are none.
 func (p Plan) ConflictError() error {
 	if len(p.Conflicts) == 0 {
 		return nil
@@ -277,19 +239,16 @@ func (p Plan) ConflictError() error {
 	return errors.Join(errs...)
 }
 
-// ChangeCount excludes Unchanged and Skipped by definition, and selects
-// between the two success exit codes.
+// ChangeCount excludes Unchanged and Skipped, and selects the exit code.
 func (p Plan) ChangeCount() int {
 	return len(p.Add) + len(p.Upgrade) + len(p.Downgrade) + len(p.Remove)
 }
 
-// IsNoOp reports a plan that would change nothing. A refusing plan is not a
-// no-op: it has something to say.
+// IsNoOp reports a plan that would change nothing; a refusing plan is not a no-op.
 func (p Plan) IsNoOp() bool { return p.ChangeCount() == 0 && !p.Refuses() }
 
-// Writes is Add+Upgrade+Downgrade for a caller that stages them all the same
-// way. Re-sorted rather than concatenated: which bucket an entry lands in
-// depends on the reporting-only comparer, and work order must not.
+// Writes is Add+Upgrade+Downgrade, re-sorted rather than concatenated since
+// bucket placement depends on the reporting-only comparer.
 func (p Plan) Writes() []Change {
 	out := make([]Change, 0, len(p.Add)+len(p.Upgrade)+len(p.Downgrade))
 	out = append(out, p.Add...)

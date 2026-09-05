@@ -68,12 +68,10 @@ func Compute(in Inputs) (Plan, error) {
 	var p Plan
 	b := builder{compare: in.Compare}
 
-	// Pass 1: which targets does each profile enable, and which of those can
-	// this build actually write? An unknown target still refuses the whole
-	// plan (ConflictTargetUnknown, aggregated across every profile that named
-	// it); a target this build simply cannot write (resolved.Err) does not —
-	// it is unwritable, not unrouteable, and is turned into a Skip per entry
-	// in pass 3 instead, so the profile's other targets still install.
+	// Pass 1: which targets does each profile enable, and which can this
+	// build actually write? An unknown target refuses the whole plan
+	// (ConflictTargetUnknown); an unwritable one (resolved.Err) instead
+	// becomes a per-entry Skip in pass 3, so the profile's other targets still install.
 	enabled := make(map[string]map[record.Target]bool, len(lockfiles))
 	writable := make(map[string]map[record.Target]Target, len(lockfiles))
 	unwritable := make(map[string]map[record.Target]error, len(lockfiles))
@@ -100,10 +98,8 @@ func Compute(in Inputs) (Plan, error) {
 				writable[slug][t] = resolved
 			}
 		}
-		// Only when nothing else already refuses this profile. What is left is
-		// the case this check is for: every target the profile named was
-		// WITHDRAWN or UNWRITABLE, neither of which on its own is a refusal, so
-		// without this the sync would install nothing and exit 0.
+		// Only when nothing else already refuses this profile: every target it
+		// named was WITHDRAWN or UNWRITABLE, so without this it would install nothing and exit 0.
 		if len(enabled[slug]) > 0 && len(writable[slug]) == 0 && !alreadyRefused {
 			claims := make([]Claim, 0, len(enabled[slug]))
 			for _, name := range dedupeTargets(lf.Targets) {
@@ -151,8 +147,7 @@ func Compute(in Inputs) (Plan, error) {
 				order = append(order, d.key)
 			}
 			// Every target the profile enabled but this build cannot write:
-			// this entry is reported once per such target, never silently
-			// dropped (FR-011's spirit extended to a build-side exclusion).
+			// reported once per such target, never silently dropped.
 			for _, t := range sortedUnwritableTargets(unwritable[slug]) {
 				b.skips = append(b.skips, Skip{
 					Profile: slug, ID: e.Id, Target: t,
@@ -189,25 +184,21 @@ func Compute(in Inputs) (Plan, error) {
 				matched[key] = struct{}{}
 				p.appendChange(b.change(d, &e))
 			case wanted:
-				// The destination moved for the same package/target — a layout
-				// change (e.g. disambiguation on a name clash). Emitted as a
-				// removal of the old path plus an add at the new one, not an
-				// "upgrade": folding two paths into one would orphan the old dir.
+				// The destination moved for the same package/target (e.g.
+				// disambiguation on a name clash): a removal of the old path plus
+				// an add at the new one, not an "upgrade" - folding them would orphan the old dir.
 				removals = append(removals, removalOf(slug, e, RemoveRelocated))
 			case !enabled[slug][e.Target]:
 				removals = append(removals, removalOf(slug, e, RemoveTargetDisabled))
 			case writable[slug][e.Target].Dest == nil:
 				// The target is still enabled but this build cannot write it, so
-				// it is already reported as a skip. Emitting a removal here would
-				// report a deletion the CLI has no basis to perform and would
-				// read as "the target was turned off".
+				// it is already reported as a skip; a removal here would read as
+				// "the target was turned off".
 				continue
 			case listed[slug][e.ID]:
-				// Still in the profile, but this run could not route it — a
-				// kind that changed to plugin, a name the target now refuses.
-				// It is already reported as a skip or a conflict; calling it
-				// "no longer in the profile" would send the user to look at the
-				// profile, which is not where the problem is.
+				// Still in the profile, but this run could not route it. Already
+				// reported as a skip or conflict; calling it "no longer in the
+				// profile" would send the user to the wrong place.
 				continue
 			default:
 				removals = append(removals, removalOf(slug, e, RemoveLeftProfile))

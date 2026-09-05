@@ -1,6 +1,6 @@
-// This file is T046: SC-008, the install tree after a sync KILLED mid-flight and
-// re-run. It changes no production code; every finding below is a statement about
-// the code as it stands.
+// This file is about the install tree after a sync KILLED mid-flight and
+// re-run. It changes no production code; every finding below is a statement
+// about the code as it stands.
 //
 // # WHAT "KILLED" MEANS HERE, AND WHY IT IS NOT A FAKE RETURNING AN ERROR
 //
@@ -37,7 +37,7 @@
 // watcher provably cannot see — by reaching that state with one syscall of the
 // test's own. See TestTheWindowWhereTheDestinationIsAbsentConvergesByReclaimingTheAside.
 //
-// # THE THREE POINTS, WHICH ARE R3's STEPS, AND WHICH OF THEM A WATCHER CAN CATCH
+// # THE THREE POINTS, WHICH ARE THE SWAP'S STEPS, AND WHICH A WATCHER CAN CATCH
 //
 //	killWhenStaged     the staged tree is complete (its marker, which Stage
 //	                   writes last, is there) and step 2 has not run: dest
@@ -56,25 +56,23 @@
 //	                   assist was the jitter — landed one syscall late, every
 //	                   single time, as has every run of
 //	                   TestARealKillAimedAtTheAsideWindowLandsOneSyscallLateAndStillConverges
-//	                   since.
-//	                   FR-024 permits this state explicitly, so what matters is
-//	                   that a re-run converges from it, and that is asserted from
-//	                   the state itself rather than from an attempt to race for
-//	                   it.
+//	                   since. This state is permitted explicitly, so what
+//	                   matters is that a re-run converges from it, and that is
+//	                   asserted from the state itself rather than from an
+//	                   attempt to race for it.
 //	killWhenInstalled  after step 3, before the record write. The tree is new; the
 //	                   record still says old, or says nothing. CAUGHT on the first
 //	                   attempt: the window is record.Save's fsync wide.
 //
 // # WHAT THIS FILE DOES NOT COVER
-//
 //   - Power loss. SIGKILL kills a process; it does not lose a write the kernel
 //     has already accepted. Crash consistency needs dm-log-writes or a VM
-//     force-reset loop, exactly as gate R3 says.
+//     force-reset loop.
 //   - A kill DURING a rename. Rename is atomic, so there is no such state to
-//     observeInterrupted; that is why the interruption points are the boundaries between
-//     R3's steps and not points inside them.
+//     observeInterrupted; that is why the interruption points are the
+//     boundaries between the swap's steps and not points inside them.
 //   - Anything about swap.go's own step 2 (that it produces the aside state at
-//     all). That is internal/apply/swap_test.go's R3 gate, which drove the
+//     all). That is internal/apply/swap_test.go's own gate, which drove the
 //     sequence directly and measured every rename in it.
 //   - The one-entry-at-a-time shape of these scenarios. Every case kills during
 //     the FIRST entry the plan writes, so no case here has a half-installed
@@ -111,11 +109,11 @@ import (
 // ---------------------------------------------------------------- the contract with the child
 
 // The child's parameters travel in the environment, EXCEPT the bearer token,
-// which travels in a 0600 file whose path is in the environment. FR-007 is about
-// logs, reports and errors and an environment variable is none of those, but a
-// child process's environment is dumped by every debugger, every `ps -E` and
-// every crash reporter, and the leakscan gate reads this suite's whole output —
-// so the token is never a word in a command line or an environment value here.
+// which travels in a 0600 file whose path is in the environment. A leaked
+// token is not about logs, reports and errors, but a child process's
+// environment is dumped by every debugger, every `ps -E` and every crash
+// reporter, and the leakscan gate reads this suite's whole output — so the
+// token is never a word in a command line or an environment value here.
 const (
 	interruptModeEnv    = "AMCTL_T046_MODE"
 	interruptHubEnv     = "AMCTL_T046_HUB"
@@ -194,7 +192,7 @@ func TestSyncInterruptHelperProcess(t *testing.T) {
 		// The fake is plaintext for the child's sake: its self-signed
 		// certificate cannot cross a process boundary, and an
 		// InsecureSkipVerify client in here would be a second, weaker TLS path
-		// that no test of TLS uses. FR-041's refusal is sync_test.go's.
+		// that no test of TLS uses. That refusal is sync_test.go's.
 		AllowPlaintextHub: true,
 		Verbose:           true,
 		result:            io.Discard,
@@ -356,7 +354,7 @@ func startInterruptFake(t *testing.T) fake.Target {
 
 // runInterrupted is a sync run in THIS process — the prep run before a kill and
 // the re-run after one. Verbose, because the two things that prove the re-run
-// converged the way R3 says (the reclaimed aside, the marker adoption) are
+// converged the way the swap says (the reclaimed aside, the marker adoption) are
 // Debugf lines.
 func runInterrupted(t *testing.T, e *syncEnv, flags syncFlags) (code Code, result, diag *syncBuffer, err error) {
 	t.Helper()
@@ -454,7 +452,7 @@ func (o interruptState) String() string {
 }
 
 // inTheAsideWindow is the state killWhenAside is named after: the old version is
-// wholly in the aside and dest does not exist. FR-024 permits exactly this.
+// wholly in the aside and dest does not exist. This state is permitted.
 func (o interruptState) inTheAsideWindow() bool { return o.asidePresent && !o.destPresent }
 
 func observeInterrupted(t *testing.T, e *syncEnv) interruptState {
@@ -500,9 +498,9 @@ func canonicalHubURL(t *testing.T, raw string) string {
 	return h.URL
 }
 
-// installedVersionAt reads the FR-022 marker at dir. It is how this file identifies
-// WHICH version is at a path without trusting the record, which is the whole
-// question in the third case.
+// installedVersionAt reads the interruption marker at dir. It is how this
+// file identifies WHICH version is at a path without trusting the record,
+// which is the whole question in the third case.
 func installedVersionAt(t *testing.T, dir string) (string, bool) {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join(dir, layout.MarkerFileName))
@@ -519,9 +517,9 @@ func installedVersionAt(t *testing.T, dir string) (string, bool) {
 
 // ---------------------------------------------------------------- "matches the lockfile exactly"
 
-// requireTreeMatchesLockfile is the four-part definition SC-008 is asserted against: the
-// right version at the right path, no aside anywhere, no staging anywhere, and a
-// record that agrees with the tree.
+// requireTreeMatchesLockfile is the four-part definition a converged tree is
+// asserted against: the right version at the right path, no aside anywhere,
+// no staging anywhere, and a record that agrees with the tree.
 func requireTreeMatchesLockfile(t *testing.T, e *syncEnv, tg fake.Target, revision int64, want map[string]string) {
 	t.Helper()
 
@@ -706,7 +704,7 @@ func killUntil(
 // The states, and they are exhaustive over what these three modes can produce:
 //
 //	dest absent, no aside            killed at or before staging     -> converges unforced
-//	dest absent, aside holds old     R3's step 2 -> step 3 window    -> converges unforced, by RECLAIM
+//	dest absent, aside holds old     step 2 -> step 3 window         -> converges unforced, by RECLAIM
 //	dest new, record has no row      swap done, first record write   -> converges unforced, by MARKER
 //	dest new, record still says old  swap done, record write of an
 //	                                 UPGRADE                         -> REFUSES; see the comment there
@@ -763,8 +761,8 @@ func requireTheReRunConverges(t *testing.T, tg fake.Target, env *syncEnv) {
 	}
 }
 
-// requireAnInterruptedUpgradeConvergesWithoutForce was THE FINDING, and is now
-// the fix's regression test.
+// requireAnInterruptedUpgradeConvergesWithoutForce is the regression test for
+// the finding described below.
 //
 // The killed run finished the swap of an UPGRADE and died before the record
 // write, so the tree holds the new version and the record row still names the
@@ -775,18 +773,18 @@ func requireTheReRunConverges(t *testing.T, tg fake.Target, env *syncEnv) {
 // So `sync` exited non-zero on a machine whose tree was already correct, until a
 // human passed --force.
 //
-// It was never merely the missing T049 fingerprinter. With one wired, the
-// recorded fingerprint would be the OLD version's and the tree the NEW version's,
-// so every file would read as modified and the refusal would become ErrModified
-// — a refusal saying "you modified these files" about amctl's own finished
-// install.
+// It was never merely the missing fingerprinter. With one wired, the
+// recorded fingerprint would be the OLD version's and the tree the NEW
+// version's, so every file would read as modified and the refusal would
+// become ErrModified — a refusal saying "you modified these files" about
+// amctl's own finished install.
 //
 // The real gap was that apply.guard's `From != nil` path never consulted the
-// FR-022 marker, while the `From == nil` path three lines above did exactly
-// that. A marker whose ID, Target AND Version all equal the change being
-// installed is proof of amctl's own completed install of that very version, and
-// consulting it there costs nothing anywhere else: the marker still influences
-// only an OVERWRITE, never a removal, so FR-028 is untouched.
+// marker, while the `From == nil` path three lines above did exactly that. A
+// marker whose ID, Target AND Version all equal the change being installed is
+// proof of amctl's own completed install of that very version, and
+// consulting it there costs nothing anywhere else: the marker still
+// influences only an OVERWRITE, never a removal.
 func requireAnInterruptedUpgradeConvergesWithoutForce(t *testing.T, tg fake.Target, env *syncEnv) {
 	t.Helper()
 	unforced := syncFlags{profiles: []string{tg.Fixtures.Profile}}
@@ -817,7 +815,7 @@ func requireAnInterruptedUpgradeConvergesWithoutForce(t *testing.T, tg fake.Targ
 // child's lock file is still there, so the re-run genuinely had to deal with it.
 //
 // The ANSWER to "how long did the re-run have to wait" is "it did not wait at
-// all, and it must not": Acquire never blocks — FR-038 refuses a live holder
+// all, and it must not": Acquire never blocks — it refuses a live holder
 // rather than queueing — so the only two outcomes are an immediate reclaim under
 // the dead-pid rule and an immediate ErrLocked. require.NoError on the re-run is
 // therefore already the whole assertion; this bound exists so that a future
@@ -847,7 +845,7 @@ func recordedVersion(t *testing.T, e *syncEnv, tg fake.Target, id string) string
 
 // ---------------------------------------------------------------- case 1: killed at staging
 
-// A kill after the staged tree is complete and before R3's step 2 leaves the
+// A kill after the staged tree is complete and before the swap's step 2 leaves the
 // destination untouched, nothing recorded, and a staged tree behind. The re-run
 // converges and leaves no staging directory.
 func TestAKillWhileTheStagedTreeIsCompleteConvergesOnAReRun(t *testing.T) {
@@ -867,8 +865,8 @@ func TestAKillWhileTheStagedTreeIsCompleteConvergesOnAReRun(t *testing.T) {
 
 // ---------------------------------------------------------------- case 2: the one window where dest is absent
 
-// R3's step 2 -> step 3: the old version is wholly in the aside and the
-// destination does not exist. FR-024 permits this state explicitly, so what is
+// The swap's step 2 -> step 3: the old version is wholly in the aside and the
+// destination does not exist. This state is permitted explicitly, so what is
 // asserted is that a re-run CONVERGES — and that it converges by RECLAIMING the
 // aside, which is the only path that does not destroy the version the record
 // still claims.
@@ -886,7 +884,7 @@ func TestAKillWhileTheStagedTreeIsCompleteConvergesOnAReRun(t *testing.T) {
 //
 // So the state is assembled from a real killed sync plus ONE syscall: a real
 // child is SIGKILLed with its staged tree complete (the previous case's
-// mechanism), and then this test performs R3's own step 2 —
+// mechanism), and then this test performs the swap's own step 2 —
 // os.Rename(dest, dest+AsideSuffix) — on the tree that dead process left behind.
 // Everything else is the killed process's: the staged new version, the record
 // still naming the old one, the lock file it could not release. Rename is atomic,
@@ -894,7 +892,7 @@ func TestAKillWhileTheStagedTreeIsCompleteConvergesOnAReRun(t *testing.T) {
 // state, and there is no other state step 2 can leave.
 //
 // What it does not cover: that swap.go's own step 2 produces this state. That is
-// internal/apply/swap_test.go's R3 gate, which measured the sequence directly.
+// internal/apply/swap_test.go's own gate, which measured the sequence directly.
 func TestTheWindowWhereTheDestinationIsAbsentConvergesByReclaimingTheAside(t *testing.T) {
 	tg := startInterruptFake(t)
 	requireFixturesStillSay(t, tg, revisionHead, headRevisionTree)
@@ -948,8 +946,9 @@ func TestARealKillAimedAtTheAsideWindowLandsOneSyscallLateAndStillConverges(t *t
 
 // ---------------------------------------------------------------- case 3a: killed between swap and record
 
-// The tree is new and the record does not mention the entry at all. This is what
-// the FR-022 marker exists for: apply.guard adopts a destination carrying amctl's
+// The tree is new and the record does not mention the entry at all. This is
+// what the interruption marker exists for: apply.guard adopts a destination
+// carrying amctl's
 // own marker for the same id and target, warns, and re-installs. It does not read
 // "the record does not claim this, therefore somebody else's, therefore refuse",
 // and it does not read "drift, therefore remove".
@@ -982,13 +981,13 @@ func TestAKillBetweenTheSwapAndTheRecordWriteOfAnUpgradeConverges(t *testing.T) 
 
 // ---------------------------------------------------------------- shared scenario pieces
 
-// killedUpgradeFlags is the KILLED run's flags for every upgrade case, and --force is
-// not decoration: this build wires no Fingerprinter (internal/cmd/sync.go says so
-// in as many words; T049 is unwritten), so apply.verifyUnmodified refuses EVERY
-// upgrade of an entry that was installed without one. An upgrade is the only
-// change whose swap has an aside at all, so without --force there is no way to
-// reach R3's step 2 in this build. Every RE-RUN in this file is unforced, which is
-// the half that is being tested.
+// killedUpgradeFlags is the KILLED run's flags for every upgrade case, and
+// --force is not decoration: this build wires no Fingerprinter (see
+// internal/cmd/sync.go), so apply.verifyUnmodified refuses EVERY upgrade of
+// an entry that was installed without one. An upgrade is the only change
+// whose swap has an aside at all, so without --force there is no way to
+// reach that step in this build. Every RE-RUN in this file is unforced,
+// which is the half that is being tested.
 func killedUpgradeFlags(tg fake.Target) syncFlags {
 	return syncFlags{profiles: []string{tg.Fixtures.Profile}, force: true}
 }

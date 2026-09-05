@@ -1,9 +1,9 @@
-// T041's own tests. swap_test.go is the R3 GATE and must not be edited: it
+// swap.go's own tests. swap_test.go is the gate and must not be edited: it
 // states the sequence independently, through gateSwap, and this file tests
 // Swap against that statement rather than against itself. Two independent
 // statements of one sequence are worth their duplication — a test that only
-// calls the code under test cannot notice that the code reordered the steps,
-// because it reordered with it.
+// calls the code under test cannot notice that the code reordered the
+// steps, because it reordered with it.
 
 package apply
 
@@ -21,9 +21,8 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/record"
 )
 
-// TestSwapSharesTheGatesAsideName is the drift check R3 asks for by name: "T041
-// must assert that swap.go's own aside-suffix constant equals the gate's, or the
-// two drift apart silently."
+// TestSwapSharesTheGatesAsideName asserts that swap.go's own aside-suffix
+// constant equals the gate's, so the two cannot drift apart silently.
 func TestSwapSharesTheGatesAsideName(t *testing.T) {
 	require.Equal(t, gateAsideSuffix, AsideSuffix)
 	require.Equal(t, record.AsideSuffix, AsideSuffix,
@@ -165,8 +164,8 @@ func TestSwapReclaimsRatherThanDiscardsALeftoverAside(t *testing.T) {
 		"step 1 must reclaim the leftover aside so step 3 has something to roll back to")
 }
 
-// TestSwapRollsBackToTheOldVersionOnAStepThreeFailure — FR-015's "leave the
-// machine unchanged for it", applied to a swap that has already moved the old
+// TestSwapRollsBackToTheOldVersionOnAStepThreeFailure: "leave the machine
+// unchanged for it", applied to a swap that has already moved the old
 // version aside.
 func TestSwapRollsBackToTheOldVersionOnAStepThreeFailure(t *testing.T) {
 	f := newGateFixture(t)
@@ -198,10 +197,10 @@ func TestSwapReplacesRatherThanMerges(t *testing.T) {
 	require.Equal(t, gateStateNew, gateState(t, f.dest))
 }
 
-// TestSwapReplacesASymlinkAtTheDestinationWithoutWritingThroughIt is the FR-020
-// half of R3's decision. The guard against touching a symlink at all belongs to
-// the caller (FR-028/FR-029 plus --force); Swap is unconditional, and what it
-// must never do is follow the link.
+// TestSwapReplacesASymlinkAtTheDestinationWithoutWritingThroughIt is the
+// containment half of the gate's decision. The guard against touching a
+// symlink at all belongs to the caller (plus --force); Swap is
+// unconditional, and what it must never do is follow the link.
 func TestSwapReplacesASymlinkAtTheDestinationWithoutWritingThroughIt(t *testing.T) {
 	outside := t.TempDir()
 	f := newGateFixture(t)
@@ -325,11 +324,10 @@ func TestSwapReportsALeftoverAsideRatherThanFailingTheEntry(t *testing.T) {
 	require.Equal(t, f.aside, res.LeftoverAside(),
 		"a failed step 5 must be surfaced as a leftover to clean next run")
 	require.Equal(t, gateStateNew, gateState(t, f.dest))
-	// The aside is left PARTIALLY removed here — RemoveAll unlinks what it can
-	// before it hits the mode that stops it — and that is fine and worth pinning:
-	// the aside is not authoritative for anything. dest is wholly the new version,
-	// which is the property FR-024 is about, and the leftover is only a path to
-	// clean up.
+	// The aside is left partially removed here — RemoveAll unlinks what it
+	// can before it hits the mode that stops it — and that is fine and
+	// worth pinning: the aside is not authoritative for anything. dest is
+	// wholly the new version, and the leftover is only a path to clean up.
 	require.NotEqual(t, gateStateAbsent, gateState(t, f.aside))
 
 	// The leftover is inside the entry's removable set, so the next run cleans it
@@ -366,9 +364,9 @@ func TestSwapRefusesAnUnusableDestination(t *testing.T) {
 	}
 }
 
-// TestSwapIsIdempotent — FR-025 for the swap alone: re-installing the same
-// version leaves the destination byte-identical and the parent directory holding
-// nothing but the destination and the staging root.
+// TestSwapIsIdempotent: re-installing the same version leaves the
+// destination byte-identical and the parent directory holding nothing but
+// the destination and the staging root.
 func TestSwapIsIdempotent(t *testing.T) {
 	f := newGateFixture(t)
 	f.installOld(t)

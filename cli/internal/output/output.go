@@ -1,16 +1,5 @@
-// Package output renders one result type per verb, in either of two formats.
-//
-// The invariant this package exists to hold (FR-035): a *result* goes to the
-// result stream, and every diagnostic — a warning, a progress line, a
-// best-effort sync report that failed — goes to the diagnostic stream. Under
-// `--output json` that is what makes stdout a single parseable document no
-// matter how much went sideways on the way, so a script never has to sieve
-// prose out of JSON.
-//
-// What this package deliberately does not do: it never touches os.Stdout or
-// os.Stderr. Every entry point takes an io.Writer, because a renderer that
-// reaches for the process's own streams cannot be tested and cannot be
-// redirected.
+// Package output renders each verb's result as prose or as a single JSON document.
+// Results go to the result stream and diagnostics to the diagnostic stream, so JSON stays parseable.
 package output
 
 import (
@@ -22,21 +11,15 @@ import (
 type Format string
 
 const (
-	// FormatHuman is prose for a person at a terminal. Its exact wording is not
-	// a contract and must never be parsed.
+	// FormatHuman is prose for a person; its wording is not a contract.
 	FormatHuman Format = "human"
-	// FormatJSON is the machine-facing rendering: one JSON document per run, on
-	// the result stream.
+	// FormatJSON is one JSON document per run, on the result stream.
 	FormatJSON Format = "json"
 )
 
-// Formats lists every accepted --output value, in the order the flag's help
-// text should show them.
+// Formats lists every accepted --output value.
 func Formats() []Format { return []Format{FormatHuman, FormatJSON} }
 
-// ParseFormat validates an --output value. An unrecognised value is a refusal
-// the user can fix, so the error names what was accepted rather than only what
-// was rejected.
 func ParseFormat(s string) (Format, error) {
 	for _, f := range Formats() {
 		if Format(s) == f {
@@ -46,27 +29,23 @@ func ParseFormat(s string) (Format, error) {
 	return "", fmt.Errorf("unknown output format %q: expected %s or %s", s, FormatHuman, FormatJSON)
 }
 
-// Result is what a verb produced. Every verb has exactly one result type, and
-// both renderers work over this interface rather than over a switch on
-// concrete types, so adding a verb cannot silently miss a renderer.
+// Result is what a verb produced. Both renderers work over this interface rather
+// than a type switch, so adding a verb cannot silently miss a renderer.
 type Result interface {
-	// Kind names the verb that produced this result. It is the "kind" field of
-	// the JSON document and the key a script switches on.
+	// Kind names the verb; it is the "kind" field of the JSON document.
 	Kind() string
-	// Human writes the operator-facing rendering to w.
+	// Human writes the operator-facing rendering.
 	Human(w io.Writer) error
 }
 
-// Renderer writes a Result to a stream. Implementations must write nothing
-// anywhere else: a renderer that also emits a warning breaks the one guarantee
-// the JSON format offers.
+// Renderer writes a Result to a stream and nothing anywhere else: under JSON the
+// result stream must carry exactly one document.
 type Renderer interface {
 	Render(w io.Writer, r Result) error
 }
 
-// RendererFor returns the renderer for a format. An unknown format falls back
-// to human rather than to nothing, because a silently empty result stream is
-// the worst of the three outcomes; ParseFormat is what rejects bad input.
+// RendererFor returns the renderer for a format. An unknown format falls back to
+// human rather than to nothing; ParseFormat is what rejects bad input.
 func RendererFor(f Format) Renderer {
 	if f == FormatJSON {
 		return JSONRenderer{}

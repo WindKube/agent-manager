@@ -5,72 +5,38 @@ import (
 	"strings"
 )
 
-// This file is the REPORTING side of FR-009 and the only place in the CLI
-// where an ordering on version strings may exist. Masterminds/semver may be
-// imported here and nowhere else (T042b).
-//
-// The distinction that makes that safe, and it is not a wording trick:
-//
-//   - Comparing two versions the hub ALREADY CHOSE, to decide whether to print
-//     "upgrade" or "downgrade", is reporting. Nothing downstream reads the
-//     answer. Get it wrong and one word is wrong.
-//   - Choosing WHICH version to install is resolving, and it belongs to the
-//     hub. A second implementation here is a second answer, and the two
-//     eventually disagree — at which point the machine holds a version the
-//     hub's audit trail says it does not.
-//
-// compute.go, on the other side of that line, asks only whether two version
-// strings are equal and whether two digests are the same 32 bytes. It never
-// asks which is greater. TestTheChangeSetDoesNotDependOnTheVersionComparer
-// proves the line is real by inverting the comparer and asserting the change
-// set is byte-identical.
+// This file is the only place in the CLI where an ordering on version
+// strings may exist: it reports which way a hub-chosen replacement moved,
+// never chooses which version to install (that's the hub's job — a second
+// implementation here could disagree with its audit trail). compute.go, on
+// the other side of that line, only ever asks whether two strings are equal.
 
 // Direction is which way a replacement moved, as a label.
 type Direction string
 
 const (
-	// DirectionNone: there was no previous version. An add.
-	DirectionNone Direction = ""
+	DirectionNone Direction = "" // no previous version: an add
 
-	// DirectionUp: the locked version is greater than the installed one.
 	DirectionUp Direction = "up"
 
-	// DirectionDown: the locked version is LESS than the installed one. A real
-	// outcome, not a mistake — a pin can be moved backwards, and a `latest`
-	// entry moves backwards on its own when the newest version gets flagged and
-	// the gate blocks it. A downgrade is not an upgrade with a minus sign; the
-	// report has to say which it was.
+	// DirectionDown is a real outcome, not a mistake: a pin can move
+	// backwards, and `latest` moves backwards on its own when the newest
+	// version gets gated.
 	DirectionDown Direction = "down"
 
-	// DirectionSame: the two versions order equal. Either they are the same
-	// string and only the digest moved (a republish), or they differ only in
-	// build metadata or segment padding.
+	// DirectionSame: same string with only the digest moved (a republish),
+	// or differing only in build metadata or segment padding.
 	DirectionSame Direction = "same"
 
-	// DirectionUnknown: the comparer declined to order them. Reported as such
-	// rather than guessed, because a guessed direction is indistinguishable
-	// from a measured one once it is printed.
-	DirectionUnknown Direction = "unknown"
+	DirectionUnknown Direction = "unknown" // the comparer declined; reported, not guessed
 )
 
-// Comparer orders two version strings. It returns the sign of a-b and whether
-// it is willing to stand behind the answer; ok=false means "these are not
-// orderable by me", which becomes [DirectionUnknown] rather than a coin flip.
-//
-// It is a seam so that Masterminds/semver can be dropped in at one call site
-// once cli/go.mod carries it:
-//
-//	plan.Inputs{Compare: func(a, b string) (int, bool) {
-//	        va, err := semver.NewVersion(a)
-//	        if err != nil { return 0, false }
-//	        vb, err := semver.NewVersion(b)
-//	        if err != nil { return 0, false }
-//	        return va.Compare(vb), true
-//	}}
+// Comparer orders two version strings, returning ok=false rather than a
+// coin flip when it can't; it's a seam so Masterminds/semver can be dropped
+// in at one call site once cli/go.mod carries it.
 type Comparer func(a, b string) (int, bool)
 
-// DirectionOf labels a replacement. from is the installed version, to is the
-// version the hub resolved. A nil comparer uses [CompareVersions].
+// DirectionOf labels a replacement; a nil comparer uses [CompareVersions].
 func DirectionOf(cmp Comparer, from, to string) Direction {
 	if from == "" {
 		return DirectionNone
@@ -91,37 +57,13 @@ func DirectionOf(cmp Comparer, from, to string) Direction {
 	}
 }
 
-// CompareVersions is the default comparer: Semantic Versioning 2.0.0
-// precedence (§11), degrading to numeric-segment comparison for strings that
-// are not valid semver.
-//
-// It is hand-written rather than delegated because cli/go.mod does not carry
-// Masterminds/semver and this package must not add a requirement. Two things
-// it deliberately does:
-//
-//   - It compares numeric segments NUMERICALLY. Lexicographic comparison is
-//     the trap this whole function exists to avoid: "1.10.0" < "1.9.0" as
-//     strings, so the single most common real upgrade would be reported as a
-//     downgrade. String inequality can tell you that two versions differ; it
-//     cannot tell you which is newer, and nothing in the lockfile can either —
-//     `revision` orders revisions, not versions, and `resolution` says how the
-//     hub chose, not what it chose over.
-//   - It returns ok=false rather than 0 when the two order equal but are not
-//     the same string, i.e. when the only difference is build metadata
-//     ("1.2.3" vs "1.2.3+build.7") or segment padding ("1.0" vs "1.0.0").
-//     Semver says those have equal precedence, so "no direction" is the true
-//     answer and 0 would be indistinguishable from "identical".
-//
-// What it gets wrong, stated so nobody has to rediscover it: it does not
-// validate semver, so a version this hub would have rejected still gets an
-// ordering, and for genuinely non-semver schemes the ordering is whatever
-// numeric-segment comparison says (dates and four-segment versions come out
-// right; "2.0-final" against "2.0-beta" comes out right by ASCII accident,
-// "10-jan" against "2-feb" comes out right; but "v2" against "2" orders v2
-// HIGHER, because §11.4.3 puts every alphanumeric field above every numeric
-// one, which is a semver rule applied to something that is not semver). Where
-// exactness matters more than the absence of a dependency, replace it via
-// [Comparer]; the change set does not move either way.
+// CompareVersions is the default comparer: SemVer 2.0.0 precedence (§11),
+// hand-written since cli/go.mod carries no semver library. It compares
+// numeric segments numerically (never "1.10.0" < "1.9.0" as strings), and
+// returns ok=false rather than 0 for equal-precedence-but-different strings
+// (build metadata, segment padding) since 0 would read as "identical". It
+// does not validate semver, so non-semver strings still get an ordering —
+// swap in [Comparer] where exactness matters more than a zero-dependency default.
 func CompareVersions(a, b string) (int, bool) {
 	if a == "" || b == "" {
 		return 0, false
@@ -137,9 +79,7 @@ func CompareVersions(a, b string) (int, bool) {
 		return sign, true
 	}
 
-	// Semver §11.3: a version WITH a prerelease has lower precedence than the
-	// same version without one. 1.0.0-rc.1 precedes 1.0.0, which lexicographic
-	// comparison gets backwards.
+	// §11.3: a version WITH a prerelease precedes the same version without one.
 	switch {
 	case preA == "" && preB != "":
 		return 1, true
@@ -154,8 +94,7 @@ func CompareVersions(a, b string) (int, bool) {
 	return 0, false
 }
 
-// splitVersion drops build metadata (§10: it is ignored for precedence) and
-// separates the core from the prerelease.
+// splitVersion drops build metadata (§10) and separates core from prerelease.
 func splitVersion(v string) (core, prerelease string) {
 	if plus := strings.IndexByte(v, '+'); plus >= 0 {
 		v = v[:plus]
@@ -171,9 +110,7 @@ func compareCore(a, b string) int {
 	segB := strings.Split(b, ".")
 	n := max(len(segA), len(segB))
 	for i := range n {
-		// A missing segment is zero, so 1.2 and 1.2.0 order equal — the same
-		// answer semver gives once both are normalised.
-		x, y := "0", "0"
+		x, y := "0", "0" // missing segment is zero, so 1.2 and 1.2.0 order equal
 		if i < len(segA) {
 			x = segA[i]
 		}
@@ -197,9 +134,7 @@ func comparePrerelease(a, b string) int {
 			return sign
 		}
 	}
-	// §11.4.4: a larger set of fields has higher precedence when all preceding
-	// fields are equal.
-	switch {
+	switch { // §11.4.4: more fields wins when all preceding fields are equal
 	case len(fieldsA) < len(fieldsB):
 		return -1
 	case len(fieldsA) > len(fieldsB):
@@ -209,9 +144,7 @@ func comparePrerelease(a, b string) int {
 	}
 }
 
-// compareIdentifier compares one dot-separated field. Numeric fields compare
-// numerically; a numeric field has lower precedence than an alphanumeric one
-// (§11.4.3); two alphanumeric fields compare by ASCII.
+// compareIdentifier: numeric fields compare numerically and rank below alphanumeric ones (§11.4.3).
 func compareIdentifier(a, b string) int {
 	na, okA := numeric(a)
 	nb, okB := numeric(b)
@@ -227,9 +160,7 @@ func compareIdentifier(a, b string) int {
 	}
 }
 
-// numeric parses a field as an unsigned integer. A value too large for uint64
-// is treated as non-numeric rather than truncated: a wrong ordering is worse
-// than an unordered pair, and no real version has a 20-digit segment.
+// numeric: overflow is non-numeric rather than truncated (a wrong order is worse than unordered).
 func numeric(s string) (uint64, bool) {
 	if s == "" {
 		return 0, false

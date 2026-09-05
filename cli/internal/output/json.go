@@ -6,14 +6,8 @@ import (
 	"io"
 )
 
-// JSONRenderer writes exactly one JSON document per run.
-//
-// The envelope — kind plus result — exists so a script can switch on the verb
-// without knowing which one it invoked, and so a future field can be added
-// beside the result instead of inside it. Encoder.Encode writes one value and
-// one trailing newline; nothing else in this package writes to the result
-// stream, which is what makes the document parseable even when the run
-// produced warnings (FR-035). Warnings went to the diagnostic stream.
+// JSONRenderer writes exactly one JSON document per run: an envelope of kind
+// plus result, so a script can switch on the verb without knowing which it ran.
 type JSONRenderer struct{}
 
 type envelope struct {
@@ -21,7 +15,6 @@ type envelope struct {
 	Result Result `json:"result"`
 }
 
-// Render implements Renderer.
 func (JSONRenderer) Render(w io.Writer, r Result) error {
 	if r == nil {
 		return nil

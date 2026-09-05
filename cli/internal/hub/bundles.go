@@ -1,73 +1,10 @@
 package hub
 
-// This file is the ONLY place bundle bytes are fetched, and the order of
-// operations in Fetch is the whole of FR-014, FR-015, FR-016 and FR-017. Read
-// the order before changing anything here.
-//
-//	cache.Get  ->  hit: return the bytes the cache re-hashed. No request.
-//	           ->  miss and --offline: refuse, naming the digest (FR-018).
-//	           ->  miss: GET the bundle, stream it into a temp file INSIDE the
-//	               cache directory while hashing it, and let cache.PutReader
-//	               rename that temp to `sha256-<hex>` only if the hash it
-//	               computed equals the digest the lockfile locked. Then read
-//	               the entry back through cache.Get.
-//
-// WHERE VERIFICATION HAPPENS RELATIVE TO THE WRITE, since FR-014 is a claim
-// about exactly that. The bytes are written to a temp file whose name no
-// reader looks up, in a directory that is not part of any agent's tree, and
-// the digest is computed on the bytes as they are written, not by re-reading
-// the file afterwards. The temp becomes an addressable cache entry only after
-// the computed digest matches. So no byte of an unverified bundle ever
-// reaches the installation tree, and none ever reaches a path the installer
-// could find by accident either.
-//
-// WHAT IS LEFT ON DISK IF THE BODY IS TRUNCATED MID-STREAM: nothing. The
-// partial bytes are in the temp file, and cache.PutReader's own deferred
-// cleanup removes it on every path that does not reach the rename. If that
-// removal itself fails, the leftover is a
-// `.amctl-tmp-` file that Cache.CollectTemps sweeps on the next download; it
-// is never readable as an entry, because entry lookup is by the
-// `sha256-<hex>` name only.
-//
-// WHY THE BYTES ARE READ BACK THROUGH cache.Get RATHER THAN RETURNED FROM THE
-// STREAM. It costs one re-read and one re-hash of at most 25 MiB, and it buys
-// the property FR-017 actually needs: the bytes handed to the installer are
-// bytes that were hashed AFTER they were durable, by the same code path that
-// serves them on every later run. A "we just wrote it, so it is fine" fast
-// path would make the first run the one run that trusts memory instead of the
-// disk, which is the run where a filesystem lie is least likely to be caught.
-//
-// STREAMING, AND WHAT IS NEVER BUFFERED. The download path holds no more than
-// one 32 KiB io.Copy buffer: the body goes to the temp file, never into a
-// []byte. Exactly one full copy of the bundle exists in memory at a time, the
-// one cache.Get returns for the installer to extract.
-//
-// FR-016 IS NOT IMPLEMENTED HERE, DELIBERATELY. The 307 to a pre-signed
-// object-store URL is followed by Hub's own http.Client, whose two defences
-// (bearerTransport and stripAuthorizationOnRedirect, both in hub.go) are what
-// keep the bearer token off the second hop. Building a request with
-// http.NewRequest and a fresh http.Client here — the obvious way to "follow
-// the redirect ourselves" — reinstates net/http's default, which PRESERVES
-// Authorization on a same-host, subdomain or port-only redirect. That is the
-// commonest self-hosted layout there is. Use h.Raw() or h.HTTPClient(), never
-// a client of your own.
-//
-// WHAT THIS FILE DOES NOT DO:
-//
-//   - It does not build a URL from the entry's objectKey. The contract's
-//     endpoint takes namespace, name and version as path parameters; objectKey
-//     is the hub's own storage layout, and addressing the store directly would
-//     be a second addressing scheme that skips the gate the endpoint enforces.
-//   - It does not extract, stage or write anything into an agent's tree. That
-//     is internal/apply, which reads only the verified local bytes this
-//     returns.
-//   - It does not decide what a failure means for the sync. A 403 skips one
-//     entry and the sync continues (FR-011); a digest mismatch abandons that
-//     entry AND makes the run exit non-zero (FR-015). Both are per-entry and
-//     they are not the same outcome, so the policy belongs to the sync verb
-//     and this file only makes them distinguishable: ClassOf(err) ==
-//     ClassForbidden for the first, errors.Is(err, ErrDigestMismatch) for the
-//     second.
+// This file is the only place bundle bytes are fetched: a miss streams to a
+// temp file while hashing, and cache.PutReader renames only on a matching
+// hash, so no unverified byte reaches the install tree. Always fetch via
+// h.Raw()/h.HTTPClient() (bearerTransport, hub.go) rather than a fresh
+// http.Client, whose redirect default leaks Authorization cross-host.
 
 import (
 	"context"
@@ -83,71 +20,30 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/cache"
 )
 
-// digestHeader is RFC 3230's instance-digest header, the one getBundle's 200
-// declares. See the Digest-header handling in download for why a missing or
-// unreadable one is tolerated and a DISAGREEING one is not.
-const digestHeader = "Digest"
+const digestHeader = "Digest" // RFC 3230's instance-digest header
 
 var (
-	// ErrBundleRef marks a lockfile entry that cannot be turned into a bundle
-	// request at all. It is a refusal, not a skip: an id amctl cannot address
-	// is a lockfile it does not understand.
-	ErrBundleRef = errors.New("unusable bundle reference")
-
-	// ErrDigestMismatch is what every FR-015 failure matches. The concrete
-	// error is *DigestMismatchError, which names both digests.
+	ErrBundleRef      = errors.New("unusable bundle reference") // a refusal, not a skip
 	ErrDigestMismatch = errors.New("bundle digest does not match the digest the hub locked")
 
-	// ErrOffline is FR-018's refusal: the bundle is not in the cache and this
-	// downloader is forbidden to fetch it. The message names the digest,
-	// because that is what the user has to obtain.
 	ErrOffline = errors.New("bundle is not in the cache and fetching is disabled")
 )
 
-// BundleRef is one lockfile entry reduced to what addressing its bundle needs.
-//
-// THE TRAP, and it has bitten every reader of the contract so far: the bundle
-// path is GET /v1/bundles/{publisher}/{name}/{version} and `{publisher}` holds
-// the NAMESPACE. The parameter's NAME is wrong and its DESCRIPTION ("the
-// publishing namespace, as it appears in the catalog") is right. A publisher
-// slug is itself two segments — `example/platform` — so it cannot fit in one
-// path segment at all, and a URL built from one has three segments where the
-// contract has two. The resulting 404 is indistinguishable from a missing
-// package, which is why this type stores Namespace under that name and never
-// stores a publisher: there is nothing here for a publisher slug to be
-// mistaken for. The lockfile schema's `"description": "publisher/name"` on the
-// entry id is wrong in the same way; the id is `namespace/name`.
-//
-// Two publishers may share one namespace, which is also why FR-023's
-// distinct-directory requirement is about `namespace/name`: the publisher is
-// not the thing that disambiguates, so keying anything off it passes every
-// test a one-publisher-per-namespace fixture can write.
+// BundleRef is one lockfile entry reduced to what addressing its bundle
+// needs. THE TRAP: the bundle path's `{publisher}` segment actually holds
+// the NAMESPACE, not a publisher slug (which is itself two segments and
+// can't fit in one) — hence Namespace, never Publisher, below.
 type BundleRef struct {
-	// ID is the lockfile entry id verbatim, `namespace/name`.
-	ID string
-	// Namespace is ID's first segment. It is the value the path parameter
-	// spelled `publisher` takes.
-	Namespace string
-	// Name is ID's second segment.
-	Name string
-	// Version is the exact version the hub resolved. It is carried verbatim and
-	// never parsed or compared — the hub resolves, this client does not
-	// (FR-009).
-	Version string
-	// Digest is the digest the lockfile locked, in the one canonical internal
-	// form. It is both the cache key and the thing the downloaded bytes are
-	// checked against, and those being the same value is what makes it
-	// impossible to file bytes under a digest they do not match.
-	Digest cache.Digest
+	ID        string       // the lockfile entry id verbatim, `namespace/name`
+	Namespace string       // ID's first segment; the value the `publisher` param takes
+	Name      string       // ID's second segment
+	Version   string       // exact, verbatim from the hub; never parsed or substituted
+	Digest    cache.Digest // both the cache key and what downloaded bytes are checked against
 }
 
-// ParseBundleRef turns a lockfile entry into a BundleRef, refusing everything
-// it cannot address.
-//
-// An id that is not exactly two non-empty segments is an ERROR and is never
-// joined, truncated or padded (spec.md Edge Cases). Either repair would address
-// a different package than the one the lockfile named, and the install would
-// then be recorded under an id that does not exist.
+// ParseBundleRef refuses an id that is not exactly two non-empty segments;
+// it is never joined, truncated or padded, since any repair would address a
+// different package than the lockfile named.
 func ParseBundleRef(e LockfileEntry) (BundleRef, error) {
 	ns, name, ok := strings.Cut(e.Id, "/")
 	switch {
@@ -172,24 +68,15 @@ func ParseBundleRef(e LockfileEntry) (BundleRef, error) {
 	return ref, nil
 }
 
-// Path is the contract path this ref addresses. It is built for messages and
-// for the transport-error target; the request itself goes through the generated
-// client, which builds the same three segments.
+// Path is for messages/errors only; the actual request goes through the generated client.
 func (r BundleRef) Path() string {
 	return "/v1/bundles/" + r.Namespace + "/" + r.Name + "/" + r.Version
 }
 
-// String is `namespace/name@version`, the form a user has seen in the lockfile
-// and the plan.
 func (r BundleRef) String() string { return r.ID + "@" + r.Version }
 
-// validate refuses a ref that could not safely become a URL path.
-//
-// It is called on a hand-built BundleRef too, not only on one from
-// ParseBundleRef, because the generated NewGetBundleRequest does NOT escape its
-// path parameters: it interpolates them into a format string and parses the
-// result, so a segment containing `/` or `..` would silently address something
-// else entirely.
+// validate also covers a hand-built BundleRef: NewGetBundleRequest does not
+// escape path parameters, so `/` or `..` would silently address elsewhere.
 func (r BundleRef) validate() error {
 	if r.ID == "" || r.ID != r.Namespace+"/"+r.Name {
 		return fmt.Errorf("%w: id %q is not namespace %q plus name %q", ErrBundleRef, r.ID, r.Namespace, r.Name)
@@ -203,41 +90,21 @@ func (r BundleRef) validate() error {
 	if err := validBundleSegment("version", r.ID, r.Version); err != nil {
 		return err
 	}
-	// The zero Digest is not the digest of anything — sha256 of the empty input
-	// is e3b0c442… — so it can only come from an uninitialised field, and two
-	// uninitialised digests compare EQUAL. That is the one way the check below
-	// could pass by accident.
-	if r.Digest.IsZero() {
+	if r.Digest.IsZero() { // zero is never a real hash, only an uninitialised field
 		return fmt.Errorf("%w: entry %q carries no digest", ErrBundleRef, r.ID)
 	}
 	return nil
 }
 
-// validBundleSegment is the charset every path segment must satisfy.
-//
-// HAND-DERIVED from the hub's own object-key segment pattern,
-// `^[A-Za-z0-9][A-Za-z0-9._+-]*$` in the hub module's internal/blob/keys.go,
-// which every namespace, package name and version in the catalog must satisfy
-// to have a bundle object at all. A segment outside it cannot name a stored
-// object, so accepting more here would only widen what this file has to
-// defend. The pattern is restated rather than imported because the hub is a
-// separate module and importing it would put the server in this binary's
-// dependency graph.
-//
-// This is NOT internal/layout's validation and must not be replaced by it.
-// layout is stricter — it additionally refuses a name that cannot become a
-// directory, e.g. one containing layout.DirSeparator — because it is deciding
-// where bytes land. This function decides only whether a URL can be built, and
-// making a download fail with a filesystem-shaped reason would misreport which
-// half of the pipeline refused.
+// validBundleSegment hand-derives the hub's object-key charset
+// (`^[A-Za-z0-9][A-Za-z0-9._+-]*$`; restated, not imported: hub is a
+// separate module). NOT internal/layout's stricter filesystem validation.
 func validBundleSegment(what, id, seg string) error {
 	if seg == "" {
 		return fmt.Errorf("%w: entry %q has an empty %s", ErrBundleRef, id, what)
 	}
 	for i, r := range seg {
-		// The leading-character rule is the hub's, and it alone rules out "",
-		// ".", ".." and a leading separator.
-		if i == 0 && !isBundleAlnum(r) {
+		if i == 0 && !isBundleAlnum(r) { // rules out "", ".", ".." and a leading separator
 			return fmt.Errorf("%w: %s %q of entry %q must start with a letter or digit",
 				ErrBundleRef, what, seg, id)
 		}
@@ -257,37 +124,21 @@ func isBundleAlnum(r rune) bool {
 	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9'
 }
 
-// DigestSource says which of the two digests the hub sent disagreed with the
-// lockfile. Both are hard failures; the distinction is for the message, because
-// the remedies differ — a bad header is a hub or proxy bug, bad bytes are a
-// corrupted object or a tampered one.
+// DigestSource says which of the two digests disagreed with the lockfile.
 type DigestSource string
 
-// The two sources.
 const (
-	// DigestSourceHeader is the RFC 3230 `Digest` response header, checked
-	// before the body is streamed.
 	DigestSourceHeader DigestSource = "Digest response header"
-	// DigestSourceBody is the sha256 of the bytes actually served.
-	DigestSourceBody DigestSource = "response body"
+	DigestSourceBody   DigestSource = "response body"
 )
 
-// DigestMismatchError is FR-015: the bundle the hub served is not the bundle
-// the lockfile locked. It names BOTH digests, which is the requirement — an
-// error saying only "digest mismatch" leaves the reader unable to tell a
-// corrupted object from a lockfile pointing at the wrong version.
-//
-// It carries no Class: nothing about the HTTP exchange failed, and classifying
-// it as ClassProtocol would file a content failure under "that endpoint is not
-// a hub".
+// DigestMismatchError names both digests. No Class: the HTTP exchange itself didn't fail.
 type DigestMismatchError struct {
 	Ref    BundleRef
 	Want   cache.Digest
 	Got    cache.Digest
 	Source DigestSource
-	// Bytes is how many bytes were read before the verdict, for the body
-	// source. Zero for the header source, where nothing was read.
-	Bytes int64
+	Bytes  int64 // read before the verdict; zero for the header source
 }
 
 func (e *DigestMismatchError) Error() string {
@@ -301,33 +152,17 @@ func (e *DigestMismatchError) Error() string {
 	return b.String()
 }
 
-// Is makes errors.Is(err, ErrDigestMismatch) the test, so no caller has to
-// learn this type to route the failure.
 func (e *DigestMismatchError) Is(target error) bool { return errors.Is(target, ErrDigestMismatch) }
 
-// BundleCache is the narrow view of internal/cache this file needs.
-//
-// It is an interface so that a test can substitute a store which fails on
-// demand, and so that this package does not depend on *cache.Cache's
-// construction. It deliberately exposes NO method that returns a path: Get
-// returns the bytes it hashed, and verifying a file and then handing back its
-// name is a TOCTOU that would make FR-017's re-hash decorative.
+// BundleCache is the narrow view of internal/cache this file needs. No
+// method returns a path: that would be a TOCTOU making the re-hash decorative.
 type BundleCache interface {
-	// Get returns the bytes stored under the digest, having re-hashed them
-	// first, or an error wrapping cache.ErrMiss.
-	Get(cache.Digest) ([]byte, error)
-	// PutReader streams a reader into the cache under the digest, refusing
-	// bytes that do not hash to it.
-	PutReader(cache.Digest, io.Reader) error
-	// Root is the cache directory, for messages only.
-	Root() string
+	Get(cache.Digest) ([]byte, error)        // re-hashes first; wraps cache.ErrMiss on failure
+	PutReader(cache.Digest, io.Reader) error // refuses bytes that don't hash to the digest
+	Root() string                            // for messages only
 }
 
-// Downloader fetches verified bundle bytes for a hub and a cache.
-//
-// It holds no per-download state, so one Downloader serves a whole sync and is
-// safe to use from several goroutines; the cache's own write path is what
-// arbitrates two fetches of the same digest.
+// Downloader holds no per-download state, so one instance serves a whole sync from several goroutines.
 type Downloader struct {
 	hub     *Hub
 	cache   BundleCache
@@ -345,39 +180,26 @@ func NewDownloader(h *Hub, c BundleCache) (*Downloader, error) {
 	return &Downloader{hub: h, cache: c}, nil
 }
 
-// Offline returns a Downloader that completes from the cache alone and refuses
-// otherwise, naming the digest that is missing (FR-018).
-//
-// It returns a NEW Downloader rather than setting a flag on this one: --offline
-// is a property of a run, and a mutable flag on a shared value is how one
-// caller's mode leaks into another's.
+// Offline returns a NEW Downloader (not a flag flip): --offline is per-run,
+// and a mutable shared flag would leak one caller's mode into another's.
 func (d *Downloader) Offline() *Downloader {
 	c := *d
 	c.offline = true
 	return &c
 }
 
-// IsOffline reports whether this Downloader will dial.
 func (d *Downloader) IsOffline() bool { return d.offline }
 
-// Bundle is verified local bytes plus where they came from.
 type Bundle struct {
-	Ref   BundleRef
-	Bytes []byte
-	// FromCache says the bytes were already local and no request was made. It
-	// is what an idempotent second run reports (FR-025) and what a test asserts
-	// to prove the cache is actually consulted.
-	FromCache bool
+	Ref       BundleRef
+	Bytes     []byte
+	FromCache bool // no request was made
 }
 
-// Fetch returns the verified bytes for ref.
-//
-// The bytes it returns have been hashed by internal/cache and are the slice
-// that was hashed, so nothing can change between the check and the extraction.
-// A caller may write them into a staging tree without checking anything
-// further — and must not skip the extractor's own caps, which are a separate
-// defence against a bundle that is exactly what the hub promised and still
-// hostile.
+// Fetch's bytes are already hashed by internal/cache. A caller may stage
+// them without further checking, but must not skip the extractor's own
+// caps — a separate defence for a bundle that is exactly what the hub
+// promised and still hostile.
 func (d *Downloader) Fetch(ctx context.Context, ref BundleRef) (*Bundle, error) {
 	if err := ref.validate(); err != nil {
 		return nil, err
@@ -388,18 +210,15 @@ func (d *Downloader) Fetch(ctx context.Context, ref BundleRef) (*Bundle, error) 
 	case err == nil:
 		return &Bundle{Ref: ref, Bytes: b, FromCache: true}, nil
 	case !errors.Is(err, cache.ErrMiss):
-		// Not a miss: the cache directory itself is unusable. Downloading would
-		// only fail again at the write, and hiding a broken cache behind a
-		// working sync is how it stays broken.
+		// Not a miss: the cache dir itself is unusable, and downloading would
+		// only fail again at the write.
 		return nil, fmt.Errorf("reading bundle %s from the cache at %s: %w", ref, d.cache.Root(), err)
 	}
 	missErr := err
 
 	if d.offline {
-		// The digest is named because that is what the user has to obtain, and
-		// the cache root because that is where to put it. The underlying miss
-		// is kept in the chain so a caller can tell an absent entry from a
-		// discarded corrupt one (cache.ErrCorrupt).
+		// missErr stays in the chain so a caller can tell an absent entry from
+		// a discarded corrupt one (cache.ErrCorrupt).
 		return nil, fmt.Errorf("bundle %s (%s) is not in the cache at %s: %w: %w",
 			ref, ref.Digest, d.cache.Root(), ErrOffline, missErr)
 	}
@@ -408,8 +227,7 @@ func (d *Downloader) Fetch(ctx context.Context, ref BundleRef) (*Bundle, error) 
 		return nil, derr
 	}
 
-	// Read back through Get on purpose. See the file comment: no "we just wrote
-	// it, so it is fine" fast path.
+	// Read back through Get on purpose; see the file comment.
 	b, err = d.cache.Get(ref.Digest)
 	if err != nil {
 		return nil, fmt.Errorf("bundle %s was fetched and cached but did not read back from %s: %w",
@@ -418,75 +236,45 @@ func (d *Downloader) Fetch(ctx context.Context, ref BundleRef) (*Bundle, error) 
 	return &Bundle{Ref: ref, Bytes: b}, nil
 }
 
-// download performs one getBundle and streams the body into the cache.
-//
-// It returns nil only when an entry addressable as ref.Digest exists in the
-// cache, which by cache.PutReader's contract means bytes that hashed to it.
+// download returns nil only when ref.Digest is now addressable in the cache.
 func (d *Downloader) download(ctx context.Context, ref BundleRef) error {
 	target := d.hub.opURL(ref.Path())
 
-	// Namespace, name, version — in that order, into a parameter the contract
-	// spells `publisher`. See BundleRef's comment.
-	//
-	// Raw() and not a hand-built request: the 307 must be followed by the
-	// Hub's own client, which is where FR-016 lives.
-	resp, err := d.hub.Raw().GetBundle(ctx, ref.Namespace, ref.Name, ref.Version)
+	resp, err := d.hub.Raw().GetBundle(ctx, ref.Namespace, ref.Name, ref.Version) // Raw(): 307 must follow Hub's redirect protection
 	if err != nil {
 		return ClassifyTransport(OpGetBundle, target, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		// The problem+json body carries the hub's own reason — "version
-		// rejected by the organisation's scan gate" for the 403 that FR-011
-		// turns into a reported skip — so it is read and classified rather
-		// than discarded in favour of the bare status.
+		// Classified, not discarded: carries the hub's own reason (e.g. a
+		// scan-gate 403 the sync verb turns into a reported skip).
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
 		if e := ClassifyStatus(OpGetBundle, resp, body, http.StatusOK); e != nil {
 			return attributeOffload(e, resp)
 		}
-		// Unreachable — 200 is the only wanted status and this is not it — but
-		// failing closed here is the difference between a bug and a silently
-		// unverified install.
 		return &OpError{
 			Class: ClassProtocol, Op: OpGetBundle, URL: responseURL(resp, target),
 			Status: resp.StatusCode, Detail: "status was not classified",
 		}
 	}
 
-	// The Digest header, checked BEFORE a byte of the body is read.
-	//
-	// A DISAGREEING header is a hard failure: the hub has just said it is about
-	// to serve bytes other than the ones the lockfile locked, and there is no
-	// reason to spend 25 MiB confirming it. A MISSING or UNREADABLE header is
-	// tolerated, which is deliberate and is not a hole: the body's own hash is
-	// the authority, and the 307's pre-signed object store is not a hub — real
-	// object stores send no RFC 3230 Digest at all, or send another algorithm
-	// (`crc32c=…`), and refusing those would break the offload path the
-	// contract explicitly offers. Verification is never skipped either way;
-	// only this early exit is.
+	// Checked before any body byte is read: disagreeing fails fast.
+	// Missing/unreadable is tolerated — the body's own hash is the
+	// authority — this is only an early exit, never a skipped check.
 	if raw := strings.TrimSpace(resp.Header.Get(digestHeader)); raw != "" {
 		if got, perr := cache.ParseHeaderDigest(raw); perr == nil && got != ref.Digest {
 			return &DigestMismatchError{Ref: ref, Want: ref.Digest, Got: got, Source: DigestSourceHeader}
 		}
 	}
 
-	// The body goes to a temp file inside the cache directory while being
-	// hashed twice: once by this reader, whose only job is to be able to NAME
-	// the digest that arrived (FR-015 requires both digests in the message),
-	// and once by cache.PutReader, whose hash is the one that actually decides
-	// whether the temp becomes an entry. The second is the enforcement; the
-	// first is the diagnosis, and it is computed on the same byte stream so the
-	// two cannot disagree.
+	// Hashed twice: this reader just names the digest that arrived,
+	// cache.PutReader's hash is what actually decides whether it's kept.
 	hr := &hashingReader{r: resp.Body, h: sha256.New()}
 	putErr := d.cache.PutReader(ref.Digest, hr)
 	switch {
 	case hr.readErr != nil:
-		// The status line arrived and the body did not finish. That is the
-		// connection failing rather than a bad bundle, so it must not be
-		// reported as a digest mismatch — a truncated read hashes to something
-		// that will never match, and blaming the bytes would send the user
-		// hunting a tampered object instead of a dropped connection.
+		// Connection failed mid-body: not a digest mismatch.
 		return fmt.Errorf("bundle %s: %w", ref, ClassifyTransport(OpGetBundle, target, hr.readErr))
 	case putErr == nil:
 		return nil
@@ -495,9 +283,8 @@ func (d *Downloader) download(ctx context.Context, ref BundleRef) error {
 			ref, cache.MaxBundleBytes, putErr)
 	}
 
-	// PutReader refused. If the body was read to completion and its hash is not
-	// the locked digest, that is FR-015 and nothing was written; anything else
-	// is a cache-write failure and is reported as itself.
+	// PutReader refused: a complete read hashing to the wrong digest is a
+	// mismatch (nothing written); anything else is a cache-write failure.
 	if got, derr := hr.digest(); derr == nil && hr.complete && got != ref.Digest {
 		return &DigestMismatchError{
 			Ref: ref, Want: ref.Digest, Got: got, Source: DigestSourceBody, Bytes: hr.n,
@@ -506,34 +293,11 @@ func (d *Downloader) download(ctx context.Context, ref BundleRef) error {
 	return fmt.Errorf("bundle %s could not be cached in %s: %w", ref, d.cache.Root(), putErr)
 }
 
-// attributeOffload re-classifies a status that came from the 307's target
-// rather than from the hub itself.
-//
-// getBundle may answer 307 to a pre-signed object-store URL, and the status the
-// download ends on is then the STORE's. Class's whole table is written for the
-// hub's own answers, and none of its readings survive the move: an object store
-// answers 403 for an expired signature, for clock skew and for a proxy refusing
-// on its behalf — S3, GCS and MinIO all do — and 404 for an object that has been
-// garbage-collected. Passing those through as ClassForbidden and ClassNotFound
-// tells the sync verb that the organisation's GATE refused this version, which
-// FR-011 answers by skipping the entry and exiting 0. That is the "installs
-// nothing and reports success" outcome gate R2 exists to prevent, over an
-// infrastructure failure a retry would have fixed.
-//
-// COMPARING ORIGINS DOES NOT WORK, and it is the obvious thing to reach for.
-// The contract's own offload is a redirect to a URL that may be on the hub's
-// host, a subdomain of it, or another port — CLI-CONTRACT.md calls the same-host
-// layout "the commonest self-hosted layout there is", and the fake's fixture is
-// deliberately same-host because a cross-host redirect is the case net/http
-// already handles. So an origin comparison would say "this is the hub" for
-// exactly the deployments the check exists for.
-//
-// What IS reliable is whether a redirect was followed at all. net/http sets
-// Request.Response on the request it generates from a redirect (the same field
-// bearerTransport reads to identify the first hop), so a non-nil one means this
-// answer is not the hub's. The frozen contract gives getBundle exactly one
-// redirect and it is the object-store offload, so "a redirect happened" and
-// "this came from the store" are the same statement here.
+// attributeOffload re-classifies a status from the 307's object-store
+// target: its 403/404 must not read as ClassForbidden/ClassNotFound, which
+// the sync verb answers by skipping the entry and exiting 0. Origin
+// comparison doesn't work (the offload URL may share host/subdomain/port),
+// so this checks whether a redirect happened at all (Request.Response set).
 func attributeOffload(err error, resp *http.Response) error {
 	if resp == nil || resp.Request == nil || resp.Request.Response == nil {
 		return err
@@ -547,11 +311,8 @@ func attributeOffload(err error, resp *http.Response) error {
 	return &out
 }
 
-// responseURL is the sanitised URL a response came from, falling back to the
-// requested target. SafeURL is mandatory here rather than u.String(): after a
-// 307 this URL is a pre-signed object-store URL whose SIGNATURE IS IN THE
-// QUERY STRING, and a message carrying it hands a working download credential
-// to whatever reads the log.
+// responseURL falls back to target; SafeURL not u.String(), since a 307's
+// pre-signed URL carries its signature in the query string.
 func responseURL(resp *http.Response, target string) string {
 	if resp != nil && resp.Request != nil {
 		return SafeURL(resp.Request.URL)
@@ -559,15 +320,10 @@ func responseURL(resp *http.Response, target string) string {
 	return target
 }
 
-// hashingReader hashes what it passes through and remembers how the stream
-// ended.
-//
-// It exists only so that a mismatch can name the digest that ARRIVED.
-// cache.PutReader already refuses bytes that do not hash to their key — that
-// is the enforcement — but it reports the refusal as text, and FR-015 needs the
-// value. The `complete` flag is the load-bearing part: without it a connection
-// that dropped mid-body would produce a prefix hash and be reported as a
-// tampered bundle.
+// hashingReader hashes what it passes through so a mismatch can name the
+// digest that arrived (cache.PutReader enforces but only reports as text).
+// `complete` is load-bearing: without it a dropped connection would produce
+// a prefix hash reported as a tampered bundle.
 type hashingReader struct {
 	r io.Reader
 	h hash.Hash
@@ -581,8 +337,7 @@ func (r *hashingReader) Read(p []byte) (int, error) {
 	n, err := r.r.Read(p)
 	if n > 0 {
 		r.n += int64(n)
-		// hash.Hash never returns an error, by its own documented contract.
-		_, _ = r.h.Write(p[:n])
+		_, _ = r.h.Write(p[:n]) // hash.Hash never errors, by its documented contract
 	}
 	switch {
 	case err == nil:
@@ -594,14 +349,9 @@ func (r *hashingReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// digest is the sha256 of everything read so far.
-//
-// The round trip through the lockfile encoding is deliberate: cache.Digest
-// exposes no constructor from raw bytes on purpose — a value of that type can
-// only come from Compute or one of the two parsers, which is what guarantees it
-// always holds something measured or parsed rather than assembled. Re-encoding
-// 32 bytes to hex and parsing them back costs nothing and keeps that
-// guarantee, instead of widening the type's API for one error message.
+// digest is the sha256 of everything read so far. It round-trips through the
+// lockfile encoding on purpose: cache.Digest exposes no raw-bytes
+// constructor, so a value only ever comes from Compute or a parser.
 func (r *hashingReader) digest() (cache.Digest, error) {
 	return cache.ParseLockfileDigest("sha256:" + hex.EncodeToString(r.h.Sum(nil)))
 }

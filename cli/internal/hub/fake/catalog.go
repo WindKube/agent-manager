@@ -7,19 +7,11 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/hub"
 )
 
-// pkg is one package version the fake can serve bundle bytes for.
-//
-// Publisher is here and Namespace is derived from ID, because the two are NOT the
-// same thing and conflating them is the bug class CLI-CONTRACT.md says has already
-// shipped and been fixed three times on the hub side. A publisher SLUG is two
-// segments (`acme/platform`); a NAMESPACE is that slug's first segment (`acme`);
-// a lockfile entry's `id` is `namespace/name`. The bundle path's `{publisher}`
-// parameter takes the NAMESPACE despite its name.
-//
-// Two publishers sharing one namespace is legal and is modelled here on purpose:
-// FR-023 requires distinct destination directories per `namespace/name`, and a
-// catalog with one publisher per namespace cannot exercise it — every test would
-// pass under an implementation that keyed off the publisher instead.
+// pkg is one package version the fake can serve bundle bytes for. Publisher
+// (a two-segment slug) and namespace (its first segment) are kept distinct
+// on purpose — conflating them already shipped as a bug three times
+// hub-side — and the bundle path's `{publisher}` param actually takes the
+// namespace, so two publishers sharing one namespace are modelled here too.
 type pkg struct {
 	ID        string // namespace/name
 	Version   string
@@ -39,16 +31,12 @@ const (
 	serveRedirect                   // 307 to a same-host pre-signed URL
 	serveForbidden                  // 403: rejected by the gate, mid-sync
 
-	// serveRedirectStale is the 307 offload path's NEGATIVE CONTROL: the
-	// Location carries a signature the object store will not accept, so the
-	// STORE answers 403 while the hub itself answered 307. That is what an
-	// expired pre-signed URL, a clock-skewed one, or a proxy in front of the
-	// store looks like on the wire, and S3, GCS and MinIO all answer 403 for it.
-	//
-	// It exists because a 403 from the store and a 403 from the hub mean
-	// opposite things — infrastructure failure versus the organisation's scan
-	// gate — and without a fixture that produces the first, the code that has to
-	// tell them apart cannot be tested at all.
+	// serveRedirectStale is the 307 offload path's negative control: the hub
+	// answers 307 but the Location's signature is one the object store
+	// rejects with 403 — what an expired or clock-skewed pre-signed URL
+	// looks like on the wire. A store 403 and a hub 403 mean opposite things
+	// (infrastructure failure vs. the scan gate), and this is the only
+	// fixture that can tell the two apart.
 	serveRedirectStale
 )
 
@@ -103,30 +91,23 @@ const (
 	slugMissing        = "no-such-profile"
 )
 
-// futureSkipReason is a value the frozen schema's enum does not contain.
-//
-// FR-011 requires the CLI to report an unrecognised reason VERBATIM rather than
-// drop it, because the hub may add one and this client ships separately from it.
-// A fake that only ever served the six legal values could not exercise that, so
-// one profile serves this and the conformance self-test validates that profile
-// with the reason enum relaxed — asserting that the ONLY schema deviation is the
-// one this constant is for.
+// futureSkipReason is outside the frozen schema's enum, on purpose: the CLI
+// ships separately from the hub and must report an unrecognised reason
+// verbatim rather than drop it. One profile serves this value with the
+// enum relaxed only for it, so that is the one deviation the self-test
+// asserts is happening.
 const futureSkipReason = "quarantined-by-org-policy"
 
 func catalog() []*pkg {
 	pkgs := []*pkg{
-		// Namespace `acme`, publisher `acme/platform`.
 		{ID: "acme/code-review", Version: "2.4.1", Publisher: "acme/platform", Kind: "skill"},
-		// Namespace `acme` AGAIN, different publisher. FR-023's case.
-		{ID: "acme/lint-guard", Version: "1.0.3", Publisher: "acme/security", Kind: "skill"},
+		{ID: "acme/lint-guard", Version: "1.0.3", Publisher: "acme/security", Kind: "skill"}, // acme again, different publisher
 		{ID: "example/doc-writer", Version: "0.9.0", Publisher: "example/platform", Kind: "skill"},
 		{ID: "contoso/stale-digest", Version: "1.0.0", Publisher: "contoso/tools", Kind: "skill"},
 		{ID: "contoso/gated", Version: "3.1.0", Publisher: "contoso/tools", Kind: "skill", serve: serveForbidden},
 		{ID: "contoso/offloaded", Version: "1.2.0", Publisher: "contoso/tools", Kind: "skill", serve: serveRedirect},
 		{ID: "contoso/offloaded-stale", Version: "1.2.0", Publisher: "contoso/tools", Kind: "skill", serve: serveRedirectStale},
-		// An older revision of code-review, so `head` and a pinned revision differ
-		// in content and not merely in number.
-		{ID: "acme/code-review", Version: "2.4.0", Publisher: "acme/platform", Kind: "skill"},
+		{ID: "acme/code-review", Version: "2.4.0", Publisher: "acme/platform", Kind: "skill"}, // older rev, differs in content not just number
 	}
 	for _, p := range pkgs {
 		p.blob = packBundle(skillFiles(p.ID, p.Version))
@@ -135,23 +116,12 @@ func catalog() []*pkg {
 }
 
 func profiles() []profileSpec {
-	// TWO target fixtures, and which profile gets which is load-bearing.
-	//
-	// An earlier version put both contract targets on every profile, reasoning
-	// that "the fake serves what the hub may serve" and that a fake naming only
-	// the shipped target could not exercise ErrR2Unresolved. The first half is
-	// right and the conclusion was wrong: because codex is unwritable by design,
-	// naming it on EVERY profile meant every profile the fake serves is refused,
-	// so the fake could not serve the happy path at all. T045 and T046 — the
-	// idempotence and interruption properties, the two that decide whether the
-	// MVP works — had no syncable profile to run against, and the agent writing
-	// the sync verb had to stand up a rewriting reverse proxy to get one.
-	//
-	// The real hub's own seeded lockfile names claude-code only
-	// (internal/api/integration_test.go, storedLockfile), so that is the shipping
-	// case and it belongs on the profiles that model a working sync. The refusal
-	// gets a profile of its own, named for it, so it is still exercised — by a
-	// test that asks for it rather than by every test incidentally.
+	// Which profile gets which target set is load-bearing: naming the
+	// unwritable codex target on EVERY profile (an earlier version's
+	// approach) refuses every profile the fake serves, leaving nothing for
+	// the happy-path/idempotence/interruption tests to run against. Codex
+	// gets its own dedicated refusal-profile instead, matching the real
+	// hub's own seeded lockfile (claude-code only).
 	writable := []hub.LockfileTargets{"claude-code"}
 	unwritable := []hub.LockfileTargets{"claude-code", "codex"}
 	return []profileSpec{
@@ -164,10 +134,7 @@ func profiles() []profileSpec {
 					entries: []entrySpec{
 						{pkgID: "acme/code-review@2.4.0", resolution: "pinned", verdict: "clean"},
 					},
-					// Legally empty. Serving one profile with an empty skipped array
-					// and one with a full array is the only way a client's handling
-					// of both is exercised.
-					skipped: []hub.LockfileSkip{},
+					skipped: []hub.LockfileSkip{}, // legally empty; exercises both empty and full handling
 				},
 				{
 					revision: 7, note: "Quarterly refresh", gate: "approval",
@@ -176,8 +143,8 @@ func profiles() []profileSpec {
 						{pkgID: "acme/code-review@2.4.1", resolution: "pinned", verdict: "clean",
 							signature: &hub.LockfileSignature{
 								Ref: ptr("sigstore:acme/code-review@2.4.1"),
-								// FR-048a: false until Sigstore verification ships. The
-								// schema's own words: never render a false value as a pass.
+								// False until Sigstore verification ships. The schema's own
+								// words: never render a false value as a pass.
 								Verified: ptr(false),
 							}},
 						{pkgID: "acme/lint-guard@1.0.3", resolution: "latest", verdict: "flagged",
@@ -189,7 +156,7 @@ func profiles() []profileSpec {
 						{pkgID: "example/doc-writer@0.9.0", resolution: "range", verdict: "clean"},
 					},
 					// Three of the six legal reasons. Every one of these must reach the
-					// user with the hub's own wording (FR-011).
+					// user with the hub's own wording.
 					skipped: []hub.LockfileSkip{
 						{Id: "acme/legacy-helper", Reason: "flagged-awaiting-approval",
 							Detail: ptr("SH-NET-002 in postinstall.sh"), WouldHaveResolvedTo: ptr("1.9.0")},
@@ -207,11 +174,8 @@ func profiles() []profileSpec {
 				revision: 1, gate: "block", targets: writable,
 				entries: []entrySpec{
 					{pkgID: "acme/code-review@2.4.1", resolution: "pinned", verdict: "clean"},
-					// The digest of a DIFFERENT real bundle. Both sides are genuine
-					// sha256 values, so the client's comparison fails for the
-					// production reason and not because a string was mangled.
 					{pkgID: "contoso/stale-digest@1.0.0", resolution: "pinned", verdict: "clean",
-						digestOverride: "acme/lint-guard@1.0.3"},
+						digestOverride: "acme/lint-guard@1.0.3"}, // a different bundle's real digest, not a mangled string
 				},
 				skipped: []hub.LockfileSkip{},
 			}},
@@ -220,9 +184,7 @@ func profiles() []profileSpec {
 			slug: slugForbidden, name: "Gated bundle", visibility: "organisation",
 			revisions: []revisionSpec{{
 				revision: 2, gate: "block", targets: writable,
-				// Order matters: one installable entry, then the 403, then another
-				// installable entry. A sync that aborts on the 403 leaves the third
-				// uninstalled, which is what FR-011's mid-sync case is about.
+				// order matters: installable, 403, installable — tests that an abort mid-sync leaves the third uninstalled
 				entries: []entrySpec{
 					{pkgID: "acme/code-review@2.4.1", resolution: "pinned", verdict: "clean"},
 					{pkgID: "contoso/gated@3.1.0", resolution: "pinned", verdict: "flagged"},
@@ -242,11 +204,7 @@ func profiles() []profileSpec {
 			}},
 		},
 		{
-			// The offload path's negative control. Two entries, and the order is
-			// the point: one that serves bytes, then one whose 307 target refuses.
-			// A client that reads the store's 403 as the hub's scan gate skips the
-			// second entry and exits 0, which is the "installs nothing and reports
-			// success" failure gate R2 exists to prevent.
+			// negative control: entry 2's 307 target refuses; misreading that store 403 as the hub's scan gate must not exit 0
 			slug: slugPresignedStale, name: "Pre-signed bundle whose signature the store rejects",
 			visibility: "organisation",
 			revisions: []revisionSpec{{
@@ -259,10 +217,7 @@ func profiles() []profileSpec {
 			}},
 		},
 		{
-			// The ErrR2Unresolved case: a lockfile naming a target this client
-			// cannot write. It must be REFUSED with the target named, never
-			// silently skipped — writing nowhere and reporting success is the
-			// exact failure R2 exists to prevent.
+			// ErrR2Unresolved: a target this client can't write must be refused by name, never silently skipped
 			slug: slugUnwritable, name: "Names an unwritable target", visibility: "organisation",
 			revisions: []revisionSpec{{
 				revision: 1, gate: "approval", policy: "pinned", targets: unwritable,

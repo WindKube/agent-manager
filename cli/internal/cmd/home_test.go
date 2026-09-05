@@ -188,11 +188,11 @@ func TestHubDirAndLockPathSitDirectlyUnderTheStateRoot(t *testing.T) {
 	require.Equal(t, home.Root, filepath.Dir(home.LockPath()))
 }
 
-// FR-039's "before making any network request" is an ORDERING, and a run that
-// dialled the hub, got a token and only then discovered the home was unwritable
-// has already done the irreversible half. Prepare is the seam that makes the
-// ordering structural; this proves it, with a positive control so the test
-// cannot pass by never running work at all.
+// "Before making any network request" is an ordering, and a run that
+// dialled the hub, got a token and only then discovered the home was
+// unwritable has already done the irreversible half. Prepare is the seam
+// that makes the ordering structural; this proves it, with a positive
+// control so the test cannot pass by never running work at all.
 func TestPrepareValidatesTheHomeBeforeAnyNetworkCall(t *testing.T) {
 	requireUnprivileged(t)
 
@@ -343,10 +343,10 @@ func TestParseHubIdentityDecision(t *testing.T) {
 	})
 }
 
-// Injectivity is the property FR-006 and internal/record's "hub A refused
-// against hub B" rest on: two hubs sharing a directory means one machine's
-// record silently applies to the other. Asserted over near-misses rather than
-// claimed in a comment.
+// Injectivity is the property internal/record's "hub A refused against
+// hub B" rests on: two hubs sharing a directory means one machine's
+// record silently applies to the other. Asserted over near-misses rather
+// than claimed in a comment.
 func TestHubDirNamesAreInjectiveOverNearMissURLs(t *testing.T) {
 	urls := []string{
 		"https://hub.example.com",

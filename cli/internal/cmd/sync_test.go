@@ -1,13 +1,12 @@
-// This file is T047: `amctl sync` end to end against the fake hub.
+// This file is `amctl sync` end to end against the fake hub.
 //
 // The fake serves the shipping case directly: Fixtures.Profile and the other
-// functional profiles name `["claude-code"]`, matching the real hub's own seeded
-// lockfile, and Fixtures.UnwritableTarget is a profile of its own naming
-// `["claude-code", "codex"]` so the R2 refusal is exercised by a test that asks
-// for it. An earlier revision of this file stood up a rewriting reverse proxy
-// because every fixture then named codex, which made every profile refusable;
-// that proxy is gone, and TestTheUnwritableFixtureIsTheOnlyOneNamingCodex is
-// what keeps the refusal test from going vacuous if the fixtures drift back.
+// functional profiles name `["claude-code"]`, matching the real hub's own
+// seeded lockfile, and Fixtures.UnwritableTarget is a profile of its own
+// naming `["claude-code", "codex"]` so the unwritable-target refusal is
+// exercised by a test that asks for it.
+// TestTheUnwritableFixtureIsTheOnlyOneNamingCodex keeps that refusal test from
+// going vacuous if the fixtures drift.
 package cmd
 
 import (
@@ -49,7 +48,7 @@ const syncHost = "sync-test-host"
 func startSyncFake(t *testing.T) fake.Target {
 	t.Helper()
 	// TLS: amctl refuses a plaintext hub without --allow-plaintext-hub
-	// (FR-041), so a plain-http fake would test the refusal instead of the sync.
+	// so a plain-http fake would test the refusal instead of the sync.
 	h := fake.New(fake.Options{TLS: true})
 	t.Cleanup(h.Close)
 	return h.Target()
@@ -60,7 +59,7 @@ func startSyncFake(t *testing.T) fake.Target {
 // countingRoundTripper counts requests ON THE WIRE. Every "no request was made"
 // assertion in this file is an observation of this counter, never an inference
 // from an error message: a refusal whose wording changed would otherwise silently
-// stop testing the ordering FR-039 is about.
+// stop testing the ordering being tested.
 type countingRoundTripper struct {
 	next http.RoundTripper
 
@@ -95,7 +94,7 @@ func (c *countingRoundTripper) count() int {
 // syncEnv is one test's world: a scratch HOME, a hub, and the deps sync runs
 // with. The token arrives through AMCTL_TOKEN rather than the credential store
 // so that no test depends on whether a Secret Service is running, and so the
-// FR-005 precedence path is the one exercised by default;
+// AMCTL_TOKEN precedence path is the one exercised by default;
 // TestSyncUsesAStoredCredentialWhenTheEnvironmentHasNone covers the other.
 type syncEnv struct {
 	home    string
@@ -197,8 +196,9 @@ func treeSnapshot(t *testing.T, root string) map[string]treeEntry {
 			// the record's temp-file-then-rename write. Comparing them would
 			// make every assertion here fail for the lock rather than for the
 			// tree. What it costs is blindness to a file that was both added
-			// and removed inside an unchanged directory; FR-025's strong form,
-			// measured by mtime across the whole tree, is T045's.
+			// and removed inside an unchanged directory; the strong form of that
+			// property, measured by mtime across the whole tree, is
+			// idempotence_test.go's.
 			e.Size, e.ModTime = 0, time.Time{}
 		}
 		switch {
@@ -250,9 +250,9 @@ func plantDecoyAgentDirectories(t *testing.T, home string) {
 	writeFile(t, filepath.Join(home, ".agents", "skills", "someones-skill", "SKILL.md"), "not amctl's\n")
 	writeFile(t, filepath.Join(home, ".codex", "skills", "someones-skill", "SKILL.md"), "not amctl's\n")
 	// A hand-written claude-code skill in the very directory amctl installs
-	// into. FR-028's whole point.
+	// into. The whole point of leaving hand-written files alone.
 	writeFile(t, filepath.Join(home, ".claude", "skills", "my-own-skill", "SKILL.md"), "mine, hand written\n")
-	// The XDG paths R2's negative control proved the agent does not read.
+	// The XDG paths measured to be ones the agent does not read.
 	writeFile(t, filepath.Join(home, ".config", "claude", "skills", "xdg-skill", "SKILL.md"), "not read by the agent\n")
 }
 
@@ -290,7 +290,7 @@ func TestSyncInstallsEveryLockfileEntryAtItsLockedVersion(t *testing.T) {
 		requireFileExists(t, filepath.Join(env.skillsRoot(), dir, layout.SkillEntryFile))
 		requireFileExists(t, filepath.Join(env.skillsRoot(), dir, "references", "usage.md"))
 		requireFileExists(t, filepath.Join(env.skillsRoot(), dir, "scripts", "check.sh"))
-		// FR-022: the entry says which package and version it is, with no hub.
+		// The marker names which package and version it is, with no hub.
 		markerBytes, rerr := os.ReadFile(filepath.Join(env.skillsRoot(), dir, layout.MarkerFileName))
 		require.NoError(t, rerr)
 		marker, perr := layout.ParseMarker(markerBytes)
@@ -299,7 +299,7 @@ func TestSyncInstallsEveryLockfileEntryAtItsLockedVersion(t *testing.T) {
 		require.NotEmpty(t, marker.Version)
 	}
 
-	// FR-039 / US2 scenario 4: only the enabled target's directory was written.
+	// Only the enabled target's directory was written.
 	after := treeSnapshot(t, env.home)
 	requireUnchanged(t, "another agent's directory", map[string]treeEntry{
 		".agents/skills/someones-skill/SKILL.md":   before[".agents/skills/someones-skill/SKILL.md"],
@@ -308,7 +308,7 @@ func TestSyncInstallsEveryLockfileEntryAtItsLockedVersion(t *testing.T) {
 		".claude/skills/my-own-skill/SKILL.md":     before[".claude/skills/my-own-skill/SKILL.md"],
 	}, after)
 
-	// FR-013: the record names the revision the hub actually resolved, as a
+	// The record names the revision the hub actually resolved, as a
 	// number. `head` is a request, never a state.
 	rec := env.loadRecord(t)
 	prof, ok := rec.ProfileBySlug(tg.Fixtures.Profile)
@@ -317,14 +317,14 @@ func TestSyncInstallsEveryLockfileEntryAtItsLockedVersion(t *testing.T) {
 	require.Equal(t, []record.Target{record.TargetClaudeCode}, prof.Targets)
 	require.Len(t, prof.Entries, 3)
 
-	// FR-011: every hub skip reported with the hub's own reason.
+	// Every hub skip reported with the hub's own reason.
 	require.Contains(t, diag.String(), "flagged-awaiting-approval")
 	require.Contains(t, diag.String(), "version-rejected")
 	require.Contains(t, diag.String(), "pin-target-missing")
 	require.Contains(t, diag.String(), "would have resolved to 1.9.0")
 	require.Contains(t, result.String(), "synced "+tg.Fixtures.Profile)
 
-	// FR-032: exactly one report, naming the profile, the resolved revision,
+	// Exactly one report, naming the profile, the resolved revision,
 	// this host and the target written.
 	reports, cerr := tg.Control.SyncReports()
 	require.NoError(t, cerr)
@@ -343,9 +343,10 @@ func requireFileExists(t *testing.T, path string) {
 }
 
 func TestASecondSyncChangesNothing(t *testing.T) {
-	// FR-025 at the verb level. The strong form — zero filesystem modification
-	// measured by mtime across the whole tree — is T045's; this asserts the
-	// verb's own account and the record's, which is what selects the exit code.
+	// Idempotence at the verb level. The strong form — zero filesystem
+	// modification measured by mtime across the whole tree — is
+	// idempotence_test.go's; this asserts the verb's own account and the
+	// record's, which is what selects the exit code.
 	tg := startSyncFake(t)
 	env := newSyncEnv(t, tg)
 
@@ -366,7 +367,7 @@ func TestASecondSyncChangesNothing(t *testing.T) {
 
 // ---------------------------------------------------------------- refusals before any request
 
-// TestHomeUnsetIsRefusedBeforeAnyRequest is FR-039 plus FR-036, and the
+// TestHomeUnsetIsRefusedBeforeAnyRequest checks the ordering and exit code, and the
 // assertion is the REQUEST COUNT, not the message. Prepare validates the home
 // with a real write before the network callback runs, and a refusal that started
 // happening after the first request would still produce the same error text.
@@ -405,7 +406,7 @@ func TestAnUnwritableHomeIsRefusedBeforeAnyRequest(t *testing.T) {
 	require.Equal(t, 0, env.counted.count(), "the write probe runs before the network, not after it")
 }
 
-// TestNoCredentialIsRefusedNamingWhatSuppliesOne is FR-037. Asking the hub first
+// TestNoCredentialIsRefusedNamingWhatSuppliesOne. Asking the hub first
 // would produce a 401, which sends the reader to look at the hub when the real
 // answer is that this machine never logged in.
 func TestNoCredentialIsRefusedNamingWhatSuppliesOne(t *testing.T) {
@@ -464,14 +465,14 @@ func TestSyncUsesAStoredCredentialWhenTheEnvironmentHasNone(t *testing.T) {
 
 // ---------------------------------------------------------------- the codex refusal
 
-// TestALockfileNamingCodexIsRefused is R2's negative control at the verb level.
+// TestALockfileNamingCodexIsRefused is the unwritable-target refusal's negative control at the verb level.
 // It syncs Fixtures.UnwritableTarget — the one profile naming both contract
 // targets — and asserts the refusal carries layout.ErrR2Unresolved rather than a
 // message that happens to mention codex: a string match would keep passing if
 // the sentinel were dropped.
 //
 // Refused, not skipped. Dropping codex and installing claude-code would report a
-// success for a target nothing was written to, which is the failure R2 exists to
+// success for a target nothing was written to, which is the failure this exists to
 // prevent.
 func TestALockfileNamingCodexIsRefused(t *testing.T) {
 	tg := startSyncFake(t)
@@ -568,7 +569,7 @@ func planForTargets(t *testing.T, lf *hub.Lockfile) (p plan.Plan, diagnostics st
 // sync — `agents-md` is the lockfile schema's own example value and a legal
 // member of the frozen enum, the target list is the hub's, and there is nothing
 // a user can change — and it built ErrWithdrawnTarget to say so. resolveTargets
-// used to drop that sentinel into its `default` branch beside the R2 gate, so a
+// used to drop that sentinel into its `default` branch beside the refusal, so a
 // profile naming agents-md exited 3 and installed nothing, with no user-side
 // fix. The registry did the right thing and the verb did not use it.
 func TestAWithdrawnTargetIsReportedAndTheSyncContinues(t *testing.T) {
@@ -589,7 +590,7 @@ func TestAWithdrawnTargetIsReportedAndTheSyncContinues(t *testing.T) {
 // Reporting a withdrawn target and carrying on is right only while something
 // else is still being written. A profile that named nothing but withdrawn
 // targets would otherwise install nothing and exit 0, which is verbatim the
-// warn-and-continue outcome research gate R2 was opened to stop.
+// warn-and-continue outcome the refusal is meant to stop.
 func TestAProfileWhoseTargetsAreAllWithdrawnIsRefused(t *testing.T) {
 	p, _ := planForTargets(t, withdrawnLockfile(t, "agents-md"))
 
@@ -634,10 +635,10 @@ func readLockfile(t *testing.T, tg fake.Target, slug string) map[string]any {
 	return doc
 }
 
-// ---------------------------------------------------------------- FR-020, symlinked agent directories
+// ---------------------------------------------------------------- symlinked agent directories
 
 // TestSyncFollowsASymlinkedAgentDirectoryInsideTheHome is the edge case that
-// makes FR-020 a real question rather than a tautology: agent directories are
+// makes containment a real question rather than a tautology: agent directories are
 // frequently symlinks into a dotfiles repository, so the containment check runs
 // on the RESOLVED path and must not simply refuse a link.
 func TestSyncFollowsASymlinkedAgentDirectoryInsideTheHome(t *testing.T) {
@@ -693,7 +694,7 @@ func TestSyncRefusesAnAgentDirectoryThatLeavesTheHome(t *testing.T) {
 
 // ---------------------------------------------------------------- partial success
 
-// TestAForbiddenBundleSkipsThatEntryAndTheRestStillInstalls is FR-011's mid-sync
+// TestAForbiddenBundleSkipsThatEntryAndTheRestStillInstalls is the mid-sync
 // case, and the exit code is the second half of the assertion: a partial success
 // must be distinguishable from a total failure.
 func TestAForbiddenBundleSkipsThatEntryAndTheRestStillInstalls(t *testing.T) {
@@ -736,7 +737,7 @@ func TestAForbiddenBundleSkipsThatEntryAndTheRestStillInstalls(t *testing.T) {
 	require.True(t, found, "the skipped entry is named in the result, not only on stderr")
 
 	// The record claims exactly what is on disk, and not the skipped entry: a
-	// record row for something absent becomes an FR-028 refusal next run.
+	// record row for something absent becomes a refusal next run.
 	rec := env.loadRecord(t)
 	prof, ok := rec.ProfileBySlug(tg.Fixtures.ForbiddenBundle)
 	require.True(t, ok)
@@ -745,7 +746,7 @@ func TestAForbiddenBundleSkipsThatEntryAndTheRestStillInstalls(t *testing.T) {
 		require.NotEqual(t, tg.Fixtures.ForbiddenEntryID, e.ID)
 	}
 
-	// FR-032: the report names it as a LOCAL skip, which is not the same list as
+	// The report names it as a LOCAL skip, which is not the same list as
 	// the lockfile's own `skipped`.
 	reports, cerr := tg.Control.SyncReports()
 	require.NoError(t, cerr)
@@ -754,7 +755,7 @@ func TestAForbiddenBundleSkipsThatEntryAndTheRestStillInstalls(t *testing.T) {
 	require.Equal(t, []string{tg.Fixtures.ForbiddenEntryID}, *reports[0].Skipped)
 }
 
-// TestADigestMismatchFailsThatEntryAndExitsNonZero is FR-015, and it is the
+// TestADigestMismatchFailsThatEntryAndExitsNonZero is the
 // contrast the test above needs: both runs install some entries and not others,
 // and the exit codes must differ because one is the hub's decision and the other
 // is a corrupted or substituted object.
@@ -770,7 +771,7 @@ func TestADigestMismatchFailsThatEntryAndExitsNonZero(t *testing.T) {
 	require.Equal(t, CodeFailure, code)
 	require.NotEqual(t, CodeChanged, code, "distinct from the forbidden-bundle partial success")
 
-	// FR-015: nothing from that bundle reached the tree, and the entry beside it
+	// Nothing from that bundle reached the tree, and the entry beside it
 	// still installed.
 	require.Equal(t, []string{"acme--code-review"}, skillDirs(t, env.skillsRoot()))
 	// Both digests are named, which is the requirement.
@@ -846,9 +847,9 @@ func TestAnAbandonedEntryIsNamedInTheReportAndTheResult(t *testing.T) {
 // getBundle answers 307 to a short-lived pre-signed URL. When the OBJECT STORE
 // then answers 403 — an expired signature, clock skew, a proxy in front of the
 // store; S3, GCS and MinIO all answer 403 for those — the CLI used to read it as
-// the hub's own 403, which FR-011 defines as the organisation's scan gate and
+// the hub's own 403, which is defined as the organisation's scan gate and
 // answers by skipping the entry and exiting 0. That is the "installs nothing and
-// reports success" outcome gate R2 exists to prevent, over an infrastructure
+// reports success" outcome this exists to prevent, over an infrastructure
 // failure the next run would have fixed by asking for a fresh signature.
 func TestAStoreRefusingThePresignedURLFailsTheEntryRatherThanSkippingIt(t *testing.T) {
 	tg := startSyncFake(t)
@@ -979,7 +980,7 @@ func TestThePanickingSyncStillReleasesTheLock(t *testing.T) {
 		skillDirs(t, env.skillsRoot()))
 }
 
-// ---------------------------------------------------------------- FR-035
+// ---------------------------------------------------------------- one document on the result stream
 
 func TestJSONOutputLeavesStdoutOneParseableDocument(t *testing.T) {
 	tg := startSyncFake(t)
@@ -1028,7 +1029,7 @@ func TestJSONOutputLeavesStdoutOneParseableDocument(t *testing.T) {
 	require.NotContains(t, result.String(), "resolving profile")
 	require.NotContains(t, result.String(), "warning:")
 
-	// FR-007: the token must not be anywhere in either stream. Asserted with
+	// The token must not be anywhere in either stream. Asserted with
 	// require.False and a hand-written message, never with NotContains — a
 	// failing NotContains prints its haystack, which would put the token into
 	// the output internal/leakscan's run-wide scan reads and turn one red test
@@ -1165,7 +1166,7 @@ func TestChooseProfiles(t *testing.T) {
 	})
 }
 
-// TestAPinnedRevisionInstallsThatExactStateAndIsRecorded is FR-010: a machine can
+// TestAPinnedRevisionInstallsThatExactStateAndIsRecorded: a machine can
 // be pinned to a known state. The fixture's prior revision holds a DIFFERENT
 // version of the same package, so this cannot pass by fetching head.
 func TestAPinnedRevisionInstallsThatExactStateAndIsRecorded(t *testing.T) {
@@ -1208,7 +1209,7 @@ func TestARevisionThatIsGoneIsRefusedNamingIt(t *testing.T) {
 }
 
 func TestAMissingProfileIsRefusedAndDistinguishedFromUnreachable(t *testing.T) {
-	// FR-040: not-found must not read as unreachable, or the user goes hunting a
+	// Not-found must not read as unreachable, or the user goes hunting a
 	// network fault that is not there.
 	tg := startSyncFake(t)
 	env := newSyncEnv(t, tg)
@@ -1221,7 +1222,7 @@ func TestAMissingProfileIsRefusedAndDistinguishedFromUnreachable(t *testing.T) {
 	require.Equal(t, CodeRefused, code)
 }
 
-// ---------------------------------------------------------------- FR-011's unknown reason
+// ---------------------------------------------------------------- an unknown skip reason
 
 func TestAnUnrecognisedSkipReasonIsReportedVerbatim(t *testing.T) {
 	tg := startSyncFake(t)
@@ -1251,15 +1252,15 @@ func TestAnUnrecognisedSkipReasonIsReportedVerbatim(t *testing.T) {
 // ---------------------------------------------------------------- --offline
 
 func TestOfflineFailsNamingWhatIsMissingAndInstallsNothing(t *testing.T) {
-	// FR-018. The refusal has to arrive before the first entry is staged, or the
+	// The refusal has to arrive before the first entry is staged, or the
 	// "MUST NOT leave a partially installed tree" half is false; the assertion
 	// is that the skills root does not exist at all afterwards.
 	//
-	// NOT COVERED, and it is T055's to close rather than a gap in this test:
+	// NOT COVERED here, and a gap deliberately left open rather than closed:
 	// --offline still fetches the LOCKFILE over the network, because nothing
 	// caches one. On an aeroplane the run therefore fails at getRevision with
-	// ErrUnreachable rather than completing from cache, which is not what US5
-	// describes. Closing it needs a persisted lockfile per synced revision.
+	// ErrUnreachable rather than completing from cache, which is not fully
+	// offline. Closing it needs a persisted lockfile per synced revision.
 	tg := startSyncFake(t)
 	env := newSyncEnv(t, tg)
 
@@ -1334,7 +1335,7 @@ func TestAnotherHubsRecordIsRefused(t *testing.T) {
 func TestAnUnreachableHubIsNotMistakenForAnythingElse(t *testing.T) {
 	tg := startSyncFake(t)
 	env := newSyncEnv(t, tg)
-	// A closed listener on a port nothing is on. Deliberately not a 500: FR-040
+	// A closed listener on a port nothing is on. Deliberately not a 500: the classification
 	// exists so these two do not read the same.
 	env.target.BaseURL = "https://127.0.0.1:1/"
 
@@ -1346,7 +1347,7 @@ func TestAnUnreachableHubIsNotMistakenForAnythingElse(t *testing.T) {
 }
 
 func TestAPlaintextHubIsRefusedWithoutTheFlag(t *testing.T) {
-	// FR-041, at the verb. hub.New composes the refusal so the flag it names
+	// The plaintext refusal, at the verb. hub.New composes the message so the flag it names
 	// cannot disagree with the one root.go registers.
 	h := fake.New(fake.Options{})
 	t.Cleanup(h.Close)
@@ -1362,7 +1363,7 @@ func TestAPlaintextHubIsRefusedWithoutTheFlag(t *testing.T) {
 
 // ---------------------------------------------------------------- several profiles at once
 
-// TestTwoProfilesResolvingOnePackageToTwoVersionsIsRefused is FR-012 and US2's
+// TestTwoProfilesResolvingOnePackageToTwoVersionsIsRefused is the
 // seventh acceptance scenario. It is only reachable in a SINGLE run, which is
 // the whole reason --revision accepts the `<profile>=<revision>` form: telling
 // the operator to sync one profile at a time would silently give up this check.
@@ -1446,7 +1447,7 @@ func TestTwoProfilesAtHeadAreEachReportedWithTheirOwnRevision(t *testing.T) {
 	require.Equal(t, map[string]int64{tg.Fixtures.Profile: 7, tg.Fixtures.UnknownSkipReason: 1}, got)
 }
 
-// TestEachSyncIsReportedOnceSoTwoSyncsAreTwoReports pins the reading of FR-032's
+// TestEachSyncIsReportedOnceSoTwoSyncsAreTwoReports pins the reading of the report requirement's
 // "exactly once": once per SYNC, not once per machine. The hub's sync_event table
 // is the fleet's record of when each machine last converged, so an idempotent run
 // that reported nothing would make a converged machine look abandoned.
@@ -1466,7 +1467,7 @@ func TestEachSyncIsReportedOnceSoTwoSyncsAreTwoReports(t *testing.T) {
 	}
 }
 
-// TestAFailedSyncReportDoesNotFailTheSync is FR-033 at the verb. The bytes are
+// TestAFailedSyncReportDoesNotFailTheSync, at the verb. The bytes are
 // already on disk, and refusing to admit it would be the wrong correction.
 func TestAFailedSyncReportDoesNotFailTheSync(t *testing.T) {
 	tg := startSyncFake(t)
@@ -1485,7 +1486,7 @@ func TestAFailedSyncReportDoesNotFailTheSync(t *testing.T) {
 		[]string{"acme--code-review", "acme--lint-guard", "example--doc-writer"},
 		skillDirs(t, env.skillsRoot()))
 
-	// FR-033's second half: it is reported on the diagnostic stream, and the
+	// The second half: it is reported on the diagnostic stream, and the
 	// message says why there is no retry.
 	require.Contains(t, diag.String(), "was not reported")
 	require.Contains(t, diag.String(), "not retried")
@@ -1521,10 +1522,10 @@ func (f *failPathTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	}, nil
 }
 
-// ---------------------------------------------------------------- the T048/T049 gaps
+// ---------------------------------------------------------------- the fingerprint/prune gaps
 
 // TestAnUpgradeOfAnUnfingerprintedEntryRefusesUntilForced documents a real
-// consequence of T049 not existing yet, and asserts it fails in the safe
+// consequence of the fingerprinter not existing yet, and asserts it fails in the safe
 // direction. internal/apply requires a POSITIVE unmodified verdict before it
 // overwrites, and an entry installed by this build carries no fingerprint, so
 // every upgrade refuses naming --force rather than assuming the destination is
@@ -1570,9 +1571,9 @@ func TestAnUpgradeOfAnUnfingerprintedEntryRefusesUntilForced(t *testing.T) {
 	}
 }
 
-// TestAPlannedRemovalFailsLoudlyWhileThereIsNoPruner documents the other gap,
-// T048. A removal this build cannot execute must be a reported failure and never
-// a silent no-op: the whole point of FR-027 is that a package the hub withdrew
+// TestAPlannedRemovalFailsLoudlyWhileThereIsNoPruner documents the other gap.
+// A removal this build cannot execute must be a reported failure and never
+// a silent no-op: the whole point is that a package the hub withdrew
 // leaves the machine, and a sync that exits 0 having left it there is the lie
 // this fails closed to avoid.
 func TestAPlannedRemovalFailsLoudlyWhileThereIsNoPruner(t *testing.T) {
@@ -1641,14 +1642,14 @@ func TestAProfileThatLandedNothingIsNotReportedAsSynced(t *testing.T) {
 
 // ---------------------------------------------------------------- convergence when the disk disagrees with the record
 
-// SC-008 for the state a record-only "unchanged" decision cannot see: the record
+// for the state a record-only "unchanged" decision cannot see: the record
 // claims the locked version and the destination is GONE.
 //
 // internal/plan is a pure function of the lockfile, the record and the comparer
 // (plan/doc.go), so the disk is not one of its inputs and it labels such an entry
 // OpUnchanged. Before internal/apply's presentAndGone, those entries were copied
 // straight into the result and `sync` reported "nothing to do" over an empty
-// path — FR-021's worst failure, reported success having written nothing, and
+// path — the worst failure, reported success having written nothing, and
 // permanent: the record and the lockfile agree forever, so no later run would fix
 // it either.
 //

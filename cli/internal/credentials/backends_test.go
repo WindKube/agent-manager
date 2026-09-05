@@ -9,19 +9,10 @@ import (
 )
 
 // compiledIn is the exact backend set, in keyring's own try-order, that a
-// release build must expose per GOOS. Hand-derived from keyring v1.2.2 —
-// `keyring.backendOrder` intersected with the files the toolchain compiles for
-// each platform — and NOT from observing a run, which would encode a
-// CGO_ENABLED regression as the expectation:
-//
-//	keychain.go       darwin && cgo
-//	secretservice.go  linux
-//	kwallet.go        linux
-//	keyctl.go         linux
-//	pass.go           !windows
-//	file.go           (none)
-//
-// darwin therefore requires cgo to reach this set; linux does not.
+// release build must expose per GOOS. Hand-derived from keyring's build
+// constraints per platform, not from observing a run, which would encode a
+// CGO_ENABLED regression as the expectation. darwin requires cgo to reach
+// this set; linux does not.
 var compiledIn = map[string][]keyring.BackendType{
 	"darwin": {
 		keyring.KeychainBackend,
@@ -37,10 +28,8 @@ var compiledIn = map[string][]keyring.BackendType{
 	},
 }
 
-// A static darwin build loses keychain.go and keyring silently promotes pass,
-// then file. This is the measured set from the R1 gate (`go list -json` GoFiles
-// and the itabs in a cross-built darwin/arm64 binary), and it is the input the
-// guard exists to reject.
+// A static darwin build loses keychain.go and keyring silently promotes
+// pass, then file; this is the input the guard exists to reject.
 var darwinWithoutCGO = []keyring.BackendType{
 	keyring.PassBackend,
 	keyring.FileBackend,
@@ -97,9 +86,6 @@ func TestVerify(t *testing.T) {
 			wantErr:   `keyring backend "secret-service" is not compiled into this linux build`,
 		},
 		{
-			// windows is here rather than in `required` on purpose: amctl does
-			// not ship it, and the guard's job is to fail the build rather than
-			// let an unsupported platform through on a default.
 			name:      "windows is not a supported platform and is refused",
 			goos:      "windows",
 			available: []keyring.BackendType{keyring.WinCredBackend, keyring.FileBackend},

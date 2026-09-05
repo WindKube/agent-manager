@@ -9,11 +9,10 @@ import (
 	"strings"
 )
 
-// This file holds the policy that github.com/doyensec/safeurl was going to
-// provide (T009, R10). It is owned here because the library allows R10 case 2.
-// Everything below is a pure decision over a URL or an address: no I/O, so the
-// classification is testable on its own and cannot be bypassed by a code path
-// that forgets to call the network wrapper.
+// This file holds the SSRF policy, owned here rather than delegated to a
+// library. Everything below is a pure decision over a URL or an address: no
+// I/O, so the classification is testable on its own and cannot be bypassed
+// by a code path that forgets to call the network wrapper.
 
 var (
 	allowedSchemes = []string{"http", "https"}
@@ -80,8 +79,8 @@ type policy struct {
 func (p policy) checkURL(u *url.URL) error {
 	target := u.Redacted()
 
-	// Scheme first, so file:// and gopher:// report the reason a reader expects
-	// rather than "empty host" (R10 case 5).
+	// Scheme first, so file:// and gopher:// report the reason a reader
+	// expects rather than "empty host".
 	if !slices.Contains(allowedSchemes, strings.ToLower(u.Scheme)) {
 		return &BlockedError{Target: target, Reason: fmt.Sprintf("scheme %q is not http or https", u.Scheme)}
 	}

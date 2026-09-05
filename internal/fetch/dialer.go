@@ -8,9 +8,8 @@ import (
 	"syscall"
 )
 
-// Resolver is the name-resolution seam. *net.Resolver satisfies it. It exists
-// because R10 cases 2 and 4 are statements about what a name answers with, and
-// without this they cannot be tested at all.
+// Resolver is the name-resolution seam. *net.Resolver satisfies it; a fake
+// makes the SSRF-relevant cases about what a name answers with testable.
 type Resolver interface {
 	LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error)
 }
@@ -36,15 +35,15 @@ func (c *guardedClient) resolve(ctx context.Context, host string) ([]net.IP, err
 // dialContext is the half of the control that cannot be talked out of its
 // answer. It re-resolves and re-checks at connect time, so:
 //
-//   - a name that answered public during checkURL and private now is refused
-//     (R10 case 4 — the pre-flight answer is not evidence about this connection);
-//   - every address in a rotation is checked, and one bad address refuses the
-//     whole dial rather than being skipped in favour of a good one (R10 case 2);
-//   - each hop of a redirect arrives here as its own dial, so the check re-runs
-//     per hop rather than once per request (R10 cases 1 and 3).
+//   - a name that answered public during checkURL and private now is
+//     refused, since the pre-flight answer is not evidence about this
+//     connection;
+//   - every address in a rotation is checked, and one bad address refuses
+//     the whole dial rather than being skipped in favour of a good one;
+//   - each hop of a redirect arrives here as its own dial, so the check
+//     re-runs per hop rather than once per request.
 //
-// No connection is opened before the checks pass, which is what US1 scenario 5
-// means by "refused before any connection completes".
+// No connection is opened before the checks pass.
 func (c *guardedClient) dialContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	host, portStr, err := net.SplitHostPort(addr)
 	if err != nil {

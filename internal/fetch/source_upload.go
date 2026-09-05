@@ -8,12 +8,9 @@ import (
 	"agent-manager/internal/bundle"
 )
 
-// UploadSource extracts an archive the user uploaded (FR-001: `.zip` or
-// `.tar.gz`, at most 25 MB).
-//
-// It touches no network at all, which is why it holds no Client. That is the one
-// registration path that works with no outbound access, and quickstart.md points
-// at it for exactly that reason.
+// UploadSource extracts an archive the user uploaded (`.zip` or `.tar.gz`,
+// at most 25 MB). It touches no network at all, which is why it holds no
+// Client — the one registration path that works with no outbound access.
 type UploadSource struct{}
 
 func NewUploadSource() UploadSource { return UploadSource{} }
@@ -29,10 +26,10 @@ func (UploadSource) Fetch(ctx context.Context, ref SourceRef) (Tree, error) {
 		return Tree{}, errors.New("upload source: no archive")
 	}
 
-	// Every cap is internal/bundle's. Extract sniffs zip versus tar.gz, enforces
-	// the compressed cap before extraction begins and the ratio continuously as
-	// bytes stream, and rejects absolute paths, traversal, symlinks, hardlinks,
-	// device nodes and duplicates outright (R3, FR-003).
+	// Every cap is internal/bundle's. Extract sniffs zip versus tar.gz,
+	// enforces the compressed cap before extraction begins and the ratio
+	// continuously as bytes stream, and rejects absolute paths, traversal,
+	// symlinks, hardlinks, device nodes and duplicates outright.
 	files, err := bundle.Extract(ctx, ref.Archive, ref.Limits)
 	if err != nil {
 		return Tree{}, fmt.Errorf("extract uploaded archive %s: %w", displayName(ref.ArchiveName), err)

@@ -11,11 +11,10 @@ import (
 	"agent-manager/internal/bundle"
 )
 
-// The Source contract from contracts/worker.md section 3. The three
-// implementations (upload, git, archive-url) live in their own files; nothing
-// here knows they exist.
+// The three Source implementations (upload, git, archive-url) live in their
+// own files; nothing here knows they exist.
 
-// SourceKind names the three shapes FR-001 accepts.
+// SourceKind names the three shapes a registration accepts.
 type SourceKind string
 
 const (
@@ -33,26 +32,24 @@ type SourceRef struct {
 	Ref          string
 	Subdirectory string
 
-	// Archive and ArchiveName are set for the upload kind only. The reader is not
-	// size-bounded here on purpose: the caps are internal/bundle's (R3), and a
-	// Source that enforced its own would give three chances to get them wrong.
+	// Archive and ArchiveName are set for the upload kind only. The reader is
+	// not size-bounded here on purpose: the caps are internal/bundle's, and a
+	// Source that enforced its own would give three chances to get them
+	// wrong.
 	Archive     io.Reader
 	ArchiveName string
 
-	// Limits overrides the R3 extraction caps. The zero value takes the defaults,
-	// which is what production uses; tests shrink them to prove a cap fires.
+	// Limits overrides the extraction caps. The zero value takes the
+	// defaults, which is what production uses; tests shrink them to prove a
+	// cap fires.
 	Limits bundle.Limits
 }
 
-// Tree is what a Source produces: the extracted file tree and where it came from.
-//
-// It carries a *bundle.Bundle rather than raw archive bytes because the caps and
-// the member rules are internal/bundle's alone (R3) and a Source calls them
-// rather than reimplementing them — three sources with three readings of "reject
-// a symlink" is the defect this shape prevents. What a Source adds on top is only
-// provenance and the knowledge of where the package root sits inside the archive,
-// which no general extractor can know: a GitHub tarball wraps everything in one
-// `owner-repo-<sha>/` directory whose name is unpredictable.
+// Tree is what a Source produces: the extracted file tree and where it came
+// from. It carries a *bundle.Bundle rather than raw archive bytes because
+// the caps and the member rules are internal/bundle's alone and a Source
+// calls them rather than reimplementing them — three sources with three
+// readings of "reject a symlink" is the defect this shape prevents.
 type Tree struct {
 	Files *bundle.Bundle
 
@@ -65,20 +62,19 @@ type Tree struct {
 	Origin string
 }
 
-// Source turns a SourceRef into a Tree. A Source that touches the network uses
-// the Client it was given; constructing an http.Client inside one is a defect
-// (constitution principle III).
+// Source turns a SourceRef into a Tree. A Source that touches the network
+// uses the Client it was given; constructing an http.Client inside one is a
+// defect.
 type Source interface {
 	Name() string
 	Handles(SourceRef) bool
 	Fetch(ctx context.Context, ref SourceRef) (Tree, error)
 }
 
-// The failures a Source reports, distinct from every scan outcome. US1 scenario 5
-// and the spec's ingestion edge cases require these to be tellable apart from a
-// finding: a refused address, an absent ref, a missing subdirectory and a
-// repository the hub has no credential for are all fetch errors, and none of them
-// says anything about what the package does.
+// The failures a Source reports, distinct from every scan outcome: a refused
+// address, an absent ref, a missing subdirectory and a repository the hub
+// has no credential for are all fetch errors, and none of them says
+// anything about what the package does.
 var (
 	// ErrNoSource means no registered Source claimed the reference.
 	ErrNoSource = errors.New("no source handles this reference")
@@ -86,9 +82,9 @@ var (
 	// ErrRefNotFound is a ref, branch or tag the remote does not have.
 	ErrRefNotFound = errors.New("the remote has no such ref")
 
-	// ErrCredentialsRequired is a repository the hub holds no credential for. It
-	// is reported as itself rather than as "not found", because the operator's next
-	// action is different.
+	// ErrCredentialsRequired is a repository the hub holds no credential
+	// for, reported as itself rather than as "not found" since the
+	// operator's next action is different.
 	ErrCredentialsRequired = errors.New("the repository requires credentials the hub does not hold")
 
 	// ErrUnsupportedHost is a forge this build cannot talk to.
@@ -133,26 +129,22 @@ func (r *Registry) Fetch(ctx context.Context, ref SourceRef) (Tree, error) {
 }
 
 // The two file names that mark a package root. They are duplicated from
-// internal/domain/pkgspec rather than imported: internal/domain must not depend on
-// internal/fetch and the reverse dependency would make the layering a matter of
-// which file you read first. What is needed here is only "which directory is the
-// root", not what a manifest means.
+// internal/domain/pkgspec rather than imported: internal/domain must not
+// depend on internal/fetch, and what is needed here is only "which
+// directory is the root", not what a manifest means.
 const (
 	pluginManifestName = "plugin.json"
 	skillManifestName  = "SKILL.md"
 )
 
 // packageRoot decides which directory inside an extracted archive holds the
-// package.
-//
-// An explicit subdirectory always wins and is never second-guessed: a caller who
-// typed one meant it, and silently fetching a different directory publishes bytes
-// they did not ask for. Otherwise the root is the archive root, unless the archive
-// wraps everything in exactly one directory that holds a manifest — which is what
-// every "Download ZIP" and every forge tarball produces. The gate is deliberately
-// narrow: the wrapper must be the ONLY top-level directory AND must hold a
-// manifest, so a tree whose root legitimately contains just `skills/` is not
-// mistaken for one.
+// package. An explicit subdirectory always wins and is never second-guessed:
+// silently fetching a different directory publishes bytes the caller did not
+// ask for. Otherwise the root is the archive root, unless the archive wraps
+// everything in exactly one directory that holds a manifest — what every
+// "Download ZIP" and forge tarball produces. The gate is deliberately
+// narrow: the wrapper must be the only top-level directory and must hold a
+// manifest.
 func packageRoot(files *bundle.Bundle, base, subdirectory string) string {
 	join := func(parts ...string) string {
 		kept := make([]string, 0, len(parts))

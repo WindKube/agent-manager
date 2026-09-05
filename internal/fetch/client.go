@@ -1,12 +1,9 @@
 // Package fetch is the only way anything in this project reaches a
-// user-supplied URL.
-//
-// R10 required that the SSRF control be proven by this project's own six-case
-// suite (safe_test.go) before a client was chosen. github.com/doyensec/safeurl
-// failed case 2: its check is a net.Dialer.Control hook that runs per connect
-// attempt, so a name answering with both a public and a private address has the
-// private attempt refused and then connects over the public one. R10's stated
-// fallback is what ships here.
+// user-supplied URL. It builds its own SSRF control rather than depending on
+// a third-party client: github.com/doyensec/safeurl's check is a
+// net.Dialer.Control hook that runs per connect attempt, so a name answering
+// with both a public and a private address has the private attempt refused
+// and then connects over the public one.
 package fetch
 
 import (
@@ -23,8 +20,8 @@ import (
 )
 
 // ErrBlocked marks a refusal by the outbound policy rather than a transport
-// failure. FR-002 and US1 scenario 5 need the two to be told apart: a refusal is
-// a fetch error the operator must see, never a scan finding.
+// failure: a refusal is a fetch error the operator must see, never a scan
+// finding.
 var ErrBlocked = errors.New("refused by outbound policy")
 
 // BlockedError names the address or URL that was refused and why. The target is
@@ -72,7 +69,7 @@ type Options struct {
 	// would reintroduce exactly the rebinding hole this package exists to close.
 	Allowlist []string
 
-	// Resolver is the seam that makes R10 cases 2 and 4 expressible at all.
+	// Resolver is the seam that makes the multi-address SSRF cases testable.
 	// Nil means net.DefaultResolver.
 	Resolver Resolver
 }
@@ -159,17 +156,12 @@ func (c *guardedClient) Get(ctx context.Context, rawURL string) (*http.Response,
 // segment or a neighbouring word from being mistaken for one.
 var credentialsInURL = regexp.MustCompile(`//([^/?#@\s"']*):[^/?#@\s"']*@`)
 
-// redactedError renders its message with every embedded password removed, and
-// unwraps to the original chain so errors.Is(err, ErrBlocked) still answers.
-//
-// This scrubs the rendered message rather than a URL field because the secret
-// arrives by several routes and a fetch error is persisted and shown to an
-// operator. On a refused redirect net/http puts the raw, origin-supplied Location
-// header into url.Error.URL without stripping it (net/http/client.go,
-// "ue.(*url.Error).URL = loc"), and into the message verbatim when that header
-// does not parse; net/url likewise repeats an unparseable input in full. So a
-// password an attacker puts in a Location header, or a caller mistypes into a URL
-// that never parses, would otherwise land in the audit trail.
+// redactedError renders its message with every embedded password removed,
+// and unwraps to the original chain so errors.Is(err, ErrBlocked) still
+// answers. It scrubs the rendered message rather than a URL field because a
+// fetch error is persisted and shown to an operator, and net/http puts a raw
+// Location header (including one an attacker controls) into the error
+// message on a redirect it cannot parse or refuses.
 type redactedError struct{ err error }
 
 func (e redactedError) Error() string {

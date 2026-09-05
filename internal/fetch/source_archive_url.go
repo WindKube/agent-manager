@@ -23,10 +23,9 @@ type ArchiveURLSource struct {
 	client Client
 }
 
-// NewArchiveURLSource takes the SSRF-hardened client rather than building one.
-// Constructing an http.Client inside a Source is a defect (principle III): the
-// URL is user-supplied, and this is the package that exists to refuse the private
-// addresses it can be made to resolve to.
+// NewArchiveURLSource takes the SSRF-hardened client rather than building
+// one: the URL is user-supplied, and this is the package that exists to
+// refuse the private addresses it can be made to resolve to.
 func NewArchiveURLSource(client Client) ArchiveURLSource {
 	return ArchiveURLSource{client: client}
 }
@@ -39,8 +38,8 @@ func (ArchiveURLSource) Handles(ref SourceRef) bool {
 	if ref.Kind == SourceArchiveURL {
 		return true
 	}
-	// An unset kind is routed by shape, so a caller that pasted an archive URL into
-	// the URL box reaches this source rather than the git one.
+	// An unset kind is routed by shape, so an archive URL reaches this
+	// source rather than the git one.
 	return ref.Kind == "" && IsArchiveURL(ref.URL)
 }
 
@@ -69,8 +68,8 @@ func (s ArchiveURLSource) Fetch(ctx context.Context, ref SourceRef) (Tree, error
 
 	resp, err := s.client.Get(ctx, ref.URL)
 	if err != nil {
-		// ErrBlocked travels up unwrapped-as-itself so the fetcher can report an
-		// SSRF refusal as a refusal rather than as "download failed" (US1 scenario 5).
+		// ErrBlocked travels up unwrapped-as-itself so the fetcher can
+		// report an SSRF refusal as a refusal rather than "download failed".
 		return Tree{}, fmt.Errorf("fetch archive: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()

@@ -68,14 +68,20 @@ func Compute(in Inputs) (Plan, error) {
 	var p Plan
 	b := builder{compare: in.Compare}
 
-	// Pass 1: enabled vs. writable targets. Refusals are collected across all
-	// profiles first, so one unwritable target names every profile once.
+	// Pass 1: which targets does each profile enable, and which of those can
+	// this build actually write? An unknown target still refuses the whole
+	// plan (ConflictTargetUnknown, aggregated across every profile that named
+	// it); a target this build simply cannot write (resolved.Err) does not —
+	// it is unwritable, not unrouteable, and is turned into a Skip per entry
+	// in pass 3 instead, so the profile's other targets still install.
 	enabled := make(map[string]map[record.Target]bool, len(lockfiles))
 	writable := make(map[string]map[record.Target]Target, len(lockfiles))
+	unwritable := make(map[string]map[record.Target]error, len(lockfiles))
 	for _, lf := range lockfiles {
 		slug := lf.Profile.Slug
 		enabled[slug] = map[record.Target]bool{}
 		writable[slug] = map[record.Target]Target{}
+		unwritable[slug] = map[record.Target]error{}
 		alreadyRefused := false
 		for _, name := range dedupeTargets(lf.Targets) {
 			t := record.Target(name)
@@ -89,14 +95,14 @@ func Compute(in Inputs) (Plan, error) {
 				// Reported, not refused here — see Target.Withdrawn; the empty-set
 				// check below stops this becoming "installed nothing, exited 0".
 			case resolved.Err != nil:
-				b.targetRefusal(ConflictTargetUnwritable, t, resolved.Err, slug)
-				alreadyRefused = true
+				unwritable[slug][t] = resolved.Err
 			default:
 				writable[slug][t] = resolved
 			}
 		}
-		// Only when nothing else already refuses this profile: the case left is
-		// every named target being WITHDRAWN, which alone is not a refusal, so
+		// Only when nothing else already refuses this profile. What is left is
+		// the case this check is for: every target the profile named was
+		// WITHDRAWN or UNWRITABLE, neither of which on its own is a refusal, so
 		// without this the sync would install nothing and exit 0.
 		if len(enabled[slug]) > 0 && len(writable[slug]) == 0 && !alreadyRefused {
 			claims := make([]Claim, 0, len(enabled[slug]))
@@ -136,13 +142,23 @@ func Compute(in Inputs) (Plan, error) {
 			for _, t := range sortedTargetNames(writable[slug]) {
 				d, err := b.route(slug, t, writable[slug][t], e)
 				if err != nil {
-					continue // already recorded as an unroutable conflict
+					continue // already recorded as an unroutable conflict, or as a skip
 				}
 				if _, dup := desired[d.key]; dup {
 					return Plan{}, fmt.Errorf("%w: profile %s lists %s twice", ErrInputs, slug, e.Id)
 				}
 				desired[d.key] = d
 				order = append(order, d.key)
+			}
+			// Every target the profile enabled but this build cannot write:
+			// this entry is reported once per such target, never silently
+			// dropped (FR-011's spirit extended to a build-side exclusion).
+			for _, t := range sortedUnwritableTargets(unwritable[slug]) {
+				b.skips = append(b.skips, Skip{
+					Profile: slug, ID: e.Id, Target: t,
+					Reason: SkipTargetUnwritable, Recognised: true,
+					Detail: unwritable[slug][t].Error(),
+				})
 			}
 		}
 	}
@@ -177,12 +193,17 @@ func Compute(in Inputs) (Plan, error) {
 			case !enabled[slug][e.Target]:
 				removals = append(removals, removalOf(slug, e, RemoveTargetDisabled))
 			case writable[slug][e.Target].Dest == nil:
-				// Enabled but unroutable by this build; a conflict already
-				// refuses the plan. A removal here would misreport this as "off".
+				// The target is still enabled but this build cannot write it, so
+				// it is already reported as a skip. Emitting a removal here would
+				// report a deletion the CLI has no basis to perform and would
+				// read as "the target was turned off".
 				continue
 			case listed[slug][e.ID]:
-				// Still in the profile but unroutable this run; the unroutable
-				// conflict already refuses the plan — not "left the profile".
+				// Still in the profile, but this run could not route it — a
+				// kind that changed to plugin, a name the target now refuses.
+				// It is already reported as a skip or a conflict; calling it
+				// "no longer in the profile" would send the user to look at the
+				// profile, which is not where the problem is.
 				continue
 			default:
 				removals = append(removals, removalOf(slug, e, RemoveLeftProfile))
@@ -201,6 +222,7 @@ func Compute(in Inputs) (Plan, error) {
 
 	p.Remove = retain(in.Record, removals, desired)
 	p.Conflicts = b.conflicts()
+	p.Skipped = append(p.Skipped, b.skips...)
 
 	sortPlan(&p)
 	return p, nil
@@ -211,6 +233,7 @@ type builder struct {
 
 	targetRefusals map[record.Target]*Conflict
 	other          []Conflict
+	skips          []Skip
 }
 
 func (b *builder) targetRefusal(kind ConflictKind, t record.Target, err error, profile string) {
@@ -225,12 +248,24 @@ func (b *builder) targetRefusal(kind ConflictKind, t record.Target, err error, p
 	c.Claims = append(c.Claims, Claim{Profile: profile, Target: t})
 }
 
-// route turns one lockfile entry into a destination, or records the refusal;
-// it refuses rather than repairs, since a rewritten value wouldn't match the record.
+// route turns one lockfile entry into a destination, or records why it could
+// not: a skip when this build simply cannot install the entry's KIND under
+// this target (layout.ErrKindUnsupported) — the other entries in the profile
+// are still installable, so this one poisoned package must not refuse the
+// plan — and a conflict for everything else it validates, which it refuses
+// rather than repairs: a value amctl silently rewrote would not match the
+// record it later prunes against.
 func (b *builder) route(profile string, t record.Target, target Target, e hub.LockfileEntry) (desiredEntry, error) {
 	fail := func(detail string, err error) (desiredEntry, error) {
 		if err == nil {
 			err = errors.New(detail)
+		}
+		if errors.Is(err, layout.ErrKindUnsupported) {
+			b.skips = append(b.skips, Skip{
+				Profile: profile, ID: e.Id, Target: t,
+				Reason: SkipEntryKindUnsupported, Recognised: true, Detail: err.Error(),
+			})
+			return desiredEntry{}, err
 		}
 		b.other = append(b.other, Conflict{
 			Kind: ConflictUnroutable, ID: e.Id, Target: t,
@@ -615,6 +650,15 @@ func dedupeTargets(in []hub.LockfileTargets) []string {
 }
 
 func sortedTargetNames(m map[record.Target]Target) []record.Target {
+	out := make([]record.Target, 0, len(m))
+	for name := range m {
+		out = append(out, name)
+	}
+	slices.Sort(out)
+	return out
+}
+
+func sortedUnwritableTargets(m map[record.Target]error) []record.Target {
 	out := make([]record.Target, 0, len(m))
 	for name := range m {
 		out = append(out, name)

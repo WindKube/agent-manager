@@ -465,59 +465,53 @@ func TestSyncUsesAStoredCredentialWhenTheEnvironmentHasNone(t *testing.T) {
 
 // ---------------------------------------------------------------- the codex refusal
 
-// TestALockfileNamingCodexIsRefused is the unwritable-target refusal's negative control at the verb level.
-// It syncs Fixtures.UnwritableTarget — the one profile naming both contract
-// targets — and asserts the refusal carries layout.ErrR2Unresolved rather than a
-// message that happens to mention codex: a string match would keep passing if
-// the sentinel were dropped.
-//
-// Refused, not skipped. Dropping codex and installing claude-code would report a
-// success for a target nothing was written to, which is the failure this exists to
-// prevent.
-func TestALockfileNamingCodexIsRefused(t *testing.T) {
+// TestALockfileNamingCodexIsSkippedAndClaudeCodeStillInstalls is GAP 2's
+// verb-level check for a target this build cannot write. It syncs
+// Fixtures.UnwritableTarget — the one profile naming both contract targets —
+// and asserts codex is reported as a skip, never silently, while claude-code
+// still installs: one target this build cannot write must not block the
+// other, the same way one poisoned package must not block its siblings.
+func TestALockfileNamingCodexIsSkippedAndClaudeCodeStillInstalls(t *testing.T) {
 	tg := startSyncFake(t)
 	env := newSyncEnv(t, tg)
-	before := treeSnapshot(t, env.home)
 
 	flags := syncFlags{profiles: []string{tg.Fixtures.UnwritableTarget}}
 	code, result, diag, err := env.run(t, output.FormatJSON, flags)
-	require.Error(t, err)
-	require.ErrorIs(t, err, layout.ErrR2Unresolved,
-		"the refusal must surface the gate's own sentinel, so it can be classified by class and not by prose")
-	require.True(t, IsRefusal(err), "the user can fix this by disabling codex in the profile")
-	require.Equal(t, CodeRefused, code)
+	require.NoError(t, err)
+	require.Equal(t, CodeChanged, code)
 	require.Contains(t, diag.String(), "codex")
-	require.Contains(t, diag.String(), "cannot write it")
+	require.Contains(t, diag.String(), "cannot write")
 
-	// Refused BEFORE anything was staged: no skill directory, no record.
-	require.NoFileExists(t, env.recordPath(t))
-	after := treeSnapshot(t, env.home)
-	for p := range after {
-		if _, existed := before[p]; !existed {
-			require.NotContains(t, p, ".claude/skills/acme", "nothing may be installed by a refused sync")
-		}
-	}
+	// claude-code installed despite codex being unwritable.
+	require.Equal(t, []string{"acme--code-review"}, skillDirs(t, env.skillsRoot()))
 
-	// The result document still exists and lists the conflict, so a script does
-	// not have to parse the prose on stderr.
+	// The result document names the skip and the target it could not write, so
+	// a script does not have to parse the prose on stderr.
 	var doc struct {
 		Kind   string `json:"kind"`
 		Result struct {
-			Conflicts []struct {
+			Added []struct {
 				Target string `json:"target"`
-			} `json:"conflicts"`
+			} `json:"added"`
+			Skipped []struct {
+				Target string `json:"target"`
+				Reason string `json:"reason"`
+			} `json:"skipped"`
 		} `json:"result"`
 	}
 	dec := json.NewDecoder(strings.NewReader(result.String()))
 	require.NoError(t, dec.Decode(&doc))
 	require.False(t, dec.More())
 	require.Equal(t, "sync", doc.Kind)
-	require.Len(t, doc.Result.Conflicts, 1)
-	require.Equal(t, "codex", doc.Result.Conflicts[0].Target)
+	require.Len(t, doc.Result.Added, 1)
+	require.Equal(t, "claude-code", doc.Result.Added[0].Target)
+	require.Len(t, doc.Result.Skipped, 1)
+	require.Equal(t, "codex", doc.Result.Skipped[0].Target)
+	require.Equal(t, plan.SkipTargetUnwritable, doc.Result.Skipped[0].Reason)
 
 	reports, cerr := tg.Control.SyncReports()
 	require.NoError(t, cerr)
-	require.Empty(t, reports, "a refused sync is not reported")
+	require.Len(t, reports, 1, "a sync that installed something is reported")
 }
 
 // ------------------------------------------------- the withdrawn target
@@ -601,19 +595,20 @@ func TestAProfileWhoseTargetsAreAllWithdrawnIsRefused(t *testing.T) {
 	require.Empty(t, p.Add)
 }
 
-// TestTheUnwritableFixtureIsTheOnlyOneNamingCodex is what keeps the refusal test
-// from going vacuous. TestALockfileNamingCodexIsRefused would pass trivially if
-// Fixtures.UnwritableTarget stopped naming codex only because the refusal moved
-// earlier for some other reason, and every happy-path test in this file would
-// break confusingly if Fixtures.Profile started naming it. Both halves are
-// asserted against the served lockfile, not against the fixture struct, because
-// the served document is what the client actually parses.
+// TestTheUnwritableFixtureIsTheOnlyOneNamingCodex is what keeps the skip test
+// from going vacuous. TestALockfileNamingCodexIsSkippedAndClaudeCodeStillInstalls
+// would pass trivially if Fixtures.UnwritableTarget stopped naming codex only
+// because the skip moved earlier for some other reason, and every happy-path
+// test in this file would break confusingly if Fixtures.Profile started naming
+// it. Both halves are asserted against the served lockfile, not against the
+// fixture struct, because the served document is what the client actually
+// parses.
 func TestTheUnwritableFixtureIsTheOnlyOneNamingCodex(t *testing.T) {
 	tg := startSyncFake(t)
 
 	unwritable := readLockfile(t, tg, tg.Fixtures.UnwritableTarget)
 	require.Contains(t, unwritable["targets"], "codex",
-		"the refusal fixture must really name codex, or the refusal test proves nothing")
+		"the skip fixture must really name codex, or the skip test proves nothing")
 
 	happy := readLockfile(t, tg, tg.Fixtures.Profile)
 	require.Equal(t, []any{"claude-code"}, happy["targets"],

@@ -27,8 +27,10 @@ type Target struct {
 	// Dest routes an entry. Required when Err is nil.
 	Dest DestFunc
 
-	// Err is non-nil when this build cannot write the target; carried through
-	// to the conflict so a caller can errors.Is(err, layout.ErrR2Unresolved).
+	// Err is non-nil when this build cannot write the target. Every entry that
+	// would have routed to it becomes a [Skip] naming Err's message rather than
+	// a [Conflict]: the profile's other targets, and the other profiles being
+	// synced, must still install.
 	Err error
 
 	// Withdrawn: a known target deliberately never implemented (see
@@ -166,14 +168,10 @@ const (
 	// layout defect, refused since the record keys removals by destination.
 	ConflictDestCollision ConflictKind = "destination-collision"
 
-	// ConflictTargetUnwritable: profile enables a target this build can't
-	// write (Err wraps layout.ErrR2Unresolved) — refused rather than
-	// warn-and-continue, since installing nothing while exiting 0 reports success.
-	ConflictTargetUnwritable ConflictKind = "target-unwritable"
-
-	// ConflictTargetUnknown: a target this build has never heard of (the
-	// contract's enum still carries `agents-md`) — refused, not ignored, for
-	// the same reason as unwritable.
+	// ConflictTargetUnknown is a target this build has never heard of. The
+	// contract's enum still carries `agents-md`, which no longer has an
+	// implementation, and a newer hub may add more. Unknown is refused rather
+	// than ignored for the same reason as unwritable: silence looks like success.
 	ConflictTargetUnknown ConflictKind = "target-unknown"
 
 	// ConflictNoWritableTarget: every target a profile enabled was unknown,
@@ -181,8 +179,14 @@ const (
 	// nothing and exits 0.
 	ConflictNoWritableTarget ConflictKind = "no-writable-target"
 
-	// ConflictUnroutable: target refused the entry, or its id/kind/digest is
-	// unusable. Refused, never repaired.
+	// ConflictUnroutable is an entry whose id, kind or digest is unusable: an id
+	// that is not exactly two non-empty segments, a kind outside skill|plugin,
+	// a digest that is not sha256:<64 hex>. Refused, never repaired.
+	//
+	// A target that refused to route an entry because this build cannot
+	// install that KIND under it (layout.ErrKindUnsupported) is NOT here: that
+	// is a [Skip], because the other entries in the profile are still
+	// installable and one poisoned package must not block them.
 	ConflictUnroutable ConflictKind = "unroutable-entry"
 )
 
@@ -214,9 +218,6 @@ func (c Conflict) String() string {
 	case ConflictDestCollision:
 		return fmt.Sprintf("%s would be installed to one directory by %d different packages: %s (%s)",
 			c.Dest, len(distinctIDs(c.Claims)), describeClaims(c.Claims), c.Target)
-	case ConflictTargetUnwritable:
-		return fmt.Sprintf("target %s is enabled by %s but this build cannot write it: %v",
-			c.Target, describeProfiles(c.Claims), c.Err)
 	case ConflictTargetUnknown:
 		return fmt.Sprintf("target %s is enabled by %s and is not a target this build knows; "+
 			"refusing rather than skipping, because a target that installs nothing still exits 0",

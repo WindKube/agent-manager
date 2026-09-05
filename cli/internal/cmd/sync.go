@@ -230,9 +230,11 @@ func (r *syncRun) do(ctx context.Context) error {
 	r.reportSkips(p)
 
 	res := r.newResult(lockfiles)
-	appendHubSkips(&res, p)
+	appendSkips(&res, p)
 	if p.Refuses() {
-		// Result still emitted so `--output json` carries the conflict list.
+		// FR-012 and FR-023, refused BEFORE a byte is staged. The result is
+		// still emitted so `--output json` carries the conflict list; the
+		// error is what sets the exit code.
 		for i := range p.Conflicts {
 			res.Conflicts = append(res.Conflicts, output.Change{
 				Package: p.Conflicts[i].ID, Target: string(p.Conflicts[i].Target),
@@ -444,11 +446,23 @@ func revisionFailure(slug, revision string, err error) error {
 }
 
 // resolveTargets maps every target the lockfiles name onto something plan can
-// reason about, including ones this build cannot write. Uses per-target
-// Resolve, not layout.Registry.Select, since Select stops at the first gated
-// target and plan.Compute must aggregate a refusal across every profile that
-// named it. Unknown targets are omitted (ConflictTargetUnknown); known but
-// unwritable ones get an Err (ConflictTargetUnwritable) — never silently 0.
+// reason about, INCLUDING the ones this build cannot write.
+//
+// It deliberately does NOT use layout.Registry.Select. Select refuses the whole
+// selection on the first gated target and returns one error, which would lose
+// the thing a report has to say: which profiles asked for it. plan.Compute
+// aggregates a gated target across every profile that enabled it into one skip
+// per entry, so the per-target Resolve is what feeds it.
+//
+// An UNKNOWN target is omitted from the slice rather than given an Err,
+// because plan distinguishes the two: an omitted name is
+// ConflictTargetUnknown ("the hub named something this build has never
+// heard of"), which refuses the plan — a target that installs nothing while
+// the command exits 0 is the worst failure R2 exists to prevent, and an
+// unknown value has no other target to fall back on. An Err is a target this
+// build KNOWS and refuses to guess where it reads (e.g. codex, gate R2), which
+// plan.Compute turns into a skip per entry rather than a refusal: the
+// profile's other targets still install.
 func (r *syncRun) resolveTargets(reg *layout.Registry, lockfiles []*hub.Lockfile) (targets []plan.Target, writable map[record.Target]bool) {
 	names := map[string]struct{}{}
 	for _, lf := range lockfiles {
@@ -500,13 +514,21 @@ func destFunc(t layout.Target) plan.DestFunc {
 	}
 }
 
-// reportSkips reports every entry the hub excluded, with its reason verbatim
-// — an unrecognised reason is flagged, not translated or dropped, since the
-// hub may add a seventh one on its own schedule.
+// reportSkips is FR-011 for every entry the hub excluded, with its own reason,
+// plus every entry this build itself could not install, with the kind or the
+// target it could not write — never silently omitted either way.
+//
+// An unrecognised hub reason is reported VERBATIM and flagged as unrecognised
+// rather than translated or dropped. The hub may add a seventh reason and this
+// client ships separately from it, so a value this build has never seen is
+// information, not an error.
 func (r *syncRun) reportSkips(p plan.Plan) {
 	for i := range p.Skipped {
 		sk := p.Skipped[i]
 		line := fmt.Sprintf("%s skipped %s", sk.Profile, sk.ID)
+		if sk.Target != "" {
+			line += " for target " + string(sk.Target)
+		}
 		if sk.WouldHaveResolvedTo != "" {
 			line += " (would have resolved to " + sk.WouldHaveResolvedTo + ")"
 		}
@@ -841,13 +863,16 @@ func (r *syncRun) fill(res *output.SyncResult, applied *apply.Result, fetch *bun
 	}
 }
 
-// appendHubSkips puts the hub's own exclusions on the result, verbatim, and
-// runs before the conflict check so a refused sync still reports them.
-func appendHubSkips(res *output.SyncResult, p plan.Plan) {
+// appendSkips puts every plan.Skip on the result — the hub's own exclusions
+// verbatim (FR-011), and this build's own for a kind or a target it cannot
+// install. It runs before the conflict check so that a REFUSED sync still
+// reports them: a user told two profiles disagree also needs to see what was
+// withheld, and the refusal does not make that information less true.
+func appendSkips(res *output.SyncResult, p plan.Plan) {
 	for i := range p.Skipped {
 		sk := p.Skipped[i]
 		res.Skipped = append(res.Skipped, output.Skip{
-			Package: sk.ID, Version: sk.WouldHaveResolvedTo, Reason: sk.Reason,
+			Package: sk.ID, Version: sk.WouldHaveResolvedTo, Target: string(sk.Target), Reason: sk.Reason,
 		})
 	}
 }

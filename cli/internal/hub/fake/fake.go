@@ -67,9 +67,18 @@ type Fixtures struct {
 	// a hub 403 and a store 403 must not be read as the same failure.
 	StalePresignedBundle  string
 	StalePresignedEntryID string
-	UnknownSkipReason     string // must be reported verbatim
-	// UnwritableTarget names codex, which must be refused by name, not
-	// silently skipped — see catalog.go's profiles().
+	// UnknownSkipReason is a profile whose skipped array carries a reason value
+	// this build has never seen. It must be reported verbatim.
+	UnknownSkipReason string
+	// UnwritableTarget is a profile whose lockfile names a target this client
+	// cannot write (codex, gated on gate R2's unmade measurement) alongside one
+	// it can. Codex must be reported as a SKIP naming the target, never
+	// silently dropped, while claude-code still installs: one target this
+	// build cannot write must not block the profile's other target.
+	//
+	// It is a profile of its own rather than a property of every profile. The
+	// earlier fixture named codex on all of them, which meant no profile the fake
+	// served could be synced at all — see the note in catalog.go's profiles().
 	UnwritableTarget string
 
 	MissingProfile string // 404

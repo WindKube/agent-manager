@@ -56,10 +56,14 @@ type Change struct {
 	Path    string `json:"path,omitempty"`
 }
 
-// Skip is one entry the hub resolved but refused to serve, carrying the hub's own reason verbatim.
+// Skip is one entry that was resolved and then not installed: the hub's own
+// reason verbatim (FR-011), or this CLI's own reason when it is the one that
+// could not install the entry's kind or write its target. Target is set only
+// for the latter, since the hub reasons per package rather than per target.
 type Skip struct {
 	Package string `json:"package"`
 	Version string `json:"version,omitempty"`
+	Target  string `json:"target,omitempty"`
 	Reason  string `json:"reason"`
 }
 

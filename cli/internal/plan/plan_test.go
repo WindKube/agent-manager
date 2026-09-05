@@ -41,7 +41,7 @@ func claudeCodeTarget(root string) Target {
 		Name: record.TargetClaudeCode,
 		Dest: func(id string, kind record.Kind) (string, error) {
 			if kind != record.KindSkill {
-				return "", fmt.Errorf("claude-code supports skills only, not %s", kind)
+				return "", fmt.Errorf("claude-code supports skills only, not %s: %w", kind, layout.ErrKindUnsupported)
 			}
 			ns, name, ok := strings.Cut(id, "/")
 			if !ok || ns == "" || name == "" {
@@ -123,6 +123,12 @@ func skill(id, version string, digestSeed int) hub.LockfileEntry {
 		Resolution: "pinned",
 		Verdict:    "clean",
 	}
+}
+
+func plugin(id, version string, digestSeed int) hub.LockfileEntry {
+	e := skill(id, version, digestSeed)
+	e.Kind = hub.Plugin
+	return e
 }
 
 type installedEntry struct {
@@ -222,7 +228,8 @@ func skipLines(ss []Skip) []string {
 	}
 	out := make([]string, 0, len(ss))
 	for _, s := range ss {
-		out = append(out, fmt.Sprintf("%s %s %s known=%t would=%s", s.Profile, s.ID, s.Reason, s.Recognised, orDash(s.WouldHaveResolvedTo)))
+		out = append(out, fmt.Sprintf("%s %s %s %s known=%t would=%s",
+			s.Profile, s.ID, orDash(string(s.Target)), s.Reason, s.Recognised, orDash(s.WouldHaveResolvedTo)))
 	}
 	return out
 }
@@ -385,15 +392,15 @@ func TestEveryTransitionBetweenTheLockfileAndTheRecord(t *testing.T) {
 			},
 		},
 		{
-			name: "a target this build cannot write is refused with the gate's own error, not reported as disabled",
+			name: "a target this build cannot write is skipped, not reported as disabled and not refused",
 			lockfiles: []*hub.Lockfile{
 				lf("base", []string{"claude-code", "codex"}, skill("acme/code-review", "2.4.1", 1)),
 			},
 			record:  nil,
 			targets: []Target{cc, codexTarget(t)},
 			want: want{
-				add:       []string{"claude-code acme/code-review base add none->2.4.1 dir=-"},
-				conflicts: []string{"target-unwritable - codex"},
+				add:     []string{"claude-code acme/code-review base add none->2.4.1 dir=-"},
+				skipped: []string{"base acme/code-review codex target-unwritable known=true would=-"},
 			},
 		},
 		{
@@ -445,18 +452,14 @@ func TestEveryTransitionBetweenTheLockfileAndTheRecord(t *testing.T) {
 			},
 		},
 		{
-			name: "a plugin is refused by a skills-only target rather than installed somewhere hopeful",
+			name: "a plugin is skipped by a skills-only target rather than installed somewhere hopeful",
 			lockfiles: []*hub.Lockfile{
-				lf("base", []string{"claude-code"}, func() hub.LockfileEntry {
-					e := skill("acme/big-plugin", "1.0.0", 3)
-					e.Kind = hub.Plugin
-					return e
-				}()),
+				lf("base", []string{"claude-code"}, plugin("acme/big-plugin", "1.0.0", 3)),
 			},
 			record:  nil,
 			targets: []Target{cc},
 			want: want{
-				conflicts: []string{"unroutable-entry acme/big-plugin claude-code"},
+				skipped: []string{"base acme/big-plugin claude-code entry-kind-not-installable known=true would=-"},
 			},
 		},
 		{
@@ -516,18 +519,14 @@ func TestEveryTransitionBetweenTheLockfileAndTheRecord(t *testing.T) {
 			},
 		},
 		{
-			name: "a package still in the profile but no longer routable is a conflict, not a removal",
+			name: "a package still in the profile but no longer routable is a skip, not a removal",
 			lockfiles: []*hub.Lockfile{
-				lf("base", []string{"claude-code"}, func() hub.LockfileEntry {
-					e := skill("acme/code-review", "3.0.0", 8)
-					e.Kind = hub.Plugin
-					return e
-				}()),
+				lf("base", []string{"claude-code"}, plugin("acme/code-review", "3.0.0", 8)),
 			},
 			record:  rec(t, map[string][]installedEntry{"base": {{id: "acme/code-review", version: "2.4.1", digestSeed: 1}}}),
 			targets: []Target{cc},
 			want: want{
-				conflicts: []string{"unroutable-entry acme/code-review claude-code"},
+				skipped: []string{"base acme/code-review claude-code entry-kind-not-installable known=true would=-"},
 			},
 		},
 		{
@@ -587,8 +586,8 @@ func TestEverySkippedEntryIsReportedWithTheHubsOwnReason(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, []string{
-		"base acme/from-the-future " + future + " known=false would=-",
-		"base acme/legacy-helper flagged-awaiting-approval known=true would=1.9.0",
+		"base acme/from-the-future - " + future + " known=false would=-",
+		"base acme/legacy-helper - flagged-awaiting-approval known=true would=1.9.0",
 	}, skipLines(p.Skipped))
 
 	// The unknown reason must survive byte for byte. Dropping it hides a package
@@ -719,7 +718,13 @@ func idOrder(cs []Change) []string {
 
 // ---- refusal plumbing ----
 
-func TestAnUnwritableTargetSurfacesTheGatesErrorRatherThanASkip(t *testing.T) {
+// TestAnUnwritableTargetWithNoOtherWritableTargetStillRefuses is the R2 case
+// that must not regress: a profile whose entire writable set is empty because
+// its one target is gated must still refuse rather than install nothing and
+// exit 0. See TestAnUnwritableTargetIsSkippedWhenAnotherTargetCanStillWrite
+// for the case that changed — the same gated target beside one this build can
+// write.
+func TestAnUnwritableTargetWithNoOtherWritableTargetStillRefuses(t *testing.T) {
 	t.Parallel()
 
 	p, err := Compute(Inputs{
@@ -731,20 +736,50 @@ func TestAnUnwritableTargetSurfacesTheGatesErrorRatherThanASkip(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.True(t, p.Refuses())
-	require.Len(t, p.Conflicts, 1, "one unwritable target is one conflict, not one per profile")
-
-	c := p.Conflicts[0]
-	require.Equal(t, ConflictTargetUnwritable, c.Kind)
-	require.Equal(t, record.TargetCodex, c.Target)
-	require.ErrorIs(t, c.Err, layout.ErrR2Unresolved)
-	require.ErrorIs(t, p.ConflictError(), layout.ErrR2Unresolved,
-		"the class must survive to the caller, which classifies by errors.Is and not by message")
-	require.Equal(t, []Claim{{Profile: "base", Target: record.TargetCodex}, {Profile: "web", Target: record.TargetCodex}}, c.Claims)
+	require.Len(t, p.Conflicts, 2, "one no-writable-target conflict per profile")
+	require.Equal(t, ConflictNoWritableTarget, p.Conflicts[0].Kind)
+	require.Equal(t, ConflictNoWritableTarget, p.Conflicts[1].Kind)
 
 	// Nothing was planned for the target, and nothing was silently dropped
 	// either: the plan refuses.
 	require.Zero(t, p.ChangeCount())
 	require.False(t, p.IsNoOp())
+
+	// A refused plan still reports what it would have skipped, the same way a
+	// refused sync still carries the hub's own skips (FR-011): the refusal
+	// does not make that information less true.
+	require.Len(t, p.Skipped, 2)
+	for _, sk := range p.Skipped {
+		require.Equal(t, record.TargetCodex, sk.Target)
+		require.Equal(t, SkipTargetUnwritable, sk.Reason)
+	}
+}
+
+// TestAnUnwritableTargetIsSkippedWhenAnotherTargetCanStillWrite is GAP 2: one
+// unwritable target must not block a profile whose other target this build
+// can write, the same way one unroutable entry must not block its siblings.
+func TestAnUnwritableTargetIsSkippedWhenAnotherTargetCanStillWrite(t *testing.T) {
+	t.Parallel()
+
+	p, err := Compute(Inputs{
+		Lockfiles: []*hub.Lockfile{
+			lf("base", []string{"claude-code", "codex"}, skill("acme/code-review", "2.4.1", 1)),
+		},
+		Targets: []Target{claudeCodeTarget(skillsRoot), codexTarget(t)},
+	})
+	require.NoError(t, err)
+	require.False(t, p.Refuses())
+	require.Len(t, p.Add, 1)
+	require.Equal(t, record.TargetClaudeCode, p.Add[0].Target, "claude-code still installs")
+
+	require.Len(t, p.Skipped, 1)
+	sk := p.Skipped[0]
+	require.Equal(t, "base", sk.Profile)
+	require.Equal(t, "acme/code-review", sk.ID)
+	require.Equal(t, record.TargetCodex, sk.Target)
+	require.Equal(t, SkipTargetUnwritable, sk.Reason)
+	require.True(t, sk.Recognised)
+	require.Contains(t, sk.Detail, layout.ErrR2Unresolved.Error())
 }
 
 func TestAnUnwritableTargetIsNotTheSameOutcomeAsADisabledOne(t *testing.T) {
@@ -770,9 +805,52 @@ func TestAnUnwritableTargetIsNotTheSameOutcomeAsADisabledOne(t *testing.T) {
 		Targets:   []Target{claudeCodeTarget(skillsRoot), codexTarget(t)},
 	})
 	require.NoError(t, err)
-	require.True(t, stillEnabled.Refuses())
+	require.False(t, stillEnabled.Refuses(), "a target this build cannot write must not refuse a profile whose other target still can")
 	require.Empty(t, stillEnabled.Remove,
 		"a target the profile still enables must not be reported as disabled, and nothing may be removed under a target this build cannot route")
+	require.Len(t, stillEnabled.Skipped, 1, "the still-enabled but unwritable target is reported rather than silently dropped")
+	require.Equal(t, record.TargetCodex, stillEnabled.Skipped[0].Target)
+	require.Equal(t, SkipTargetUnwritable, stillEnabled.Skipped[0].Reason)
+}
+
+// TestAnUnsupportedEntryKindIsSkippedRatherThanBlockingItsSiblings is GAP 2's
+// other half: one entry this build cannot install under a target — a plugin
+// where only skills route — must not refuse a plan whose other entries can
+// still install.
+func TestAnUnsupportedEntryKindIsSkippedRatherThanBlockingItsSiblings(t *testing.T) {
+	t.Parallel()
+
+	p, err := Compute(Inputs{
+		Lockfiles: []*hub.Lockfile{
+			lf("base", []string{"claude-code"},
+				skill("acme/one", "1.0.0", 1),
+				skill("acme/two", "1.0.0", 2),
+				plugin("acme/three", "1.0.0", 3),
+			),
+		},
+		Targets: []Target{claudeCodeTarget(skillsRoot)},
+	})
+	require.NoError(t, err)
+	require.False(t, p.Refuses(), "one unsupported entry kind must not refuse the plan")
+	require.Empty(t, p.Conflicts)
+	require.Equal(t, []string{"acme/one", "acme/two"}, idsOf(p.Add))
+
+	require.Len(t, p.Skipped, 1)
+	sk := p.Skipped[0]
+	require.Equal(t, "base", sk.Profile)
+	require.Equal(t, "acme/three", sk.ID)
+	require.Equal(t, record.TargetClaudeCode, sk.Target)
+	require.Equal(t, SkipEntryKindUnsupported, sk.Reason)
+	require.True(t, sk.Recognised)
+	require.Contains(t, sk.Detail, layout.ErrKindUnsupported.Error())
+}
+
+func idsOf(cs []Change) []string {
+	out := make([]string, 0, len(cs))
+	for i := range cs {
+		out = append(out, cs[i].ID)
+	}
+	return out
 }
 
 func TestFR012NamesBothProfilesAndBothVersionsAndWhatIsInstalled(t *testing.T) {

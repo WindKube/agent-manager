@@ -858,12 +858,11 @@ func TestApplyReinstallsWhenTheRecordClaimsAnEntryThatIsGone(t *testing.T) {
 
 // the run-wide refusals
 
-// TestApplyRefusesAPlanWithConflictsBeforeStagingAByte covers a
-// version-split, a destination collision and an unwritable target together,
-// because all three arrive as a plan.Conflict and the requirement is the
-// same for each: refuse before writing.
+// TestApplyRefusesAPlanWithConflictsBeforeStagingAByte covers FR-012, FR-023
+// and an unknown target together, because all three arrive as a plan.Conflict
+// and the requirement is the same for each: refuse BEFORE writing.
 func TestApplyRefusesAPlanWithConflictsBeforeStagingAByte(t *testing.T) {
-	r2 := fmt.Errorf("codex: %w", layout.ErrR2Unresolved)
+	unknown := fmt.Errorf("target agents-md: %w", layout.ErrUnknownTarget)
 	cases := []struct {
 		name string
 		conf plan.Conflict
@@ -882,9 +881,9 @@ func TestApplyRefusesAPlanWithConflictsBeforeStagingAByte(t *testing.T) {
 			},
 		},
 		{
-			name: "a target this build cannot write",
-			conf: plan.Conflict{Kind: plan.ConflictTargetUnwritable, Target: record.TargetCodex, Err: r2},
-			want: layout.ErrR2Unresolved,
+			name: "a target this build has never heard of",
+			conf: plan.Conflict{Kind: plan.ConflictTargetUnknown, Target: "agents-md", Err: unknown},
+			want: layout.ErrUnknownTarget,
 		},
 	}
 

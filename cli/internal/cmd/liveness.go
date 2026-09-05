@@ -6,11 +6,8 @@ import (
 	"syscall"
 )
 
-// processAlive is the staleness accelerator described at the top of lock.go, and
-// every uncertain answer is "alive".
-//
-// os.FindProcess never fails — it does not look the pid up — so the question is
-// entirely Signal(0)'s to answer.
+// processAlive is lock.go's staleness accelerator; every uncertain answer is
+// "alive", since os.FindProcess never fails and Signal(0) is the real check.
 func processAlive(pid int) bool {
 	if pid <= 0 {
 		return false
@@ -25,8 +22,7 @@ func processAlive(pid int) bool {
 	case errors.Is(err, os.ErrProcessDone), errors.Is(err, syscall.ESRCH):
 		return false
 	default:
-		// EPERM: another user's process, which exists. "Cannot tell" is
-		// reported as alive so the heartbeat decides instead.
+		// EPERM: another user's process, which exists; "cannot tell" so alive.
 		return true
 	}
 }

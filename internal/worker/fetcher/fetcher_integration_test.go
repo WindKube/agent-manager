@@ -438,6 +438,7 @@ func TestAGitRegistrationBecomesAStoredVisibleVersionWithAQueuedScan(t *testing.
 	// US1 scenario 6: actor `fetcher`, actor_kind `system`, source `system`, and
 	// the text names the stored version.
 	texts := auditTexts(t, "fetcher", "stored example/platform-toolkit@1.3.0%")
+	require.Equal(t, 1, countRows(t, `select count(*) from fetch_attempt where source_kind = 'git' and outcome = 'ok'`))
 	require.Len(t, texts, 1)
 	require.Contains(t, texts[0], "digest sha256:")
 	require.Contains(t, texts[0], "2 paths dropped as outside the spec layout")
@@ -671,6 +672,7 @@ func TestASSRFRefusalIsRecordedAsAFetchErrorAndNeverAsAFinding(t *testing.T) {
 	// The record of the failure is an audit row of kind `fetch`, and it names the
 	// reason without reproducing a credential.
 	texts := auditTexts(t, "fetcher", "failed to fetch refused/platform-toolkit@1.3.0%")
+	require.Equal(t, 1, countRows(t, `select count(*) from fetch_attempt where outcome = 'blocked'`))
 	require.Len(t, texts, 1)
 	require.Contains(t, texts[0], string(fetcher.ReasonRefused))
 

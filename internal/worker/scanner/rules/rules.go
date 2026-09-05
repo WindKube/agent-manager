@@ -1,20 +1,12 @@
-// Package rules is the scanner's rule pack: detection rules as versioned data.
-//
-// Constitution, Development Workflow: "Detection rules live in a versioned rule
-// pack, not in Go control flow. Adding or tuning a rule must not require a code
-// change or a deploy." That splits the scanner in two, and the split is the whole
-// point of this package. A rule INSTANCE — this command, this pattern, this
-// severity, this prose — is a YAML file. A detection CLASS — how a shell AST is
-// walked, what "the host is not in the expected set" means — is Go, reached from a
-// rule by a named `match.kind`, `extract` and `condition` out of a closed
-// vocabulary.
-//
-// The vocabulary is fixed by specs/001-agent-manager-hub/contracts/rulepack.schema.json
-// and every rule is validated against a byte-identical copy of it at load time
-// (schema.go). A rule naming a kind, an extractor or a condition this build does
-// not implement is a LOAD failure, never a rule that silently matches nothing: a
-// rule that matches nothing is indistinguishable from a package that is clean,
-// which is the one failure mode a scanner must not have.
+// Package rules is the scanner's rule pack: detection rules as versioned data,
+// not Go control flow, so tuning a rule needs no code change or deploy. A rule
+// INSTANCE — this command, this pattern, this severity — is a YAML file. A
+// detection CLASS — how a shell AST is walked, what "outside the expected set"
+// means — is Go, reached from a rule by a named `match.kind`, `extract` and
+// `condition` out of a closed vocabulary validated at load time (schema.go). A
+// rule naming a kind, extractor or condition this build does not implement is a
+// LOAD failure, never a rule that silently matches nothing: a rule that matches
+// nothing is indistinguishable from a package that is clean.
 package rules
 
 import (
@@ -43,7 +35,7 @@ const (
 	ManifestFile = "pack.yaml"
 	// RulesDir holds one YAML document per rule, named <RULE-ID>.yaml.
 	RulesDir = "rules"
-	// FixturesDir holds the trip/clean bundle each rule ships (T058).
+	// FixturesDir holds the trip/clean bundle each rule ships.
 	FixturesDir = "fixtures"
 )
 
@@ -89,7 +81,7 @@ type Condition string
 const (
 	// ConditionAlways matches on the presence of what was extracted.
 	ConditionAlways Condition = "always"
-	// ConditionHostNotInExpected is FR-027: a host outside the version's expected
+	// ConditionHostNotInExpected is a host outside the version's expected
 	// capability set. Where no expected set was recorded every host matches, so
 	// nothing passes silently for want of a declaration.
 	ConditionHostNotInExpected Condition = "host-not-in-expected"
@@ -167,9 +159,9 @@ func (e Evidence) Lines() int {
 	return *e.ContextLines
 }
 
-// Fixtures are the two bundles every rule ships (constitution, Development
-// Workflow): one that must trip it and one that must not. A rule with only a
-// positive fixture is how a rule that matches everything ships.
+// Fixtures are the two bundles every rule ships: one that must trip it and one
+// that must not. A rule with only a positive fixture is how a rule that matches
+// everything ships.
 type Fixtures struct {
 	Trips string `yaml:"trips"`
 	Clean string `yaml:"clean"`
@@ -198,16 +190,11 @@ type Pack struct {
 	fsys     fs.FS
 }
 
-// Version is the value written to `scan.pack_version`, and therefore half of the
-// scan idempotency key `unique (version_id, pack_version)`.
-//
-// It is the pack's DECLARED version with a short digest of the rule content
-// appended — `2026.08.31+7b1c0f4a92de`. The digest half is what makes "rescan
-// needed" a comparison rather than a promise about editing discipline: tuning a
-// pattern without bumping the declared version still moves the key, so the next
-// scan of an already-scanned version runs instead of being suppressed by its own
-// idempotency guard. That is the failure this shape exists to prevent, and it
-// costs a sha256 over a few kilobytes at start-up.
+// Version is the value written to `scan.pack_version`, half of the scan
+// idempotency key `unique (version_id, pack_version)`. It is the pack's DECLARED
+// version with a short digest of the rule content appended, so tuning a pattern
+// without bumping the declared version still moves the key: the next scan of an
+// already-scanned version runs instead of being suppressed by its own guard.
 func (p *Pack) Version() string { return p.version }
 
 // Declared is the version the pack states for itself, without the content digest.
@@ -336,11 +323,9 @@ func readManifest(fsys fs.FS) (string, error) {
 // decodeRule turns one YAML document into a Rule, validated against the contract
 // schema and then against what this build can actually execute.
 func decodeRule(validator *jsonschema.Schema, rulePath string, raw []byte) (*Rule, error) {
-	// The YAML is round-tripped through JSON before validation. A JSON Schema
+	// The YAML is round-tripped through JSON before validation: a JSON Schema
 	// validator applies JSON type rules and YAML's are different — `1.0` is a
-	// float in YAML and a string in JSON — so validating the YAML decoder's output
-	// directly lets the schema and the decoder disagree about a value's type
-	// (pkgspec/skill.go makes the same trip for the same reason).
+	// float in YAML and a string in JSON.
 	document, err := yamlAsJSON(raw)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s: %w", ErrPack, rulePath, err)
@@ -363,13 +348,10 @@ func decodeRule(validator *jsonschema.Schema, rulePath string, raw []byte) (*Rul
 }
 
 // compile turns the rule's text into the compiled artefacts the engine needs, and
-// refuses a combination this build cannot execute.
-//
-// The schema validates the vocabulary one field at a time; it cannot state that
-// `condition: value-matches` is meaningless without a pattern, or that
-// `extract: url-argument` has no reading under `dep-manifest`. Those are the
-// combinations that produce a rule which loads, runs, and matches nothing — so
-// they are refused here, at load, where the failure names the file.
+// refuses a combination this build cannot execute: the schema validates the
+// vocabulary one field at a time, so it cannot state that `condition:
+// value-matches` is meaningless without a pattern, or that `extract:
+// url-argument` has no reading under `dep-manifest`.
 func (r *Rule) compile() error {
 	if r.Match.Pattern != "" {
 		compiled, err := regexp.Compile(r.Match.Pattern)

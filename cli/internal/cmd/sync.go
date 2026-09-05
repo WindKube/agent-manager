@@ -28,8 +28,7 @@ import (
 const revisionHead = "head"
 
 // syncDeps is everything `sync` reaches outside its own process, gathered so
-// sync_test.go can drive the real code paths against the fake hub. A struct and
-// not package variables, for the reason loginDeps gives.
+// sync_test.go can drive real code against the fake hub (see loginDeps).
 type syncDeps struct {
 	httpClient *http.Client // nil means net/http's default
 	hostname   func() (string, error)
@@ -51,12 +50,10 @@ type syncFlags struct {
 	force     bool
 }
 
-// newSyncCmd builds `amctl sync`. `--revision head` (default) applies to
-// every profile; a bare number needs exactly one --profile, since revisions
-// are per-profile; `<slug>=<head|number>`, repeatable, pins named profiles so
-// a cross-profile version conflict is still caught before anything writes.
-// With no --profile, only the profiles already in the record are synced —
-// never "every readable profile" — and an empty record is refused, not guessed.
+// newSyncCmd builds `amctl sync`. `--revision head` (default) applies to every
+// profile; a bare number needs exactly one --profile; `<slug>=<head|number>`,
+// repeatable, pins named profiles. With no --profile, only the profiles
+// already in the record are synced, and an empty record is refused.
 func newSyncCmd(opts *Options) *cobra.Command {
 	flags := &syncFlags{}
 	cmd := &cobra.Command{
@@ -84,11 +81,9 @@ func newSyncCmd(opts *Options) *cobra.Command {
 	return cmd
 }
 
-// runSync's order is the requirement: hostname first (the report is filed
-// under it), then Prepare (home proved writable, hub canonicalised, both
-// before any packet leaves), then the credential (so a machine with none
-// refuses having made zero requests), then the per-home lock — taken before
-// the first request, not the first write, since downloads populate a shared cache.
+// runSync's order is the requirement: hostname first (report filed under
+// it), then Prepare, then the credential, then the per-home lock - taken
+// before the first request since downloads populate a shared cache.
 func runSync(ctx context.Context, opts *Options, flags syncFlags, deps syncDeps) error {
 	s := opts.Streams()
 
@@ -129,8 +124,7 @@ func runSync(ctx context.Context, opts *Options, flags syncFlags, deps syncDeps)
 }
 
 // resolveSyncCredential resolves AMCTL_TOKEN or the store's credential,
-// refusing (no TTY prompt) when neither has one. The store opens lazily
-// inside credentials.Resolver, so AMCTL_TOKEN never touches the keychain.
+// refusing (no TTY prompt) when neither has one.
 func resolveSyncCredential(home Home, s *output.Streams, deps syncDeps, target Hub) (credentials.Resolved, error) {
 	resolver := credentials.Resolver{
 		Open: func() (*credentials.Store, error) {
@@ -162,8 +156,7 @@ func resolveSyncCredential(home Home, s *output.Streams, deps syncDeps, target H
 	return res, nil
 }
 
-// syncRun is one sync, under the lock. Everything it needs is a field so that
-// the steps read as steps rather than as a parameter list.
+// syncRun is one sync, under the lock; everything it needs is a field.
 type syncRun struct {
 	opts  *Options
 	flags syncFlags
@@ -180,9 +173,8 @@ type syncRun struct {
 	lock *Lock
 }
 
-// stillOurs is what internal/apply asks before each entry: a lock reclaimed
-// while frozen means another amctl already owns the tree. Not a Refusal —
-// nothing the user did caused it — CodeFailure means "re-run" here.
+// stillOurs: a lock reclaimed while frozen means another amctl already owns
+// the tree. Not a Refusal - CodeFailure means "re-run" here.
 func (r *syncRun) stillOurs() error {
 	if r.lock == nil || !r.lock.Lost() {
 		return nil
@@ -193,8 +185,7 @@ func (r *syncRun) stillOurs() error {
 		r.lock.Path())
 }
 
-// do is the sync, in the order the requirements impose. Read the step comments
-// before reordering anything.
+// do is the sync, in the order the requirements impose.
 func (r *syncRun) do(ctx context.Context) error {
 	recordPath := record.Path(r.home.HubDir(r.target))
 	rec, err := record.Load(recordPath, r.target.URL)
@@ -232,9 +223,8 @@ func (r *syncRun) do(ctx context.Context) error {
 	res := r.newResult(lockfiles)
 	appendSkips(&res, p)
 	if p.Refuses() {
-		// FR-012 and FR-023, refused BEFORE a byte is staged. The result is
-		// still emitted so `--output json` carries the conflict list; the
-		// error is what sets the exit code.
+		// Refused BEFORE a byte is staged; still emitted so --output json carries
+		// the conflict list, while the error sets the exit code.
 		for i := range p.Conflicts {
 			res.Conflicts = append(res.Conflicts, output.Change{
 				Package: p.Conflicts[i].ID, Target: string(p.Conflicts[i].Target),
@@ -273,9 +263,8 @@ func (r *syncRun) do(ctx context.Context) error {
 	if emitErr := r.opts.Emit(res); emitErr != nil {
 		return emitErr
 	}
-	// A locally skipped entry (gate 403) does not move the exit code: that's
-	// a correct outcome, not a failure to retry. `partial` and `skipped`
-	// under --output json carry the detail instead.
+	// A locally skipped entry (gate 403) does not move the exit code - a
+	// correct outcome, not a failure to retry.
 	if res.Changed() {
 		r.opts.Outcome = CodeChanged
 	} else {
@@ -399,8 +388,7 @@ func validRevision(flag, value string) error {
 	return nil
 }
 
-// fetchLockfiles resolves each profile's revision; what to install comes
-// from here alone.
+// fetchLockfiles resolves each profile's revision; what to install comes from here alone.
 func (r *syncRun) fetchLockfiles(ctx context.Context, profiles []string, revisions map[string]string) ([]*hub.Lockfile, error) {
 	out := make([]*hub.Lockfile, 0, len(profiles))
 	for _, slug := range profiles {
@@ -427,8 +415,7 @@ func (r *syncRun) fetchLockfiles(ctx context.Context, profiles []string, revisio
 	return out, nil
 }
 
-// revisionFailure preserves internal/hub's classification with %w rather
-// than rewriting it, since flattening would destroy that distinction.
+// revisionFailure preserves internal/hub's classification with %w rather than flattening it.
 func revisionFailure(slug, revision string, err error) error {
 	switch {
 	case errors.Is(err, hub.ErrUnauthorised):
@@ -445,24 +432,13 @@ func revisionFailure(slug, revision string, err error) error {
 	}
 }
 
-// resolveTargets maps every target the lockfiles name onto something plan can
-// reason about, INCLUDING the ones this build cannot write.
-//
-// It deliberately does NOT use layout.Registry.Select. Select refuses the whole
-// selection on the first gated target and returns one error, which would lose
-// the thing a report has to say: which profiles asked for it. plan.Compute
-// aggregates a gated target across every profile that enabled it into one skip
-// per entry, so the per-target Resolve is what feeds it.
-//
-// An UNKNOWN target is omitted from the slice rather than given an Err,
-// because plan distinguishes the two: an omitted name is
-// ConflictTargetUnknown ("the hub named something this build has never
-// heard of"), which refuses the plan — a target that installs nothing while
-// the command exits 0 is the worst failure R2 exists to prevent, and an
-// unknown value has no other target to fall back on. An Err is a target this
-// build KNOWS and refuses to guess where it reads (e.g. codex, gate R2), which
-// plan.Compute turns into a skip per entry rather than a refusal: the
-// profile's other targets still install.
+// resolveTargets maps every lockfile target onto something plan can reason
+// about, INCLUDING ones this build cannot write. It does not use
+// layout.Registry.Select, which refuses on the first gated target: plan
+// needs every profile that asked for it, to aggregate into one skip per
+// entry. An UNKNOWN target is omitted (becomes ConflictTargetUnknown,
+// refusing the plan); a KNOWN-but-unwritable target gets an Err (becomes a
+// per-entry skip instead of a refusal).
 func (r *syncRun) resolveTargets(reg *layout.Registry, lockfiles []*hub.Lockfile) (targets []plan.Target, writable map[record.Target]bool) {
 	names := map[string]struct{}{}
 	for _, lf := range lockfiles {
@@ -489,16 +465,14 @@ func (r *syncRun) resolveTargets(reg *layout.Registry, lockfiles []*hub.Lockfile
 		case errors.Is(err, layout.ErrUnknownTarget):
 			r.s.Warnf("the lockfile names target %s, which this build does not know: %v", name, err)
 		case errors.Is(err, layout.ErrWithdrawnTarget):
-			// Reported, not fatal: a withdrawn target (e.g. `agents-md`) is a
-			// legal enum value nobody will implement, and refusing over it
-			// would make the seeded catalogue unsyncable with no user fix.
+			// Reported, not fatal: a withdrawn target (e.g. agents-md) is a
+			// legal enum value nobody implements.
 			r.s.Warnf("the lockfile names target %s, which this build will not write: %v", name, err)
 			out = append(out, plan.Target{Name: record.Target(name), Withdrawn: err})
 		default:
 			// No warning here: reportSkips prints one collapsed line per
 			// (profile, target) once plan.Compute has turned this into a
-			// plan.Skip per entry, and a warning here would say the same
-			// thing again before an entry is even in view.
+			// plan.Skip per entry.
 			out = append(out, plan.Target{Name: record.Target(name), Err: err})
 		}
 	}
@@ -506,7 +480,7 @@ func (r *syncRun) resolveTargets(reg *layout.Registry, lockfiles []*hub.Lockfile
 }
 
 // destFunc adapts a layout.Target to plan's DestFunc; the destination
-// deliberately carries no version, so an upgrade is one rename, not two ops.
+// carries no version, so an upgrade is one rename, not two ops.
 func destFunc(t layout.Target) plan.DestFunc {
 	return func(id string, kind record.Kind) (string, error) {
 		p, err := t.Place(layout.Request{ID: id, Kind: kind})
@@ -517,23 +491,14 @@ func destFunc(t layout.Target) plan.DestFunc {
 	}
 }
 
-// reportSkips is FR-011 for every entry the hub excluded, with its own reason,
-// plus every entry this build itself could not install, with the kind or the
-// target it could not write — never silently omitted either way.
-//
-// An unrecognised hub reason is reported VERBATIM and flagged as unrecognised
-// rather than translated or dropped. The hub may add a seventh reason and this
-// client ships separately from it, so a value this build has never seen is
-// information, not an error.
-//
-// A target-unwritable skip is collapsed to one line per (profile, target):
-// syncing a profile with a dozen entries under a gated target must not print
-// a dozen identical warnings naming the same target. This is the only skip
-// reason collapsed — a target that installs nothing under any of them still
-// deserves exactly one sentence, and it replaces resolveTargets' own former
-// per-target warning, which said the same thing before an entry was even in
-// view. Every other reason is still one line per entry, because each one is
-// its own answer to "why didn't THIS package install".
+// reportSkips reports every entry the hub excluded plus every entry this
+// build could not install, never silently omitted either way. An
+// unrecognised hub reason is reported VERBATIM and flagged unrecognised
+// rather than translated or dropped, since the hub may add a reason this
+// client has never seen. A target-unwritable skip is collapsed to one line
+// per (profile, target) - the only reason collapsed, since a gated target
+// deserves one sentence, not one per entry. Every other reason stays one
+// line per entry.
 func (r *syncRun) reportSkips(p plan.Plan) {
 	groups, rest := groupTargetUnwritableSkips(p.Skipped)
 	for _, g := range groups {
@@ -573,9 +538,8 @@ type targetSkipGroup struct {
 	count   int
 }
 
-// groupTargetUnwritableSkips separates plan.SkipTargetUnwritable skips —
-// grouped by profile and target — from every other skip, which is returned
-// unchanged and in order.
+// groupTargetUnwritableSkips separates plan.SkipTargetUnwritable skips,
+// grouped by profile and target, from every other skip (returned unchanged).
 func groupTargetUnwritableSkips(skips []plan.Skip) (groups []targetSkipGroup, rest []plan.Skip) {
 	index := map[[2]string]int{}
 	for i := range skips {
@@ -604,10 +568,9 @@ func pluralize(n int, singular, plural string) string {
 	return plural
 }
 
-// localSkip is one entry THIS CLIENT did not install, as opposed to one the hub
-// withheld. The two are reported side by side and are never merged into one
-// list: the hub already knows what it skipped, and POST /v1/sync's `skipped`
-// field is defined as the client's own.
+// localSkip is one entry THIS CLIENT did not install, as opposed to one the
+// hub withheld. Reported side by side, never merged: POST /v1/sync's
+// `skipped` field is defined as the client's own.
 type localSkip struct {
 	Profile string
 	ID      string
@@ -617,12 +580,9 @@ type localSkip struct {
 
 // bundleFetcher is apply.BundleSource plus a two-phase fetch: every bundle is
 // fetched and verified into the cache before the first entry is staged, so
-// --offline fails before installing anything rather than mid-tree, a mid-sync
-// 403 becomes a dropped plan entry instead of an apply-time failure, and a
-// 401 or unreachable hub aborts once instead of failing every entry
-// separately. It re-hashes on the phase-two read (~8.8ms warm per 16MiB
-// profile) rather than holding every bundle in memory, since the hub's own
-// cap (242MiB/entry) makes that an OOM risk.
+// --offline or a 401 fails once instead of mid-tree or per-entry. It
+// re-hashes on the phase-two read rather than holding every bundle in
+// memory, since the hub's own per-entry cap makes that an OOM risk.
 type bundleFetcher struct {
 	downloader *hub.Downloader
 
@@ -637,8 +597,7 @@ type bundleFetcher struct {
 	failures []error
 
 	// failed mirrors failures as (profile, id, version, reason) for the JSON
-	// result and the sync report's `skipped`, so a digest-mismatch drop is
-	// never silently absent from the audit trail.
+	// result and the sync report's `skipped`.
 	failed []localSkip
 }
 
@@ -648,8 +607,7 @@ func changeKey(profile string, target record.Target, id string) string {
 	return profile + "\x00" + string(target) + "\x00" + id
 }
 
-// Bundle implements apply.BundleSource; the bytes come back re-hashed by
-// internal/cache, so nothing can change between check and extraction.
+// Bundle implements apply.BundleSource; the bytes come back re-hashed by internal/cache.
 func (f *bundleFetcher) Bundle(ctx context.Context, c plan.Change) ([]byte, error) {
 	ref, ok := f.refs[refKey(c.Profile, c.ID)]
 	if !ok {
@@ -714,7 +672,7 @@ func (r *syncRun) prefetch(ctx context.Context, dl *hub.Downloader, p plan.Plan,
 
 		case errors.Is(err, hub.ErrOffload):
 			// Not the 403 skip above: the object store itself refused (expired
-			// signature, clock skew) — a failed download, not a withheld version.
+			// signature, clock skew) - a failed download, not a withheld version.
 			f.fail(r.s, c, err)
 
 		case errors.Is(err, hub.ErrDigestMismatch):
@@ -743,8 +701,7 @@ func (f *bundleFetcher) fail(s *output.Streams, c plan.Change, err error) {
 	s.Errorf("%v", wrapped)
 }
 
-// fetchAbort names the entry that stopped the run, keeping internal/hub's
-// classification in the chain.
+// fetchAbort names the entry that stopped the run, keeping internal/hub's classification.
 func fetchAbort(c plan.Change, err error) error {
 	if errors.Is(err, hub.ErrOffline) {
 		return Refusef("%s: %s at %s: %w; nothing was installed, so the tree is unchanged",
@@ -756,9 +713,8 @@ func fetchAbort(c plan.Change, err error) error {
 	return fmt.Errorf("%s: %s at %s: %w", c.Profile, c.ID, c.Version, err)
 }
 
-// withoutEntries removes only the changes phase one dropped, from the three
-// sets Writes() draws from: dropping an upgrade leaves the old version
-// installed and the record still claiming it, so the next run retries it.
+// withoutEntries removes only the changes phase one dropped: dropping an
+// upgrade leaves the old version installed so the next run retries it.
 func withoutEntries(p plan.Plan, dropped map[string]bool) plan.Plan {
 	if len(dropped) == 0 {
 		return p
@@ -793,7 +749,7 @@ func (r *syncRun) apply(
 		return nil, Refuse(err)
 	}
 	// Checked here too, not just before each entry: the download phase is
-	// where a long freeze is most likely to have happened.
+	// where a long freeze is most likely.
 	if lost := r.stillOurs(); lost != nil {
 		return nil, lost
 	}
@@ -809,9 +765,8 @@ func (r *syncRun) apply(
 		Continue:     r.stillOurs,
 		Fingerprints: apply.TreeFingerprinter{},
 		Verifier:     apply.TreeFingerprinter{},
-		// Pruner is deliberately nil: T048's prune does not exist yet, so a
-		// planned removal fails with ErrPruneUnavailable instead of silently
-		// not happening — the direction that does not destroy work.
+		// Pruner is deliberately nil: prune does not exist yet, so a planned
+		// removal fails with ErrPruneUnavailable instead of silently not happening.
 	})
 	if err != nil {
 		return nil, err
@@ -821,8 +776,7 @@ func (r *syncRun) apply(
 
 // profileStates is what the record needs and the plan doesn't carry: each
 // profile's resolved revision, and Targets as the intersection of the
-// lockfile's advisory list with what this build actually writes (not the
-// advisory list itself), since a later run reads it back to decide removals.
+// lockfile's advisory list with what this build actually writes.
 func profileStates(lockfiles []*hub.Lockfile, writable map[record.Target]bool) []apply.ProfileState {
 	out := make([]apply.ProfileState, 0, len(lockfiles))
 	for _, lf := range lockfiles {
@@ -862,8 +816,7 @@ func (r *syncRun) newResult(lockfiles []*hub.Lockfile) output.SyncResult {
 	return res
 }
 
-// describeRevisions: one profile gets the bare number, several get
-// `slug@revision` pairs, since one number would misstate the others.
+// describeRevisions: one profile gets the bare number, several get `slug@revision` pairs.
 func describeRevisions(lockfiles []*hub.Lockfile) string {
 	switch len(lockfiles) {
 	case 0:
@@ -910,8 +863,7 @@ func (r *syncRun) fill(res *output.SyncResult, applied *apply.Result, fetch *bun
 	}
 
 	// A failed entry goes in its own array, not beside skips: a skip is a
-	// decision this run carries past, a failure sets the exit code, and a
-	// script reading one list shouldn't have to re-derive which is which.
+	// decision this run carries past, a failure sets the exit code.
 	for i := range fetch.failed {
 		fl := fetch.failed[i]
 		res.Failed = append(res.Failed, output.Skip{
@@ -919,19 +871,17 @@ func (r *syncRun) fill(res *output.SyncResult, applied *apply.Result, fetch *bun
 		})
 	}
 
-	// A retained removal is not partial: the record row went and the
-	// directory legitimately stays because another profile still claims it.
+	// A retained removal is not partial: the directory legitimately stays
+	// because another profile still claims it.
 	res.Partial = len(applied.Failed) > 0 || len(fetch.failures) > 0 || len(fetch.skips) > 0
 	if len(applied.Leftovers) > 0 {
 		res.Partial = true
 	}
 }
 
-// appendSkips puts every plan.Skip on the result — the hub's own exclusions
-// verbatim (FR-011), and this build's own for a kind or a target it cannot
-// install. It runs before the conflict check so that a REFUSED sync still
-// reports them: a user told two profiles disagree also needs to see what was
-// withheld, and the refusal does not make that information less true.
+// appendSkips puts every plan.Skip on the result, the hub's own exclusions
+// and this build's own. Runs before the conflict check so a REFUSED sync
+// still reports them.
 func appendSkips(res *output.SyncResult, p plan.Plan) {
 	for i := range p.Skipped {
 		sk := p.Skipped[i]
@@ -960,11 +910,9 @@ func writesPerProfile(p plan.Plan) map[string]int {
 	return out
 }
 
-// report files the sync report with the hub, one call per profile (POST
-// /v1/sync's body has a single `profile` field), after the tree is in its
-// final state. A failure is a warning only — the bytes are already on disk —
-// and is never retried: the hub has no dedup key, so a retry after an
-// ambiguous failure would write two audit rows for one sync.
+// report files the sync report with the hub, one call per profile, after
+// the tree is in its final state. A failure is a warning only and is never
+// retried: the hub has no dedup key, so a retry could write two audit rows.
 func (r *syncRun) report(
 	ctx context.Context,
 	lockfiles []*hub.Lockfile,
@@ -980,7 +928,7 @@ func (r *syncRun) report(
 	}
 	states := profileStates(lockfiles, writable)
 	// Both skips and failures feed `skipped`: the wire has one field for
-	// "entry ids the CLI skipped locally", and a digest mismatch belongs there.
+	// "entry ids the CLI skipped locally".
 	skipped := map[string][]string{}
 	for i := range fetch.skips {
 		sk := fetch.skips[i]
@@ -1026,8 +974,7 @@ func (r *syncRun) report(
 }
 
 // syncError: a run whose every failure is a user-fixable refusal exits
-// CodeRefused; anything else (digest mismatch, a bundle the hub won't serve)
-// is CodeFailure, possibly worth retrying.
+// CodeRefused; anything else is CodeFailure, possibly worth retrying.
 func syncError(applied *apply.Result, fetchFailures []error) error {
 	joined := errors.Join(append([]error{applied.Err()}, fetchFailures...)...)
 	if joined == nil {

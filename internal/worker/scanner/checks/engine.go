@@ -10,22 +10,16 @@ import (
 	"agent-manager/internal/worker/scanner/rules"
 )
 
-// The engine: the only Go code that decides whether a rule fires. Every check
-// below is the same three lines — take the rules addressed to me, run them
-// through here, grade the result — so a new DETECTION CLASS is a matcher plus a
-// `match.kind` value, and there is no per-rule function anywhere in this
-// package.
+// The engine: the only Go code that decides whether a rule fires. A new
+// detection class is a matcher plus a `match.kind` value, not a per-rule
+// function.
 
-// maxEvidencePerFinding bounds the locations one finding records. The rows
-// come from attacker-controlled content and land in `finding_evidence`, so a
-// script with 50 000 matching lines must not choose how many rows one scan
-// writes; the finding still says how many there were in its own detail, so a
-// truncated list does not read as a complete one.
+// maxEvidencePerFinding bounds the locations one finding records: a script
+// with 50 000 matching lines must not choose how many rows one scan writes.
 const maxEvidencePerFinding = 8
 
 // maxFindingsPerRule bounds one rule's findings for one bundle: one finding
-// per matching FILE, and a bundle of 10 000 scripts is a bundle, not a reason
-// for 10 000 rows.
+// per matching file.
 const maxFindingsPerRule = 25
 
 // hit is one match: where it was, and what the rule extracted there.
@@ -33,16 +27,13 @@ type hit struct {
 	path  string
 	line  int
 	quote string
-	// value is what the condition judged — a host, a path, a dependency spec —
-	// kept so the finding's detail can name it.
+	// value is what the condition judged, kept so the detail can name it.
 	value string
 }
 
 // run applies every rule addressed to one check.
 func run(ctx context.Context, b *Bundle, rs []rules.Rule) ([]Finding, error) {
 	var findings []Finding
-	// Indexed rather than ranged by value: a Rule carries its compiled pattern
-	// and scope, so copying one per iteration is copying the pack per check.
 	for i := range rs {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -69,18 +60,14 @@ func apply(b *Bundle, rule rules.Rule) ([]Finding, error) {
 	case rules.KindSchemaPath:
 		hits = matchSchema(b, rule)
 	default:
-		// Unreachable: rules.Load refuses a kind this build does not
-		// implement, so the failure names the file rather than appearing as
-		// a bundle that scanned clean.
+		// Unreachable: rules.Load refuses a kind this build does not implement.
 		return nil, fmt.Errorf("match.kind %q has no matcher", rule.Match.Kind)
 	}
 	return group(rule, hits), nil
 }
 
-// group turns the matches into findings: one finding per FILE, its first match
-// the primary location and the rest supporting — a finding is a thing a
-// reviewer decides about once, and the other lines are what that decision
-// covers.
+// group turns the matches into findings: one finding per file, its first
+// match the primary location and the rest supporting.
 func group(rule rules.Rule, hits []hit) []Finding {
 	if len(hits) == 0 {
 		return nil
@@ -126,10 +113,7 @@ func group(rule rules.Rule, hits []hit) []Finding {
 	return findings
 }
 
-// detailFor is the rule's prose plus what this bundle actually matched: the
-// prose explains WHY the rule exists, and the appended sentence is the only
-// per-bundle text, so a reader is not left to count evidence rows to learn
-// that eight of forty are shown.
+// detailFor is the rule's prose plus what this bundle actually matched.
 func detailFor(rule rules.Rule, hits []hit) string {
 	detail := strings.TrimSpace(rule.Detail)
 
@@ -177,11 +161,8 @@ func judge(b *Bundle, rule rules.Rule, value string) bool {
 		return rule.Match.Regexp() != nil && rule.Match.Regexp().MatchString(value)
 
 	case rules.ConditionHostNotInExpected:
-		// Where an expected set was recorded, a host inside it is accepted and
-		// every other host is surfaced. Where none was recorded, EVERY host is
-		// surfaced rather than silently accepted — and a host this analysis
-		// could not name is surfaced too, since "cannot be shown to be in the
-		// list" is the only sound reading of an unresolvable target.
+		// No declaration means every host is surfaced, not silently accepted;
+		// a host this analysis could not name is surfaced too.
 		if value == "" || capability.Indefinite(value) {
 			return true
 		}
@@ -196,8 +177,6 @@ func judge(b *Bundle, rule rules.Rule, value string) bool {
 			return false
 		}
 		if capability.Indefinite(value) {
-			// A path behind an expansion cannot be shown to stay inside the
-			// package, and a `$HOME`-rooted one usually does not.
 			return true
 		}
 		if capability.InsidePackage(value) && !capability.OverBroad(value) {
@@ -214,16 +193,13 @@ func judge(b *Bundle, rule rules.Rule, value string) bool {
 		return unpinned(value)
 
 	default:
-		// Unreachable for the same reason as the kind switch above.
 		return false
 	}
 }
 
-// hostCovered reports whether a declared expectation covers a discovered host.
-// A leading dot or `*.` is read as "this domain and its subdomains"; bare
-// entries match exactly — `example.com` does NOT cover `evil.example.com`,
-// because a suffix match by default is how an allowlist becomes
-// allow-anything.
+// hostCovered reports whether a declared expectation covers a discovered
+// host. A leading dot or `*.` means "this domain and its subdomains"; bare
+// entries match exactly.
 func hostCovered(host string, declared []string) bool {
 	host = strings.ToLower(strings.TrimSuffix(host, "."))
 	for _, entry := range declared {
@@ -246,8 +222,8 @@ func hostCovered(host string, declared []string) bool {
 	return false
 }
 
-// pathCovered reports whether a declared expectation covers a discovered path. A
-// declared directory covers what is under it; nothing else is inferred.
+// pathCovered reports whether a declared expectation covers a discovered
+// path. A declared directory covers what is under it.
 func pathCovered(target string, declared []string) bool {
 	target = strings.TrimSpace(target)
 	for _, entry := range declared {
@@ -268,17 +244,12 @@ func pathCovered(target string, declared []string) bool {
 	return false
 }
 
-// ruleCheck is every check in this package: one implementation, since there is
-// one mechanism. If a check ever needs its own Go logic, that logic is a new
-// matcher and `match.kind`, not a bespoke Check: a check that analysed
-// something no rule described would be a detection nobody can tune or turn
-// off.
+// ruleCheck is every check in this package: one implementation, one mechanism.
 type ruleCheck struct {
 	id    string
 	label string
 	// blindSpots counts what this check could not analyse, added to the warn
-	// count so a file the parser could not read shows as a warning rather
-	// than disappearing into a pass.
+	// count.
 	blindSpots func(b *Bundle) int
 }
 

@@ -6,14 +6,9 @@ import (
 )
 
 // matchRegex is the `regex` matcher: an RE2 pattern applied line by line. RE2
-// rather than a backtracking engine is not a style choice — the pattern is
-// data an operator edits and the input is attacker-controlled, so a
-// catastrophic pattern would be a denial of service an operator could write
-// by accident; RE2 has no backtracking to exploit.
-//
-// The scope defaults to the instruction files. A rule that wants to read
-// scripts or a manifest as text says so with `paths`, reading them
-// deliberately rather than because a default was wide.
+// rather than a backtracking engine, since the pattern is operator-edited
+// and the input is attacker-controlled. Scope defaults to instruction files;
+// a rule reading scripts or a manifest as text says so with `paths`.
 func matchRegex(b *Bundle, rule rules.Rule) []hit {
 	pattern := rule.Match.Regexp()
 	if pattern == nil {

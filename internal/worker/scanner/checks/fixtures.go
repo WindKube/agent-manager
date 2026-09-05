@@ -13,12 +13,9 @@ import (
 )
 
 // Verify applies every rule in a pack to the two fixtures it ships: the one
-// that must trip it and the one that must not. A rule with only a positive
-// fixture is how a rule that matches everything ships; the negative fixture is
-// the only artefact that distinguishes "this rule detects something" from
-// "this rule detects anything". It lives in the production build rather than
-// only in a test so a pack mounted at AGENT_MANAGER_RULEPACK_DIR can be
-// checked by the same code that will run it.
+// that must trip it and the one that must not. It lives in the production
+// build so a pack mounted at AGENT_MANAGER_RULEPACK_DIR is checked by the
+// same code that will run it.
 func Verify(ctx context.Context, pack *rules.Pack) error {
 	if pack == nil {
 		return errors.New("verify: no rule pack")
@@ -26,7 +23,6 @@ func Verify(ctx context.Context, pack *rules.Pack) error {
 
 	var problems []string
 	all := pack.All()
-	// Indexed: a Rule carries its compiled pattern and scope.
 	for i := range all {
 		rule := all[i]
 		tripped, err := fixtureFindings(ctx, pack, rule, rule.Fixtures.Trips)
@@ -77,8 +73,7 @@ func fixtureFindings(ctx context.Context, pack *rules.Pack, rule rules.Rule, fix
 }
 
 // Tree reads a package tree out of any filesystem into the same in-memory
-// bundle a stored version unpacks to, so a fixture on disk and a bundle out of
-// the object store are the same input to the checks.
+// bundle a stored version unpacks to.
 func Tree(fsys fs.FS) (*bundle.Bundle, error) {
 	tree := bundle.New()
 	err := fs.WalkDir(fsys, ".", func(entry string, dir fs.DirEntry, err error) error {
@@ -88,9 +83,6 @@ func Tree(fsys fs.FS) (*bundle.Bundle, error) {
 		case dir.IsDir():
 			return nil
 		case !dir.Type().IsRegular():
-			// The extractor refuses symlinks and device nodes in an archive
-			// member; accepting one here would let a fixture reach outside
-			// itself.
 			return fmt.Errorf("%s is not a regular file", entry)
 		}
 

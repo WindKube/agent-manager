@@ -8,11 +8,9 @@ import (
 	"agent-manager/internal/worker/scanner/rules"
 )
 
-// matchSchema is the `schema-path` matcher: it judges the MANIFEST document
-// rather than any file's text. Which of its two readings applies is decided
-// by the evidence the rule asks for: a rule quoting `schema-error` asks for
-// the manifest to be validated; any other quote means the rule addresses a
-// JSON pointer and judges the value there.
+// matchSchema is the `schema-path` matcher: it judges the manifest document
+// rather than any file's text. A rule quoting `schema-error` asks for the
+// manifest to be validated; any other quote judges a JSON pointer's value.
 func matchSchema(b *Bundle, rule rules.Rule) []hit {
 	manifestPath := b.ManifestObject
 	if manifestPath == "" {
@@ -34,8 +32,6 @@ func matchSchema(b *Bundle, rule rules.Rule) []hit {
 		return hits
 	}
 
-	// The manifest not being json at all is reported by the manifest-schema
-	// check; a pointer rule has nothing to address and says nothing.
 	if len(b.Manifest) == 0 || !json.Valid(b.Manifest) {
 		return nil
 	}

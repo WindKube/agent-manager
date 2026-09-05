@@ -6,11 +6,8 @@ import (
 )
 
 // matchShell is the `shell-ast` matcher: it reads the commands the parser
-// recovered, not the text of the script. Which arguments are hosts, and which
-// are paths a command reads or writes, is internal/domain/capability's
-// judgement, reached through its exported extractors — the scanner does not
-// carry a second copy, or a finding and the capabilities panel could disagree
-// about the same command.
+// recovered, not the text of the script, and judges host/path arguments
+// through internal/domain/capability's own extractors.
 func matchShell(b *Bundle, rule rules.Rule) []hit {
 	wanted := make(map[string]struct{}, len(rule.Match.Command))
 	for _, name := range rule.Match.Command {
@@ -44,11 +41,9 @@ func matchShell(b *Bundle, rule rules.Rule) []hit {
 	return hits
 }
 
-// extractFromCommand yields the values a condition will judge. It returns at
-// least one value for a command the rule selected — the empty string when the
-// extractor found nothing — so a condition that fails closed on an
-// unresolvable target still sees it, rather than grading `curl
-// "$EXFIL_URL"` as no network reach at all.
+// extractFromCommand yields the values a condition will judge: at least one
+// per selected command, "" when the extractor found nothing, so a
+// fail-closed condition still sees an unresolvable target.
 func extractFromCommand(command *Command, extract rules.Extract) []string {
 	switch extract {
 	case rules.ExtractURLArgument:
@@ -64,9 +59,6 @@ func extractFromCommand(command *Command, extract rules.Extract) []string {
 		return hosts
 
 	case rules.ExtractPathArgument:
-		// Both directions in one pass; a rule that cares about only one says
-		// so through its `command` list, keeping the direction in the pack
-		// rather than in this switch.
 		targets := capability.CommandTargets(command.Command, true)
 		targets = append(targets, capability.CommandTargets(command.Command, false)...)
 		if len(targets) == 0 {
@@ -90,8 +82,7 @@ func quoteOfCommand(command *Command, quote rules.Quote) string {
 		}
 		return command.Node
 	default:
-		// matched-node. A schema-error quote cannot arise here: rules.Load
-		// refuses it on any kind but schema-path.
+		// matched-node; a schema-error quote cannot arise for a shell match.
 		if command.Node != "" {
 			return command.Node
 		}

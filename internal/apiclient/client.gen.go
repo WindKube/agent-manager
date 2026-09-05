@@ -180,6 +180,63 @@ func (e DeviceTokenRequestGrantType) Valid() bool {
 	}
 }
 
+// Defines values for FetchAttemptSummaryOutcome.
+const (
+	FetchAttemptSummaryOutcomeBlocked        FetchAttemptSummaryOutcome = "blocked"
+	FetchAttemptSummaryOutcomeExtractTimeout FetchAttemptSummaryOutcome = "extract-timeout"
+	FetchAttemptSummaryOutcomeInvalidRef     FetchAttemptSummaryOutcome = "invalid-ref"
+	FetchAttemptSummaryOutcomeMalformed      FetchAttemptSummaryOutcome = "malformed"
+	FetchAttemptSummaryOutcomeOk             FetchAttemptSummaryOutcome = "ok"
+	FetchAttemptSummaryOutcomeRejectedMember FetchAttemptSummaryOutcome = "rejected-member"
+	FetchAttemptSummaryOutcomeTooLarge       FetchAttemptSummaryOutcome = "too-large"
+	FetchAttemptSummaryOutcomeUnreachable    FetchAttemptSummaryOutcome = "unreachable"
+)
+
+// Valid indicates whether the value is a known member of the FetchAttemptSummaryOutcome enum.
+func (e FetchAttemptSummaryOutcome) Valid() bool {
+	switch e {
+	case FetchAttemptSummaryOutcomeBlocked:
+		return true
+	case FetchAttemptSummaryOutcomeExtractTimeout:
+		return true
+	case FetchAttemptSummaryOutcomeInvalidRef:
+		return true
+	case FetchAttemptSummaryOutcomeMalformed:
+		return true
+	case FetchAttemptSummaryOutcomeOk:
+		return true
+	case FetchAttemptSummaryOutcomeRejectedMember:
+		return true
+	case FetchAttemptSummaryOutcomeTooLarge:
+		return true
+	case FetchAttemptSummaryOutcomeUnreachable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FetchAttemptSummarySourceKind.
+const (
+	FetchAttemptSummarySourceKindArchiveUrl FetchAttemptSummarySourceKind = "archive-url"
+	FetchAttemptSummarySourceKindGit        FetchAttemptSummarySourceKind = "git"
+	FetchAttemptSummarySourceKindUpload     FetchAttemptSummarySourceKind = "upload"
+)
+
+// Valid indicates whether the value is a known member of the FetchAttemptSummarySourceKind enum.
+func (e FetchAttemptSummarySourceKind) Valid() bool {
+	switch e {
+	case FetchAttemptSummarySourceKindArchiveUrl:
+		return true
+	case FetchAttemptSummarySourceKindGit:
+		return true
+	case FetchAttemptSummarySourceKindUpload:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for FindingCheckResult.
 const (
 	Fail FindingCheckResult = "fail"
@@ -422,16 +479,16 @@ func (e FindingSummaryVerdict) Valid() bool {
 
 // Defines values for HealthStatus.
 const (
-	Ok          HealthStatus = "ok"
-	Unavailable HealthStatus = "unavailable"
+	HealthStatusOk          HealthStatus = "ok"
+	HealthStatusUnavailable HealthStatus = "unavailable"
 )
 
 // Valid indicates whether the value is a known member of the HealthStatus enum.
 func (e HealthStatus) Valid() bool {
 	switch e {
-	case Ok:
+	case HealthStatusOk:
 		return true
-	case Unavailable:
+	case HealthStatusUnavailable:
 		return true
 	default:
 		return false
@@ -1532,19 +1589,19 @@ func (e RegisterPackageMultipartBodyKind) Valid() bool {
 
 // Defines values for RegisterPackageMultipartBodySource.
 const (
-	ArchiveUrl RegisterPackageMultipartBodySource = "archive-url"
-	Git        RegisterPackageMultipartBodySource = "git"
-	Upload     RegisterPackageMultipartBodySource = "upload"
+	RegisterPackageMultipartBodySourceArchiveUrl RegisterPackageMultipartBodySource = "archive-url"
+	RegisterPackageMultipartBodySourceGit        RegisterPackageMultipartBodySource = "git"
+	RegisterPackageMultipartBodySourceUpload     RegisterPackageMultipartBodySource = "upload"
 )
 
 // Valid indicates whether the value is a known member of the RegisterPackageMultipartBodySource enum.
 func (e RegisterPackageMultipartBodySource) Valid() bool {
 	switch e {
-	case ArchiveUrl:
+	case RegisterPackageMultipartBodySourceArchiveUrl:
 		return true
-	case Git:
+	case RegisterPackageMultipartBodySourceGit:
 		return true
-	case Upload:
+	case RegisterPackageMultipartBodySourceUpload:
 		return true
 	default:
 		return false
@@ -1647,6 +1704,25 @@ type Badges struct {
 	//
 	// Examples: 4
 	Profiles int64 `json:"profiles"`
+}
+
+// BucketSetting defines model for BucketSetting.
+type BucketSetting struct {
+	Known bool `json:"known"`
+
+	// Value The bucket's own answer, in its own words.
+	//
+	// Examples: enabled
+	Value *string `json:"value,omitempty"`
+}
+
+// BucketSettings defines model for BucketSettings.
+type BucketSettings struct {
+	Encryption  BucketSetting `json:"encryption"`
+	ObjectLock  BucketSetting `json:"objectLock"`
+	Retention   BucketSetting `json:"retention"`
+	Versioning  BucketSetting `json:"versioning"`
+	WriteAccess BucketSetting `json:"writeAccess"`
 }
 
 // CatalogFacetOption defines model for CatalogFacetOption.
@@ -1871,6 +1947,27 @@ type ErrorDetail struct {
 	// Value The offending value, echoed back.
 	Value interface{} `json:"value,omitempty"`
 }
+
+// FetchAttemptSummary defines model for FetchAttemptSummary.
+type FetchAttemptSummary struct {
+	// Detail The redacted error message. Empty when Outcome is ok.
+	Detail     *string                    `json:"detail,omitempty"`
+	Id         openapi_types.UUID         `json:"id"`
+	OccurredAt time.Time                  `json:"occurredAt"`
+	Outcome    FetchAttemptSummaryOutcome `json:"outcome"`
+
+	// RequestedRef The reference as submitted, credentials already redacted.
+	//
+	// Examples: https://github.com/example/terraform-review
+	RequestedRef string                        `json:"requestedRef"`
+	SourceKind   FetchAttemptSummarySourceKind `json:"sourceKind"`
+}
+
+// FetchAttemptSummaryOutcome defines model for FetchAttemptSummary.Outcome.
+type FetchAttemptSummaryOutcome string
+
+// FetchAttemptSummarySourceKind defines model for FetchAttemptSummary.SourceKind.
+type FetchAttemptSummarySourceKind string
 
 // FindingApproval defines model for FindingApproval.
 type FindingApproval struct {
@@ -3052,6 +3149,43 @@ type SessionMintRequest struct {
 	IdToken string `json:"idToken"`
 }
 
+// StorageKeyCount defines model for StorageKeyCount.
+type StorageKeyCount struct {
+	// Objects Examples: 430
+	Objects int64 `json:"objects"`
+
+	// Prefix Examples: skills
+	Prefix string `json:"prefix"`
+}
+
+// StorageReport defines model for StorageReport.
+type StorageReport struct {
+	Bucket BucketSettings `json:"bucket"`
+
+	// CompressedBytes Total size of the objects counted above, as the bucket reports it.
+	//
+	// Examples: 1288490188
+	CompressedBytes int64 `json:"compressedBytes"`
+
+	// KeyLayout Object counts by top-level prefix: skills/ and profiles/.
+	KeyLayout []StorageKeyCount `json:"keyLayout"`
+
+	// ObjectCount Objects under skills/ and profiles/, counted up to the report's listing cap.
+	//
+	// Examples: 482
+	ObjectCount int64 `json:"objectCount"`
+
+	// ReadCacheHitRate Fraction of CLI reads served from a local cache. Absent when no sync report carries this figure.
+	ReadCacheHitRate *float64 `json:"readCacheHitRate,omitempty"`
+
+	// RecentFetches The most recent ingestion attempts, successful or not, newest first.
+	RecentFetches []FetchAttemptSummary `json:"recentFetches"`
+
+	// Region Examples: us-east-1
+	Region    *string `json:"region,omitempty"`
+	Truncated bool    `json:"truncated"`
+}
+
 // SyncReport defines model for SyncReport.
 type SyncReport struct {
 	// Host Hostname the sync landed on, for the audit row.
@@ -3676,6 +3810,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with DELETE /v1/sessions/current (the `DeleteSession` operationId).
 	DeleteSession(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetStorage The object store's own state
+	//
+	// Object count, compressed size, region, the key layout for skills/ and profiles/, the bucket's own versioning, object-lock, encryption, write-access and retention settings, and the most recent ingestion attempts with an outcome. The screen reports what the bucket reports: this system configures and surfaces object lock and retention, it does not enforce them, so a setting the bucket declines to answer comes back UNKNOWN rather than a guessed default. Restricted to catalog-admin, the role this hub's other administration screens use.
+	//
+	// Corresponds with GET /v1/storage (the `GetStorage` operationId).
+	GetStorage(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ReportSyncWithBody Report a completed sync
 	//
@@ -4383,6 +4524,23 @@ func (c *Client) CreateSession(ctx context.Context, body CreateSessionJSONReques
 // Corresponds with DELETE /v1/sessions/current (the `DeleteSession` operationId).
 func (c *Client) DeleteSession(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteSessionRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetStorage The object store's own state
+//
+// Object count, compressed size, region, the key layout for skills/ and profiles/, the bucket's own versioning, object-lock, encryption, write-access and retention settings, and the most recent ingestion attempts with an outcome. The screen reports what the bucket reports: this system configures and surfaces object lock and retention, it does not enforce them, so a setting the bucket declines to answer comes back UNKNOWN rather than a guessed default. Restricted to catalog-admin, the role this hub's other administration screens use.
+//
+// Corresponds with GET /v1/storage (the `GetStorage` operationId).
+func (c *Client) GetStorage(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetStorageRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -5709,6 +5867,33 @@ func NewDeleteSessionRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewGetStorageRequest constructs an http.Request for the GetStorage method
+func NewGetStorageRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/storage")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewReportSyncRequest calls the generic ReportSync builder with application/json body
 func NewReportSyncRequest(server string, body ReportSyncJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -6161,6 +6346,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with DELETE /v1/sessions/current (the `DeleteSession` operationId).
 	DeleteSessionWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*DeleteSessionResponse, error)
+
+	// GetStorageWithResponse The object store's own state
+	//
+	// Object count, compressed size, region, the key layout for skills/ and profiles/, the bucket's own versioning, object-lock, encryption, write-access and retention settings, and the most recent ingestion attempts with an outcome. The screen reports what the bucket reports: this system configures and surfaces object lock and retention, it does not enforce them, so a setting the bucket declines to answer comes back UNKNOWN rather than a guessed default. Restricted to catalog-admin, the role this hub's other administration screens use.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/storage (the `GetStorage` operationId).
+	GetStorageWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetStorageResponse, error)
 
 	// ReportSyncWithBodyWithResponse Report a completed sync
 	//
@@ -8214,6 +8408,68 @@ func (r DeleteSessionResponse) ContentType() string {
 	return ""
 }
 
+type GetStorageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *StorageReport
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetStorageResponse) GetJSON200() *StorageReport {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetStorageResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetStorageResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r GetStorageResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetStorageResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetStorageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetStorageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetStorageResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ReportSyncResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -8899,6 +9155,21 @@ func (c *ClientWithResponses) DeleteSessionWithResponse(ctx context.Context, req
 		return nil, err
 	}
 	return ParseDeleteSessionResponse(rsp)
+}
+
+// GetStorageWithResponse The object store's own state
+//
+// Object count, compressed size, region, the key layout for skills/ and profiles/, the bucket's own versioning, object-lock, encryption, write-access and retention settings, and the most recent ingestion attempts with an outcome. The screen reports what the bucket reports: this system configures and surfaces object lock and retention, it does not enforce them, so a setting the bucket declines to answer comes back UNKNOWN rather than a guessed default. Restricted to catalog-admin, the role this hub's other administration screens use.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/storage (the `GetStorage` operationId).
+func (c *ClientWithResponses) GetStorageWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetStorageResponse, error) {
+	rsp, err := c.GetStorage(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetStorageResponse(rsp)
 }
 
 // ReportSyncWithBodyWithResponse Report a completed sync
@@ -10576,6 +10847,53 @@ func ParseDeleteSessionResponse(rsp *http.Response) (*DeleteSessionResponse, err
 			return nil, err
 		}
 		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetStorageResponse parses an HTTP response from a GetStorageWithResponse call
+func ParseGetStorageResponse(rsp *http.Response) (*GetStorageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetStorageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest StorageReport
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

@@ -42,6 +42,7 @@ type governance struct {
 	audit    []hub.AuditEntry
 	badges   hub.Badges
 	export   string
+	storage  view.Storage
 	err      error
 
 	// accepted and rejected record what the reviewer was actually asked to do,
@@ -108,12 +109,19 @@ func (g *governance) AuditExport(context.Context) (io.ReadCloser, string, error)
 
 func (g *governance) Badges(context.Context) (hub.Badges, error) { return g.badges, g.err }
 
+func (g *governance) Storage(context.Context) (view.Storage, error) {
+	if g.err != nil {
+		return view.Storage{}, g.err
+	}
+	return g.storage, nil
+}
+
 // govHandler wires one governance source behind a viewer. reviewer is separate so
 // a test can render the screen with the decision path absent, which is the state a
 // hub with no reviewer wired is in.
 func govHandler(source *governance, viewers web.ViewerSource, reviewer web.Reviewer) http.Handler {
 	return web.New(web.Deps{
-		Catalog: source, Scanner: source, Audit: source, Badges: source,
+		Catalog: source, Scanner: source, Audit: source, Badges: source, Storage: source,
 		Reviewer: reviewer, Viewers: viewers, Log: zerolog.Nop(),
 	}, web.Options{}).Handler()
 }

@@ -293,10 +293,10 @@ own reported state.
 - [ ] T103 [001-T100] [US7] **Wire each policy toggle to real downstream behaviour**: the gate change affects the next resolution; signed-bundles refuses a version with no signature reference **and states it is unverified** (001 FR-048a); community-needs-review routes to a queue; the rescan toggle changes the periodic job. A test asserting only the stored row passes while the feature does nothing
 - [ ] T104 [P] [US7] Group-to-role mapping CRUD at `/v1/organization/mappings`
 - [ ] T105 [P] [US7] Category CRUD with counts at `/v1/organization/categories`. **No tag endpoint** — tags are manifest-derived and never admin-editable (001 US7 scenario 5), and an endpoint that could edit them would be the bug
-- [ ] T106 [P] [US7] `GET /v1/storage` in `internal/api/queries/storage.go` — object count, compressed size, region, CLI read-cache hit rate, key layout for `skills/` and `profiles/`, bucket settings via `bucket.As(&s3Client)`, and recent fetches with outcomes. A figure the bucket declines to report renders as unknown, **never as a default**
-- [ ] T107 [US7] Regenerate the client and add the operations to `internal/web/hub/`
+- [x] T106 [P] [US7] `GET /v1/storage` in `internal/api/queries/storage.go` — object count, compressed size, region, CLI read-cache hit rate, key layout for `skills/` and `profiles/`, bucket settings via `bucket.As(&s3Client)`, and recent fetches with outcomes. A figure the bucket declines to report renders as unknown, **never as a default**
+- [x] T107 [US7] Regenerate the client and add the operations to `internal/web/hub/`
 - [ ] T108 [US7] Write `internal/web/components/org.templ` and `internal/web/view/org.go`
-- [ ] T109 [US7] Write `internal/web/components/storage.templ` and `internal/web/view/storage.go`
+- [x] T109 [US7] Write `internal/web/components/storage.templ` and `internal/web/view/storage.go`
 - [ ] T110 [US7] Delete the `/org` and `/storage` entries from `internal/web/web.go` — **and delete the `placeholders` slice, the `screen` type and the `placeholder` handler entirely**, along with `components.Placeholder`. Leaving the machinery in place is how a placeholder comes back
 - [ ] T111 [P] [US7] Test per 001 T102 that each toggle changes downstream behaviour, not just its own row
 - [ ] T112 [P] [US7] Test asserting `getOrganization` never emits the client secret in any form

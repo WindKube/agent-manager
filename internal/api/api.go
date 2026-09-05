@@ -80,6 +80,11 @@ type Deps struct {
 	// health endpoint and the device flow; the consequence is that this is the only
 	// place the contract exists, and commands.SessionMint is where it is enforced.
 	SessionMintSecret string
+
+	// Storage backs the Storage screen's bucket-settings and object-count report.
+	// It is read-and-describe only (blob.Inspector), not the full *blob.Bucket:
+	// this role holds no writer, whatever the driver's own client can do.
+	Storage blob.Inspector
 }
 
 // Options is the run-time configuration of the surface itself.

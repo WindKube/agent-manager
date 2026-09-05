@@ -153,6 +153,12 @@ type BadgeSource interface {
 	Badges(ctx context.Context) (hub.Badges, error)
 }
 
+// StorageSource is the Storage screen's one read. It returns the view type
+// directly, unlike ScannerSource and AuditSource: there is exactly one caller.
+type StorageSource interface {
+	Storage(ctx context.Context) (view.Storage, error)
+}
+
 // Deps is what the role is handed. Every field is narrow on purpose: there is no
 // database handle and no bucket to reach for.
 type Deps struct {
@@ -197,6 +203,11 @@ type Deps struct {
 	// render and refuse to record, which is what a screen test gets and is not a
 	// state a deployment is in.
 	Curator ProfileCurator
+
+	// Storage backs the Storage screen. Nil renders its unavailable state rather
+	// than an empty one: a screen with no source is not a bucket with nothing in
+	// it.
+	Storage StorageSource
 }
 
 // Options is the run-time configuration of the surface itself.
@@ -318,6 +329,7 @@ func (s *Server) register() {
 	// bearer-equivalent for the length of its validity.
 	s.engine.GET("/cli", s.cli)
 	s.engine.POST("/cli/confirm", s.confirmDeviceCode)
+	s.engine.GET("/storage", s.storage)
 
 	s.engine.POST("/theme", s.setTheme)
 
@@ -350,7 +362,6 @@ type screen struct {
 
 var placeholders = []screen{
 	{path: "/org", nav: "org", title: "Organization", lede: "Identity provider, group-to-role mapping and policy."},
-	{path: "/storage", nav: "storage", title: "Storage", lede: "Bucket layout, object counts and recent fetch outcomes."},
 }
 
 func (s *Server) placeholder(sc screen) gin.HandlerFunc {

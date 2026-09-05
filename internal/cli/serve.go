@@ -122,7 +122,8 @@ func runAPI(ctx context.Context) error {
 				return existsErr
 			}},
 		},
-		Log: log,
+		Log:     log,
+		Storage: bucket.Inspector(),
 	}, api.Options{
 		Addr:           cfg.Addr,
 		PublicBaseURL:  cfg.PublicBaseURL,

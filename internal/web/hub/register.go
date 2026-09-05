@@ -13,15 +13,12 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The registration half of the modal (US1, FR-005 and FR-001).
-//
-// Both operations take a multipart body carrying a file, which oapi-codegen does
-// not build for us — it generates only the WithBody variants for a multipart
-// request — so the body is assembled here. It is streamed through an io.Pipe
-// rather than buffered: the archive cap is 25 MB, the web role is one hop, and
-// holding the whole upload twice buys nothing.
+// The registration half of the modal. Both operations take a multipart body
+// carrying a file, which oapi-codegen only generates WithBody variants for,
+// so the body is assembled here and streamed through an io.Pipe rather than
+// buffered, since holding the whole upload twice buys nothing.
 
-// Preview is FR-005's pre-submit report, from POST /v1/packages/preview. It
+// Preview is the pre-submit report, from POST /v1/packages/preview. It
 // writes nothing on the hub.
 func (c *Client) Preview(ctx context.Context, archive view.Archive) (view.ImportPreview, error) {
 	contentType, body := multipartBody(func(form *multipart.Writer) error {
@@ -36,9 +33,8 @@ func (c *Client) Preview(ctx context.Context, archive view.Archive) (view.Import
 
 	var preview apiclient.PackagePreview
 	if err := json.Unmarshal(resp.Body, &preview); err != nil || resp.HTTPResponse.StatusCode != http.StatusOK {
-		// A refusal that is not a preview — 401, 413, 422 — is still an answer the
-		// modal must show, so it becomes an invalid preview carrying the api's
-		// problem detail rather than a transport error nobody sees.
+		// A refusal that is not a preview is still an answer the modal must
+		// show, so it becomes an invalid preview carrying the problem detail.
 		return view.ImportPreview{
 			Problems: []view.ImportProblem{{Message: detailOf(resp.Body, resp.HTTPResponse)}},
 		}, nil
@@ -46,10 +42,9 @@ func (c *Client) Preview(ctx context.Context, archive view.Archive) (view.Import
 	return importPreview(preview), nil
 }
 
-// Register submits the modal to POST /v1/packages.
-//
-// A refusal is a result, not an error: the api's problem detail belongs in front
-// of the person who submitted the form. Only a transport failure is an error.
+// Register submits the modal to POST /v1/packages. A refusal is a result,
+// not an error: the problem detail belongs in front of the person who
+// submitted the form. Only a transport failure is an error.
 func (c *Client) Register(ctx context.Context, registration view.Registration) (view.ImportResult, error) {
 	contentType, body := multipartBody(func(form *multipart.Writer) error {
 		return writeRegistration(form, registration)
@@ -72,11 +67,8 @@ func (c *Client) Register(ctx context.Context, registration view.Registration) (
 
 	result := view.ImportResult{
 		Registered: true,
-		// The banner shows the id the catalog will show, which is namespace/name:
-		// the first segment of the publisher slug, never the whole slug. The api's
-		// `publisher` field is the slug, and today the layer below it stores what
-		// the form sent — so a two-segment publisher would read back as one here if
-		// this concatenated it whole.
+		// The banner shows namespace/name: the first segment of the
+		// publisher slug, never the whole slug.
 		ID:      namespaceOf(registered.Publisher) + "/" + registered.Name,
 		Version: registered.Version,
 	}
@@ -92,15 +84,14 @@ func namespaceOf(slug string) string {
 	return namespace
 }
 
-// writeRegistration mirrors internal/api's registrationForm field for field. An
-// empty optional field is omitted rather than sent blank, because huma's form
-// decoding cannot tell "" from absent and the api's own defaulting is the only
-// place that should decide what a missing ref means.
+// writeRegistration mirrors internal/api's registrationForm field for field.
+// An empty optional field is omitted rather than sent blank, since huma's
+// form decoding cannot tell "" from absent.
 func writeRegistration(form *multipart.Writer, r view.Registration) error {
 	source := "upload"
 	if r.Tab == view.ImportURL {
-		// git or archive-url is decided from the URL's shape by internal/fetch,
-		// which is the only place that knows how; an empty source asks it to.
+		// An empty source asks internal/fetch to decide git vs archive-url
+		// from the URL's shape.
 		source = ""
 	}
 
@@ -140,9 +131,9 @@ func writeArchive(form *multipart.Writer, archive view.Archive) error {
 	return nil
 }
 
-// multipartBody streams a multipart body. The content type is read before the
-// goroutine starts: the boundary is fixed at construction, and reading it after
-// the writer is in flight would be a race for no reason.
+// multipartBody streams a multipart body. The content type is read before
+// the goroutine starts, since reading it after the writer is in flight would
+// be a race for no reason.
 func multipartBody(write func(*multipart.Writer) error) (string, io.ReadCloser) {
 	reader, writer := io.Pipe()
 	form := multipart.NewWriter(writer)
@@ -153,9 +144,8 @@ func multipartBody(write func(*multipart.Writer) error) (string, io.ReadCloser) 
 		if err == nil {
 			err = form.Close()
 		}
-		// CloseWithError(nil) is CloseWithError(io.EOF), so a clean finish and a
-		// failure both terminate the reader — the api never sees a truncated body
-		// that looks complete.
+		// CloseWithError(nil) is CloseWithError(io.EOF): a clean finish and a
+		// failure both terminate the reader.
 		_ = writer.CloseWithError(err)
 	}()
 
@@ -188,14 +178,12 @@ func importPreview(preview apiclient.PackagePreview) view.ImportPreview {
 	return out
 }
 
-// detailOf reads the api's RFC 9457 problem detail. It falls back to the status
-// line rather than to the raw body: an undecodable body is the api misbehaving,
-// and echoing it into the page would put an unbounded upstream string in front
-// of a browser.
+// detailOf reads the api's RFC 9457 problem detail and falls back to the
+// status line rather than the raw body: an undecodable body would put an
+// unbounded upstream string in front of a browser.
 func detailOf(body []byte, resp *http.Response) string {
-	// A 401 is not a finding about the archive and must not be worded like one:
-	// registration is fully authenticated and stays that way, so a signed-out
-	// person needs to be told to sign in, not that their bundle was refused.
+	// A 401 must not be worded like a finding about the archive: registration
+	// is fully authenticated, so a signed-out person needs to be told to sign in.
 	if resp != nil && resp.StatusCode == http.StatusUnauthorized {
 		return "Sign in to register a package."
 	}

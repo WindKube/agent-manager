@@ -12,40 +12,28 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The profile screen's door to the api (001 US5, T078-T084), through the
-// generated client and nothing else.
+// The profile screen's door to the api, through the generated client and
+// nothing else. Nothing here renders — no relative dates, no collapsed pills
+// — because deciding what a gate outcome MEANS is the resolver's job and
+// deciding how it READS is the screen's.
 //
-// The shapes below live in THIS package for the reason governance.go states: they
-// are what the api answers, mapped once into Go a screen can use, and the screen
-// owns its own view models. Nothing here renders — no relative dates, no collapsed
-// pills, no sentence composed out of an outcome — because deciding what a gate
-// outcome MEANS is the resolver's job and deciding how it READS is the screen's.
+// Three refusals, three screens: 401 is signed out, 403 is a role that may
+// not do this, 404 is a profile that does not exist or is not readable
+// (answered identically on purpose, and never told apart here). A 409 or 422
+// means the caller is permitted and the api understood but refuses, so it
+// arrives as ProfileRefusedError carrying that sentence. Everything else is
+// the api unreachable or broken, rendered as a bad gateway.
 //
-// Three refusals, three different screens, and this package's whole job on the
-// error path is keeping them apart. 401 is signed out. 403 is a role that may not
-// do this (ErrForbidden, FR-126). 404 is a profile that either does not exist or
-// is not readable by this identity, which the api answers identically on purpose
-// (FR-044) and which this package must not try to tell apart. A 409 or a 422 is
-// none of those: the caller is permitted and the api understood them, and the
-// answer is a sentence a person has to read, so it arrives as ProfileRefusedError
-// carrying that sentence. Everything else is the api being unreachable or broken,
-// which the caller renders as a bad gateway.
-//
-// Note, Skip.Detail and a member's DisplayName quote content this hub did not
-// write — a path out of a package bundle, a name out of the identity provider.
-// Render them escaped, always (FR-055).
+// Note, Skip.Detail and a member's DisplayName quote content this hub did
+// not write. Render them escaped, always.
 
-// ProfileRefusedError is the api refusing a curation request it understood from a
-// caller it permitted: the slug is taken, the body leaves out a package the
-// profile holds, the change would leave the profile with no owner.
-//
-// It carries the api's own sentence because the sentence IS the answer. Every one
-// of these refusals exists to name the thing that was wrong — which package was
-// omitted, which subject was named twice — and a screen that replaced it with
-// wording of its own would be a second, worse copy of a rule it does not enforce.
+// ProfileRefusedError is the api refusing a curation request it understood
+// from a caller it permitted: the slug is taken, the body leaves out a
+// package the profile holds, the change would leave the profile with no
+// owner. It carries the api's own sentence because the sentence IS the answer.
 type ProfileRefusedError struct {
-	// Detail is the api's RFC 9457 problem detail. It quotes what the caller sent:
-	// render it escaped (FR-055).
+	// Detail is the api's RFC 9457 problem detail, quoting what the caller
+	// sent: render it escaped.
 	Detail string
 }
 
@@ -60,18 +48,17 @@ type ProfileDetail struct {
 	OwnerTeam   string
 
 	DefaultPolicy string
-	// Gate is the org gate in force NOW, which is what Entries were resolved
-	// under. It is not the gate the head revision froze; the two disagreeing is
-	// part of what UnpublishedChanges reports.
+	// Gate is the org gate in force NOW, which Entries were resolved under —
+	// not the gate the head revision froze; the two disagreeing is part of
+	// what UnpublishedChanges reports.
 	Gate         string
 	HeadRevision int
-	// ForkedFrom is lineage and nothing else: a fork never inherits the upstream's
-	// later revisions (FR-038).
+	// ForkedFrom is lineage and nothing else: a fork never inherits the
+	// upstream's later revisions.
 	ForkedFrom string
 
-	// Role is legitimately empty. A profile with organisation visibility is
-	// readable by everyone (FR-044) and most of those readers hold no membership,
-	// so "no role" is a state and not a missing value.
+	// Role is legitimately empty: most readers of an org-visibility profile
+	// hold no membership, so "no role" is a state, not a missing value.
 	Role        string
 	Permissions ProfilePermissions
 
@@ -83,28 +70,26 @@ type ProfileDetail struct {
 	Revisions []ProfileRevision
 }
 
-// ProfilePermissions is the api's answer to what this identity may do here, so a
-// screen can disable a control rather than offer one that will be refused
-// (FR-126). It is the screen's copy of the answer and never the mechanism: the
-// operations enforce this themselves and will refuse regardless of what a browser
-// was shown.
+// ProfilePermissions is the api's answer to what this identity may do here,
+// so a screen can disable a control rather than offer one that will be
+// refused. It is the screen's copy of the answer, never the mechanism: the
+// operations enforce this themselves regardless of what a browser was shown.
 type ProfilePermissions struct {
 	Curate  bool
 	Share   bool
 	Publish bool
 }
 
-// ProfileEntry is one package in a profile, with two version pairs that answer
-// different questions. LatestVersion / LatestVerdict are the CATALOG's newest
-// offering and its scan state — the row's Scan badge, unaffected by what the gate
-// then does. Version / Verdict are what the entry actually resolves to, and are
-// empty exactly when it is excluded.
+// ProfileEntry is one package in a profile, with two version pairs. Latest*
+// are the CATALOG's newest offering and its scan state, unaffected by what
+// the gate does. Version/Verdict are what the entry actually resolves to,
+// empty exactly when excluded.
 type ProfileEntry struct {
 	ID   string
 	Name string
 	Kind string
 
-	// Mode is the profile's setting, not a label for what happened to it: a pin
+	// Mode is the profile's setting, not a label for what happened: a pin
 	// the gate refused is still a pin.
 	Mode          string
 	Range         string
@@ -119,20 +104,18 @@ type ProfileEntry struct {
 
 	Outcome string
 	Note    string
-	// Skip is present exactly when Outcome is skipped. FR-036: an excluded package
-	// is reported with its reason and never silently dropped, so a screen that
-	// renders only the resolved rows is a screen that lies.
+	// Skip is present exactly when Outcome is skipped: an excluded package is
+	// reported with its reason, never silently dropped.
 	Skip *Skip
 	// Override is the ACTIVE acceptance that let a flagged version through.
 	Override *EntryOverride
 
-	// Unpublished says this row would resolve differently from the head revision's
-	// lockfile — a pin somebody toggled, or the catalog moving under a floating
-	// entry. Either way no machine has seen it (001 US5 scenario 1).
+	// Unpublished says this row would resolve differently from the head
+	// revision's lockfile; either way no machine has seen it.
 	Unpublished bool
 }
 
-// Skip is one excluded package and why (FR-036). Reason is the canonical code and
+// Skip is one excluded package and why. Reason is the canonical code and
 // Detail is the resolver's prose about the finding that caused it.
 type Skip struct {
 	ID                  string
@@ -141,41 +124,34 @@ type Skip struct {
 	WouldHaveResolvedTo string
 }
 
-// EntryOverride is the acceptance a flagged version resolved under.
-//
-// It is a type of its own rather than governance.go's Override because it is a
-// different fact: that one is the decision as the scanner screen records it, with
-// who decided and when. This is what the resolver applied, and the only date on it
-// is when it lapses.
+// EntryOverride is the acceptance a flagged version resolved under — a type
+// of its own rather than governance.go's Override, since that one is the
+// decision as the scanner screen records it and this is what the resolver applied.
 type EntryOverride struct {
 	Reviewer string
 	Note     string
-	// ExpiresAt is nil when the acceptance does not lapse.
-	//
-	// The api's wire shape cannot say that: resolve.Override models "no expiry" as
-	// a nil pointer and the lockfile schema requires `expiresAt`, so the two meet
-	// at the ZERO instant. A screen handed that would render an override that never
-	// expires as one that expired in the year 1 — so the zero instant is turned
-	// back into the absence it stands for here, at the door, rather than in every
-	// screen that formats a date.
+	// ExpiresAt is nil when the acceptance does not lapse. The api's wire
+	// shape models "no expiry" as the ZERO instant (the schema requires the
+	// field), so it is turned back into absence here, at the door, rather
+	// than in every screen that formats a date.
 	ExpiresAt *time.Time
 }
 
-// ProfileMember is one subject the profile is shared with (FR-037). A group is
-// matched against the identity provider's claim on every request rather than
-// expanded into people, which is why Kind travels.
+// ProfileMember is one subject the profile is shared with. A group is
+// matched against the identity provider's claim on every request rather
+// than expanded into people, which is why Kind travels.
 type ProfileMember struct {
 	Kind string
 	Ref  string
 	Role string
-	// DisplayName is empty for a membership naming somebody this hub has never
-	// seen sign in.
+	// DisplayName is empty for a membership naming somebody this hub has
+	// never seen sign in.
 	DisplayName string
 }
 
 // ProfileTarget is one agent directory convention and whether this profile
-// enables it. The api answers with the WHOLE vocabulary so a screen draws the same
-// checkboxes without holding a copy of the enum.
+// enables it. The api answers with the WHOLE vocabulary so a screen draws
+// the same checkboxes without holding a copy of the enum.
 type ProfileTarget struct {
 	Target  string
 	Enabled bool
@@ -199,12 +175,9 @@ type ProfileSummary struct {
 	HeadRevision int
 }
 
-// ProfileCreation is the create form. Every optional field is omitted from the
-// request when it is empty, which is what makes the api's defaults apply — a new
-// profile is private and floating-latest unless somebody said otherwise, and those
-// defaults are the api's to hold. Sending an empty string instead would not be a
-// polite way of saying nothing: it is outside every one of those enums and would
-// be refused.
+// ProfileCreation is the create form. Every optional field is omitted from
+// the request when empty, which is what makes the api's defaults apply — an
+// empty string would sit outside every enum and be refused.
 type ProfileCreation struct {
 	Slug string
 	Name string
@@ -213,14 +186,13 @@ type ProfileCreation struct {
 	Visibility    string
 	OwnerTeam     string
 	DefaultPolicy string
-	// ForkOf copies the named profile's entries as they stand now, and records
-	// lineage only (FR-038).
+	// ForkOf copies the named profile's entries as they stand now, and
+	// records lineage only.
 	ForkOf string
 }
 
-// EntrySetting is one package's version policy. Version carries the pin or the
-// range depending on Mode and is unused for latest — one field because exactly one
-// of them is ever meaningful.
+// EntrySetting is one package's version policy. Version carries the pin or
+// range depending on Mode and is unused for latest.
 type EntrySetting struct {
 	ID      string
 	Mode    string
@@ -234,25 +206,19 @@ type Share struct {
 	Role string
 }
 
-// PublishedRevision is what a publish froze (001 US5 scenario 5, FR-033).
-//
-// Deliberately not the whole lockfile. The bundle object keys and the signature
-// refs are in it and no screen may show either: an object key is the CLI's
-// business, and `verified` is false until FR-048a ships, so a signature panel
-// today could only render provenance nobody checked. What is here is what the
-// confirmation states — the number the caller could not choose, what it froze, and
-// what it left out.
+// PublishedRevision is what a publish froze. Deliberately not the whole
+// lockfile — the bundle object keys and signature refs are in it and no
+// screen may show either. What is here is what the confirmation states.
 type PublishedRevision struct {
-	// Revision is the number the SERVER allocated. There is no field in which to
-	// ask for one and a concurrent publish may hold the one the caller expected, so
-	// this is the only place a screen may learn it.
+	// Revision is the number the SERVER allocated: a concurrent publish may
+	// hold the one the caller expected, so this is the only place to learn it.
 	Revision   int
 	Note       string
 	ResolvedAt time.Time
 	Gate       string
 	Entries    []LockedEntry
-	// Skipped is FR-036 at publish time: a revision that excluded a package says
-	// so, and a screen must report it rather than announce a clean publish.
+	// Skipped: a revision that excluded a package says so, rather than
+	// announcing a clean publish.
 	Skipped []Skip
 }
 
@@ -344,21 +310,17 @@ func profileSummary(from *apiclient.Profile) ProfileSummary {
 	return summary
 }
 
-// SetProfileEntries puts PUT /v1/profiles/{slug}/entries — the WHOLE ordered set,
-// because position is what an ordered set means (FR-032) and a patch cannot
-// express a reorder.
-//
-// A caller that means "this profile holds nothing" must pass an empty slice and
-// will be refused by the api naming every package it left out, which is the
-// intended answer: there is no removal, on this path or any other.
+// SetProfileEntries puts PUT /v1/profiles/{slug}/entries — the WHOLE ordered
+// set, since position is what an ordered set means and a patch cannot
+// express a reorder. An empty slice is refused by the api naming every
+// package left out: there is no removal, on this path or any other.
 func (c *Client) SetProfileEntries(ctx context.Context, slug string, entries []EntrySetting) (ProfileDetail, error) {
 	if err := checkSlug(slug); err != nil {
 		return ProfileDetail{}, err
 	}
 
-	// Built with a length rather than left nil so an empty set is sent as `[]`. A
-	// nil slice marshals to `null`, which is not an empty array to a validator and
-	// would be refused as a malformed body rather than answered.
+	// Built with a length rather than left nil so an empty set is sent as
+	// `[]`, not the `null` a nil slice marshals to.
 	body := apiclient.SetProfileEntriesJSONRequestBody{
 		Entries: make([]apiclient.ProfileEntrySetting, 0, len(entries)),
 	}
@@ -384,12 +346,9 @@ func (c *Client) SetProfileEntries(ctx context.Context, slug string, entries []E
 	return profileDetail(resp.JSON200), nil
 }
 
-// SetProfileSharing puts PUT /v1/profiles/{slug}/sharing.
-//
-// An UPSERT of roles and not a replacement of the membership set: a subject the
-// body does not name keeps the role it holds. There is no way to remove one, so a
-// screen offering a remove control would be offering something no operation can
-// serve.
+// SetProfileSharing puts PUT /v1/profiles/{slug}/sharing: an UPSERT of
+// roles, not a replacement — a subject the body does not name keeps its
+// role. There is no way to remove one.
 func (c *Client) SetProfileSharing(ctx context.Context, slug string, members []Share) (ProfileDetail, error) {
 	if err := checkSlug(slug); err != nil {
 		return ProfileDetail{}, err
@@ -417,9 +376,9 @@ func (c *Client) SetProfileSharing(ctx context.Context, slug string, members []S
 	return profileDetail(resp.JSON200), nil
 }
 
-// SetProfileTargets puts PUT /v1/profiles/{slug}/targets — the enabled set in
-// full. An omitted target is disabled, and an empty list is legal: it means the
-// profile writes nothing until somebody chooses (FR-039).
+// SetProfileTargets puts PUT /v1/profiles/{slug}/targets — the enabled set
+// in full. An omitted target is disabled; an empty list means the profile
+// writes nothing until somebody chooses.
 func (c *Client) SetProfileTargets(ctx context.Context, slug string, targets []string) (ProfileDetail, error) {
 	if err := checkSlug(slug); err != nil {
 		return ProfileDetail{}, err
@@ -443,12 +402,10 @@ func (c *Client) SetProfileTargets(ctx context.Context, slug string, targets []s
 	return profileDetail(resp.JSON200), nil
 }
 
-// PublishRevision posts POST /v1/profiles/{slug}/revisions.
-//
-// The api answers with a Location header naming the revision, and it is
-// deliberately not carried: that is the API's path, in the API's URL space, which
-// no browser on this role's origin may follow. A screen links to its own route and
-// gets the number it needs from the body.
+// PublishRevision posts POST /v1/profiles/{slug}/revisions. The api's
+// Location header is deliberately not carried: that is the API's URL space,
+// which no browser on this role's origin may follow. A screen links to its
+// own route and gets the number it needs from the body.
 func (c *Client) PublishRevision(ctx context.Context, slug, note string) (PublishedRevision, error) {
 	if err := checkSlug(slug); err != nil {
 		return PublishedRevision{}, err
@@ -495,16 +452,10 @@ func (c *Client) PublishRevision(ctx context.Context, slug, note string) (Publis
 	return published, nil
 }
 
-// checkSlug refuses the one slug that is not a profile before it becomes a
-// request, for the reason the finding id's uuid check exists: it reaches these
-// methods out of a URL a person can edit.
-//
-// The empty one is not merely useless, it is dangerous. GET /v1/profiles/ carries
-// no slug at all, and gin answers it with a 301 to /v1/profiles — measured against
-// the api's own router — which net/http follows, so the client would decode the
-// LIST of every readable profile into a ProfileDetail. Every field it wants is
-// absent from that body, encoding/json ignores what it does not recognise, and the
-// screen would be handed a blank profile and no error at all.
+// checkSlug refuses an empty slug before it becomes a request: GET
+// /v1/profiles/ carries none at all and gin answers with a 301 to
+// /v1/profiles, which net/http follows and decodes as a blank ProfileDetail
+// with no error at all.
 func checkSlug(slug string) error {
 	if slug == "" {
 		return view.ErrNotFound
@@ -615,10 +566,8 @@ func entryOverride(from *apiclient.LockfileOverride) *EntryOverride {
 	return out
 }
 
-// profileFailure names the operation that failed, EXCEPT when what came back is
-// the not-found state. That one travels bare, the way Package and Finding hand it
-// back: it is a screen rather than a failure, and "get profile example/x: no such
-// package" is a log line that reads like a fault and names the wrong noun.
+// profileFailure names the operation that failed, EXCEPT the not-found
+// state, which travels bare: it is a screen rather than a failure.
 func profileFailure(what string, resp *http.Response, body []byte) error {
 	err := profileError(resp, body)
 	if errors.Is(err, view.ErrNotFound) {
@@ -628,12 +577,9 @@ func profileFailure(what string, resp *http.Response, body []byte) error {
 }
 
 // profileError adds the two answers a curation screen has to READ to
-// governanceError's 401 and 403.
-//
-// A 404 is view.ErrNotFound and never a message about permission: FR-044 makes an
-// unreadable profile answer exactly as a missing one, and a door that guessed
-// which it was would leak the existence of private profiles that the api went out
-// of its way not to.
+// governanceError's 401 and 403. A 404 is view.ErrNotFound and never a
+// message about permission: guessing which it was would leak the existence
+// of private profiles.
 func profileError(resp *http.Response, body []byte) error {
 	if resp != nil {
 		switch resp.StatusCode {
@@ -646,10 +592,9 @@ func profileError(resp *http.Response, body []byte) error {
 	return governanceError(resp, body)
 }
 
-// refusalDetail reads the api's RFC 9457 problem detail, and falls back to a
-// sentence of its own rather than to the raw body: an undecodable body is the api
-// misbehaving, and echoing it would put an unbounded upstream string in front of a
-// browser. Same reading detailOf uses on the registration path.
+// refusalDetail reads the api's RFC 9457 problem detail and falls back to a
+// sentence of its own rather than the raw body: an undecodable body would
+// put an unbounded upstream string in front of a browser.
 func refusalDetail(body []byte, resp *http.Response) string {
 	var problem apiclient.Error
 	if err := json.Unmarshal(body, &problem); err == nil && problem.Detail != nil && *problem.Detail != "" {

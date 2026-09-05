@@ -14,74 +14,56 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The two governance screens' door to the api (US4), through the generated
-// client and nothing else.
+// The two governance screens' door to the api, through the generated client
+// and nothing else. The shapes below live in THIS package rather than
+// internal/web/view: they are what the api answers, mapped once into Go the
+// screen can use, and the screen owns its own view models.
 //
-// The shapes below live in THIS package rather than in internal/web/view, which
-// is the same choice auth.go made for Session and Viewer. The reason is the same:
-// they are what the api answers, mapped once into Go the screen can use, and the
-// screen owns its own view models. A hub type that was also the view model would
-// make every rendering decision here, one layer too early — and this package is
-// deliberately the one that decides nothing about what the catalog or the scanner
-// MEANS.
-//
-// Nothing here renders. No relative dates, no collapsed verdict pills, no
-// formatted durations: instants, counts and canonical vocabulary, so the screen
-// can render them against its own clock and its own copy.
+// Nothing here renders: instants, counts and canonical vocabulary, so the
+// screen can render them against its own clock and its own copy.
 
-// ErrForbidden is the api refusing an action this identity's role does not carry.
-//
-// It is a sentinel of its own and not folded into the generic error path, because
-// it is a screen state rather than a failure: FR-126 requires an impermissible
-// action to be absent or disabled WITH ITS REASON, so a handler that gets this
-// back has been told the reason and must say it — not log a bad gateway. Its
-// arrival also means the screen offered something it should not have, which is
-// worth noticing rather than swallowing.
+// ErrForbidden is the api refusing an action this identity's role does not
+// carry. A sentinel of its own, not folded into the generic error path: it
+// is a screen state rather than a failure, and its arrival also means the
+// screen offered something it should not have.
 var ErrForbidden = errors.New("this identity may not take that action")
 
 // ScannerSummary is the Scanner screen's headline card.
 type ScannerSummary struct {
-	// PeriodDays is the window the two period figures cover, from the api rather
-	// than from a caption: FR-121 forbids a figure that is a constant in the
-	// product, and "last 30 days" is a figure.
+	// PeriodDays is the window the two period figures cover, from the api
+	// rather than a caption — never a figure that is a constant in the product.
 	PeriodDays      int
 	VersionsScanned int
 	Quarantined     int
 	OverridesActive int
-	// NearestExpiry is when the first active override lapses, nil when none is
-	// active. The design's "expires in 12 days" is this instant against the
-	// reader's clock, computed in the screen.
+	// NearestExpiry is when the first active override lapses, nil when none active.
 	NearestExpiry *time.Time
-	// MedianScan is nil when no scan finished in the period, which is not the same
-	// as a median of zero and must not render as "0s".
+	// MedianScan is nil when no scan finished in the period, distinct from a
+	// median of zero, and must not render as "0s".
 	MedianScan *time.Duration
 }
 
 // Finding is one row of the findings list.
 type Finding struct {
-	// ID is the api's uuid as a string, because it goes straight back into a URL.
+	// ID is the api's uuid as a string, since it goes straight back into a URL.
 	ID       string
 	RuleID   string
 	Severity string
 	State    string
 	Title    string
-	// Subject is the design's `community/slack-digest@0.5.1`. It is assembled here
-	// rather than by the api — which returns the two parts — because it is the one
-	// piece of rendering the screen would otherwise repeat in four places, and
-	// PackageID is kept beside it for the link.
+	// Subject is `community/slack-digest@0.5.1`, assembled here rather than
+	// by the api to avoid repeating it in four places.
 	Subject   string
 	PackageID string
 	Version   string
-	// Verdict is the SUBJECT VERSION's verdict, carried raw and NOT collapsed onto
-	// view.Scan's three pills. scanOf renders `rejected` as Flagged, which is right
-	// in the catalog — "do not adopt this without reading the finding" — and wrong
-	// here: on this screen the difference between awaiting a decision and having had
-	// one is the entire subject of the page.
+	// Verdict is the SUBJECT VERSION's verdict, carried raw and NOT collapsed
+	// onto view.Scan's three pills: on this screen, awaiting a decision vs.
+	// having had one is the entire subject of the page.
 	Verdict  string
 	RaisedAt time.Time
-	// EvidencePath and EvidenceLine are the PRIMARY location only. Line is 0 when
-	// the finding names a file without a line; line numbers are 1-based, so 0 is
-	// unambiguous and saves the screen a pointer.
+	// EvidencePath/Line are the PRIMARY location only. Line is 0 when the
+	// finding names a file without one; line numbers are 1-based, so 0 is
+	// unambiguous and saves a pointer.
 	EvidencePath string
 	EvidenceLine int
 }
@@ -94,25 +76,22 @@ type FindingsPage struct {
 	PageSize int
 }
 
-// FindingDetail is the detail pane: the finding, all of its evidence, and every
-// check that ran.
+// FindingDetail is the detail pane: the finding, all of its evidence, and
+// every check that ran.
 type FindingDetail struct {
 	Finding
-	// Explanation is the rule pack's prose. It is bundle-adjacent text and is
-	// rendered escaped, like everything else on this page (FR-055).
+	// Explanation is the rule pack's prose, bundle-adjacent text rendered escaped.
 	Explanation string
 	Evidence    []Evidence
-	// Checks is every check the scan ran, passes included. A pane that showed only
-	// the failures could not be told apart from one where nothing else ran, which
-	// is the distinction the matrix exists for — so a screen must render this whole
-	// slice, not filter it.
+	// Checks is every check the scan ran, passes included: a pane showing
+	// only failures could not be told apart from one where nothing else ran.
 	Checks   []Check
 	Scan     Scan
 	Override *Override
 }
 
 // Evidence is one location a finding points at. Path and Quote are
-// attacker-controlled bundle content: escaped on render, always (FR-055).
+// attacker-controlled bundle content: escaped on render, always.
 type Evidence struct {
 	Path  string
 	Line  int
@@ -136,8 +115,8 @@ type Scan struct {
 	// FinishedAt is nil while the scan is in flight.
 	FinishedAt *time.Time
 	Verdict    string
-	// TimedOut is FR-031: a scan that ran out of budget, whose verdict a screen
-	// must never present as a clean bill of health.
+	// TimedOut: a scan that ran out of budget, whose verdict must never be
+	// presented as a clean bill of health.
 	TimedOut bool
 }
 
@@ -153,8 +132,8 @@ type Override struct {
 type Decision struct {
 	ID    string
 	State string
-	// Verdict is the subject version's verdict AFTER the decision. An accept
-	// leaves it flagged; only a reject makes it rejected.
+	// Verdict is the subject version's verdict AFTER the decision: an accept
+	// leaves it flagged, only a reject makes it rejected.
 	Verdict   string
 	ExpiresAt *time.Time
 }
@@ -164,12 +143,12 @@ type AuditEntry struct {
 	ID         string
 	OccurredAt time.Time
 	Actor      string
-	// ActorKind is identity or system. A screen must not attribute a system row to
-	// a person, which is why this is carried rather than inferred from Actor.
+	// ActorKind is identity or system, carried rather than inferred from
+	// Actor: a screen must not attribute a system row to a person.
 	ActorKind string
 	Kind      string
-	// Text quotes package, profile and host names a publisher chose. Escaped on
-	// render, always (FR-055).
+	// Text quotes package, profile and host names a publisher chose. Escaped
+	// on render, always.
 	Text   string
 	Source string
 }
@@ -264,13 +243,9 @@ func (c *Client) Findings(ctx context.Context, q FindingQuery) (FindingsPage, er
 	return page, nil
 }
 
-// Finding reads GET /v1/findings/{id}.
-//
-// A 404 becomes view.ErrNotFound, the state the screen renders as a real screen
-// rather than as a failure — and so does an id that is not a uuid. The id reaches
-// this method out of a URL a person can edit, so "no such finding" is the honest
-// answer to a malformed one; sending it to the api to be told the same thing
-// would be a round trip to learn what is already known here.
+// Finding reads GET /v1/findings/{id}. A 404 becomes view.ErrNotFound, and so
+// does an id that is not a uuid: the id reaches this method out of a URL a
+// person can edit, so "no such finding" is the honest answer to a malformed one.
 func (c *Client) Finding(ctx context.Context, id string) (FindingDetail, error) {
 	parsed, err := uuid.Parse(id)
 	if err != nil {
@@ -314,10 +289,9 @@ func (c *Client) Finding(ctx context.Context, id string) (FindingDetail, error) 
 			TimedOut:    body.Scan.TimedOut,
 		},
 	}
-	// The primary location, taken from the evidence rows rather than duplicated by
-	// the api onto the detail body: the list view needs it flat and the detail view
-	// already has every row, so reading it off the row whose role says `primary`
-	// keeps one source of it here.
+	// The primary location is taken from the evidence rows rather than
+	// duplicated by the api: reading it off the row whose role says
+	// `primary` keeps one source of it here.
 	for _, item := range body.Evidence {
 		out.Evidence = append(out.Evidence, Evidence{
 			Path:  item.Path,
@@ -349,11 +323,9 @@ func (c *Client) Finding(ctx context.Context, id string) (FindingDetail, error) 
 
 const evidenceRolePrimary = "primary"
 
-// AcceptFinding posts POST /v1/findings/{id}/accept.
-//
-// days of 0 lets the api apply its own default rather than this role inventing
-// one: an override's lifetime is policy, and policy lives on the side that owns
-// the row.
+// AcceptFinding posts POST /v1/findings/{id}/accept. days of 0 lets the api
+// apply its own default: an override's lifetime is policy, and policy lives
+// on the side that owns the row.
 func (c *Client) AcceptFinding(ctx context.Context, id, note string, days int) (Decision, error) {
 	parsed, err := uuid.Parse(id)
 	if err != nil {
@@ -437,30 +409,20 @@ func (c *Client) Audit(ctx context.Context, page int) (AuditPage, error) {
 	return out, nil
 }
 
-// AuditExport is the streamed export (FR-051), and it is the ONE method here that
-// does not decode a body.
-//
-// It calls the raw client rather than ExportAuditWithResponse, and that is the
-// whole point of the method. The generated `WithResponse` wrapper reads the entire
-// body into a `[]byte` field before returning, so using it would materialise the
-// complete audit log in this role's heap — exactly what the api went to the
-// trouble of streaming to avoid, undone one layer later. The raw call hands back
-// the live body and the caller copies it to the browser.
-//
-// The reader is the CALLER's to close, and the caller must also expect a stream
-// that stops early: the api cannot change its status once the first row is out, so
-// a truncated export arrives as a short 200 whose last line is not the api's
-// completeness sentinel. A handler that copies this to a response without looking
-// for that line will hand somebody an incomplete audit log that looks whole.
+// AuditExport is the streamed export, the ONE method here that does not
+// decode a body: it calls the raw client rather than ExportAuditWithResponse,
+// whose generated wrapper reads the entire body into memory first —
+// undoing the api's own streaming. The reader is the CALLER's to close, and
+// the caller must expect a stream that stops early: a truncated export
+// arrives as a short 200 whose last line is not the api's completeness sentinel.
 func (c *Client) AuditExport(ctx context.Context) (io.ReadCloser, string, error) {
 	resp, err := c.api.ExportAudit(ctx)
 	if err != nil {
 		return nil, "", fmt.Errorf("export the audit log: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		// The body is drained and closed rather than handed back: an error response
-		// is a problem document, not an export, and a caller that treated it as one
-		// would write it into the operator's file.
+		// Drained and closed rather than handed back: an error response is a
+		// problem document, not an export.
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
 		_ = resp.Body.Close()
 		return nil, "", fmt.Errorf("export the audit log: %w", governanceError(resp, nil))
@@ -511,14 +473,9 @@ func decision(from *apiclient.FindingDecision) Decision {
 	}
 }
 
-// governanceError adds the 403 branch to statusError.
-//
-// statusError already turns a 401 into view.ErrSignedOut, which is the signed-out
-// screen. A 403 is the other refusal a screen has to render rather than log — the
-// viewer is signed in and their role does not permit this — and the two must not
-// collapse into one another: signing in again does not acquire a role, and being
-// told to sign in when the real answer is "your role cannot do this" sends a
-// person round a loop that cannot end.
+// governanceError adds the 403 branch to statusError. The two refusals must
+// not collapse into one another: signing in again does not acquire a role,
+// so treating a 403 as a 401 sends a person round a loop that cannot end.
 func governanceError(resp *http.Response, body []byte) error {
 	if resp != nil && resp.StatusCode == http.StatusForbidden {
 		return ErrForbidden

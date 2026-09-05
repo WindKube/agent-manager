@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/WindKube/agent-manager/cli/internal/credentials"
+	"github.com/WindKube/agent-manager/cli/internal/layout"
 	"github.com/WindKube/agent-manager/cli/internal/output"
 	"github.com/WindKube/agent-manager/cli/internal/record"
 )
@@ -217,6 +218,38 @@ func TestStatusWithoutAHubRefusesNamingTheFlag(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, IsRefusal(err))
 	_ = diag
+}
+
+// TestStatusReportsAFileEditedAfterSyncAsModified is the end-to-end proof that
+// a real sync's fingerprint and status's drift check agree: sync now wires
+// apply.TreeFingerprinter into production (cmd/sync.go), so an entry it
+// installs is no longer "unverifiable" — editing it by hand afterwards must
+// show up as `modified`, naming the edited path.
+func TestStatusReportsAFileEditedAfterSyncAsModified(t *testing.T) {
+	tg := startSyncFake(t)
+	env := newSyncEnv(t, tg)
+
+	code, _, diag, err := env.run(t, output.FormatHuman, baselineFlags(tg))
+	require.NoError(t, err, diag.String())
+	require.Equal(t, CodeChanged, code)
+
+	entryPath := filepath.Join(env.skillsRoot(), "acme--code-review", layout.SkillEntryFile)
+	requireFileExists(t, entryPath)
+	f, openErr := os.OpenFile(entryPath, os.O_APPEND|os.O_WRONLY, 0o644)
+	require.NoError(t, openErr)
+	_, writeErr := f.WriteString("\nedited by hand after sync\n")
+	require.NoError(t, writeErr)
+	require.NoError(t, f.Close())
+
+	opts, result, _ := testOptions(tg.BaseURL, output.FormatHuman)
+	statusErr := runStatus(opts, statusDepsFor())
+	require.Error(t, statusErr)
+	require.True(t, IsRefusal(statusErr))
+	require.Equal(t, CodeRefused, ExitCode(opts.Outcome, statusErr))
+	require.Contains(t, result.String(), "modified")
+	require.Contains(t, result.String(), layout.SkillEntryFile)
+	require.NotContains(t, result.String(), "unverifiable",
+		"a fresh sync fingerprints what it installs, so this entry must be verifiable")
 }
 
 func mustParseDigest(t *testing.T, seed int) record.Digest {

@@ -1,14 +1,10 @@
 package cmd
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -16,6 +12,7 @@ import (
 	"github.com/99designs/keyring"
 	"github.com/spf13/cobra"
 
+	"github.com/WindKube/agent-manager/cli/internal/apply"
 	"github.com/WindKube/agent-manager/cli/internal/output"
 	"github.com/WindKube/agent-manager/cli/internal/record"
 )
@@ -141,13 +138,14 @@ func statusOf(p *record.Profile) (output.ProfileStatus, []output.Drift) {
 // driftReason answers whether e's destination still matches what was
 // installed, and says why when it does not. Empty means clean.
 //
-// Absence of evidence is not evidence of absence: an entry recorded without a
-// fingerprint is reported UNVERIFIABLE rather than assumed unmodified, the
-// same fail-closed rule internal/apply's verifyUnmodified enforces before an
-// overwrite (FR-029). Every entry this build has installed so far carries no
-// fingerprint — R4's fingerprinter is not wired into a production sync yet —
-// so that is the honest answer for all of them today; the byte-for-byte check
-// below is what starts running the day it is.
+// The byte-for-byte comparison is internal/apply's own TreeFingerprinter —
+// the same Verifier a sync consults before overwriting a modified path
+// (FR-029) — reused rather than reimplemented so status and sync agree on
+// what "modified" means. Absence of evidence is not evidence of absence:
+// TreeFingerprinter.Modifications refuses an entry recorded without a
+// fingerprint, or with an algorithm this build does not verify, and that is
+// reported UNVERIFIABLE rather than assumed unmodified — the honest answer
+// for a record written by a build that predates T049's fingerprinter.
 func driftReason(e *record.Entry) string {
 	info, err := os.Lstat(e.Dest)
 	switch {
@@ -159,15 +157,7 @@ func driftReason(e *record.Entry) string {
 		return "unverifiable: " + e.Dest + " is a symlink, which amctl never installs as the entry root"
 	}
 
-	if e.Fingerprint.IsZero() {
-		return "unverifiable: installed without a fingerprint, so a modification cannot be detected"
-	}
-	if e.Fingerprint.Algo != record.FingerprintAlgo {
-		return fmt.Sprintf("unverifiable: recorded with fingerprint algorithm %q, this build verifies %q",
-			e.Fingerprint.Algo, record.FingerprintAlgo)
-	}
-
-	changed, err := modifiedPaths(e.Dest, e.Fingerprint)
+	changed, err := (apply.TreeFingerprinter{}).Modifications(*e)
 	if err != nil {
 		return fmt.Sprintf("unverifiable: %v", err)
 	}
@@ -175,92 +165,4 @@ func driftReason(e *record.Entry) string {
 		return ""
 	}
 	return "modified: " + strings.Join(changed, ", ")
-}
-
-// modifiedPaths compares dest's current tree against fp, entry-root-relative,
-// and names every path that disagrees. Files and Dirs together are a CLOSED
-// SET over the root (record.Fingerprint's own contract): a path on disk and
-// absent from fp is an addition, a path in fp and absent from disk is a
-// removal, and both are modifications alongside a changed hash, size, mode or
-// kind.
-func modifiedPaths(dest string, fp record.Fingerprint) ([]string, error) {
-	seen := make(map[string]bool, len(fp.Files)+len(fp.Dirs))
-	var changed []string
-
-	walkErr := filepath.WalkDir(dest, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, relErr := filepath.Rel(dest, path)
-		if relErr != nil {
-			return relErr
-		}
-		if rel == "." {
-			return nil
-		}
-		rel = filepath.ToSlash(rel)
-		seen[rel] = true
-
-		info, err := d.Info()
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if want, ok := fp.Dirs[rel]; !ok || uint32(info.Mode().Perm()) != want {
-				changed = append(changed, rel)
-			}
-			return nil
-		}
-
-		want, ok := fp.Files[rel]
-		if !ok {
-			changed = append(changed, rel)
-			return nil
-		}
-		kind := record.FileKindRegular
-		if info.Mode()&fs.ModeSymlink != 0 {
-			kind = record.FileKindSymlink
-		}
-		if kind != want.Kind || info.Size() != want.Size || uint32(info.Mode().Perm()) != want.Mode {
-			changed = append(changed, rel)
-			return nil
-		}
-		sum, err := sha256Hex(path)
-		if err != nil {
-			return err
-		}
-		if sum != want.SHA256 {
-			changed = append(changed, rel)
-		}
-		return nil
-	})
-	if walkErr != nil {
-		return nil, walkErr
-	}
-
-	for rel := range fp.Files {
-		if !seen[rel] {
-			changed = append(changed, rel)
-		}
-	}
-	for rel := range fp.Dirs {
-		if !seen[rel] {
-			changed = append(changed, rel)
-		}
-	}
-	slices.Sort(changed)
-	return changed, nil
-}
-
-func sha256Hex(path string) (string, error) {
-	f, err := os.Open(path) //nolint:gosec // path is entry-root-relative under a recorded, amctl-owned destination
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = f.Close() }()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
 }

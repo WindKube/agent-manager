@@ -735,19 +735,20 @@ func (r *syncRun) apply(
 		return nil, lost
 	}
 	applier, err := apply.New(apply.Config{
-		Home:       home,
-		Record:     rec,
-		RecordPath: recordPath,
-		Profiles:   profileStates(lockfiles, writable),
-		Bundles:    fetch,
-		Log:        r.s,
-		Force:      r.flags.force,
-		Now:        nowOr(r.deps.now),
-		Continue:   r.stillOurs,
-		// Fingerprints, Verifier, Pruner nil: those features don't exist yet.
-		// Both fail closed — a later upgrade refuses naming --force, and a
-		// planned removal fails with ErrPruneUnavailable — rather than silently
-		// skip.
+		Home:         home,
+		Record:       rec,
+		RecordPath:   recordPath,
+		Profiles:     profileStates(lockfiles, writable),
+		Bundles:      fetch,
+		Log:          r.s,
+		Force:        r.flags.force,
+		Now:          nowOr(r.deps.now),
+		Continue:     r.stillOurs,
+		Fingerprints: apply.TreeFingerprinter{},
+		Verifier:     apply.TreeFingerprinter{},
+		// Pruner is deliberately nil: T048's prune does not exist yet, so a
+		// planned removal fails with ErrPruneUnavailable instead of silently
+		// not happening — the direction that does not destroy work.
 	})
 	if err != nil {
 		return nil, err

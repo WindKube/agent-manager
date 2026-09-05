@@ -21,10 +21,22 @@ const (
 	GroupEngSecurity = "eng-security"
 )
 
-// The other two names the design's Organization screen shows. They are not part
-// of the identity-provider coupling above — the local directory has two people
-// who resolve a role — but they are what a membership row and the design's audit
-// trail point at, so the vocabulary is seeded whole.
+// The other two names the design's Organization screen shows.
+//
+// GroupEngAll is part of the identity-provider coupling too, and in a way the two
+// above are not: it is the SECOND group both role-holding directory users are in,
+// carried by `othergroups` in the glauth fixture. That is what makes a profile
+// shared with a GROUP reachable by signing in — the dataset shares SRE On-call
+// with eng-all as consumer, and until both directory users were in it the group
+// half of the sharing panel was only ever exercised by tests.
+//
+// It maps to profile-consumer, the least privileged role, and auth.HighestRole
+// takes the most privileged of a person's groups, so being in it changes nobody's
+// role. That is the property the arrangement rests on and it is asserted, not
+// assumed. It is also why the third directory user is NOT in it: a role there
+// would delete the only route to FR-117's no-role screen.
+//
+// GroupContractors is vocabulary only — no directory user is in it.
 const (
 	GroupEngAll      = "eng-all"
 	GroupContractors = "contractors"
@@ -99,10 +111,14 @@ const DirectoryPassword = "local-only-directory-password"
 type DirectoryUser struct {
 	Username string
 	Email    string
-	// Group is the one group this person is in. For two of the three it is the
-	// group they resolve a role through, and SC-104 turns on those two being
-	// different; for the third it is GroupUnmapped, and they resolve none.
+	// Group is this person's PRIMARY group. For two of the three it is the group
+	// they resolve a role through, and SC-104 turns on those two being different;
+	// for the third it is GroupUnmapped, and they resolve none.
 	Group string
+	// Shared is the second group they are also in, or "" for the one who is in no
+	// second group. It exists so a group membership the dataset writes covers a
+	// person who can actually sign in; see GroupEngAll.
+	Shared string
 }
 
 // DirectoryUsers is the set to walk — generating the fixture, checking nothing
@@ -114,9 +130,9 @@ type DirectoryUser struct {
 // out of the collision check in internal/seed/identities_test.go, where a seeded
 // row naming them would shadow the row their first sign-in creates.
 var DirectoryUsers = []DirectoryUser{
-	{DirectoryUserPlatform, DirectoryEmailPlatform, GroupEngPlatform},
-	{DirectoryUserSecurity, DirectoryEmailSecurity, GroupEngSecurity},
-	{DirectoryUserUnmapped, DirectoryEmailUnmapped, GroupUnmapped},
+	{DirectoryUserPlatform, DirectoryEmailPlatform, GroupEngPlatform, GroupEngAll},
+	{DirectoryUserSecurity, DirectoryEmailSecurity, GroupEngSecurity, GroupEngAll},
+	{DirectoryUserUnmapped, DirectoryEmailUnmapped, GroupUnmapped, ""},
 }
 
 // RoleOf is the role a group resolves to, and "" when the hub maps it to none.

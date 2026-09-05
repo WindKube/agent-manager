@@ -16,6 +16,7 @@ import (
 	"github.com/uptrace/bun/schema"
 	"golang.org/x/tools/go/packages"
 
+	"agent-manager/internal/domain/resolve"
 	"agent-manager/internal/fetch"
 	"agent-manager/internal/store/models"
 )
@@ -256,6 +257,40 @@ func TestFetchSourceKindHoldsExactlyTheSourceKindsTheFetcherCanProduce(t *testin
 	}
 }
 
+// TestTheResolversPolicyEnumsHoldExactlyTheValuesTheColumnsDo is the guard the
+// doc comment on internal/domain/resolve promises. That package decides what the
+// scan gate does to every profile entry, and it may not import this one — the
+// constitution keeps internal/domain free of the store — so Gate, Mode and
+// Verdict over there are hand-written copies of three columns declared here.
+//
+// A copy nothing compares is a copy that goes stale, and this one goes stale in
+// the worst possible direction: a fourth gate added to the column would reach
+// resolve.Gate.Valid as an unrecognised value and be refused, so the profile
+// screen and the CLI would stop resolving anything at all the moment an admin
+// selected it.
+func TestTheResolversPolicyEnumsHoldExactlyTheValuesTheColumnsDo(t *testing.T) {
+	// Transcribed from internal/domain/resolve, not derived from it: this is the
+	// side of the comparison that has to be independent.
+	require.Equal(t, []string{
+		string(resolve.GateBlock),
+		string(resolve.GateApproval),
+		string(resolve.GateWarnWithOverride),
+	}, models.EnumTypes()[models.PGScanGate])
+
+	require.Equal(t, []string{
+		string(resolve.ModeLatest),
+		string(resolve.ModePinned),
+		string(resolve.ModeRange),
+	}, models.EnumTypes()[models.PGEntryMode])
+
+	require.Equal(t, []string{
+		string(resolve.VerdictScanning),
+		string(resolve.VerdictClean),
+		string(resolve.VerdictFlagged),
+		string(resolve.VerdictRejected),
+	}, models.EnumTypes()[models.PGVerdict])
+}
+
 func TestEveryEnumTypeHasACase(t *testing.T) {
 	got := map[string]bool{}
 	for _, c := range enumCases() {
@@ -482,4 +517,53 @@ func TestEveryRelationTargetIsARegisteredTable(t *testing.T) {
 				"%s.%s joins %s, which is not in models.All", table.Name, name, rel.JoinTable.Name)
 		}
 	}
+}
+
+// FR-037's four roles, and what each one may do to the profile it is held on.
+//
+// A table rather than four one-line assertions, because what makes this an
+// authorisation model rather than three booleans is the SHAPE of the answers:
+// sharing is strictly narrower than curating, publishing is not something a
+// consumer does, and the empty role — which is what a reader of an
+// organisation-visible profile holds — grants nothing at all. Each of those is a
+// row somebody could change by accident while adding a fifth role.
+//
+// The last case is the one worth having. `Principal.Role` is legitimately empty
+// and so is a membership role, and a permission function that returned true for
+// the zero value would hand every reader of every organisation profile the right
+// to publish it.
+func TestWhatEachProfileRoleMayDo(t *testing.T) {
+	for _, tc := range []struct {
+		role                          models.MembershipRole
+		curate, share, publish, valid bool
+	}{
+		{models.MembershipRoleOwner, true, true, true, true},
+		{models.MembershipRoleMaintainer, true, false, true, true},
+		{models.MembershipRoleReviewer, false, false, false, true},
+		{models.MembershipRoleConsumer, false, false, false, true},
+		{"", false, false, false, false},
+		{"admin", false, false, false, false},
+	} {
+		name := string(tc.role)
+		if name == "" {
+			name = "no role at all, which is what a reader of an organisation profile holds"
+		}
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, tc.curate, tc.role.MayCurate())
+			require.Equal(t, tc.share, tc.role.MayShare())
+			require.Equal(t, tc.publish, tc.role.MayPublish())
+			require.Equal(t, tc.valid, tc.role.Valid())
+		})
+	}
+
+	// Every value the column admits is answered above. A fifth role added to the
+	// enum without a row here would arrive holding nothing, silently.
+	answered := []string{}
+	for _, role := range []models.MembershipRole{
+		models.MembershipRoleOwner, models.MembershipRoleMaintainer,
+		models.MembershipRoleReviewer, models.MembershipRoleConsumer,
+	} {
+		answered = append(answered, string(role))
+	}
+	require.ElementsMatch(t, models.EnumTypes()[models.PGMembershipRole], answered)
 }

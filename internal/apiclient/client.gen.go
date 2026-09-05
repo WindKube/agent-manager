@@ -461,19 +461,19 @@ func (e LockfileDefaultPolicy) Valid() bool {
 
 // Defines values for LockfileGate.
 const (
-	Approval         LockfileGate = "approval"
-	Block            LockfileGate = "block"
-	WarnWithOverride LockfileGate = "warn-with-override"
+	LockfileGateApproval         LockfileGate = "approval"
+	LockfileGateBlock            LockfileGate = "block"
+	LockfileGateWarnWithOverride LockfileGate = "warn-with-override"
 )
 
 // Valid indicates whether the value is a known member of the LockfileGate enum.
 func (e LockfileGate) Valid() bool {
 	switch e {
-	case Approval:
+	case LockfileGateApproval:
 		return true
-	case Block:
+	case LockfileGateBlock:
 		return true
-	case WarnWithOverride:
+	case LockfileGateWarnWithOverride:
 		return true
 	default:
 		return false
@@ -951,6 +951,387 @@ func (e ProfileVisibility) Valid() bool {
 	case ProfileVisibilityPrivate:
 		return true
 	case ProfileVisibilityShared:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProfileCreateDefaultPolicy.
+const (
+	ProfileCreateDefaultPolicyFloatingLatest ProfileCreateDefaultPolicy = "floating-latest"
+	ProfileCreateDefaultPolicyPinned         ProfileCreateDefaultPolicy = "pinned"
+	ProfileCreateDefaultPolicyRange          ProfileCreateDefaultPolicy = "range"
+)
+
+// Valid indicates whether the value is a known member of the ProfileCreateDefaultPolicy enum.
+func (e ProfileCreateDefaultPolicy) Valid() bool {
+	switch e {
+	case ProfileCreateDefaultPolicyFloatingLatest:
+		return true
+	case ProfileCreateDefaultPolicyPinned:
+		return true
+	case ProfileCreateDefaultPolicyRange:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProfileCreateVisibility.
+const (
+	ProfileCreateVisibilityOrganisation ProfileCreateVisibility = "organisation"
+	ProfileCreateVisibilityPrivate      ProfileCreateVisibility = "private"
+	ProfileCreateVisibilityShared       ProfileCreateVisibility = "shared"
+)
+
+// Valid indicates whether the value is a known member of the ProfileCreateVisibility enum.
+func (e ProfileCreateVisibility) Valid() bool {
+	switch e {
+	case ProfileCreateVisibilityOrganisation:
+		return true
+	case ProfileCreateVisibilityPrivate:
+		return true
+	case ProfileCreateVisibilityShared:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProfileDetailDefaultPolicy.
+const (
+	ProfileDetailDefaultPolicyFloatingLatest ProfileDetailDefaultPolicy = "floating-latest"
+	ProfileDetailDefaultPolicyPinned         ProfileDetailDefaultPolicy = "pinned"
+	ProfileDetailDefaultPolicyRange          ProfileDetailDefaultPolicy = "range"
+)
+
+// Valid indicates whether the value is a known member of the ProfileDetailDefaultPolicy enum.
+func (e ProfileDetailDefaultPolicy) Valid() bool {
+	switch e {
+	case ProfileDetailDefaultPolicyFloatingLatest:
+		return true
+	case ProfileDetailDefaultPolicyPinned:
+		return true
+	case ProfileDetailDefaultPolicyRange:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProfileDetailGate.
+const (
+	ProfileDetailGateApproval         ProfileDetailGate = "approval"
+	ProfileDetailGateBlock            ProfileDetailGate = "block"
+	ProfileDetailGateWarnWithOverride ProfileDetailGate = "warn-with-override"
+)
+
+// Valid indicates whether the value is a known member of the ProfileDetailGate enum.
+func (e ProfileDetailGate) Valid() bool {
+	switch e {
+	case ProfileDetailGateApproval:
+		return true
+	case ProfileDetailGateBlock:
+		return true
+	case ProfileDetailGateWarnWithOverride:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProfileDetailRole.
+const (
+	ProfileDetailRoleConsumer   ProfileDetailRole = "consumer"
+	ProfileDetailRoleMaintainer ProfileDetailRole = "maintainer"
+	ProfileDetailRoleOwner      ProfileDetailRole = "owner"
+	ProfileDetailRoleReviewer   ProfileDetailRole = "reviewer"
+)
+
+// Valid indicates whether the value is a known member of the ProfileDetailRole enum.
+func (e ProfileDetailRole) Valid() bool {
+	switch e {
+	case ProfileDetailRoleConsumer:
+		return true
+	case ProfileDetailRoleMaintainer:
+		return true
+	case ProfileDetailRoleOwner:
+		return true
+	case ProfileDetailRoleReviewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProfileDetailVisibility.
+const (
+	ProfileDetailVisibilityOrganisation ProfileDetailVisibility = "organisation"
+	ProfileDetailVisibilityPrivate      ProfileDetailVisibility = "private"
+	ProfileDetailVisibilityShared       ProfileDetailVisibility = "shared"
+)
+
+// Valid indicates whether the value is a known member of the ProfileDetailVisibility enum.
+func (e ProfileDetailVisibility) Valid() bool {
+	switch e {
+	case ProfileDetailVisibilityOrganisation:
+		return true
+	case ProfileDetailVisibilityPrivate:
+		return true
+	case ProfileDetailVisibilityShared:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProfileEntryKind.
+const (
+	ProfileEntryKindPlugin ProfileEntryKind = "plugin"
+	ProfileEntryKindSkill  ProfileEntryKind = "skill"
+)
+
+// Valid indicates whether the value is a known member of the ProfileEntryKind enum.
+func (e ProfileEntryKind) Valid() bool {
+	switch e {
+	case ProfileEntryKindPlugin:
+		return true
+	case ProfileEntryKindSkill:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProfileEntryLatestVerdict.
+const (
+	ProfileEntryLatestVerdictClean    ProfileEntryLatestVerdict = "clean"
+	ProfileEntryLatestVerdictFlagged  ProfileEntryLatestVerdict = "flagged"
+	ProfileEntryLatestVerdictRejected ProfileEntryLatestVerdict = "rejected"
+	ProfileEntryLatestVerdictScanning ProfileEntryLatestVerdict = "scanning"
+)
+
+// Valid indicates whether the value is a known member of the ProfileEntryLatestVerdict enum.
+func (e ProfileEntryLatestVerdict) Valid() bool {
+	switch e {
+	case ProfileEntryLatestVerdictClean:
+		return true
+	case ProfileEntryLatestVerdictFlagged:
+		return true
+	case ProfileEntryLatestVerdictRejected:
+		return true
+	case ProfileEntryLatestVerdictScanning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProfileEntryMode.
+const (
+	ProfileEntryModeLatest ProfileEntryMode = "latest"
+	ProfileEntryModePinned ProfileEntryMode = "pinned"
+	ProfileEntryModeRange  ProfileEntryMode = "range"
+)
+
+// Valid indicates whether the value is a known member of the ProfileEntryMode enum.
+func (e ProfileEntryMode) Valid() bool {
+	switch e {
+	case ProfileEntryModeLatest:
+		return true
+	case ProfileEntryModePinned:
+		return true
+	case ProfileEntryModeRange:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProfileEntryOutcome.
+const (
+	Downgraded ProfileEntryOutcome = "downgraded"
+	Overridden ProfileEntryOutcome = "overridden"
+	Resolved   ProfileEntryOutcome = "resolved"
+	Skipped    ProfileEntryOutcome = "skipped"
+	Warned     ProfileEntryOutcome = "warned"
+)
+
+// Valid indicates whether the value is a known member of the ProfileEntryOutcome enum.
+func (e ProfileEntryOutcome) Valid() bool {
+	switch e {
+	case Downgraded:
+		return true
+	case Overridden:
+		return true
+	case Resolved:
+		return true
+	case Skipped:
+		return true
+	case Warned:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProfileEntryVerdict.
+const (
+	ProfileEntryVerdictClean    ProfileEntryVerdict = "clean"
+	ProfileEntryVerdictFlagged  ProfileEntryVerdict = "flagged"
+	ProfileEntryVerdictScanning ProfileEntryVerdict = "scanning"
+)
+
+// Valid indicates whether the value is a known member of the ProfileEntryVerdict enum.
+func (e ProfileEntryVerdict) Valid() bool {
+	switch e {
+	case ProfileEntryVerdictClean:
+		return true
+	case ProfileEntryVerdictFlagged:
+		return true
+	case ProfileEntryVerdictScanning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProfileEntrySettingMode.
+const (
+	ProfileEntrySettingModeLatest ProfileEntrySettingMode = "latest"
+	ProfileEntrySettingModePinned ProfileEntrySettingMode = "pinned"
+	ProfileEntrySettingModeRange  ProfileEntrySettingMode = "range"
+)
+
+// Valid indicates whether the value is a known member of the ProfileEntrySettingMode enum.
+func (e ProfileEntrySettingMode) Valid() bool {
+	switch e {
+	case ProfileEntrySettingModeLatest:
+		return true
+	case ProfileEntrySettingModePinned:
+		return true
+	case ProfileEntrySettingModeRange:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProfileMemberKind.
+const (
+	ProfileMemberKindGroup ProfileMemberKind = "group"
+	ProfileMemberKindUser  ProfileMemberKind = "user"
+)
+
+// Valid indicates whether the value is a known member of the ProfileMemberKind enum.
+func (e ProfileMemberKind) Valid() bool {
+	switch e {
+	case ProfileMemberKindGroup:
+		return true
+	case ProfileMemberKindUser:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProfileMemberRole.
+const (
+	ProfileMemberRoleConsumer   ProfileMemberRole = "consumer"
+	ProfileMemberRoleMaintainer ProfileMemberRole = "maintainer"
+	ProfileMemberRoleOwner      ProfileMemberRole = "owner"
+	ProfileMemberRoleReviewer   ProfileMemberRole = "reviewer"
+)
+
+// Valid indicates whether the value is a known member of the ProfileMemberRole enum.
+func (e ProfileMemberRole) Valid() bool {
+	switch e {
+	case ProfileMemberRoleConsumer:
+		return true
+	case ProfileMemberRoleMaintainer:
+		return true
+	case ProfileMemberRoleOwner:
+		return true
+	case ProfileMemberRoleReviewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProfileShareKind.
+const (
+	ProfileShareKindGroup ProfileShareKind = "group"
+	ProfileShareKindUser  ProfileShareKind = "user"
+)
+
+// Valid indicates whether the value is a known member of the ProfileShareKind enum.
+func (e ProfileShareKind) Valid() bool {
+	switch e {
+	case ProfileShareKindGroup:
+		return true
+	case ProfileShareKindUser:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProfileShareRole.
+const (
+	ProfileShareRoleConsumer   ProfileShareRole = "consumer"
+	ProfileShareRoleMaintainer ProfileShareRole = "maintainer"
+	ProfileShareRoleOwner      ProfileShareRole = "owner"
+	ProfileShareRoleReviewer   ProfileShareRole = "reviewer"
+)
+
+// Valid indicates whether the value is a known member of the ProfileShareRole enum.
+func (e ProfileShareRole) Valid() bool {
+	switch e {
+	case ProfileShareRoleConsumer:
+		return true
+	case ProfileShareRoleMaintainer:
+		return true
+	case ProfileShareRoleOwner:
+		return true
+	case ProfileShareRoleReviewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProfileTargetTarget.
+const (
+	ProfileTargetTargetClaudeCode ProfileTargetTarget = "claude-code"
+	ProfileTargetTargetCodex      ProfileTargetTarget = "codex"
+)
+
+// Valid indicates whether the value is a known member of the ProfileTargetTarget enum.
+func (e ProfileTargetTarget) Valid() bool {
+	switch e {
+	case ProfileTargetTargetClaudeCode:
+		return true
+	case ProfileTargetTargetCodex:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProfileTargetSelectionTargets.
+const (
+	ProfileTargetSelectionTargetsClaudeCode ProfileTargetSelectionTargets = "claude-code"
+	ProfileTargetSelectionTargetsCodex      ProfileTargetSelectionTargets = "codex"
+)
+
+// Valid indicates whether the value is a known member of the ProfileTargetSelectionTargets enum.
+func (e ProfileTargetSelectionTargets) Valid() bool {
+	switch e {
+	case ProfileTargetSelectionTargetsClaudeCode:
+		return true
+	case ProfileTargetSelectionTargetsCodex:
 		return true
 	default:
 		return false
@@ -2273,10 +2654,332 @@ type Profile struct {
 // Examples: organisation
 type ProfileVisibility string
 
+// ProfileCreate defines model for ProfileCreate.
+type ProfileCreate struct {
+	// DefaultPolicy Examples: floating-latest
+	DefaultPolicy *ProfileCreateDefaultPolicy `json:"defaultPolicy,omitempty"`
+	Description   *string                     `json:"description,omitempty"`
+
+	// ForkOf Slug of a profile to fork. Its entries are COPIED at this instant; the fork never sees an upstream revision published afterwards (FR-038). The upstream must be readable by this identity.
+	//
+	// Examples: example/sre-oncall
+	ForkOf *string `json:"forkOf,omitempty"`
+
+	// Name Examples: Platform Engineer
+	Name string `json:"name"`
+
+	// OwnerTeam Examples: example/platform
+	OwnerTeam *string `json:"ownerTeam,omitempty"`
+
+	// Slug URL-safe identifier, unique across the organisation. May carry several segments — the design's profiles live at example/platform-engineer — and each one is validated, because the slug becomes an object-store prefix.
+	//
+	// Examples: example/platform-engineer
+	Slug string `json:"slug"`
+
+	// Visibility Defaults to private. A new profile is not readable by the whole organisation until somebody says so (FR-037, FR-044).
+	//
+	// Examples: organisation
+	Visibility *ProfileCreateVisibility `json:"visibility,omitempty"`
+}
+
+// ProfileCreateDefaultPolicy Examples: floating-latest
+type ProfileCreateDefaultPolicy string
+
+// ProfileCreateVisibility Defaults to private. A new profile is not readable by the whole organisation until somebody says so (FR-037, FR-044).
+//
+// Examples: organisation
+type ProfileCreateVisibility string
+
+// ProfileDetail defines model for ProfileDetail.
+type ProfileDetail struct {
+	// DefaultPolicy The profile's own default, which a per-entry mode overrides (FR-032).
+	//
+	// Examples: floating-latest
+	DefaultPolicy ProfileDetailDefaultPolicy `json:"defaultPolicy"`
+	Description   *string                    `json:"description,omitempty"`
+
+	// Entries Every package this profile holds, in the profile's own order — INCLUDING the ones the gate excludes, which are reported and never silently omitted (FR-036).
+	Entries []ProfileEntry `json:"entries"`
+
+	// ForkedFrom Slug of the profile this was forked from. Lineage only: a fork never inherits the upstream's future revisions (FR-038).
+	//
+	// Examples: example/sre-oncall
+	ForkedFrom *string `json:"forkedFrom,omitempty"`
+
+	// Gate Examples: warn-with-override
+	Gate ProfileDetailGate `json:"gate"`
+
+	// HeadRevision The most recent published revision, 0 when nothing has been published yet.
+	//
+	// Examples: 14
+	HeadRevision int64 `json:"headRevision"`
+
+	// Members Individual members and identity-provider groups, with the role each holds (FR-037).
+	Members []ProfileMember `json:"members"`
+
+	// Name Examples: Platform Engineer
+	Name string `json:"name"`
+
+	// OwnerTeam The team named on the header line. Free text, not a membership.
+	//
+	// Examples: example/platform
+	OwnerTeam *string `json:"ownerTeam,omitempty"`
+
+	// Permissions What this identity may do here. FR-126: a screen disables what it may not do rather than offering it and being refused.
+	Permissions ProfilePermissions `json:"permissions"`
+
+	// Revisions Published history, most recent first. Previous revisions stay readable for ever (FR-034).
+	Revisions []ProfileRevision `json:"revisions"`
+
+	// Role This identity's role on this profile. Absent when they read it through organisation visibility rather than a membership.
+	Role *ProfileDetailRole `json:"role,omitempty"`
+
+	// Slug Examples: example/platform-engineer
+	Slug string `json:"slug"`
+
+	// Targets Every sync target this hub knows, each with whether the profile enables it. The whole vocabulary, so a screen draws the same checkboxes without holding a copy of the enum.
+	Targets []ProfileTarget `json:"targets"`
+
+	// UnpublishedChanges Publishing now would write a lockfile different from the head revision's. True for a profile with no revisions at all.
+	UnpublishedChanges bool `json:"unpublishedChanges"`
+
+	// Visibility Examples: organisation
+	Visibility ProfileDetailVisibility `json:"visibility"`
+}
+
+// ProfileDetailDefaultPolicy The profile's own default, which a per-entry mode overrides (FR-032).
+//
+// Examples: floating-latest
+type ProfileDetailDefaultPolicy string
+
+// ProfileDetailGate Examples: warn-with-override
+type ProfileDetailGate string
+
+// ProfileDetailRole This identity's role on this profile. Absent when they read it through organisation visibility rather than a membership.
+type ProfileDetailRole string
+
+// ProfileDetailVisibility Examples: organisation
+type ProfileDetailVisibility string
+
+// ProfileEntries defines model for ProfileEntries.
+type ProfileEntries struct {
+	// Entries Every package the profile holds, in the order it holds them. Naming one it does not hold adds it.
+	Entries []ProfileEntrySetting `json:"entries"`
+}
+
+// ProfileEntry defines model for ProfileEntry.
+type ProfileEntry struct {
+	// Digest The resolved version's bundle digest, so the screen shows the same identity the lockfile would freeze.
+	Digest *string `json:"digest,omitempty"`
+
+	// Id namespace/name, as the catalog renders it.
+	//
+	// Examples: community/postgres-migration-guard
+	Id string `json:"id"`
+
+	// Kind Examples: skill
+	Kind ProfileEntryKind `json:"kind"`
+
+	// LatestVerdict That version's scan state — the row's Scan badge. Unaffected by what the gate then does.
+	//
+	// Examples: flagged
+	LatestVerdict *ProfileEntryLatestVerdict `json:"latestVerdict,omitempty"`
+
+	// LatestVersion The catalog's newest visible version of this package. Absent when it has none.
+	//
+	// Examples: 0.8.3
+	LatestVersion *string `json:"latestVersion,omitempty"`
+
+	// Mode Examples: latest
+	Mode ProfileEntryMode `json:"mode"`
+
+	// Name The package's own name, for the row's title.
+	//
+	// Examples: Postgres Migration Guard
+	Name string `json:"name"`
+
+	// Note Examples: Flagged (SH-SQL-004 in SKILL.md); warn-with-override includes it with a warning.
+	Note *string `json:"note,omitempty"`
+
+	// Outcome Examples: warned
+	Outcome ProfileEntryOutcome `json:"outcome"`
+
+	// Override The ACTIVE acceptance that let a flagged version through. A lapsed one is not an override and is absent here.
+	Override *LockfileOverride `json:"override,omitempty"`
+
+	// PinnedVersion The version the pin names, present only when mode is pinned. Absent when the pin names a version this hub no longer holds — which is the pin-target-missing exclusion.
+	//
+	// Examples: 3.0.2
+	PinnedVersion *string `json:"pinnedVersion,omitempty"`
+
+	// Range The constraint expression, present only when mode is range.
+	//
+	// Examples: >=1.4.0 <2.0.0
+	Range *string `json:"range,omitempty"`
+
+	// Skip Present exactly when outcome is skipped. The same shape the lockfile publishes, so the screen and the CLI report an exclusion identically (FR-036).
+	Skip *LockfileSkip `json:"skip,omitempty"`
+
+	// Unpublished This row would resolve differently from the head revision's lockfile. Nothing reaches a machine until a revision is published.
+	Unpublished bool `json:"unpublished"`
+
+	// Verdict The RESOLVED version's verdict. The vocabulary is narrower than the catalog's on purpose: a rejected version never resolves, under any gate (FR-029).
+	Verdict *ProfileEntryVerdict `json:"verdict,omitempty"`
+
+	// Version What this entry resolves to. Absent exactly when the entry is excluded.
+	//
+	// Examples: 0.8.3
+	Version *string `json:"version,omitempty"`
+}
+
+// ProfileEntryKind Examples: skill
+type ProfileEntryKind string
+
+// ProfileEntryLatestVerdict That version's scan state — the row's Scan badge. Unaffected by what the gate then does.
+//
+// Examples: flagged
+type ProfileEntryLatestVerdict string
+
+// ProfileEntryMode Examples: latest
+type ProfileEntryMode string
+
+// ProfileEntryOutcome Examples: warned
+type ProfileEntryOutcome string
+
+// ProfileEntryVerdict The RESOLVED version's verdict. The vocabulary is narrower than the catalog's on purpose: a rejected version never resolves, under any gate (FR-029).
+type ProfileEntryVerdict string
+
+// ProfileEntrySetting defines model for ProfileEntrySetting.
+type ProfileEntrySetting struct {
+	// Id namespace/name of a registered package.
+	//
+	// Examples: example/adr-writer
+	Id string `json:"id"`
+
+	// Mode Examples: pinned
+	Mode ProfileEntrySettingMode `json:"mode"`
+
+	// Version The exact version when mode is pinned, the constraint expression when mode is range, and unused for latest.
+	//
+	// Examples: 3.0.2
+	Version *string `json:"version,omitempty"`
+}
+
+// ProfileEntrySettingMode Examples: pinned
+type ProfileEntrySettingMode string
+
 // ProfileList defines model for ProfileList.
 type ProfileList struct {
 	// Profiles Readable profiles. Order is not part of the contract.
 	Profiles []Profile `json:"profiles"`
+}
+
+// ProfileMember defines model for ProfileMember.
+type ProfileMember struct {
+	// DisplayName Examples: Krzysztof Wiatrzyk
+	DisplayName *string `json:"displayName,omitempty"`
+
+	// Kind group is an identity-provider group, matched against the claim on every request rather than expanded into people.
+	//
+	// Examples: group
+	Kind ProfileMemberKind `json:"kind"`
+
+	// Ref The person's email or subject, or the group's name as the provider spells it.
+	//
+	// Examples: eng-platform
+	Ref string `json:"ref"`
+
+	// Role Examples: maintainer
+	Role ProfileMemberRole `json:"role"`
+}
+
+// ProfileMemberKind group is an identity-provider group, matched against the claim on every request rather than expanded into people.
+//
+// Examples: group
+type ProfileMemberKind string
+
+// ProfileMemberRole Examples: maintainer
+type ProfileMemberRole string
+
+// ProfilePermissions defines model for ProfilePermissions.
+type ProfilePermissions struct {
+	// Curate May change entries and sync targets. Owner or maintainer.
+	Curate bool `json:"curate"`
+
+	// Publish May publish a revision. Owner or maintainer — a consumer may not (FR-037).
+	Publish bool `json:"publish"`
+
+	// Share May change who the profile is shared with. Owner only: who can see a profile is not a curation decision.
+	Share bool `json:"share"`
+}
+
+// ProfileRevision defines model for ProfileRevision.
+type ProfileRevision struct {
+	// Note Examples: pinned ADR Writer to 3.0.2
+	Note        *string   `json:"note,omitempty"`
+	PublishedAt time.Time `json:"publishedAt"`
+
+	// PublishedBy The email or subject of whoever published it.
+	//
+	// Examples: pkaczmarek@example.com
+	PublishedBy string `json:"publishedBy"`
+
+	// Revision Examples: 14
+	Revision int64 `json:"revision"`
+}
+
+// ProfileShare defines model for ProfileShare.
+type ProfileShare struct {
+	// Kind Examples: group
+	Kind ProfileShareKind `json:"kind"`
+
+	// Ref The person's email or subject, or the group's name exactly as the identity provider spells it — it is compared against the groups claim, so a near miss silently grants nothing.
+	//
+	// Examples: eng-platform
+	Ref string `json:"ref"`
+
+	// Role Examples: maintainer
+	Role ProfileShareRole `json:"role"`
+}
+
+// ProfileShareKind Examples: group
+type ProfileShareKind string
+
+// ProfileShareRole Examples: maintainer
+type ProfileShareRole string
+
+// ProfileSharing defines model for ProfileSharing.
+type ProfileSharing struct {
+	// Members The subjects whose role is being set. Others keep theirs.
+	Members []ProfileShare `json:"members"`
+}
+
+// ProfileTarget defines model for ProfileTarget.
+type ProfileTarget struct {
+	Enabled bool `json:"enabled"`
+
+	// Target Examples: claude-code
+	Target ProfileTargetTarget `json:"target"`
+}
+
+// ProfileTargetTarget Examples: claude-code
+type ProfileTargetTarget string
+
+// ProfileTargetSelection defines model for ProfileTargetSelection.
+type ProfileTargetSelection struct {
+	// Targets The agent directories a client should write. An omitted target is disabled. An empty list is legal and means the profile writes nothing until somebody chooses.
+	Targets []ProfileTargetSelectionTargets `json:"targets"`
+}
+
+// ProfileTargetSelectionTargets defines model for ProfileTargetSelection.Targets.
+type ProfileTargetSelectionTargets string
+
+// RevisionPublish defines model for RevisionPublish.
+type RevisionPublish struct {
+	// Note The publisher's note on this revision, shown in the history and carried in the lockfile.
+	//
+	// Examples: pinned ADR Writer to 3.0.2
+	Note *string `json:"note,omitempty"`
 }
 
 // ScannerSummary defines model for ScannerSummary.
@@ -2550,6 +3253,21 @@ type RegisterPackageMultipartRequestBody RegisterPackageMultipartBody
 // PreviewPackageMultipartRequestBody defines body for PreviewPackage for multipart/form-data ContentType.
 type PreviewPackageMultipartRequestBody PreviewPackageMultipartBody
 
+// CreateProfileJSONRequestBody defines body for CreateProfile for application/json ContentType.
+type CreateProfileJSONRequestBody = ProfileCreate
+
+// SetProfileEntriesJSONRequestBody defines body for SetProfileEntries for application/json ContentType.
+type SetProfileEntriesJSONRequestBody = ProfileEntries
+
+// PublishRevisionJSONRequestBody defines body for PublishRevision for application/json ContentType.
+type PublishRevisionJSONRequestBody = RevisionPublish
+
+// SetProfileSharingJSONRequestBody defines body for SetProfileSharing for application/json ContentType.
+type SetProfileSharingJSONRequestBody = ProfileSharing
+
+// SetProfileTargetsJSONRequestBody defines body for SetProfileTargets for application/json ContentType.
+type SetProfileTargetsJSONRequestBody = ProfileTargetSelection
+
 // CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
 type CreateSessionJSONRequestBody = SessionMintRequest
 
@@ -2790,12 +3508,109 @@ type ClientInterface interface {
 	// Corresponds with GET /v1/profiles (the `ListProfiles` operationId).
 	ListProfiles(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// CreateProfileWithBody Create a profile, or fork one
+	//
+	// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/profiles (the `CreateProfile` operationId).
+	CreateProfileWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateProfile Create a profile, or fork one
+	//
+	// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/profiles (the `CreateProfile` operationId).
+	CreateProfile(ctx context.Context, body CreateProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetProfile One profile, resolved under the org gate
+	//
+	// The profile detail screen (001 US5): every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted (FR-036). The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
+	//
+	// Corresponds with GET /v1/profiles/{slug} (the `GetProfile` operationId).
+	GetProfile(ctx context.Context, slug string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetProfileEntriesWithBody Set the packages a profile holds and how each one tracks versions
+	//
+	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /v1/profiles/{slug}/entries (the `SetProfileEntries` operationId).
+	SetProfileEntriesWithBody(ctx context.Context, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetProfileEntries Set the packages a profile holds and how each one tracks versions
+	//
+	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /v1/profiles/{slug}/entries (the `SetProfileEntries` operationId).
+	SetProfileEntries(ctx context.Context, slug string, body SetProfileEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PublishRevisionWithBody Publish the next immutable revision
+	//
+	// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/profiles/{slug}/revisions (the `PublishRevision` operationId).
+	PublishRevisionWithBody(ctx context.Context, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PublishRevision Publish the next immutable revision
+	//
+	// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/profiles/{slug}/revisions (the `PublishRevision` operationId).
+	PublishRevision(ctx context.Context, slug string, body PublishRevisionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetRevision Fetch a resolved revision lockfile
 	//
 	// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted (FR-036).
 	//
 	// Corresponds with GET /v1/profiles/{slug}/revisions/{revision} (the `GetRevision` operationId).
 	GetRevision(ctx context.Context, slug string, revision string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetProfileSharingWithBody Set the role each member and identity-provider group holds
+	//
+	// Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /v1/profiles/{slug}/sharing (the `SetProfileSharing` operationId).
+	SetProfileSharingWithBody(ctx context.Context, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetProfileSharing Set the role each member and identity-provider group holds
+	//
+	// Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /v1/profiles/{slug}/sharing (the `SetProfileSharing` operationId).
+	SetProfileSharing(ctx context.Context, slug string, body SetProfileSharingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetProfileTargetsWithBody Choose which agent directories a client writes
+	//
+	// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /v1/profiles/{slug}/targets (the `SetProfileTargets` operationId).
+	SetProfileTargetsWithBody(ctx context.Context, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetProfileTargets Choose which agent directories a client writes
+	//
+	// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /v1/profiles/{slug}/targets (the `SetProfileTargets` operationId).
+	SetProfileTargets(ctx context.Context, slug string, body SetProfileTargetsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ScannerSummary The Scanner screen's headline figures
 	//
@@ -3215,6 +4030,137 @@ func (c *Client) ListProfiles(ctx context.Context, reqEditors ...RequestEditorFn
 	return c.Client.Do(req)
 }
 
+// CreateProfileWithBody Create a profile, or fork one
+//
+// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/profiles (the `CreateProfile` operationId).
+func (c *Client) CreateProfileWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateProfileRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateProfile Create a profile, or fork one
+//
+// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/profiles (the `CreateProfile` operationId).
+func (c *Client) CreateProfile(ctx context.Context, body CreateProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateProfileRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetProfile One profile, resolved under the org gate
+//
+// The profile detail screen (001 US5): every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted (FR-036). The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
+//
+// Corresponds with GET /v1/profiles/{slug} (the `GetProfile` operationId).
+func (c *Client) GetProfile(ctx context.Context, slug string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetProfileRequest(c.Server, slug)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetProfileEntriesWithBody Set the packages a profile holds and how each one tracks versions
+//
+// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /v1/profiles/{slug}/entries (the `SetProfileEntries` operationId).
+func (c *Client) SetProfileEntriesWithBody(ctx context.Context, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetProfileEntriesRequestWithBody(c.Server, slug, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetProfileEntries Set the packages a profile holds and how each one tracks versions
+//
+// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /v1/profiles/{slug}/entries (the `SetProfileEntries` operationId).
+func (c *Client) SetProfileEntries(ctx context.Context, slug string, body SetProfileEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetProfileEntriesRequest(c.Server, slug, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PublishRevisionWithBody Publish the next immutable revision
+//
+// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/profiles/{slug}/revisions (the `PublishRevision` operationId).
+func (c *Client) PublishRevisionWithBody(ctx context.Context, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPublishRevisionRequestWithBody(c.Server, slug, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PublishRevision Publish the next immutable revision
+//
+// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/profiles/{slug}/revisions (the `PublishRevision` operationId).
+func (c *Client) PublishRevision(ctx context.Context, slug string, body PublishRevisionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPublishRevisionRequest(c.Server, slug, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetRevision Fetch a resolved revision lockfile
 //
 // `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted (FR-036).
@@ -3222,6 +4168,82 @@ func (c *Client) ListProfiles(ctx context.Context, reqEditors ...RequestEditorFn
 // Corresponds with GET /v1/profiles/{slug}/revisions/{revision} (the `GetRevision` operationId).
 func (c *Client) GetRevision(ctx context.Context, slug string, revision string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetRevisionRequest(c.Server, slug, revision)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetProfileSharingWithBody Set the role each member and identity-provider group holds
+//
+// Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /v1/profiles/{slug}/sharing (the `SetProfileSharing` operationId).
+func (c *Client) SetProfileSharingWithBody(ctx context.Context, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetProfileSharingRequestWithBody(c.Server, slug, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetProfileSharing Set the role each member and identity-provider group holds
+//
+// Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /v1/profiles/{slug}/sharing (the `SetProfileSharing` operationId).
+func (c *Client) SetProfileSharing(ctx context.Context, slug string, body SetProfileSharingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetProfileSharingRequest(c.Server, slug, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetProfileTargetsWithBody Choose which agent directories a client writes
+//
+// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /v1/profiles/{slug}/targets (the `SetProfileTargets` operationId).
+func (c *Client) SetProfileTargetsWithBody(ctx context.Context, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetProfileTargetsRequestWithBody(c.Server, slug, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetProfileTargets Choose which agent directories a client writes
+//
+// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /v1/profiles/{slug}/targets (the `SetProfileTargets` operationId).
+func (c *Client) SetProfileTargets(ctx context.Context, slug string, body SetProfileTargetsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetProfileTargetsRequest(c.Server, slug, body)
 	if err != nil {
 		return nil, err
 	}
@@ -4128,6 +5150,174 @@ func NewListProfilesRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewCreateProfileRequest calls the generic CreateProfile builder with application/json body
+func NewCreateProfileRequest(server string, body CreateProfileJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateProfileRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateProfileRequestWithBody constructs an http.Request for the CreateProfile method, with any body, and a specified content type
+func NewCreateProfileRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/profiles")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetProfileRequest constructs an http.Request for the GetProfile method
+func NewGetProfileRequest(server string, slug string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "slug", slug, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/profiles/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetProfileEntriesRequest calls the generic SetProfileEntries builder with application/json body
+func NewSetProfileEntriesRequest(server string, slug string, body SetProfileEntriesJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetProfileEntriesRequestWithBody(server, slug, "application/json", bodyReader)
+}
+
+// NewSetProfileEntriesRequestWithBody constructs an http.Request for the SetProfileEntries method, with any body, and a specified content type
+func NewSetProfileEntriesRequestWithBody(server string, slug string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "slug", slug, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/profiles/%s/entries", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewPublishRevisionRequest calls the generic PublishRevision builder with application/json body
+func NewPublishRevisionRequest(server string, slug string, body PublishRevisionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPublishRevisionRequestWithBody(server, slug, "application/json", bodyReader)
+}
+
+// NewPublishRevisionRequestWithBody constructs an http.Request for the PublishRevision method, with any body, and a specified content type
+func NewPublishRevisionRequestWithBody(server string, slug string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "slug", slug, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/profiles/%s/revisions", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewGetRevisionRequest constructs an http.Request for the GetRevision method
 func NewGetRevisionRequest(server string, slug string, revision string) (*http.Request, error) {
 	var err error
@@ -4165,6 +5355,100 @@ func NewGetRevisionRequest(server string, slug string, revision string) (*http.R
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewSetProfileSharingRequest calls the generic SetProfileSharing builder with application/json body
+func NewSetProfileSharingRequest(server string, slug string, body SetProfileSharingJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetProfileSharingRequestWithBody(server, slug, "application/json", bodyReader)
+}
+
+// NewSetProfileSharingRequestWithBody constructs an http.Request for the SetProfileSharing method, with any body, and a specified content type
+func NewSetProfileSharingRequestWithBody(server string, slug string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "slug", slug, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/profiles/%s/sharing", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewSetProfileTargetsRequest calls the generic SetProfileTargets builder with application/json body
+func NewSetProfileTargetsRequest(server string, slug string, body SetProfileTargetsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetProfileTargetsRequestWithBody(server, slug, "application/json", bodyReader)
+}
+
+// NewSetProfileTargetsRequestWithBody constructs an http.Request for the SetProfileTargets method, with any body, and a specified content type
+func NewSetProfileTargetsRequestWithBody(server string, slug string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "slug", slug, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/profiles/%s/targets", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -4581,6 +5865,69 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/profiles (the `ListProfiles` operationId).
 	ListProfilesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListProfilesResponse, error)
 
+	// CreateProfileWithBodyWithResponse Create a profile, or fork one
+	//
+	// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/profiles (the `CreateProfile` operationId).
+	CreateProfileWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateProfileResponse, error)
+
+	// CreateProfileWithResponse Create a profile, or fork one
+	//
+	// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/profiles (the `CreateProfile` operationId).
+	CreateProfileWithResponse(ctx context.Context, body CreateProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateProfileResponse, error)
+
+	// GetProfileWithResponse One profile, resolved under the org gate
+	//
+	// The profile detail screen (001 US5): every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted (FR-036). The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/profiles/{slug} (the `GetProfile` operationId).
+	GetProfileWithResponse(ctx context.Context, slug string, reqEditors ...RequestEditorFn) (*GetProfileResponse, error)
+
+	// SetProfileEntriesWithBodyWithResponse Set the packages a profile holds and how each one tracks versions
+	//
+	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/profiles/{slug}/entries (the `SetProfileEntries` operationId).
+	SetProfileEntriesWithBodyWithResponse(ctx context.Context, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetProfileEntriesResponse, error)
+
+	// SetProfileEntriesWithResponse Set the packages a profile holds and how each one tracks versions
+	//
+	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/profiles/{slug}/entries (the `SetProfileEntries` operationId).
+	SetProfileEntriesWithResponse(ctx context.Context, slug string, body SetProfileEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*SetProfileEntriesResponse, error)
+
+	// PublishRevisionWithBodyWithResponse Publish the next immutable revision
+	//
+	// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/profiles/{slug}/revisions (the `PublishRevision` operationId).
+	PublishRevisionWithBodyWithResponse(ctx context.Context, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PublishRevisionResponse, error)
+
+	// PublishRevisionWithResponse Publish the next immutable revision
+	//
+	// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/profiles/{slug}/revisions (the `PublishRevision` operationId).
+	PublishRevisionWithResponse(ctx context.Context, slug string, body PublishRevisionJSONRequestBody, reqEditors ...RequestEditorFn) (*PublishRevisionResponse, error)
+
 	// GetRevisionWithResponse Fetch a resolved revision lockfile
 	//
 	// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted (FR-036).
@@ -4589,6 +5936,42 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /v1/profiles/{slug}/revisions/{revision} (the `GetRevision` operationId).
 	GetRevisionWithResponse(ctx context.Context, slug string, revision string, reqEditors ...RequestEditorFn) (*GetRevisionResponse, error)
+
+	// SetProfileSharingWithBodyWithResponse Set the role each member and identity-provider group holds
+	//
+	// Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/profiles/{slug}/sharing (the `SetProfileSharing` operationId).
+	SetProfileSharingWithBodyWithResponse(ctx context.Context, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetProfileSharingResponse, error)
+
+	// SetProfileSharingWithResponse Set the role each member and identity-provider group holds
+	//
+	// Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/profiles/{slug}/sharing (the `SetProfileSharing` operationId).
+	SetProfileSharingWithResponse(ctx context.Context, slug string, body SetProfileSharingJSONRequestBody, reqEditors ...RequestEditorFn) (*SetProfileSharingResponse, error)
+
+	// SetProfileTargetsWithBodyWithResponse Choose which agent directories a client writes
+	//
+	// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/profiles/{slug}/targets (the `SetProfileTargets` operationId).
+	SetProfileTargetsWithBodyWithResponse(ctx context.Context, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetProfileTargetsResponse, error)
+
+	// SetProfileTargetsWithResponse Choose which agent directories a client writes
+	//
+	// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/profiles/{slug}/targets (the `SetProfileTargets` operationId).
+	SetProfileTargetsWithResponse(ctx context.Context, slug string, body SetProfileTargetsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetProfileTargetsResponse, error)
 
 	// ScannerSummaryWithResponse The Scanner screen's headline figures
 	//
@@ -5731,6 +7114,352 @@ func (r ListProfilesResponse) ContentType() string {
 	return ""
 }
 
+type CreateProfileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *Profile
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Error
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateProfileResponse) GetJSON201() *Profile {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r CreateProfileResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CreateProfileResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r CreateProfileResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r CreateProfileResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r CreateProfileResponse) GetApplicationproblemJSON409() *Error {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r CreateProfileResponse) GetApplicationproblemJSON415() *Error {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CreateProfileResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r CreateProfileResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateProfileResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateProfileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateProfileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateProfileResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetProfileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ProfileDetail
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetProfileResponse) GetJSON200() *ProfileDetail {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetProfileResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetProfileResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r GetProfileResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetProfileResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetProfileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetProfileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetProfileResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SetProfileEntriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ProfileDetail
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetProfileEntriesResponse) GetJSON200() *ProfileDetail {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r SetProfileEntriesResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r SetProfileEntriesResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r SetProfileEntriesResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r SetProfileEntriesResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r SetProfileEntriesResponse) GetApplicationproblemJSON415() *Error {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r SetProfileEntriesResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r SetProfileEntriesResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r SetProfileEntriesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetProfileEntriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetProfileEntriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetProfileEntriesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// PublishRevisionResponse201Headers the declared response headers of an HTTP 201 response for PublishRevision
+type PublishRevisionResponse201Headers struct {
+	Location *string
+}
+
+type PublishRevisionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *Lockfile
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+	// Headers201 the parsed response headers for an HTTP 201 response
+	Headers201 *PublishRevisionResponse201Headers
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r PublishRevisionResponse) GetJSON201() *Lockfile {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r PublishRevisionResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r PublishRevisionResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r PublishRevisionResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r PublishRevisionResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r PublishRevisionResponse) GetApplicationproblemJSON415() *Error {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r PublishRevisionResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r PublishRevisionResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r PublishRevisionResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PublishRevisionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PublishRevisionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PublishRevisionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetRevisionResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -5794,6 +7523,186 @@ func (r GetRevisionResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetRevisionResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SetProfileSharingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ProfileDetail
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetProfileSharingResponse) GetJSON200() *ProfileDetail {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r SetProfileSharingResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r SetProfileSharingResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r SetProfileSharingResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r SetProfileSharingResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r SetProfileSharingResponse) GetApplicationproblemJSON415() *Error {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r SetProfileSharingResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r SetProfileSharingResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r SetProfileSharingResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetProfileSharingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetProfileSharingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetProfileSharingResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SetProfileTargetsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ProfileDetail
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetProfileTargetsResponse) GetJSON200() *ProfileDetail {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r SetProfileTargetsResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r SetProfileTargetsResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r SetProfileTargetsResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r SetProfileTargetsResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r SetProfileTargetsResponse) GetApplicationproblemJSON415() *Error {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r SetProfileTargetsResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r SetProfileTargetsResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r SetProfileTargetsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetProfileTargetsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetProfileTargetsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetProfileTargetsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -6417,6 +8326,111 @@ func (c *ClientWithResponses) ListProfilesWithResponse(ctx context.Context, reqE
 	return ParseListProfilesResponse(rsp)
 }
 
+// CreateProfileWithBodyWithResponse Create a profile, or fork one
+//
+// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/profiles (the `CreateProfile` operationId).
+func (c *ClientWithResponses) CreateProfileWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateProfileResponse, error) {
+	rsp, err := c.CreateProfileWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateProfileResponse(rsp)
+}
+
+// CreateProfileWithResponse Create a profile, or fork one
+//
+// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/profiles (the `CreateProfile` operationId).
+func (c *ClientWithResponses) CreateProfileWithResponse(ctx context.Context, body CreateProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateProfileResponse, error) {
+	rsp, err := c.CreateProfile(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateProfileResponse(rsp)
+}
+
+// GetProfileWithResponse One profile, resolved under the org gate
+//
+// The profile detail screen (001 US5): every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted (FR-036). The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/profiles/{slug} (the `GetProfile` operationId).
+func (c *ClientWithResponses) GetProfileWithResponse(ctx context.Context, slug string, reqEditors ...RequestEditorFn) (*GetProfileResponse, error) {
+	rsp, err := c.GetProfile(ctx, slug, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetProfileResponse(rsp)
+}
+
+// SetProfileEntriesWithBodyWithResponse Set the packages a profile holds and how each one tracks versions
+//
+// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/profiles/{slug}/entries (the `SetProfileEntries` operationId).
+func (c *ClientWithResponses) SetProfileEntriesWithBodyWithResponse(ctx context.Context, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetProfileEntriesResponse, error) {
+	rsp, err := c.SetProfileEntriesWithBody(ctx, slug, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetProfileEntriesResponse(rsp)
+}
+
+// SetProfileEntriesWithResponse Set the packages a profile holds and how each one tracks versions
+//
+// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/profiles/{slug}/entries (the `SetProfileEntries` operationId).
+func (c *ClientWithResponses) SetProfileEntriesWithResponse(ctx context.Context, slug string, body SetProfileEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*SetProfileEntriesResponse, error) {
+	rsp, err := c.SetProfileEntries(ctx, slug, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetProfileEntriesResponse(rsp)
+}
+
+// PublishRevisionWithBodyWithResponse Publish the next immutable revision
+//
+// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/profiles/{slug}/revisions (the `PublishRevision` operationId).
+func (c *ClientWithResponses) PublishRevisionWithBodyWithResponse(ctx context.Context, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PublishRevisionResponse, error) {
+	rsp, err := c.PublishRevisionWithBody(ctx, slug, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePublishRevisionResponse(rsp)
+}
+
+// PublishRevisionWithResponse Publish the next immutable revision
+//
+// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/profiles/{slug}/revisions (the `PublishRevision` operationId).
+func (c *ClientWithResponses) PublishRevisionWithResponse(ctx context.Context, slug string, body PublishRevisionJSONRequestBody, reqEditors ...RequestEditorFn) (*PublishRevisionResponse, error) {
+	rsp, err := c.PublishRevision(ctx, slug, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePublishRevisionResponse(rsp)
+}
+
 // GetRevisionWithResponse Fetch a resolved revision lockfile
 //
 // `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted (FR-036).
@@ -6430,6 +8444,66 @@ func (c *ClientWithResponses) GetRevisionWithResponse(ctx context.Context, slug 
 		return nil, err
 	}
 	return ParseGetRevisionResponse(rsp)
+}
+
+// SetProfileSharingWithBodyWithResponse Set the role each member and identity-provider group holds
+//
+// Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/profiles/{slug}/sharing (the `SetProfileSharing` operationId).
+func (c *ClientWithResponses) SetProfileSharingWithBodyWithResponse(ctx context.Context, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetProfileSharingResponse, error) {
+	rsp, err := c.SetProfileSharingWithBody(ctx, slug, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetProfileSharingResponse(rsp)
+}
+
+// SetProfileSharingWithResponse Set the role each member and identity-provider group holds
+//
+// Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/profiles/{slug}/sharing (the `SetProfileSharing` operationId).
+func (c *ClientWithResponses) SetProfileSharingWithResponse(ctx context.Context, slug string, body SetProfileSharingJSONRequestBody, reqEditors ...RequestEditorFn) (*SetProfileSharingResponse, error) {
+	rsp, err := c.SetProfileSharing(ctx, slug, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetProfileSharingResponse(rsp)
+}
+
+// SetProfileTargetsWithBodyWithResponse Choose which agent directories a client writes
+//
+// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/profiles/{slug}/targets (the `SetProfileTargets` operationId).
+func (c *ClientWithResponses) SetProfileTargetsWithBodyWithResponse(ctx context.Context, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetProfileTargetsResponse, error) {
+	rsp, err := c.SetProfileTargetsWithBody(ctx, slug, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetProfileTargetsResponse(rsp)
+}
+
+// SetProfileTargetsWithResponse Choose which agent directories a client writes
+//
+// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/profiles/{slug}/targets (the `SetProfileTargets` operationId).
+func (c *ClientWithResponses) SetProfileTargetsWithResponse(ctx context.Context, slug string, body SetProfileTargetsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetProfileTargetsResponse, error) {
+	rsp, err := c.SetProfileTargets(ctx, slug, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetProfileTargetsResponse(rsp)
 }
 
 // ScannerSummaryWithResponse The Scanner screen's headline figures
@@ -7404,6 +9478,298 @@ func ParseListProfilesResponse(rsp *http.Response) (*ListProfilesResponse, error
 	return response, nil
 }
 
+// ParseCreateProfileResponse parses an HTTP response from a CreateProfileWithResponse call
+func ParseCreateProfileResponse(rsp *http.Response) (*CreateProfileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateProfileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Profile
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetProfileResponse parses an HTTP response from a GetProfileWithResponse call
+func ParseGetProfileResponse(rsp *http.Response) (*GetProfileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetProfileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProfileDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetProfileEntriesResponse parses an HTTP response from a SetProfileEntriesWithResponse call
+func ParseSetProfileEntriesResponse(rsp *http.Response) (*SetProfileEntriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetProfileEntriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProfileDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePublishRevisionResponse parses an HTTP response from a PublishRevisionWithResponse call
+func ParsePublishRevisionResponse(rsp *http.Response) (*PublishRevisionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PublishRevisionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Lockfile
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 201:
+		var headers PublishRevisionResponse201Headers
+		if values := rsp.Header.Values("Location"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Location", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.Location = &value
+		}
+		response.Headers201 = &headers
+	}
+
+	return response, nil
+}
+
 // ParseGetRevisionResponse parses an HTTP response from a GetRevisionWithResponse call
 func ParseGetRevisionResponse(rsp *http.Response) (*GetRevisionResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -7438,6 +9804,156 @@ func ParseGetRevisionResponse(rsp *http.Response) (*GetRevisionResponse, error) 
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetProfileSharingResponse parses an HTTP response from a SetProfileSharingWithResponse call
+func ParseSetProfileSharingResponse(rsp *http.Response) (*SetProfileSharingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetProfileSharingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProfileDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetProfileTargetsResponse parses an HTTP response from a SetProfileTargetsWithResponse call
+func ParseSetProfileTargetsResponse(rsp *http.Response) (*SetProfileTargetsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetProfileTargetsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProfileDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest Error

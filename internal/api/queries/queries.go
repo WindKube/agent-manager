@@ -42,20 +42,42 @@ var ErrNotFound = errors.New("not found")
 //   - a direct user membership naming this identity;
 //   - a group membership naming one of the identity's mapped groups.
 func Readable(alias string, p auth.Principal) (predicate string, args []any) {
-	var subject []string
+	subject, args, matchable := subjectPredicate("m", p)
+
+	clauses := []string{alias + ".visibility = 'organisation'"}
+	if matchable {
+		clauses = append(clauses, "exists (select 1 from membership as m where m.profile_id = "+
+			alias+".id and "+subject+")")
+	}
+	return "(" + strings.Join(clauses, " or ") + ")", args
+}
+
+// subjectPredicate renders "this membership row names this identity", over the
+// given alias of table `membership`, plus its arguments in order.
+//
+// It is separate from Readable because two questions need it and they are not
+// the same question: Readable asks whether ANY row names the caller, and the
+// profile detail asks WHICH ROLE the rows that name them carry. Spelling the
+// email/subject/group matching twice is how the two come to disagree about, say,
+// whether a subject as well as an email may name a member.
+//
+// matchable is false when the principal can match no membership row at all — no
+// email, no subject, no group. A caller must then leave the clause out
+// altogether rather than emit a subquery that is constantly false, which is what
+// keeps the emitted predicate for an anonymous-ish identity down to the
+// visibility test.
+func subjectPredicate(alias string, p auth.Principal) (predicate string, args []any, matchable bool) {
+	var clauses []string
 	if refs := p.Refs(); len(refs) > 0 {
-		subject = append(subject, "(m.subject_kind = 'user' and m.subject_ref in (?))")
+		clauses = append(clauses, "("+alias+".subject_kind = 'user' and "+alias+".subject_ref in (?))")
 		args = append(args, bun.List(refs))
 	}
 	if len(p.Groups) > 0 {
-		subject = append(subject, "(m.subject_kind = 'group' and m.subject_ref in (?))")
+		clauses = append(clauses, "("+alias+".subject_kind = 'group' and "+alias+".subject_ref in (?))")
 		args = append(args, bun.List(p.Groups))
 	}
-
-	clauses := []string{alias + ".visibility = 'organisation'"}
-	if len(subject) > 0 {
-		clauses = append(clauses, "exists (select 1 from membership as m where m.profile_id = "+
-			alias+".id and ("+strings.Join(subject, " or ")+"))")
+	if len(clauses) == 0 {
+		return "", nil, false
 	}
-	return "(" + strings.Join(clauses, " or ") + ")", args
+	return "(" + strings.Join(clauses, " or ") + ")", args, true
 }

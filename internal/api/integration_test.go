@@ -181,6 +181,16 @@ var (
 	// contractor is in a group with NO mapping. It exists to prove that an
 	// unmapped group grants nothing.
 	contractor actor
+
+	// curator, mate and punter exist for the profile write path and for nothing
+	// else. They are separate people rather than reuses of kw and an because the
+	// FR-044 assertions above compare those two identities' readable lists against
+	// exact sets: a test that created a profile readable by kw would change the
+	// answer to a question another test asks. Every profile they create is
+	// `private` and shared only with each other, so no list in this file moves.
+	curator actor
+	mate    actor
+	punter  actor
 )
 
 func seed(ctx context.Context) error {
@@ -196,6 +206,18 @@ func seed(ctx context.Context) error {
 		if err := insert(mapping); err != nil {
 			return fmt.Errorf("seed group_role_map: %w", err)
 		}
+	}
+
+	// The singleton. Resolving a profile reads the gate out of it and there is no
+	// default: a hub whose policy row is missing has no gate, and queries.ErrNoPolicy
+	// refuses rather than guessing. `warn-with-override` is the value the
+	// representative dataset ships, so the fixture starts where an operator does.
+	if err := insert(&models.OrgPolicy{
+		ID:                   models.OrgPolicySingletonID,
+		ScanGate:             models.ScanGateWarnWithOverride,
+		DefaultVersionPolicy: models.VersionPolicyFloatingLatest,
+	}); err != nil {
+		return fmt.Errorf("seed org_policy: %w", err)
 	}
 
 	profiles := map[string]*models.Profile{}
@@ -354,6 +376,12 @@ func seed(ctx context.Context) error {
 			Groups: []string{"eng-security"}},
 		&contractor: {Subject: "sub-ct", Email: "contractor@example.com", Name: "A Contractor",
 			Groups: []string{"contractors"}},
+		&curator: {Subject: "sub-cu", Email: "curator@example.com", Name: "A Curator",
+			Groups: []string{"eng-platform"}},
+		&mate: {Subject: "sub-mt", Email: "mate@example.com", Name: "A Maintainer",
+			Groups: []string{"eng-platform"}},
+		&punter: {Subject: "sub-pu", Email: "punter@example.com", Name: "A Consumer",
+			Groups: []string{"eng-platform"}},
 	} {
 		result, err := commands.Login(ctx, db, commands.LoginInput{
 			Claims: claims, SessionTTL: time.Hour, Source: auth.SourceWeb,

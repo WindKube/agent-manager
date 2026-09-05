@@ -39,6 +39,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"agent-manager/internal/auth"
 	"agent-manager/internal/seed"
 )
 
@@ -420,8 +421,73 @@ func TestTheTwoDirectoryUsersGetDifferentGroups(t *testing.T) {
 			"assertion in this file, and then both users resolve to the same role and the "+
 			"product cannot demonstrate a role boundary at all")
 
-	require.Equal(t, []string{seed.GroupEngPlatform}, platform.Groups)
-	require.Equal(t, []string{seed.GroupEngSecurity}, security.Groups)
+	require.ElementsMatch(t, []string{seed.GroupEngPlatform, seed.GroupEngAll}, platform.Groups)
+	require.ElementsMatch(t, []string{seed.GroupEngSecurity, seed.GroupEngAll}, security.Groups)
+}
+
+// The measurement the shared group rests on, pinned rather than described.
+//
+// glauth gives each user ONE primarygroup and any number of `othergroups`, and
+// nothing in Dex's configuration says which of those a group search returns —
+// the connector asks for group entries whose `uniqueMember` holds the user's DN
+// and takes whatever comes back. A directory that listed only primary members
+// there would leave this arrangement working, silent and useless: both users
+// would still sign in, still resolve their role, and still be outside the group
+// the dataset shares a profile with.
+//
+// Measured through the shipped containers on 2026-08-31: both memberships arrive
+// in one claim. The three assertions below are that measurement.
+func TestBothRoleHoldingDirectoryUsersArriveInTheGroupTheyShare(t *testing.T) {
+	requireStack(t)
+
+	for _, user := range seed.DirectoryUsers {
+		t.Run(user.Username, func(t *testing.T) {
+			groups := signIn(t, user.Email).Groups
+
+			if user.Shared == "" {
+				require.NotContains(t, groups, seed.GroupEngAll,
+					"this is the account that must resolve NO role, and %q maps to one",
+					seed.GroupEngAll)
+				require.Len(t, groups, 1)
+				return
+			}
+			require.Contains(t, groups, user.Shared,
+				"glauth's othergroups did not reach the claim, so the group a profile is shared "+
+					"with contains nobody who can sign in")
+			require.Contains(t, groups, user.Group, "and the primary membership is still there")
+		})
+	}
+}
+
+// eng-all maps to profile-consumer (seed.GroupRoles), so the secondary membership
+// is handing both role-holders a SECOND role — and the whole arrangement is only
+// harmless because auth.HighestRole takes the most privileged one. Reversing that
+// precedence, or mapping eng-all to something above catalog-admin, would demote
+// the local stack's administrator with nothing failing anywhere.
+func TestTheSharedDirectoryGroupDoesNotChangeEitherUsersRole(t *testing.T) {
+	requireStack(t)
+
+	for _, user := range seed.DirectoryUsers {
+		if user.Shared == "" {
+			continue
+		}
+		t.Run(user.Username, func(t *testing.T) {
+			// group_role_map's lookup, done in Go: every mapped role the claim's
+			// groups resolve to, then the precedence rule over the lot.
+			var mapped []string
+			for _, group := range signIn(t, user.Email).Groups {
+				if role := seed.RoleOf(group); role != "" {
+					mapped = append(mapped, role)
+				}
+			}
+
+			require.Contains(t, mapped, seed.RoleOf(user.Shared),
+				"the shared group resolves to no role, so this test is asserting nothing")
+			require.Equal(t, seed.RoleOf(user.Group), string(auth.HighestRole(mapped)),
+				"the role this person resolves has to be the one their primary group grants, "+
+					"not the one the group they merely share with a colleague grants")
+		})
+	}
 }
 
 // ---------------------------------------------------------------------------

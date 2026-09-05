@@ -163,7 +163,11 @@ func Compute(in Inputs) (Plan, error) {
 		}
 	}
 
-	b.versionSplits(in.Record, desired, order)
+	reconciled := make(map[string]bool, len(lockfiles))
+	for _, lf := range lockfiles {
+		reconciled[lf.Profile.Slug] = true
+	}
+	b.versionSplits(in.Record, desired, order, reconciled)
 	b.destCollisions(desired, order)
 
 	// Pass 4: every recorded entry of a profile under reconciliation is either matched or removed.
@@ -312,10 +316,21 @@ func (b *builder) route(profile string, t record.Target, target Target, e hub.Lo
 	return d, nil
 }
 
-// versionSplits groups by package id across all profiles and targets (not
-// per target): a disagreement under one target is still a disagreement. The
-// digest arm catches one version with two byte-sets, same problem as two versions.
-func (b *builder) versionSplits(rec *record.Record, desired map[entryKey]desiredEntry, order []entryKey) {
+// versionSplits is FR-012. Grouping is by package id across ALL profiles and
+// targets, not per target: the requirement is about a set of profiles
+// disagreeing, and a disagreement that only bites under one target is the same
+// disagreement. The digest arm catches the subtler shape — one version, two
+// byte-sets — which is one directory with two possible contents just as much
+// as two versions are.
+//
+// A profile need not be part of this run to be one of the two disagreeing:
+// the record still says what it has installed, and dest is a function of id
+// and target alone, so its directory is the same one this run is about to
+// write. reconciled is the set of profiles this run touches at all — a record
+// row for any other profile is folded in as a claim just as live as an active
+// one, or syncing profile B alone could overwrite what profile A installed
+// with no conflict ever raised.
+func (b *builder) versionSplits(rec *record.Record, desired map[entryKey]desiredEntry, order []entryKey, reconciled map[string]bool) {
 	byID := map[string][]desiredEntry{}
 	var ids []string
 	for _, key := range order {
@@ -333,6 +348,24 @@ func (b *builder) versionSplits(rec *record.Record, desired map[entryKey]desired
 			versions[group[i].version] = struct{}{}
 			digests[group[i].digest] = struct{}{}
 		}
+
+		var outsideClaims []Claim
+		if rec != nil {
+			refs := rec.ByID(id)
+			for i := range refs {
+				ref := &refs[i]
+				if reconciled[ref.Profile] {
+					continue // its own row is already in group, or is being replaced by this run
+				}
+				versions[ref.Entry.Version] = struct{}{}
+				digests[ref.Entry.Digest] = struct{}{}
+				outsideClaims = append(outsideClaims, Claim{
+					Profile: ref.Profile, Target: ref.Entry.Target,
+					ID: ref.Entry.ID, Version: ref.Entry.Version,
+				})
+			}
+		}
+
 		if len(versions) < 2 && len(digests) < 2 {
 			continue
 		}
@@ -340,8 +373,9 @@ func (b *builder) versionSplits(rec *record.Record, desired map[entryKey]desired
 		if len(versions) < 2 {
 			detail = "the versions agree but the digests do not, so one directory has two possible contents"
 		}
+		claims := append(claimsOf(group), outsideClaims...)
 		b.other = append(b.other, Conflict{
-			Kind: ConflictVersionSplit, ID: id, Claims: claimsOf(group), Detail: detail,
+			Kind: ConflictVersionSplit, ID: id, Claims: dedupeClaims(claims), Detail: detail,
 			Installed: installedClaims(rec, id),
 		})
 	}

@@ -885,6 +885,41 @@ func TestFR012NamesBothProfilesAndBothVersionsAndWhatIsInstalled(t *testing.T) {
 	}
 }
 
+// TestVersionSplitAgainstAProfileNotInThisRunStillRefuses reproduces syncing
+// profile A (installing a package floating at one version), then later
+// syncing profile B ALONE, which pins the same package at a different
+// version: e2e/smoke's own row never enters this run's Lockfiles, but its
+// destination is the one this run is about to write, and the split must
+// refuse exactly as if both profiles were being synced together.
+func TestVersionSplitAgainstAProfileNotInThisRunStillRefuses(t *testing.T) {
+	t.Parallel()
+
+	p, err := Compute(Inputs{
+		Lockfiles: []*hub.Lockfile{
+			lf("example/platform-engineer", []string{"claude-code"}, skill("example/adr-writer", "3.0.2", 1)),
+		},
+		Record: rec(t, map[string][]installedEntry{
+			"e2e/smoke": {{id: "example/adr-writer", version: "3.1.0", digestSeed: 9}},
+		}),
+		Targets: []Target{claudeCodeTarget(skillsRoot)},
+	})
+	require.NoError(t, err)
+	require.Len(t, p.Conflicts, 1)
+	require.True(t, p.Refuses(), "a version split must refuse the run, not install over the other profile")
+
+	c := p.Conflicts[0]
+	require.Equal(t, ConflictVersionSplit, c.Kind)
+	require.Equal(t, []Claim{
+		{Profile: "e2e/smoke", Target: record.TargetClaudeCode, ID: "example/adr-writer", Version: "3.1.0"},
+		{Profile: "example/platform-engineer", Target: record.TargetClaudeCode, ID: "example/adr-writer", Version: "3.0.2"},
+	}, c.Claims)
+
+	msg := c.String()
+	for _, must := range []string{"e2e/smoke", "example/platform-engineer", "3.1.0", "3.0.2"} {
+		require.Contains(t, msg, must)
+	}
+}
+
 func TestRemovalPathsAreTwoLiteralNamesAndNeverAPattern(t *testing.T) {
 	t.Parallel()
 

@@ -525,6 +525,35 @@ func TestApplyAdoptsItsOwnLeftoverFromAnInterruptedRun(t *testing.T) {
 	require.Len(t, loadedRecord(t, f).ByID(c.ID), 1, "the record row is restored")
 }
 
+// TestApplyAdoptsAnotherProfilesShareOfADestinationWithoutTheInterruptedWarning
+// is the other source of a marker with no row for THIS profile: a second
+// profile installing the same package at the same version and digest, which
+// plan.Compute's version-split check has already confirmed agree. That is
+// ordinary sharing, not a crash, and must read as such rather than as
+// "a previous sync was interrupted".
+func TestApplyAdoptsAnotherProfilesShareOfADestinationWithoutTheInterruptedWarning(t *testing.T) {
+	f := newApplyFixture(t)
+	c := f.add(t, "acme/lint-go", "1.4.0", skillBundle(t))
+	_, err := f.applier(t).Apply(context.Background(), planOf(c))
+	require.NoError(t, err)
+
+	other := c
+	other.Profile = "other-profile"
+
+	res, err := f.applier(t, func(cfg *Config) {
+		cfg.Profiles = append(cfg.Profiles, ProfileState{
+			Slug: other.Profile, Revision: 1, Targets: []record.Target{record.TargetClaudeCode},
+		})
+	}).Apply(context.Background(), planOf(other))
+	require.NoError(t, err, "an agreeing second profile must be adopted, not refused")
+	require.Len(t, res.Installed, 1)
+	require.False(t, f.log.warnedAbout(t, "interrupted between the install and the record write"),
+		"this is ordinary sharing between two profiles, not a crash recovery")
+
+	refs := loadedRecord(t, f).ByID(c.ID)
+	require.Len(t, refs, 2, "both profiles now claim the entry")
+}
+
 // republishFixture is the state a run killed between the swap and the record
 // write leaves behind for a REPUBLISH: the hub served new bytes under an
 // unchanged version, the tree and the marker are at the new digest, and the

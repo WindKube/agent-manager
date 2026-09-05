@@ -15,6 +15,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"time"
 
@@ -299,7 +300,7 @@ func New(deps Deps, opts Options) *Server {
 	// default and opting out means editing the one list that names the
 	// unauthenticated set. It runs after correlation so its own log lines and its
 	// redirect carry the request's id.
-	engine.Use(correlation(deps.Log), recovery(), srv.guard())
+	engine.Use(correlation(deps.Log), recovery(), srv.guard(), sameOrigin())
 	srv.register()
 	return srv
 }
@@ -466,4 +467,33 @@ func recovery() gin.HandlerFunc {
 			Msg("panic serving request")
 		c.AbortWithStatus(http.StatusInternalServerError)
 	})
+}
+
+// sameOrigin is a second line of defence behind SameSite=Lax, which a browser
+// with third-party cookies re-enabled (or a bug in one) does not enforce. A
+// modern browser sends Sec-Fetch-Site on every request; where it is absent,
+// Origin is the fallback every browser old enough to lack it still sends on a
+// state-changing request.
+func sameOrigin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		switch c.Request.Method {
+		case http.MethodGet, http.MethodHead, http.MethodOptions:
+			c.Next()
+			return
+		}
+
+		if site := c.GetHeader("Sec-Fetch-Site"); site != "" {
+			if site != "same-origin" && site != "none" {
+				c.AbortWithStatus(http.StatusForbidden)
+				return
+			}
+		} else if origin := c.GetHeader("Origin"); origin != "" {
+			u, err := url.Parse(origin)
+			if err != nil || u.Host != c.Request.Host {
+				c.AbortWithStatus(http.StatusForbidden)
+				return
+			}
+		}
+		c.Next()
+	}
 }

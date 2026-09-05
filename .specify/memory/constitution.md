@@ -161,10 +161,11 @@ in the feature's `plan.md` Complexity Tracking table.
 | Tests | `stretchr/testify`, `testcontainers-go` |
 
 This project takes **no dependency on the monorepo's `go-modules`**. It is self-contained:
-`doyensec/safeurl` for outbound fetches of user-supplied URLs, `google/go-github` for
-repository access, and a project-owned parser for repository URLs. The trade is deliberate
-— independence over reuse — and the cost is that the SSRF and URL-parsing behaviour must be
-proven by this project's own tests rather than inherited.
+`internal/fetch`, a project-owned SSRF-hardened client, for outbound fetches of
+user-supplied URLs, `google/go-github` for repository access, and a project-owned parser
+for repository URLs. The trade is deliberate — independence over reuse — and the cost is
+that the SSRF and URL-parsing behaviour must be proven by this project's own tests rather
+than inherited.
 
 Monorepo build rules apply: the Docker build context is the repository root, the project
 directory must be admitted in the root `.dockerignore` allowlist, and the project must
@@ -212,10 +213,16 @@ project owner to change.
 Versioning is semantic: MAJOR for removing or redefining a principle, MINOR for adding a
 principle or a materially new constraint, PATCH for wording and clarification.
 
-**Version**: 1.3.1 | **Ratified**: 2026-08-27 | **Last Amended**: 2026-08-31
+**Version**: 1.3.2 | **Ratified**: 2026-08-27 | **Last Amended**: 2026-09-04
 
 ### Amendment record
 
+- **1.3.2** (2026-09-04) — No principle changed. The Technology Constraints table named
+  `doyensec/safeurl` as the sanctioned SSRF client, but R10 rejected it before feature 001
+  shipped: its check runs per connect attempt, and a name that answers with both a public
+  and a private address gets the private attempt refused and then connects over the public
+  one anyway. `internal/fetch` has been the actual client since then, proven by its own
+  six-case suite rather than inherited. The table is corrected to name it.
 - **1.3.1** (2026-08-31) — No principle changed. Recorded, because the repository spent a
   feature out of step with this document and nothing said so: principle VI and the Technology
   Constraints table both name **Dex** as the local identity substitute, and feature 001's

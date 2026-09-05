@@ -1,19 +1,15 @@
-// Package outbox is the only door to the job queue.
+// Package outbox is the only door to the job queue. The queue lives in its
+// own PostgreSQL database, so a mutation cannot enqueue inside its own
+// transaction: Writer inserts a row inside the caller's transaction instead,
+// and Relay moves committed rows into River, so a commit publishes both the
+// state change and its jobs, or neither.
 //
-// Constitution principle IX: the queue lives in its own PostgreSQL database, so a
-// mutation cannot enqueue inside its own transaction. The guarantee that split
-// removed is rebuilt rather than abandoned — Writer inserts a row inside the
-// CALLER's transaction, and Relay moves committed rows into River. A commit
-// therefore publishes both the state change and its jobs, or neither.
-//
-// Delivery is at-least-once, and that is a deliberate choice of failure mode. The
-// relay inserts into River BEFORE it marks the outbox row delivered, because the
-// other order loses the job outright if the process dies in between; this order
-// duplicates it instead. The idempotency key is (job_kind, subject_id,
-// subject_version) and it lives on the job's TARGET ROW — a fetch for a version
-// with committed bytes finds them, a scan for a version with a scan at the current
-// pack_version finds it — never in the queue, so a redelivery is answered by the
-// data rather than by the queue remembering.
+// Delivery is at-least-once, deliberately: the relay inserts into River
+// before it marks the outbox row delivered, since the other order loses the
+// job outright if the process dies in between, while this order only
+// duplicates it. The idempotency key lives on the job's target row — never
+// in the queue — so a redelivery is answered by the data rather than by the
+// queue remembering.
 //
 // No code path may enqueue by calling River from a request handler. It goes
 // through Writer, or it is a defect.
@@ -36,7 +32,7 @@ import (
 // rollback — the notification cannot outrun the row it refers to.
 const NotifyChannel = "outbox_new"
 
-// Kind is an outbox row's job_kind (data-model.md).
+// Kind is an outbox row's job_kind.
 type Kind string
 
 const (
@@ -79,9 +75,10 @@ func Queue(k Kind) string {
 type Job struct {
 	Kind Kind
 
-	// SubjectID and SubjectVersion complete the idempotency key from R5. They name
-	// the row whose state answers "has this already happened?" — the version for a
-	// fetch, the version plus rule-pack version for a scan. A sweep has no subject.
+	// SubjectID and SubjectVersion complete the idempotency key. They name the
+	// row whose state answers "has this already happened?" — the version for
+	// a fetch, the version plus rule-pack version for a scan. A sweep has no
+	// subject.
 	SubjectID      uuid.UUID
 	SubjectVersion string
 
@@ -90,8 +87,8 @@ type Job struct {
 	Payload any
 }
 
-// IdempotencyKey is (job_kind, subject_id, subject_version), the key the handler
-// uses to recognise a redelivery.
+// IdempotencyKey is (job_kind, subject_id, subject_version), the key the
+// handler uses to recognise a redelivery.
 func (j Job) IdempotencyKey() string {
 	subject := ""
 	if j.SubjectID != uuid.Nil {
@@ -139,12 +136,9 @@ type Enqueuer interface {
 	Enqueue(ctx context.Context, tx bun.IDB, jobs ...Job) ([]uuid.UUID, error)
 }
 
-// Writer inserts outbox rows.
-//
-// It deliberately holds NO database handle: every call takes the caller's
-// transaction, so "enqueue outside a transaction" is not expressible. That is what
-// makes principle IX structural here rather than a convention somebody has to
-// remember.
+// Writer inserts outbox rows. It deliberately holds no database handle:
+// every call takes the caller's transaction, so "enqueue outside a
+// transaction" is not expressible.
 type Writer struct{}
 
 func NewWriter() Writer { return Writer{} }
@@ -191,11 +185,8 @@ func (Writer) Enqueue(ctx context.Context, tx bun.IDB, jobs ...Job) ([]uuid.UUID
 	}
 
 	// One notification per transaction is enough: the relay drains everything
-	// pending when it wakes, so a second wake-up would only find an empty table.
-	//
-	// The placeholder is bun's `?`, not Postgres's `$1`: bun formats raw SQL itself
-	// and passes no arguments to the driver, so a `$1` here reaches Postgres
-	// unbound.
+	// pending when it wakes. The placeholder is bun's `?`, not Postgres's
+	// `$1`: bun formats raw SQL itself and passes no arguments to the driver.
 	if _, err := tx.ExecContext(ctx, "select pg_notify(?, '')", NotifyChannel); err != nil {
 		return nil, fmt.Errorf("notify %s: %w", NotifyChannel, err)
 	}

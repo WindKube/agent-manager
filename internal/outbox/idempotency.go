@@ -8,20 +8,17 @@ import (
 	"github.com/uptrace/bun"
 )
 
-// Delivery is at-least-once (principle IX), so every handler must be able to tell
-// a redelivery from a new instruction. The answer comes from the job's TARGET ROW
-// and never from the queue — the queue has no memory to consult, which is the
-// whole reason the idempotency key is (job_kind, subject_id, subject_version)
-// persisted in the application database (R5).
-//
-// The predicates live here rather than in each handler so the fetcher's answer and
-// the scanner's cannot drift apart.
+// Delivery is at-least-once, so every handler must be able to tell a
+// redelivery from a new instruction. The answer comes from the job's target
+// row, never the queue, which has no memory to consult. The predicates live
+// here rather than in each handler so the fetcher's answer and the
+// scanner's cannot drift apart.
 
 // Delivered reports whether the work a job describes is already on record.
-//
-// SubjectID is the version id for both real kinds. SubjectVersion is the semver
-// for a fetch and the rule-pack version for a scan, which is what makes "rescan
-// under a new rule pack" work: the key moves, so the guard opens.
+// SubjectID is the version id for both real kinds; SubjectVersion is the
+// semver for a fetch and the rule-pack version for a scan, which is what
+// makes "rescan under a new rule pack" work — the key moves, so the guard
+// opens.
 func Delivered(ctx context.Context, db bun.IDB, job Job) (bool, error) {
 	if db == nil {
 		return false, fmt.Errorf("idempotency check for %s: no database handle", job.Kind)
@@ -43,9 +40,9 @@ func Delivered(ctx context.Context, db bun.IDB, job Job) (bool, error) {
 	}
 }
 
-// bytesCommitted answers "does this version already have committed bytes?". The
-// digest is the record that they landed: it is written in the same transaction as
-// the object key and never mutated afterwards (principle IV).
+// bytesCommitted answers "does this version already have committed bytes?".
+// The digest is the record that they landed: written in the same
+// transaction as the object key and never mutated afterwards.
 func bytesCommitted(ctx context.Context, db bun.IDB, versionID uuid.UUID) (bool, error) {
 	if versionID == uuid.Nil {
 		return false, fmt.Errorf("fetch idempotency check: no subject version id")

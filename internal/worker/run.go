@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
+	"github.com/rs/zerolog"
 
 	"agent-manager/internal/logging"
 )
@@ -62,7 +64,7 @@ func Run(ctx context.Context, def Definition, cfg Config) error {
 	}
 
 	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
-		Logger:       slogFrom(log),
+		Logger:       slog.New(zerolog.NewSlogHandler(log)),
 		PeriodicJobs: periodic,
 		Queues:       queues,
 		Workers:      workers,

@@ -8,8 +8,6 @@
 package worker
 
 import (
-	"context"
-
 	"github.com/riverqueue/river"
 	"github.com/rs/zerolog"
 	"github.com/uptrace/bun"
@@ -72,26 +70,5 @@ type Deps struct {
 	BlobRead  blob.Reader
 	BlobWrite blob.Writer  // nil unless Needs.Blob == AccessReadWrite
 	Fetch     fetch.Client // nil unless Needs.Outbound
-	Audit     AuditWriter
 	Log       zerolog.Logger
-}
-
-// AuditWriter is the seat contracts/worker.md calls audit.Writer.
-//
-// Every state change writes an audit row naming the actor, the subject and the
-// source (principle IV), so this is not gated by Needs: a role that mutates
-// without auditing is incomplete, not privileged. internal/audit lands with the
-// command layer (T042); until then Build leaves Deps.Audit nil.
-type AuditWriter interface {
-	Write(ctx context.Context, tx bun.IDB, event AuditEvent) error
-}
-
-// AuditEvent is one audit row as a background role describes it.
-type AuditEvent struct {
-	Actor     string
-	ActorKind string
-	Kind      string
-	Text      string
-	Source    string
-	SubjectID string
 }

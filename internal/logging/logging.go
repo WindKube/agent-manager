@@ -12,8 +12,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-type ctxKey struct{}
-
 // CorrelationField is the log key carrying a request or job correlation id.
 const CorrelationField = "correlation_id"
 
@@ -37,15 +35,12 @@ func New(role, level, format string) zerolog.Logger {
 
 // Into stores a logger on the context.
 func Into(ctx context.Context, l zerolog.Logger) context.Context {
-	return context.WithValue(ctx, ctxKey{}, l)
+	return l.WithContext(ctx)
 }
 
 // From returns the context's logger, or a disabled one when absent.
 func From(ctx context.Context) zerolog.Logger {
-	if l, ok := ctx.Value(ctxKey{}).(zerolog.Logger); ok {
-		return l
-	}
-	return zerolog.Nop()
+	return *zerolog.Ctx(ctx)
 }
 
 // WithCorrelation derives a logger and context tagged with a correlation id.

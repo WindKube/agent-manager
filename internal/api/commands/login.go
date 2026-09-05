@@ -28,13 +28,10 @@ type LoginResult struct {
 	ExpiresAt  time.Time
 }
 
-// Login records a sign-in: the identity is upserted, a session is opened and the
-// `login` audit row is written, all inside one transaction (FR-050).
-//
-// It deliberately does not derive the caller's role. auth.Sessions.Resolve does
-// that on every request, and having exactly one implementation of the
-// groups-to-role mapping is what stops the login path and the request path from
-// disagreeing about who someone is.
+// Login records a sign-in: identity upserted, session opened, `login`
+// audit row written, all in one transaction. It deliberately does not
+// derive the caller's role — auth.Sessions.Resolve does that on every
+// request, so login and request paths can't disagree about who someone is.
 func Login(ctx context.Context, db bun.IDB, in LoginInput) (LoginResult, error) {
 	if in.Claims.Subject == "" {
 		return LoginResult{}, fmt.Errorf("login needs a subject claim")
@@ -64,8 +61,8 @@ func Login(ctx context.Context, db bun.IDB, in LoginInput) (LoginResult, error) 
 			Groups:      groups,
 			LastSeenAt:  &now,
 		}
-		// `groups` is refreshed here and only here, which is what makes FR-045
-		// true: losing a mapped group takes effect at the next token issue.
+		// `groups` is refreshed here and only here: losing a mapped group
+		// takes effect at the next token issue.
 		if _, insertErr := tx.NewInsert().Model(identity).
 			On("conflict (subject) do update").
 			Set("email = excluded.email").
@@ -102,10 +99,8 @@ func Login(ctx context.Context, db bun.IDB, in LoginInput) (LoginResult, error) 
 	return result, nil
 }
 
-// ExpireSession ends a session by moving its expiry into the past. It is not a
-// DELETE: no database role holds one on `session`, because the row carries
-// `expires_at` and an expired session is one whose expiry has passed
-// (data-model.md's withheld-grant list).
+// ExpireSession ends a session by moving its expiry into the past, not
+// deleting it: no database role holds DELETE on `session`.
 func ExpireSession(ctx context.Context, db bun.IDB, token string) error {
 	res, err := db.NewUpdate().
 		Model((*models.Session)(nil)).

@@ -13,25 +13,19 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// ReportSync records one completed sync: one sync_event and one audit row of
-// kind `sync`, in one transaction (FR-050, R8).
-//
-// One call per sync and not per package. Install counts are aggregated
-// server-side from the revision's contents by the nightly job, so a catalog read
-// never writes.
-//
-// The reported targets are not stored: FR-039 makes targets a client-side
-// concern, so they land in the audit text where they explain the event and
-// nowhere else where they could be mistaken for server state.
+// ReportSync records one completed sync: one sync_event and one audit row
+// of kind `sync`, in one transaction. One call per sync, not per package —
+// install counts are aggregated server-side by the nightly job. Reported
+// targets are not stored, only named in the audit text, so they can't be
+// mistaken for server state.
 func ReportSync(ctx context.Context, db bun.IDB, p auth.Principal, in contract.SyncReport) error {
 	if in.Profile == "" || in.Host == "" {
 		return fmt.Errorf("sync report needs a profile and a host")
 	}
 
 	return db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		// Resolved inside the transaction and under the same FR-044 predicate as
-		// every read: a sync cannot be reported against a profile the caller
-		// could not have read in the first place.
+		// Resolved under the same readability predicate as every read: a
+		// sync can't be reported against a profile the caller couldn't read.
 		ref, err := queries.ReadableRevisionRef(ctx, tx, p, in.Profile, in.Revision)
 		if err != nil {
 			return err

@@ -2,10 +2,10 @@ package bundle
 
 import "time"
 
-// Extraction caps (research R3). Every value here is a security parameter, so each states
+// Extraction caps. Every value here is a security parameter, so each states
 // why it is that number instead of a round one.
 const (
-	// DefaultMaxCompressedBytes is the upload limit the product states (FR-001); every
+	// DefaultMaxCompressedBytes is the upload limit the product states; every
 	// other size cap is derived from it.
 	DefaultMaxCompressedBytes int64 = 25 << 20
 

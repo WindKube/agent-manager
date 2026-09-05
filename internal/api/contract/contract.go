@@ -127,6 +127,18 @@ type DeviceToken struct {
 	RefreshToken string `json:"refresh_token,omitempty" doc:"Present only when the client may refresh without a second human approval."`
 }
 
+// PendingDeviceAuthorization is what lookupDeviceCode returns before the viewer
+// decides: the requesting host and the code's remaining validity.
+type PendingDeviceAuthorization struct {
+	RequestingHost string `json:"requestingHost" doc:"The host bound to this authorisation at issue. Shown before approval so it is an informed act." example:"dev-laptop-01"`
+	ExpiresIn      int    `json:"expiresIn" doc:"Seconds until this code expires." example:"420"`
+}
+
+// ApprovedDeviceAuthorization confirms which host approveDeviceCode just approved.
+type ApprovedDeviceAuthorization struct {
+	RequestingHost string `json:"requestingHost" example:"dev-laptop-01"`
+}
+
 // DeviceTokenError is the RFC 8628 error envelope, which is deliberately NOT the
 // project's error shape: the RFC fixes these field names and a polling client
 // parses them. Every other operation returns Error.

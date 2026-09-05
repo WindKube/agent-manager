@@ -137,6 +137,9 @@ services:
       # not — mark them Secure over http and the browser drops them, which
       # presents as a sign-in that completes and lands back on the sign-in screen.
       AGENT_MANAGER_PUBLIC_BASE_URL: http://localhost:8080
+      # The api's own host-reachable address, for the command the
+      # Connect-the-CLI screen prints. Must match api's PUBLIC_BASE_URL above.
+      AGENT_MANAGER_WEB_HUB_URL: http://localhost:8082
       # What this stack's directory is called, for the sign-in screen's one action
       # (FR-105). Nothing derives it — "dex" is the container's name.
       AGENT_MANAGER_WEB_PROVIDER_NAME: the local directory

@@ -107,6 +107,10 @@ type Web struct {
 	// container's name, not the directory's, and a hosted issuer would give the
 	// vendor rather than the organisation. Empty renders neutral wording.
 	ProviderName string `env:"WEB_PROVIDER_NAME"`
+	// HubURL is the address `amctl login --hub` should name — the same value
+	// config.API.PublicBaseURL holds on the api role. Read by the
+	// Connect-the-CLI screen and printed nowhere else.
+	HubURL string `env:"WEB_HUB_URL" envDefault:"http://localhost:8081"`
 }
 
 // Fetcher is the only role with object-store write access.

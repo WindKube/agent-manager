@@ -1,6 +1,21 @@
 {
   "components": {
     "schemas": {
+      "ApprovedDeviceAuthorization": {
+        "additionalProperties": false,
+        "properties": {
+          "requestingHost": {
+            "examples": [
+              "dev-laptop-01"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "requestingHost"
+        ],
+        "type": "object"
+      },
       "AuditEntry": {
         "additionalProperties": false,
         "properties": {
@@ -1954,6 +1969,31 @@
         ],
         "type": "object"
       },
+      "PendingDeviceAuthorization": {
+        "additionalProperties": false,
+        "properties": {
+          "expiresIn": {
+            "description": "Seconds until this code expires.",
+            "examples": [
+              420
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "requestingHost": {
+            "description": "The host bound to this authorisation at issue. Shown before approval so it is an informed act.",
+            "examples": [
+              "dev-laptop-01"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "requestingHost",
+          "expiresIn"
+        ],
+        "type": "object"
+      },
       "PreviewCapability": {
         "additionalProperties": false,
         "properties": {
@@ -3320,6 +3360,172 @@
         "summary": "Download an immutable version bundle",
         "tags": [
           "bundles"
+        ]
+      }
+    },
+    "/v1/device/authorizations/{user_code}": {
+      "get": {
+        "description": "Shows the requesting host and remaining validity BEFORE the viewer confirms (FR-041), so approval is an informed act. Refuses distinguishably when the code is unknown, expired or already decided (FR-042). The path parameter is a bearer-equivalent secret for the length of its validity and is never logged verbatim (see the api role's correlation middleware).",
+        "operationId": "lookupDeviceCode",
+        "parameters": [
+          {
+            "description": "The code the CLI printed.",
+            "in": "path",
+            "name": "user_code",
+            "required": true,
+            "schema": {
+              "description": "The code the CLI printed.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingDeviceAuthorization"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such device authorisation."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This code has already been decided."
+          },
+          "410": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This code has expired."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Look up a pending device authorisation",
+        "tags": [
+          "device"
+        ]
+      }
+    },
+    "/v1/device/authorizations/{user_code}/approve": {
+      "post": {
+        "description": "The confirm action (US6). Moves the code from pending to approved in one transaction and writes the `login` audit row naming the host, source `cli / \u003chost\u003e` (FR-050). Single-use: a second approval of the same code refuses the same way any already-decided code does.",
+        "operationId": "approveDeviceCode",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovedDeviceAuthorization"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such device authorisation."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This code has already been decided."
+          },
+          "410": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This code has expired."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Approve a pending device authorisation",
+        "tags": [
+          "device"
         ]
       }
     },

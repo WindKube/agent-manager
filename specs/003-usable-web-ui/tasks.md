@@ -264,14 +264,14 @@ pin, publish a revision, and assert `amctl sync` writes exactly what the screen 
 **Independent Test**: run the real CLI's login against the stack, complete approval in the
 browser, and assert the CLI receives a token and can sync.
 
-- [ ] T091 [P] [US6] `GET /v1/device/authorizations/{user_code}` in `internal/api/queries/device.go` — the requesting host and remaining validity, shown **before** the viewer confirms. The handler MUST NOT log its own path parameter: a user code is bearer-equivalent for the length of its validity
-- [ ] T092 [001-T090] [US6] `POST /v1/device/authorizations/{user_code}/approve` in `internal/api/commands/device.go` — the `pending → approved` transition in one transaction, single-use, with a `login` audit row naming the host and source `cli / <host>`
-- [ ] T093 [US6] Make the three refusals distinguishable to the viewer — expired, unknown, already consumed (001 FR-042). Approval by an identity other than the requester is refused and is **not** distinguishable from them: telling an attacker which codes are real is worse than a vague error
-- [ ] T094 [US6] Regenerate the client and add the operations to `internal/web/hub/`
-- [ ] T095 [US6] Write `internal/web/components/cli.templ` and `internal/web/view/cli.go` — the code entry form, the host and countdown, the confirm action, and with no pending authorisation the **real** command and hub address read from configuration
-- [ ] T096 [US6] Delete the `/cli` entry from the `placeholders` list in `internal/web/web.go`
-- [ ] T097 [P] [US6] Integration test driving the real CLI's login against the stack with approval through the web handler, asserting the CLI receives a token and syncs (SC-109)
-- [ ] T098 [P] [US6] Refusal tests for all four cases in T093, asserting the wrong-identity case is not distinguishable from the other three
+- [x] T091 [P] [US6] `GET /v1/device/authorizations/{user_code}` in `internal/api/queries/device.go` — the requesting host and remaining validity, shown **before** the viewer confirms. The handler MUST NOT log its own path parameter: a user code is bearer-equivalent for the length of its validity
+- [x] T092 [001-T090] [US6] `POST /v1/device/authorizations/{user_code}/approve` in `internal/api/commands/device.go` — the `pending → approved` transition in one transaction, single-use, with a `login` audit row naming the host and source `cli / <host>`
+- [x] T093 [US6] Make the three refusals distinguishable to the viewer — expired, unknown, already consumed (001 FR-042). Approval by an identity other than the requester is refused and is **not** distinguishable from them: telling an attacker which codes are real is worse than a vague error
+- [x] T094 [US6] Regenerate the client and add the operations to `internal/web/hub/`
+- [x] T095 [US6] Write `internal/web/components/cli.templ` and `internal/web/view/cli.go` — the code entry form, the host and countdown, the confirm action, and with no pending authorisation the **real** command and hub address read from configuration
+- [x] T096 [US6] Delete the `/cli` entry from the `placeholders` list in `internal/web/web.go`
+- [x] T097 [P] [US6] Integration test driving the real CLI's login against the stack with approval through the web handler, asserting the CLI receives a token and syncs (SC-109)
+- [x] T098 [P] [US6] Refusal tests for all four cases in T093, asserting the wrong-identity case is not distinguishable from the other three
 
 **Checkpoint**: two routes still show placeholders.
 

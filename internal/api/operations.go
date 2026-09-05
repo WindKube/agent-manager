@@ -31,6 +31,7 @@ func (s *Server) register() {
 	s.registerScanner()
 	s.registerAudit()
 	s.registerBadges()
+	s.registerDeviceApproval()
 }
 
 // publicSecurity is the empty security requirement that removes the document's
@@ -816,6 +817,47 @@ func (s *Server) registerBadges() {
 			"500": s.errorResponse("The request could not be completed."),
 		},
 	}, s.getBadges)
+}
+
+func (s *Server) registerDeviceApproval() {
+	huma.Register(s.api, huma.Operation{
+		OperationID: "lookupDeviceCode",
+		Method:      http.MethodGet,
+		Path:        "/v1/device/authorizations/{user_code}",
+		Tags:        []string{"device"},
+		Summary:     "Look up a pending device authorisation",
+		Description: "Shows the requesting host and remaining validity BEFORE the viewer confirms " +
+			"(FR-041), so approval is an informed act. Refuses distinguishably when the code is " +
+			"unknown, expired or already decided (FR-042). " +
+			"The path parameter is a bearer-equivalent secret for the length of its validity and " +
+			"is never logged verbatim (see the api role's correlation middleware).",
+		Responses: map[string]*huma.Response{
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"404": s.errorResponse("No such device authorisation."),
+			"409": s.errorResponse("This code has already been decided."),
+			"410": s.errorResponse("This code has expired."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.lookupDeviceCode)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "approveDeviceCode",
+		Method:      http.MethodPost,
+		Path:        "/v1/device/authorizations/{user_code}/approve",
+		Tags:        []string{"device"},
+		Summary:     "Approve a pending device authorisation",
+		Description: "The confirm action (US6). Moves the code from pending to approved in one " +
+			"transaction and writes the `login` audit row naming the host, source `cli / <host>` " +
+			"(FR-050). Single-use: a second approval of the same code refuses the same way any " +
+			"already-decided code does.",
+		Responses: map[string]*huma.Response{
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"404": s.errorResponse("No such device authorisation."),
+			"409": s.errorResponse("This code has already been decided."),
+			"410": s.errorResponse("This code has expired."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.approveDeviceCode)
 }
 
 // ---- handlers ----------------------------------------------------------------

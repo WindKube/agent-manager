@@ -165,6 +165,7 @@ func sweep() []sweptScreen {
 		// accommodate data that was never the risk.
 		inShell("ProfilesScreen", func() templ.Component { return components.ProfilesScreen(view.Profiles{}) }),
 		inShell("ProfileScreen", func() templ.Component { return components.ProfileScreen(view.Profile{}) }),
+		inShell("CLIScreen", func() templ.Component { return components.CLIScreen(view.CLI{}) }),
 		{
 			name: "NoRoleScreen",
 			// The one screen whose body renders the viewer itself. Signed out there is

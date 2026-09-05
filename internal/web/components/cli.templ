@@ -1,0 +1,111 @@
+package components
+
+import "agent-manager/internal/web/view"
+
+// CLIScreen is the Connect-the-CLI screen: a code entry form, the pending
+// authorisation it names, and the one confirm action.
+templ CLIScreen(s view.CLI) {
+	<div class="am-header">
+		<div class="am-header-text">
+			<h1 class="am-h1">Connect the CLI</h1>
+			<p class="am-lede">
+				Pair a machine with this hub. Run the login command on that machine, then type the
+				code it prints in below.
+			</p>
+		</div>
+	</div>
+	if s.Notice != nil {
+		<div class={ NoticeClass(*s.Notice) } id="cli-notice">{ s.Notice.Text }</div>
+	}
+	if s.SignedOut {
+		<div class="am-empty am-empty-auth" id="cli-signed-out">
+			Sign in to connect a machine. The hub has no anonymous view.
+		</div>
+	} else if s.Unavailable {
+		<div class="am-notice am-notice-dan" id="cli-unavailable">
+			<p class="am-note">
+				The hub's api did not answer, so this screen cannot look a code up or record an
+				approval. Retry in a moment; if it persists, the api is the thing to look at.
+			</p>
+		</div>
+	} else {
+		@cliCodeForm(s)
+		if s.Pending != nil {
+			@cliPending(s)
+		} else if s.Unknown {
+			<div class="am-empty" id="cli-unknown">
+				That code is not one this hub has issued, or it was mistyped. Check it against the
+				terminal and try again.
+			</div>
+		} else if s.Expired {
+			<div class="am-empty" id="cli-expired">
+				That code has expired. Run the login command again on the machine to get a fresh one.
+			</div>
+		} else if s.Decided {
+			<div class="am-empty" id="cli-decided">
+				That code has already been approved, denied or used. If the CLI is still waiting, it
+				needs a fresh code.
+			</div>
+		} else {
+			@cliNoPending(s)
+		}
+	}
+}
+
+// cliCodeForm is a plain GET so the code lands in the URL and this page can be
+// reached directly from the CLI's own printed link (verification_uri_complete).
+templ cliCodeForm(s view.CLI) {
+	<form class="am-review" method="get" action="/cli">
+		<label class="am-label" for="cli-user-code">Code from the terminal</label>
+		<input
+			id="cli-user-code"
+			class="am-search"
+			style="font-family:'IBM Plex Mono',monospace;max-width:220px"
+			type="text"
+			name="user_code"
+			value={ s.UserCode }
+			placeholder="HKQ2-9FTL"
+			autocomplete="off"
+			autocapitalize="characters"
+			spellcheck="false"
+		/>
+		<div class="am-gate-actions">
+			<button type="submit" class="am-btn am-btn-primary">Look up</button>
+		</div>
+	</form>
+}
+
+// cliPending is the confirm step: the host and the countdown the viewer must
+// see before they decide.
+templ cliPending(s view.CLI) {
+	<div class="am-gov-card" id="cli-pending">
+		<div class="am-label">Requesting machine</div>
+		<p class="am-note am-mono">{ s.Pending.RequestingHost }</p>
+		<div class="am-label">Expires</div>
+		<p class="am-note" id="cli-countdown">{ s.Countdown }</p>
+		<form class="am-gate" method="post" action="/cli/confirm">
+			<input type="hidden" name="user_code" value={ s.UserCode }/>
+			<div class="am-gate-actions">
+				<button type="submit" class="am-btn am-btn-primary">Approve this machine</button>
+			</div>
+		</form>
+	</div>
+}
+
+// cliNoPending is the state with no code looked up: the real command and hub
+// address, read from configuration.
+templ cliNoPending(s view.CLI) {
+	<div class="am-gov-card" id="cli-no-pending">
+		if s.Command == "" {
+			<p class="am-note">
+				This hub has not been told the address a machine should connect to, so no command
+				can be shown here. That is a deployment fault: whoever runs this hub needs to set it.
+			</p>
+		} else {
+			<div class="am-label">Run this on the machine you want to connect</div>
+			<p class="am-note am-mono">{ s.Command }</p>
+			<div class="am-label">Hub address</div>
+			<p class="am-note am-mono">{ s.HubURL }</p>
+		}
+	</div>
+}

@@ -153,18 +153,21 @@ func runWeb(ctx context.Context) error {
 		Reviewer: client,
 		Audit:    client,
 		Badges:   client,
-		Log:      log,
 		// The profile screens. Same client again: reading a profile and
 		// curating one are different claims, and the fixture behind screen tests
 		// answers only the first.
 		Profiles: client,
 		Curator:  client,
+		Device:   client,
+		Log:      log,
 	}, web.Options{
 		Addr: cfg.Addr,
 		// Read for exactly one decision — the Secure flag on both cookies — and read
 		// here rather than from each request, so a proxy that terminates TLS cannot
 		// talk this role out of it.
 		PublicBaseURL: cfg.PublicBaseURL,
+		// The api's own address, for the command the Connect-the-CLI screen prints.
+		HubURL: cfg.HubURL,
 		// FR-119's ONE gate. The hint is shown because an operator asked for it in
 		// this variable and for no other reason: nothing below derives it from the
 		// issuer, the host name or the build type.

@@ -12,9 +12,8 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// Claims is the subset of an ID token this project reads. `groups` is the input
-// to group_role_map and therefore the only claim with authorisation weight
-// (FR-040); everything else is display.
+// Claims: `groups` is the only claim with authorisation weight; everything
+// else is display.
 type Claims struct {
 	Subject           string   `json:"sub"`
 	Email             string   `json:"email"`
@@ -23,8 +22,8 @@ type Claims struct {
 	Groups            []string `json:"groups"`
 }
 
-// DisplayName is what the UI shows. Providers differ on which of these they
-// populate, so the fallback chain is deliberate rather than defensive.
+// DisplayName's fallback chain is deliberate: providers differ on which of
+// these they populate.
 func (c Claims) DisplayName() string {
 	switch {
 	case c.Name != "":
@@ -36,38 +35,22 @@ func (c Claims) DisplayName() string {
 	}
 }
 
-// Verifier verifies ID tokens against the organisation's provider.
-//
-// Discovery, key rotation and signature verification are go-oidc's job. Nothing
-// provider-specific belongs here: which IdP the stack runs locally is a
-// deployment choice, and a hard-coded quirk of one of them is how this stops
-// working against the next.
+// Verifier verifies ID tokens; nothing provider-specific belongs here.
 type Verifier struct {
 	provider *oidc.Provider
 	verifier *oidc.IDTokenVerifier
 }
 
-// VerifierConfig is what a role needs to verify an ID token.
-//
-// Issuer and DiscoveryURL are separate for the provider that serves its
-// discovery document from a host other than the one its `issuer` names. That is
-// a real production shape (FR-106) rather than a workaround: the local stack
-// leaves DiscoveryURL empty, because the provider it runs publishes one issuer
-// every container can reach and the browser's override lands on the
-// authorisation endpoint alone.
 type VerifierConfig struct {
-	// Issuer is the value the `iss` claim must equal. It is the trust anchor and
-	// is never derived from a document fetched over the network.
-	Issuer string
-	// DiscoveryURL is where the discovery document is fetched from. Empty, or
-	// equal to Issuer, means the ordinary single-URL case.
+	// Issuer is the trust anchor, never derived from a fetched document.
+	Issuer       string
 	DiscoveryURL string
 	ClientID     string
 	HTTPClient   *http.Client
 }
 
-// NewVerifier performs OIDC discovery. It reaches the network, so it belongs in a
-// role's bootstrap and not in a request path.
+// NewVerifier performs OIDC discovery, so it belongs in a role's bootstrap
+// and not in a request path.
 func NewVerifier(ctx context.Context, cfg VerifierConfig) (*Verifier, error) {
 	if cfg.Issuer == "" {
 		return nil, fmt.Errorf("oidc issuer is empty")
@@ -89,21 +72,10 @@ func NewVerifier(ctx context.Context, cfg VerifierConfig) (*Verifier, error) {
 	}, nil
 }
 
-// discover fetches the provider metadata and returns a provider built from it.
-//
-// The ordinary case is one URL, and it is the case the local stack now uses:
-// discovery, token and JWKS all live under the issuer, so go-oidc's own check —
-// that the document's `issuer` equals the URL it came from — simply passes.
-//
-// The split case exists for a provider whose metadata lives somewhere else.
-// go-oidc offers two ways to reach one: InsecureIssuerURLContext, which turns
-// that check OFF entirely, or ProviderConfig, which skips discovery and takes
-// the endpoints directly. The second is used here because the check we actually
-// want is neither of the library's: not "the document came from its own issuer",
-// which is false by construction, and not "no check at all", but "the document
-// names the issuer the operator configured". That is asserted below, so a
-// metadata host that starts advertising a third issuer is refused rather than
-// trusted — which the InsecureIssuerURLContext version accepted.
+// discover uses ProviderConfig rather than go-oidc's
+// InsecureIssuerURLContext (which disables issuer checking entirely): the
+// fetched document's issuer is asserted below against the configured one,
+// so a metadata host advertising a third issuer is refused.
 func discover(ctx context.Context, cfg VerifierConfig) (*oidc.Provider, error) {
 	if cfg.DiscoveryURL == "" || cfg.DiscoveryURL == cfg.Issuer {
 		provider, err := oidc.NewProvider(ctx, cfg.Issuer)
@@ -145,9 +117,7 @@ func fetchMetadata(ctx context.Context, cfg VerifierConfig) (*oidc.ProviderConfi
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("%s answered %s", wellKnown, resp.Status)
 	}
-	// Bounded, because this is an unauthenticated response that decides which keys
-	// sign the tokens this process trusts. 1 MiB is orders of magnitude above any
-	// real metadata document.
+	// Bounded: an unauthenticated response decides which keys we trust.
 	metadata := &oidc.ProviderConfig{}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(metadata); err != nil {
 		return nil, fmt.Errorf("decode provider metadata: %w", err)
@@ -155,31 +125,19 @@ func fetchMetadata(ctx context.Context, cfg VerifierConfig) (*oidc.ProviderConfi
 	return metadata, nil
 }
 
-// Endpoint is the authorization and token endpoints the discovery document
-// published, used exactly as published.
-//
-// It is exported for the role that owns the browser's origin: the redirect and
-// the code exchange belong there, and that role cannot import this package —
-// internal/archcheck refuses it, because this package reads the session table and
-// a role that must hold no datastore credential may not link one, not even for an
-// accessor. So the endpoints cross that boundary as a value and the browser flow
-// is built on the other side of it.
+// Endpoint is exported because the role that owns the browser's origin
+// cannot import this package (that role must hold no datastore credential),
+// so the endpoints cross that boundary as a value.
 func (v *Verifier) Endpoint() oauth2.Endpoint { return v.provider.Endpoint() }
 
-// VerifyIDToken verifies a token and discards its claims.
-//
-// The caller is the browser callback, which checks the token it just received
-// before asking the api to open a session for it. It reads no claim on purpose:
-// the api verifies the same bytes again and resolves the identity itself, so a
-// claim decoded on that side would be a second, unauthoritative copy of something
-// this side owns.
+// VerifyIDToken reads no claim on purpose: the api verifies the same bytes
+// again and resolves the identity itself.
 func (v *Verifier) VerifyIDToken(ctx context.Context, rawIDToken string) error {
 	_, err := v.Verify(ctx, rawIDToken)
 	return err
 }
 
-// Verify checks the token's signature, issuer, audience and expiry, then returns
-// its claims.
+// Verify checks the token's signature, issuer, audience and expiry.
 func (v *Verifier) Verify(ctx context.Context, rawIDToken string) (Claims, error) {
 	token, err := v.verifier.Verify(ctx, rawIDToken)
 	if err != nil {

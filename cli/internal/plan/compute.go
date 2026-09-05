@@ -12,18 +12,10 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/record"
 )
 
-// This file is the deciding side: it asks two questions about versions and
-// digests and no others:
-//
-//	installed.Version == locked.Version    // string equality
-//	installed.Digest  == locked.Digest     // 32 bytes, not a formatted string
-//
-// Equality, never ordering. It imports nothing that has an opinion about which
-// of two versions is newer, and it must not acquire one: direction.go labels
-// the change, and the label is not consulted here. If you find yourself
-// wanting to know which version is greater in order to decide WHETHER to
-// write, the answer is that you do not — the hub already decided, and the
-// lockfile is that decision.
+// This file is the deciding side: it asks only installed.Version==locked.Version
+// and installed.Digest==locked.Digest (32 bytes, not a formatted string).
+// Equality, never ordering — it must not import an opinion about which
+// version is newer; direction.go labels the change after this decides.
 
 // ErrInputs marks a malformed call. It is separate from a Conflict: a conflict
 // is a coherent question with the answer "refuse", while this is a caller bug.
@@ -32,27 +24,16 @@ var ErrInputs = errors.New("invalid plan inputs")
 // Inputs are the three things a plan is a function of, plus the reporting-side
 // comparer.
 type Inputs struct {
-	// Lockfiles is one resolved revision per profile being synced. The set of
-	// profiles here is the set under reconciliation: a profile the record knows
-	// about and this slice does not is left completely alone, because syncing
-	// one profile must never prune another.
+	// Lockfiles: a profile absent here is left completely alone.
 	Lockfiles []*hub.Lockfile
 
-	// Record is amctl's installation record for this hub. Nil means a machine
-	// that has never synced — install everything, remove nothing — which is the
-	// correct reading of absence and the WRONG reading of a corrupt file. Load
-	// distinguishes those; this package is handed the result.
+	// Record nil means never synced: install everything, remove nothing.
 	Record *record.Record
 
-	// Targets is what THIS build can write, including the ones it cannot: a
-	// Target with a non-nil Err is reported as unwritable rather than omitted,
-	// which is the difference between "we refuse to guess where codex reads"
-	// and "your profile turned codex off".
+	// Targets includes the ones this build cannot write, reported unwritable.
 	Targets []Target
 
-	// Compare is optional and reporting-only. Nil uses CompareVersions. It
-	// cannot change what the plan writes; only the word it prints.
-	Compare Comparer
+	Compare Comparer // optional, reporting-only; nil uses CompareVersions
 }
 
 type entryKey struct {
@@ -87,10 +68,8 @@ func Compute(in Inputs) (Plan, error) {
 	var p Plan
 	b := builder{compare: in.Compare}
 
-	// Pass 1: which targets does each profile enable, and which of those can
-	// this build actually write? Target-level refusals are collected across all
-	// profiles first, so one unwritable target produces one conflict naming
-	// every profile that asked for it rather than one per profile.
+	// Pass 1: enabled vs. writable targets. Refusals are collected across all
+	// profiles first, so one unwritable target names every profile once.
 	enabled := make(map[string]map[record.Target]bool, len(lockfiles))
 	writable := make(map[string]map[record.Target]Target, len(lockfiles))
 	for _, lf := range lockfiles {
@@ -107,10 +86,8 @@ func Compute(in Inputs) (Plan, error) {
 				b.targetRefusal(ConflictTargetUnknown, t, nil, slug)
 				alreadyRefused = true
 			case resolved.Withdrawn != nil:
-				// Reported by the caller, not refused here. See Target.Withdrawn
-				// for why this one class of unwritable target does not abort the
-				// sync; the empty-set check below is what stops it becoming
-				// "installed nothing and exited 0".
+				// Reported, not refused here — see Target.Withdrawn; the empty-set
+				// check below stops this becoming "installed nothing, exited 0".
 			case resolved.Err != nil:
 				b.targetRefusal(ConflictTargetUnwritable, t, resolved.Err, slug)
 				alreadyRefused = true
@@ -118,12 +95,9 @@ func Compute(in Inputs) (Plan, error) {
 				writable[slug][t] = resolved
 			}
 		}
-		// Only when nothing else already refuses this profile. A profile whose
-		// one target is gated is refused by ConflictTargetUnwritable, which says
-		// more and says it once across every profile; adding a second sentence
-		// per profile would bury it. What is left is the case this check is for:
-		// every target the profile named was WITHDRAWN, which on its own is not
-		// a refusal, so without this the sync would install nothing and exit 0.
+		// Only when nothing else already refuses this profile: the case left is
+		// every named target being WITHDRAWN, which alone is not a refusal, so
+		// without this the sync would install nothing and exit 0.
 		if len(enabled[slug]) > 0 && len(writable[slug]) == 0 && !alreadyRefused {
 			claims := make([]Claim, 0, len(enabled[slug]))
 			for _, name := range dedupeTargets(lf.Targets) {
@@ -133,7 +107,7 @@ func Compute(in Inputs) (Plan, error) {
 		}
 	}
 
-	// Pass 2: the hub's own exclusions, verbatim.
+	// Pass 2: the hub's exclusions, verbatim.
 	for _, lf := range lockfiles {
 		for _, s := range lf.Skipped {
 			p.Skipped = append(p.Skipped, Skip{
@@ -147,8 +121,7 @@ func Compute(in Inputs) (Plan, error) {
 		}
 	}
 
-	// Pass 3: the desired state — every (profile, target, entry) triple that
-	// this build could route to a path.
+	// Pass 3: the desired state — every (profile, target, entry) triple routed to a path.
 	desired := map[entryKey]desiredEntry{}
 	order := make([]entryKey, 0, len(lockfiles)*8)
 	listed := map[string]map[string]bool{}
@@ -177,8 +150,7 @@ func Compute(in Inputs) (Plan, error) {
 	b.versionSplits(in.Record, desired, order)
 	b.destCollisions(desired, order)
 
-	// Pass 4: the record side. Every recorded entry of a profile under
-	// reconciliation is either matched by a desired entry or removed.
+	// Pass 4: every recorded entry of a profile under reconciliation is either matched or removed.
 	matched := map[entryKey]struct{}{}
 	var removals []Removal
 	for _, lf := range lockfiles {
@@ -197,28 +169,20 @@ func Compute(in Inputs) (Plan, error) {
 				matched[key] = struct{}{}
 				p.appendChange(b.change(d, &e))
 			case wanted:
-				// The destination moved for the same package under the same
-				// target — a layout change, e.g. disambiguation kicking in when
-				// a second publisher took the same name. Emitted as a removal
-				// of the old path plus an add at the new one, rather than as one
-				// "upgrade", because two paths are involved and folding them
-				// into a single operation would orphan the old directory while
-				// reporting success.
+				// The destination moved for the same package/target — a layout
+				// change (e.g. disambiguation on a name clash). Emitted as a
+				// removal of the old path plus an add at the new one, not an
+				// "upgrade": folding two paths into one would orphan the old dir.
 				removals = append(removals, removalOf(slug, e, RemoveRelocated))
 			case !enabled[slug][e.Target]:
 				removals = append(removals, removalOf(slug, e, RemoveTargetDisabled))
 			case writable[slug][e.Target].Dest == nil:
-				// The target is still enabled but this build cannot route it, so
-				// a conflict is already recorded and the plan refuses. Emitting
-				// a removal here would report a deletion the CLI has no basis
-				// to perform and would read as "the target was turned off".
+				// Enabled but unroutable by this build; a conflict already
+				// refuses the plan. A removal here would misreport this as "off".
 				continue
 			case listed[slug][e.ID]:
-				// Still in the profile, but this run could not route it — a
-				// kind that changed to plugin, a name the target now refuses.
-				// The unroutable conflict already refuses the plan; calling it
-				// "no longer in the profile" would send the user to look at the
-				// profile, which is not where the problem is.
+				// Still in the profile but unroutable this run; the unroutable
+				// conflict already refuses the plan — not "left the profile".
 				continue
 			default:
 				removals = append(removals, removalOf(slug, e, RemoveLeftProfile))
@@ -226,9 +190,8 @@ func Compute(in Inputs) (Plan, error) {
 		}
 	}
 
-	// Pass 5: everything desired that the record does not claim.
-	// A relocated entry is deliberately NOT in `matched`, so it reaches here and
-	// becomes an add at the new path alongside the removal of the old one.
+	// Pass 5: everything desired the record does not claim. A relocated entry
+	// is deliberately NOT in `matched`, so it becomes an add at the new path.
 	for _, key := range order {
 		if _, have := matched[key]; have {
 			continue
@@ -262,9 +225,8 @@ func (b *builder) targetRefusal(kind ConflictKind, t record.Target, err error, p
 	c.Claims = append(c.Claims, Claim{Profile: profile, Target: t})
 }
 
-// route turns one lockfile entry into a destination, or records the refusal.
-// Everything it validates it refuses rather than repairs: a value amctl
-// silently rewrote would not match the record it later prunes against.
+// route turns one lockfile entry into a destination, or records the refusal;
+// it refuses rather than repairs, since a rewritten value wouldn't match the record.
 func (b *builder) route(profile string, t record.Target, target Target, e hub.LockfileEntry) (desiredEntry, error) {
 	fail := func(detail string, err error) (desiredEntry, error) {
 		if err == nil {
@@ -315,11 +277,9 @@ func (b *builder) route(profile string, t record.Target, target Target, e hub.Lo
 	return d, nil
 }
 
-// versionSplits groups by package id across all profiles and targets, not
-// per target: a disagreement that only bites under one target is still a
-// disagreement between profiles. The digest arm catches the subtler shape —
-// one version, two byte-sets — which is one directory with two possible
-// contents just as much as two versions are.
+// versionSplits groups by package id across all profiles and targets (not
+// per target): a disagreement under one target is still a disagreement. The
+// digest arm catches one version with two byte-sets, same problem as two versions.
 func (b *builder) versionSplits(rec *record.Record, desired map[entryKey]desiredEntry, order []entryKey) {
 	byID := map[string][]desiredEntry{}
 	var ids []string
@@ -352,10 +312,8 @@ func (b *builder) versionSplits(rec *record.Record, desired map[entryKey]desired
 	}
 }
 
-// destCollisions catches two different packages routed to one directory: a
-// layout defect rather than a user error, but refused here because the
-// record attributes a destination to an entry and two entries cannot own one
-// path — whichever pruned second would delete the other's live install.
+// destCollisions catches two packages routed to one directory — a layout
+// defect, refused because whichever pruned second would delete the other's install.
 func (b *builder) destCollisions(desired map[entryKey]desiredEntry, order []entryKey) {
 	type destKey struct {
 		target record.Target
@@ -366,13 +324,9 @@ func (b *builder) destCollisions(desired map[entryKey]desiredEntry, order []entr
 	var keys []destKey
 	for _, key := range order {
 		d := desired[key]
-		// layout.DestCollisionKey, not the raw path: `Acme/x` and `acme/x` are
-		// two directories on ext4 and one on APFS. Comparing the paths as
-		// strings finds no collision, both entries install, and the second
-		// one's swap overwrites the first, leaving the record holding two
-		// rows for one directory. The refusal is unconditional rather than
-		// filesystem-dependent: one lockfile must behave the same on both
-		// platforms.
+		// layout.DestCollisionKey, not the raw path: `Acme/x` and `acme/x` are two
+		// dirs on ext4, one on APFS. The refusal is unconditional, not
+		// filesystem-dependent — one lockfile must behave the same everywhere.
 		dk := destKey{target: d.key.target, dest: layout.DestCollisionKey(d.dest)}
 		if _, seen := byDest[dk]; !seen {
 			keys = append(keys, dk)
@@ -400,8 +354,7 @@ func (b *builder) conflicts() []Conflict {
 	return out
 }
 
-// change is where the deciding side ends and the reporting side begins. The
-// operation is chosen by EQUALITY alone; DirectionOf then supplies the word.
+// change: the operation is chosen by EQUALITY alone; DirectionOf supplies the word.
 func (b *builder) change(d desiredEntry, prev *record.Entry) Change {
 	c := Change{
 		Op:         OpAdd,
@@ -431,9 +384,8 @@ func (b *builder) change(d desiredEntry, prev *record.Entry) Change {
 		return c
 	}
 
-	// Everything below is a write. The digest differing at an unchanged version
-	// is enough on its own: the hub republished, and the bytes on disk are not
-	// the bytes this revision names.
+	// Everything below is a write: a differing digest at an unchanged version
+	// means the hub republished, so the bytes on disk aren't this revision's.
 	c.Direction = DirectionOf(b.compare, prev.Version, d.version)
 	switch c.Direction {
 	case DirectionUp:
@@ -473,19 +425,10 @@ func removalOf(profile string, e record.Entry, reason RemoveReason) Removal {
 	}
 }
 
-// retain works out which removals may touch the filesystem.
-//
-// More than one profile claiming one destination is legitimate: two profiles
-// may include the same package at the same version, in which case one
-// directory exists and both own it. Removing it because one of them dropped
-// the package would delete an install the other still wants. So a removal
-// whose destination is still claimed drops the record row and stops there.
-//
-// Two sources of a surviving claim, and both are needed:
-//   - a recorded entry at the same destination that is not itself being removed
-//     in this plan (record.ClaimantsOf), and
-//   - a desired entry at the same destination, i.e. another profile in this very
-//     run installs it.
+// retain works out which removals may touch the filesystem. Two profiles can
+// legitimately share one destination; a removal whose destination is still
+// claimed — by another recorded entry not itself being removed, or by a
+// desired entry in this same run — drops the record row and stops there.
 func retain(rec *record.Record, removals []Removal, desired map[entryKey]desiredEntry) []Removal {
 	if len(removals) == 0 {
 		return nil
@@ -495,14 +438,9 @@ func retain(rec *record.Record, removals []Removal, desired map[entryKey]desired
 		r := &removals[i]
 		removing[entryKey{profile: r.Profile, target: r.Target, id: r.ID}] = struct{}{}
 	}
-	// Keyed by layout.DestCollisionKey for the same reason destCollisions is:
-	// on a case-insensitive filesystem a removal of `<root>/Acme--x` unlinks
-	// the directory a desired `<root>/acme--x` was just installed into.
-	// destCollisions cannot see that pair — one desired entry, one recorded
-	// one, not two desired ones — so this retention check is the only thing
-	// between the prune and somebody's live install. Retaining across case
-	// on a case-sensitive filesystem leaves a directory behind instead of
-	// removing it, the harmless direction of the same mistake.
+	// Keyed by layout.DestCollisionKey, same reason as destCollisions: on a
+	// case-insensitive filesystem, removing `Acme--x` would unlink a desired
+	// `acme--x`, a pair destCollisions can't see (one desired, one recorded).
 	byDest := map[string][]Claim{}
 	for key := range desired {
 		d := desired[key]
@@ -518,7 +456,7 @@ func retain(rec *record.Record, removals []Removal, desired map[entryKey]desired
 		self := entryKey{profile: r.Profile, target: r.Target, id: r.ID}
 		var kept []Claim
 
-		// Source 1: another profile in THIS run installs the same directory.
+		// another profile in THIS run installs the same directory
 		for _, c := range byDest[layout.DestCollisionKey(r.Dest)] {
 			if (entryKey{profile: c.Profile, target: c.Target, id: c.ID}) == self {
 				continue
@@ -526,10 +464,8 @@ func retain(rec *record.Record, removals []Removal, desired map[entryKey]desired
 			kept = append(kept, c)
 		}
 
-		// Source 2: a recorded entry at the same destination that this plan is
-		// not itself removing. Skipped when a desired entry already speaks for
-		// it, so the claim carries the version that will be on disk afterwards
-		// rather than the one that is there now.
+		// a recorded entry at the same destination not itself being removed;
+		// skipped when a desired entry already speaks for it (future version, not current).
 		if rec != nil {
 			claimants := rec.ClaimantsOf(r.Dest)
 			for j := range claimants {
@@ -557,11 +493,8 @@ func retain(rec *record.Record, removals []Removal, desired map[entryKey]desired
 	return out
 }
 
-// installedClaims names what the record says is installed for a package,
-// per profile. At the moment a version-split conflict fires, neither of the
-// two versions has been installed yet, so the record can only say what the
-// machine currently has — the first thing a user asks when told two
-// profiles disagree.
+// installedClaims: at the moment a version-split conflict fires neither
+// version is installed yet, so this can only say what's currently on disk.
 func installedClaims(rec *record.Record, id string) []Claim {
 	if rec == nil {
 		return nil
@@ -639,10 +572,8 @@ func indexTargets(in []Target) (map[record.Target]Target, error) {
 	return out, nil
 }
 
-// orderLockfiles sorts by profile slug so that conflict discovery — which
-// aggregates claims as it goes — does not depend on the caller's argument
-// order. The output is sorted again at the end; this is about the intermediate
-// claim lists.
+// orderLockfiles sorts by profile slug so conflict discovery doesn't depend
+// on the caller's argument order; the output is sorted again at the end.
 func orderLockfiles(in []*hub.Lockfile) ([]*hub.Lockfile, error) {
 	out := make([]*hub.Lockfile, 0, len(in))
 	seen := make(map[string]struct{}, len(in))
@@ -699,11 +630,8 @@ func profileOf(r *record.Record, slug string) (record.Profile, bool) {
 	return r.ProfileBySlug(slug)
 }
 
-// validateID is the two-segment rule. The lockfile schema describes this
-// field as "publisher/name", but the first segment is actually the
-// namespace, and two publishers may share one. Nothing here depends on which
-// it is — only that there are exactly two non-empty segments, since
-// everything downstream splits on that single slash.
+// validateID: the schema calls this "publisher/name" but the first segment
+// is really the namespace; only that there are two non-empty segments matters.
 func validateID(id string) error {
 	ns, name, ok := strings.Cut(id, "/")
 	if !ok || ns == "" || name == "" || strings.Contains(name, "/") {
@@ -719,11 +647,9 @@ func deref(s *string) string {
 	return *s
 }
 
-// ChangeOrder is the order every bucket in a Plan is sorted in, exported so a
-// caller that has to extend a write set keeps that order rather than inventing a
-// second one. internal/apply needs it: a destination the record claims and the
-// disk does not have is promoted from Unchanged to a write, and two orderings
-// for one list is how `--dry-run` output and a real run start disagreeing.
+// ChangeOrder is exported so a caller extending a write set keeps this order
+// rather than inventing a second one — apply needs it when promoting an
+// Unchanged entry to a write.
 func ChangeOrder(a, b Change) int { return changeOrder(a, b) }
 
 func changeOrder(a, b Change) int {

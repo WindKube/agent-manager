@@ -16,120 +16,71 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/hub"
 )
 
-// ErrUnsupported is what a [Control] returns for an operation the hub behind
-// it cannot perform. It is the honest answer, and a suite that gets it must
-// skip the case with a named reason rather than treat it as a pass — see
-// doc.go.
+// ErrUnsupported is a [Control]'s honest answer for an operation the hub
+// behind it can't perform; the suite must skip with a named reason, not
+// treat it as a pass.
 var ErrUnsupported = errors.New("this hub cannot be driven that way")
 
-// Control is the human-and-operator half of a hub: the parts no
-// client-facing API exposes. The fake implements all of it in process; an
-// adapter over a real compose stack implements what the real hub offers and
-// returns [ErrUnsupported] for the rest.
-//
-// This interface exists so a behavioural test can set a case up WITHOUT
-// holding a *fake.Hub: a test that takes a Control can be pointed at the
-// real hub, a test that takes a *fake.Hub can never be.
+// Control is the human-and-operator half of a hub, kept off Target's other
+// fields so a behavioural test never needs a *fake.Hub to run against a
+// real compose-stack adapter too.
 type Control interface {
-	// ApproveDevice plays the human clicking "approve". userCode is the code the
-	// authorize response handed back.
 	ApproveDevice(userCode string) error
-	// DenyDevice plays the human clicking "deny". Terminal.
-	DenyDevice(userCode string) error
-	// ExpireDevice makes the authorisation expire NOW. Called before approval it
-	// produces expired_token on the next poll; called after approval it produces
-	// the "approved but never collected" case, which must yield no token.
-	//
-	// Almost certainly [ErrUnsupported] on a real hub, which has no reason to let a
-	// client age its own grant. Suites must expect that.
+	DenyDevice(userCode string) error // terminal
+	// ExpireDevice ages the authorisation NOW, producing expired_token or
+	// (after approval) the never-collected case. Likely [ErrUnsupported] on
+	// a real hub.
 	ExpireDevice(userCode string) error
-	// SetHealthy flips /v1/health between 200 ok and 503 unavailable, which is
-	// needed to tell "unauthorised" from "the hub is broken". Distinguishing
-	// UNREACHABLE needs no control: close the listener, or use a dead port.
+	// SetHealthy distinguishes unauthorised from broken; unreachable needs
+	// no control, just close the listener.
 	SetHealthy(bool) error
-	// SyncReports returns every report the hub accepted, oldest first. There
-	// must be exactly one row per sync; a suite cannot assert that without
-	// reading the rows back.
+	// SyncReports lets a suite assert exactly one row was written per sync.
 	SyncReports() ([]hub.SyncReport, error)
 }
 
-// staleSignature is a syntactically plausible pre-signed signature that matches
-// no package, so the object-store handler refuses it exactly as a real store
-// refuses an expired one. It is a constant rather than a random value so a
-// failing test can be read without re-running it.
+// staleSignature matches no package, so the object-store handler refuses it
+// like a real store refuses an expired one; fixed, not random, so a failing
+// test reads without rerunning.
 const staleSignature = "s1Gn4tur3-thAt-h4s-3xp1r3d"
 
-// Fixtures names the seeded content a behavioural test may address. An EMPTY field
-// means "this hub has nothing that exercises that case" and the suite must skip,
-// not improvise: a slug invented by a test is a 404 against the real hub, and a
-// 404 is a green test for the wrong reason.
+// Fixtures names seeded content a test may address. Empty means the suite
+// must skip, not improvise a slug: an invented one 404s against the real
+// hub for the wrong reason.
 type Fixtures struct {
-	// Profile is a healthy profile: several entries, all of which serve bytes, and
-	// a non-empty skipped array. HeadRevision is its head; PriorRevision is an
-	// older revision with different content, so `head` and a pinned number can be
-	// told apart by more than the number.
+	// Profile is healthy; HeadRevision/PriorRevision differ in content, not
+	// just number.
 	Profile       string
 	HeadRevision  int64
 	PriorRevision int64
 
-	// SharedNamespaceIDs are two entry ids in ONE namespace published by TWO
-	// different publishers. The distinct-directory requirement is about
-	// `namespace/name`, and an implementation that keyed off the publisher
-	// passes every test a one-publisher-per-namespace fixture can write.
+	// SharedNamespaceIDs: two ids, one namespace, two publishers — catches
+	// an implementation that keyed off publisher instead.
 	SharedNamespaceIDs []string
 
-	// DigestMismatch is a profile whose lockfile digest for one entry is the real
-	// digest of some other real bundle.
-	DigestMismatch string
-	// ForbiddenBundle is a profile whose MIDDLE entry answers 403. The entries
-	// either side must still install.
-	ForbiddenBundle string
-	// ForbiddenEntryID is the id of that middle entry.
+	DigestMismatch   string // one entry's digest is really some other bundle's
+	ForbiddenBundle  string // middle entry answers 403; the others still install
 	ForbiddenEntryID string
-	// PresignedBundle is a profile whose bundle answers 307 to a pre-signed URL on
-	// the SAME host. Same host is the point: a cross-host redirect drops the
-	// Authorization header in net/http already, so it would pass even with a
-	// broken redirect-leak defence.
+	// PresignedBundle answers 307 same-host, so a cross-host redirect leak
+	// defence alone wouldn't catch a same-host leak.
 	PresignedBundle string
-	// StalePresignedBundle is the offload path's negative control: a profile
-	// whose SECOND entry answers 307 to a pre-signed URL the object store then
-	// refuses with 403 — an expired signature, clock skew, or a proxy in front
-	// of the store, all of which S3, GCS and MinIO answer 403 for.
-	//
-	// The hub's own 403 means the organisation's scan gate rejected the
-	// version and the sync verb skips that entry and carries on. The STORE's 403 means the
-	// download failed. Reading the second as the first is how a sync installs
-	// nothing and exits 0. StalePresignedEntryID is the id of that entry; the
-	// first entry serves bytes, so a run that abandons the profile wholesale is
-	// distinguishable from one that fails only the offloaded entry.
+	// StalePresignedBundle's second entry gets a store 403 behind a hub 307;
+	// a hub 403 and a store 403 must not be read as the same failure.
 	StalePresignedBundle  string
 	StalePresignedEntryID string
-	// UnknownSkipReason is a profile whose skipped array carries a reason value
-	// this build has never seen. It must be reported verbatim.
-	UnknownSkipReason string
-	// UnwritableTarget is a profile whose lockfile names a target this client
-	// cannot write (codex). It must be REFUSED with the target named, never
-	// silently skipped: writing nowhere and reporting success is the failure
-	// this exists to prevent.
-	//
-	// It is a profile of its own rather than a property of every profile. The
-	// earlier fixture named codex on all of them, which meant no profile the fake
-	// served could be synced at all — see the note in catalog.go's profiles().
+	UnknownSkipReason     string // must be reported verbatim
+	// UnwritableTarget names codex, which must be refused by name, not
+	// silently skipped — see catalog.go's profiles().
 	UnwritableTarget string
 
-	// MissingProfile is a slug that does not exist. 404.
-	MissingProfile string
+	MissingProfile string // 404
 }
 
-// Target is everything a behavioural test gets. An endpoint, a credential, a
-// transport, the names of the content, and the operator hook. No *fake.Hub.
+// Target is everything a behavioural test gets: no *fake.Hub.
 type Target struct {
 	BaseURL string
 	Token   string
-	// HTTPClient trusts the server's certificate. For the fake over TLS that is a
-	// self-signed cert no system store knows; for the real hub it is
-	// http.DefaultClient. A suite must use this and not build its own, or the TLS
-	// variant fails for a reason that has nothing to do with the test.
+	// HTTPClient trusts the fake's self-signed cert; a suite must use this,
+	// not build its own, or the TLS variant fails for an unrelated reason.
 	HTTPClient *http.Client
 	Fixtures   Fixtures
 	Control    Control
@@ -137,24 +88,15 @@ type Target struct {
 
 // Options configures the fake. Every zero value is a working default.
 type Options struct {
-	// Now is the clock. Only the device flow reads it. Leave nil for time.Now.
-	Now func() time.Time
-	// PollInterval is the `interval` the authorize response advertises AND the
-	// window slow_down enforces — never two different numbers, or the fake would
-	// punish a client that obeyed what it was told. Default 5s, matching the hub.
-	//
-	// Rounded UP to whole seconds with a floor of 1s, because the contract's
-	// `interval` is an integer number of seconds: a fake that enforced 40ms while
-	// advertising 0 would produce slow_down against a client doing exactly what the
-	// response asked. A suite that would otherwise sleep through five seconds may
-	// shorten it to one; the client still reads the value off the wire.
-	PollInterval time.Duration
-	// DeviceCodeTTL is `expires_in` on the authorize response. Default 15m.
-	DeviceCodeTTL time.Duration
-	// TokenTTL is `expires_in` beside the access token. Default 1h.
-	TokenTTL time.Duration
-	// TLS serves HTTPS with a self-signed certificate. The CLI refuses a plaintext
-	// hub without an explicit flag, so a test of the normal path wants this on.
+	Now func() time.Time // only the device flow reads it; nil means time.Now
+	// PollInterval is both the advertised interval and the slow_down
+	// window — never two numbers, since a sub-second gap while advertising
+	// 0 would punish an obedient client. Default 5s, rounded up, 1s floor.
+	PollInterval  time.Duration
+	DeviceCodeTTL time.Duration // authorize response's expires_in; default 15m
+	TokenTTL      time.Duration // access token's expires_in; default 1h
+	// TLS serves a self-signed cert; the CLI refuses plaintext without an
+	// explicit flag, so the normal-path test wants this on.
 	TLS bool
 }
 
@@ -482,15 +424,10 @@ func (h *Hub) getBundle(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// presigned stands in for the object store the 307 points at.
-//
-// It REFUSES a request that carries an Authorization header, which is what
-// makes the redirect leak testable without a test reaching inside the fake:
-// a client that leaks the bearer to the redirect target gets 400 through the
-// ordinary response path. Real
-// pre-signed object stores behave this way — S3 rejects a request that presents
-// both a query signature and an Authorization header — so this is fidelity, not a
-// trap invented for the test.
+// presigned stands in for the object store the 307 points at. It refuses a
+// request carrying an Authorization header, matching real pre-signed stores
+// like S3 — so a client that leaks the bearer to the redirect target gets an
+// ordinary 400, testable without reaching inside the fake.
 func (h *Hub) presigned(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Authorization") != "" {
 		writeProblem(w, http.StatusBadRequest, "Bad Request",

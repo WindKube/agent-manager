@@ -9,13 +9,10 @@ import (
 	"sync"
 )
 
-// This file reports one completed sync to the hub, at most once, never
-// retried. The hub's ReportSync handler INSERTs a sync_event row with no
-// unique index and no idempotency key, so a retry after an ambiguous failure
-// (timeout, reset, a 503 read after the body was written) is a coin flip
-// between one audit row and a lying two. Do not add a retry, including for a
-// 429: this file cannot tell a limiter's 429 from a proxy's. Retrying safely
-// needs an idempotency key on the endpoint — a contract change, not this one.
+// This file reports one completed sync at most once, never retried: the
+// hub's ReportSync handler INSERTs with no unique index and no idempotency
+// key, so retrying after an ambiguous failure risks a lying duplicate row.
+// Do not add a retry, even for 429 — that needs a contract change first.
 
 // ErrReportInput: refused locally rather than sent to 422 on a bug this client could catch itself.
 var ErrReportInput = errors.New("unusable sync report")

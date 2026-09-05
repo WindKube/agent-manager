@@ -1,62 +1,28 @@
-// Package fake serves the seven hub operations the CLI uses, in process, over a
-// real TCP listener, with real zstd bundle bytes and real digests.
-//
-// # The shape of this package IS the gate
-//
-// A fake that diverges from the real hub gives green tests and a broken
-// binary, so the same behavioural suite is meant to run against both the fake
-// and a real compose stack; a case that cannot be expressed against both is a
-// case the fake must not silently pass.
-//
-// That is a constraint on this package's API, not a later refactor, and it is
-// why the type a behavioural test receives is [Target] — a base URL, a bearer
-// token, an HTTP client, the names of the content it may address, and an
-// optional [Control] for the parts of a hub no client-facing API exposes. A
-// behavioural test must accept a Target and MUST NOT accept a *fake.Hub: the
-// moment a test reaches for a method on the fake, that test can never run
-// against a real compose stack, and nothing about it looks wrong.
-//
-// A hub that cannot express a case says so in the data rather than failing:
-// [Fixtures] leaves the field empty and [Control] returns [ErrUnsupported].
-// The suite then skips with a named reason. A skip is visible in the test
-// log; a fake that quietly passes a case the real hub fails is not.
-//
-// # What this package deliberately does NOT do
-//
-//   - It does not import internal/hub's client wrapper. This is a server. It
-//     uses the generated CONTRACT TYPES from package hub — the same structs
-//     the client decodes into — so a field the hub renamed breaks both sides
-//     at compile time. Importing the wrapper would make the fake agree with
-//     the client by construction, which is exactly the agreement no test
-//     should assume. No import cycle forced this; see the note in
-//     fake_test.go about package hub's own tests.
-//   - It does not serve plaintext under a hand-written Digest header. A fake
-//     that did could not exercise internal/archive or the digest check at
-//     all, and every test above it would be decorative. Bundles are built
-//     with archive/tar and klauspost/compress/zstd at construction, and every
-//     digest — lockfile entry and RFC 3230 header alike — is the sha256 of
-//     the bytes that are actually served.
-//   - It does not accept JSON on /v1/device/token. RFC 8628 §3.4 fixes that
-//     body as application/x-www-form-urlencoded and the real hub enforces it,
-//     so a fake that also took JSON would pass a test the real hub fails.
-//   - It issues OPAQUE tokens: base64url of 32 random bytes, no dots, no
-//     claims. Never a JWT, because a test could then pass against the fake by
-//     decoding one and fail against the real hub, whose bearerFormat is
-//     `opaque`. A token's lifetime is the expires_in returned beside it and
-//     nowhere else.
-//   - It does not implement the four package-registry operations. The CLI
-//     has no use for them and the generated client excludes them by
-//     operation id.
-//   - It is not a security boundary and not a performance model. Tokens live
-//     in a map, nothing is hashed at rest, and there is no rate limiting
-//     beyond slow_down. Do not read this file to learn what the hub stores.
-//
-// # Conformance
-//
-// fake_test.go is this package's own self-test: every lockfile this package
-// serves is validated against the hub's lockfile schema by a validator that
-// reads the schema file itself, and every Digest header is re-derived from
-// the served bytes through internal/cache's parser — an independent second
-// implementation of the same encoding. A fake nobody checks is a second
-// implementation of the hub with no tests, which is worse than no fake.
+// The shape of this package IS the gate: a fake that diverges from the real
+// hub gives green tests and a broken binary. A behavioural test must accept
+// [Target] (URL, bearer token, client, content names, optional [Control]),
+// never a *fake.Hub directly, or it can never run against the real hub. A
+// case the fake can't express says so in the data ([Fixtures] empty,
+// [Control] returning [ErrUnsupported]) so the suite skips visibly.
+
+// What this deliberately does NOT do (1/2): import internal/hub's client
+// wrapper (it uses hub's generated contract types directly, so a renamed
+// field breaks both sides at compile time); serve plaintext under a
+// hand-written Digest header (bundles are real zstd, every digest the
+// sha256 of served bytes); accept JSON on /v1/device/token (RFC 8628 §3.4
+// fixes form-urlencoded).
+
+// (2/2): issue JWTs (tokens are opaque base64url, matching the real hub's
+// bearerFormat so a test can't pass one and fail the other); implement the
+// four registry operations the CLI never calls; act as a security boundary
+// or performance model (tokens live in a map, nothing hashed, no rate
+// limiting beyond slow_down).
+
+// Conformance: fake_test.go validates every served lockfile against the
+// hub's own schema and re-derives every Digest header independently via
+// internal/cache's parser, so this package checks its own agreement with
+// the contract.
+
+// Package fake serves the seven hub operations the CLI uses, in process,
+// over a real TCP listener, with real zstd bundle bytes and real digests.
 package fake

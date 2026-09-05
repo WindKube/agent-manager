@@ -13,12 +13,9 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/hub"
 )
 
-// userCodeAlphabet is Crockford base32: no I, L, O or U, so nothing a human reads
-// aloud or types is ambiguous. The contract's shape is
-// ^[0-9A-HJ-NP-TV-Z]{4}-[0-9A-HJ-NP-TV-Z]{4}$, whose character class happens to
-// admit L as well; this alphabet is the stricter of the two on purpose, because a
-// fake that emitted a code the real hub would never emit could pass a client whose
-// parser is too lax.
+// userCodeAlphabet is Crockford base32 (no I, L, O, U), stricter than the
+// contract's regex (which admits L) on purpose: emitting only what the real
+// hub could emit stops a lax client parser from passing here.
 const userCodeAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
 type deviceState int
@@ -42,9 +39,8 @@ type deviceAuth struct {
 	polled   bool
 	lastPoll time.Time
 
-	// approvalExpiresAt is when an approval that nobody collected goes stale. It is
-	// tracked separately from expiresAt only so ExpireDevice can age an already
-	// approved grant; the real hub ages both off the same authorisation record.
+	// approvalExpiresAt is tracked separately from expiresAt only so
+	// ExpireDevice can age an already-approved grant on its own.
 	approvalExpiresAt time.Time
 }
 
@@ -53,11 +49,9 @@ func randomToken() string {
 	if _, err := rand.Read(b[:]); err != nil {
 		panic(fmt.Sprintf("fake: rand: %v", err))
 	}
-	// Opaque: base64url of 32 random bytes, one segment, no padding, no dots and no
-	// claims. NOT a JWT. The hub's bearerFormat is `opaque` (corrected from `JWT`,
-	// which nothing caught for months because the endpoint returned 501), and a
-	// token with a decodable payload would let a test read an expiry out of it here
-	// and then fail against the real hub. A token's lifetime is expires_in.
+	// Opaque base64url, never a JWT: the hub's bearerFormat is `opaque`, and
+	// a decodable payload would let a test read an expiry here and fail
+	// against the real hub.
 	return base64.RawURLEncoding.EncodeToString(b[:])
 }
 
@@ -77,11 +71,8 @@ func randomUserCode() string {
 }
 
 func (h *Hub) deviceAuthorize(w http.ResponseWriter, r *http.Request) {
-	// 415 for the wrong media type and 400 for a body that does not parse. The
-	// document this tree generates from still declares 422 and 501 here because the
-	// hub's device endpoints live on PR #14; these are the codes the merged
-	// implementation returns, and matching the stale document instead would make
-	// the fake pass what the real hub refuses.
+	// 415/400, not the 422/501 the (stale) generated doc still shows for
+	// PR #14; matching the doc instead would pass what the real hub refuses.
 	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
 		writeProblem(w, http.StatusUnsupportedMediaType, "Unsupported Media Type",
 			"body must be application/json")
@@ -93,8 +84,7 @@ func (h *Hub) deviceAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.ClientId == "" || req.Host == "" {
-		// host is required and is shown to the approving human, so approval is an
-		// informed act. An empty one is not a nicety.
+		// host is shown to the approving human; an empty one is not a nicety
 		writeProblem(w, http.StatusBadRequest, "Bad Request", "client_id and host are required")
 		return
 	}
@@ -126,17 +116,11 @@ func (h *Hub) deviceAuthorize(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// deviceToken implements RFC 8628 §3.4 as the hub implements it.
-//
-// The ordering below is load-bearing and is the ordering the real hub uses:
-// TERMINAL states are decided before slow_down. Telling a client to back off and
-// keep polling a grant that is already denied, consumed or expired would keep it
-// in a loop that can never succeed, so a hammering client on a dead code gets the
-// terminal answer rather than slow_down.
+// deviceToken implements RFC 8628 §3.4. Ordering is load-bearing and matches
+// the real hub: terminal states are decided before slow_down, so a
+// hammering client on a dead code gets the terminal answer, not a loop.
 func (h *Hub) deviceToken(w http.ResponseWriter, r *http.Request) {
-	// Form-encoded ONLY. RFC 8628 §3.4 fixes it and the real hub enforces it, so
-	// accepting JSON here would pass a test the real hub fails. Do not
-	// "helpfully" add a JSON branch.
+	// Form-encoded ONLY (RFC 8628 §3.4); a JSON branch would pass a test the real hub fails.
 	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-www-form-urlencoded") {
 		writeProblem(w, http.StatusUnsupportedMediaType, "Unsupported Media Type",
 			"body must be application/x-www-form-urlencoded")
@@ -150,10 +134,8 @@ func (h *Hub) deviceToken(w http.ResponseWriter, r *http.Request) {
 	deviceCode := r.PostForm.Get("device_code")
 	clientID := r.PostForm.Get("client_id")
 
-	// The five values in the contract's enum are the only errors this endpoint may
-	// return, so an unsupported grant type is reported as invalid_grant rather than
-	// RFC 6749's unsupported_grant_type: a value outside the enum would be a
-	// response the generated client cannot represent.
+	// invalid_grant, not RFC 6749's unsupported_grant_type: the contract's
+	// enum has no room for a response outside its five values.
 	if grant != "urn:ietf:params:oauth:grant-type:device_code" {
 		writeTokenError(w, hub.InvalidGrant)
 		return
@@ -171,9 +153,7 @@ func (h *Hub) deviceToken(w http.ResponseWriter, r *http.Request) {
 
 	switch auth.state {
 	case deviceConsumed:
-		// A second poll of a consumed code is invalid_grant, NOT
-		// authorization_pending. A fake that answered pending here would let a
-		// client loop forever against the real hub while its tests stayed green.
+		// invalid_grant, not authorization_pending, or a client would loop forever against the real hub
 		writeTokenError(w, hub.InvalidGrant)
 		return
 	case deviceDenied:
@@ -185,13 +165,10 @@ func (h *Hub) deviceToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// slow_down fires only when the client has polled BEFORE and polled again
-	// inside the advertised interval. A first poll is never slow_down — a client
-	// that must wait one interval before its first poll would make login slower for
-	// everybody and RFC 8628 does not ask for it.
+	// slow_down only after a prior poll inside the advertised interval; a
+	// first poll is never slow_down, or login would be needlessly slower.
 	if auth.polled && now.Sub(auth.lastPoll) < auth.interval {
-		// The poll still counts: lastPoll advances, so hammering keeps earning
-		// slow_down instead of sliding into a free poll.
+		// counts anyway: lastPoll still advances, so hammering keeps earning slow_down
 		auth.lastPoll = now
 		writeTokenError(w, hub.SlowDown)
 		return
@@ -204,8 +181,7 @@ func (h *Hub) deviceToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if now.After(auth.approvalExpiresAt) {
-		// Approved, but nobody collected it in time. This yields NO token; the grant
-		// is spent either way, so a client cannot poll its way back into it.
+		// approved but uncollected in time yields no token; the grant is spent either way
 		auth.state = deviceConsumed
 		writeTokenError(w, hub.ExpiredToken)
 		return
@@ -222,15 +198,12 @@ func (h *Hub) deviceToken(w http.ResponseWriter, r *http.Request) {
 		AccessToken: token,
 		TokenType:   hub.Bearer,
 		ExpiresIn:   int64(h.opts.TokenTTL.Seconds()),
-		// No refresh_token: this client may not refresh without a second human
-		// approval, and inventing one would let a test exercise a path the hub does
-		// not have.
+		// no refresh_token: a second human approval is required, and inventing one would test a path the hub lacks
 	})
 }
 
-// writeTokenError answers 400 with the OAuth error object. Note the media type:
-// application/json, not problem+json — /v1/device/token is the one route in the
-// contract whose error body is an OAuth structure rather than RFC 7807.
+// writeTokenError answers 400 as application/json, not problem+json: the
+// one route whose error body is an OAuth structure, not RFC 7807.
 func writeTokenError(w http.ResponseWriter, code hub.DeviceTokenErrorError) {
 	writeJSON(w, http.StatusBadRequest, "application/json", hub.DeviceTokenError{Error: &code})
 }

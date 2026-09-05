@@ -51,21 +51,14 @@ type bundleFile struct {
 }
 
 // packBundle writes a tar+zstd bundle shaped like a real claude-code SKILL
-// directory: the destination root IS the skill directory, so SKILL.md sits at the
-// archive root and there is no wrapping directory.
-//
-// The member set is chosen to be one internal/archive ACCEPTS. In particular no
-// top-level directory here is one of layout.IsClaudeCodePluginAdoptingSubdir's
-// names (`hooks`, `commands`, `agents`, …): a bundle carrying one would be refused
-// by the extractor, so a fake that served one would make every install test fail
-// for a reason unrelated to what it was testing.
+// directory: the root IS the skill directory, no wrapping directory. No
+// top-level name here is one of layout's plugin-adopting-subdir names
+// (`hooks`, `commands`, …), or internal/archive would refuse the bundle and
+// every install test would fail for an unrelated reason.
 func packBundle(files []bundleFile) blob {
 	var tarBuf bytes.Buffer
 	tw := tar.NewWriter(&tarBuf)
-	// A fixed timestamp keeps the bundle bytes — and therefore the digest — stable
-	// across runs. A digest that changes per run cannot be written into a golden
-	// expectation, and a test that reads the digest out of the fake instead is a
-	// test that has stopped checking the digest.
+	// fixed timestamp: a digest that changes per run can't be a golden expectation
 	modTime := time.Date(2026, 4, 17, 9, 12, 4, 0, time.UTC)
 
 	writeHeader := func(h *tar.Header) {

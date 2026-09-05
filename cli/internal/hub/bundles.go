@@ -1,12 +1,10 @@
 package hub
 
-// This file is the only place bundle bytes are fetched: a miss GETs and
-// streams to a temp file while hashing (never buffered in full), and
-// cache.PutReader renames temp->sha256-<hex> only on a matching hash, so no
-// unverified byte reaches the install tree. Redirect token safety is NOT
-// reimplemented here: use h.Raw()/h.HTTPClient(), whose 307-following
-// preserves bearerTransport's protections (hub.go); a fresh http.Client
-// would reinstate net/http's Authorization-preserving redirect default.
+// This file is the only place bundle bytes are fetched: a miss streams to a
+// temp file while hashing, and cache.PutReader renames only on a matching
+// hash, so no unverified byte reaches the install tree. Always fetch via
+// h.Raw()/h.HTTPClient() (bearerTransport, hub.go) rather than a fresh
+// http.Client, whose redirect default leaks Authorization cross-host.
 
 import (
 	"context"
@@ -32,14 +30,9 @@ var (
 )
 
 // BundleRef is one lockfile entry reduced to what addressing its bundle
-// needs.
-//
-// THE TRAP: the bundle path is GET /v1/bundles/{publisher}/{name}/{version},
-// but `{publisher}` actually holds the NAMESPACE (the param's NAME is wrong;
-// its description is right). A publisher slug is itself `namespace/name`, so
-// it can't fit in one path segment — hence this type stores Namespace, never
-// a publisher, and the lockfile schema's `"publisher/name"` label on the
-// entry id is wrong the same way: the id is `namespace/name`.
+// needs. THE TRAP: the bundle path's `{publisher}` segment actually holds
+// the NAMESPACE, not a publisher slug (which is itself two segments and
+// can't fit in one) — hence Namespace, never Publisher, below.
 type BundleRef struct {
 	ID        string       // the lockfile entry id verbatim, `namespace/name`
 	Namespace string       // ID's first segment; the value the `publisher` param takes

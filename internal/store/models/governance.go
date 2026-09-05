@@ -28,10 +28,9 @@ type OrgPolicy struct {
 }
 
 // AuditEvent is append-only. Nothing in Go enforces that: UPDATE and DELETE are
-// revoked from every database role (FR-052, constitution principle IV), because
-// an ORM hook or a convention is bypassed by the first person who needs to fix a
-// typo. OccurredAt is the row's creation instant, which is why there is no
-// separate created_at.
+// revoked from every database role, since an ORM hook or a convention is
+// bypassed by the first person who needs to fix a typo. OccurredAt is the row's
+// creation instant, which is why there is no separate created_at.
 type AuditEvent struct {
 	bun.BaseModel `bun:"table:audit_event,alias:aud"`
 
@@ -44,40 +43,32 @@ type AuditEvent struct {
 	Source     string    `bun:"source,type:text,nullzero"`
 }
 
-// FetchAttempt is one ingestion fetch and how it ended, successful or not.
+// FetchAttempt is one ingestion fetch and how it ended, successful or not. It
+// exists because a refused fetch — an SSRF refusal, a reference that names
+// nothing, a zip bomb — never produces a version row, so a panel of object keys
+// structurally cannot show it, and those are the outcomes an operator most needs
+// to see.
 //
-// It exists because the storage view has to report "recent fetch outcomes"
-// (FR-053) and the only record of a fetch was version.object_key — which a
-// refused fetch never produces. An SSRF refusal, a reference that names nothing,
-// a zip bomb: none of them reach a version row, so a panel whose rows are object
-// keys structurally cannot show them, and those are the outcomes an operator most
-// needs to see. The Edge Cases entry that requires a failed fetch be "recorded as
-// a fetch error, not a scan finding" has nowhere else to be recorded.
-//
-// This is NOT a second audit log. audit_event answers "who did what" and is
+// This is NOT a second audit log: audit_event answers "who did what" and is
 // append-only by revoke; this answers "what happened to the bytes" for a worker
-// with no actor behind it. Nor does it carry a version_id: the row is written
-// before there is a version to point at, and the successful half is already
-// reachable through version.object_key.
+// with no actor behind it, so it carries no version_id.
 type FetchAttempt struct {
 	bun.BaseModel `bun:"table:fetch_attempt,alias:fat"`
 
 	ID         uuid.UUID       `bun:"id,pk,type:uuid,notnull"`
 	OccurredAt time.Time       `bun:"occurred_at,type:timestamptz,notnull,default:now()"`
 	SourceKind FetchSourceKind `bun:"source_kind,type:fetch_source_kind,notnull"`
-	// RequestedRef is the reference as submitted: the repository reference for git
-	// and archive-url, the file name for an upload. It is user-supplied, so it is
-	// stored with credentials already redacted and rendered escaped (FR-055) —
-	// this column is echoed onto an operator's screen.
+	// RequestedRef is user-supplied and echoed onto an operator's screen, so it
+	// is stored with credentials already redacted and rendered escaped.
 	RequestedRef string       `bun:"requested_ref,type:text,notnull"`
 	Outcome      FetchOutcome `bun:"outcome,type:fetch_outcome,notnull"`
-	// Detail is the redacted error message, null when Outcome is `ok`. Everything a
-	// screen filters or colours by is Outcome; nothing should have to parse this.
+	// Detail is the redacted error message, null when Outcome is `ok`. Everything
+	// a screen filters or colours by is Outcome, not this.
 	Detail string `bun:"detail,type:text,nullzero"`
 }
 
-// SyncEvent is one row per sync, not per package (R8). The per-package fan-out
-// for install counts happens in the nightly aggregation job, so a catalog read
+// SyncEvent is one row per sync, not per package. The per-package fan-out for
+// install counts happens in the nightly aggregation job, so a catalog read
 // never writes.
 type SyncEvent struct {
 	bun.BaseModel `bun:"table:sync_event,alias:sev"`

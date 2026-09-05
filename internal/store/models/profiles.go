@@ -19,8 +19,8 @@ type Profile struct {
 	Visibility    ProfileVisibility `bun:"visibility,type:profile_visibility,notnull"`
 	OwnerTeam     string            `bun:"owner_team,type:text,nullzero"`
 	DefaultPolicy VersionPolicy     `bun:"default_policy,type:version_policy,notnull"`
-	// ForkedFromID records lineage only. A fork does not subscribe to upstream
-	// revisions (FR-038) and there is deliberately no mechanism that could.
+	// ForkedFromID records lineage only: a fork does not subscribe to upstream
+	// revisions, and there is deliberately no mechanism that could.
 	ForkedFromID *uuid.UUID `bun:"forked_from_id,type:uuid,nullzero"`
 	CreatedAt    time.Time  `bun:"created_at,type:timestamptz,notnull,default:now()"`
 	UpdatedAt    time.Time  `bun:"updated_at,type:timestamptz,notnull,default:now()"`
@@ -52,14 +52,10 @@ type ProfileEntry struct {
 	PinnedVersion *Version `bun:"rel:belongs-to,join:pinned_version_id=id"`
 }
 
-// Revision is an immutable published snapshot of a profile. Previous revisions
-// are never deleted (FR-034).
-//
-// Seq is allocated inside the publish transaction by
-// `select coalesce(max(seq),0)+1 ... for update` on the parent profile row, so two
-// racing publishes serialise into r15 and r16 with no gap and no overwrite. An
-// application counter or a Postgres sequence would leave gaps on rollback, which
-// is why `unique (profile_id, seq)` is the constraint and not a nicety.
+// Revision is an immutable published snapshot of a profile; previous revisions
+// are never deleted. Seq is allocated inside the publish transaction by
+// `select coalesce(max(seq),0)+1 ... for update` on the parent profile row, so
+// two racing publishes serialise with no gap and no overwrite.
 type Revision struct {
 	bun.BaseModel `bun:"table:revision,alias:rev"`
 
@@ -76,8 +72,8 @@ type Revision struct {
 }
 
 // Membership grants a subject a role on a profile. A person in several mapped
-// groups holds the union of those permissions (FR-042), resolved at query time
-// rather than stored.
+// groups holds the union of those permissions, resolved at query time rather
+// than stored.
 type Membership struct {
 	bun.BaseModel `bun:"table:membership,alias:mem"`
 
@@ -92,7 +88,7 @@ type Membership struct {
 }
 
 // SyncTarget is a client-side output format a profile is written to. It affects
-// only what a client writes locally, never server state (FR-039).
+// only what a client writes locally, never server state.
 type SyncTarget struct {
 	bun.BaseModel `bun:"table:sync_target,alias:stgt"`
 

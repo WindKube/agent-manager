@@ -10,8 +10,8 @@
 //   - Bun emits columns, primary keys, unique constraints and foreign keys, and
 //     nothing else. Enum types, check constraints, partial and GIN indexes,
 //     generated columns and grants have no struct-tag representation; they come
-//     from the migration layer (T015-T017). EnumDDL is exported so at least the
-//     enum values cannot drift from the Go const sets.
+//     from the migration layer. EnumDDL is exported so at least the enum values
+//     cannot drift from the Go const sets.
 package models
 
 import (

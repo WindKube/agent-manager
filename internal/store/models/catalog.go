@@ -12,33 +12,19 @@ import (
 	"github.com/uptrace/bun"
 )
 
-// catalog_entry (data-model.md, R12) is deliberately absent. It is the one
-// projection principle VIII sanctions, and it is only built if measurement shows
-// the base tables miss SC-003's 300 ms p95 at 10k packages / 50k versions. A
-// projection is a permanent consistency liability, so the allowance stays
-// unspent until the measurement says otherwise.
-
 // Publisher owns packages. `verified` is set by a catalog admin and is never
-// inferred from the slug prefix — which is what keeps the namespace and the
-// verified flag two different things, and lets community/octoflow be verified
-// after review.
+// inferred from the slug prefix.
 //
-// There is no Namespace field here, and that is deliberate. publisher.namespace
-// exists in the database as a STORED GENERATED column, split_part(slug, '/', 1),
-// so it cannot drift from the slug; a bun tag cannot express `generated always
-// as`, and a plain column here would make 02-tables.sql create an ordinary one
-// that 03-constraints.sql could not then convert. Nothing in Go needs to read it:
-// a query derives the namespace with split_part, which is the same string by
-// definition. The column exists so that package.namespace has something to be
-// held to by a foreign key.
+// There is no Namespace field here: publisher.namespace exists in the database
+// as a STORED GENERATED column (split_part(slug, '/', 1)) because a bun tag
+// cannot express `generated always as`; it exists only so package.namespace has
+// something to be held to by a foreign key.
 type Publisher struct {
 	bun.BaseModel `bun:"table:publisher,alias:pub"`
 
 	ID uuid.UUID `bun:"id,pk,type:uuid,notnull"`
-	// Slug is the whole two-segment owner, `example/platform`. The two-segment
-	// shape is a check constraint, not a convention: the first segment is the
-	// object-key prefix, so a one-segment slug would produce keys nothing else in
-	// the system expects.
+	// Slug is the whole two-segment owner, `example/platform`: the first segment
+	// is the object-key prefix, so a one-segment slug would break it.
 	Slug        string    `bun:"slug,type:text,notnull,unique"`
 	DisplayName string    `bun:"display_name,type:text,notnull"`
 	Verified    bool      `bun:"verified,type:boolean,notnull,default:false"`
@@ -48,7 +34,7 @@ type Publisher struct {
 	Packages []*Package `bun:"rel:has-many,join:id=publisher_id"`
 }
 
-// Category is admin-curated (FR-049). Tags are not categories: they are free-form
+// Category is admin-curated. Tags are not categories: they are free-form
 // strings on the version.
 type Category struct {
 	bun.BaseModel `bun:"table:category,alias:cat"`
@@ -62,36 +48,28 @@ type Category struct {
 
 // Package is the named unit a publisher owns.
 //
-// Uniqueness is `(namespace, name)`, NOT `(publisher_id, name)`. The weaker key
-// permits example/platform and example/security to each own pii-redactor; both
-// render as the id example/pii-redactor and both resolve to the object key
-// skills/example/pii-redactor/..., so one bundle silently overwrites the other.
-// Against FR-007's immutability premise that is a correctness bug, not a display
-// one. The new key is strictly stronger — two packages with the same namespace
-// and name are rejected whichever publisher owns them — so the old one is
-// redundant rather than merely weaker, and is gone.
+// Uniqueness is `(namespace, name)`, not `(publisher_id, name)`: two publishers
+// could otherwise both own a package that renders as the same id and resolves
+// to the same object key, so one bundle would silently overwrite the other.
 type Package struct {
 	bun.BaseModel `bun:"table:package,alias:pkg"`
 
 	ID          uuid.UUID `bun:"id,pk,type:uuid,notnull"`
 	PublisherID uuid.UUID `bun:"publisher_id,type:uuid,notnull"`
-	// Namespace is the first segment of the owning publisher's slug, denormalised
-	// so `unique (namespace, name)` can be a plain constraint. It is not free to
-	// disagree with its publisher: a composite foreign key
-	// (publisher_id, namespace) -> publisher (id, namespace) holds it, which is
-	// what makes the denormalisation safe declaratively rather than by trigger.
+	// Namespace is denormalised from the owning publisher's slug so `unique
+	// (namespace, name)` can be a plain constraint; a composite foreign key
+	// (publisher_id, namespace) -> publisher (id, namespace) keeps it from
+	// disagreeing with the publisher.
 	Namespace  string            `bun:"namespace,type:text,notnull,unique:package_namespace_name"`
 	Name       string            `bun:"name,type:text,notnull,unique:package_namespace_name"`
 	Kind       PackageKind       `bun:"kind,type:package_kind,notnull"`
 	CategoryID *uuid.UUID        `bun:"category_id,type:uuid,nullzero"`
 	Visibility PackageVisibility `bun:"visibility,type:package_visibility,notnull"`
-	// ParentPackageID is set when a skill is distributed inside a plugin, which is
-	// what the origin line in FR-016 renders.
+	// ParentPackageID is set when a skill is distributed inside a plugin.
 	ParentPackageID *uuid.UUID `bun:"parent_package_id,type:uuid,nullzero"`
-	// LatestVersionID is a denormalised pointer maintained on publish. It carries
-	// no bun relation on purpose: version already belongs-to package, and a second
-	// relation in the other direction makes the Atlas loader's topological sort a
-	// cycle. The migration layer adds the foreign key.
+	// LatestVersionID carries no bun relation on purpose: version already
+	// belongs-to package, and a relation back would make the Atlas loader's
+	// topological sort a cycle.
 	LatestVersionID *uuid.UUID `bun:"latest_version_id,type:uuid,nullzero"`
 	CreatedAt       time.Time  `bun:"created_at,type:timestamptz,notnull,default:now()"`
 	UpdatedAt       time.Time  `bun:"updated_at,type:timestamptz,notnull,default:now()"`
@@ -109,8 +87,7 @@ type Version struct {
 	ID        uuid.UUID `bun:"id,pk,type:uuid,notnull"`
 	PackageID uuid.UUID `bun:"package_id,type:uuid,notnull,unique:version_package_semver"`
 	Semver    string    `bun:"semver,type:text,notnull,unique:version_package_semver"`
-	// SemverSort is the zero-padded key from SemverSort, so ordering releases is an
-	// index scan rather than a Go sort.
+	// SemverSort orders releases via an index scan rather than a Go sort.
 	SemverSort string `bun:"semver_sort,type:text,notnull"`
 	ObjectKey  string `bun:"object_key,type:text,notnull"`
 	// Digest is sha256 of the bundle, so 32 bytes. Postgres bytea carries no
@@ -119,12 +96,12 @@ type Version struct {
 	SizeBytes *int64          `bun:"size_bytes,type:bigint,nullzero"`
 	Manifest  json.RawMessage `bun:"manifest,type:jsonb,notnull"`
 	// Tags materialises this version's version_tag rows so the catalog query can
-	// use a GIN index instead of a join (R4).
+	// use a GIN index instead of a join.
 	Tags    []string `bun:"tags,array,type:text[],notnull,default:'{}'"`
 	DistTag DistTag  `bun:"dist_tag,type:dist_tag,notnull"`
 	Verdict Verdict  `bun:"verdict,type:verdict,notnull"`
-	// Visible is commit-last (FR-008): flipped true only once bytes, digest and
-	// metadata have all landed.
+	// Visible is commit-last: flipped true only once bytes, digest and metadata
+	// have all landed.
 	Visible   bool      `bun:"visible,type:boolean,notnull,default:false"`
 	CreatedAt time.Time `bun:"created_at,type:timestamptz,notnull,default:now()"`
 
@@ -136,7 +113,7 @@ type Version struct {
 }
 
 // VersionTag holds the free-form keywords read from the manifest. Tags belong to
-// the version, not the package, because they can change between versions (R1).
+// the version, not the package, because they can change between versions.
 type VersionTag struct {
 	bun.BaseModel `bun:"table:version_tag,alias:vtag"`
 
@@ -148,8 +125,8 @@ type VersionTag struct {
 }
 
 // Component is derived from the bundle's file tree, not from the manifest: no
-// manifest field enumerates components (R1). The path is unique within a tree,
-// which is why it is the rest of the key.
+// manifest field enumerates components. The path is unique within a tree, which
+// is why it is the rest of the key.
 type Component struct {
 	bun.BaseModel `bun:"table:component,alias:cmp"`
 
@@ -165,8 +142,8 @@ type Component struct {
 
 // Capability records what a version can reach. `inferred` rows come from the
 // scanner, `expected` rows from the manifest's extensions block; a finding is
-// raised where inferred exceeds expected (FR-027), so both live in one table
-// keyed by source.
+// raised where inferred exceeds expected, so both live in one table keyed by
+// source.
 type Capability struct {
 	bun.BaseModel `bun:"table:capability,alias:cap"`
 
@@ -180,9 +157,9 @@ type Capability struct {
 	Version *Version `bun:"rel:belongs-to,join:version_id=id"`
 }
 
-// Signature is registry-side metadata, never a manifest field (R9). The
-// `require signed bundles` policy checks ref is not null; verified_at, verified_by
-// and result stay null until sigstore-go lands, and the UI must say so (FR-048a).
+// Signature is registry-side metadata, never a manifest field. The `require
+// signed bundles` policy checks ref is not null; verified_at, verified_by and
+// result stay null until sigstore-go lands.
 type Signature struct {
 	bun.BaseModel `bun:"table:signature,alias:sig"`
 
@@ -198,10 +175,8 @@ type Signature struct {
 	Version *Version `bun:"rel:belongs-to,join:version_id=id"`
 }
 
-// semverSortNumberWidth is the zero-padded width of major, minor and patch.
 const semverSortNumberWidth = 10
 
-// semverSortIdentWidth is the padded width of one prerelease identifier.
 const semverSortIdentWidth = 20
 
 // semverSortPad is the padding for alphanumeric prerelease identifiers. It is the
@@ -211,18 +186,11 @@ const semverSortIdentWidth = 20
 const semverSortPad = "-"
 
 // SemverSort computes version.semver_sort: a key whose byte order is semver's
-// precedence order, so `order by semver_sort desc` is an index scan.
-//
-// The key is major/minor/patch zero-padded, then one flag digit that is '0' when
-// a prerelease is present and '1' when it is not — that single digit is what puts
-// 1.0.0-rc.1 before 1.0.0. Each prerelease identifier then contributes a kind
-// digit ('0' numeric, '1' alphanumeric, so numeric identifiers sort first) plus a
-// padded payload. Build metadata is dropped: semver says it does not affect
-// precedence.
-//
-// The key alphabet is [0-9A-Za-z-] only, which orders the same under C and under
-// en_US.utf8 (both verified against Postgres 16). Declaring the column `collate
-// "C"` makes that independent of the cluster's locale.
+// precedence order, so `order by semver_sort desc` is an index scan. Major,
+// minor and patch are zero-padded, then a flag digit ('0' prerelease present,
+// '1' not) puts 1.0.0-rc.1 before 1.0.0, followed by one kind+payload pair per
+// prerelease identifier (numeric identifiers sort first). Build metadata is
+// dropped since semver says it doesn't affect precedence.
 func SemverSort(raw string) (string, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -283,8 +251,6 @@ func SemverSort(raw string) (string, error) {
 	return key.String(), nil
 }
 
-// paddedNumber left-pads an already-valid decimal identifier with zeros to
-// width, refusing one too wide to pad and still compare correctly.
 func paddedNumber(s string, width int) (string, error) {
 	if len(s) > width {
 		return "", fmt.Errorf("%q has more than %d digits", s, width)

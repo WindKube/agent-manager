@@ -16,7 +16,7 @@ type Identity struct {
 	Email       string    `bun:"email,type:text,nullzero"`
 	DisplayName string    `bun:"display_name,type:text,nullzero"`
 	// Groups is refreshed on every token issue, so losing a group takes effect at
-	// the next refresh rather than immediately (FR-045).
+	// the next refresh rather than immediately.
 	Groups     []string   `bun:"groups,array,type:text[],notnull,default:'{}'"`
 	LastSeenAt *time.Time `bun:"last_seen_at,type:timestamptz,nullzero"`
 	CreatedAt  time.Time  `bun:"created_at,type:timestamptz,notnull,default:now()"`
@@ -33,10 +33,9 @@ type GroupRoleMap struct {
 	UpdatedAt time.Time `bun:"updated_at,type:timestamptz,notnull,default:now()"`
 }
 
-// DeviceAuthorization is one in-flight device flow.
-//
-// Single use is the pending -> approved -> consumed transition inside one
-// transaction (FR-042), which is why there is no consumed boolean.
+// DeviceAuthorization is one in-flight device flow. Single use is the
+// pending -> approved -> consumed transition inside one transaction, which is
+// why there is no consumed boolean.
 type DeviceAuthorization struct {
 	bun.BaseModel `bun:"table:device_authorization,alias:dauth"`
 
@@ -44,10 +43,8 @@ type DeviceAuthorization struct {
 	// DeviceCodeHash is hashed at rest: the plaintext device code is a bearer
 	// credential, and a database read must not yield one.
 	DeviceCodeHash []byte `bun:"device_code_hash,type:bytea,notnull,unique"`
-	// UserCode is Crockford base32 in the HKQ2-9FTL shape, ambiguous glyphs
-	// excluded, and is shown to a person rather than stored as a secret.
-	UserCode string `bun:"user_code,type:text,notnull,unique"`
-	// RequestingHost is bound at issue (FR-041).
+	// UserCode is Crockford base32, shown to a person rather than stored as a secret.
+	UserCode             string          `bun:"user_code,type:text,notnull,unique"`
 	RequestingHost       string          `bun:"requesting_host,type:text,notnull"`
 	State                DeviceAuthState `bun:"state,type:device_auth_state,notnull"`
 	ApprovedByIdentityID *uuid.UUID      `bun:"approved_by_identity_id,type:uuid,nullzero"`

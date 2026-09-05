@@ -32,11 +32,14 @@ go.work.sum
 # .vscode/
 
 # Project build artefacts
-/.bin/
+# No trailing slash: a trailing slash matches only a directory, and both here
+# are a symlink (Taskfile.yaml's tool-binaries pattern), which a slash-only
+# pattern silently lets `git add -A` pick up.
+/.bin
 /dist/
-# The CLI module's build output. Root-anchored /.bin/ above does not cover a
-# nested module's, and `task cli:build` writes into cli/.bin/.
-/cli/.bin/
+# The CLI module's build output. Root-anchored /.bin above does not cover a
+# nested module's, and `task cli:build` writes into cli/.bin.
+/cli/.bin
 /cli/dist/
 /cli/amctl
 /cli/amctl-*

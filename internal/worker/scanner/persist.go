@@ -18,19 +18,16 @@ import (
 // something an archive gets to choose.
 const maxDetailBytes = 4000
 
-// record is the one transaction the scan hangs on.
+// record is the one transaction the scan hangs on: the `scan` row, every
+// `scan_check` row, every `finding`, every `finding_evidence` row, the
+// version's verdict and the audit row land together or not at all — a
+// partial write here is a finding with no scan behind it, or a flagged
+// version whose findings did not land.
 //
-// Everything before it is a pure function of the bytes: read, parse, apply rules.
-// This makes the `scan` row, every `scan_check` row, every `finding`, every
-// `finding_evidence` row, the version's verdict and the audit row land together or
-// not at all. A partial write here is the failure a reviewer cannot see — a
-// finding with no scan behind it, or a flagged version whose findings did not
-// land — so there is exactly one commit for the whole verdict.
-//
-// It is also where idempotency is finally enforced. The pre-flight guard can be
-// passed by two concurrent deliveries; `unique (version_id, pack_version)` can be
-// satisfied by only one of them, and `on conflict do nothing` turns the loser into
-// the no-op that principle IX requires rather than into an error.
+// It is also where idempotency is finally enforced: the pre-flight guard can
+// be passed by two concurrent deliveries, but `unique (version_id,
+// pack_version)` can be satisfied by only one, and `on conflict do nothing`
+// turns the loser into a no-op rather than an error.
 func (w *Worker) record(ctx context.Context, job Job, result analysis, started time.Time) (Outcome, error) {
 	verdict := verdictOf(result)
 	outcome := Outcome{
@@ -64,8 +61,8 @@ func (w *Worker) record(ctx context.Context, job Job, result analysis, started t
 			return fmt.Errorf("record the scan of %s: %w", job, err)
 		}
 		if affected != 1 {
-			// Another delivery of this job committed first. Its rows are the record;
-			// writing a second set would double every finding in the reviewer's list.
+			// Another delivery of this job committed first; writing a second
+			// set would double every finding in the reviewer's list.
 			return nil
 		}
 		outcome.Recorded = true
@@ -88,15 +85,14 @@ func (w *Worker) record(ctx context.Context, job Job, result analysis, started t
 	return outcome, nil
 }
 
-// setVerdict moves the version's verdict, which is the only column on `version`
-// this role may write — `grant update ("verdict")` and nothing else, because the
-// scanner does not produce bundle bytes and so must not be able to forge a digest
-// or an object key.
+// setVerdict moves the version's verdict, the only column on `version` this
+// role may write — `grant update ("verdict")` and nothing else, because the
+// scanner does not produce bundle bytes and must not be able to forge a
+// digest or an object key.
 //
-// Two guards. A `rejected` version is left alone: rejection is a reviewer's
-// decision (FR-029) and a rescan must not resurrect it to `clean`. And a timed-out
-// scan writes no verdict at all, because FR-031 forbids a timeout resolving to
-// clean and `scanning` is what the version already carries.
+// Two guards: a `rejected` version is left alone, since rejection is a
+// reviewer's decision a rescan must not resurrect to `clean`; and a timed-out
+// scan writes no verdict at all, since a timeout must never resolve to clean.
 func (w *Worker) setVerdict(ctx context.Context, tx bun.IDB, job Job, verdict models.Verdict) error {
 	if verdict == models.VerdictScanning {
 		return nil
@@ -110,8 +106,8 @@ func (w *Worker) setVerdict(ctx context.Context, tx bun.IDB, job Job, verdict mo
 	return nil
 }
 
-// insertChecks writes one row per registered check, INCLUDING passes (FR-025).
-// The absence of a finding and the absence of a check are different facts, and a
+// insertChecks writes one row per registered check, including passes: the
+// absence of a finding and the absence of a check are different facts, and a
 // matrix that only carried failures could not tell them apart.
 func insertChecks(ctx context.Context, tx bun.IDB, scanID uuid.UUID, runs []checks.CheckRun) error {
 	if len(runs) == 0 {
@@ -138,13 +134,10 @@ func insertChecks(ctx context.Context, tx bun.IDB, scanID uuid.UUID, runs []chec
 	return nil
 }
 
-// insertFindings writes the findings and their evidence.
-//
-// Every finding is `open`. A rescan that raises a finding on a version somebody
-// approved therefore reopens it (FR-030): the approval is an `override` row keyed
-// to the OLD finding, so it covers that finding and not this one, and the version
-// is flagged again with an untriaged finding under it. Carrying the old state
-// across would be an approval of something nobody read.
+// insertFindings writes the findings and their evidence. Every finding is
+// `open`: a rescan that raises a finding on an approved version reopens it,
+// since the approval is an `override` row keyed to the old finding and
+// carrying that state across would be an approval of something nobody read.
 func insertFindings(ctx context.Context, tx bun.IDB, scanID, versionID uuid.UUID, findings []checks.Finding) error {
 	if len(findings) == 0 {
 		return nil
@@ -180,10 +173,6 @@ func insertFindings(ctx context.Context, tx bun.IDB, scanID, versionID uuid.UUID
 		rows = append(rows, row)
 
 		for _, location := range finding.Evidence {
-			// The primary row mirrors the triple on the finding itself, which is what
-			// `unique (finding_id) where role = 'primary'` keeps well defined: the list
-			// view reads one table and the detail pane reads every location, and the two
-			// cannot disagree about which location is "the" one.
 			role := models.EvidenceRolePrimary
 			if location.Supporting {
 				role = models.EvidenceRoleSupporting
@@ -214,13 +203,10 @@ func insertFindings(ctx context.Context, tx bun.IDB, scanID, versionID uuid.UUID
 	return nil
 }
 
-// countAsInt32 fits a count derived from bundle content into the column's width.
-//
-// Every value it is handed is already bounded by the engine's own caps, so the
-// clamp is unreachable in practice and is here because "in practice" is not a
-// guarantee about attacker-supplied input: a line number from a 3-billion-line
-// file must saturate rather than wrap into a negative one that reads as a
-// different location.
+// countAsInt32 fits a count derived from bundle content into the column's
+// width. The clamp is unreachable in practice, but "in practice" is not a
+// guarantee about attacker-supplied input: a line number from a huge file
+// must saturate rather than wrap into a negative one.
 func countAsInt32(n int) int32 {
 	switch {
 	case n < 0:

@@ -12,20 +12,14 @@ import (
 	"agent-manager/internal/outbox"
 )
 
-// Job is the `fetch` outbox payload, and therefore the wire contract between
-// the api role's registration command and this worker. It lives here, the
-// consumer, rather than in internal/api/commands, so the worker never has to
-// import the API's command layer.
+// Job is the `fetch` outbox payload: the wire contract between the api
+// role's registration command and this worker.
 type Job struct {
-	// VersionID names the row this fetch fills in. The row already exists —
-	// invisible, digest null — because the idempotency key is evaluated
-	// against the target row, so there has to be one when the job is
-	// enqueued.
+	// VersionID names the row this fetch fills in; it already exists,
+	// invisible with digest null.
 	VersionID uuid.UUID `json:"versionId"`
 	PackageID uuid.UUID `json:"packageId"`
 
-	// Namespace, not the publisher slug: it is the first object-key segment
-	// and the first half of the rendered package id.
 	Namespace string `json:"namespace"`
 	Name      string `json:"name"`
 	Semver    string `json:"semver"`
@@ -44,11 +38,8 @@ type JobSource struct {
 	ArchiveName string `json:"archiveName,omitempty"`
 
 	// Archive carries an uploaded archive's bytes, base64 in the payload's
-	// jsonb — the only transactional door available, since the api role
-	// holds no blob.Writer and a filesystem hand-off between containers
-	// doesn't exist. The cost is real and bounded: the 25 MB upload cap
-	// becomes ~33 MB of base64 in the outbox row and again in the River job,
-	// both of which are pruned.
+	// jsonb: the only transactional door available, since the api role
+	// holds no blob.Writer.
 	Archive []byte `json:"archive,omitempty"`
 }
 
@@ -57,9 +48,8 @@ type JobSource struct {
 func (Job) Kind() string { return string(outbox.KindFetch) }
 
 // Validate rejects a payload this worker could not act on. It runs both at
-// enqueue time, so a bad registration fails the request rather than a job,
-// and at work time, since a payload read out of the queue is input like any
-// other.
+// enqueue time and at work time, since a payload read out of the queue is
+// input like any other.
 func (j Job) Validate() error {
 	switch {
 	case j.VersionID == uuid.Nil:
@@ -93,9 +83,7 @@ func (j Job) VersionRef() blob.VersionRef {
 	return blob.VersionRef{Namespace: j.Namespace, Name: j.Name, Semver: j.Semver}
 }
 
-// OutboxJob renders the enqueue the registration command performs. The
-// idempotency key it carries is the version's own identity, which is what
-// `digest is not null` on that row then answers.
+// OutboxJob renders the enqueue the registration command performs.
 func (j Job) OutboxJob() (outbox.Job, error) {
 	if err := j.Validate(); err != nil {
 		return outbox.Job{}, err

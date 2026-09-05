@@ -11,12 +11,8 @@ import (
 )
 
 // The fetch-error taxonomy. A fetch failure is reported as a fetch failure
-// and never as a scan finding: a finding is a statement about what a package
-// does, produced by reading its bytes, and every failure below happened
-// before any bytes were read (or because they could not be read at all).
-// Structurally that holds because a failed fetch never reaches the publish
-// transaction: no digest is written, `visible` stays false, no `scan` job is
-// enqueued, and the version's verdict stays `scanning`.
+// and never as a scan finding: every reason below happened before any bytes
+// were read, or because they could not be read at all.
 
 // ErrFetch is the sentinel behind every failure of this pipeline.
 var ErrFetch = errors.New("fetch failed")
@@ -86,9 +82,8 @@ func (e *Error) Error() string {
 func (e *Error) Unwrap() []error { return []error{ErrFetch, e.cause} }
 
 // Retryable reports whether re-running the job could produce a different
-// answer, so River's retry policy is driven by the classification rather
-// than a guess: a non-conformant manifest will still be non-conformant on
-// the fourth attempt.
+// answer: a non-conformant manifest will still be non-conformant on the
+// fourth attempt.
 func (e *Error) Retryable() bool {
 	switch e.Reason {
 	case ReasonRemote, ReasonStore, ReasonArchiveTimeout:
@@ -99,15 +94,13 @@ func (e *Error) Retryable() bool {
 }
 
 // classify maps every error the pipeline can produce onto exactly one reason.
-// The order matters: specific classifications come first, and the
-// fall-through is the hub's own fault rather than the source's.
 func classify(subject string, err error) error {
 	if err == nil {
 		return nil
 	}
 
 	// A cancelled or timed-out caller is a shutdown or a deadline, not a
-	// defect in what was being fetched, so it is returned as itself.
+	// defect in what was being fetched.
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return err
 	}

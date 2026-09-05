@@ -1,0 +1,424 @@
+package components
+
+import (
+	"strconv"
+
+	"agent-manager/internal/web/view"
+)
+
+// Profiles screens.
+//
+// Both are plain server renders with plain form posts, like the scanner screen:
+// curating a profile changes stored state, so post-redirect-get is what makes a
+// browser's reload button safe. Every string this hub did not write itself — a
+// package name, a member's display name, a revision note — is interpolated and
+// therefore escaped; internal/archcheck fails the build if anything under
+// internal/web calls templ.Raw at all.
+templ ProfilesScreen(p view.Profiles) {
+	<div class="am-header">
+		<div class="am-header-text">
+			<h1 class="am-h1">Profiles</h1>
+			<p class="am-lede">
+				Named sets of packages a machine can sync. A profile pins or floats each
+				package, resolves it under the org's scan gate, and publishes a numbered
+				revision a client reads.
+			</p>
+		</div>
+	</div>
+	if p.Notice != nil {
+		<div class={ NoticeClass(*p.Notice) } id="profiles-notice">{ p.Notice.Text }</div>
+	}
+	if p.SignedOut {
+		<div class="am-empty am-empty-auth" id="profiles-signed-out">
+			Sign in to see your profiles. The hub has no anonymous view.
+		</div>
+	} else if p.Refused {
+		<div class="am-empty am-empty-auth" id="profiles-refused">
+			Your role may not read profiles. This is not an empty hub: a role is what
+			decides whether you see the profiles it holds.
+		</div>
+	} else if p.Unavailable {
+		<div class="am-notice am-notice-dan" id="profiles-unavailable">
+			<p class="am-note">
+				The hub's api did not answer, so this screen cannot show what it does not
+				know. Retry in a moment; if it persists, the api is the thing to look at.
+			</p>
+		</div>
+	} else {
+		if p.CanCreate {
+			@createProfileForm(p)
+		}
+		@profilesList(p)
+	}
+}
+
+templ createProfileForm(p view.Profiles) {
+	<section class="am-card" id="profile-create">
+		<div class="am-section-head">
+			<div class="am-section-title">Create a profile</div>
+		</div>
+		if p.CreateRefused != "" {
+			<div class="am-gov-notice am-gov-notice-dan" id="profile-create-refused" style="margin:0 20px">
+				{ p.CreateRefused }
+			</div>
+		}
+		<form method="post" action="/profiles">
+			<div class="am-field-row">
+				<div class="am-field">
+					<label class="am-field-label" for="profile-slug">Slug</label>
+					<input id="profile-slug" class="am-search" name="slug" required placeholder="example/platform-engineer"/>
+				</div>
+				<div class="am-field">
+					<label class="am-field-label" for="profile-name">Name</label>
+					<input id="profile-name" class="am-search" name="name" required placeholder="Platform Engineer"/>
+				</div>
+			</div>
+			<div class="am-field-row">
+				<div class="am-field">
+					<label class="am-field-label" for="profile-visibility">Visibility</label>
+					<select id="profile-visibility" class="am-search" name="visibility">
+						for _, option := range view.ProfileVisibilities {
+							<option value={ option.Value }>{ option.Label }</option>
+						}
+					</select>
+				</div>
+				<div class="am-field">
+					<label class="am-field-label" for="profile-policy">Default policy</label>
+					<select id="profile-policy" class="am-search" name="defaultPolicy">
+						for _, option := range view.ProfileDefaultPolicies {
+							<option value={ option.Value }>{ option.Label }</option>
+						}
+					</select>
+				</div>
+				<div class="am-field">
+					<label class="am-field-label" for="profile-fork">Fork of (optional)</label>
+					<input id="profile-fork" class="am-search" name="forkOf" placeholder="example/sre-oncall"/>
+				</div>
+			</div>
+			<div class="am-field-row" style="padding-bottom:18px">
+				<div class="am-field">
+					<label class="am-field-label" for="profile-description">Description (optional)</label>
+					<input id="profile-description" class="am-search" name="description"/>
+				</div>
+				<div class="am-field">
+					<label class="am-field-label" for="profile-owner">Owner team (optional)</label>
+					<input id="profile-owner" class="am-search" name="ownerTeam" placeholder="example/platform"/>
+				</div>
+				<button type="submit" class="am-btn am-btn-primary" style="align-self:flex-end">Create</button>
+			</div>
+		</form>
+	</section>
+}
+
+templ profilesList(p view.Profiles) {
+	<div class="am-card" id="profiles-list">
+		<div class="am-section-head" style="padding:15px 20px 0">
+			<div class="am-section-title">Your profiles</div>
+			<div class="am-section-note">{ p.Count() }</div>
+		</div>
+		<div class="am-prof-row am-prof-row-head">
+			<div>Name</div>
+			<div>Visibility</div>
+			<div>Packages</div>
+			<div>Revision</div>
+		</div>
+		for _, row := range p.Rows {
+			<a class="am-prof-row" href={ row.Href() }>
+				<div class="am-cell-name">
+					<div class="am-name">{ row.Name }</div>
+					<div class="am-mono am-id">{ row.Slug }</div>
+				</div>
+				<div class="am-cell-text">{ row.VisibilityLabel() }</div>
+				<div class="am-cell-mono">{ strconv.Itoa(row.PackageCount) }</div>
+				<div class="am-cell-mono">{ row.RevisionLabel() }</div>
+			</a>
+		}
+		if p.Empty() {
+			<div class="am-empty" id="profiles-empty">
+				No profiles yet. Create one above, or ask whoever owns an existing profile
+				to share it with you or with a group you belong to.
+			</div>
+		}
+	</div>
+}
+
+// ProfileScreen is the detail screen: what a profile holds, what the gate did
+// to each entry, who it is shared with, its sync targets and its history.
+templ ProfileScreen(p view.Profile) {
+	<div class="am-detail-head">
+		<a class="am-back" href="/profiles">← Profiles</a>
+		if p.SignedOut || p.Missing || p.Refused || p.Unavailable {
+			<h1 class="am-h1">Profile</h1>
+		} else {
+			<h1 class="am-h1">{ p.Name }</h1>
+			<div class="am-detail-ids">
+				<span class="am-mono am-id">{ p.Slug }</span>
+				<span class="am-detail-sep">|</span>
+				<span class="am-detail-cat">{ p.VisibilityLabel() }</span>
+				<span class="am-detail-cat">{ p.HeadRevisionLabel() }</span>
+				if p.RoleLabel() != "" {
+					<span class="am-detail-cat">Your role: { p.RoleLabel() }</span>
+				}
+			</div>
+		}
+	</div>
+	if p.Notice != nil {
+		<div class={ NoticeClass(*p.Notice) } id="profile-notice">{ p.Notice.Text }</div>
+	}
+	if p.Refusal != "" {
+		<div class="am-gov-notice am-gov-notice-dan" id="profile-refusal">{ p.Refusal }</div>
+	}
+	if p.SignedOut {
+		<div class="am-empty am-empty-auth" id="profile-signed-out">
+			Sign in to inspect this profile. The hub has no anonymous view.
+		</div>
+	} else if p.Missing {
+		<div class="am-empty" id="profile-missing">
+			No such profile, or it is not readable by your identity.
+		</div>
+	} else if p.Refused {
+		<div class="am-empty am-empty-auth" id="profile-refused">
+			Your role may not read this profile.
+		</div>
+	} else if p.Unavailable {
+		<div class="am-notice am-notice-dan" id="profile-unavailable">
+			<p class="am-note">
+				The hub's api did not answer, so this screen cannot show what it does not know.
+			</p>
+		</div>
+	} else {
+		@profileBody(p)
+	}
+}
+
+templ profileBody(p view.Profile) {
+	if p.Description != "" {
+		<section class="am-section">
+			<p class="am-desc">{ p.Description }</p>
+		</section>
+	}
+	if p.UnpublishedChanges {
+		<div class="am-gov-notice am-gov-notice-warn" id="profile-unpublished">
+			Publishing now would write a lockfile different from the head revision's. Nothing
+			below has reached a machine yet.
+		</div>
+	}
+	@entriesPanel(p)
+	@sharingPanel(p)
+	@targetsPanel(p)
+	@revisionsPanel(p)
+}
+
+templ entriesPanel(p view.Profile) {
+	<section class="am-card">
+		<div class="am-section-head" style="padding:15px 20px 0">
+			<div class="am-section-title">Packages</div>
+			<div class="am-section-note">Gate: { p.GateLabel() }</div>
+		</div>
+		for _, entry := range p.Entries {
+			@entryRow(p, entry)
+		}
+		if p.EntriesEmpty() {
+			<div class="am-empty" id="profile-entries-empty">
+				This profile holds no packages yet. Add one from the catalog to start
+				curating it.
+			</div>
+		}
+	</section>
+}
+
+templ entryRow(p view.Profile, entry view.ProfileEntryRow) {
+	<div class="am-entry" id={ "entry-" + entry.ID }>
+		<div class="am-entry-head">
+			<a class="am-name am-pane-link" href={ view.PackageHref(entry.ID) }>{ entry.Name }</a>
+			<span class="am-mono am-id">{ entry.ID }</span>
+			<span class={ KindClass(entry.Kind) }>{ entry.Kind.Label() }</span>
+			<span class={ OutcomeClass(entry.Outcome) }>{ entry.Outcome.Label() }</span>
+			if entry.Unpublished {
+				<span class="am-pill am-pill-neutral">Unpublished change</span>
+			}
+		</div>
+		<div class="am-cell-text">
+			{ entry.ModeLabel() }
+			if entry.Version != "" {
+				<span class="am-mono">→ { entry.Version }</span>
+				<span class={ VerdictClass(entry.Verdict) }>{ entry.Verdict.Label() }</span>
+			}
+		</div>
+		if entry.Note != "" {
+			<p class="am-note">{ entry.Note }</p>
+		}
+		if entry.Skip != nil {
+			<div class="am-gov-notice am-gov-notice-dan" id={ "entry-" + entry.ID + "-skip" }>
+				Excluded: { entry.Skip.ReasonLabel() }.
+				if entry.Skip.Detail != "" {
+					{ entry.Skip.Detail }
+				}
+				if entry.Skip.WouldHaveResolvedTo != "" {
+					<span class="am-mono">Would have resolved to { entry.Skip.WouldHaveResolvedTo }.</span>
+				}
+			</div>
+		}
+		if entry.Override != nil {
+			<div class="am-note" id={ "entry-" + entry.ID + "-override" }>
+				Override by { entry.Override.Reviewer }: { entry.Override.Note }
+				if entry.Override.Expires != "" {
+					(expires { entry.Override.Expires })
+				} else {
+					(does not expire)
+				}
+			</div>
+		}
+		if !p.Permissions.Curate {
+			<div class="am-entry-actions">
+				<button type="button" class="am-btn" disabled aria-disabled="true">Float to latest</button>
+				<button type="button" class="am-btn" disabled aria-disabled="true">Pin</button>
+			</div>
+		} else {
+			<div class="am-entry-actions">
+				<form method="post" action="/profiles/entries/latest">
+					<input type="hidden" name="slug" value={ p.Slug }/>
+					<input type="hidden" name="id" value={ entry.ID }/>
+					if entry.CanFloat() {
+						<button type="submit" class="am-btn">Float to latest</button>
+					} else {
+						<button type="button" class="am-btn" disabled aria-disabled="true">Floating</button>
+					}
+				</form>
+				<form method="post" action="/profiles/entries/pin">
+					<input type="hidden" name="slug" value={ p.Slug }/>
+					<input type="hidden" name="id" value={ entry.ID }/>
+					<input type="hidden" name="version" value={ entry.PinTarget() }/>
+					if entry.CanPin() {
+						<button type="submit" class="am-btn">Pin to { entry.PinTarget() }</button>
+					} else if entry.Mode == "pinned" {
+						<button type="button" class="am-btn" disabled aria-disabled="true">Pinned to { entry.PinnedVersion }</button>
+					} else {
+						<button type="button" class="am-btn" disabled aria-disabled="true">Nothing to pin to</button>
+					}
+				</form>
+			</div>
+		}
+	</div>
+}
+
+templ sharingPanel(p view.Profile) {
+	<section class="am-card">
+		<div class="am-section-head" style="padding:15px 20px 0">
+			<div class="am-section-title">Sharing</div>
+		</div>
+		for _, member := range p.Members {
+			<div class="am-share-row">
+				<span>{ member.Label() }</span>
+				<span class="am-cell-dim">{ member.KindLabel() }</span>
+				<span class="am-pill am-pill-neutral">{ member.RoleLabel() }</span>
+			</div>
+		}
+		if p.MembersEmpty() {
+			<div class="am-empty" id="profile-members-empty">
+				Nobody has been named on this profile. Its visibility is { p.VisibilityLabel() }.
+			</div>
+		}
+		if p.Permissions.Share {
+			<form method="post" action="/profiles/sharing" class="am-field-row" style="padding-bottom:18px">
+				<input type="hidden" name="slug" value={ p.Slug }/>
+				<div class="am-field" style="min-width:120px;flex:0 0 auto">
+					<label class="am-field-label" for="share-kind">Kind</label>
+					<select id="share-kind" class="am-search" name="kind">
+						for _, option := range view.ProfileMemberKinds {
+							<option value={ option.Value }>{ option.Label }</option>
+						}
+					</select>
+				</div>
+				<div class="am-field">
+					<label class="am-field-label" for="share-ref">Person or group</label>
+					<input id="share-ref" class="am-search" name="ref" required placeholder="name@example.com or eng-platform"/>
+				</div>
+				<div class="am-field" style="min-width:140px;flex:0 0 auto">
+					<label class="am-field-label" for="share-role">Role</label>
+					<select id="share-role" class="am-search" name="role">
+						for _, option := range view.ProfileMemberRoles {
+							<option value={ option.Value }>{ option.Label }</option>
+						}
+					</select>
+				</div>
+				<button type="submit" class="am-btn am-btn-primary" style="align-self:flex-end">Share</button>
+			</form>
+		}
+	</section>
+}
+
+templ targetsPanel(p view.Profile) {
+	<section class="am-card">
+		<div class="am-section-head" style="padding:15px 20px 0">
+			<div class="am-section-title">Sync targets</div>
+			<div class="am-section-note">Affects only what a client writes locally</div>
+		</div>
+		<form method="post" action="/profiles/targets">
+			<input type="hidden" name="slug" value={ p.Slug }/>
+			for _, target := range p.Targets {
+				<div class="am-target-row">
+					<label>
+						if p.Permissions.Curate {
+							if target.Enabled {
+								<input type="checkbox" name="targets" value={ target.Target } checked/>
+							} else {
+								<input type="checkbox" name="targets" value={ target.Target }/>
+							}
+						} else {
+							if target.Enabled {
+								<input type="checkbox" checked disabled/>
+							} else {
+								<input type="checkbox" disabled/>
+							}
+						}
+						<span>{ target.Label() }</span>
+					</label>
+					<span class="am-mono am-cell-dim">{ target.Path() }</span>
+				</div>
+			}
+			if p.Permissions.Curate {
+				<div style="padding:14px 20px">
+					<button type="submit" class="am-btn am-btn-primary">Save targets</button>
+				</div>
+			}
+		</form>
+	</section>
+}
+
+templ revisionsPanel(p view.Profile) {
+	<section class="am-card">
+		<div class="am-section-head" style="padding:15px 20px 0">
+			<div class="am-section-title">Revisions</div>
+		</div>
+		for _, revision := range p.Revisions {
+			<div class="am-rev-row">
+				<span class="am-mono">r{ strconv.Itoa(revision.Revision) }</span>
+				<span class="am-mono am-cell-dim">{ revision.PublishedAt }</span>
+				<span class="am-cell-dim">{ revision.PublishedBy }</span>
+				if revision.Note != "" {
+					<span>{ revision.Note }</span>
+				}
+			</div>
+		}
+		if p.RevisionsEmpty() {
+			<div class="am-empty" id="profile-revisions-empty">
+				No revision has been published yet. Nothing here has reached a machine.
+			</div>
+		}
+		if p.Permissions.Publish {
+			<form method="post" action="/profiles/revisions" class="am-field-row" style="padding-bottom:18px">
+				<input type="hidden" name="slug" value={ p.Slug }/>
+				<div class="am-field">
+					<label class="am-field-label" for="revision-note">Note (optional)</label>
+					<input id="revision-note" class="am-search" name="note" maxlength="500"/>
+				</div>
+				<button type="submit" class="am-btn am-btn-primary" style="align-self:flex-end">Publish revision</button>
+			</form>
+		} else {
+			<div class="am-gate-note" id="profile-publish-not-permitted" style="padding:0 20px 18px">
+				Your role on this profile may not publish a revision.
+			</div>
+		}
+	</section>
+}

@@ -107,6 +107,31 @@ type AuditSource interface {
 	AuditExport(ctx context.Context) (io.ReadCloser, string, error)
 }
 
+// ProfileSource is the Profiles screens' two reads.
+//
+// A read-only door for the same reason ScannerSource is separate from
+// Reviewer: internal/web/fixture can honestly answer both of these and must
+// not be able to answer a curation write.
+type ProfileSource interface {
+	Profiles(ctx context.Context) ([]hub.ProfileSummary, error)
+	Profile(ctx context.Context, slug string) (hub.ProfileDetail, error)
+}
+
+// ProfileCurator is every write the profile screens offer: create, curate,
+// share, target and publish.
+//
+// One interface rather than five narrower ones, because every one of them is
+// gated by the SAME profile's ProfilePermissions and a fixture that could
+// honestly answer one would be claiming a stored write it cannot make for any
+// of them.
+type ProfileCurator interface {
+	CreateProfile(ctx context.Context, creation hub.ProfileCreation) (hub.ProfileSummary, error)
+	SetProfileEntries(ctx context.Context, slug string, entries []hub.EntrySetting) (hub.ProfileDetail, error)
+	SetProfileSharing(ctx context.Context, slug string, members []hub.Share) (hub.ProfileDetail, error)
+	SetProfileTargets(ctx context.Context, slug string, targets []string) (hub.ProfileDetail, error)
+	PublishRevision(ctx context.Context, slug, note string) (hub.PublishedRevision, error)
+}
+
 // BadgeSource is the sidebar's three counts (FR-121, research R5).
 //
 // One operation, read once per full page render and never on a fragment update.
@@ -151,6 +176,13 @@ type Deps struct {
 	// Badges backs the sidebar counts. Nil is a sidebar with no counts.
 	Badges BadgeSource
 	Log    zerolog.Logger
+	// Profiles backs the Profiles screens' two reads. Nil renders their
+	// unavailable state, the same way a nil Scanner does.
+	Profiles ProfileSource
+	// Curator is every write the profile screens offer. Nil means both screens
+	// render and refuse to record, which is what a screen test gets and is not a
+	// state a deployment is in.
+	Curator ProfileCurator
 }
 
 // Options is the run-time configuration of the surface itself.
@@ -250,6 +282,21 @@ func (s *Server) register() {
 	s.engine.GET("/audit", s.audit)
 	s.engine.GET("/audit/export", s.auditExport)
 
+	// The two profile screens. A slug is one segment or several
+	// (`platform-engineer`, or `example/platform-engineer`), so the read route is
+	// a catch-all rather than a fixed segment count. gin will not register a
+	// catch-all beside a sibling of fixed depth, which is why every write route
+	// below carries its slug as a form field instead of a path segment — they sit
+	// in the POST tree, which the GET catch-all never shares.
+	s.engine.GET("/profiles", s.profiles)
+	s.engine.POST("/profiles", s.createProfile)
+	s.engine.GET("/profiles/*slug", s.profileDetail)
+	s.engine.POST("/profiles/entries/pin", s.pinEntry)
+	s.engine.POST("/profiles/entries/latest", s.floatEntry)
+	s.engine.POST("/profiles/sharing", s.shareProfile)
+	s.engine.POST("/profiles/targets", s.setTargets)
+	s.engine.POST("/profiles/revisions", s.publishRevision)
+
 	s.engine.POST("/theme", s.setTheme)
 
 	// Sign-in (US2). These four and only these four are exempt from the guard,
@@ -280,8 +327,6 @@ type screen struct {
 }
 
 var placeholders = []screen{
-	{path: "/profiles", nav: "profiles", title: "Profiles", lede: "Named sets of packages a machine can sync."},
-	{path: "/profiles/:slug", nav: "profiles", title: "Profile", lede: "The packages in one profile, their pins and their targets."},
 	{path: "/cli", nav: "cli", title: "Connect the CLI", lede: "Pair a machine with the hub through the device flow."},
 	{path: "/org", nav: "org", title: "Organization", lede: "Identity provider, group-to-role mapping and policy."},
 	{path: "/storage", nav: "storage", title: "Storage", lede: "Bucket layout, object counts and recent fetch outcomes."},

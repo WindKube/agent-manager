@@ -246,10 +246,10 @@ pin, publish a revision, and assert `amctl sync` writes exactly what the screen 
 - [ ] T082 [P] [US5] `PUT /v1/profiles/{slug}/targets` — targets affect only what a client writes, never what the server stores (001 US5 scenario 7)
 - [ ] T083 [US5] `POST /v1/profiles/{slug}/revisions` — a new sequential immutable revision; the previous stays readable; republishing a number is refused, not overwritten (principle IV)
 - [ ] T084 [US5] Regenerate the client and add the operations to `internal/web/hub/`
-- [ ] T085 [US5] Write `internal/web/components/profiles.templ` and `internal/web/view/profiles.go` — the list, with each profile's package count, visibility and latest revision, showing exactly the readable set (001 FR-044)
-- [ ] T086 [US5] Write the profile detail screen — per-entry pin toggle, scan state, the policy note stating what the gate did, sharing, targets, and publish
-- [ ] T087 [US5] Delete the `/profiles` and `/profiles/:slug` entries from the `placeholders` list in `internal/web/web.go`
-- [ ] T088 [US5] Wire the profiles sidebar badge to the readable-profile count from T069
+- [x] T085 [US5] Write `internal/web/components/profiles.templ` and `internal/web/view/profiles.go` — the list, with each profile's package count, visibility and latest revision, showing exactly the readable set (001 FR-044)
+- [x] T086 [US5] Write the profile detail screen — per-entry pin toggle, scan state, the policy note stating what the gate did, sharing, targets, and publish
+- [x] T087 [US5] Delete the `/profiles` and `/profiles/:slug` entries from the `placeholders` list in `internal/web/web.go`
+- [x] T088 [US5] Wire the profiles sidebar badge to the readable-profile count from T069
 - [ ] T089 [P] [US5] Integration test asserting each of 001 US5 scenarios 2, 3 and 4 — one per gate mode — changes what resolves, and that the screen's policy note matches
 - [ ] T090 [P] [US5] End-to-end test: publish a revision through the UI, run the real CLI's sync, assert what it writes matches what the screen displayed
 

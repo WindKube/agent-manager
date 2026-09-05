@@ -32,17 +32,8 @@ func (c *guardedClient) resolve(ctx context.Context, host string) ([]net.IP, err
 	return ips, nil
 }
 
-// dialContext is the half of the control that cannot be talked out of its
-// answer. It re-resolves and re-checks at connect time, so:
-//
-//   - a name that answered public during checkURL and private now is
-//     refused, since the pre-flight answer is not evidence about this
-//     connection;
-//   - every address in a rotation is checked, and one bad address refuses
-//     the whole dial rather than being skipped in favour of a good one;
-//   - each hop of a redirect arrives here as its own dial, so the check
-//     re-runs per hop rather than once per request.
-//
+// dialContext re-resolves and re-checks at connect time, so a name that
+// answered public during checkURL and private now is still refused (TOCTOU).
 // No connection is opened before the checks pass.
 func (c *guardedClient) dialContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	host, portStr, err := net.SplitHostPort(addr)
@@ -66,9 +57,7 @@ func (c *guardedClient) dialContext(ctx context.Context, network, addr string) (
 
 	d := net.Dialer{
 		Timeout: dialTimeout,
-		// Last line of defence. Control sees the address actually handed to the
-		// kernel, so a future refactor that reaches the dialer without the loop
-		// above still cannot open a socket to a private address.
+		// Last line of defence: sees the address actually handed to the kernel.
 		Control: func(_, address string, _ syscall.RawConn) error {
 			return c.policy.checkDialAddr(address)
 		},

@@ -9,23 +9,18 @@ import (
 	"strings"
 )
 
-// This file holds the SSRF policy, owned here rather than delegated to a
-// library. Everything below is a pure decision over a URL or an address: no
-// I/O, so the classification is testable on its own and cannot be bypassed
-// by a code path that forgets to call the network wrapper.
+// This file holds the SSRF policy: a pure decision over a URL or address, no
+// I/O, so it cannot be bypassed by a code path that skips the network wrapper.
 
 var (
 	allowedSchemes = []string{"http", "https"}
-	// Ports outside this list are refused even on a public address. A public host
-	// answering on 6379 or 11211 is a request smuggling target, not a package
-	// source. Operators widen this per-address through Options.Allowlist.
+	// Ports outside this list are refused even on a public address, since a
+	// host answering on 6379 or 11211 is a smuggling target, not a source.
 	defaultPorts = []int{80, 443}
 )
 
 // reservedNets is every block that must not be reachable from a user-supplied
-// URL. The documentation ranges (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24)
-// are in here deliberately: they are not routable, so a URL pointing at one is
-// either a mistake or a probe.
+// URL.
 var reservedNets = mustCIDRs(
 	// IPv4 — RFC 6890 special-purpose registry.
 	"0.0.0.0/8",          // this host on this network
@@ -79,8 +74,6 @@ type policy struct {
 func (p policy) checkURL(u *url.URL) error {
 	target := u.Redacted()
 
-	// Scheme first, so file:// and gopher:// report the reason a reader
-	// expects rather than "empty host".
 	if !slices.Contains(allowedSchemes, strings.ToLower(u.Scheme)) {
 		return &BlockedError{Target: target, Reason: fmt.Sprintf("scheme %q is not http or https", u.Scheme)}
 	}
@@ -93,13 +86,11 @@ func (p policy) checkURL(u *url.URL) error {
 	return nil
 }
 
-// checkAddr is the single decision point for "may this address be connected to".
-// Both the pre-flight check and the dialer call it, so there is one rule and one
-// error message.
+// checkAddr is the single decision point for "may this address be connected
+// to". Both the pre-flight check and the dialer call it.
 func (p policy) checkAddr(ip net.IP, port int) error {
 	if v4 := ip.To4(); v4 != nil {
-		// ::ffff:127.0.0.1 is 127.0.0.1. Normalise before classifying so the
-		// mapped form cannot walk past an IPv4-only table.
+		// Normalise (::ffff:127.0.0.1 is 127.0.0.1) before classifying.
 		ip = v4
 	}
 	target := net.JoinHostPort(ip.String(), strconv.Itoa(port))
@@ -123,8 +114,7 @@ func (p policy) checkDialAddr(address string) error {
 	}
 	ip := net.ParseIP(host)
 	if ip == nil {
-		// The dialer is only ever handed a literal address by dialContext. A name
-		// here means someone bypassed the resolution step.
+		// A name here means someone bypassed the resolution step.
 		return &BlockedError{Target: address, Reason: "dial address is not a literal ip"}
 	}
 	port, err := strconv.Atoi(portStr)
@@ -135,12 +125,7 @@ func (p policy) checkDialAddr(address string) error {
 }
 
 // reservedReason returns why ip is not a public address, or "" if it is one.
-//
-// Returning "" means "connect to this", so anything the classifiers below cannot
-// reason about has to be refused here rather than fall out of the bottom. A
-// net.IP of any other length answers false to every Is* predicate and is
-// contained by no CIDR, so without this length check a malformed address would
-// be reported as public.
+// A malformed-length address is refused here rather than reported as public.
 func reservedReason(ip net.IP) string {
 	if len(ip) != net.IPv4len && len(ip) != net.IPv6len {
 		return "address is not a valid ip"
@@ -164,8 +149,6 @@ func reservedReason(ip net.IP) string {
 	}
 	return ""
 }
-
-/* allowlist */
 
 type allowEntry struct {
 	net *net.IPNet

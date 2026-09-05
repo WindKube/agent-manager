@@ -65,6 +65,7 @@ type Skip struct {
 	Version string `json:"version,omitempty"`
 	Target  string `json:"target,omitempty"`
 	Reason  string `json:"reason"`
+	Detail  string `json:"detail,omitempty"`
 }
 
 // SyncResult is produced by `amctl sync` from the plan internal/plan computed.
@@ -124,7 +125,14 @@ func (r SyncResult) Human(w io.Writer) error {
 			}
 		}
 	}
-	for _, s := range r.Skipped {
+	groups, rest := groupTargetUnwritableSkips(r.Skipped)
+	for _, g := range groups {
+		if _, err := fmt.Fprintf(w, "  %-9s target %s: %d %s, %s%s\n",
+			"skip", g.target, g.count, pluralize(g.count, "entry", "entries"), skipTargetUnwritable, detailSuffix(g.detail)); err != nil {
+			return err
+		}
+	}
+	for _, s := range rest {
 		if _, err := fmt.Fprintf(w, "  %-9s %s %s: %s\n", "skip", s.Package, s.Version, s.Reason); err != nil {
 			return err
 		}
@@ -235,6 +243,56 @@ func joinOr(values []string, empty string) string {
 		out += ", " + v
 	}
 	return out
+}
+
+// skipTargetUnwritable mirrors plan.SkipTargetUnwritable's wire value. Kept as
+// a literal rather than an import: this package renders whatever string
+// internal/plan put in Skip.Reason and otherwise has no opinion on the hub's
+// or the CLI's vocabulary, and importing internal/plan here just to name one
+// of its constants would make output depend on the package that depends on it.
+const skipTargetUnwritable = "target-unwritable"
+
+// targetSkipGroup is every entry skipped under one target this build cannot
+// write, collapsed to a count.
+type targetSkipGroup struct {
+	target string
+	detail string
+	count  int
+}
+
+// groupTargetUnwritableSkips separates a target-unwritable skip — repeated
+// once per entry a gated target would have received — from every other skip,
+// and collapses the former by target. A profile with a dozen entries under
+// one gated target must print one line naming it, not a dozen identical ones.
+func groupTargetUnwritableSkips(skips []Skip) (groups []targetSkipGroup, rest []Skip) {
+	index := map[string]int{}
+	for _, s := range skips {
+		if s.Reason != skipTargetUnwritable || s.Target == "" {
+			rest = append(rest, s)
+			continue
+		}
+		if i, ok := index[s.Target]; ok {
+			groups[i].count++
+			continue
+		}
+		index[s.Target] = len(groups)
+		groups = append(groups, targetSkipGroup{target: s.Target, detail: s.Detail, count: 1})
+	}
+	return groups, rest
+}
+
+func pluralize(n int, singular, plural string) string {
+	if n == 1 {
+		return singular
+	}
+	return plural
+}
+
+func detailSuffix(detail string) string {
+	if detail == "" {
+		return ""
+	}
+	return " - " + detail
 }
 
 func orNone(value, empty string) string {

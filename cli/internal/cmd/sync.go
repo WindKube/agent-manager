@@ -495,7 +495,10 @@ func (r *syncRun) resolveTargets(reg *layout.Registry, lockfiles []*hub.Lockfile
 			r.s.Warnf("the lockfile names target %s, which this build will not write: %v", name, err)
 			out = append(out, plan.Target{Name: record.Target(name), Withdrawn: err})
 		default:
-			r.s.Warnf("the lockfile names target %s, which this build cannot write: %v", name, err)
+			// No warning here: reportSkips prints one collapsed line per
+			// (profile, target) once plan.Compute has turned this into a
+			// plan.Skip per entry, and a warning here would say the same
+			// thing again before an entry is even in view.
 			out = append(out, plan.Target{Name: record.Target(name), Err: err})
 		}
 	}
@@ -522,9 +525,27 @@ func destFunc(t layout.Target) plan.DestFunc {
 // rather than translated or dropped. The hub may add a seventh reason and this
 // client ships separately from it, so a value this build has never seen is
 // information, not an error.
+//
+// A target-unwritable skip is collapsed to one line per (profile, target):
+// syncing a profile with a dozen entries under a gated target must not print
+// a dozen identical warnings naming the same target. This is the only skip
+// reason collapsed — a target that installs nothing under any of them still
+// deserves exactly one sentence, and it replaces resolveTargets' own former
+// per-target warning, which said the same thing before an entry was even in
+// view. Every other reason is still one line per entry, because each one is
+// its own answer to "why didn't THIS package install".
 func (r *syncRun) reportSkips(p plan.Plan) {
-	for i := range p.Skipped {
-		sk := p.Skipped[i]
+	groups, rest := groupTargetUnwritableSkips(p.Skipped)
+	for _, g := range groups {
+		line := fmt.Sprintf("%s: %d %s skipped for target %s, which this build cannot write (%s)",
+			g.profile, g.count, pluralize(g.count, "entry", "entries"), g.target, plan.SkipTargetUnwritable)
+		if g.detail != "" {
+			line += ": " + g.detail
+		}
+		r.s.Warnf("%s", line)
+	}
+	for i := range rest {
+		sk := rest[i]
 		line := fmt.Sprintf("%s skipped %s", sk.Profile, sk.ID)
 		if sk.Target != "" {
 			line += " for target " + string(sk.Target)
@@ -543,8 +564,50 @@ func (r *syncRun) reportSkips(p plan.Plan) {
 	}
 }
 
-// localSkip is one entry this client did not install (never merged with the
-// hub's own skips): POST /v1/sync's `skipped` is defined as the client's own.
+// targetSkipGroup is every entry one profile could not install under one
+// target it cannot write, collapsed to a count.
+type targetSkipGroup struct {
+	profile string
+	target  string
+	detail  string
+	count   int
+}
+
+// groupTargetUnwritableSkips separates plan.SkipTargetUnwritable skips —
+// grouped by profile and target — from every other skip, which is returned
+// unchanged and in order.
+func groupTargetUnwritableSkips(skips []plan.Skip) (groups []targetSkipGroup, rest []plan.Skip) {
+	index := map[[2]string]int{}
+	for i := range skips {
+		sk := skips[i]
+		if sk.Reason != plan.SkipTargetUnwritable || sk.Target == "" {
+			rest = append(rest, sk)
+			continue
+		}
+		key := [2]string{sk.Profile, string(sk.Target)}
+		if idx, ok := index[key]; ok {
+			groups[idx].count++
+			continue
+		}
+		index[key] = len(groups)
+		groups = append(groups, targetSkipGroup{
+			profile: sk.Profile, target: string(sk.Target), detail: sk.Detail, count: 1,
+		})
+	}
+	return groups, rest
+}
+
+func pluralize(n int, singular, plural string) string {
+	if n == 1 {
+		return singular
+	}
+	return plural
+}
+
+// localSkip is one entry THIS CLIENT did not install, as opposed to one the hub
+// withheld. The two are reported side by side and are never merged into one
+// list: the hub already knows what it skipped, and POST /v1/sync's `skipped`
+// field is defined as the client's own.
 type localSkip struct {
 	Profile string
 	ID      string
@@ -873,7 +936,8 @@ func appendSkips(res *output.SyncResult, p plan.Plan) {
 	for i := range p.Skipped {
 		sk := p.Skipped[i]
 		res.Skipped = append(res.Skipped, output.Skip{
-			Package: sk.ID, Version: sk.WouldHaveResolvedTo, Target: string(sk.Target), Reason: sk.Reason,
+			Package: sk.ID, Version: sk.WouldHaveResolvedTo, Target: string(sk.Target),
+			Reason: sk.Reason, Detail: sk.Detail,
 		})
 	}
 }

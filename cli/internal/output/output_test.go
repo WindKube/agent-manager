@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -122,6 +123,48 @@ func TestSyncResultChangedSelectsTheExitCode(t *testing.T) {
 			require.Equal(t, tc.want, tc.in.Changed())
 		})
 	}
+}
+
+func TestSyncResultHumanCollapsesTargetUnwritableSkipsButNotOthers(t *testing.T) {
+	res := SyncResult{
+		Hub:      "https://hub.example.com",
+		Profiles: []string{"base"},
+		Skipped: []Skip{
+			{Package: "acme/pkg-0", Target: "codex", Reason: "target-unwritable", Detail: "gate R2"},
+			{Package: "acme/pkg-1", Target: "codex", Reason: "target-unwritable", Detail: "gate R2"},
+			{Package: "acme/pkg-2", Target: "codex", Reason: "target-unwritable", Detail: "gate R2"},
+			{Package: "acme/plugin", Target: "claude-code", Reason: "entry-kind-not-installable"},
+			{Package: "acme/legacy", Version: "1.9.0", Reason: "flagged-awaiting-approval"},
+		},
+	}
+
+	var buf strings.Builder
+	require.NoError(t, res.Human(&buf))
+	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+
+	var skipLines []string
+	for _, l := range lines {
+		if strings.Contains(l, "skip") {
+			skipLines = append(skipLines, l)
+		}
+	}
+	// One collapsed line for the three codex skips, plus one each for the two
+	// entry-level reasons: three lines, not five.
+	require.Len(t, skipLines, 3)
+
+	var collapsed string
+	for _, l := range skipLines {
+		if strings.Contains(l, "codex") {
+			collapsed = l
+		}
+	}
+	require.NotEmpty(t, collapsed, "the codex skips must still be reported, just once")
+	require.Contains(t, collapsed, "3 entries")
+	require.Contains(t, collapsed, "target-unwritable")
+	require.Contains(t, collapsed, "gate R2")
+
+	require.Contains(t, buf.String(), "acme/plugin")
+	require.Contains(t, buf.String(), "acme/legacy")
 }
 
 func TestStreamsKeepResultsAndDiagnosticsApart(t *testing.T) {

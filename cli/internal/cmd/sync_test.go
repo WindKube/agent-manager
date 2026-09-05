@@ -544,6 +544,77 @@ func withdrawnLockfile(t *testing.T, targets ...string) *hub.Lockfile {
 	}
 }
 
+// lockfileNamingCodex is withdrawnLockfile's shape with n skill entries
+// instead of one, so a test can tell "one line" from "one line per entry".
+func lockfileNamingCodex(n int, targets ...string) *hub.Lockfile {
+	tg := make([]hub.LockfileTargets, 0, len(targets))
+	for _, name := range targets {
+		tg = append(tg, hub.LockfileTargets(name))
+	}
+	entries := make([]hub.LockfileEntry, 0, n)
+	for i := 0; i < n; i++ {
+		id := fmt.Sprintf("acme/pkg-%d", i)
+		entries = append(entries, hub.LockfileEntry{
+			Id: id, Kind: hub.Skill, Version: "1.0.0",
+			Digest:     "sha256:" + strings.Repeat("ab", 32),
+			ObjectKey:  "bundles/" + id + "/1.0.0/bundle.tar.zst",
+			Resolution: "pinned", Verdict: "clean",
+		})
+	}
+	return &hub.Lockfile{
+		SchemaVersion: "1.0.0",
+		Profile:       hub.LockfileProfile{Slug: "base", Name: "base"},
+		Revision:      1,
+		Gate:          "block",
+		Targets:       tg,
+		Entries:       entries,
+		Skipped:       []hub.LockfileSkip{},
+	}
+}
+
+// TestSkippedTargetUnwritableEntriesCollapseToOneLine is GAP 2's follow-up:
+// a profile with several entries under a target this build cannot write must
+// print ONE line naming the target and the count, on the diagnostic stream
+// and in the human result, not one line per entry — the noise a live sync of
+// example/platform-engineer produced before this test existed.
+func TestSkippedTargetUnwritableEntriesCollapseToOneLine(t *testing.T) {
+	lf := lockfileNamingCodex(3, "claude-code", "codex")
+
+	opts, _, diag := testOptions("https://hub.example.com", output.FormatHuman)
+	r := &syncRun{opts: opts, s: opts.Streams()}
+	reg, err := layout.NewRegistry(layout.Config{HomeDir: filepath.Join(t.TempDir(), "home")})
+	require.NoError(t, err)
+	targets, _ := r.resolveTargets(reg, []*hub.Lockfile{lf})
+	p, err := plan.Compute(plan.Inputs{Lockfiles: []*hub.Lockfile{lf}, Targets: targets})
+	require.NoError(t, err)
+	require.Len(t, p.Skipped, 3, "the plan itself still carries one skip per entry")
+
+	r.reportSkips(p)
+	codexLines := 0
+	for _, line := range strings.Split(strings.TrimRight(diag.String(), "\n"), "\n") {
+		if strings.Contains(line, "codex") {
+			codexLines++
+			require.Contains(t, line, "3 entries")
+			require.Contains(t, line, "cannot write")
+		}
+	}
+	require.Equal(t, 1, codexLines, "one collapsed line, not one per entry")
+
+	var res output.SyncResult
+	appendSkips(&res, p)
+	var human strings.Builder
+	require.NoError(t, res.Human(&human))
+	skipLines := 0
+	for _, line := range strings.Split(strings.TrimRight(human.String(), "\n"), "\n") {
+		if strings.Contains(line, "skip") {
+			skipLines++
+			require.Contains(t, line, "3 entries")
+			require.Contains(t, line, "target-unwritable")
+		}
+	}
+	require.Equal(t, 1, skipLines, "the human result collapses the same way")
+}
+
 func planForTargets(t *testing.T, lf *hub.Lockfile) (p plan.Plan, diagnostics string) {
 	t.Helper()
 	opts, _, diag := testOptions("https://hub.example.com", output.FormatHuman)

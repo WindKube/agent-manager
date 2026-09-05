@@ -19,23 +19,16 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The profile detail read (003 T078, 001 US5).
-//
-// THE GATE IS NOT IN THIS FILE. Every statement below loads facts — entries,
-// versions, verdicts, findings, acceptances, memberships — and
-// internal/domain/resolve decides what they mean. T078 states the rule and the
-// reason: two implementations of the gate is how the screen and the CLI start
-// disagreeing about what is installed, and a `case when verdict = 'flagged'` in
-// SQL here would be the second one.
-//
-// Every statement runs on a bun.IDB and none of them is concurrent, unlike
-// Package's four goroutines. That is deliberate: PublishRevision resolves inside
-// its own transaction, a bun.Tx is one connection, and a resolution that could
-// only run on a pool would force the publish to read the profile outside the
-// transaction it then writes — which is how a revision comes to freeze a
-// resolution nobody ever saw.
+// The gate is not in this file: every statement below loads facts and
+// internal/domain/resolve decides what they mean, so a `case when verdict =
+// 'flagged'` in SQL here would be a second, disagreeing implementation.
+// Statements run on a bun.IDB and are not concurrent, unlike Package's four
+// goroutines: PublishRevision resolves inside its own transaction, and a
+// bun.Tx is one connection.
 
 // ProfileFacts is the profile row and the caller's standing on it.
+// ForkedFrom is lineage only — nothing reads it to decide what a fork
+// resolves to. HeadRevision is 0 when nothing has been published yet.
 type ProfileFacts struct {
 	ID            uuid.UUID
 	Slug          string
@@ -44,43 +37,29 @@ type ProfileFacts struct {
 	OwnerTeam     string
 	Visibility    models.ProfileVisibility
 	DefaultPolicy models.VersionPolicy
-	// ForkedFrom is the upstream's slug, empty when this profile is not a fork.
-	// It is lineage: nothing reads it to decide what a fork resolves to (FR-038).
-	ForkedFrom string
-	// Role is the caller's membership role, empty when they hold none — which is
-	// the ordinary case for a profile everybody may read.
-	Role models.MembershipRole
-	// HeadRevision is 0 when nothing has been published yet.
-	HeadRevision int
+	ForkedFrom    string
+	Role          models.MembershipRole
+	HeadRevision  int
 }
 
-// ProfileResolution is one profile resolved under the organisation's gate: the
-// facts, the resolver's answer, and enough catalog detail per entry for a screen
-// to draw the row.
-//
-// Both the detail screen and the publish command build from this, which is the
-// point. A revision must freeze exactly the resolution the screen displayed
-// (003 US5 scenario 3), and the only way to be sure of that is for there to be
-// one function that produces it.
+// ProfileResolution is one profile resolved under the organisation's gate.
+// Both the detail screen and the publish command build from this, so a
+// revision freezes exactly what the screen displayed.
 type ProfileResolution struct {
 	Profile ProfileFacts
 	Gate    models.ScanGate
-	// RequireSignatures is org_policy.require_signed_bundles, passed through to
-	// the resolver rather than evaluated here (FR-047, FR-048).
+	// RequireSignatures is org_policy.require_signed_bundles, passed
+	// through to the resolver rather than evaluated here.
 	RequireSignatures bool
-	// Targets are the enabled sync targets in the vocabulary's own order. FR-039:
+	// Targets are the enabled sync targets in the vocabulary's own order:
 	// advisory to a client, never read by anything here.
 	Targets []string
 	Result  resolve.Result
-
-	// entries carries the per-row catalog facts the resolver does not deal in —
-	// the package's display name, and the newest version the catalog offers. It is
-	// index-aligned with Result.Entries, which Resolve guarantees by returning one
-	// resolution per input entry in input order.
+	// entries carries the per-row catalog facts the resolver does not deal
+	// in, index-aligned with Result.Entries.
 	entries []profileEntryRow
 }
 
-// profileEntryRow is one `profile_entry` and the catalog facts about it.
 type profileEntryRow struct {
 	packageID     uuid.UUID
 	id            string
@@ -94,8 +73,6 @@ type profileEntryRow struct {
 	latestVerdict string
 }
 
-// Lockfile assembles the document a revision would publish from this resolution.
-// The mapping itself lives in internal/api/contract beside the frozen types.
 func (r ProfileResolution) Lockfile(revision int, note string, at time.Time) contract.Lockfile {
 	return contract.LockfileFrom(
 		contract.LockfileProfile{
@@ -107,25 +84,16 @@ func (r ProfileResolution) Lockfile(revision int, note string, at time.Time) con
 	)
 }
 
-// ErrNoPolicy is returned when `org_policy` holds no singleton row.
-//
-// It is an error and not a default. The gate decides what a machine is allowed to
-// install, and the only defaults available are "let everything through", which is
-// a bypass, and "block everything", which is an outage dressed as safety. A
-// deployment whose policy row is missing is broken and should say so.
+// ErrNoPolicy is returned when `org_policy` holds no singleton row. It is an
+// error and not a default: the gate decides what a machine may install, and
+// the only defaults available are "let everything through" (a bypass) or
+// "block everything" (an outage dressed as safety).
 var ErrNoPolicy = errors.New("org_policy holds no row, so there is no scan gate to resolve under")
 
-// profileFactsSQL identifies the profile and the caller's standing on it in one
-// statement. %s is the FR-044 predicate; %s is the caller's role, which is a
-// scalar subquery over the same membership rows the predicate tests.
-//
-// `min(role)` is the most privileged role the caller holds, and it is min rather
-// than max because `membership_role` is declared owner, maintainer, reviewer,
-// consumer — privilege first — so the enum's own ordering is the precedence.
-// Somebody holding a direct owner membership AND sitting in a group with
-// consumer holds the union of the two, which for a single-role answer is the
-// stronger of them. That is the same reading auth.HighestRole applies to org
-// roles.
+// profileFactsSQL identifies the profile and the caller's standing on it.
+// %s is the readability predicate; %s is the caller's role. `min(role)` is
+// the most privileged role held, since `membership_role` is declared
+// privilege-first (owner, maintainer, reviewer, consumer).
 const profileFactsSQL = `
 select
   p.id,
@@ -142,31 +110,22 @@ from profile as p
 left join profile as up on up.id = p.forked_from_id
 where p.slug = ? and %s`
 
-// Profile reads one profile row under the FR-044 predicate.
-//
-// An unreadable profile is indistinguishable from a missing one — queries.go's
-// ErrNotFound comment says why, and it applies with more force here than on the
-// list: a 403 on this path would confirm that a private profile with this exact
-// slug exists, which is the enumeration FR-044 forbids.
+// Profile reads one profile row under the readability predicate. An
+// unreadable profile is indistinguishable from a missing one, so as not to
+// confirm a private profile's existence by its slug.
 func Profile(ctx context.Context, db bun.IDB, p auth.Principal, slug string) (ProfileFacts, error) {
 	return readProfile(ctx, db, p, slug, false)
 }
 
-// LockProfile is the same read with the profile row locked until the caller's
-// transaction ends. Every command that changes a profile takes it, so the role
-// check, the invariant it then enforces and the write all decide against one
-// state.
+// LockProfile is the same read with the profile row locked until the
+// caller's transaction ends. `for update of p`, not a bare `for update`,
+// because Postgres refuses a row lock on the nullable side of the outer
+// join to the fork's upstream.
 //
-// `for update of p` and not a bare `for update`: the statement outer-joins the
-// upstream a fork was made from, and Postgres refuses a row lock on the nullable
-// side of an outer join.
-//
-// It does NOT make the head revision number it returns safe to allocate from.
-// The lock serialises two publishes, but under READ COMMITTED the snapshot this
-// statement reads was taken before it blocked, so the max(seq) beside the lock
-// can be one behind a publish that committed while it waited. Whoever allocates
-// a sequence re-reads it in a statement of its own, after the lock is held —
-// see commands.PublishRevision.
+// It does not make the head revision number safe to allocate from: under
+// READ COMMITTED, max(seq) beside the lock can be one behind a concurrent
+// publish — whoever allocates a sequence re-reads it after the lock is
+// held (see commands.PublishRevision).
 func LockProfile(ctx context.Context, tx bun.IDB, p auth.Principal, slug string) (ProfileFacts, error) {
 	return readProfile(ctx, tx, p, slug, true)
 }
@@ -182,8 +141,8 @@ func readProfile(ctx context.Context, db bun.IDB, p auth.Principal, slug string,
 		role = "(select min(m.role)::text from membership as m where m.profile_id = p.id and " + subject + ")"
 	}
 
-	// The role subquery is rendered before the WHERE clause, so its arguments
-	// come first.
+	// The role subquery is rendered before the WHERE clause, so its
+	// arguments come first.
 	query := fmt.Sprintf(profileFactsSQL, role, predicate)
 	if forUpdate {
 		query += " for update of p"
@@ -208,7 +167,7 @@ func readProfile(ctx context.Context, db bun.IDB, p auth.Principal, slug string,
 	return facts, nil
 }
 
-// ResolveProfile loads everything the gate reads and applies it (T078).
+// ResolveProfile loads everything the gate reads and applies it.
 func ResolveProfile(ctx context.Context, db bun.IDB, p auth.Principal, slug string) (ProfileResolution, error) {
 	facts, err := Profile(ctx, db, p, slug)
 	if err != nil {
@@ -217,10 +176,9 @@ func ResolveProfile(ctx context.Context, db bun.IDB, p auth.Principal, slug stri
 	return ResolveProfileFacts(ctx, db, facts)
 }
 
-// ResolveProfileFacts is the half a caller that has already identified the
-// profile — and already checked what the caller may do to it — runs. The publish
-// command holds the profile row under a lock before it resolves, so re-reading it
-// through the readability predicate would be a second, weaker answer.
+// ResolveProfileFacts is the half a caller that already identified the
+// profile runs, without re-reading it through the readability predicate,
+// which would be a second, weaker answer.
 func ResolveProfileFacts(ctx context.Context, db bun.IDB, facts ProfileFacts) (ProfileResolution, error) {
 	out := ProfileResolution{Profile: facts}
 
@@ -264,28 +222,19 @@ func ResolveProfileFacts(ctx context.Context, db bun.IDB, facts ProfileFacts) (P
 	}
 
 	if out.Result, err = resolve.Resolve(input); err != nil {
-		// Not a client error and not a 404: the stored rows are a combination the
-		// resolver refuses, which is corruption or a range expression that was
-		// accepted by an older validator. Naming the profile is what makes it
-		// findable.
+		// Not a 404: the stored rows are a combination the resolver
+		// refuses — corruption or an old validator's leftover.
 		return ProfileResolution{}, fmt.Errorf("resolve profile %s: %w", facts.Slug, err)
 	}
 	return out, nil
 }
 
-// profileEntriesSQL is the ordered set FR-032 describes, with the catalog facts
-// the row renders.
-//
-// `latest` joins through `package.latest_version_id`, which is the same relation
-// the catalog and the scanner summary read: the screen's Scan badge then says
-// what the catalog says about this package, whatever the gate afterwards decides
-// to resolve. The join is deliberately NOT the newest candidate the resolver
-// picked from — those are two different questions, and answering both from one
-// value is how a row ends up claiming a package is clean because the version it
-// fell back to is.
-//
-// The order-by carries a tie-break because `position` has no unique constraint:
-// two entries at the same position must still come out in the same order twice.
+// profileEntriesSQL is the profile's ordered entry set. `latest` joins
+// through `package.latest_version_id`, the same relation the catalog reads —
+// deliberately not the newest candidate the resolver picked, since
+// answering both questions from one value is how a row claims a package is
+// clean because the version it fell back to is. The order-by carries a
+// tie-break because `position` has no unique constraint.
 const profileEntriesSQL = `
 select
   pkg.id,
@@ -328,36 +277,18 @@ func profileEntries(ctx context.Context, db bun.IDB, profileID uuid.UUID) ([]pro
 	return out, nil
 }
 
-// profileCandidatesSQL is EVERY published version of the packages a profile
-// holds, with the three facts the gate reads about each one: its verdict, how its
-// flag reads to a human, and whether a reviewer has accepted every finding on it.
+// profileCandidatesSQL is every published version of a profile's packages,
+// with the facts the gate reads about each. It is every version, not the
+// latest: `block` falls back to the most recent clean version, and handing
+// over only the latest row would produce a plausible, wrong answer.
+// `digest is not null` drops a version whose bytes have not landed, so a
+// pin at one is `pin-target-missing` rather than a bundle the store lacks.
 //
-// It is every version and not the latest, because that is the resolver's
-// contract: `block` falls back to the most recent CLEAN version, and a query that
-// handed over only the latest row would produce a plausible, wrong answer with no
-// error anywhere.
-//
-// `digest is not null` drops a version whose bytes have not landed. The schema's
-// `check (digest is not null or verdict = 'scanning')` makes that exactly the
-// set that has never been published, and a pin at one must be `pin-target-missing`
-// rather than a resolution to a bundle the object store does not hold.
-//
-// The two laterals answer two different questions and are not one query:
-//
-//   - `flag` is how this version's problem READS — the most severe finding on it,
-//     rendered the same way internal/seed renders it, "SH-NET-002 in
-//     postinstall.sh". It ignores the finding's state because a rejected version's
-//     exclusion should still name the rule that rejected it.
-//   - `acc` is the acceptance the gate reads, and it is the one that lapses
-//     SOONEST. A version carrying two accepted findings stops being accepted when
-//     the first acceptance does, so min is the only correct choice — and the
-//     reviewer named beside it is the one whose decision needs renewing. A null
-//     expiry sorts last because an acceptance with no expiry never lapses.
-//
-// `has_open` is the other half of that: an acceptance means nothing while any
-// finding on the version is still open, so the caller passes no override at all
-// in that case. The two together are what makes "unapproved flagged version"
-// (FR-035) a property of the version rather than of one finding on it.
+// The two laterals answer different questions: `flag` is how the version's
+// problem reads to a human (ignoring finding state, so a rejected
+// version's exclusion still names the rule that rejected it); `acc` is the
+// acceptance that lapses soonest. `has_open` means an acceptance counts for
+// nothing while any finding on the version is still open.
 const profileCandidatesSQL = `
 select
   ver.package_id,
@@ -441,10 +372,8 @@ func profileCandidates(ctx context.Context, db bun.IDB,
 			candidate.Signature = &resolve.Signature{Ref: ref}
 		}
 		candidate.FlagDetail = flagDetail(ruleID, path)
-		// An acceptance permits nothing while a finding on the same version is
-		// still open: FR-035's `approval` gate asks whether the VERSION has been
-		// approved, and one signed-off finding beside an unexamined one has not
-		// answered that.
+		// An acceptance permits nothing while any finding on the version
+		// is still open.
 		if !hasOpen && reviewer != "" {
 			candidate.Override = &resolve.Override{Reviewer: reviewer, Note: note}
 			if expires.Valid {
@@ -460,9 +389,8 @@ func profileCandidates(ctx context.Context, db bun.IDB,
 	return out, nil
 }
 
-// flagDetail renders a finding the way internal/seed renders it, so a lockfile
-// published here and one the representative dataset seeded read the same. It is
-// bundle content: escape it at render (FR-055).
+// flagDetail renders a finding the same way internal/seed does. It is
+// bundle content: escape it at render.
 func flagDetail(ruleID, path string) string {
 	switch {
 	case ruleID == "":
@@ -494,10 +422,8 @@ func profileTargets(ctx context.Context, db bun.IDB, profileID uuid.UUID) ([]str
 		return nil, fmt.Errorf("read the profile's sync targets: %w", err)
 	}
 
-	// The vocabulary's order and not the rows' order: a lockfile is compared
-	// against the previous one to decide whether anything is unpublished, and two
-	// documents differing only in the order Postgres happened to return two rows
-	// would report a change nobody made.
+	// The vocabulary's order, not the rows' order, so two documents
+	// differing only in row order don't report a change nobody made.
 	out := make([]string, 0, len(enabled))
 	for _, target := range models.EnumTypes()[models.PGSyncTargetKind] {
 		if slices.Contains(enabled, target) {
@@ -507,7 +433,7 @@ func profileTargets(ctx context.Context, db bun.IDB, profileID uuid.UUID) ([]str
 	return out, nil
 }
 
-// ProfileDetail answers the profile screen (T078).
+// ProfileDetail answers the profile screen.
 func ProfileDetail(ctx context.Context, db bun.IDB, p auth.Principal,
 	slug string,
 ) (contract.ProfileDetail, error) {
@@ -552,9 +478,6 @@ func ProfileDetail(ctx context.Context, db bun.IDB, p auth.Principal,
 	return out, nil
 }
 
-// entriesOf turns the resolution into the screen's rows. It reads the resolver's
-// answer and re-decides nothing: Outcome, Note and Skip are carried across
-// verbatim.
 func entriesOf(resolution ProfileResolution) []contract.ProfileEntry {
 	out := make([]contract.ProfileEntry, 0, len(resolution.entries))
 	for i := range resolution.entries {
@@ -598,17 +521,11 @@ func targetsOf(enabled []string) []contract.ProfileTarget {
 	return out
 }
 
-// profileMembersSQL is the sharing panel (FR-037).
-//
-// `order by mem.role` is the enum's order — owner, maintainer, reviewer,
-// consumer — so the panel lists the most privileged first without the screen
-// holding a copy of the precedence.
-//
-// The identity join is a lateral with a limit because a membership names an
-// email OR a subject and two different identity rows could match one of each. It
-// is a display name and nothing else: a membership row is authoritative on its
-// own, and a person who has never signed in has no row here and simply shows as
-// their address.
+// profileMembersSQL is the sharing panel. `order by mem.role` is the enum's
+// order so the panel lists the most privileged first without the screen
+// holding a copy of the precedence. The identity join is a lateral with a
+// limit because a membership names an email or a subject, and it supplies
+// a display name only — a membership row is authoritative on its own.
 const profileMembersSQL = `
 select mem.subject_kind::text, mem.subject_ref, mem.role::text, coalesce(who.display_name, '')
 from membership as mem
@@ -691,24 +608,15 @@ func headLockfile(ctx context.Context, db bun.IDB, profileID uuid.UUID) (contrac
 }
 
 // markUnpublished sets each row's Unpublished flag and reports whether the
-// profile as a whole has anything to publish (001 US5 scenario 1).
-//
-// What it compares is what would actually REACH A MACHINE: the resolved version,
-// the mode it resolved under, its verdict, whether an override let it through,
-// which entries are excluded and why, and the target list. It deliberately does
-// not compare the gate: a lockfile records the gate for explanation, and an
-// organisation flipping the gate without changing what any profile resolves to
-// has not left anybody with an unpublished change to make.
-//
-// It also does not compare a skip's DETAIL. That text is the rule pack's, and a
-// rescan that rewords a finding would otherwise mark every affected profile as
-// edited by nobody.
+// profile has anything to publish. It compares what would actually reach a
+// machine — resolved version, mode, verdict, override, exclusions, targets
+// — and deliberately not the gate itself, nor a skip's detail text (a
+// rescan rewording a finding should not mark every affected profile edited).
 func markUnpublished(entries []contract.ProfileEntry, targets []string,
 	head contract.Lockfile, published bool,
 ) bool {
 	if !published {
-		// Nothing has been published, so everything is unpublished — including a
-		// profile with no entries at all, which still has a revision to make.
+		// Everything is unpublished, including a profile with no entries.
 		for i := range entries {
 			entries[i].Unpublished = true
 		}
@@ -741,8 +649,7 @@ func markUnpublished(entries []contract.ProfileEntry, targets []string,
 		changed = changed || entry.Unpublished
 		seen++
 	}
-	// An id the head revision holds and the draft does not. Unreachable while
-	// `am_api` holds no DELETE on profile_entry, and checked anyway: the day that
-	// grant widens, a removal that published nothing would be the silent half.
+	// An id the head revision holds and the draft does not. Checked anyway
+	// so a widened grant can't make a removal publish silently.
 	return changed || seen != len(head.Entries)+len(head.Skipped)
 }

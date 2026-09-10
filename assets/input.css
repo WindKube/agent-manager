@@ -2257,4 +2257,32 @@
     min-width: 0;
     font-family: var(--font-mono);
   }
+
+  /* Catalog refresh -------------------------------------------------------- */
+
+  .am-btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+  }
+
+  .am-icon-refresh {
+    display: inline-block;
+    font-size: 15px;
+    line-height: 1;
+  }
+
+  .am-icon-refresh.am-spin {
+    animation: am-spin-rotate 0.8s linear infinite;
+  }
+
+  @keyframes am-spin-rotate {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
 }

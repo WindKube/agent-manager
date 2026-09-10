@@ -22,6 +22,16 @@ templ CatalogScreen(c Catalog) {
 			<div class="am-actions">
 				<button
 					type="button"
+					class="am-btn am-btn-icon"
+					aria-label="Refresh catalog"
+					data-indicator="_refreshing"
+					data-attr:aria-busy="$_refreshing"
+					data-on:click="@get('/catalog/results')"
+				>
+					<span class="am-icon-refresh" data-class="{'am-spin': $_refreshing}" aria-hidden="true">↻</span>
+				</button>
+				<button
+					type="button"
 					class="am-btn"
 					data-on:click="$_importOpen = true; $_importTab = 'upload'"
 				>Upload package</button>

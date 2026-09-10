@@ -441,8 +441,10 @@ func TestR7Budget(t *testing.T) {
 	})
 
 	t.Run("nothing else on the page fetches on its own", func(t *testing.T) {
-		// One fetch site, so the interaction budget is auditable by reading the page.
-		require.Equal(t, 1, strings.Count(body, "/catalog/results"))
+		// Two fetch sites, both deliberate and both auditable by reading the page:
+		// the debounced listener above, which fires on a signal patch, and the
+		// header's refresh button, which fires on a click and nothing else.
+		require.Equal(t, 2, strings.Count(body, "/catalog/results"))
 	})
 
 	t.Run("overlays are hidden before the script runs", func(t *testing.T) {

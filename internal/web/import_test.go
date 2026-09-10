@@ -100,9 +100,9 @@ func TestTheImportModalIsOnTheCatalogAndCostsNoRoundTrip(t *testing.T) {
 	t.Run("its fetch sites are all deliberate acts, never signal-driven", func(t *testing.T) {
 		// The modal submits now, so the claim is no longer "it cannot fetch" — it is
 		// that nothing it fetches is reachable from a signal patch. One debounced
-		// site on the page, and every @post here hangs off a click or a file being
-		// attached.
-		require.Equal(t, 1, strings.Count(body, "/catalog/results"))
+		// site plus the header's refresh button, both firing the same query, and
+		// every @post here hangs off a click or a file being attached.
+		require.Equal(t, 2, strings.Count(body, "/catalog/results"))
 
 		for _, site := range []string{"/catalog/import/preview", "/catalog/import"} {
 			at := strings.Index(body, "@post(&#39;"+site+"&#39;")

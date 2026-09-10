@@ -160,7 +160,7 @@ func TestDeleteVersionArchivesItAndKeepsAPinAndARevisionResolvable(t *testing.T)
 	for _, v := range detail.Versions {
 		if v.Version == "2.0.0" {
 			sawArchived = true
-			require.Equal(t, "archived", string(v.DistTag))
+			require.Equal(t, "archived", v.DistTag)
 		}
 	}
 	require.True(t, sawArchived, "the withdrawn version stays in the history, marked archived")

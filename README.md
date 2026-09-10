@@ -156,6 +156,30 @@ agent-manager worker run scanner read bytes, write verdicts and findings — no 
 agent-manager migrate queue      the job queue's own database
 ```
 
+Beside those runs one service this project does not build: a pinned
+[`cisco-ai-defense/skill-scanner`](https://github.com/cisco-ai-defense/skill-scanner),
+the scanner's second analysis engine. It holds **no credential of this system's** and sits
+on a compose network with no gateway, so it reaches neither the internet nor Postgres nor
+the bucket; the scanner is its only peer. That placement is the point rather than an
+accident of wiring — the engine matches signatures against attacker-controlled bytes with
+a C extension, and the process doing that must not be the one holding the database
+credential.
+
+The two engines are independent and separately attributed. The rule pack encodes this
+project's own policy: declared-capability comparison, expected-host sets, shell syntax.
+The engine covers what a pattern over text structurally cannot reach — an encoded payload
+decoded at run time, zero-width characters, compiled Python, known-malware signatures,
+dataflow from a credential read to a network write. Every finding and every check row
+records which engine produced it, so a reviewer reads "the rule pack passed, the second
+engine failed" rather than one undifferentiated list.
+
+A scan that did not get the coverage policy asks for is never recorded clean. An engine
+that cannot be reached, or a response this build cannot read, records a high-severity
+finding a reviewer must act on; a package past the engine's own upload limits records a
+visible blind spot instead, because that is a fact about the package and the rule pack
+still ran. `AGENT_MANAGER_SCAN_ENGINE_REQUIRED=false` trades the first behaviour for a
+blind spot. `AGENT_MANAGER_SCAN_ENGINE_URL` empty runs the rule pack alone.
+
 A publish writes its rows, its job and its audit entry in **one transaction** through an
 outbox, so a job can never commit without the row it works on. The queue lives in a separate
 database from the application, which is why that guarantee is available at all.
@@ -171,10 +195,11 @@ task up
 ```
 
 That brings up Postgres, MinIO, Dex with glauth as its directory, the migrations, the API, the
-web UI and the fetcher, seeded with representative data — sign in and the catalog is already
-populated. The UI is on <http://localhost:8080> and the API on <http://localhost:8082>. Dex
-replaced an earlier Keycloak substitute once measurement showed a directory-backed Dex emits
-the same `groups` claim the role mapping needs, at a fraction of the image size.
+web UI, both workers and the second scan engine, seeded with representative data — sign in
+and the catalog is already populated. The UI is on <http://localhost:8080> and the API on
+<http://localhost:8082>. Dex replaced an earlier Keycloak substitute once measurement showed
+a directory-backed Dex emits the same `groups` claim the role mapping needs, at a fraction
+of the image size.
 
 Requires Docker and [Task](https://taskfile.dev). Nothing else is installed on the host —
 the toolchain is pinned in `mise.toml`, and the image has no Node.js in it.

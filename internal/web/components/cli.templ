@@ -79,16 +79,18 @@ templ cliCodeForm(s view.CLI) {
 // see before they decide.
 templ cliPending(s view.CLI) {
 	<div class="am-gov-card" id="cli-pending">
-		<div class="am-label">Requesting machine</div>
-		<p class="am-note am-mono">{ s.Pending.RequestingHost }</p>
-		<div class="am-label">Expires</div>
-		<p class="am-note" id="cli-countdown">{ s.Countdown }</p>
-		<form class="am-gate" method="post" action="/cli/confirm">
-			<input type="hidden" name="user_code" value={ s.UserCode }/>
-			<div class="am-gate-actions">
-				<button type="submit" class="am-btn am-btn-primary">Approve this machine</button>
-			</div>
-		</form>
+		<div class="am-gov-body am-gov-body-stack">
+			<div class="am-label">Requesting machine</div>
+			<p class="am-note am-mono">{ s.Pending.RequestingHost }</p>
+			<div class="am-label">Expires</div>
+			<p class="am-note" id="cli-countdown">{ s.Countdown }</p>
+			<form class="am-gate" method="post" action="/cli/confirm">
+				<input type="hidden" name="user_code" value={ s.UserCode }/>
+				<div class="am-gate-actions">
+					<button type="submit" class="am-btn am-btn-primary">Approve this machine</button>
+				</div>
+			</form>
+		</div>
 	</div>
 }
 
@@ -96,16 +98,18 @@ templ cliPending(s view.CLI) {
 // address, read from configuration.
 templ cliNoPending(s view.CLI) {
 	<div class="am-gov-card" id="cli-no-pending">
-		if s.Command == "" {
-			<p class="am-note">
-				This hub has not been told the address a machine should connect to, so no command
-				can be shown here. That is a deployment fault: whoever runs this hub needs to set it.
-			</p>
-		} else {
-			<div class="am-label">Run this on the machine you want to connect</div>
-			<p class="am-note am-mono">{ s.Command }</p>
-			<div class="am-label">Hub address</div>
-			<p class="am-note am-mono">{ s.HubURL }</p>
-		}
+		<div class="am-gov-body am-gov-body-stack">
+			if s.Command == "" {
+				<p class="am-note">
+					This hub has not been told the address a machine should connect to, so no command
+					can be shown here. That is a deployment fault: whoever runs this hub needs to set it.
+				</p>
+			} else {
+				<div class="am-label">Run this on the machine you want to connect</div>
+				<p class="am-note am-mono">{ s.Command }</p>
+				<div class="am-label">Hub address</div>
+				<p class="am-note am-mono">{ s.HubURL }</p>
+			}
+		</div>
 	</div>
 }

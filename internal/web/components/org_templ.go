@@ -148,14 +148,14 @@ func orgProvider(s view.Org) templ.Component {
 			templ_7745c5c3_Var5 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<section class=\"am-gov-card\"><div class=\"am-section-head\"><div class=\"am-section-title\">Identity provider</div></div><div class=\"am-kv\"><div class=\"am-kv-key\">Issuer</div><div class=\"am-mono am-kv-val\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<section class=\"am-gov-card\"><div class=\"am-section-head\"><div class=\"am-section-title\">Identity provider</div></div><div class=\"am-gov-body\"><div class=\"am-kv\"><div class=\"am-kv-key\">Issuer</div><div class=\"am-mono am-kv-val\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var6 string
 		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(s.Data.Provider.Issuer)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 63, Col: 58}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 64, Col: 59}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 		if templ_7745c5c3_Err != nil {
@@ -168,7 +168,7 @@ func orgProvider(s view.Org) templ.Component {
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(s.Data.Provider.ClientID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 67, Col: 60}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 68, Col: 61}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {
@@ -183,7 +183,7 @@ func orgProvider(s view.Org) templ.Component {
 				var templ_7745c5c3_Var8 string
 				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(" ")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 74, Col: 11}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 75, Col: 12}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 				if templ_7745c5c3_Err != nil {
@@ -197,7 +197,7 @@ func orgProvider(s view.Org) templ.Component {
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(scope)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 76, Col: 12}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 77, Col: 13}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
@@ -216,7 +216,7 @@ func orgProvider(s view.Org) templ.Component {
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(s.Data.Provider.DeviceAuthorizationEndpoint)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 83, Col: 80}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 84, Col: 81}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 			if templ_7745c5c3_Err != nil {
@@ -229,19 +229,19 @@ func orgProvider(s view.Org) templ.Component {
 		}
 		if s.Connected != nil {
 			if s.Connected.OK {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<div class=\"am-notice am-notice-ok\" id=\"org-connection-ok\">Connection ok.</div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<div class=\"am-card-notice am-gov-notice-ok\" id=\"org-connection-ok\">Connection ok.</div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<div class=\"am-notice am-notice-dan\" id=\"org-connection-failed\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<div class=\"am-card-notice am-gov-notice-dan\" id=\"org-connection-failed\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var11 string
 				templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(s.Connected.Detail)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 90, Col: 88}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 91, Col: 98}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 				if templ_7745c5c3_Err != nil {
@@ -253,14 +253,14 @@ func orgProvider(s view.Org) templ.Component {
 				}
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<div class=\"am-org-form-row\"><form method=\"post\" action=\"/org/identity/test\"><button type=\"submit\" class=\"am-btn\">Test connection</button></form><form method=\"post\" action=\"/org/identity/secret\"><button type=\"submit\" class=\"am-btn\" disabled aria-disabled=\"true\" title=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</div><div class=\"am-org-form-row\"><form method=\"post\" action=\"/org/identity/test\"><button type=\"submit\" class=\"am-btn\">Test connection</button></form><form method=\"post\" action=\"/org/identity/secret\"><button type=\"submit\" class=\"am-btn\" disabled aria-disabled=\"true\" title=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var12 string
 		templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.ResolveAttributeValue(view.SecretRotationReason)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 98, Col: 104}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 100, Col: 104}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var12)
 		if templ_7745c5c3_Err != nil {
@@ -273,7 +273,7 @@ func orgProvider(s view.Org) templ.Component {
 		var templ_7745c5c3_Var13 string
 		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(view.SecretRotationReason)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 102, Col: 59}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 104, Col: 59}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 		if templ_7745c5c3_Err != nil {
@@ -308,7 +308,7 @@ func orgPolicy(s view.Org) templ.Component {
 			templ_7745c5c3_Var14 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<section class=\"am-gov-card\"><div class=\"am-section-head\"><div class=\"am-section-title\">Policy</div></div><form class=\"am-field\" method=\"post\" action=\"/org/policy\"><div class=\"am-field\"><label class=\"am-label\" for=\"org-scan-gate\">Scan gate</label> <select id=\"org-scan-gate\" class=\"am-select\" name=\"scanGate\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<section class=\"am-gov-card\"><div class=\"am-section-head\"><div class=\"am-section-title\">Policy</div></div><form method=\"post\" action=\"/org/policy\"><div class=\"am-gov-body am-gov-body-stack\"><div class=\"am-field\"><label class=\"am-label\" for=\"org-scan-gate\">Scan gate</label> <select id=\"org-scan-gate\" class=\"am-select\" name=\"scanGate\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -321,7 +321,7 @@ func orgPolicy(s view.Org) templ.Component {
 				var templ_7745c5c3_Var15 string
 				templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.ResolveAttributeValue(gate)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 118, Col: 27}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 121, Col: 28}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var15)
 				if templ_7745c5c3_Err != nil {
@@ -334,7 +334,7 @@ func orgPolicy(s view.Org) templ.Component {
 				var templ_7745c5c3_Var16 string
 				templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(view.ScanGateLabel(gate))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 118, Col: 65}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 121, Col: 66}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 				if templ_7745c5c3_Err != nil {
@@ -352,7 +352,7 @@ func orgPolicy(s view.Org) templ.Component {
 				var templ_7745c5c3_Var17 string
 				templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.ResolveAttributeValue(gate)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 120, Col: 27}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 123, Col: 28}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var17)
 				if templ_7745c5c3_Err != nil {
@@ -365,7 +365,7 @@ func orgPolicy(s view.Org) templ.Component {
 				var templ_7745c5c3_Var18 string
 				templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(view.ScanGateLabel(gate))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 120, Col: 56}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 123, Col: 57}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 				if templ_7745c5c3_Err != nil {
@@ -417,7 +417,7 @@ func orgPolicy(s view.Org) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "> <span class=\"am-toggle-label\">Allow personal profiles</span></label><div class=\"am-org-form-row\"><button type=\"submit\" class=\"am-btn am-btn-primary\">Save policy</button></div></form></section>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "> <span class=\"am-toggle-label\">Allow personal profiles</span></label></div><div class=\"am-org-form-row\"><button type=\"submit\" class=\"am-btn am-btn-primary\">Save policy</button></div></form></section>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -453,7 +453,7 @@ func orgMappings(s view.Org) templ.Component {
 		var templ_7745c5c3_Var20 string
 		templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(len(s.Data.Mappings)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 180, Col: 68}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 184, Col: 68}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 		if templ_7745c5c3_Err != nil {
@@ -471,7 +471,7 @@ func orgMappings(s view.Org) templ.Component {
 			var templ_7745c5c3_Var21 string
 			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(mapping.GroupName)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 190, Col: 53}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 194, Col: 53}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 			if templ_7745c5c3_Err != nil {
@@ -484,7 +484,7 @@ func orgMappings(s view.Org) templ.Component {
 			var templ_7745c5c3_Var22 string
 			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(view.OrgRoleLabel(mapping.Role))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 191, Col: 42}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 195, Col: 42}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 			if templ_7745c5c3_Err != nil {
@@ -497,7 +497,7 @@ func orgMappings(s view.Org) templ.Component {
 			var templ_7745c5c3_Var23 templ.SafeURL
 			templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinURLErrs(view.MappingDeleteHref(mapping.GroupName))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 194, Col: 75}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 198, Col: 75}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 			if templ_7745c5c3_Err != nil {
@@ -526,7 +526,7 @@ func orgMappings(s view.Org) templ.Component {
 			var templ_7745c5c3_Var24 string
 			templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.ResolveAttributeValue(role)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 215, Col: 26}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 219, Col: 26}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var24)
 			if templ_7745c5c3_Err != nil {
@@ -539,7 +539,7 @@ func orgMappings(s view.Org) templ.Component {
 			var templ_7745c5c3_Var25 string
 			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(view.OrgRoleLabel(role))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 215, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 219, Col: 54}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 			if templ_7745c5c3_Err != nil {
@@ -586,7 +586,7 @@ func orgCategories(s view.Org) templ.Component {
 		var templ_7745c5c3_Var27 string
 		templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(len(s.Data.Categories)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 228, Col: 70}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 232, Col: 70}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 		if templ_7745c5c3_Err != nil {
@@ -604,7 +604,7 @@ func orgCategories(s view.Org) templ.Component {
 			var templ_7745c5c3_Var28 templ.SafeURL
 			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinURLErrs(view.CategoryRenameHref(category.ID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 239, Col: 70}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 243, Col: 70}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 			if templ_7745c5c3_Err != nil {
@@ -617,7 +617,7 @@ func orgCategories(s view.Org) templ.Component {
 			var templ_7745c5c3_Var29 string
 			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.ResolveAttributeValue(category.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 240, Col: 75}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 244, Col: 75}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var29)
 			if templ_7745c5c3_Err != nil {
@@ -630,7 +630,7 @@ func orgCategories(s view.Org) templ.Component {
 			var templ_7745c5c3_Var30 string
 			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(category.Slug)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 244, Col: 49}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 248, Col: 49}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 			if templ_7745c5c3_Err != nil {
@@ -643,7 +643,7 @@ func orgCategories(s view.Org) templ.Component {
 			var templ_7745c5c3_Var31 string
 			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(category.Count))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 245, Col: 39}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 249, Col: 39}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 			if templ_7745c5c3_Err != nil {
@@ -661,7 +661,7 @@ func orgCategories(s view.Org) templ.Component {
 				var templ_7745c5c3_Var32 templ.SafeURL
 				templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinURLErrs(view.CategoryDeleteHref(category.ID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 248, Col: 71}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/org.templ`, Line: 252, Col: 71}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 				if templ_7745c5c3_Err != nil {

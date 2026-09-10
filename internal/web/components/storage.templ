@@ -66,12 +66,14 @@ templ keyLayout(s view.Storage) {
 		<div class="am-section-head">
 			<div class="am-section-title">Key layout</div>
 		</div>
-		for _, row := range s.KeyLayout {
-			<div class="am-kv">
-				<div class="am-kv-key am-mono">{ row.Prefix }/</div>
-				<div class="am-kv-val">{ objectCount(row.Objects) }</div>
-			</div>
-		}
+		<div class="am-gov-body">
+			for _, row := range s.KeyLayout {
+				<div class="am-kv">
+					<div class="am-kv-key am-mono">{ row.Prefix }/</div>
+					<div class="am-kv-val">{ objectCount(row.Objects) }</div>
+				</div>
+			}
+		</div>
 	</section>
 }
 
@@ -80,12 +82,14 @@ templ bucketSettings(s view.Storage) {
 		<div class="am-section-head">
 			<div class="am-section-title">Bucket settings</div>
 		</div>
-		for _, row := range s.Bucket.Rows() {
-			<div class="am-kv">
-				<div class="am-kv-key">{ row.Label }</div>
-				<div class={ bucketSettingClass(row.Setting) }>{ row.Setting.Label() }</div>
-			</div>
-		}
+		<div class="am-gov-body">
+			for _, row := range s.Bucket.Rows() {
+				<div class="am-kv">
+					<div class="am-kv-key">{ row.Label }</div>
+					<div class={ bucketSettingClass(row.Setting) }>{ row.Setting.Label() }</div>
+				</div>
+			}
+		</div>
 	</section>
 }
 

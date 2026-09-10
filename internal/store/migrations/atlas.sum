@@ -1,4 +1,4 @@
-h1:4UHYQBSVHHvb4rZ8HHHe0sTF9sxzDgMxFTfbIAgUUhY=
+h1:OfF0X/1H2XdCeWe/NrwvKevlesaF6Zsluz+Molt8UYM=
 20260827150113_init.sql h1:aKaMFjJ82z0Pqa0t1/t0viIOhej4DPz5qZtFK2yy0JQ=
 20260827150200_roles_and_grants.sql h1:vFLj6y+ljV21vO6RMNz5ocVkNiYy0h/ewSEdoKevLE4=
 20260828000342_namespace_audit_kinds_evidence_and_fetch_attempts.sql h1:DsNTEhm6DlVkncHLFr3Nf+pX3Pr5ZWYXI43oKkbsxz4=
@@ -6,3 +6,4 @@ h1:4UHYQBSVHHvb4rZ8HHHe0sTF9sxzDgMxFTfbIAgUUhY=
 20260904090000_grant_delete_on_group_role_map_and_category.sql h1:yLr5iivctfddvcAb3ooFDHbSxJ756DLwvzWc/Zah/hU=
 20260910064425_engine_on_finding_and_scan_check.sql h1:dH5zWElm2le9ZUd0aPt/8K25MIcEvYscbOFEI52V5YI=
 20260910093709_allow_one_segment_publisher_slug.sql h1:EUhSc3sxB9fUXoS/o6wFuKgLxERsQbWJOFTRcJw7F2M=
+20260910120000_explain_on_scan_check.sql h1:RljhY4J9doNB3e0BYfSHcq/JuWBZH+t8180IJrNISoo=

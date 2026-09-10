@@ -87,9 +87,9 @@ type FindingEvidence struct {
 }
 
 type FindingCheck struct {
-	CheckID   string `json:"checkId" example:"network-allowlist"`
-	Engine    string `json:"engine" doc:"The analyser this row belongs to, so the matrix can be read as \"the rule pack passed, the second engine failed\" rather than as one undifferentiated list." example:"rulepack"`
-	Label     string `json:"label" doc:"The check's own label, as the scan recorded it. A screen that mapped check ids to labels itself would stop naming a check added after it shipped." example:"Network allowlist"`
+	CheckID string `json:"checkId" example:"network-allowlist"`
+	Engine  string `json:"engine" doc:"The analyser this row belongs to, so the matrix can be read as \"the rule pack passed, the second engine failed\" rather than as one undifferentiated list." example:"rulepack"`
+	Label   string `json:"label" doc:"The check's own label, as the scan recorded it. A screen that mapped check ids to labels itself would stop naming a check added after it shipped." example:"Network allowlist"`
 	// Explain is what this check looks for, in general — not this scan's
 	// result, which is Result and WarnCount, the way Label is not the row's
 	// own result either. Denormalised for the same reason Label is.

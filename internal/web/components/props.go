@@ -333,13 +333,29 @@ func ScanClass(scan view.Scan) string {
 	return "am-scan am-scan-" + scan.Tone()
 }
 
+// VisibilityClass tones the visibility badge. Organisation carries no
+// modifier — it is the neutral, everyone-sees-it default, the same
+// unmodified look am-kind gives a skill.
+func VisibilityClass(visibility string) string {
+	switch visibility {
+	case "team", "private":
+		return "am-vis am-vis-" + visibility
+	default:
+		return "am-vis"
+	}
+}
+
 // ---- the registration modal --------------------------------------------------
 
 // Import is the modal's props. It is a distinct type from view.Import so a
 // component signature never becomes the place a new field is added silently.
 type Import struct {
 	Categories []string
-	Preview    *view.ImportPreview
+	// Visibilities is view.ImportVisibilityOptions already scoped to the
+	// viewer, computed by the handler (which holds the session) rather than
+	// by the template — a component has no session to read groups from.
+	Visibilities []view.ImportOption
+	Preview      *view.ImportPreview
 	// Result is the outcome of a submission, when there has been one.
 	Result *view.ImportResult
 }

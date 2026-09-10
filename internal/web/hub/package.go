@@ -17,6 +17,45 @@ import (
 // The package detail screen's door to the api (US3), through the generated
 // client and nothing else.
 
+// PackageRefusedError is the api refusing a visibility change it
+// understood — wrong owner, no catalog admin, or an owner-less package
+// narrowed past organisation — carrying the sentence the caller already
+// earned by reaching a screen that answered 200 on the GET.
+type PackageRefusedError struct{ Detail string }
+
+func (e *PackageRefusedError) Error() string { return e.Detail }
+
+// SetVisibility implements web.PackageCurator against
+// PUT /v1/packages/{namespace}/{name}/visibility.
+func (c *Client) SetVisibility(ctx context.Context, namespace, name, visibility string) (view.Package, error) {
+	resp, err := c.api.SetPackageVisibilityWithResponse(ctx, namespace, name,
+		apiclient.PackageVisibilityUpdate{Visibility: apiclient.PackageVisibilityUpdateVisibility(visibility)})
+	if err != nil {
+		return view.Package{}, fmt.Errorf("set the visibility of %s/%s: %w", namespace, name, err)
+	}
+	if resp.JSON200 == nil {
+		return view.Package{}, packageFailure(fmt.Sprintf("set the visibility of %s/%s", namespace, name),
+			resp.HTTPResponse, resp.Body)
+	}
+	return packageDetail(resp.JSON200, c.now()), nil
+}
+
+// packageFailure mirrors hub/profiles.go's profileFailure: a 404 stays
+// view.ErrNotFound so an unreadable package answers the same as a missing
+// one, and a 403/422 the api understood becomes PackageRefusedError,
+// carrying the problem detail rather than a generic message.
+func packageFailure(what string, resp *http.Response, body []byte) error {
+	if resp != nil {
+		switch resp.StatusCode {
+		case http.StatusNotFound:
+			return view.ErrNotFound
+		case http.StatusForbidden, http.StatusUnprocessableEntity:
+			return &PackageRefusedError{Detail: refusalDetail(body, resp)}
+		}
+	}
+	return fmt.Errorf("%s: %w", what, statusError(resp, body))
+}
+
 // Package implements web.PackageSource against GET /v1/packages/{namespace}/{name}.
 // A 404 becomes view.ErrNotFound rather than an error to log: a missing
 // package and an unreadable one are the same answer by design.
@@ -81,22 +120,25 @@ func packageDeleteError(resp *http.Response, body []byte) error {
 
 func packageDetail(body *apiclient.PackageDetail, now time.Time) view.Package {
 	detail := view.Package{
-		ID:             body.Id,
-		Name:           view.Title(body.Name),
-		Kind:           view.Kind(body.Kind),
-		Publisher:      body.Publisher.Slug,
-		Verified:       body.Publisher.Verified,
-		Version:        body.Version,
-		Scan:           scanOf(string(body.Verdict)),
-		Tags:           body.Tags,
-		ManifestObject: string(body.ManifestObject),
-		Manifest:       body.Manifest,
-		SpecVersion:    deref(body.Origin.SpecVersion),
-		ParentID:       deref(body.Origin.ParentId),
-		ParentName:     deref(body.Origin.ParentName),
-		Category:       deref(body.Category),
-		Description:    deref(body.Description),
-		Capabilities:   capabilities(body.Capabilities),
+		ID:                  body.Id,
+		Name:                view.Title(body.Name),
+		Kind:                view.Kind(body.Kind),
+		Publisher:           body.Publisher.Slug,
+		Verified:            body.Publisher.Verified,
+		Version:             body.Version,
+		Scan:                scanOf(string(body.Verdict)),
+		Tags:                body.Tags,
+		ManifestObject:      string(body.ManifestObject),
+		Manifest:            body.Manifest,
+		SpecVersion:         deref(body.Origin.SpecVersion),
+		ParentID:            deref(body.Origin.ParentId),
+		ParentName:          deref(body.Origin.ParentName),
+		Category:            deref(body.Category),
+		Description:         deref(body.Description),
+		Capabilities:        capabilities(body.Capabilities),
+		Visibility:          string(body.Visibility),
+		Owner:               deref(body.Owner),
+		CanChangeVisibility: body.CanChangeVisibility,
 	}
 	if detail.Tags == nil {
 		detail.Tags = []string{}

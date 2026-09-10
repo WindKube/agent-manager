@@ -30,7 +30,10 @@ func (s *Server) catalog(c *gin.Context) {
 		// The modal's category list IS shipped on the first render, unlike the facet
 		// option lists: it is the admin-curated vocabulary (FR-049), a select rather
 		// than a searchable menu, and a registration can only choose from it.
-		Import: components.Import{Categories: categoryNames(page)},
+		Import: components.Import{
+			Categories:   categoryNames(page),
+			Visibilities: view.ImportVisibilityOptions(viewerGroups(c)),
+		},
 		Notice: view.CatalogNoticeFrom(c.Query("notice"), c.Query("id")),
 	}))
 }

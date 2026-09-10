@@ -31,6 +31,18 @@ type Package struct {
 	Scan        Scan
 	Tags        []string
 
+	// Visibility and Owner are read straight off the api's PackageDetail:
+	// Visibility is always one of organisation/team/private (an owner-less
+	// pre-migration row is still "organisation" — see the migration note on
+	// the store side), and Owner is empty for one, never a placeholder like
+	// "unknown".
+	Visibility string
+	Owner      string
+	// CanChangeVisibility mirrors the api's own gate (owner or catalog
+	// admin) so the control can be shown disabled rather than omitted
+	// (FR-126) instead of the screen guessing from the role alone.
+	CanChangeVisibility bool
+
 	// SpecVersion is the version the manifest's $schema names, empty for a skill.
 	SpecVersion string
 	// ParentID and ParentName name the plugin a skill is distributed inside.
@@ -105,9 +117,10 @@ type Package struct {
 	// the viewer the api resolved, never from a role string this screen
 	// guessed at. Every delete button on this screen reads the same value.
 	DeleteAccess OrgAccess
-	// Notice is a delete's own outcome, read back off the redirect exactly
-	// as scanner.go's decisionNotice is: a token looked up here, never
-	// rendered prose the redirect itself carried.
+	// Notice is a write's own outcome — a delete's, or a visibility change's
+	// — read back off the redirect exactly as scanner.go's decisionNotice
+	// is: a token looked up here, never rendered prose the redirect itself
+	// carried.
 	Notice *Notice
 }
 
@@ -158,6 +171,34 @@ type VersionDeleted struct {
 // PackageDeleted is a package delete's acknowledgement.
 type PackageDeleted struct {
 	VersionsArchived int
+}
+
+// VisibilityLabel is the badge beside the package's identity.
+func (p Package) VisibilityLabel() string { return visibilityLabels[p.Visibility] }
+
+// VisibilityChangeDisabledReason is why the change-visibility control is
+// disabled for a viewer who is neither the owner nor a catalog admin
+// (FR-126): stated once, up front, rather than discovered by submitting.
+const VisibilityChangeDisabledReason = "Only this package's owner or a catalog admin may change its visibility."
+
+// VisibilityOptions is the change-visibility control's vocabulary. Team and
+// private are both enforced by matching a reader against the OWNER
+// (queries.PackageReadable), so an owner-less package narrowed to either
+// would match nobody, ever — the same guard commands.SetPackageVisibility
+// itself applies, restated here so the control never offers a choice the
+// api would refuse.
+func (p Package) VisibilityOptions() []ImportOption {
+	options := []ImportOption{
+		{Value: "organisation", Label: "Organisation"},
+		{Value: "team", Label: "Team"},
+		{Value: "private", Label: "Private"},
+	}
+	if p.Owner == "" {
+		reason := "This package has no recorded owner, so only organisation visibility is safe for it."
+		options[1].Disabled, options[1].Reason = true, reason
+		options[2].Disabled, options[2].Reason = true, reason
+	}
+	return options
 }
 
 // FileRow is one file the bundle holds, as the files panel lists it.
@@ -570,8 +611,8 @@ func (p Package) DependentsLine() string {
 // of /packages/. Each half must match the object-key segment pattern, or it
 // is not linked at all.
 func PackageHref(id string) string {
-	namespace, name, ok := strings.Cut(id, "/")
-	if !ok || !validIDSegment(namespace) || !validIDSegment(name) {
+	namespace, name, ok := SplitPackageID(id)
+	if !ok {
 		return "/catalog"
 	}
 	// Escaped as well as validated, so widening the pattern later cannot
@@ -579,11 +620,23 @@ func PackageHref(id string) string {
 	return "/packages/" + url.PathEscape(namespace) + "/" + url.PathEscape(name)
 }
 
+// SplitPackageID is a package id's two halves, validated the same way
+// PackageHref validates them — shared so a form posting an id (the
+// visibility control) rejects the same malformed values a link would rather
+// than re-deriving the rule.
+func SplitPackageID(id string) (namespace, name string, ok bool) {
+	namespace, name, cut := strings.Cut(id, "/")
+	if !cut || !validIDSegment(namespace) || !validIDSegment(name) {
+		return "", "", false
+	}
+	return namespace, name, true
+}
+
 // PackageDeleteHref links the package-level delete form, validated the same
 // way PackageHref is.
 func PackageDeleteHref(id string) string {
-	namespace, name, ok := strings.Cut(id, "/")
-	if !ok || !validIDSegment(namespace) || !validIDSegment(name) {
+	namespace, name, ok := SplitPackageID(id)
+	if !ok {
 		return "/catalog"
 	}
 	return "/packages/" + url.PathEscape(namespace) + "/" + url.PathEscape(name) + "/delete"
@@ -591,8 +644,8 @@ func PackageDeleteHref(id string) string {
 
 // VersionDeleteHref links one version row's delete form.
 func VersionDeleteHref(id, version string) string {
-	namespace, name, ok := strings.Cut(id, "/")
-	if !ok || !validIDSegment(namespace) || !validIDSegment(name) {
+	namespace, name, ok := SplitPackageID(id)
+	if !ok {
 		return "/catalog"
 	}
 	return "/packages/" + url.PathEscape(namespace) + "/" + url.PathEscape(name) +

@@ -67,6 +67,7 @@ func detailOf(row *view.Row) view.Package {
 		Description:  e.description,
 		Version:      row.Version,
 		Scan:         row.Scan,
+		Visibility:   row.Visibility,
 		Tags:         row.Tags,
 		Components:   e.components,
 		Capabilities: e.caps,

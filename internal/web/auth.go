@@ -571,6 +571,18 @@ func viewerFor(c *gin.Context) *view.Viewer {
 	return &viewer
 }
 
+// viewerGroups is the signed-in identity's own groups, or nil for a request
+// that resolved nobody — the same "nothing to offer" input the team
+// visibility option needs, without every caller re-checking for a nil
+// viewer itself.
+func viewerGroups(c *gin.Context) []string {
+	viewer := viewerFor(c)
+	if viewer == nil {
+		return nil
+	}
+	return viewer.Groups
+}
+
 // viewerOf maps what the api resolved onto what a component may render. The
 // two types stay separate so a component can never name hub.Viewer's wire
 // shape. This is also the only place SignedIn becomes true.

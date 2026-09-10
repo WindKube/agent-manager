@@ -165,23 +165,29 @@ func (q CatalogQuery) SortState(key SortKey) (active bool, next SortDir, arrow s
 // Row is one catalog result. Tags belong to the latest version, not the
 // package, so what lands here is already the latest version's set.
 type Row struct {
-	Key       string
-	ID        string
-	Name      string
-	Publisher string
-	Category  string
-	Version   string
-	Updated   string
-	Kind      Kind
-	Scan      Scan
-	Uses      int
-	Tags      []string
+	Key        string
+	ID         string
+	Name       string
+	Publisher  string
+	Category   string
+	Version    string
+	Updated    string
+	Kind       Kind
+	Scan       Scan
+	Visibility string
+	Uses       int
+	Tags       []string
 }
 
 // Href is the row's link, built from the ID rather than the Key: the detail
 // screen is addressed by `namespace/name`, and Key is whatever the source
 // chose to identify a row by.
 func (r Row) Href() string { return PackageHref(r.ID) }
+
+// VisibilityLabel is the catalog column's text. A row here already passed
+// queries.PackageReadable to be listed at all, so unlike the change-visibility
+// control there is no gating to add — this only spells the value.
+func (r Row) VisibilityLabel() string { return visibilityLabels[r.Visibility] }
 
 // FacetOption is one checkbox in a facet menu. Count is what selecting this
 // option would yield, so it responds to every other filter.

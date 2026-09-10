@@ -173,6 +173,7 @@ templ CatalogTable(page view.CatalogPage) {
 		<div>Category</div>
 		<div>Version</div>
 		<div>Scan</div>
+		<div>Visibility</div>
 		<button type="button" class={ SortClass(page.Query, view.SortUses) } data-on:click={ SortExpr(page.Query, view.SortUses) }>
 			{ "Uses" + SortArrow(page.Query, view.SortUses) }
 		</button>
@@ -190,6 +191,7 @@ templ CatalogTable(page view.CatalogPage) {
 			<div class="am-cell-text">{ row.Category }</div>
 			<div class="am-cell-mono">{ row.Version }</div>
 			<div><span class={ ScanClass(row.Scan) }>{ row.Scan.Label() }</span></div>
+			<div><span class={ VisibilityClass(row.Visibility) }>{ row.VisibilityLabel() }</span></div>
 			<div class="am-cell-mono">{ strconv.Itoa(row.Uses) }</div>
 			<div class="am-cell-dim">{ row.Updated }</div>
 		</a>

@@ -110,16 +110,17 @@ func (c *Client) Catalog(ctx context.Context, q view.CatalogQuery) (view.Catalog
 
 func row(entry *apiclient.CatalogPackage, now time.Time) view.Row {
 	out := view.Row{
-		Key:       entry.Id,
-		ID:        entry.Id,
-		Name:      view.Title(entry.Name),
-		Publisher: entry.Publisher,
-		Version:   entry.Version,
-		Updated:   view.Relative(entry.UpdatedAt, now),
-		Kind:      view.Kind(entry.Kind),
-		Scan:      scanOf(string(entry.Verdict)),
-		Uses:      int(entry.Uses),
-		Tags:      entry.Tags,
+		Key:        entry.Id,
+		ID:         entry.Id,
+		Name:       view.Title(entry.Name),
+		Publisher:  entry.Publisher,
+		Version:    entry.Version,
+		Updated:    view.Relative(entry.UpdatedAt, now),
+		Kind:       view.Kind(entry.Kind),
+		Scan:       scanOf(string(entry.Verdict)),
+		Visibility: string(entry.Visibility),
+		Uses:       int(entry.Uses),
+		Tags:       entry.Tags,
 	}
 	if entry.Category != nil {
 		out.Category = *entry.Category

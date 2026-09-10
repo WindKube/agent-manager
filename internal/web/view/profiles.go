@@ -32,9 +32,13 @@ func (r ProfileRow) VisibilityLabel() string { return visibilityLabels[r.Visibil
 
 func (r ProfileRow) Href() string { return "/profiles/" + r.Slug }
 
+// visibilityLabels is shared between profile and package visibility: both
+// vocabularies spell "organisation" and "private" the same way, and "team"
+// (package-only) and "shared" (profile-only) each answer to one of them.
 var visibilityLabels = map[string]string{
 	"organisation": "Organisation",
 	"shared":       "Shared",
+	"team":         "Team",
 	"private":      "Private",
 }
 

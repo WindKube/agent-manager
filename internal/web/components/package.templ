@@ -35,10 +35,15 @@ templ PackageScreen(p view.Package) {
 				}
 				<span class={ KindClass(p.Kind) }>{ p.Kind.Label() }</span>
 				<span class={ ScanClass(p.Scan) }>{ p.Scan.Label() }</span>
+				<span class={ VisibilityClass(p.Visibility) }>{ p.VisibilityLabel() }</span>
 				if p.Category != "" {
 					<span class="am-detail-cat">{ p.Category }</span>
 				}
 			</div>
+			if p.Notice != nil {
+				<div class={ NoticeClass(*p.Notice) } id="package-notice">{ p.Notice.Text }</div>
+			}
+			@visibilityControl(p)
 			@addToProfile(p)
 			@packageDeleteControl(p)
 		}
@@ -79,6 +84,42 @@ templ packageBody(p view.Package) {
 	if p.SelectedFile != nil || p.FileMissing || p.FileTooLarge || p.FileNotRenderable {
 		@filesDetailPanel(p)
 	}
+}
+
+// visibilityControl is FR-126's shape for a package's owner or a catalog
+// admin, and everyone else: shown, disabled, with the reason stated rather
+// than the control disappearing for the vast majority of viewers who may
+// only read this screen, not change it.
+templ visibilityControl(p view.Package) {
+	<div class="am-vis-control" id="package-visibility">
+		if !p.CanChangeVisibility {
+			<button type="button" class="am-btn" disabled aria-disabled="true" title={ view.VisibilityChangeDisabledReason }>Change visibility</button>
+			<span class="am-toggle-note">{ view.VisibilityChangeDisabledReason }</span>
+		} else {
+			<form method="post" action="/packages/visibility" class="am-vis-form">
+				<input type="hidden" name="id" value={ p.ID }/>
+				<select name="visibility" class="am-select">
+					for _, option := range p.VisibilityOptions() {
+						if option.Value == p.Visibility && option.Disabled {
+							<option value={ option.Value } selected disabled title={ option.Reason }>{ option.Label }</option>
+						} else if option.Value == p.Visibility {
+							<option value={ option.Value } selected>{ option.Label }</option>
+						} else if option.Disabled {
+							<option value={ option.Value } disabled title={ option.Reason }>{ option.Label }</option>
+						} else {
+							<option value={ option.Value }>{ option.Label }</option>
+						}
+					}
+				</select>
+				<button type="submit" class="am-btn">Save</button>
+			</form>
+			for _, option := range p.VisibilityOptions() {
+				if option.Disabled {
+					<span class="am-toggle-note">{ option.Label }: { option.Reason }</span>
+				}
+			}
+		}
+	</div>
 }
 
 // addToProfile is US5's own words: "add to the profile", personal or

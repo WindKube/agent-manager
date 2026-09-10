@@ -53,11 +53,13 @@ type PackageSource interface {
 	Package(ctx context.Context, namespace, name string) (view.Package, error)
 }
 
-// PackageCurator is the package detail screen's two destructive actions —
-// withdrawing a version, or the whole package, from the catalog — kept
-// apart from PackageSource for the same reason Reviewer sits apart from
-// ScannerSource: each writes an audit row a fixture must not fake.
+// PackageCurator is every write the package detail screen offers: changing
+// visibility (FR-126), and the two destructive withdrawals — one version, or
+// the whole package, out of the catalog. Kept apart from PackageSource for
+// the same reason Reviewer sits apart from ScannerSource: each writes an
+// audit row a fixture must not fake.
 type PackageCurator interface {
+	SetVisibility(ctx context.Context, namespace, name, visibility string) (view.Package, error)
 	DeleteVersion(ctx context.Context, namespace, name, version string) (view.VersionDeleted, error)
 	DeletePackage(ctx context.Context, namespace, name string) (view.PackageDeleted, error)
 }
@@ -276,8 +278,10 @@ func (s *Server) register() {
 	// A package id IS two segments: `example/platform-toolkit`. gin routes on
 	// the decoded path, so this splits correctly even if the id arrives encoded.
 	s.engine.GET("/packages/:namespace/:name", s.packageDetail)
-	// Both destructive: POST forms that redirect, gated on the same role the
-	// api demands, and behind a typed confirmation on the screen itself.
+	// POST forms that redirect, like the profile screens' writes, so a reload
+	// cannot resubmit any of them. The two deletes are additionally gated on
+	// the role the api demands and sit behind a typed confirmation.
+	s.engine.POST("/packages/visibility", s.setPackageVisibility)
 	s.engine.POST("/packages/:namespace/:name/delete", s.deletePackage)
 	s.engine.POST("/packages/:namespace/:name/versions/:version/delete", s.deleteVersion)
 

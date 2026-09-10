@@ -144,6 +144,7 @@ func runWeb(ctx context.Context) error {
 		Device:       client,
 		Storage:      client,
 		Organization: client,
+		Runtime:      client,
 		Log:          log,
 	}, web.Options{
 		Addr: cfg.Addr,

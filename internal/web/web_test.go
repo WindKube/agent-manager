@@ -57,6 +57,9 @@ func handler(t *testing.T, source web.CatalogSource) http.Handler {
 	if org, ok := source.(web.OrganizationSource); ok {
 		deps.Organization = org
 	}
+	if runtime, ok := source.(web.RuntimeSource); ok {
+		deps.Runtime = runtime
+	}
 	return web.New(deps, web.Options{}).Handler()
 }
 

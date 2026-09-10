@@ -25,6 +25,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"agent-manager/internal/api/commands"
+	"agent-manager/internal/api/queries"
 	"agent-manager/internal/auth"
 	"agent-manager/internal/blob"
 )
@@ -90,6 +91,12 @@ type Deps struct {
 	// screen's provider panel and connection test. It never carries the client
 	// secret: commands.IdentityConfig has no field for one.
 	Identity commands.IdentityConfig
+
+	// Queue backs the Runtime screen's job counts, errors and run history. It
+	// is River's own database, never the application schema (constitution
+	// principle IX): a *pgxpool.Pool to `river` already satisfies this narrow
+	// interface, and nothing here is bun.
+	Queue queries.RuntimeQueue
 }
 
 // Options is the run-time configuration of the surface itself.

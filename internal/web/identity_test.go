@@ -174,6 +174,11 @@ func sweep() []sweptScreen {
 		// and a category name are both person-shaped by nature and both arrive
 		// from a source, so what is swept is the chrome around them.
 		inShell("OrgScreen", func() templ.Component { return components.OrgScreen(view.Org{}) }),
+		// The Runtime screen has no person-shaped field at all — queue names,
+		// job kinds and runner error text are all system-generated — but it is
+		// still swept empty for the same reason every other governance screen
+		// is: what matters here is the chrome, not a claim that its rows are safe.
+		inShell("RuntimeScreen", func() templ.Component { return components.RuntimeScreen(view.Runtime{}) }),
 		{
 			name: "NoRoleScreen",
 			// The one screen whose body renders the viewer itself. Signed out there is

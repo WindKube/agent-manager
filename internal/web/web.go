@@ -117,6 +117,12 @@ type StorageSource interface {
 	Storage(ctx context.Context) (view.Storage, error)
 }
 
+// RuntimeSource is the Runtime screen's one read: job counts, runner errors
+// and the run-history chart, all from one api call.
+type RuntimeSource interface {
+	Runtime(ctx context.Context) (view.Runtime, error)
+}
+
 // OrganizationSource is the Organization screen's door to the api. Reads and
 // writes share one interface since every mutation needs the same role.
 type OrganizationSource interface {
@@ -149,6 +155,7 @@ type Deps struct {
 	Curator      ProfileCurator
 	Storage      StorageSource
 	Organization OrganizationSource
+	Runtime      RuntimeSource
 	Log          zerolog.Logger
 }
 
@@ -258,6 +265,8 @@ func (s *Server) register() {
 	s.engine.POST("/org/categories", s.createCategory)
 	s.engine.POST("/org/categories/:id", s.renameCategory)
 	s.engine.POST("/org/categories/:id/delete", s.deleteCategory)
+
+	s.engine.GET("/runtime", s.runtime)
 
 	s.engine.POST("/theme", s.setTheme)
 

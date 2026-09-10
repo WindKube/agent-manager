@@ -34,6 +34,7 @@ func (s *Server) register() {
 	s.registerDeviceApproval()
 	s.registerStorage()
 	s.registerOrganization()
+	s.registerRuntime()
 }
 
 // publicSecurity is the empty security requirement that removes the document's
@@ -883,6 +884,26 @@ func (s *Server) registerStorage() {
 			"500": s.errorResponse("The request could not be completed."),
 		},
 	}, s.getStorage)
+}
+
+func (s *Server) registerRuntime() {
+	huma.Register(s.api, huma.Operation{
+		OperationID: "getRuntime",
+		Method:      http.MethodGet,
+		Path:        "/v1/runtime",
+		Tags:        []string{"runtime"},
+		Summary:     "The job queue's own state",
+		Description: "Job counts by River's own state for each queue, the discarded and retrying " +
+			"jobs with the errors River recorded on them, and a run-history chart bucketed hourly " +
+			"over the last day. Discarded jobs — retries exhausted — are reported separately from " +
+			"jobs still retrying on their own, never mixed into one list. " +
+			"Restricted to catalog-admin, the role this hub's other administration screens use.",
+		Responses: map[string]*huma.Response{
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"403": s.errorResponse("This identity's role may not read the runtime report."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.getRuntime)
 }
 
 // ---- handlers ----------------------------------------------------------------

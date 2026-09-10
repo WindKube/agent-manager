@@ -50,6 +50,7 @@ var Nav = []NavGroup{
 	{Label: "Administration", Items: []NavItem{
 		{ID: "storage", Label: "Storage", Href: "/storage"},
 		{ID: "org", Label: "Organization", Href: "/org"},
+		{ID: "runtime", Label: "Runtime", Href: "/runtime"},
 	}},
 	{Label: "Onboarding", Items: []NavItem{
 		{ID: "cli", Label: "Connect the CLI", Href: "/cli"},
@@ -473,3 +474,13 @@ func ReviewNoteLimit() string { return strconv.Itoa(view.MaxReviewNote) }
 
 // OutcomeClass tones a profile entry's gate outcome pill.
 func OutcomeClass(outcome view.ProfileOutcome) string { return PillClass(outcome.Tone()) }
+
+// StateRowClass tones the Runtime screen's job-count rows: a state whose
+// presence itself is the concern (retryable, discarded) colours its count,
+// where every other state's is left neutral.
+func StateRowClass(row view.StateRow) string {
+	if row.Tone == "" {
+		return "am-kv-val"
+	}
+	return "am-kv-val am-kv-val-" + tone(row.Tone)
+}

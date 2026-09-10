@@ -29,6 +29,7 @@ import (
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 
+	"agent-manager/internal/outbox"
 	"agent-manager/internal/store/migrations"
 	"agent-manager/internal/store/models"
 )
@@ -54,7 +55,14 @@ const (
 // scP95 is SC-003.
 const scP95 = 300 * time.Millisecond
 
-var benchDB *bun.DB
+var (
+	benchDB *bun.DB
+	// benchQueue is River's own database, standing beside benchDB on the same
+	// container rather than a second one — the outbox suite already does this
+	// with three databases, and the runtime report has nothing to measure
+	// that needs its own container.
+	benchQueue *pgxpool.Pool
+)
 
 func TestMain(m *testing.M) {
 	code, err := runBenchSuite(m)
@@ -96,11 +104,11 @@ func runBenchSuite(m *testing.M) (int, error) {
 	defer pool.Close()
 
 	// The checked-in migrations, so the indexes measured are the ones that ship.
-	if err := migrations.Apply(ctx, func(ctx context.Context, statement string) error {
+	if applyErr := migrations.Apply(ctx, func(ctx context.Context, statement string) error {
 		_, execErr := pool.Exec(ctx, statement)
 		return execErr
-	}); err != nil {
-		return 0, err
+	}); applyErr != nil {
+		return 0, applyErr
 	}
 
 	sqldb := stdlib.OpenDBFromPool(pool)
@@ -108,9 +116,25 @@ func runBenchSuite(m *testing.M) (int, error) {
 	benchDB = bun.NewDB(sqldb, pgdialect.New())
 	benchDB.RegisterModel(models.All()...)
 
-	if err := generateCatalog(ctx, pool); err != nil {
+	if genErr := generateCatalog(ctx, pool); genErr != nil {
+		return 0, genErr
+	}
+
+	// River's own database, migrated by River's own migrator — the code path
+	// `agent-manager migrate queue` runs — never by Atlas.
+	if _, err = pool.Exec(ctx, "create database river"); err != nil {
+		return 0, fmt.Errorf("create the river database: %w", err)
+	}
+	queueURL := fmt.Sprintf("postgres://postgres:postgres@%s/river?sslmode=disable", endpoint)
+	if _, err = outbox.MigrateQueue(ctx, queueURL, nil); err != nil {
 		return 0, err
 	}
+	benchQueue, err = pgxpool.New(ctx, queueURL)
+	if err != nil {
+		return 0, fmt.Errorf("open the queue pool: %w", err)
+	}
+	defer benchQueue.Close()
+
 	return m.Run(), nil
 }
 

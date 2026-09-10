@@ -2355,4 +2355,109 @@
     line-height: 1.6;
     color: var(--fg2);
   }
+
+  /* Runtime ---------------------------------------------------------------- */
+
+  /* Symmetric, unlike am-gov's 1fr/1.3fr: one card per queue, all equally the
+     point, so auto-fit rather than a fixed asymmetric split. */
+  .am-runtime-queues {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 24px;
+    padding: 24px 44px 0;
+  }
+
+  .am-kv-val-warn {
+    color: var(--warn);
+  }
+
+  .am-kv-val-dan {
+    color: var(--dan);
+  }
+
+  /* am-card carries no padding of its own (its rows bring their own), so the
+     chart's legend, bars and axis labels need one wrapper that does. */
+  .am-runtime-chart {
+    padding: 18px 22px 22px;
+  }
+
+  .am-runtime-legend {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 14px;
+    font-size: 12px;
+    color: var(--fg2);
+  }
+
+  .am-runtime-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .am-runtime-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+  }
+
+  /* Two neutral tones rather than a status colour: these are categories, not
+     an ok/warn/dan judgement about the queue. */
+  .am-runtime-swatch-fetch {
+    background: var(--fg);
+  }
+
+  .am-runtime-swatch-scan {
+    background: var(--fg3);
+  }
+
+  /* ChartBarMaxHeight in internal/web/view/runtime.go computes every bar's
+     height against this same number; the two must agree, or a bar taller
+     than its track clips. */
+  .am-runtime-bar-track {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    height: 120px;
+    border-bottom: 1px solid var(--bd);
+  }
+
+  .am-runtime-bar-group {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 2px;
+    height: 100%;
+  }
+
+  .am-runtime-bar {
+    flex: 1;
+    min-width: 2px;
+    max-width: 10px;
+    border-radius: 2px 2px 0 0;
+  }
+
+  .am-runtime-bar-fetch {
+    background: var(--fg);
+  }
+
+  .am-runtime-bar-scan {
+    background: var(--fg3);
+  }
+
+  .am-runtime-bar-labels {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .am-runtime-bar-label {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+    font-size: 10.5px;
+    color: var(--fg3);
+  }
 }

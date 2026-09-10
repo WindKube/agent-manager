@@ -1464,6 +1464,42 @@ func (e ProfileTargetSelectionTargets) Valid() bool {
 	}
 }
 
+// Defines values for QueueSummaryQueue.
+const (
+	QueueSummaryQueueFetch QueueSummaryQueue = "fetch"
+	QueueSummaryQueueScan  QueueSummaryQueue = "scan"
+)
+
+// Valid indicates whether the value is a known member of the QueueSummaryQueue enum.
+func (e QueueSummaryQueue) Valid() bool {
+	switch e {
+	case QueueSummaryQueueFetch:
+		return true
+	case QueueSummaryQueueScan:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RuntimeJobQueue.
+const (
+	RuntimeJobQueueFetch RuntimeJobQueue = "fetch"
+	RuntimeJobQueueScan  RuntimeJobQueue = "scan"
+)
+
+// Valid indicates whether the value is a known member of the RuntimeJobQueue enum.
+func (e RuntimeJobQueue) Valid() bool {
+	switch e {
+	case RuntimeJobQueueFetch:
+		return true
+	case RuntimeJobQueueScan:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SyncReportTargets.
 const (
 	SyncReportTargetsClaudeCode SyncReportTargets = "claude-code"
@@ -2366,6 +2402,17 @@ type IdentityConnectionTest struct {
 	// Detail The failure reason, in the terms discovery or the JWKS fetch gave. Absent on success.
 	Detail *string `json:"detail,omitempty"`
 	Ok     bool    `json:"ok"`
+}
+
+// JobAttemptError defines model for JobAttemptError.
+type JobAttemptError struct {
+	At time.Time `json:"at"`
+
+	// Attempt Examples: 2
+	Attempt int64 `json:"attempt"`
+
+	// Error The stringified error, or panic value, River recorded for this attempt.
+	Error string `json:"error"`
 }
 
 // Lockfile defines model for Lockfile.
@@ -3292,12 +3339,94 @@ type ProfileTargetSelection struct {
 // ProfileTargetSelectionTargets defines model for ProfileTargetSelection.Targets.
 type ProfileTargetSelectionTargets string
 
+// QueueJobCounts defines model for QueueJobCounts.
+type QueueJobCounts struct {
+	// Available Examples: 4
+	Available int64 `json:"available"`
+
+	// Cancelled Examples: 0
+	Cancelled int64 `json:"cancelled"`
+
+	// Completed Examples: 918
+	Completed int64 `json:"completed"`
+
+	// Discarded Examples: 3
+	Discarded int64 `json:"discarded"`
+
+	// Other Examples: 0
+	Other int64 `json:"other"`
+
+	// Retryable Examples: 1
+	Retryable int64 `json:"retryable"`
+
+	// Running Examples: 2
+	Running int64 `json:"running"`
+
+	// Scheduled Examples: 0
+	Scheduled int64 `json:"scheduled"`
+}
+
+// QueueSummary defines model for QueueSummary.
+type QueueSummary struct {
+	Counts QueueJobCounts    `json:"counts"`
+	Queue  QueueSummaryQueue `json:"queue"`
+}
+
+// QueueSummaryQueue defines model for QueueSummary.Queue.
+type QueueSummaryQueue string
+
 // RevisionPublish defines model for RevisionPublish.
 type RevisionPublish struct {
 	// Note The publisher's note on this revision, shown in the history and carried in the lockfile.
 	//
 	// Examples: pinned ADR Writer to 3.0.2
 	Note *string `json:"note,omitempty"`
+}
+
+// RunBucket defines model for RunBucket.
+type RunBucket struct {
+	Fetch    int64     `json:"fetch"`
+	Scan     int64     `json:"scan"`
+	StartsAt time.Time `json:"startsAt"`
+}
+
+// RuntimeErrors defines model for RuntimeErrors.
+type RuntimeErrors struct {
+	Discarded []RuntimeJob `json:"discarded"`
+	Retrying  []RuntimeJob `json:"retrying"`
+}
+
+// RuntimeJob defines model for RuntimeJob.
+type RuntimeJob struct {
+	// Attempt Examples: 3
+	Attempt     int64             `json:"attempt"`
+	Errors      []JobAttemptError `json:"errors"`
+	FinalizedAt *time.Time        `json:"finalizedAt,omitempty"`
+
+	// Id Examples: 48213
+	Id int64 `json:"id"`
+
+	// Kind Examples: fetch
+	Kind string `json:"kind"`
+
+	// MaxAttempts Examples: 5
+	MaxAttempts int64           `json:"maxAttempts"`
+	Queue       RuntimeJobQueue `json:"queue"`
+	ScheduledAt time.Time       `json:"scheduledAt"`
+}
+
+// RuntimeJobQueue defines model for RuntimeJob.Queue.
+type RuntimeJobQueue string
+
+// RuntimeReport defines model for RuntimeReport.
+type RuntimeReport struct {
+	// BucketMinutes Examples: 60
+	BucketMinutes int64         `json:"bucketMinutes"`
+	Errors        RuntimeErrors `json:"errors"`
+
+	// Queues Job counts by River's own state, one entry per queue.
+	Queues     []QueueSummary `json:"queues"`
+	RunHistory []RunBucket    `json:"runHistory"`
 }
 
 // ScannerSummary defines model for ScannerSummary.
@@ -4131,6 +4260,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /v1/profiles/{slug}/targets (the `SetProfileTargets` operationId).
 	SetProfileTargets(ctx context.Context, slug string, body SetProfileTargetsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetRuntime The job queue's own state
+	//
+	// Job counts by River's own state for each queue, the discarded and retrying jobs with the errors River recorded on them, and a run-history chart bucketed hourly over the last day. Discarded jobs — retries exhausted — are reported separately from jobs still retrying on their own, never mixed into one list. Restricted to catalog-admin, the role this hub's other administration screens use.
+	//
+	// Corresponds with GET /v1/runtime (the `GetRuntime` operationId).
+	GetRuntime(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ScannerSummary The Scanner screen's headline figures
 	//
@@ -5076,6 +5212,23 @@ func (c *Client) SetProfileTargetsWithBody(ctx context.Context, slug string, con
 // Corresponds with PUT /v1/profiles/{slug}/targets (the `SetProfileTargets` operationId).
 func (c *Client) SetProfileTargets(ctx context.Context, slug string, body SetProfileTargetsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetProfileTargetsRequest(c.Server, slug, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetRuntime The job queue's own state
+//
+// Job counts by River's own state for each queue, the discarded and retrying jobs with the errors River recorded on them, and a run-history chart bucketed hourly over the last day. Discarded jobs — retries exhausted — are reported separately from jobs still retrying on their own, never mixed into one list. Restricted to catalog-admin, the role this hub's other administration screens use.
+//
+// Corresponds with GET /v1/runtime (the `GetRuntime` operationId).
+func (c *Client) GetRuntime(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetRuntimeRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -6740,6 +6893,33 @@ func NewSetProfileTargetsRequestWithBody(server string, slug string, contentType
 	return req, nil
 }
 
+// NewGetRuntimeRequest constructs an http.Request for the GetRuntime method
+func NewGetRuntimeRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/runtime")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewScannerSummaryRequest constructs an http.Request for the ScannerSummary method
 func NewScannerSummaryRequest(server string, params *ScannerSummaryParams) (*http.Request, error) {
 	var err error
@@ -7439,6 +7619,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /v1/profiles/{slug}/targets (the `SetProfileTargets` operationId).
 	SetProfileTargetsWithResponse(ctx context.Context, slug string, body SetProfileTargetsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetProfileTargetsResponse, error)
+
+	// GetRuntimeWithResponse The job queue's own state
+	//
+	// Job counts by River's own state for each queue, the discarded and retrying jobs with the errors River recorded on them, and a run-history chart bucketed hourly over the last day. Discarded jobs — retries exhausted — are reported separately from jobs still retrying on their own, never mixed into one list. Restricted to catalog-admin, the role this hub's other administration screens use.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/runtime (the `GetRuntime` operationId).
+	GetRuntimeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetRuntimeResponse, error)
 
 	// ScannerSummaryWithResponse The Scanner screen's headline figures
 	//
@@ -10047,6 +10236,68 @@ func (r SetProfileTargetsResponse) ContentType() string {
 	return ""
 }
 
+type GetRuntimeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RuntimeReport
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetRuntimeResponse) GetJSON200() *RuntimeReport {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetRuntimeResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetRuntimeResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r GetRuntimeResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetRuntimeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetRuntimeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetRuntimeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetRuntimeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ScannerSummaryResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -11159,6 +11410,21 @@ func (c *ClientWithResponses) SetProfileTargetsWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParseSetProfileTargetsResponse(rsp)
+}
+
+// GetRuntimeWithResponse The job queue's own state
+//
+// Job counts by River's own state for each queue, the discarded and retrying jobs with the errors River recorded on them, and a run-history chart bucketed hourly over the last day. Discarded jobs — retries exhausted — are reported separately from jobs still retrying on their own, never mixed into one list. Restricted to catalog-admin, the role this hub's other administration screens use.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/runtime (the `GetRuntime` operationId).
+func (c *ClientWithResponses) GetRuntimeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetRuntimeResponse, error) {
+	rsp, err := c.GetRuntime(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetRuntimeResponse(rsp)
 }
 
 // ScannerSummaryWithResponse The Scanner screen's headline figures
@@ -13307,6 +13573,53 @@ func ParseSetProfileTargetsResponse(rsp *http.Response) (*SetProfileTargetsRespo
 			return nil, err
 		}
 		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetRuntimeResponse parses an HTTP response from a GetRuntimeWithResponse call
+func ParseGetRuntimeResponse(rsp *http.Response) (*GetRuntimeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetRuntimeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RuntimeReport
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

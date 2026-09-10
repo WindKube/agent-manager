@@ -52,6 +52,11 @@ type Package struct {
 	Kind        PackageKind       `bun:"kind,type:package_kind,notnull"`
 	CategoryID  *uuid.UUID        `bun:"category_id,type:uuid,nullzero"`
 	Visibility  PackageVisibility `bun:"visibility,type:package_visibility,notnull"`
+	// OwnerIdentityID is who registered the package, set once at creation and
+	// never reassigned by a later registration of the same package. Null on a
+	// package that predates this column: that is "no owner", not "everyone's",
+	// and the read path treats it accordingly rather than as private-by-accident.
+	OwnerIdentityID *uuid.UUID `bun:"owner_identity_id,type:uuid,nullzero"`
 	// ParentPackageID is set when a skill is distributed inside a plugin.
 	ParentPackageID *uuid.UUID `bun:"parent_package_id,type:uuid,nullzero"`
 	LatestVersionID *uuid.UUID `bun:"latest_version_id,type:uuid,nullzero"`
@@ -60,6 +65,7 @@ type Package struct {
 
 	Publisher *Publisher `bun:"rel:belongs-to,join:publisher_id=id"`
 	Category  *Category  `bun:"rel:belongs-to,join:category_id=id"`
+	Owner     *Identity  `bun:"rel:belongs-to,join:owner_identity_id=id"`
 	Parent    *Package   `bun:"rel:belongs-to,join:parent_package_id=id"`
 	Versions  []*Version `bun:"rel:has-many,join:id=package_id"`
 }

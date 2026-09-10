@@ -98,6 +98,7 @@ Admin-curated (FR-049). Tags are *not* here — they are free-form strings on th
 | `kind` | enum `plugin \| skill` | |
 | `category_id` | uuid fk → category, nullable | |
 | `visibility` | enum `organisation \| team \| private` | |
+| `owner_identity_id` | uuid fk → identity, nullable | The identity that registered the package. Null on rows that predate the column; a null owner is treated as organisation-only regardless of `visibility`, never as visible to nobody or to everybody |
 | `parent_package_id` | uuid fk → package, nullable | Set when a skill is distributed inside a plugin (FR-016 origin line) |
 | `latest_version_id` | uuid fk → version, nullable | Denormalised pointer; maintained on publish |
 

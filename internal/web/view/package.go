@@ -67,7 +67,12 @@ type Package struct {
 	// before using it), read independently of everything above — a
 	// deployment can answer the package detail while its bundle reader is
 	// unavailable, and the two must fail on their own terms.
-	Files        []FileRow
+	Files []FileRow
+	// FilesDefault is the file listPackageFiles would recommend reading
+	// first. The panel no longer opens on it by itself — see
+	// SelectedFilePath — so today this is read only by the api's own
+	// response; it stays on the view in case a future control wants to
+	// point at it explicitly.
 	FilesDefault string
 	// FilesUnavailable is the list read failing outright. FilesRejected is
 	// the version answering plainly that it was never distributable, which
@@ -75,9 +80,11 @@ type Package struct {
 	FilesUnavailable bool
 	FilesRejected    bool
 
-	// SelectedFilePath is the path this screen is showing, from the query
-	// or from FilesDefault when the query named none. It is never used to
-	// build a filesystem path — only ever compared against Files.
+	// SelectedFilePath is the path this screen is showing, set only when
+	// the query names one explicitly. Empty means the panel is closed —
+	// the panel never falls back to FilesDefault, which is what used to
+	// force it open on every page load. It is never used to build a
+	// filesystem path — only ever compared against Files.
 	SelectedFilePath string
 	SelectedFile     *FileDetail
 	// The three reasons a chosen path can come back with nothing to show,

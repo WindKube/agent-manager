@@ -109,10 +109,11 @@ func (s *Server) loadFiles(c *gin.Context, detail *view.Package, namespace, name
 	detail.Files = list.Files
 	detail.FilesDefault = list.Default
 
+	// The panel is closed until the reader names a file: falling back to
+	// list.Default here is the exact bug the owner reported — the panel
+	// then opens on every load, and the close link (which navigates to
+	// this same clean URL) looks like it does nothing.
 	path := strings.TrimSpace(c.Query("file"))
-	if path == "" {
-		path = list.Default
-	}
 	if path == "" {
 		return
 	}

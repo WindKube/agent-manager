@@ -81,11 +81,14 @@ type AuditSource interface {
 	AuditExport(ctx context.Context) (io.ReadCloser, string, error)
 }
 
-// ProfileSource is the Profiles screens' two reads, kept separate from
+// ProfileSource is the Profiles screens' reads, kept separate from
 // ProfileCurator's writes as ScannerSource is from Reviewer.
 type ProfileSource interface {
 	Profiles(ctx context.Context) ([]hub.ProfileSummary, error)
 	Profile(ctx context.Context, slug string) (hub.ProfileDetail, error)
+	// Revision is the "Show diff" panel's read: one published revision's
+	// resolved lockfile, by number.
+	Revision(ctx context.Context, slug string, revision int) (hub.RevisionLockfile, error)
 }
 
 // ProfileCurator is every write the profile screens offer: create, curate,

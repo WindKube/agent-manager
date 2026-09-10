@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"agent-manager/internal/apiclient"
@@ -450,6 +451,70 @@ func (c *Client) PublishRevision(ctx context.Context, slug, note string) (Publis
 		published.Skipped = append(published.Skipped, skip(skipped))
 	}
 	return published, nil
+}
+
+// RevisionLockfile is one published revision's resolved lockfile, read by
+// the "Show diff" panel. Deliberately a narrower shape than the api's own —
+// no digest, no object key, no signature — because a diff reports what
+// changed, not where the bytes live.
+type RevisionLockfile struct {
+	Revision      int
+	Gate          string
+	DefaultPolicy string
+	Targets       []string
+	Entries       []LockedEntry
+	Skipped       []Skip
+}
+
+// Revision reads GET /v1/profiles/{slug}/revisions/{revision}: one published
+// revision, exactly as it was frozen. The diff panel is the only caller —
+// it compares two of these rather than trusting a stored delta, since the
+// lockfile is the durable record and a diff must never drift from it.
+func (c *Client) Revision(ctx context.Context, slug string, revision int) (RevisionLockfile, error) {
+	if err := checkSlug(slug); err != nil {
+		return RevisionLockfile{}, err
+	}
+
+	resp, err := c.api.GetRevisionWithResponse(ctx, slug, strconv.Itoa(revision))
+	if err != nil {
+		return RevisionLockfile{}, fmt.Errorf("get revision %d of %s: %w", revision, slug, err)
+	}
+	if resp.JSON200 == nil {
+		return RevisionLockfile{}, profileFailure(fmt.Sprintf("get revision %d of %s", revision, slug),
+			resp.HTTPResponse, resp.Body)
+	}
+	return revisionLockfile(resp.JSON200), nil
+}
+
+func revisionLockfile(from *apiclient.Lockfile) RevisionLockfile {
+	out := RevisionLockfile{
+		Revision: int(from.Revision),
+		Gate:     string(from.Gate),
+		Entries:  make([]LockedEntry, 0, len(from.Entries)),
+		Skipped:  make([]Skip, 0, len(from.Skipped)),
+	}
+	if from.DefaultPolicy != nil {
+		out.DefaultPolicy = string(*from.DefaultPolicy)
+	}
+	for _, target := range from.Targets {
+		out.Targets = append(out.Targets, string(target))
+	}
+	for i := range from.Entries {
+		entry := &from.Entries[i]
+		out.Entries = append(out.Entries, LockedEntry{
+			ID:         entry.Id,
+			Kind:       string(entry.Kind),
+			Version:    entry.Version,
+			Digest:     entry.Digest,
+			Resolution: string(entry.Resolution),
+			Verdict:    string(entry.Verdict),
+			Override:   entryOverride(entry.Override),
+		})
+	}
+	for _, skipped := range from.Skipped {
+		out.Skipped = append(out.Skipped, skip(skipped))
+	}
+	return out
 }
 
 // checkSlug refuses an empty slug before it becomes a request: GET

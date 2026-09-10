@@ -2,6 +2,7 @@ package components
 
 import (
 	"strconv"
+	"strings"
 
 	"agent-manager/internal/web/view"
 )
@@ -481,6 +482,7 @@ templ revisionsPanel(p view.Profile) {
 				if revision.Note != "" {
 					<span>{ revision.Note }</span>
 				}
+				<a class="am-rev-diff-link" href={ view.RevisionDiffHref(p.Slug, revision.Revision) }>Show diff</a>
 			</div>
 		}
 		if p.RevisionsEmpty() {
@@ -504,6 +506,154 @@ templ revisionsPanel(p view.Profile) {
 			<div class="am-gate-note am-card-note" id="profile-publish-not-permitted">{ view.PublishDisabledReason }</div>
 		}
 	</section>
+	if p.Diff != nil {
+		@revisionDiffPanel(p)
+	}
+}
+
+// revisionDiffPanel is "Show diff": a plain server round trip on a query
+// parameter, exactly the idiom the audit log's own detail panel uses, closed
+// by a link back rather than any client-side interaction.
+templ revisionDiffPanel(p view.Profile) {
+	<div class="am-rev-diff-backdrop" style="background:rgba(15,18,22,0.42)" aria-hidden="true"></div>
+	<aside class="am-rev-diff-panel" id="profile-diff-panel" role="dialog" aria-label="Revision diff">
+		<div class="am-rev-diff-head">
+			<div class="am-rev-diff-title">Revision diff</div>
+			<a class="am-rev-diff-close" aria-label="Close" href={ view.ProfileHref(p.Slug) }>×</a>
+		</div>
+		<div class="am-pane-body">
+			if p.Diff.Missing {
+				<div class="am-empty" id="profile-diff-missing">
+					No such revision, or it is not readable by your identity.
+				</div>
+			} else if p.Diff.PredecessorUnavailable {
+				<div class="am-empty" id="profile-diff-predecessor-unavailable">
+					Revision { strconv.Itoa(p.Diff.Revision) } could not be compared: its
+					predecessor, revision { strconv.Itoa(p.Diff.Revision - 1) }, could not be read.
+				</div>
+			} else {
+				@revisionDiffBody(p.Diff.Diff)
+			}
+		</div>
+	</aside>
+}
+
+templ revisionDiffBody(d view.RevisionDiff) {
+	<div class="am-pane-block" id="profile-diff-heading">
+		if d.FirstRevision {
+			<div class="am-label">Revision { strconv.Itoa(d.Revision) }</div>
+			<p class="am-desc">Revision 1 has no predecessor. This is what it introduced.</p>
+		} else {
+			<div class="am-label">
+				Revision { strconv.Itoa(d.Revision - 1) } → revision { strconv.Itoa(d.Revision) }
+			</div>
+			if d.Empty() {
+				<p class="am-desc" id="profile-diff-empty">Nothing changed.</p>
+			}
+		}
+	</div>
+	if len(d.Added) > 0 {
+		<div class="am-pane-block">
+			<div class="am-label">Added</div>
+			for _, entry := range d.Added {
+				<div class="am-kv">
+					<span class="am-kv-key am-mono">{ entry.ID }</span>
+					<span class="am-kv-val">{ entry.Version } · { view.EntryModeLabel(entry.Resolution) }</span>
+				</div>
+			}
+		</div>
+	}
+	if len(d.Removed) > 0 {
+		<div class="am-pane-block">
+			<div class="am-label">Removed</div>
+			for _, entry := range d.Removed {
+				<div class="am-kv">
+					<span class="am-kv-key am-mono">{ entry.ID }</span>
+					<span class="am-kv-val">{ entry.Version } · { view.EntryModeLabel(entry.Resolution) }</span>
+				</div>
+			}
+		</div>
+	}
+	if len(d.Changed) > 0 {
+		<div class="am-pane-block">
+			<div class="am-label">Changed</div>
+			for _, entry := range d.Changed {
+				<div class="am-rev-diff-entry">
+					<div class="am-kv-key am-mono">{ entry.ID }</div>
+					if entry.VersionChanged() {
+						<div class="am-kv-val">Version: { entry.VersionFrom } → { entry.VersionTo }</div>
+					}
+					if entry.ResolutionChanged() {
+						<div class="am-kv-val">
+							Pin mode: { view.EntryModeLabel(entry.ResolutionFrom) } → { view.EntryModeLabel(entry.ResolutionTo) }
+						</div>
+					}
+				</div>
+			}
+		</div>
+	}
+	if len(d.SkipsAdded) > 0 {
+		<div class="am-pane-block">
+			<div class="am-label">Newly skipped</div>
+			for _, skip := range d.SkipsAdded {
+				<div class="am-kv">
+					<span class="am-kv-key am-mono">{ skip.ID }</span>
+					<span class="am-kv-val">{ view.SkipReasonLabel(skip.Reason) }</span>
+				</div>
+			}
+		</div>
+	}
+	if len(d.SkipsRemoved) > 0 {
+		<div class="am-pane-block">
+			<div class="am-label">No longer skipped</div>
+			for _, skip := range d.SkipsRemoved {
+				<div class="am-kv">
+					<span class="am-kv-key am-mono">{ skip.ID }</span>
+					<span class="am-kv-val">was { view.SkipReasonLabel(skip.Reason) }</span>
+				</div>
+			}
+		</div>
+	}
+	if len(d.SkipsChanged) > 0 {
+		<div class="am-pane-block">
+			<div class="am-label">Skip reason changed</div>
+			for _, skip := range d.SkipsChanged {
+				<div class="am-kv">
+					<span class="am-kv-key am-mono">{ skip.ID }</span>
+					<span class="am-kv-val">
+						{ view.SkipReasonLabel(skip.ReasonFrom) } → { view.SkipReasonLabel(skip.ReasonTo) }
+					</span>
+				</div>
+			}
+		</div>
+	}
+	if d.GateChanged() || d.DefaultPolicyChanged() || d.TargetsChanged() {
+		<div class="am-pane-block">
+			<div class="am-label">Governance</div>
+			if d.GateChanged() {
+				<div class="am-kv">
+					<span class="am-kv-key">Gate</span>
+					<span class="am-kv-val">{ view.GateLabel(d.GateFrom) } → { view.GateLabel(d.GateTo) }</span>
+				</div>
+			}
+			if d.DefaultPolicyChanged() {
+				<div class="am-kv">
+					<span class="am-kv-key">Default policy</span>
+					<span class="am-kv-val">
+						{ view.DefaultPolicyLabel(d.DefaultPolicyFrom) } → { view.DefaultPolicyLabel(d.DefaultPolicyTo) }
+					</span>
+				</div>
+			}
+			if d.TargetsChanged() {
+				<div class="am-kv">
+					<span class="am-kv-key">Targets</span>
+					<span class="am-kv-val">
+						{ strings.Join(d.TargetsFrom, ", ") } → { strings.Join(d.TargetsTo, ", ") }
+					</span>
+				</div>
+			}
+		</div>
+	}
 }
 
 templ publishFields() {

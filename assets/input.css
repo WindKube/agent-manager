@@ -2528,4 +2528,84 @@
     text-transform: uppercase;
     color: var(--fg3);
   }
+
+  /* "Show diff" and its panel, on the revisions row. Its own prefix rather
+     than reuse of am-audit-panel: same shape, different screen, and every
+     other panel here (am-find-, am-audit-) is namespaced the same way. */
+  .am-rev-diff-link {
+    margin-left: auto;
+    padding: 5px 10px;
+    border: 1px solid var(--bd);
+    border-radius: 7px;
+    background: var(--surface);
+    color: var(--fg2);
+    font-size: 12px;
+  }
+
+  .am-rev-diff-link:hover {
+    background: var(--sel);
+  }
+
+  /* Dimming only: pointer-events:none leaves the close link as the one way
+     out, and the scrim colour is inline in the markup, as the audit panel's
+     is, since a translucent literal is not a pair contrast_test.go sweeps. */
+  .am-rev-diff-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    pointer-events: none;
+  }
+
+  .am-rev-diff-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 41;
+    display: flex;
+    flex-direction: column;
+    width: min(440px, 100vw);
+    border-left: 1px solid var(--bd);
+    background: var(--surface);
+    box-shadow: -24px 0 60px rgba(0, 0, 0, 0.28);
+    overflow-y: auto;
+  }
+
+  .am-rev-diff-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--bd);
+  }
+
+  .am-rev-diff-title {
+    font-size: 15px;
+    font-weight: 500;
+  }
+
+  .am-rev-diff-close {
+    flex: none;
+    font-size: 16px;
+    color: var(--fg3);
+    line-height: 1;
+  }
+
+  .am-rev-diff-close:hover {
+    color: var(--fg);
+  }
+
+  .am-rev-diff-entry {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 0;
+    border-top: 1px solid var(--bd);
+  }
+
+  .am-rev-diff-entry:first-child {
+    border-top: none;
+    padding-top: 0;
+  }
 }

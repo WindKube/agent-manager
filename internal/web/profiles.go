@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -134,7 +135,59 @@ func (s *Server) profileDetail(c *gin.Context) {
 	if screen.Permissions.Curate && s.deps.Catalog != nil {
 		screen.AddOptions = s.availablePackages(session(c), detail.Entries)
 	}
+	if raw := c.Query("revision"); raw != "" {
+		screen.Diff = s.revisionDiff(session(c), slug, raw)
+	}
 	s.renderProfile(c, http.StatusOK, screen)
+}
+
+// revisionDiff is "Show diff"'s read: revision N's lockfile and its
+// predecessor's, fetched and handed to the pure view.DiffRevisions. The
+// comparison itself lives in view, where it is unit tested without a
+// server — this is deliberately thin, just the fetch orchestration and the
+// three ways it can come up short.
+func (s *Server) revisionDiff(ctx context.Context, slug, raw string) *view.RevisionDiffPanel {
+	revision, err := strconv.Atoi(raw)
+	if err != nil || revision < 1 {
+		// A revision number the URL cannot even name is the same answer as
+		// one that names nothing this identity may read.
+		return &view.RevisionDiffPanel{Missing: true}
+	}
+
+	newer, err := s.deps.Profiles.Revision(ctx, slug, revision)
+	if err != nil {
+		return &view.RevisionDiffPanel{Revision: revision, Missing: true}
+	}
+	newerSnapshot := revisionSnapshot(newer)
+
+	if revision == 1 {
+		return &view.RevisionDiffPanel{Revision: revision, Diff: view.DiffRevisions(newerSnapshot, nil)}
+	}
+
+	older, err := s.deps.Profiles.Revision(ctx, slug, revision-1)
+	if err != nil {
+		// Revision itself read fine; its predecessor did not. Never render
+		// that as an empty diff.
+		return &view.RevisionDiffPanel{Revision: revision, PredecessorUnavailable: true}
+	}
+	olderSnapshot := revisionSnapshot(older)
+	return &view.RevisionDiffPanel{Revision: revision, Diff: view.DiffRevisions(newerSnapshot, &olderSnapshot)}
+}
+
+func revisionSnapshot(from hub.RevisionLockfile) view.LockfileSnapshot {
+	out := view.LockfileSnapshot{
+		Revision: from.Revision, Gate: from.Gate, DefaultPolicy: from.DefaultPolicy,
+		Targets: from.Targets,
+	}
+	for _, entry := range from.Entries {
+		out.Entries = append(out.Entries, view.LockfileEntrySnapshot{
+			ID: entry.ID, Version: entry.Version, Resolution: entry.Resolution,
+		})
+	}
+	for _, skip := range from.Skipped {
+		out.Skipped = append(out.Skipped, view.LockfileSkipSnapshot{ID: skip.ID, Reason: skip.Reason})
+	}
+	return out
 }
 
 // maxAddOptionPages bounds how much of the catalog is walked to build the "Add

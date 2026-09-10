@@ -397,21 +397,35 @@ type Profile struct {
 	// understood but refused (a name already shared twice, a range on an entry
 	// that holds no versions in it). It renders inline on the same request.
 	Refusal string
+
+	// Diff is "Show diff": present exactly when the URL carries a revision
+	// query parameter, the same plain-round-trip idiom the audit screen uses
+	// for its own detail panel.
+	Diff *RevisionDiffPanel
 }
 
 func (p Profile) VisibilityLabel() string { return visibilityLabels[p.Visibility] }
 
-func (p Profile) DefaultPolicyLabel() string {
+func (p Profile) DefaultPolicyLabel() string { return DefaultPolicyLabel(p.DefaultPolicy) }
+
+// DefaultPolicyLabel is the free function Profile.DefaultPolicyLabel wraps,
+// so the revision diff panel can label a from/to pair without a Profile to
+// hang it off of.
+func DefaultPolicyLabel(policy string) string {
 	for _, option := range ProfileDefaultPolicies {
-		if option.Value == p.DefaultPolicy {
+		if option.Value == policy {
 			return option.Label
 		}
 	}
-	return p.DefaultPolicy
+	return policy
 }
 
-func (p Profile) GateLabel() string {
-	switch p.Gate {
+func (p Profile) GateLabel() string { return GateLabel(p.Gate) }
+
+// GateLabel is the free function Profile.GateLabel wraps, for the same
+// reason DefaultPolicyLabel is.
+func GateLabel(gate string) string {
+	switch gate {
 	case "block":
 		return "Block"
 	case "approval":
@@ -419,7 +433,7 @@ func (p Profile) GateLabel() string {
 	case "warn-with-override":
 		return "Warn, with override"
 	default:
-		return p.Gate
+		return gate
 	}
 }
 

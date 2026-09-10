@@ -2460,4 +2460,72 @@
     font-size: 10.5px;
     color: var(--fg3);
   }
+
+  /* Profile detail (US5) --------------------------------------------------- */
+
+  /* The last field row in a card needs its own bottom gutter; every other row
+     relies on the next row's top padding instead. */
+  .am-form-row-end {
+    padding-bottom: 18px;
+  }
+
+  .am-form-submit {
+    align-self: flex-end;
+  }
+
+  .am-field-kind {
+    min-width: 120px;
+    flex: 0 0 auto;
+  }
+
+  .am-field-role {
+    min-width: 140px;
+    flex: 0 0 auto;
+  }
+
+  .am-form-footer {
+    padding: 14px 20px;
+  }
+
+  /* A note that needs the card's own inner gutter — a disabled-control
+     explanation sitting under a form, not a list row. */
+  .am-card-note {
+    padding: 0 20px 18px;
+  }
+
+  /* am-gov-notice carries the PAGE's 44px gutter; a card whose own inner
+     gutter is 20px (the create-profile form) needs that instead. */
+  .am-notice-card-inset {
+    margin: 0 20px;
+  }
+
+  .am-panel-toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--bd);
+  }
+
+  /* Lets a <fieldset> disable a group of controls without adding a box of its
+     own: the browser's default fieldset border and padding would otherwise
+     reflow everything the enabled state already lays out with am-field-row. */
+  .am-fieldset-plain {
+    display: contents;
+  }
+
+  .am-entry-kind-section {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .am-entry-kind-head {
+    padding: 10px 20px 4px;
+    border-top: 1px solid var(--bd);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--fg3);
+  }
 }

@@ -105,11 +105,19 @@ func TestCardsWhoseContentNeedsAGutterHaveOne(t *testing.T) {
 // wrapper that carries the page gutter renders flush against both window edges.
 // That is how Connect the CLI shipped: its form and cards were direct children
 // of am-main, so the lookup button sat against the right edge of the window.
+//
+// The sweep below did not catch the profile detail screen's own version of this
+// defect (its description ran edge to edge under an am-section with no gutter of
+// its own) because it never visited a DETAIL route — every path it swept was a
+// list screen. /profiles/<slug> and /packages/<id> are here for exactly that.
 func TestEveryScreenSitsInsideThePageGutter(t *testing.T) {
 	gutter := gutterClasses(t)
 	handler := handler(t, fixture.New())
 
-	for _, path := range []string{"/catalog", "/scanner", "/profiles", "/storage", "/org", "/cli", "/audit", "/runtime"} {
+	for _, path := range []string{
+		"/catalog", "/scanner", "/profiles", "/storage", "/org", "/cli", "/audit", "/runtime",
+		"/profiles/platform-engineer", "/packages/example/terraform-module-review",
+	} {
 		t.Run(path, func(t *testing.T) {
 			body := get(t, handler, path).Body.String()
 
@@ -126,6 +134,27 @@ func TestEveryScreenSitsInsideThePageGutter(t *testing.T) {
 				"nothing on %s carries the page gutter, so its content runs to the window edges", path)
 		})
 	}
+}
+
+// TestProfileDetailDescriptionSitsInsideTheGutter is the sharper version of the
+// sweep above, for this exact screen. The profile detail page's four am-card
+// panels each carried their OWN inset, which is why the loose "does anything on
+// the page carry a gutter class" check above would not have caught this: the
+// page had one already. What it lacked was a wrapper around its content as a
+// whole, so the description paragraph — an am-section with no margin of its own
+// — rendered flush against the window edge. This asserts the description is
+// nested inside am-screen-body rather than merely that am-screen-body exists
+// somewhere on the page.
+func TestProfileDetailDescriptionSitsInsideTheGutter(t *testing.T) {
+	body := get(t, handler(t, fixture.New()), "/profiles/platform-engineer").Body.String()
+
+	wrapper := strings.Index(body, `class="am-screen-body"`)
+	require.GreaterOrEqualf(t, wrapper, 0, "the profile detail screen has no am-screen-body wrapper")
+
+	description := strings.Index(body, `class="am-section"`)
+	require.Greaterf(t, description, -1, "the description section is missing from the fixture profile")
+	require.Greaterf(t, description, wrapper,
+		"the description sits outside am-screen-body, so it renders edge to edge against the window")
 }
 
 // gutterClasses are the rules that inset a screen's content from the window by

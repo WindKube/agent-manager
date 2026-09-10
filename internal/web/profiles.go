@@ -164,7 +164,7 @@ func (s *Server) availablePackages(ctx context.Context, held []hub.ProfileEntry)
 		for i := range result.Rows {
 			row := &result.Rows[i]
 			if _, ok := holding[row.ID]; !ok {
-				options = append(options, view.ProfileAddOption{ID: row.ID, Name: row.Name})
+				options = append(options, view.ProfileAddOption{ID: row.ID, Name: row.Name, Kind: row.Kind})
 			}
 		}
 		if page >= result.Pages() {

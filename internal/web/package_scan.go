@@ -67,8 +67,8 @@ func packageScanScreen(from hub.PackageScanDetail, now time.Time) view.PackageSc
 			Result: view.CheckResult(check.Result), WarnCount: check.WarnCount,
 		})
 	}
-	for _, finding := range from.Findings {
-		out.Findings = append(out.Findings, findingDetail(finding, now))
+	for i := range from.Findings {
+		out.Findings = append(out.Findings, findingDetail(from.Findings[i], now))
 	}
 	return out
 }

@@ -73,8 +73,8 @@ func packageScanDetail(body *apiclient.PackageScan, namespace, name string) Pack
 	// built once here rather than carried by every row on the wire.
 	packageID := namespace + "/" + name
 	subject := packageID + "@" + body.Version
-	for _, finding := range body.Findings {
-		out.Findings = append(out.Findings, packageScanFinding(finding, packageID, subject, string(body.Scan.Verdict)))
+	for i := range body.Findings {
+		out.Findings = append(out.Findings, packageScanFinding(body.Findings[i], packageID, subject, string(body.Scan.Verdict)))
 	}
 	return out
 }

@@ -25,11 +25,10 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"agent-manager/internal/store"
-	"agent-manager/internal/store/migrations"
 	"agent-manager/internal/store/models"
+	"agent-manager/internal/store/storetest"
 )
 
 // The suite shares one container and one migrated database. Tests seed their own
@@ -53,48 +52,31 @@ func TestMain(m *testing.M) {
 func runSuite(m *testing.M) (int, error) {
 	ctx := context.Background()
 
-	container, err := tcpostgres.Run(ctx, "postgres:16-alpine",
-		tcpostgres.WithDatabase("agent_manager"),
-		tcpostgres.WithUsername("postgres"),
-		tcpostgres.WithPassword("postgres"),
-		tcpostgres.BasicWaitStrategies(),
-	)
+	pg, cleanup, err := storetest.Run(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("start postgres: %w", err)
+		return 0, err
 	}
-	defer func() {
-		if termErr := container.Terminate(ctx); termErr != nil {
-			fmt.Fprintln(os.Stderr, "terminate postgres:", termErr)
-		}
-	}()
+	defer cleanup()
 
-	endpoint, err := container.PortEndpoint(ctx, "5432/tcp", "")
-	if err != nil {
-		return 0, fmt.Errorf("container endpoint: %w", err)
-	}
-	appURL = fmt.Sprintf("postgres://postgres:postgres@%s/agent_manager?sslmode=disable", endpoint)
-	queueURL = fmt.Sprintf("postgres://postgres:postgres@%s/river?sslmode=disable", endpoint)
+	appURL = pg.DSN("agent_manager")
+	queueURL = pg.DSN("river")
 
-	pool, err = pgxpool.New(ctx, appURL)
+	pool, err = pg.Pool(ctx, "agent_manager")
 	if err != nil {
 		return 0, fmt.Errorf("open pool: %w", err)
 	}
 	defer pool.Close()
 
 	// The queue's own database, so store.Open has two real targets. Nothing in
-	// this suite puts a table in it: that is the point of principle IX.
-	if _, err = pool.Exec(ctx, "create database river"); err != nil {
+	// this suite puts a table in it, since Atlas must never see River's tables.
+	if err = storetest.CreateDatabase(ctx, pool, "river"); err != nil {
 		return 0, fmt.Errorf("create queue database: %w", err)
 	}
 
 	// Replay the checked-in migrations rather than the desired state in
 	// internal/store/schema. What ships to production is the migration
 	// directory, so that is what has to be under test.
-	err = migrations.Apply(ctx, func(ctx context.Context, sql string) error {
-		_, execErr := pool.Exec(ctx, sql)
-		return execErr
-	})
-	if err != nil {
+	if err := storetest.ApplyMigrations(ctx, pool); err != nil {
 		return 0, err
 	}
 

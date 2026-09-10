@@ -13,46 +13,34 @@ import (
 	"agent-manager/internal/domain/pkgspec"
 )
 
-// Bundle is one version's bytes as the checks see them: the file tree, the shell
-// syntax the parser recovered from it, the URLs its instruction files name, and
-// the capability set its publisher declared.
-//
-// Everything in it is SYNTAX plus the declaration to compare it against. Nothing
-// here executes, sources, imports or evaluates any of it (FR-021): the commands
-// arrive from a parser and an unresolved `$HOST` stays four characters, because
-// resolving it would mean running the script.
+// Bundle is one version's bytes as the checks see them: the file tree, the
+// shell syntax the parser recovered from it, the URLs its instruction files
+// name, and the capability set its publisher declared. Nothing here
+// executes, sources, imports or evaluates any of it.
 type Bundle struct {
 	Kind pkgspec.Kind
 
-	// Manifest is the root manifest rendered as json — plugin.json verbatim, or a
-	// SKILL.md's frontmatter converted, which is the same shape `version.manifest`
-	// holds.
+	// Manifest is the root manifest rendered as json, the same shape
+	// `version.manifest` holds.
 	Manifest       json.RawMessage
 	ManifestObject string
 
-	// ManifestProblems is why the manifest failed its published schema, empty when
-	// it did not. The scan reads the manifest out of the BUNDLE rather than out of
-	// the catalog row: the bytes are the evidence, and a version whose row was
-	// written by an older validator must still be judged against today's schema.
+	// ManifestProblems is why the manifest failed its published schema, read
+	// out of the BUNDLE rather than the catalog row.
 	ManifestProblems []pkgspec.Problem
 
-	// Expected is the capability set the publisher recorded (FR-018a). Nil means
-	// none was recorded, which is the case FR-027 requires be surfaced rather than
-	// silently accepted.
+	// Expected is the capability set the publisher recorded. Nil means none
+	// was recorded.
 	Expected []capability.Capability
 
-	// Artefacts is what internal/domain/capability infers from. The scanner
-	// produces it; the meaning of what is in it lives there.
+	// Artefacts is what internal/domain/capability infers from.
 	Artefacts capability.Artefacts
 
-	// Commands is Artefacts.Commands with the source text each one came from, which
-	// Artefacts deliberately does not carry — a capability row holds no evidence
-	// and a finding needs a quote.
+	// Commands is Artefacts.Commands with the source text each one came from.
 	Commands []Command
 
-	// Unparsed names the scripts the shell parser could not read. A blind spot is
-	// reported as a warning by the shell audit, never as a pass: a script this
-	// analysis could not read is the one place a payload would most like to be.
+	// Unparsed names the scripts the shell parser could not read — reported
+	// as a warning by the shell audit, never a pass.
 	Unparsed []string
 
 	files map[string]bundle.File
@@ -60,13 +48,10 @@ type Bundle struct {
 	lines map[string][]string
 }
 
-// Inspect derives everything the checks read from an unpacked bundle.
-//
-// It never fails on hostile content. A tree with no manifest, a manifest that
-// does not parse, a script the parser rejects: each becomes a recorded problem or
-// a recorded blind spot, because a scan that returns an error returns no verdict,
-// and a version with no verdict is the "Scanning" badge that no process advances
-// (FR-124).
+// Inspect derives everything the checks read from an unpacked bundle. It
+// never fails on hostile content: an unreadable tree becomes a recorded
+// problem or blind spot rather than an error, since a scan that errors
+// leaves the version with no verdict at all.
 func Inspect(tree *bundle.Bundle) (*Bundle, error) {
 	if tree == nil {
 		return nil, errors.New("inspect: no tree")
@@ -74,15 +59,8 @@ func Inspect(tree *bundle.Bundle) (*Bundle, error) {
 
 	out := &Bundle{lines: make(map[string][]string)}
 
-	// pkgspec is the same layout filter, manifest validator and kind derivation the
-	// ingestion path ran. Reusing it is what keeps "the fetcher published this" and
-	// "the scanner read this" from being two opinions about one tree.
-	//
-	// The FILTERED tree is what gets scanned, and that is the point rather than an
-	// optimisation: a stored bundle IS the filtered tree, because the fetcher packed
-	// what the filter kept (FR-005). Scanning the unfiltered input instead would let
-	// a rule fire in a fixture on a file that no published version can contain, and
-	// a rule that only ever trips outside production is worse than no rule.
+	// pkgspec is the same layout filter, manifest validator and kind
+	// derivation the ingestion path ran, so checks scan the filtered tree.
 	scanned := tree
 	pkg, manifestErr := pkgspec.Inspect(tree, "")
 	if pkg != nil && pkg.Files != nil {
@@ -95,9 +73,6 @@ func Inspect(tree *bundle.Bundle) (*Bundle, error) {
 	}
 
 	if pkg == nil {
-		// The layout could not be computed at all — no manifest at the root. That is
-		// an ingestion failure that should never reach a stored bundle, so it is
-		// recorded as a manifest problem and the scan continues over the raw tree.
 		out.ManifestProblems = []pkgspec.Problem{{
 			SchemaPath: "/", Message: layoutMessage(manifestErr),
 		}}
@@ -113,10 +88,9 @@ func Inspect(tree *bundle.Bundle) (*Bundle, error) {
 	if len(out.Manifest) > 0 {
 		expected, err := capability.Expected(out.Manifest)
 		if err != nil {
-			// A malformed expectation is a manifest problem and NOT an empty expected
-			// set: treating it as empty would suppress nothing while looking like a
-			// declaration, and treating it as complete would suppress every finding it
-			// mentions.
+			// A malformed expectation is a manifest problem, not an empty
+			// expected set — an empty set would suppress nothing that
+			// resembles a declaration.
 			out.ManifestProblems = append(out.ManifestProblems, pkgspec.Problem{
 				SchemaPath:   "/properties/extensions",
 				InstancePath: "/extensions/" + pkgspec.ExtensionNamespace,
@@ -163,11 +137,8 @@ func (b *Bundle) Line(filePath string, line int) string {
 	return all[line-1]
 }
 
-// ExpectedDetail is the declared target list for one capability name, and whether
-// a declaration exists at all. The two are separate answers: an absent
-// declaration surfaces every discovered target for review (FR-027), while a
-// declaration listing nothing is a publisher saying "none", and collapsing them
-// would turn one of those into the other.
+// ExpectedDetail is the declared target list for one capability name, and
+// whether a declaration exists at all.
 func (b *Bundle) ExpectedDetail(name string) (targets []string, declared bool) {
 	for _, row := range b.Expected {
 		if row.Name == name {
@@ -203,30 +174,21 @@ func (b *Bundle) classify() {
 	}
 }
 
-// scriptExtensions are the files read as shell. `.zsh` and `.bash` are included
-// because the parser handles them and a payload does not care which dialect the
-// extension claims.
+// scriptExtensions are the files read as shell.
 var scriptExtensions = map[string]struct{}{
 	".sh": {}, ".bash": {}, ".zsh": {}, ".ksh": {},
 }
 
-// instructionExtensions are the files an agent reads as prose. `.mdx` is not
-// among them: neither published spec names it, and reading a file the spec does
-// not admit would put a finding on content the client never loads.
+// instructionExtensions are the files an agent reads as prose.
 var instructionExtensions = map[string]struct{}{
 	".md": {}, ".txt": {}, ".rst": {},
 }
 
-// classOf decides what a file is from its path, its extension and — only for a
-// shebang — its first line. It never sniffs content otherwise: a class decided by
-// what a file looks like inside is a class an attacker chooses.
+// classOf decides what a file is from its path, its extension and — only for
+// a shebang — its first line; never from sniffing content otherwise.
 //
 // SKILL.md is classified as an INSTRUCTION even though its frontmatter is the
-// manifest. The class is single-valued and the body is the larger half: a
-// prompt-injection rule that skipped SKILL.md would miss the design's own f2
-// finding, which is an instruction file telling an agent to read
-// ~/.aws/credentials. The frontmatter is still validated, through
-// ManifestProblems, which is where a schema failure belongs.
+// manifest, so a prompt-injection rule still sees its body.
 func classOf(filePath string, data []byte) capability.Class {
 	base := path.Base(filePath)
 	ext := strings.ToLower(path.Ext(base))
@@ -257,10 +219,8 @@ func hasShellShebang(data []byte) bool {
 	return shellShebang.Match(line)
 }
 
-// urlPattern finds absolute http(s) URLs in prose. The trailing class excludes
-// the punctuation that ends a sentence or closes a markdown link, because a
-// captured `)` becomes part of the host and then matches nothing in the expected
-// set.
+// urlPattern finds absolute http(s) URLs in prose, excluding trailing
+// punctuation that ends a sentence or closes a markdown link.
 var urlPattern = regexp.MustCompile(`https?://[^\s"'<>)\]}]+`)
 
 func urlsIn(filePath string, lines []string) []capability.URL {

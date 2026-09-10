@@ -55,8 +55,7 @@ A version's bytes never change. A digest is computed on write, the object key en
 `namespace/name/semver`, and a version becomes visible only once its bytes, digest and
 metadata have all landed — so a half-finished publish is invisible rather than broken.
 
-**Static analysis, not a permission prompt.** *(the inference and the comparison are built;
-the shell parser that feeds them, the rule packs and the findings review are not)*
+**Static analysis, not a permission prompt.**
 Capabilities are inferred from what the bytes *do*, never from what the manifest claims:
 hosts from commands and from URLs in instruction files, filesystem scope from read and write
 targets, shell from the commands present — and a shell capability is never below `review`.
@@ -66,16 +65,22 @@ running the script. What the publisher *declared* is read separately, and the tw
 side by side. Neither package specification defines a permissions model, so nothing here is
 granted, denied or enforced — and the screen says exactly that, in those words.
 
+Detection rules ship as a versioned, data-driven rule pack — adding or tuning one is a YAML
+change, never a code change — and each rule carries a fixture bundle that must trip it and one
+that must not. The Scanner screen shows every check that ran, not only the failures, and a
+reviewer can approve with a note or reject; the Audit log records every state change with its
+actor and source.
+
 **A catalog that filters in SQL.**
 Search across name, id, publisher and tags; facets for kind, scan verdict, category and
 tags; sort by usage, name or recency. Measured at 10,000 packages and 50,000 versions:
 **p95 14 ms** against a 300 ms budget.
 
-**Profiles resolved into lockfiles.** *(specified and modelled; resolution not built yet)*
-A profile pins packages by `latest`, an exact version, or a semver range. Resolving it
-produces a lockfile naming every entry's version, digest and object key — and every entry it
-*skipped*, with the reason. A rejected version is unresolvable by any profile regardless of
-gate.
+**Profiles resolved into lockfiles.**
+A profile pins packages by `latest`, an exact version, or a semver range. Publishing a
+revision produces a lockfile naming every entry's version, digest and object key — and every
+entry it *skipped*, with the reason. A rejected version is unresolvable by any profile
+regardless of gate, and the screen renders the gate's own note rather than recomputing it.
 
 **Least privilege that is structural, not documented.**
 The role serving the web UI holds no database credential and no object-store credential —
@@ -123,14 +128,31 @@ distributed inside.
 Every screenshot is captured from the running stack — the real web role, talking to the real
 API over HTTP, over a seeded Postgres. None of them is a mock or a design comp.
 
+The rest of the sidebar has no screenshots yet, but every one of these is a real screen behind
+a real sign-in, not a placeholder:
+
+- **Scanner** — every check a version ran, not only the failures, with a reviewer's
+  approve-with-note or reject.
+- **Audit log** — every state change, its actor, its source, and an export.
+- **Profiles** — the list a viewer may read, and a detail screen with per-entry pin or float,
+  sharing, sync targets, and publish.
+- **Connect the CLI** — the device-flow pairing screen: enter the code a machine printed,
+  confirm, done.
+- **Organisation** — identity provider settings and connection test, scan gate and the other
+  policy toggles, group-to-role mappings, and categories.
+- **Storage** — object count, size, region, cache hit rate and recent fetches, read from the
+  bucket rather than assumed.
+- **Sign in** — one action, no password of its own, no account to create.
+
 ## How it fits together
 
 One binary, one image, roles as subcommands:
 
 ```
 agent-manager serve api          the HTTP API — Postgres and the bucket, no browser
-agent-manager serve web          the UI — no datastore credential of any kind
+agent-manager serve web          the UI — no datastore credential of any kind, only a real sign-in
 agent-manager worker run fetcher fetch, extract, digest, store, publish
+agent-manager worker run scanner read bytes, write verdicts and findings — no publish credential
 agent-manager migrate queue      the job queue's own database
 ```
 
@@ -148,19 +170,27 @@ breaking change against the merge base.
 task up
 ```
 
-That brings up Postgres, MinIO, the identity provider, the migrations, the API, the web
-UI and the fetcher. The UI is on <http://localhost:8080> and the API on <http://localhost:8082>.
+That brings up Postgres, MinIO, Dex with glauth as its directory, the migrations, the API, the
+web UI and the fetcher, seeded with representative data — sign in and the catalog is already
+populated. The UI is on <http://localhost:8080> and the API on <http://localhost:8082>. Dex
+replaced an earlier Keycloak substitute once measurement showed a directory-backed Dex emits
+the same `groups` claim the role mapping needs, at a fraction of the image size.
 
 Requires Docker and [Task](https://taskfile.dev). Nothing else is installed on the host —
 the toolchain is pinned in `mise.toml`, and the image has no Node.js in it.
 
 ## Status
 
-Being built against a written specification, layer by layer. Working today: ingestion from
-all three sources, the fetch pipeline, immutable storage, the catalog, and the package detail
-screen with capability comparison. In progress: the scanner's rule packs and findings review,
-profiles and lockfile resolution, the device flow for pairing a machine, and the
-organisation, storage and audit screens — those routes render a placeholder for now.
+Being built against a written specification, layer by layer. All seven sidebar screens are
+real: catalog, package detail, scanner, audit log, profiles, connect-the-CLI and the
+organisation and storage screens, behind a real sign-in with role-based gating throughout.
+Working today: ingestion from all three sources, the fetch pipeline, immutable storage, the
+scanner's rule packs and findings review, profile curation and publish, the RFC 8628 device
+flow for pairing a machine, and organisation policy and identity administration.
+
+Not there yet: the timed clean-checkout quickstart and the manual `aarch64` run are unverified
+by an agent (they need a human at a terminal), and there is no Prometheus metrics
+instrumentation — `AGENT_MANAGER_METRICS_ADDR` today backs only the liveness listener.
 
 ## Acknowledgements
 
@@ -173,6 +203,9 @@ This project is assembled almost entirely from other people's work. What each pi
 | [`ariga.io/atlas-provider-bun`](https://ariga.io/atlas-provider-bun) | `v0.0.3` | Reads the Bun models to produce the desired schema state Atlas diffs against |
 | [`github.com/Masterminds/semver`](https://github.com/Masterminds/semver) | `v3.5.0` | Semver parsing and range matching — `latest`, a pinned version and a `range` pin are all decided here |
 | [`github.com/a-h/templ`](https://github.com/a-h/templ) | `v0.3.1020` | Typed HTML components, compiled to Go |
+| [`github.com/aws/aws-sdk-go-v2/service/s3`](https://github.com/aws/aws-sdk-go-v2) | `v1.102.2` | The raw S3 client behind `bucket.As()`, for the Storage screen's bucket-settings report — versioning, object lock, encryption, lifecycle |
+| [`github.com/moby/moby/client`](https://github.com/moby/moby) | `v0.5.0` | Docker client for the test that measures the local identity stack's image sizes (Dex+glauth versus Keycloak) |
+| [`github.com/pelletier/go-toml`](https://github.com/pelletier/go-toml) | `v2.4.3` | Parses glauth's directory config in the fixture that test reads |
 | [`github.com/caarlos0/env`](https://github.com/caarlos0/env) | `v11.4.1` | Per-role config from `AGENT_MANAGER_*` — one struct per role, which is how the credential boundary is expressed in Go |
 | [`github.com/coreos/go-oidc`](https://github.com/coreos/go-oidc) | `v3.20.0` | OIDC discovery and token verification against the organisation's identity provider |
 | [`github.com/danielgtaylor/huma`](https://github.com/danielgtaylor/huma) | `v2.39.1` | OpenAPI 3.1 emitted *from* the operation definitions — the served document is generated, never hand-maintained |
@@ -235,7 +268,7 @@ This project is assembled almost entirely from other people's work. What each pi
 | **RFC 9457** | Problem Details for HTTP APIs — the shape wiretap returns on a contract violation. |
 | **Semantic Versioning 2.0.0** | Version precedence, including prerelease ordering, which `semver_sort` encodes as a collatable key. |
 
-_Every direct requirement in `go.mod` appears above, plus 149 indirect modules not listed individually._
+_Every direct requirement in `go.mod` appears above, plus 143 indirect modules not listed individually._
 
 ## Licence
 

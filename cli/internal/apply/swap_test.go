@@ -1,29 +1,22 @@
-// R3 GATE — task T011. DO NOT DELETE THIS FILE AS A DUPLICATE OF T041's TESTS.
-//
-// This file is a *gate*, not a unit test of production code. `swap.go` (task
-// T041) does not exist yet, and T011 exists precisely so that T041 is written
-// against a measured sequence rather than a guess. Everything below therefore
-// exercises the rename sequence directly against the filesystem through
-// `gateSwap`, a helper local to this file. That is deliberate:
+// This file is a *gate*, not a unit test of production code. It exercises
+// the rename sequence directly against the filesystem through `gateSwap`, a
+// helper local to this file, deliberately kept alongside swap.go's own
+// tests:
 //
 //   - it proves the sequence is sound on the platform the test runs on, and
 //   - it pins the exact ordering, the exact aside-name derivation, and the
-//     exact per-step interruption outcomes that T041 must reproduce.
+//     exact per-step interruption outcomes swap.go must reproduce.
 //
-// When T041 lands it MUST keep this file. `gateSwap` is the specification;
-// `swap.go` is the implementation. Two independent statements of the same
-// sequence are worth their duplication — a test that only calls the code under
-// test cannot notice that the code changed the ordering, because it changed
-// with it. T041 should additionally assert that swap.go's own aside suffix
-// equals gateAsideSuffix, so the two cannot drift apart silently.
+// `gateSwap` is the specification; `swap.go` is the implementation. Two
+// independent statements of the same sequence are worth their duplication —
+// a test that only calls the code under test cannot notice that the code
+// changed the ordering, because it changed with it. swap_impl_test.go
+// additionally asserts that swap.go's own aside suffix equals
+// gateAsideSuffix, so the two cannot drift apart silently.
 //
-// The property being established is FR-024: a crash at ANY step of an entry's
-// replacement leaves the destination wholly the old version or wholly the new
-// (or absent, which FR-024 explicitly permits) — never a mixture.
-//
-// The findings, the numbered sequence, and the per-platform unverified list are
-// written up in specs/002-agent-manager-cli/ R3 notes; the short version lives
-// in the comments on gateSwap below.
+// The property being established: a crash at any step of an entry's
+// replacement leaves the destination wholly the old version or wholly the
+// new (or absent, which is explicitly permitted) — never a mixture.
 
 package apply
 
@@ -43,34 +36,33 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/record"
 )
 
-// gateAsideSuffix is appended to the destination path to name the place the old
-// version is moved to. Two properties of this name are load-bearing and are
-// asserted by TestR3AsideNameIsASiblingDerivedFromTheDestination:
+// gateAsideSuffix is appended to the destination path to name the place the
+// old version is moved to. Two properties of this name are load-bearing:
 //
-//   - It is DERIVED DETERMINISTICALLY from the destination, not randomised.
-//     The installation record stores destination paths (FR-026), so a
-//     deterministic suffix means the set of paths amctl may ever remove is
-//     exactly {dest, dest+suffix} for each recorded entry. FR-028 ("MUST NOT
-//     remove any path absent from its own record") then holds by construction
-//     rather than by care: cleanup is a walk of the record, never a glob over a
-//     directory amctl does not own. A random token would force a glob.
-//   - It is a SIBLING of the destination, in the same parent directory. Step 2
-//     is then guaranteed to be an intra-filesystem rename, which a central
-//     `~/.agent-manager/trash/` would not be — see the EXDEV test.
+//   - It is derived deterministically from the destination, not randomised.
+//     The installation record stores destination paths, so a deterministic
+//     suffix means the set of paths amctl may ever remove is exactly
+//     {dest, dest+suffix} for each recorded entry, which holds by
+//     construction rather than by care: cleanup is a walk of the record,
+//     never a glob over a directory amctl does not own. A random token
+//     would force a glob.
+//   - It is a sibling of the destination, in the same parent directory.
+//     Step 2 is then guaranteed to be an intra-filesystem rename, which a
+//     central `~/.agent-manager/trash/` would not be — see the EXDEV test.
 //
 // The caller must guarantee no package ever legitimately installs to a path
 // ending in this suffix. internal/layout owns that guarantee.
 //
-// It is record.AsideSuffix and not a literal of its own. The determinism above is
-// what closes the removable set to {dest, dest+suffix}, and record is the package
-// that has to be able to COMPUTE that set — so the constant belongs there, and a
-// second copy here is exactly how the two drift and leave an orphaned .amctl-old
-// that nothing ever removes.
+// It is record.AsideSuffix and not a literal of its own: the determinism
+// above is what closes the removable set to {dest, dest+suffix}, and record
+// is the package that has to be able to compute that set, so the constant
+// belongs there — a second copy here is exactly how the two drift and leave
+// an orphaned .amctl-old that nothing ever removes.
 const gateAsideSuffix = record.AsideSuffix
 
-// gateStep numbers the sequence. The numbering is the deliverable: T041 must
-// implement these steps in this order, and a crash immediately after step N
-// must leave the observable state this file asserts for N.
+// gateStep numbers the sequence. swap.go must implement these steps in this
+// order, and a crash immediately after step N must leave the observable
+// state this file asserts for N.
 type gateStep int
 
 const (
@@ -101,9 +93,10 @@ func (s gateStep) String() string {
 }
 
 // errGateInterrupted stands in for the process being killed. It is returned
-// *after* the requested step has completed and, unlike a real error, it does
-// NOT run step 3's rollback — which is the whole point: a crash cannot roll
-// back, so the state it leaves behind is what FR-024 has to hold for.
+// *after* the requested step has completed and, unlike a real error, it
+// does not run step 3's rollback — which is the whole point: a crash cannot
+// roll back, so the state it leaves behind is what the sequence has to hold
+// for.
 var errGateInterrupted = errors.New("interrupted")
 
 // gateOutcome carries the two errors the sequence treats as NON-fatal. Both
@@ -115,39 +108,38 @@ type gateOutcome struct {
 	RemoveAsideErr error // step 5
 }
 
-// gateSwap is THE SEQUENCE. T041 implements this against real entries.
+// gateSwap is the sequence swap.go implements against real entries.
 //
 // Why not simply os.Rename(staging, dest):
 //
-// MEASURED, and stronger than plan.md's R3 paragraph claims. plan.md says
-// os.Rename "is not atomic for directories on any platform". Through Go's os
-// package it is worse than that: it FAILS, empty destination or not.
-// $GOROOT/src/os/file_unix.go's rename() Lstats newname first and returns
-// EEXIST outright if it is a directory, without ever reaching syscall.Rename.
-// Measured on linux/arm64, go1.26.6: os.Rename(dir, EMPTY dir) = EEXIST,
-// os.Rename(dir, NON-EMPTY dir) = EEXIST, os.Rename(dir, SYMLINK->dir) =
-// ENOTDIR, os.Rename(dir, ABSENT) = nil. Only the last one is usable.
+// Measured: through Go's os package, os.Rename fails on an existing
+// directory destination, empty or not. $GOROOT/src/os/file_unix.go's
+// rename() Lstats newname first and returns EEXIST outright if it is a
+// directory, without ever reaching syscall.Rename. Measured on linux/arm64,
+// go1.26.6: os.Rename(dir, EMPTY dir) = EEXIST, os.Rename(dir, NON-EMPTY
+// dir) = EEXIST, os.Rename(dir, SYMLINK->dir) = ENOTDIR, os.Rename(dir,
+// ABSENT) = nil. Only the last one is usable.
 //
-// So the aside step is the only way os.Rename installs over anything at all,
-// and dest MUST be absent before step 3 runs. The trap this creates is the
-// reverse of the one plan.md anticipated: the raw POSIX call is more permissive
-// than Go's wrapper (syscall.Rename(dir, EMPTY dir) = nil, measured), so anyone
-// "fixing" the EEXIST by dropping to syscall.Rename or golang.org/x/sys gets a
-// swap that works for empty destinations and fails with ENOTEMPTY for real
-// upgrades. TestR3NaiveRenameOverAnExistingDestination pins all of it.
+// So the aside step is the only way os.Rename installs over anything at
+// all, and dest must be absent before step 3 runs. The raw POSIX call is
+// more permissive than Go's wrapper (syscall.Rename(dir, EMPTY dir) = nil,
+// measured), so anyone "fixing" the EEXIST by dropping to syscall.Rename or
+// golang.org/x/sys gets a swap that works for empty destinations and fails
+// with ENOTEMPTY for real upgrades. TestR3NaiveRenameOverAnExistingDestination
+// pins all of it.
 //
 // Why step 2 tolerates ENOENT instead of stat-ing first: a Stat-then-branch
 // implementation has two code paths (a three-step swap when no old version
-// exists, a five-step swap when one does) and a TOCTOU window between the stat
-// and the rename. Tolerating ENOENT collapses both into one path. amctl also
-// holds a per-home lock (FR-038), so the only writer that can race here is one
-// that is not amctl, which is out of scope and stated as such.
+// exists, a five-step swap when one does) and a TOCTOU window between the
+// stat and the rename. Tolerating ENOENT collapses both into one path.
+// amctl also holds a per-home lock, so the only writer that can race here
+// is one that is not amctl, which is out of scope and stated as such.
 //
-// Why step 3 rolls back but a crash does not: FR-015 wants a failed entry to
-// "leave the machine unchanged", and after step 2 the machine is changed — dest
-// is absent. Rolling back on a step-3 error restores the old version and makes
-// the failed entry a true no-op. A crash cannot do that, which is what makes
-// step 1 necessary.
+// Why step 3 rolls back but a crash does not: a failed entry must leave the
+// machine unchanged, and after step 2 the machine is changed — dest is
+// absent. Rolling back on a step-3 error restores the old version and makes
+// the failed entry a true no-op. A crash cannot do that, which is what
+// makes step 1 necessary.
 //
 // Why step 1 RECLAIMS rather than discards: a crash between steps 2 and 3
 // leaves dest absent and the aside holding a complete old version (rename is
@@ -221,9 +213,10 @@ func gateSwap(staging, dest string, stopAfter gateStep) (gateOutcome, error) {
 	// operation; the file *contents* staged in step 0 may still be in page
 	// cache, and on a delayed-allocation filesystem a power loss here yields a
 	// destination directory full of zero-length files — which is exactly the
-	// "mixture" FR-024 forbids. Durability of the staged CONTENT is T040's
-	// (stage) job: every extracted file must be fsynced before the staging tree
-	// is handed to the swap. Durability of the directory ENTRY is this step's.
+	// "mixture" that must never happen. Durability of the staged content is
+	// stage's job: every extracted file must be fsynced before the staging
+	// tree is handed to the swap. Durability of the directory entry is this
+	// step's.
 	out.SyncDirErr = gateSyncDir(filepath.Dir(dest))
 	if stopAfter == gateStepSynced {
 		return out, errGateInterrupted
@@ -297,8 +290,8 @@ func gateWriteTree(t *testing.T, root string, v gateVersion) string {
 	return root
 }
 
-// The observable states. FR-024 permits exactly three of these at a
-// destination: absent, wholly old, wholly new. Every other value is a failure.
+// The observable states. Exactly three are permitted at a destination:
+// absent, wholly old, wholly new. Every other value is a failure.
 const (
 	gateStateAbsent   = "absent"
 	gateStateOld      = "wholly the old version"
@@ -411,10 +404,10 @@ func (f gateFixture) installOld(t *testing.T) {
 
 // --- the gate ---------------------------------------------------------------
 
-// TestR3InterruptionAtEveryStepLeavesOldOrNew is the gate proper: FR-024.
+// TestR3InterruptionAtEveryStepLeavesOldOrNew is the gate proper.
 //
-// Expected states are hand-derived from the sequence, not from a run. If T041
-// reorders the steps, this table is what disagrees with it.
+// Expected states are hand-derived from the sequence, not from a run. If
+// swap.go reorders the steps, this table is what disagrees with it.
 func TestR3InterruptionAtEveryStepLeavesOldOrNew(t *testing.T) {
 	tests := []struct {
 		stopAfter    gateStep
@@ -424,9 +417,9 @@ func TestR3InterruptionAtEveryStepLeavesOldOrNew(t *testing.T) {
 	}{
 		{gateStepNone, gateStateOld, gateStateAbsent, false},
 		{gateStepReclaimed, gateStateOld, gateStateAbsent, false},
-		// The only window in which the destination is absent. FR-024 permits
-		// absent; what it does not permit is half-written, and rename cannot
-		// produce that.
+		// The only window in which the destination is absent. Absent is
+		// permitted; what is not permitted is half-written, and rename
+		// cannot produce that.
 		{gateStepAsided, gateStateAbsent, gateStateOld, true},
 		{gateStepMovedIn, gateStateNew, gateStateOld, true},
 		{gateStepSynced, gateStateNew, gateStateOld, true},
@@ -491,7 +484,7 @@ func TestR3ReclaimingALeftoverAsideRestoresARollbackTarget(t *testing.T) {
 		"step 1 must reclaim the leftover aside so step 3 has something to roll back to")
 }
 
-// TestR3StepThreeFailureRollsBackToTheOldVersion — FR-015's "leave the machine
+// TestR3StepThreeFailureRollsBackToTheOldVersion: "leave the machine
 // unchanged for it" applied to a swap that has already moved the old aside.
 func TestR3StepThreeFailureRollsBackToTheOldVersion(t *testing.T) {
 	f := newGateFixture(t)
@@ -591,24 +584,24 @@ func TestR3SwapReplacesRatherThanMerges(t *testing.T) {
 // scope, so this is also the behaviour we get for free — but it is chosen, not
 // inherited, for two reasons:
 //
-//  1. FR-020. amctl must not write outside the invoking user's home, checked on
-//     the RESOLVED path. Following a symlink at the destination is exactly how
+//  1. amctl must not write outside the invoking user's home, checked on the
+//     resolved path. Following a symlink at the destination is exactly how
 //     amctl would write outside the home without ever constructing a path
 //     outside it: /home/u/.claude/skills/x -> /etc/whatever. Not following
 //     means the write lands where the path says it lands.
-//  2. The symlinked-dotfiles case argues the same way. When ~/.claude itself is
-//     a symlink into a dotfiles repo, the PARENT is the link and the kernel
-//     resolves it during the rename anyway — the entry's own destination is a
-//     real directory inside the repo and everything works. A symlink at the
-//     ENTRY destination is a different thing: amctl never creates one
-//     (extraction refuses symlinks, FR-019), so its presence means a human put
-//     it there.
+//  2. The symlinked-dotfiles case argues the same way. When ~/.claude
+//     itself is a symlink into a dotfiles repo, the parent is the link and
+//     the kernel resolves it during the rename anyway — the entry's own
+//     destination is a real directory inside the repo and everything
+//     works. A symlink at the entry destination is a different thing:
+//     amctl never creates one (extraction refuses symlinks), so its
+//     presence means a human put it there.
 //
-// THE CONSEQUENCE, which belongs to T042 and not to swap.go: because a symlink
-// at the destination is by definition not something amctl wrote, the caller
-// MUST refuse the entry under FR-028 ("MUST NOT remove or overwrite any path
-// absent from its own record") unless --force is given. swap.go is unconditional
-// by design; the guard is the caller's, and swap.go's doc comment must say so.
+// The consequence, which belongs to apply.go and not to swap.go: because a
+// symlink at the destination is by definition not something amctl wrote,
+// the caller must refuse the entry unless --force is given. swap.go is
+// unconditional by design; the guard is the caller's, and swap.go's doc
+// comment must say so.
 func TestR3ASymlinkAtTheDestinationIsReplacedNotFollowed(t *testing.T) {
 	f := newGateFixture(t)
 
@@ -651,8 +644,9 @@ func TestR3ASymlinkAtTheDestinationIsReplacedNotFollowed(t *testing.T) {
 	require.Len(t, entries, 1, "the symlink's target directory must be untouched")
 }
 
-// TestR3ASymlinkPointingOutsideTheHomeIsNotWrittenThrough is the FR-020 half of
-// the decision above, stated as an assertion rather than as prose.
+// TestR3ASymlinkPointingOutsideTheHomeIsNotWrittenThrough is the
+// containment half of the decision above, stated as an assertion rather
+// than as prose.
 func TestR3ASymlinkPointingOutsideTheHomeIsNotWrittenThrough(t *testing.T) {
 	outside := t.TempDir() // a second root, standing in for anywhere not under home
 	f := newGateFixture(t)
@@ -693,9 +687,9 @@ func gateRequireSymlink(t *testing.T, target, link string) {
 // rather than ceremony, and pins the measured semantics of both os.Rename and
 // the raw syscall so nobody "simplifies" the sequence into either of them.
 //
-// Without a negative control here, an implementation that dropped the aside
-// step would look correct in review — plan.md's own R3 note implies it would at
-// least work on POSIX — and would fail on every platform at the first upgrade.
+// Without a negative control here, an implementation that dropped the
+// aside step would look correct in review and would fail on every platform
+// at the first upgrade.
 func TestR3NaiveRenameOverAnExistingDestination(t *testing.T) {
 	t.Run("os.Rename onto a non-empty directory fails", func(t *testing.T) {
 		f := newGateFixture(t)
@@ -892,12 +886,12 @@ func gateIsCrossDevice(err error) bool {
 // which a durable record could outlive a non-durable rename; it does not create
 // the safety.
 //
-// WHAT IT DOES NOT BUY, which is the part worth writing down: fsyncing the
-// parent makes the directory ENTRY durable, not the file CONTENT underneath it.
-// On a delayed-allocation filesystem, a power loss shortly after the swap can
-// leave the destination present and full of zero-length files — a mixture, and
-// a FR-024 violation that no amount of care in swap.go can prevent. Content
-// durability is T040's: stage must fsync every extracted file before handing
+// What it does not buy, which is the part worth writing down: fsyncing
+// the parent makes the directory entry durable, not the file content
+// underneath it. On a delayed-allocation filesystem, a power loss shortly
+// after the swap can leave the destination present and full of zero-length
+// files — a mixture that no amount of care in swap.go can prevent. Content
+// durability is stage's: it must fsync every extracted file before handing
 // the tree over.
 func TestR3ParentDirectoryFsync(t *testing.T) {
 	f := newGateFixture(t)
@@ -948,9 +942,8 @@ func TestR3RepeatedSwapsLeaveNothingBehind(t *testing.T) {
 	require.Equal(t, gateStateNew, gateState(t, f.dest))
 }
 
-// TestR3PlatformsInScope states, as an executable fact, which platform this run
-// verified. The unverified-per-platform list is in the R3 notes; the short
-// version is that darwin shares every assertion above except the cross-device
+// TestR3PlatformsInScope states, as an executable fact, which platform this
+// run verified. Darwin shares every assertion above except the cross-device
 // one, and that it is verified only when the cli unit-test job runs on a
 // macos-latest runner. Windows is not a target and is refused here rather than
 // skipped, so a build for it fails loudly instead of reporting a pass it never

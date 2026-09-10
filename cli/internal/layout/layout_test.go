@@ -44,9 +44,9 @@ func skill(id, version string) layout.Request {
 	return layout.Request{ID: id, Version: version, Kind: record.KindSkill}
 }
 
-// Expected paths are hand-written from R2's observation — user scope is
-// $CLAUDE_CONFIG_DIR/skills, else ~/.claude/skills, and a skill is
-// <root>/<dir>/SKILL.md — not read back from a run.
+// Expected paths are hand-written — user scope is $CLAUDE_CONFIG_DIR/skills,
+// else ~/.claude/skills, and a skill is <root>/<dir>/SKILL.md — not read
+// back from a run.
 func TestClaudeCodePlacesAStandaloneSkillWhereTheAgentLooks(t *testing.T) {
 	t.Parallel()
 
@@ -96,10 +96,8 @@ func TestClaudeCodePlacesAStandaloneSkillWhereTheAgentLooks(t *testing.T) {
 	}
 }
 
-// R2's negative control, as a regression test: XDG_CONFIG_HOME is not read at
-// all, and an XDG-first resolver — the obvious thing to write on Linux —
-// installs to a directory the agent never opens. This package reads no
-// environment, so the assertion is that setting it changes nothing.
+// XDG_CONFIG_HOME is not read at all; this package reads no environment, so
+// the assertion is that setting it changes nothing.
 func TestClaudeCodeIgnoresXDGConfigHome(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "/home/tester/.config")
 
@@ -109,9 +107,10 @@ func TestClaudeCodeIgnoresXDGConfigHome(t *testing.T) {
 	require.NotContains(t, got.Dest, ".config")
 }
 
-// FR-023. The interesting half is not that the two differ but that the mapping
-// is injective: a hyphen may appear inside either segment, so a single-character
-// separator maps two distinct packages onto one directory.
+// The interesting half is not that the two differ but that the mapping is
+// injective: a hyphen may appear inside either segment, so a
+// single-character separator would map two distinct packages onto one
+// directory.
 func TestFR023CollidingNamesAcrossPublishersGetDistinctDirectories(t *testing.T) {
 	t.Parallel()
 
@@ -143,9 +142,6 @@ func TestFR023CollidingNamesAcrossPublishersGetDistinctDirectories(t *testing.T)
 	})
 
 	t.Run("the destination does not move when the version does", func(t *testing.T) {
-		// A version in the path would turn an upgrade into a write plus a
-		// removal — two operations with a window where both or neither exist —
-		// instead of R3's single rename of one directory.
 		upgraded, err := target.Place(skill("acme/code-review", "9.9.9"))
 		require.NoError(t, err)
 		require.Equal(t, acme.Dest, upgraded.Dest)
@@ -199,8 +195,6 @@ func TestPackageIDRefusals(t *testing.T) {
 			require.Contains(t, err.Error(), strconv.Quote(tc.id),
 				"the refusal must name the id")
 
-			// The same refusal must reach the caller through the target, so no
-			// path is ever derived from an id that only ParsePackageID rejects.
 			_, placeErr := claudeCode(t, "").Place(layout.Request{ID: tc.id, Version: "1.0.0", Kind: record.KindSkill})
 			require.ErrorIs(t, placeErr, layout.ErrPackageID)
 		})
@@ -210,9 +204,6 @@ func TestPackageIDRefusals(t *testing.T) {
 func TestPackageIDAcceptsWhatTheHubCanStore(t *testing.T) {
 	t.Parallel()
 
-	// Hand-derived from the hub's object-key segment pattern,
-	// ^[A-Za-z0-9][A-Za-z0-9._+-]*$: a package whose segments fall outside it
-	// has no bundle object and cannot exist in the catalog.
 	for _, id := range []string{
 		"acme/code-review",
 		"com.anthropic.claude-code/pdf-tools",
@@ -231,10 +222,9 @@ func TestPackageIDAcceptsWhatTheHubCanStore(t *testing.T) {
 	}
 }
 
-// R3 requires this of internal/layout by name: the removable set per entry is
-// exactly {dest, dest+AsideSuffix}, so a package legitimately installed at
-// x.amctl-old would sit inside the removable set of the package at x and prune
-// would delete a live install.
+// The removable set per entry is exactly {dest, dest+AsideSuffix}, so a
+// package legitimately installed at x.amctl-old would sit inside the
+// removable set of the package at x and prune would delete a live install.
 func TestNoPackageInstallsToAnAsideOrStagingPath(t *testing.T) {
 	t.Parallel()
 
@@ -247,8 +237,6 @@ func TestNoPackageInstallsToAnAsideOrStagingPath(t *testing.T) {
 
 	t.Run("a package whose name ends in the aside suffix is refused at placement", func(t *testing.T) {
 		t.Parallel()
-		// Reachable through the hub's charset: `.`, `-` and letters are all legal
-		// in a package name, so this is a package the catalog could really hold.
 		_, err := claudeCode(t, "").Place(skill("acme/tool.amctl-old", "1.0.0"))
 		require.ErrorIs(t, err, layout.ErrDirName)
 		require.Contains(t, err.Error(), record.AsideSuffix)
@@ -317,8 +305,7 @@ func TestDirNameRefusals(t *testing.T) {
 	})
 }
 
-// R2's third finding as a regression test. The marker must not sit in a
-// directory that changes the entry's kind on disk.
+// The marker must not sit in a directory that changes the entry's kind on disk.
 func TestClaudeCodePluginAdoptingSubdirsAreRefusedAndTheMarkerIsNotOne(t *testing.T) {
 	t.Parallel()
 
@@ -335,8 +322,7 @@ func TestClaudeCodePluginAdoptingSubdirsAreRefusedAndTheMarkerIsNotOne(t *testin
 		"a non-dot marker shares the namespace of the skill's own referenced files")
 }
 
-// R2's first finding as a regression test: a skill at .claude/skills/synced/ did
-// not load, and it was the one probe of four that failed silently.
+// A skill at .claude/skills/synced/ is silently skipped by the agent.
 func TestClaudeCodeRefusesTheReservedSyncDirectory(t *testing.T) {
 	t.Parallel()
 
@@ -348,8 +334,8 @@ func TestClaudeCodeRefusesTheReservedSyncDirectory(t *testing.T) {
 		"the reserved directory is `synced` itself; a namespaced sibling is a different directory")
 }
 
-// R2: plugins are out of scope for every target and structurally so. There is
-// no plugin destination to derive, so this is a refusal rather than a path.
+// Plugins are out of scope for every target structurally: there is no
+// plugin destination to derive, so this is a refusal rather than a path.
 func TestPlacingAPluginIsRefusedForEveryTarget(t *testing.T) {
 	t.Parallel()
 
@@ -446,7 +432,6 @@ func TestRegistrySelect(t *testing.T) {
 
 	t.Run("a withdrawn target is reported and does not fail the sync", func(t *testing.T) {
 		t.Parallel()
-		// The lockfile schema's own example targets list.
 		sel, err := registry(t, "").Select([]string{"claude-code", "agents-md"})
 		require.NoError(t, err)
 		require.Len(t, sel.Writable, 1)
@@ -509,9 +494,8 @@ func TestRegistryConfigRefusals(t *testing.T) {
 	}
 }
 
-// FR-020 is internal/apply's to enforce on the resolved path, but a destination
-// that is not absolute and clean cannot even be checked, and record.Entry
-// refuses it.
+// A destination that is not absolute and clean cannot even be checked for
+// containment, and record.Entry refuses it.
 func TestEveryDestinationIsAbsoluteCleanAndUnderTheRoot(t *testing.T) {
 	t.Parallel()
 
@@ -534,7 +518,7 @@ func TestEveryDestinationIsAbsoluteCleanAndUnderTheRoot(t *testing.T) {
 	}
 }
 
-// FR-022: the marker answers "which package and version is this" with no hub.
+// The marker answers "which package and version is this" with no hub.
 func TestMarkerIdentifiesThePackageWithoutTheHub(t *testing.T) {
 	t.Parallel()
 
@@ -632,10 +616,8 @@ func TestMarkerRefusals(t *testing.T) {
 	})
 }
 
-// The one FR-023 hazard a per-entry function cannot close: APFS folds
-// case, so two ids differing only in case share one directory. Recorded here so
-// internal/plan has a named thing to compare and the limitation is not
-// rediscovered as a bug.
+// APFS folds case, so two ids differing only in case share one directory;
+// recorded here so internal/plan has a named thing to compare.
 func TestDestCollisionKeyExposesTheCaseFoldingHazard(t *testing.T) {
 	t.Parallel()
 

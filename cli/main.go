@@ -1,5 +1,4 @@
-// Command amctl installs and reconciles agent skills and plugins from an Agent
-// Manager hub. Wiring only: everything is in internal/cmd and below.
+// Command amctl installs and reconciles agent skills and plugins from an Agent Manager hub.
 package main
 
 import (
@@ -9,8 +8,6 @@ import (
 )
 
 func main() {
-	// The only os.Exit in the module, and the only place os.Stdout and
-	// os.Stderr are named. cmd.ExitCode owns the mapping from an outcome to a
-	// status; see internal/cmd/exit.go.
+	// The only os.Exit in the module; cmd.ExitCode owns the outcome-to-status mapping.
 	os.Exit(int(cmd.Main(os.Args[1:], os.Stdout, os.Stderr)))
 }

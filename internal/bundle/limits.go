@@ -2,10 +2,10 @@ package bundle
 
 import "time"
 
-// Extraction caps (research R3). Every value here is a security parameter, so each states
+// Extraction caps. Every value here is a security parameter, so each states
 // why it is that number instead of a round one.
 const (
-	// DefaultMaxCompressedBytes is the upload limit the product states (FR-001); every
+	// DefaultMaxCompressedBytes is the upload limit the product states; every
 	// other size cap is derived from it.
 	DefaultMaxCompressedBytes int64 = 25 << 20
 
@@ -70,32 +70,22 @@ func DefaultLimits() Limits {
 
 func (l Limits) withDefaults() Limits {
 	d := DefaultLimits()
-	if l.MaxCompressedBytes <= 0 {
-		l.MaxCompressedBytes = d.MaxCompressedBytes
-	}
-	if l.MaxDecompressedBytes <= 0 {
-		l.MaxDecompressedBytes = d.MaxDecompressedBytes
-	}
-	if l.MaxCompressionRatio <= 0 {
-		l.MaxCompressionRatio = d.MaxCompressionRatio
-	}
-	if l.RatioGraceBytes <= 0 {
-		l.RatioGraceBytes = d.RatioGraceBytes
-	}
-	if l.MaxEntries <= 0 {
-		l.MaxEntries = d.MaxEntries
-	}
-	if l.MaxEntryBytes <= 0 {
-		l.MaxEntryBytes = d.MaxEntryBytes
-	}
-	if l.MaxPathDepth <= 0 {
-		l.MaxPathDepth = d.MaxPathDepth
-	}
-	if l.MaxPathBytes <= 0 {
-		l.MaxPathBytes = d.MaxPathBytes
-	}
-	if l.MaxDuration <= 0 {
-		l.MaxDuration = d.MaxDuration
-	}
+	orDefault(&l.MaxCompressedBytes, d.MaxCompressedBytes)
+	orDefault(&l.MaxDecompressedBytes, d.MaxDecompressedBytes)
+	orDefault(&l.MaxCompressionRatio, d.MaxCompressionRatio)
+	orDefault(&l.RatioGraceBytes, d.RatioGraceBytes)
+	orDefault(&l.MaxEntries, d.MaxEntries)
+	orDefault(&l.MaxEntryBytes, d.MaxEntryBytes)
+	orDefault(&l.MaxPathDepth, d.MaxPathDepth)
+	orDefault(&l.MaxPathBytes, d.MaxPathBytes)
+	orDefault(&l.MaxDuration, d.MaxDuration)
 	return l
+}
+
+// orDefault replaces a non-positive field with def; the empty Limits value
+// must mean "use the default", not "unlimited".
+func orDefault[T int | int64 | time.Duration](field *T, def T) {
+	if *field <= 0 {
+		*field = def
+	}
 }

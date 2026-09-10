@@ -1,17 +1,17 @@
 package hub_test
 
-// T044. `package hub_test` for the same reason bundles_test.go is: this file
-// drives the fake hub (gate R5) and internal/hub/fake imports internal/hub, so
-// an in-package test file could not import it.
+// `package hub_test` for the same reason bundles_test.go is: this file drives
+// the fake hub and internal/hub/fake imports internal/hub, so an in-package
+// test file could not import it.
 //
 // THE LOAD-BEARING ASSERTION IN THIS FILE IS THE NEGATIVE ONE.
-// TestASecondReportOfTheSameSyncWouldBeAdditiveServerSide is the R6
-// measurement, executed rather than argued: it posts the same body twice
-// straight at the hub and shows the accepted-report list grows to two. That is
-// what makes the no-retry policy in sync_report.go a consequence instead of an
-// opinion, and it is also the negative control for the exactly-once latch —
-// without it, TestASyncIsReportedExactlyOnce could pass against a server that
-// deduped and prove nothing about this client.
+// TestASecondReportOfTheSameSyncWouldBeAdditiveServerSide is executed rather
+// than argued: it posts the same body twice straight at the hub and shows the
+// accepted-report list grows to two. That is what makes the no-retry policy in
+// sync_report.go a consequence instead of an opinion, and it is also the
+// negative control for the exactly-once latch — without it,
+// TestASyncIsReportedExactlyOnce could pass against a server that deduped and
+// prove nothing about this client.
 
 import (
 	"context"
@@ -62,9 +62,9 @@ func TestASyncIsReportedExactlyOnce(t *testing.T) {
 	require.NoError(t, reporter.Report(context.Background(), rep))
 	require.True(t, reporter.Reported(rep))
 
-	// FR-032. The second call must not reach the wire, and it says so rather
-	// than returning nil: a duplicate is a caller bug, and FR-033 means the
-	// worst a loud one can do is print a line.
+	// The second call must not reach the wire, and it says so rather than
+	// returning nil: a duplicate is a caller bug, and the worst a loud one can
+	// do is print a line.
 	err := reporter.Report(context.Background(), rep)
 	require.ErrorIs(t, err, hub.ErrAlreadyReported)
 
@@ -78,16 +78,15 @@ func TestASyncIsReportedExactlyOnce(t *testing.T) {
 	require.Nil(t, accepted[0].Skipped, "an empty local skip list is omitted, not sent as []")
 }
 
-// TestASecondReportOfTheSameSyncWouldBeAdditiveServerSide is R6.
-//
-// It bypasses Reporter deliberately and posts through the hub client twice, to
+// TestASecondReportOfTheSameSyncWouldBeAdditiveServerSide bypasses Reporter
+// deliberately and posts through the hub client twice, to
 // establish what the SERVER does with a duplicate. The hub's own
 // internal/api/commands/sync.go inserts a models.NewID() sync_event with no
 // ON CONFLICT and no natural key, sync_event's only constraints are its primary
-// key and three foreign keys, and its integration test asserts a count delta of
-// exactly one per call — so two calls are two rows. The fake models that by
-// appending, and this test pins it: if a future hub ever deduped, this test
-// fails and sync_report.go's no-retry comment is the thing to revisit.
+// key and three foreign keys, and its integration test asserts a count delta
+// of exactly one per call — so two calls are two rows. The fake models that
+// by appending, and this test pins it: if a future hub ever deduped, this
+// test fails and sync_report.go's no-retry comment is the thing to revisit.
 func TestASecondReportOfTheSameSyncWouldBeAdditiveServerSide(t *testing.T) {
 	tg := startReportFake(t)
 	client, err := hub.New(hub.Config{URL: tg.BaseURL, Token: tg.Token, HTTPClient: tg.HTTPClient})
@@ -109,9 +108,9 @@ func TestASecondReportOfTheSameSyncWouldBeAdditiveServerSide(t *testing.T) {
 }
 
 func TestAFailedReportIsReturnedForTheCallerToWarnAbout(t *testing.T) {
-	// FR-033: the sync must not fail because the report did. This package's
-	// half of that is returning a plain error carrying FR-040's classification,
-	// so the verb can put one sentence on stderr and carry on. The unauthorised
+	// The sync must not fail because the report did. This package's half of
+	// that is returning a plain error carrying its own classification, so the
+	// verb can put one sentence on stderr and carry on. The unauthorised
 	// case is used because it is the one a caller must not mistake for
 	// "unreachable".
 	tg := startReportFake(t)
@@ -131,8 +130,8 @@ func TestAFailedReportIsReturnedForTheCallerToWarnAbout(t *testing.T) {
 }
 
 func TestAFailedReportIsNotRetried(t *testing.T) {
-	// The whole of R6's consequence, asserted on the request count rather than
-	// inferred from the absence of a loop: one Report call is one POST, even
+	// Asserted on the request count rather than inferred from the absence of
+	// a loop: one Report call is one POST, even
 	// when the POST fails in the way a retry loop exists for.
 	tg := startReportFake(t)
 	counted := &countingTransport{next: tg.HTTPClient.Transport}

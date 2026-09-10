@@ -1,0 +1,273 @@
+package components
+
+import (
+	"strconv"
+
+	"agent-manager/internal/web/view"
+)
+
+// OrgScreen is the identity provider panel, the policy that governs every
+// registration, resolution and scan, the group-to-role mapping and the
+// category list.
+//
+// Every string here that a person typed — a group name, a category name — is
+// interpolated and therefore escaped.
+templ OrgScreen(s view.Org) {
+	<div class="am-header">
+		<div class="am-header-text">
+			<h1 class="am-h1">Organization</h1>
+			<p class="am-lede">
+				The identity provider this hub trusts, the policy that governs every
+				registration and resolution, who a group maps to and how packages are
+				categorised.
+			</p>
+		</div>
+	</div>
+	if s.Notice != nil {
+		<div class={ NoticeClass(*s.Notice) } id="org-notice">{ s.Notice.Text }</div>
+	}
+	if s.SignedOut {
+		<div class="am-empty am-empty-auth" id="org-signed-out">
+			Sign in to administer the organisation. The hub has no anonymous view.
+		</div>
+	} else if s.Refused {
+		<div class="am-empty am-empty-auth" id="org-refused">
+			Your role may not administer the organisation. This screen needs the catalog
+			admin role, and a role is what decides whether you see it, not the state of
+			any of these settings.
+		</div>
+	} else if s.Unavailable {
+		<div class="am-notice am-notice-dan" id="org-unavailable">
+			<p class="am-note">
+				The hub's api did not answer, so nothing here could be read. Retry in a
+				moment; if it persists, the api is the thing to look at.
+			</p>
+		</div>
+	} else {
+		<div class="am-org">
+			@orgProvider(s)
+			@orgPolicy(s)
+			@orgMappings(s)
+			@orgCategories(s)
+		</div>
+	}
+}
+
+templ orgProvider(s view.Org) {
+	<section class="am-gov-card">
+		<div class="am-section-head">
+			<div class="am-section-title">Identity provider</div>
+		</div>
+		<div class="am-kv">
+			<div class="am-kv-key">Issuer</div>
+			<div class="am-mono am-kv-val">{ s.Data.Provider.Issuer }</div>
+		</div>
+		<div class="am-kv">
+			<div class="am-kv-key">Client ID</div>
+			<div class="am-mono am-kv-val">{ s.Data.Provider.ClientID }</div>
+		</div>
+		<div class="am-kv">
+			<div class="am-kv-key">Scopes</div>
+			<div class="am-mono am-kv-val">
+				for i, scope := range s.Data.Provider.Scopes {
+					if i > 0 {
+						{ " " }
+					}
+					{ scope }
+				}
+			</div>
+		</div>
+		if s.Data.Provider.DeviceAuthorizationEndpoint != "" {
+			<div class="am-kv">
+				<div class="am-kv-key">Device authorization endpoint</div>
+				<div class="am-mono am-kv-val">{ s.Data.Provider.DeviceAuthorizationEndpoint }</div>
+			</div>
+		}
+		if s.Connected != nil {
+			if s.Connected.OK {
+				<div class="am-notice am-notice-ok" id="org-connection-ok">Connection ok.</div>
+			} else {
+				<div class="am-notice am-notice-dan" id="org-connection-failed">{ s.Connected.Detail }</div>
+			}
+		}
+		<div class="am-org-form-row">
+			<form method="post" action="/org/identity/test">
+				<button type="submit" class="am-btn">Test connection</button>
+			</form>
+			<form method="post" action="/org/identity/secret">
+				<button type="submit" class="am-btn" disabled aria-disabled="true" title={ view.SecretRotationReason }>
+					Rotate secret
+				</button>
+			</form>
+			<span class="am-toggle-note">{ view.SecretRotationReason }</span>
+		</div>
+	</section>
+}
+
+templ orgPolicy(s view.Org) {
+	<section class="am-gov-card">
+		<div class="am-section-head">
+			<div class="am-section-title">Policy</div>
+		</div>
+		<form class="am-field" method="post" action="/org/policy">
+			<div class="am-field">
+				<label class="am-label" for="org-scan-gate">Scan gate</label>
+				<select id="org-scan-gate" class="am-select" name="scanGate">
+					for _, gate := range view.ScanGates {
+						if gate == s.Data.Policy.ScanGate {
+							<option value={ gate } selected>{ view.ScanGateLabel(gate) }</option>
+						} else {
+							<option value={ gate }>{ view.ScanGateLabel(gate) }</option>
+						}
+					}
+				</select>
+			</div>
+			<label class="am-toggle">
+				<input type="checkbox" name="requireSignedBundles" if s.Data.Policy.RequireSignedBundles {
+					checked
+				}/>
+				<span class="am-toggle-label">
+					Require signed bundles
+					<span class="am-toggle-note">
+						A version with no verifiable signature is excluded from every resolution,
+						whatever its verdict.
+					</span>
+				</span>
+			</label>
+			<label class="am-toggle">
+				<input type="checkbox" name="communityNeedsReview" if s.Data.Policy.CommunityNeedsReview {
+					checked
+				}/>
+				<span class="am-toggle-label">
+					Community sources need review
+					<span class="am-toggle-note">
+						A version from a publisher this hub has not verified is flagged for a
+						reviewer before it is treated as distributable.
+					</span>
+				</span>
+			</label>
+			<label class="am-toggle">
+				<input type="checkbox" name="rescanOnNewVersion" if s.Data.Policy.RescanOnNewVersion {
+					checked
+				}/>
+				<span class="am-toggle-label">
+					Rescan on new version
+					<span class="am-toggle-note">
+						A newly published version is picked up by the scan sweep rather than
+						waiting for the next scheduled pass.
+					</span>
+				</span>
+			</label>
+			<label class="am-toggle">
+				<input type="checkbox" name="allowPersonalProfiles" if s.Data.Policy.AllowPersonalProfiles {
+					checked
+				}/>
+				<span class="am-toggle-label">
+					Allow personal profiles
+				</span>
+			</label>
+			<div class="am-org-form-row">
+				<button type="submit" class="am-btn am-btn-primary">Save policy</button>
+			</div>
+		</form>
+	</section>
+}
+
+templ orgMappings(s view.Org) {
+	<section class="am-gov-card">
+		<div class="am-section-head">
+			<div class="am-section-title">Group role mappings</div>
+			<div class="am-section-note">{ strconv.Itoa(len(s.Data.Mappings)) }</div>
+		</div>
+		<div class="am-org-row am-org-row-head">
+			<div>Group</div>
+			<div>Role</div>
+			<div></div>
+			<div></div>
+		</div>
+		for _, mapping := range s.Data.Mappings {
+			<div class="am-org-row">
+				<div class="am-org-cell-mono">{ mapping.GroupName }</div>
+				<div>{ view.OrgRoleLabel(mapping.Role) }</div>
+				<div></div>
+				<div class="am-org-actions">
+					<form method="post" action={ view.MappingDeleteHref(mapping.GroupName) }>
+						<button type="submit" class="am-btn">Remove</button>
+					</form>
+				</div>
+			</div>
+		}
+		if len(s.Data.Mappings) == 0 {
+			<div class="am-empty" id="org-mappings-empty">
+				No mappings. An identity whose group matches none of these holds no role in
+				this hub.
+			</div>
+		}
+		<form class="am-org-form-row" method="post" action="/org/mappings">
+			<div class="am-field">
+				<label class="am-label" for="org-mapping-group">Group name</label>
+				<input id="org-mapping-group" class="am-input" type="text" name="groupName" required/>
+			</div>
+			<div class="am-field">
+				<label class="am-label" for="org-mapping-role">Role</label>
+				<select id="org-mapping-role" class="am-select" name="role">
+					for _, role := range view.OrgRoles {
+						<option value={ role }>{ view.OrgRoleLabel(role) }</option>
+					}
+				</select>
+			</div>
+			<button type="submit" class="am-btn am-btn-primary">Add mapping</button>
+		</form>
+	</section>
+}
+
+templ orgCategories(s view.Org) {
+	<section class="am-gov-card">
+		<div class="am-section-head">
+			<div class="am-section-title">Categories</div>
+			<div class="am-section-note">{ strconv.Itoa(len(s.Data.Categories)) }</div>
+		</div>
+		<div class="am-org-row am-org-row-head">
+			<div>Name</div>
+			<div>Slug</div>
+			<div>Packages</div>
+			<div></div>
+		</div>
+		for _, category := range s.Data.Categories {
+			<div class="am-org-row">
+				<div>
+					<form method="post" action={ view.CategoryRenameHref(category.ID) }>
+						<input class="am-input" type="text" name="name" value={ category.Name }/>
+						<button type="submit" class="am-btn">Rename</button>
+					</form>
+				</div>
+				<div class="am-org-cell-mono">{ category.Slug }</div>
+				<div>{ strconv.Itoa(category.Count) }</div>
+				<div class="am-org-actions">
+					if category.Count == 0 {
+						<form method="post" action={ view.CategoryDeleteHref(category.ID) }>
+							<button type="submit" class="am-btn">Delete</button>
+						</form>
+					} else {
+						<button type="button" class="am-btn" disabled aria-disabled="true"
+							title="A category still assigned to a package cannot be deleted.">
+							Delete
+						</button>
+					}
+				</div>
+			</div>
+		}
+		if len(s.Data.Categories) == 0 {
+			<div class="am-empty" id="org-categories-empty">
+				No categories. A publisher registering a package chooses from what is here.
+			</div>
+		}
+		<form class="am-org-form-row" method="post" action="/org/categories">
+			<div class="am-field">
+				<label class="am-label" for="org-category-name">Name</label>
+				<input id="org-category-name" class="am-input" type="text" name="name" required/>
+			</div>
+			<button type="submit" class="am-btn am-btn-primary">Add category</button>
+		</form>
+	</section>
+}

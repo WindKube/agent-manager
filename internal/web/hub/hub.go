@@ -1,13 +1,9 @@
 // Package hub is the web role's door to the api, and the only one it has.
+// `serve web` holds no datastore credential, so everything it renders
+// arrives over HTTP through internal/apiclient, GENERATED from the document
+// internal/api emits.
 //
-// Constitution principle II and V: `serve web` holds no datastore credential, so
-// everything it renders arrives over HTTP through internal/apiclient, which is
-// GENERATED from the document internal/api emits. internal/archcheck fails the
-// build if anything under internal/web imports the store, the bucket or a
-// database driver, and this package is what makes that boundary survivable.
-//
-// Nothing here decides what the catalog means. The filters, the facet semantics
-// and the sort all live in internal/api/queries; this package translates the
+// Nothing here decides what the catalog means: this package translates the
 // screen's vocabulary into the operation's and back.
 package hub
 
@@ -26,10 +22,8 @@ import (
 type Client struct {
 	api *apiclient.ClientWithResponses
 	now func() time.Time
-	// mintSecret is the shared secret POST /v1/sessions requires. It is the only
-	// credential this role holds and it buys exactly one operation; it is sent on
-	// that one request and never installed on the client, so nothing else this role
-	// calls can carry it.
+	// mintSecret buys exactly one operation: sent on that one request, never
+	// installed on the client, so nothing else this role calls can carry it.
 	mintSecret string
 }
 
@@ -42,20 +36,18 @@ func WithClock(now func() time.Time) Option {
 }
 
 // WithSessionMintSecret gives the client the shared secret the session mint
-// requires (config.Web.SessionMintSecret). Without it MintSession refuses before
-// it reaches the api: there is no default, and an empty value is the api's cue to
-// refuse every mint.
+// requires. Without it MintSession refuses before it reaches the api: there
+// is no default, and an empty value is the api's cue to refuse every mint.
 func WithSessionMintSecret(secret string) Option {
 	return func(c *Client) { c.mintSecret = secret }
 }
 
-// New builds the client. It performs no I/O and does not reach the api, so a
-// hub whose api is not up yet still starts — the failure surfaces per request,
-// where it can be rendered, rather than at boot.
+// New builds the client. It performs no I/O and does not reach the api, so
+// a hub whose api is not up yet still starts.
 func New(baseURL string, opts ...Option) (*Client, error) {
 	api, err := apiclient.NewClientWithResponses(baseURL, apiclient.WithHTTPClient(&http.Client{
-		// The web role's budget is one internal hop (spec Assumptions). A hop with
-		// no timeout is how a slow api turns into a web role with no free workers.
+		// A hop with no timeout is how a slow api turns into a web role with
+		// no free workers.
 		Timeout: 15 * time.Second,
 	}), apiclient.WithRequestEditorFn(bearer))
 	if err != nil {
@@ -138,10 +130,9 @@ func row(entry *apiclient.CatalogPackage, now time.Time) view.Row {
 	return out
 }
 
-// scanOf collapses four verdicts onto the design's three pills. `rejected` is
-// shown as Flagged rather than as a fourth state: the catalog's job here is to
-// say "do not adopt this without reading the finding", and a rejected version is
-// the strongest case of exactly that.
+// scanOf collapses four verdicts onto three pills. `rejected` shows as
+// Flagged rather than a fourth state: "do not adopt without reading the
+// finding" applies to a rejected version most strongly of all.
 func scanOf(verdict string) view.Scan {
 	switch verdict {
 	case "clean":
@@ -167,8 +158,8 @@ func options(counts []apiclient.CatalogFacetOption, selected []string) []view.Fa
 	return out
 }
 
-// kindParam and statusParam translate the design's chip labels into the
-// operation's vocabulary. The screen says "Plugins"; the API says "plugin".
+// kindParam and statusParam translate chip labels into the operation's
+// vocabulary: the screen says "Plugins", the API says "plugin".
 func kindParam(kind string) string {
 	switch kind {
 	case view.KindFilterPlugins:
@@ -196,9 +187,8 @@ func statusParam(status string) string {
 func ptr[T any](v T) *T { return &v }
 
 // bearer forwards the caller's own session token, and only ever theirs. A
-// request made outside a signed-in browser request carries no Authorization
-// header at all, which the api answers with 401 — the web role has nothing to
-// fall back to and must not appear to.
+// request outside a signed-in browser session carries no Authorization
+// header, and the web role must not appear to have a fallback.
 func bearer(ctx context.Context, req *http.Request) error {
 	if token := view.TokenFrom(ctx); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -206,13 +196,9 @@ func bearer(ctx context.Context, req *http.Request) error {
 	return nil
 }
 
-// statusError turns a response the client could not decode into something a log
-// line can carry. The body is deliberately NOT included: it is an api response
-// travelling into a web-role log, and the api's problem detail already reached
-// the caller through ImportResult where it belongs.
-//
-// A 401 is the exception, and it is not an error the way the others are: it is
-// the signed-out state, and the caller renders it as a screen.
+// statusError turns a response the client could not decode into something a
+// log line can carry. The body is deliberately NOT included. A 401 is the
+// exception: it is the signed-out state, and the caller renders it as a screen.
 func statusError(resp *http.Response, body []byte) error {
 	if resp == nil {
 		return errors.New("no response")

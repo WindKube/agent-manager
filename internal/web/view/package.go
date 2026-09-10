@@ -10,17 +10,13 @@ import (
 )
 
 // ErrNotFound is a PackageSource reporting that there is no such package, or
-// that this identity may not read it. It is ONE error for both, mirroring the
-// api's single 404: distinguishing them would confirm the existence of packages
-// a caller is not allowed to see.
+// that this identity may not read it. One error for both, mirroring the
+// api's single 404: distinguishing them would confirm the existence of
+// packages a caller is not allowed to see.
 var ErrNotFound = errors.New("no such package")
 
-// The package detail screen's view models (US3, FR-016..FR-019).
-//
-// Everything the API returns as data becomes a sentence here and nowhere else:
-// the origin line, the file tree, the relative dates and the capability verdicts
-// are all rendering decisions, and the operation deliberately returns their
-// ingredients instead.
+// The package detail screen's view models. Everything the API returns as
+// data becomes a sentence here and nowhere else.
 
 // Package is one detail page.
 type Package struct {
@@ -38,7 +34,7 @@ type Package struct {
 	// SpecVersion is the version the manifest's $schema names, empty for a skill.
 	SpecVersion string
 	// ParentID and ParentName name the plugin a skill is distributed inside.
-	// There is no parent VERSION and there cannot be one — see contract.PackageOrigin.
+	// There is no parent VERSION and there cannot be one.
 	ParentID   string
 	ParentName string
 
@@ -50,16 +46,15 @@ type Package struct {
 	Versions     []PackageVersion
 	Dependents   []Dependent
 
-	// SignedOut is the same third outcome the catalog has: a screen that renders
+	// SignedOut is the same third outcome the catalog has: a screen renders
 	// because the screen is not the secret, only the contents are.
 	SignedOut bool
-	// Missing is a package that does not exist, or that this identity may not
-	// read. One state for both, exactly as the api's 404 is: telling them apart
-	// would confirm the existence of packages a caller may not see.
+	// Missing is a package that does not exist, or that this identity may
+	// not read — one state for both, exactly as the api's 404 is.
 	Missing bool
 }
 
-// Component is one component the file tree revealed (FR-017).
+// Component is one component the file tree revealed.
 type Component struct {
 	Kind string
 	Name string
@@ -67,7 +62,7 @@ type Component struct {
 	Note string
 }
 
-// PackageVersion is one row of the versions panel (FR-019).
+// PackageVersion is one row of the versions panel.
 type PackageVersion struct {
 	Version   string
 	DistTag   string
@@ -76,8 +71,8 @@ type PackageVersion struct {
 	ObjectKey string
 	Digest    string
 	Size      string
-	// PinnedBy is how many profiles the viewer can see pin this exact version.
-	// Derived at query time, never stored.
+	// PinnedBy is how many profiles the viewer can see pin this exact
+	// version. Derived at query time, never stored.
 	PinnedBy int
 }
 
@@ -89,17 +84,17 @@ type Dependent struct {
 	Pin  string
 }
 
-// Capabilities is the inferred-versus-expected panel (T060).
+// Capabilities is the inferred-versus-expected panel.
 type Capabilities struct {
 	// Scanned is whether a scan of this version has finished. It is NOT
-	// len(Rows) > 0: a scan that found nothing and a version that was never
-	// scanned produce the same empty list and are opposite facts.
+	// len(Rows) > 0: a scan that found nothing and one never scanned
+	// produce the same empty list and are opposite facts.
 	Scanned bool
 	Rows    []CapabilityRow
 }
 
-// CapabilityRow is one capability name with both sides of the comparison, so the
-// panel is a comparison rather than two lists a reader has to align by eye.
+// CapabilityRow is one capability name with both sides of the comparison, so
+// the panel is a comparison rather than two lists to align by eye.
 type CapabilityRow struct {
 	Name     string
 	Inferred CapabilityFacet
@@ -111,14 +106,13 @@ type CapabilityFacet struct {
 	Present bool
 	Level   string
 	Detail  []string
-	// Indefinite says the analysis found targets it could not name, so Detail is
-	// a sample and not the whole set.
+	// Indefinite says the analysis found targets it could not name, so
+	// Detail is a sample, not the whole set.
 	Indefinite bool
 }
 
-// The capability comparison verdicts. They describe a RELATIONSHIP between two
-// records and never a decision this hub took: nothing here grants or denies, and
-// the panel says so in its own words (FR-018a).
+// The capability comparison verdicts describe a RELATIONSHIP between two
+// records, never a decision this hub took: nothing here grants or denies.
 const (
 	CapabilityUndeclared = "not declared"
 	CapabilityUnobserved = "declared, not observed"
@@ -126,10 +120,9 @@ const (
 	CapabilityWithin     = "within the expectation"
 )
 
-// Status compares the two sides. FR-027 is the rule it expresses: where the
-// inferred set exceeds the expected one, a human is meant to look — and where no
-// expectation was recorded at all, everything is surfaced rather than silently
-// accepted.
+// Status compares the two sides: where the inferred set exceeds the
+// expected one, a human is meant to look, and where no expectation was
+// recorded at all, everything is surfaced rather than silently accepted.
 func (r CapabilityRow) Status() string {
 	switch {
 	case r.Inferred.Present && !r.Expected.Present:
@@ -143,9 +136,8 @@ func (r CapabilityRow) Status() string {
 	}
 }
 
-// Tone colours the verdict. Only the two that mean "look at this" are warned;
-// `within` is not coloured as a pass, because a pass would imply the hub checked
-// something it enforces.
+// Tone colours the verdict. `within` is not coloured as a pass: a pass would
+// imply the hub checked something it enforces.
 func (r CapabilityRow) Tone() string {
 	switch r.Status() {
 	case CapabilityExceeds:
@@ -184,8 +176,7 @@ func LevelLabel(level string) string {
 	}
 }
 
-// LevelTone maps a level onto the palette: Scoped is the settled one, Review is
-// the one that needs a person.
+// LevelTone maps a level onto the palette: Scoped is settled, Review needs a person.
 func LevelTone(level string) string {
 	switch level {
 	case "scoped":
@@ -216,15 +207,10 @@ func (f CapabilityFacet) Targets() string {
 	}
 }
 
-// Origin is US3 scenarios 1 and 2's origin line.
-//
-// The skill branch names the parent PACKAGE and not a parent version, and the
-// design's "distributed inside Platform Toolkit 1.3.0" is therefore not
-// reproduced: `parent_package_id` points at a package and nothing links a
-// skill's version to the plugin version containing it, so the version in that
-// sentence could only ever be the parent's current latest — a claim that
-// rewrites itself when the parent publishes and becomes false when a later
-// parent version drops the component.
+// Origin is the origin line. The skill branch names the parent PACKAGE, not
+// a parent version: `parent_package_id` points at a package and nothing
+// links a skill's version to the plugin version containing it, so naming a
+// version would be a claim that rewrites itself when the parent republishes.
 func (p Package) Origin() string {
 	if p.Kind == KindSkill {
 		if p.ParentName != "" {
@@ -252,19 +238,14 @@ func (p Package) CountOf(kind string) int {
 	return n
 }
 
-// HasContents is the plugin/skill structural split of US3 scenarios 1 and 2: the
-// package-contents section is ABSENT for a standalone skill, not empty.
+// HasContents is the plugin/skill structural split: the package-contents
+// section is ABSENT for a standalone skill, not empty.
 func (p Package) HasContents() bool { return p.Kind == KindPlugin }
 
-// Tree renders the design's package-contents tree.
-//
-// It is derived from the COMPONENT ROWS and the manifest object, and it is
-// therefore the component tree rather than a byte-level file listing. The bundle
-// stores no file list — `version` carries an object key and a digest, nothing
-// more — so the only other way to draw one would be to fetch and decompress up
-// to 25 MB of zstd on every page view, which is a poor trade for a picture that
-// the component rows already describe. A skill directory shows as a directory
-// with no children for the same reason.
+// Tree renders the package-contents tree, derived from the COMPONENT ROWS
+// and the manifest object rather than a byte-level file listing: the bundle
+// stores no file list, so the only other way would be fetching and
+// decompressing up to 25 MB of zstd on every page view.
 func (p Package) Tree() string {
 	if !p.HasContents() {
 		return ""
@@ -325,14 +306,11 @@ func (p Package) namesOf(kind string) []string {
 	return out
 }
 
-// ManifestText is the manifest as the panel shows it.
-//
-// It is indented here rather than stored indented: the column holds what the
-// publisher wrote, and re-encoding it through a Go map on the way in would
+// ManifestText is the manifest as the panel shows it, indented here rather
+// than stored indented: re-encoding through a Go map on the way in would
 // silently reorder the keys of a document a reviewer is reading precisely
-// because they do not trust it. Indenting a copy for display changes no bytes
-// and reorders nothing — json.Indent is textual. A document this cannot indent
-// is shown verbatim rather than replaced by an error.
+// because they do not trust it. A document this cannot indent is shown
+// verbatim rather than replaced by an error.
 func (p Package) ManifestText() string {
 	var buf bytes.Buffer
 	if err := json.Indent(&buf, []byte(p.Manifest), "", "  "); err != nil {
@@ -341,9 +319,8 @@ func (p Package) ManifestText() string {
 	return buf.String()
 }
 
-// ManifestPanelTitle is the heading of the manifest section. A standalone skill
-// shows its SKILL.md FRONTMATTER, which is what the jsonb column holds — a
-// Markdown file is not json — so the heading says which of the two it is.
+// ManifestPanelTitle says which of two things the jsonb column holds: a
+// standalone skill shows its SKILL.md FRONTMATTER, since a Markdown file is not json.
 func (p Package) ManifestPanelTitle() string {
 	if p.Kind == KindSkill {
 		return "SKILL.md frontmatter"
@@ -359,10 +336,10 @@ func (v PackageVersion) Tag() string {
 	return v.DistTag
 }
 
-// PinLabel is the design's `pinned by N`, DERIVED from profile pins and never
-// stored. It sits beside the dist tag rather than replacing it: the two are
-// different facts — `latest` is a channel this version occupies, `pinned by 2`
-// is what profiles chose — and a version is routinely both.
+// PinLabel is `pinned by N`, DERIVED from profile pins and never stored. It
+// sits beside the dist tag rather than replacing it: `latest` is a channel
+// this version occupies, `pinned by 2` is what profiles chose, and a
+// version is routinely both.
 func (v PackageVersion) PinLabel() string {
 	if v.PinnedBy == 0 {
 		return ""
@@ -370,8 +347,7 @@ func (v PackageVersion) PinLabel() string {
 	return "pinned by " + strconv.Itoa(v.PinnedBy)
 }
 
-// Resolution is how one profile resolves the package, as the design's `u.pin`
-// column reads.
+// Resolution is how one profile resolves the package.
 func (d Dependent) Resolution() string {
 	switch d.Mode {
 	case "pinned":
@@ -386,15 +362,11 @@ func (d Dependent) Resolution() string {
 	}
 }
 
-// DependentsLine summarises the panel.
-//
-// It counts what the list shows and nothing else. There is deliberately no
-// "N people" here, although the design's line reads "42 people across 4
-// profiles": a membership row can name a GROUP, nothing in this system knows how
-// many people are in a group, and a partial head count presented as a head count
-// is worse than none. The profile count is scoped to the viewer for the same
-// reason the list is — an unscoped total beside a scoped list would state the
-// number of private profiles by subtraction.
+// DependentsLine summarises the panel: what the list shows and nothing
+// else. No "N people" here — a membership row can name a GROUP, and this
+// system does not know how many people are in one. The profile count is
+// scoped to the viewer for the same reason the list is: an unscoped total
+// would state the number of private profiles by subtraction.
 func (p Package) DependentsLine() string {
 	switch {
 	case len(p.Dependents) == 0:
@@ -406,34 +378,25 @@ func (p Package) DependentsLine() string {
 	}
 }
 
-// PackageHref is the link to one package's detail screen.
-//
-// The id is VALIDATED rather than escaped, and the two are not the same thing
-// here. A package id is `namespace/name`, so the link has to keep that slash as
-// a separator — which means percent-escaping the id whole is not an option, and
-// escaping the halves separately still leaves `..` intact, because `.` is a
-// perfectly legal path character that url.PathEscape does not touch. A row whose
-// id is `../../etc/passwd` would produce a working traversal out of /packages/.
-//
-// So each half must match the same segment pattern internal/blob holds an
-// object-key segment to, and an id that does not is not linked at all. It cannot
-// address a package anyway: no row the catalog can return has one.
+// PackageHref is the link to one package's detail screen. The id is
+// VALIDATED rather than escaped: escaping the two `namespace/name` halves
+// separately still leaves `..` intact, since `.` is a legal path character
+// url.PathEscape does not touch, and `../../etc/passwd` would traverse out
+// of /packages/. Each half must match the object-key segment pattern, or it
+// is not linked at all.
 func PackageHref(id string) string {
 	namespace, name, ok := strings.Cut(id, "/")
 	if !ok || !validIDSegment(namespace) || !validIDSegment(name) {
 		return "/catalog"
 	}
-	// Escaped as well as validated. The escape is a no-op on anything the pattern
-	// admits; it is here so that widening the pattern later cannot silently become
-	// a URL injection.
+	// Escaped as well as validated, so widening the pattern later cannot
+	// silently become a URL injection.
 	return "/packages/" + url.PathEscape(namespace) + "/" + url.PathEscape(name)
 }
 
-// ProfileHref links to one profile, and validates its slug for the same reason
-// PackageHref validates a package id: a slug reaches this page from the api as
-// data, and `..` inside one would climb out of /profiles/. A slug is allowed to
-// be several segments (internal/blob's ProfileRevisionKey says so), so each is
-// checked.
+// ProfileHref links to one profile, validating its slug for the same reason
+// PackageHref validates a package id: `..` inside one would climb out of
+// /profiles/. A slug may be several segments, so each is checked.
 func ProfileHref(slug string) string {
 	if slug == "" {
 		return "/profiles"

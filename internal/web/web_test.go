@@ -46,6 +46,17 @@ func handler(t *testing.T, source web.CatalogSource) http.Handler {
 	if badges, ok := source.(web.BadgeSource); ok {
 		deps.Badges = badges
 	}
+	// The profile screens' read side, same shape again: the fixture answers both
+	// reads and cannot curate, so deps.Curator stays nil here.
+	if profiles, ok := source.(web.ProfileSource); ok {
+		deps.Profiles = profiles
+	}
+	if storage, ok := source.(web.StorageSource); ok {
+		deps.Storage = storage
+	}
+	if org, ok := source.(web.OrganizationSource); ok {
+		deps.Organization = org
+	}
 	return web.New(deps, web.Options{}).Handler()
 }
 

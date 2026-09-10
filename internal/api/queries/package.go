@@ -17,33 +17,18 @@ import (
 	"agent-manager/internal/auth"
 )
 
-// The package detail read (US3, FR-016..FR-019).
-//
-// Five statements: one that identifies the package and 404s, then four issued
-// concurrently once its ids are known. The first cannot join the rest, because
-// four of them are one-to-many over different children — versions, components,
-// capabilities, dependent profiles — and a single join would multiply every row
-// by the cardinality of the others and then have to undo it in Go.
-//
-// db MUST be a pool and not a transaction, for the same reason Catalog says so:
-// the four are issued concurrently and a bun.Tx is one connection.
+// The package detail read is five statements: one that identifies the
+// package and 404s, then four issued concurrently once its ids are known.
+// The first cannot join the rest because four are one-to-many over
+// different children, and a single join would multiply every row and then
+// need undoing in Go. db must be a pool, not a transaction: the four run concurrently.
 
-// detailSQL identifies the package and everything one-to-one with it.
-//
-// The `latest_version_id` join is not an optimisation. It is the same rule the
-// catalog uses (see catalogFrom), and applying it here is what makes the detail
-// page show exactly what the catalog links to: a package whose only version is
-// still being fetched has no pointer, is not in the catalog, and is not openable
-// either. A detail page reachable for a package the catalog cannot list would be
-// a second, quieter definition of "published".
-//
-// `visibility = 'organisation'` is the same unconditional filter as
-// CatalogFilter.baseFilters, and the same recorded limitation: the column has
-// three values and the table names no owning team or identity, so `team` and
-// `private` cannot be evaluated against a caller. They are hidden from everyone.
-// Repeating the predicate here rather than reusing the catalog's is deliberate —
-// this statement's FROM clause is different — but the two must not drift, and if
-// `package` ever grows an owner both change together.
+// detailSQL identifies the package and everything one-to-one with it. The
+// `latest_version_id` join is the same rule catalogFrom uses, so the
+// detail page shows exactly what the catalog links to. `visibility =
+// 'organisation'` is the same unconditional filter as
+// CatalogFilter.baseFilters — repeated rather than shared because this
+// statement's FROM clause differs, but the two must not drift.
 const detailSQL = `
 select
   pkg.id,
@@ -71,11 +56,9 @@ where pkg.visibility = 'organisation'
   and pkg.namespace = ?
   and pkg.name = ?`
 
-// Package answers one detail page. `namespace` is the FIRST segment of the
-// rendered id and not the publisher slug — a slug is `example/platform`, two
-// segments, and the id `example/pii-redactor` is built from the namespace. The
-// same confusion is documented at length in bundles.go, where it was a real
-// defect.
+// Package answers one detail page. `namespace` is the first segment of the
+// rendered id, not the publisher slug (see bundles.go, where confusing the
+// two was a real defect).
 func Package(ctx context.Context, db bun.IDB, principal auth.Principal,
 	namespace, name string,
 ) (contract.PackageDetail, error) {
@@ -144,16 +127,10 @@ func Package(ctx context.Context, db bun.IDB, principal auth.Principal,
 	return detail, nil
 }
 
-// packageVersions is the versions panel (FR-019).
-//
-// `pinned by N` is DERIVED here and never stored (data-model.md), and it is
-// scoped by the FR-044 readability predicate. The scoping is not optional: the
-// dependent-profiles panel already lists only readable profiles, so an unscoped
-// pin count beside it would say "pinned by 3" next to a list of one and leak the
-// existence of two private profiles by arithmetic.
-//
-// Ordering is by `semver_sort`, the zero-padded key the column exists for, so
-// 0.10.0 sorts above 0.9.0 — which a lexical sort of `semver` does not.
+// packageVersions is the versions panel. `pinned by N` is derived and
+// scoped by the readability predicate — not optional: an unscoped count
+// beside the readable dependent-profiles list would leak private profiles
+// by arithmetic. Ordering is by `semver_sort` so 0.10.0 sorts above 0.9.0.
 func packageVersions(ctx context.Context, db bun.IDB, principal auth.Principal,
 	packageID string,
 ) ([]contract.PackageVersion, error) {
@@ -206,19 +183,11 @@ order by ver.semver_sort desc, ver.created_at desc`
 	return versions, nil
 }
 
-// packageComponents is the plugin variant's component list (FR-017).
-//
-// The ordering is the ENUM's declaration order — skill, mcp, ext — which is the
-// order the design lists them in and the order Postgres compares enum values in.
-// Sorting the text would put ext first.
-//
-// `order by cmp.kind` is qualified for exactly that reason, and the qualification
-// is load-bearing rather than tidiness. The select list casts the column, so the
-// OUTPUT column is also called `kind` and is text; a bare `order by kind` binds
-// to the output name in preference to the input one and sorts alphabetically.
-// This query did that, and produced ext, mcp, skill while its comment claimed the
-// enum order — a defect that works, found only because the test hand-derived the
-// expected order from 01-enums.sql instead of from a run.
+// packageComponents is ordered by the enum's declaration order — skill,
+// mcp, ext — not the text, which would put ext first. `order by cmp.kind`
+// is qualified for that reason: a bare `order by kind` binds to the cast
+// output column and sorts alphabetically instead, a defect this query
+// actually had.
 func packageComponents(ctx context.Context, db bun.IDB, versionID string) ([]contract.PackageComponent, error) {
 	const query = `
 select cmp.kind::text, cmp.name, cmp.path, coalesce(cmp.note, '')
@@ -246,22 +215,15 @@ order by cmp.kind, cmp.name`
 	return components, nil
 }
 
-// packageCapabilities reads both sources of the FR-027 comparison in one
-// statement, because they are one table keyed by source.
-//
-// It returns two empty slices for a version that has never been scanned, and the
-// caller must NOT read that as "reaches nothing": the scanner writes both sources
-// in the transaction that records the scan, so an unscanned version has rows of
-// neither. The `scanned` flag on the detail is what tells the two apart, and it
-// comes from the scan table rather than from these lengths.
+// packageCapabilities reads both sources of the inferred/expected
+// comparison in one statement, since they are one table keyed by source.
+// Two empty slices means never scanned, not "reaches nothing" — the
+// `scanned` flag on the detail tells the two cases apart.
 func packageCapabilities(ctx context.Context, db bun.IDB, versionID string) (
 	inferred, expected []contract.PackageCapability, err error,
 ) {
-	// Ordered by name only. The rows are split into two slices by source below, so
-	// ordering by source would decide nothing about the output — and `order by
-	// source` next to a `source::text` in the select list is the same output-name
-	// binding that made packageComponents sort its enum alphabetically. An ordering
-	// that cannot be observed is not worth a second chance to get wrong.
+	// Ordered by name only: rows split into two slices by source below, so
+	// ordering by source would risk the same output-name defect above.
 	const query = `
 select cap.source::text, cap.name, cap.level::text, coalesce(cap.detail::text, '')
 from capability as cap
@@ -298,10 +260,9 @@ order by cap.name`
 	return inferred, expected, nil
 }
 
-// capabilityDetail is the shape the scanner writes into `capability.detail`
-// (T071). It is decoded permissively: the column is jsonb with no check
-// constraint, and a detail this cannot read must degrade to "no targets listed"
-// rather than fail the whole page.
+// capabilityDetail is decoded permissively: the column is jsonb with no
+// check constraint, and an unreadable detail degrades to "no targets
+// listed" rather than failing the whole page.
 type capabilityDetail struct {
 	Targets    []string `json:"targets"`
 	Indefinite bool     `json:"indefinite"`
@@ -318,18 +279,10 @@ func decodeCapabilityDetail(raw string) ([]string, bool) {
 	return detail.Targets, detail.Indefinite
 }
 
-// packageDependents is the dependent-profiles panel (US3 scenario 5), scoped by
-// the FR-044 readability predicate.
-//
-// The scoping is the same one /v1/profiles uses, and for the same reason: an
-// unreadable profile is not merely hidden, it is never selected. Without it this
-// panel would name every private profile in the organisation, and the exact
-// version each of them pins, from a page any authenticated person may open.
-//
-// The knock-on is deliberate and worth stating: two people can see different
-// dependent lists for the same package. The alternative — a scoped list beside
-// an unscoped count — is the worse one, because the difference between the two
-// numbers is itself the leak.
+// packageDependents is scoped by the same readability predicate
+// /v1/profiles uses: an unreadable profile is never selected. Without it
+// this panel would name every private profile pinning the package, from a
+// page any authenticated person may open.
 func packageDependents(ctx context.Context, db bun.IDB, principal auth.Principal,
 	packageID string,
 ) ([]contract.PackageDependent, error) {
@@ -368,9 +321,9 @@ order by prf.name, prf.slug`
 
 // ---- manifest readings --------------------------------------------------------
 //
-// The three below read the stored manifest rather than a column, because there
-// is no column: `package` carries no description and no spec version, and adding
-// one would be a second copy of something the manifest already says.
+// The three below read the stored manifest rather than a column: `package`
+// carries no description or spec version, and adding one would duplicate
+// what the manifest already says.
 
 func manifestObject(kind string) string {
 	if kind == "skill" {
@@ -389,14 +342,10 @@ func manifestDescription(manifest string) string {
 	return doc.Description
 }
 
-// specVersion reads the version out of the manifest's `$schema`, which is the
-// only place either specification's version appears: Agent Plugins 1.0.0 has no
-// `agentPluginsVersion` field — the design's manifest is non-conformant (R1) —
-// and the $id it dispatches on carries the version as a path segment.
-//
-// A standalone skill has no `$schema` at all, so this returns "" and the origin
-// line says "Agent Skills spec" with no version. That is not a gap to fill:
-// agentskills.io publishes no schema and versions nothing.
+// specVersion reads the version out of the manifest's `$schema`: Agent
+// Plugins has no `agentPluginsVersion` field, so the $id carries the
+// version as a path segment instead. A standalone skill has no `$schema`,
+// so this returns "" — not a gap to fill, since agentskills.io versions nothing.
 func specVersion(manifest string) string {
 	var doc struct {
 		Schema string `json:"$schema"`
@@ -405,10 +354,7 @@ func specVersion(manifest string) string {
 		return ""
 	}
 
-	// https://agent-plugins.org/schemas/1.0.0/plugin.schema.json — the segment
-	// before the file name. Read positionally rather than by regex because the
-	// value is one of a closed set internal/domain/pkgspec already dispatches on,
-	// and a pattern here would accept versions that set does not contain.
+	// e.g. .../schemas/1.0.0/plugin.schema.json — segment before the file name.
 	segments := strings.Split(strings.TrimSuffix(doc.Schema, "/"), "/")
 	if len(segments) < 2 {
 		return ""

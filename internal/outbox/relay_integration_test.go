@@ -21,13 +21,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/uptrace/bun"
 
 	"agent-manager/internal/outbox"
 	"agent-manager/internal/store"
-	"agent-manager/internal/store/migrations"
 	"agent-manager/internal/store/models"
+	"agent-manager/internal/store/storetest"
 )
 
 // One container, three databases. agent_manager holds the application schema,
@@ -60,52 +59,32 @@ func TestMain(m *testing.M) {
 func runSuite(m *testing.M) (int, error) {
 	ctx := context.Background()
 
-	container, err := tcpostgres.Run(ctx, "postgres:16-alpine",
-		tcpostgres.WithDatabase("agent_manager"),
-		tcpostgres.WithUsername("postgres"),
-		tcpostgres.WithPassword("postgres"),
-		tcpostgres.BasicWaitStrategies(),
-	)
+	pg, cleanup, err := storetest.Run(ctx)
 	if err != nil {
 		if !dockerReachable() {
 			noInfra = "docker is not available on this machine: " + err.Error()
 			return m.Run(), nil
 		}
-		return 0, fmt.Errorf("start postgres: %w", err)
+		return 0, err
 	}
-	defer func() {
-		if termErr := container.Terminate(ctx); termErr != nil {
-			fmt.Fprintln(os.Stderr, "terminate postgres:", termErr)
-		}
-	}()
+	defer cleanup()
 
-	endpoint, err := container.PortEndpoint(ctx, "5432/tcp", "")
-	if err != nil {
-		return 0, fmt.Errorf("container endpoint: %w", err)
-	}
-	dsn := func(db string) string {
-		return fmt.Sprintf("postgres://postgres:postgres@%s/%s?sslmode=disable", endpoint, db)
-	}
-	appURL, queueURL, atlasDevDB = dsn("agent_manager"), dsn("river"), dsn("atlas_dev")
+	appURL, queueURL, atlasDevDB = pg.DSN("agent_manager"), pg.DSN("river"), pg.DSN("atlas_dev")
 
-	appPool, err = pgxpool.New(ctx, appURL)
+	appPool, err = pg.Pool(ctx, "agent_manager")
 	if err != nil {
 		return 0, fmt.Errorf("open application pool: %w", err)
 	}
 	defer appPool.Close()
 
 	for _, name := range []string{"river", "atlas_dev"} {
-		if _, createErr := appPool.Exec(ctx, "create database "+name); createErr != nil {
+		if createErr := storetest.CreateDatabase(ctx, appPool, name); createErr != nil {
 			return 0, fmt.Errorf("create database %s: %w", name, createErr)
 		}
 	}
 
-	err = migrations.Apply(ctx, func(ctx context.Context, sql string) error {
-		_, execErr := appPool.Exec(ctx, sql)
-		return execErr
-	})
-	if err != nil {
-		return 0, err
+	if migrateErr := storetest.ApplyMigrations(ctx, appPool); migrateErr != nil {
+		return 0, migrateErr
 	}
 
 	// River's own migrator against its own database — the code path

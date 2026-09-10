@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -28,8 +29,7 @@ func TestParseFormat(t *testing.T) {
 			got, err := ParseFormat(tc.in)
 			if !tc.valid {
 				require.Error(t, err)
-				// Assert the specific failure: the message must name what was
-				// accepted, or it does not help the person who typed it.
+
 				require.ErrorContains(t, err, "human")
 				require.ErrorContains(t, err, "json")
 				return
@@ -40,8 +40,7 @@ func TestParseFormat(t *testing.T) {
 	}
 }
 
-// results is every Result type in this package. A verb whose result type is
-// missing here loses its round-trip coverage silently, so the count is asserted.
+// results is every Result type; the count is asserted so a new verb cannot silently lose coverage.
 func results() []Result {
 	return []Result{
 		LoginResult{Hub: "https://hub.example", Identity: "alice@example.com", Store: "keychain"},
@@ -84,9 +83,7 @@ func TestEveryResultRendersInBothFormats(t *testing.T) {
 }
 
 func TestLoginResultHasNowhereToPutAToken(t *testing.T) {
-	// FR-007: no token reaches any output stream. The structural version of
-	// that assertion — the rendered document must not gain a token-shaped
-	// field — is cheaper to hold than a grep over every message.
+	// No token may reach any output stream; the result type has nowhere to put one.
 	var buf bytes.Buffer
 	secret := "am_tok_this-must-never-appear"
 	require.NoError(t, RendererFor(FormatJSON).Render(&buf, LoginResult{
@@ -126,6 +123,48 @@ func TestSyncResultChangedSelectsTheExitCode(t *testing.T) {
 			require.Equal(t, tc.want, tc.in.Changed())
 		})
 	}
+}
+
+func TestSyncResultHumanCollapsesTargetUnwritableSkipsButNotOthers(t *testing.T) {
+	res := SyncResult{
+		Hub:      "https://hub.example.com",
+		Profiles: []string{"base"},
+		Skipped: []Skip{
+			{Package: "acme/pkg-0", Target: "codex", Reason: "target-unwritable", Detail: "gate R2"},
+			{Package: "acme/pkg-1", Target: "codex", Reason: "target-unwritable", Detail: "gate R2"},
+			{Package: "acme/pkg-2", Target: "codex", Reason: "target-unwritable", Detail: "gate R2"},
+			{Package: "acme/plugin", Target: "claude-code", Reason: "entry-kind-not-installable"},
+			{Package: "acme/legacy", Version: "1.9.0", Reason: "flagged-awaiting-approval"},
+		},
+	}
+
+	var buf strings.Builder
+	require.NoError(t, res.Human(&buf))
+	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+
+	var skipLines []string
+	for _, l := range lines {
+		if strings.Contains(l, "skip") {
+			skipLines = append(skipLines, l)
+		}
+	}
+	// One collapsed line for the three codex skips, plus one each for the two
+	// entry-level reasons: three lines, not five.
+	require.Len(t, skipLines, 3)
+
+	var collapsed string
+	for _, l := range skipLines {
+		if strings.Contains(l, "codex") {
+			collapsed = l
+		}
+	}
+	require.NotEmpty(t, collapsed, "the codex skips must still be reported, just once")
+	require.Contains(t, collapsed, "3 entries")
+	require.Contains(t, collapsed, "target-unwritable")
+	require.Contains(t, collapsed, "gate R2")
+
+	require.Contains(t, buf.String(), "acme/plugin")
+	require.Contains(t, buf.String(), "acme/legacy")
 }
 
 func TestStreamsKeepResultsAndDiagnosticsApart(t *testing.T) {
@@ -184,8 +223,7 @@ type failingWriter struct{}
 func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("stream closed") }
 
 func TestRenderersPropagateAWriteFailure(t *testing.T) {
-	// A renderer that swallows a write error reports success for output that
-	// never arrived, which is the failure mode a script cannot detect.
+	// A swallowed write error reports success for output that never arrived.
 	for _, f := range Formats() {
 		err := RendererFor(f).Render(failingWriter{}, StatusResult{Hub: "https://hub.example"})
 		require.ErrorContains(t, err, "stream closed")

@@ -10,20 +10,9 @@ import (
 	"agent-manager/internal/fetch"
 )
 
-// The fetch-error taxonomy (T045).
-//
-// THE SEPARATION IS THE REQUIREMENT. US1 scenario 5 and the spec's ingestion edge
-// cases say a fetch failure is reported as a fetch failure and never as a scan
-// finding, and the reason is not tidiness: a finding is a statement about what a
-// package DOES, produced by reading its bytes. Every failure below happened before
-// any bytes were read, or because they could not be read at all, so a finding
-// derived from one would be a claim about a package the hub never saw.
-//
-// Structurally, that separation holds because a failed fetch never reaches the
-// publish transaction: no digest is written, `visible` stays false, no `scan` job
-// is enqueued, and the version's verdict stays `scanning` — which is also what the
-// `check (digest is not null or verdict = 'scanning')` constraint permits. The
-// record of the failure is an audit row of kind `fetch`, not a `finding` row.
+// The fetch-error taxonomy. A fetch failure is reported as a fetch failure
+// and never as a scan finding: every reason below happened before any bytes
+// were read, or because they could not be read at all.
 
 // ErrFetch is the sentinel behind every failure of this pipeline.
 var ErrFetch = errors.New("fetch failed")
@@ -34,7 +23,7 @@ type Reason string
 
 const (
 	// ReasonRefused is an SSRF refusal: the URL, a redirect hop or a resolved
-	// address was not public (FR-002, US1 scenario 5).
+	// address was not public.
 	ReasonRefused Reason = "refused-by-outbound-policy"
 
 	// ReasonRefNotFound covers a ref the remote does not have and a subdirectory
@@ -54,7 +43,7 @@ const (
 	// truncated upload.
 	ReasonArchiveMalformed Reason = "archive-malformed"
 
-	// ReasonArchiveTooLarge is an R3 cap: size, entry count, ratio, depth.
+	// ReasonArchiveTooLarge is a bundle cap: size, entry count, ratio, depth.
 	ReasonArchiveTooLarge Reason = "archive-exceeds-limits"
 
 	// ReasonArchiveMemberRejected is a member kind refused outright: an absolute
@@ -65,8 +54,8 @@ const (
 	ReasonArchiveTimeout Reason = "archive-extraction-timed-out"
 
 	// ReasonManifestInvalid is a manifest that fails its published schema, a
-	// manifest naming a component that is not on disk, or a tree with no manifest
-	// at its root. All three are ingestion failures by name (spec Edge Cases).
+	// manifest naming a component that is not on disk, or a tree with no
+	// manifest at its root.
 	ReasonManifestInvalid Reason = "manifest-invalid"
 
 	// ReasonVersionMismatch is a manifest whose own `version` contradicts the
@@ -92,12 +81,9 @@ func (e *Error) Error() string {
 
 func (e *Error) Unwrap() []error { return []error{ErrFetch, e.cause} }
 
-// Retryable reports whether re-running the job could produce a different answer.
-//
-// It exists so River's retry policy is driven by the classification rather than by
-// a guess at the call site: a non-conformant manifest will still be non-conformant
-// on the fourth attempt, and retrying it burns the backoff budget that a flaky
-// remote actually needs.
+// Retryable reports whether re-running the job could produce a different
+// answer: a non-conformant manifest will still be non-conformant on the
+// fourth attempt.
 func (e *Error) Retryable() bool {
 	switch e.Reason {
 	case ReasonRemote, ReasonStore, ReasonArchiveTimeout:
@@ -108,17 +94,13 @@ func (e *Error) Retryable() bool {
 }
 
 // classify maps every error the pipeline can produce onto exactly one reason.
-//
-// The order matters: the specific classifications come first, and the fall-through
-// is the hub's own fault rather than the source's, so an unrecognised error is
-// never silently attributed to the package.
 func classify(subject string, err error) error {
 	if err == nil {
 		return nil
 	}
 
-	// A cancelled or timed-out CALLER is a shutdown or a deadline, not a defect in
-	// what was being fetched. It is returned as itself so River retries it.
+	// A cancelled or timed-out caller is a shutdown or a deadline, not a
+	// defect in what was being fetched.
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return err
 	}

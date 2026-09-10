@@ -13,63 +13,32 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The Scanner screen's reads (001 US4, 003 T062-T064).
-//
-// None of these compose the FR-044 predicate, and that is deliberate rather than
-// forgotten. Readable() is a predicate over `profile`; a finding hangs off a
-// version, and `package.visibility = 'organisation'` is unconditional across the
-// whole product today — the catalog's own comment records that `team` and
-// `private` are invisible to everyone, publisher included, because the table
-// names no owning identity to compare a caller to. There is therefore nothing
-// here to scope a finding by, and inventing one would be a guess wearing an
-// access check. What IS scoped is the decision: accepting or rejecting a finding
-// is a scanner-reviewer act, enforced in the operation (FR-126).
-//
-// The one scoping choice worth stating: these reads do NOT filter on
-// package.visibility. The catalog does, so a flagged package that browse cannot
-// show would be quarantined and unreachable — a reviewer who cannot see the
-// finding cannot clear it. The governance surface reports what needs a decision;
-// the catalog reports what may be adopted.
+// The Scanner screen's reads deliberately don't compose Readable(): a
+// finding hangs off a version, not a profile, and there is nothing here to
+// scope it by. What is scoped is the decision — accepting or rejecting a
+// finding is a scanner-reviewer act, enforced in the operation. These reads
+// also don't filter on package.visibility: a flagged package the catalog
+// hides would otherwise be unreachable and unclearable.
 
-// ScannerPeriod bounds the summary's window. The design's card says "last 30
-// days"; the parameter exists so the caption is read from the answer (FR-121)
-// rather than compiled into the screen, and it is capped because the window is a
-// caller's choice and an unbounded one turns a bounded aggregate into a full
-// scan of a table that grows with every publish.
+// ScannerPeriod bounds the summary's window and is capped, since an
+// unbounded window turns a bounded aggregate into a full table scan.
 const (
 	DefaultScannerPeriodDays = 30
 	MaxScannerPeriodDays     = 365
 )
 
-// scannerSummarySQL is one statement of four scalar subqueries.
+// scannerSummarySQL is one statement of four scalar subqueries rather than
+// four round trips or a join, since the four figures share no relation.
 //
-// One statement rather than four round trips, and scalar subqueries rather than a
-// join, because the four figures share no relation: two read `scan`, one reads
-// the latest-version pointer and one reads `override`. Joining them would
-// multiply rows and then need distinct counts to undo it. It is also what lets
-// this run on a bun.Tx as well as a pool, unlike Catalog's concurrent pair.
+// `quarantined` is the latest visible flagged version count, not the
+// flagged version count: a version superseded by a newer release resolves
+// to nothing, so counting it would report a risk no profile is exposed to.
+// `rejected` is deliberately not counted: it is terminal, never served, so
+// not awaiting a decision.
 //
-// `quarantined` is the LATEST VISIBLE flagged version count and not the flagged
-// version count, and the difference is not cosmetic: the representative dataset
-// carries three flagged versions while the design's card reads 2, because one of
-// them has been superseded by a newer release. Nothing resolves to a superseded
-// version, so it quarantines nothing — counting it would report a risk no
-// profile is exposed to. `ver.id = pkg.latest_version_id and ver.visible` is the
-// same relation the catalog reads, which is what keeps the two screens agreeing
-// about what "latest" means.
-//
-// `rejected` is deliberately NOT counted here. A rejected version is terminal:
-// it has had its decision and is never served (FR-029), so it is not awaiting
-// one, and the card's note is "blocked from publish ... until a reviewer
-// approves or the publisher ships a fix".
-//
-// The median is the scan's OWN start to its own verdict. The design labels it
-// "fetch to verdict" and the schema offers no fetch instant to measure from:
-// `version.created_at` is when the registration was accepted, so measuring from
-// it would fold queue latency and fetch backoff into a figure captioned as scan
-// time — and would move when the queue is busy while the scanner's behaviour is
-// unchanged. `percentile_cont` interpolates, which is what makes the answer a
-// median of two rows rather than one of them.
+// The median is the scan's own start to its own verdict, not
+// `version.created_at` (registration time), which would fold queue latency
+// into a figure captioned as scan time.
 const scannerSummarySQL = `
 select
   (select count(distinct scn.version_id)
@@ -96,7 +65,7 @@ select
     where scn.finished_at is not null
       and scn.finished_at >= now() - make_interval(days => ?))`
 
-// ScannerSummary answers the Scanner screen's headline card (001 US4 scenario 1).
+// ScannerSummary answers the Scanner screen's headline card.
 func ScannerSummary(ctx context.Context, db bun.IDB, periodDays int) (contract.ScannerSummary, error) {
 	if periodDays < 1 {
 		periodDays = DefaultScannerPeriodDays
@@ -106,9 +75,7 @@ func ScannerSummary(ctx context.Context, db bun.IDB, periodDays int) (contract.S
 	}
 
 	out := contract.ScannerSummary{PeriodDays: periodDays}
-	// Both nullable: no active override has no nearest expiry, and no finished
-	// scan has no median. Neither is zero, and a screen has to be able to tell the
-	// difference — "18s" and "no scans yet" are not the same card.
+	// Both nullable: neither is zero, and "18s" and "no scans yet" differ.
 	var (
 		expiry sql.NullTime
 		median sql.NullFloat64
@@ -128,21 +95,17 @@ func ScannerSummary(ctx context.Context, db bun.IDB, periodDays int) (contract.S
 	return out, nil
 }
 
-// FindingFilter is one findings-list request.
+// FindingFilter is one findings-list request. State and Severity are empty
+// for "every one of them"; the screen's default view of open findings says
+// so by passing the filter rather than the API defaulting to one.
 type FindingFilter struct {
-	// State and Severity are empty for "every one of them". The screen's default
-	// view is the open findings, and it says so by passing the filter: an API that
-	// defaulted to open would be applying a filter its caller cannot see and
-	// cannot turn off.
 	State    models.FindingState
 	Severity models.FindingSeverity
 	Page     int
 	PageSize int
 }
 
-// The findings page and its cap, for the same reason the catalog has both: the
-// page size arrives from a client and an unbounded one turns a paged read into a
-// full dump.
+// The findings page and its cap, for the same reason as the catalog.
 const (
 	DefaultFindingsPageSize = 20
 	MaxFindingsPageSize     = 100
@@ -171,26 +134,18 @@ func (f FindingFilter) normalise() FindingFilter {
 	return f
 }
 
-// findingFrom is the relation every findings statement reads. The subject is
-// spelled out through `package` because a finding's rendered subject is
-// `namespace/name@semver`, the same id the catalog renders.
+// findingFrom is the relation every findings statement reads; the subject
+// is joined through `package` so it renders `namespace/name@semver`.
 const findingFrom = `
 from finding as fnd
 join version as ver on ver.id = fnd.version_id
 join package as pkg on pkg.id = ver.package_id`
 
-// findingOrder is severity first, then newest.
-//
-// `fnd.severity desc` sorts by the Postgres enum's declaration order — low,
-// medium, high — so descending is high first. It is alias-qualified and NOT cast
-// to text, and both halves matter: casting the column to text in the select list
-// makes the output column shadow the input, and an unqualified `order by
-// severity` would then sort alphabetically (high, low, medium), which is a
-// shipped defect this codebase has already had once in package.go.
-//
-// fnd.id last so a page boundary cannot repeat or drop a row when several
-// findings share a severity and an instant — uuid v7 makes the tiebreak creation
-// order.
+// findingOrder is severity first, then newest. `fnd.severity desc` sorts by
+// the enum's declaration order (high first) and is alias-qualified, not
+// cast to text: a bare `order by severity` binds to the cast output column
+// and sorts alphabetically instead — a shipped defect this codebase has
+// already had once in package.go. fnd.id breaks ties.
 const findingOrder = `order by fnd.severity desc, fnd.created_at desc, fnd.id`
 
 func (f FindingFilter) predicates() *predicates {
@@ -204,7 +159,6 @@ func (f FindingFilter) predicates() *predicates {
 	return p
 }
 
-// Findings answers one page of the findings list (T063).
 func Findings(ctx context.Context, db bun.IDB, filter FindingFilter) (contract.FindingsPage, error) {
 	filter = filter.normalise()
 	where := filter.predicates()
@@ -214,10 +168,7 @@ func Findings(ctx context.Context, db bun.IDB, filter FindingFilter) (contract.F
 		return contract.FindingsPage{}, err
 	}
 
-	// A page number that outran the result set is re-read at the last page rather
-	// than answered with an empty table, so a stale `page` in a URL after a
-	// narrowing filter still shows results. Same rule as the catalog's, and the
-	// total is already in hand, so it costs nothing to apply.
+	// Same rule as the catalog's page clamp.
 	if pages := (total + filter.PageSize - 1) / filter.PageSize; total > 0 && filter.Page > pages {
 		filter.Page = pages
 	}
@@ -274,9 +225,7 @@ limit ? offset ?`
 }
 
 func findingCount(ctx context.Context, db bun.IDB, where *predicates) (int, error) {
-	// No join: every column the filters read is on `finding` itself, and the
-	// subject's relations only decorate a row. Counting through them would be
-	// three joins to reach the same number.
+	// No join: every column the filters read is on `finding` itself.
 	var total int
 	query := "select count(*) from finding as fnd\n" + where.where()
 	if err := db.QueryRowContext(ctx, query, where.args...).Scan(&total); err != nil {
@@ -285,12 +234,9 @@ func findingCount(ctx context.Context, db bun.IDB, where *predicates) (int, erro
 	return total, nil
 }
 
-// findingDetailSQL is the header of the detail pane: the finding, its subject,
-// the scan that raised it and the override that resolved it, in one round trip.
-//
-// The reviewer's name comes from `identity`, not from the audit row that recorded
-// the decision: the override row is the decision, and reading the name off a
-// second table would let the two disagree about who decided.
+// findingDetailSQL is the header of the detail pane, in one round trip. The
+// reviewer's name comes from `identity`, not the audit row that recorded
+// the decision, so the two cannot disagree about who decided.
 const findingDetailSQL = `
 select
   fnd.id,
@@ -318,12 +264,10 @@ left join override as ovr on ovr.finding_id = fnd.id
 left join identity as idt on idt.id = ovr.reviewer_identity_id
 where fnd.id = ?`
 
-// Finding answers the detail pane (T064, 001 US4 scenario 2).
-//
-// Three statements: the header above, every check the scan ran, and every
-// evidence location. They are sequential rather than concurrent — each is an
-// index lookup on a primary or foreign key returning a handful of rows, and the
-// concurrency Catalog and Package need is for statements that scan.
+// Finding answers the detail pane with three sequential statements: the
+// header above, every check the scan ran, and every evidence location.
+// Each is a cheap index lookup, unlike the scans Catalog and Package need
+// concurrency for.
 func Finding(ctx context.Context, db bun.IDB, id uuid.UUID) (contract.FindingDetail, error) {
 	var (
 		out       contract.FindingDetail
@@ -372,31 +316,16 @@ func Finding(ctx context.Context, db bun.IDB, id uuid.UUID) (contract.FindingDet
 	return out, nil
 }
 
-// findingChecks reads EVERY check the raising scan ran, passes included (FR-025).
+// findingChecks reads every check the raising scan ran, passes included, so
+// the absence of a finding is distinguishable from the absence of a check.
+// The scan is the relation, not the finding, since a passing check has no
+// finding to hang off.
 //
-// This is the requirement it is easiest to satisfy wrongly: a pane fed only the
-// failing check cannot be told apart from one where nothing else ran, and 001
-// US4 scenario 2 asks for "every check that ran with a pass / fail / warn-count
-// result" precisely so the absence of a finding is distinguishable from the
-// absence of a check. The scan is the relation — not the finding — because a
-// check that passed raised nothing and so has no finding to hang off.
-//
-// The order is check_id ascending, and the `created_at` in front of it never
-// breaks a tie. Say so plainly, because the obvious reading of this clause is
-// wrong: the scanner writes the whole matrix in one bulk insert inside one
-// transaction, and the column defaults to `now()`, which in Postgres is the
-// TRANSACTION timestamp rather than the statement's or the row's. Every row of a
-// scan therefore carries the same instant, and the sort falls entirely through to
-// check_id. uuid v7 cannot rescue it either — the primary key is
-// (scan_id, check_id) and there is no id to sort on.
-//
-// The consequence is that the matrix renders alphabetically and NOT in the order
-// checks.Default() registers them, which is the order the design's matrix lists.
-// That is a divergence between the two halves of this feature, not a bug in
-// either: the read cannot recover an order the write does not record, and
-// recording it needs an ordinal column, i.e. a migration this feature does not
-// take (data-model.md). What the clause does buy is what the pane actually
-// requires — a total, deterministic order, so two reads of one scan agree.
+// Order is check_id ascending; the `created_at` in front of it never
+// breaks a tie in practice, since the scanner writes the whole matrix in
+// one transaction and the column defaults to the transaction timestamp —
+// every row shares an instant, so the sort falls through to check_id and
+// the matrix renders alphabetically, not in registration order.
 func findingChecks(ctx context.Context, db bun.IDB, id uuid.UUID) ([]contract.FindingCheck, error) {
 	const query = `
 select schk.check_id, schk.label, schk.result::text, schk.warn_count
@@ -425,11 +354,8 @@ order by schk.created_at, schk.check_id`
 	return checks, nil
 }
 
-// findingEvidence reads every location, cause first.
-//
-// `order by role, path, line` is the order data-model.md fixes, and it is why
-// there is no position column: `primary` sorts before `supporting` in the enum's
-// declaration order, so the cause leads without a column to maintain.
+// findingEvidence reads every location, cause first: `primary` sorts
+// before `supporting` in the enum's declaration order.
 func findingEvidence(ctx context.Context, db bun.IDB, id uuid.UUID) ([]contract.FindingEvidence, error) {
 	const query = `
 select fev.path, fev.line, coalesce(fev.quote, ''), fev.role::text

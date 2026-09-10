@@ -1,13 +1,12 @@
 // Package store owns the relational handles. It hands out a bun.IDB for the
 // application schema and a raw pgx pool for the queue, and nothing else.
 //
-// Two databases, two pools, two URLs (constitution principle IX, research R11).
-// `agent_manager` holds the application schema; `river` holds the queue and
-// nothing else. No foreign key crosses between them and no migration tool sees
-// both, so the isolation is structural rather than configured. Open refuses to
-// start when the two URLs address the same database, because that single
-// misconfiguration is what would put Atlas — a diff tool with DROP TABLE in its
-// vocabulary — in front of River's tables.
+// Two databases, two pools, two URLs: `agent_manager` holds the application
+// schema, `river` holds the queue and nothing else. No foreign key crosses
+// between them and no migration tool sees both, so Open refuses to start when
+// the two URLs address the same database — that misconfiguration is what
+// would put Atlas, a diff tool with DROP TABLE in its vocabulary, in front of
+// River's tables.
 package store
 
 import (
@@ -33,11 +32,9 @@ type Handle struct {
 	queue *pgxpool.Pool
 }
 
-// Open connects both databases and verifies both are reachable.
-//
-// appURL addresses `agent_manager`, queueURL addresses `river`. They are separate
-// parameters on purpose: one URL for both is the defect this signature exists to
-// make impossible to express.
+// Open connects both databases and verifies both are reachable. appURL
+// addresses `agent_manager`, queueURL addresses `river` — separate parameters
+// on purpose, so one URL for both is a defect this signature cannot express.
 func Open(ctx context.Context, appURL, queueURL string) (*Handle, error) {
 	if appURL == "" {
 		return nil, errors.New("application database url is empty")
@@ -72,8 +69,8 @@ func Open(ctx context.Context, appURL, queueURL string) (*Handle, error) {
 	h := &Handle{app: app, queue: queue}
 	h.sqldb = stdlib.OpenDBFromPool(app)
 	h.bun = bun.NewDB(h.sqldb, pgdialect.New())
-	// Every table, so relations resolve on first use rather than on first query
-	// that happens to need one.
+	// Every table, so relations resolve on first use rather than on first
+	// query that happens to need one.
 	h.bun.RegisterModel(models.All()...)
 	h.bun.AddQueryHook(bundebug.NewQueryHook(
 		bundebug.WithEnabled(false),
@@ -87,13 +84,13 @@ func Open(ctx context.Context, appURL, queueURL string) (*Handle, error) {
 	return h, nil
 }
 
-// DB is the application-schema handle the worker Deps contract carries. bun.IDB
-// already covers RunInTx and BeginTx, so nothing needs the concrete *bun.DB and
-// nothing gets it.
+// DB is the application-schema handle the worker Deps contract carries.
+// bun.IDB already covers RunInTx and BeginTx, so nothing needs the concrete
+// *bun.DB.
 func (h *Handle) DB() bun.IDB { return h.bun }
 
-// Queue is the pool River owns. It deliberately exposes no bun.IDB: nothing in
-// the application schema references the queue.
+// Queue is the pool River owns. It deliberately exposes no bun.IDB: nothing
+// in the application schema references the queue.
 func (h *Handle) Queue() *pgxpool.Pool { return h.queue }
 
 func (h *Handle) Ping(ctx context.Context) error {
@@ -106,8 +103,8 @@ func (h *Handle) Ping(ctx context.Context) error {
 	return nil
 }
 
-// Close drains both pools. The sql.DB rides the application pool, so it closes
-// first and the pool second.
+// Close drains both pools. The sql.DB rides the application pool, so it
+// closes first and the pool second.
 func (h *Handle) Close() error {
 	var errs []error
 	if h.sqldb != nil {
@@ -124,9 +121,8 @@ func (h *Handle) Close() error {
 	return errors.Join(errs...)
 }
 
-// sameDatabase reports whether two pool configs address one database. Comparing
-// the URLs as strings would miss two spellings of the same target, which is the
-// mistake worth catching.
+// sameDatabase reports whether two pool configs address one database.
+// Comparing the URLs as strings would miss two spellings of the same target.
 func sameDatabase(a, b *pgxpool.Config) bool {
 	return a.ConnConfig.Host == b.ConnConfig.Host &&
 		a.ConnConfig.Port == b.ConnConfig.Port &&

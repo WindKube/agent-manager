@@ -114,11 +114,22 @@ func TestEnqueueWithoutACallerTransactionIsRefused(t *testing.T) {
 	require.ErrorContains(t, err, "no transaction")
 }
 
-func TestEveryKindRidesTheDefaultQueueUntilOneAsksForItsOwn(t *testing.T) {
-	for _, kind := range []outbox.Kind{outbox.KindFetch, outbox.KindScan, outbox.KindRescanSweep} {
-		t.Run(string(kind), func(t *testing.T) {
-			require.True(t, kind.Valid())
-			require.Equal(t, river.QueueDefault, outbox.Queue(kind))
+// Each kind rides its worker's own queue, never river.QueueDefault: the fetcher
+// and the scanner each register only their own queue's name, so a kind left on
+// the default queue would never find a worker that consumes it.
+func TestEveryKindRidesItsOwnWorkersQueue(t *testing.T) {
+	for _, tc := range []struct {
+		kind  outbox.Kind
+		queue string
+	}{
+		{outbox.KindFetch, outbox.QueueFetch},
+		{outbox.KindScan, outbox.QueueScan},
+		{outbox.KindRescanSweep, outbox.QueueScan},
+	} {
+		t.Run(string(tc.kind), func(t *testing.T) {
+			require.True(t, tc.kind.Valid())
+			require.Equal(t, tc.queue, outbox.Queue(tc.kind))
+			require.NotEqual(t, river.QueueDefault, outbox.Queue(tc.kind))
 		})
 	}
 }

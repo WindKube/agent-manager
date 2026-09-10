@@ -9,17 +9,14 @@ import (
 	"time"
 )
 
-// Index is skills/<publisher>/<name>/index.json.
-//
-// It is the commit-last pointer of FR-008. A version's objects exist the moment
-// their bytes land, but the version is not READABLE until this file names it, so
-// every read goes through the index instead of guessing a key. A partial write
-// therefore leaves orphaned bytes and no reachable version, which is the whole
-// mechanism: object storage gives no transaction, so the last write is the commit.
+// Index is skills/<publisher>/<name>/index.json, the commit-last pointer. A
+// version's objects exist the moment their bytes land, but the version is
+// not readable until this file names it, so every read goes through the
+// index instead of guessing a key: object storage gives no transaction, so
+// the last write is the commit.
 type Index struct {
-	// Namespace, not the publisher slug: this is the first key segment, so it is
-	// `example`, never `example/platform`. The stored JSON says so too, because
-	// index.json is read by people.
+	// Namespace, not the publisher slug: this is the first key segment, so
+	// it is `example`, never `example/platform`.
 	Namespace string       `json:"namespace"`
 	Name      string       `json:"name"`
 	Latest    string       `json:"latest,omitempty"`
@@ -59,11 +56,9 @@ func (i Index) Semvers() []string {
 	return out
 }
 
-// Catalog is the read half of the object store.
-//
-// It holds a Reader and nothing else: the entire read path is expressible without
-// a writer, which is what makes handing the scanner role a bare Reader possible
-// (constitution principle II, contracts/worker.md).
+// Catalog is the read half of the object store. It holds a Reader and
+// nothing else: the entire read path is expressible without a writer, which
+// is what makes handing the scanner role a bare Reader possible.
 type Catalog struct {
 	read Reader
 }
@@ -89,8 +84,8 @@ func (c *Catalog) Index(ctx context.Context, pkg PackageRef) (Index, error) {
 	return idx, nil
 }
 
-// Entry resolves one version through the index. A version the index does not name
-// is not readable, whatever bytes happen to sit under its prefix (FR-008).
+// Entry resolves one version through the index. A version the index does not
+// name is not readable, whatever bytes happen to sit under its prefix.
 func (c *Catalog) Entry(ctx context.Context, ref VersionRef) (IndexEntry, error) {
 	if err := ref.Validate(); err != nil {
 		return IndexEntry{}, err
@@ -167,8 +162,8 @@ func (c *Catalog) ReadScan(ctx context.Context, ref VersionRef) ([]byte, error) 
 	return c.read.ReadAll(ctx, entry.Scan)
 }
 
-// ReadSignature reads a committed version's signature blob (R9: registry-side
-// metadata, unverified until sigstore-go lands).
+// ReadSignature reads a committed version's signature blob: registry-side
+// metadata, unverified until sigstore-go lands.
 func (c *Catalog) ReadSignature(ctx context.Context, ref VersionRef) ([]byte, error) {
 	entry, err := c.Entry(ctx, ref)
 	if err != nil {

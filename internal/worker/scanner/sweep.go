@@ -13,32 +13,21 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// maxSweepVersions bounds one sweep.
-//
-// A package with three hundred published versions must not turn one publish into
-// a job that runs for an hour, and the bound costs nothing: the sweep takes the
-// newest versions first, every rescan it performs is a no-op on the next sweep,
-// and the next publish of that package sweeps again. Progress is monotonic either
-// way.
+// maxSweepVersions bounds one sweep, so a package with many published
+// versions cannot turn one publish into a job that runs for an hour.
 const maxSweepVersions = 50
 
-// Sweeper works one `rescan-sweep` job: FR-030 and 001 US4 scenario 5.
-//
-// Where the fan-out lives is a consequence of the grants, and worth stating
-// plainly because the obvious design does not work. `am_scanner` holds no grant on
-// `outbox` — deliberately, it is not a producer of work — so this handler cannot
-// enqueue per-version scan jobs. It performs them instead, in-process, through the
-// same handler a queued scan goes through. That keeps principle IX intact: the
-// only enqueue in this story is the `rescan-sweep` row the fetcher's publish
-// transaction writes, and no handler anywhere calls the queue.
+// Sweeper works one `rescan-sweep` job. `am_scanner` holds no grant on
+// `outbox`, so this handler cannot enqueue per-version scan jobs; it
+// performs them instead, in-process, through the same handler a queued scan
+// goes through.
 type Sweeper struct {
 	river.WorkerDefaults[SweepJob]
 
 	worker *Worker
 }
 
-// NewSweeper builds the rescan handler over an existing scan handler, so a sweep
-// and a queued scan cannot diverge in what they write.
+// NewSweeper builds the rescan handler over an existing scan handler.
 func NewSweeper(w *Worker) *Sweeper { return &Sweeper{worker: w} }
 
 // Timeout is River's per-job budget for a sweep.
@@ -52,9 +41,7 @@ func (s *Sweeper) Work(ctx context.Context, job *river.Job[SweepJob]) error {
 
 // SweepOutcome is what one sweep did.
 type SweepOutcome struct {
-	// Enabled is the org policy's answer. A disabled policy is not an error and not
-	// a failure: it is the operator's setting, and the sweep says so rather than
-	// looking like it found nothing to do.
+	// Enabled is the org policy's answer; a disabled policy is not a failure.
 	Enabled   bool
 	Examined  int
 	Rescanned int
@@ -62,18 +49,9 @@ type SweepOutcome struct {
 	Failed    int
 }
 
-// Sweep rescans the package's other versions under the running rule pack.
-//
-// WHICH versions is deliberately wider than FR-030's "already-approved" wording:
-// every visible version with committed bytes that has no scan at the running pack
-// version. Approved versions are the ones the requirement is about — a new finding
-// reopens them — but restricting the sweep to them would leave a flagged version
-// nobody has triaged yet judged by rules the pack has since replaced, for no
-// reason anyone could defend.
-//
-// The per-version guard is the same idempotency key as everywhere else, so a
-// package whose versions are all current at this pack version is a sweep that
-// reads one query and stops.
+// Sweep rescans the package's other versions under the running rule pack:
+// every visible version with committed bytes that has no scan at the
+// running pack version, not only already-approved ones.
 func (s *Sweeper) Sweep(ctx context.Context, job SweepJob) (SweepOutcome, error) {
 	log := s.worker.deps.Log.With().
 		Str("job", "rescan-sweep").
@@ -101,10 +79,8 @@ func (s *Sweeper) Sweep(ctx context.Context, job SweepJob) (SweepOutcome, error)
 
 	outcome := SweepOutcome{Enabled: true, Examined: len(candidates)}
 	for _, candidate := range candidates {
-		// A sweep is best effort per version and total by intent: one unreadable
-		// bundle must not stop the rest of the package from being rescanned, and the
-		// failure is logged rather than swallowed. lastAttempt is false, so a version
-		// whose scan runs out of budget records nothing and keeps the verdict it has.
+		// A sweep is best effort per version: one unreadable bundle must not
+		// stop the rest of the package from being rescanned.
 		result, scanErr := s.worker.scan(ctx, candidate, false)
 		switch {
 		case scanErr != nil:
@@ -130,21 +106,15 @@ func (s *Sweeper) Sweep(ctx context.Context, job SweepJob) (SweepOutcome, error)
 		Msg("rescan sweep complete")
 
 	if outcome.Failed > 0 {
-		// The job fails so River retries what did not work. The versions that did
-		// rescan are no-ops on the retry, so a retry costs one query per success.
 		return outcome, fmt.Errorf("rescan sweep of %s: %d of %d versions failed",
 			job, outcome.Failed, outcome.Examined)
 	}
 	return outcome, nil
 }
 
-// rescanEnabled reads the org policy.
-//
-// The scanner reads it because `am_scanner` holds the grant on `org_policy` and
-// `am_fetcher` does not. That is why the sweep is enqueued unconditionally by the
-// publish and gated here rather than the other way round: the role that can read
-// the policy is the role that decides on it, and the alternative is a producer
-// guessing at a setting it cannot see.
+// rescanEnabled reads the org policy: the scanner reads it, not the fetcher,
+// because `am_scanner` holds the grant on `org_policy` and `am_fetcher` does
+// not.
 func (s *Sweeper) rescanEnabled(ctx context.Context) (bool, error) {
 	var enabled bool
 	err := s.worker.deps.DB.QueryRowContext(ctx,
@@ -161,8 +131,6 @@ func (s *Sweeper) rescanEnabled(ctx context.Context) (bool, error) {
 
 // candidates is the package's versions that the running pack has not judged.
 func (s *Sweeper) candidates(ctx context.Context, job SweepJob) ([]Job, error) {
-	// bun formats raw SQL with `?` and passes no arguments to the driver, so a `$1`
-	// here would reach Postgres unbound.
 	rows, err := s.worker.deps.DB.QueryContext(ctx,
 		`select v.id, v.semver, v.object_key, p.namespace, p.name
 		   from version v
@@ -203,6 +171,6 @@ func (s *Sweeper) candidates(ctx context.Context, job SweepJob) ([]Job, error) {
 	return out, nil
 }
 
-// errNoPolicy is here so a missing singleton reads as the configuration failure it
-// is rather than as "rescan is off".
+// errNoPolicy is here so a missing singleton reads as a configuration
+// failure rather than "rescan is off".
 var errNoPolicy = errors.New("org_policy holds no row with id 1")

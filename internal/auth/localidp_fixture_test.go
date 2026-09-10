@@ -68,6 +68,7 @@ type glauthUser struct {
 	Name         string `toml:"name"`
 	Mail         string `toml:"mail"`
 	PrimaryGroup int    `toml:"primarygroup"`
+	OtherGroups  []int  `toml:"othergroups"`
 	Capabilities []struct {
 		Action string `toml:"action"`
 		Object string `toml:"object"`
@@ -251,6 +252,27 @@ func TestTheGlauthFixtureSpellsTheGroupNamesTheSeedMapsToRoles(t *testing.T) {
 					"%s's primarygroup gid %d names group %q, but seed.DirectoryUsers resolves "+
 						"this user's role through %q",
 					want.Username, u.PrimaryGroup, byGID[u.PrimaryGroup], want.Group)
+
+				// The secondary membership, which is a different kind of coupling: it
+				// carries no role, so a wrong gid here fails NOWHERE — the login works,
+				// the primary group still resolves the role, and the only thing lost is
+				// that the profile shared with eng-all stops being reachable by anybody
+				// who can actually sign in.
+				secondary := make([]string, 0, len(u.OtherGroups))
+				for _, gid := range u.OtherGroups {
+					secondary = append(secondary, byGID[gid])
+				}
+				if want.Shared == "" {
+					require.Emptyf(t, secondary,
+						"seed.DirectoryUsers puts %s in no second group, and %s carries %v. For "+
+							"the unmapped user that is not cosmetic: every group in this fixture "+
+							"except theirs maps to a role",
+						want.Username, glauthFixturePath, secondary)
+					return
+				}
+				require.Containsf(t, secondary, want.Shared,
+					"%s's othergroups %v do not include %q, which seed.DirectoryUsers says they "+
+						"share with the other role-holder", want.Username, secondary, want.Shared)
 			}
 			require.Truef(t, found, "%s defines no user named %q", glauthFixturePath, want.Username)
 		})

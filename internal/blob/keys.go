@@ -7,8 +7,7 @@ import (
 	"strings"
 )
 
-// The key layout is the design's (docs/design/agent-manager.dc.html, the Storage
-// screen's keyTree) and FR-006's:
+// The key layout:
 //
 //	skills/<namespace>/<name>/<semver>/bundle.tar.zst
 //	                                  /plugin.json      (or SKILL.md)
@@ -35,22 +34,13 @@ const (
 	HeadObject          = "head.json"
 )
 
-// segmentPattern is what a single path segment may contain.
-//
-// THE FIRST SEGMENT IS THE NAMESPACE, NOT THE PUBLISHER SLUG, and this field was
-// called Publisher until it collided with reality. A publisher is `example/platform`
-// and its namespace is `example`; the design's keyTree reads
-// `skills/example/terraform-module-review/2.4.1/…` and its package ids read
-// `example/pii-redactor`, so both are built from the namespace. Passing a slug here
-// is refused by validSegment below, because a slug contains a `/` — which is how the
-// confusion surfaces if it comes back.
-//
-// Namespaces, package names and semvers all arrive from user-supplied
-// sources — an uploaded manifest, a repository URL — so a key built from them is
-// untrusted input (constitution principle III). Anything that could climb out of
-// its prefix is rejected rather than sanitised: a segment must start
-// alphanumerically, which alone rules out "", ".", ".." and a leading slash, and
-// may then hold only characters a semver or a slug legitimately needs.
+// segmentPattern is what a single path segment may contain. Namespaces,
+// package names and semvers all arrive from user-supplied sources — an
+// uploaded manifest, a repository URL — so a key built from them is
+// untrusted input. Anything that could climb out of its prefix is rejected
+// rather than sanitised: a segment must start alphanumerically, which alone
+// rules out "", ".", ".." and a leading slash, and may then hold only
+// characters a semver or a slug legitimately needs.
 var segmentPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]*$`)
 
 func validSegment(kind, s string) error {
@@ -120,8 +110,7 @@ func stagingKey(v VersionRef, attempt, object string) string {
 }
 
 // ProfileRevisionKey is profiles/<slug>/r<seq>.json — the resolved lockfile.
-// A slug may itself be several segments (the design shows
-// profiles/example/platform-engineer/), so each one is validated.
+// A slug may itself be several segments, so each one is validated.
 func ProfileRevisionKey(slug string, seq int) (string, error) {
 	prefix, err := profilePrefix(slug)
 	if err != nil {

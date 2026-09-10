@@ -1,4 +1,4 @@
-// This file is T045: FR-025 / SC-002, idempotence measured on the FILESYSTEM.
+// This file measures idempotence on the FILESYSTEM, not on the CLI's report.
 //
 // The claim is "a second run against an unchanged hub makes no filesystem
 // modification", and the only witness worth having is the filesystem itself. A
@@ -100,9 +100,8 @@ type idemNode struct {
 //
 // Directory mtimes ARE recorded, unlike sync_test.go's treeSnapshot, which
 // drops them because the per-home lock and the record's temp file move the
-// state root's own mtime on every run. Dropping them costs exactly the strong
-// form of FR-025 this file exists to measure — a directory whose child was
-// re-created is a modification — so they are kept and the one directory that
+// state root's own mtime on every run. Dropping them would miss a directory
+// whose child was re-created, so they are kept and the one directory that
 // legitimately moves is named, asserted to move, and excluded by name.
 func idemSnapshot(t *testing.T, home string) map[string]idemNode {
 	t.Helper()
@@ -347,7 +346,7 @@ func idemEnv(t *testing.T) (*syncEnv, *idemRequestLog, syncFlags) {
 	// The decoys are not decoration here: without them "the other agent
 	// directories were not touched" would be a statement about directories that
 	// do not exist, and the hand-written skill in ~/.claude/skills is the path
-	// FR-028 is about.
+	// this check protects.
 	plantDecoyAgentDirectories(t, env.home)
 	return env, log, baselineFlags(tg)
 }
@@ -361,7 +360,7 @@ func idemRel(t *testing.T, home, path string) string {
 }
 
 // installedSkills are the directories the fake's healthy profile installs, in
-// the disambiguated form FR-023 requires. Hand-written from the fixture rather
+// their disambiguated form. Hand-written from the fixture rather
 // than read back from the tree, so a run that installed nothing fails here
 // instead of making the whole measurement vacuous.
 var installedSkills = []string{"acme--code-review", "acme--lint-guard", "example--doc-writer"}
@@ -394,9 +393,9 @@ func TestASecondSyncModifiesNothingOnDisk(t *testing.T) {
 	second := idemSnapshot(t, env.home)
 	changes := idemDiff(first, second, mtimeUsable)
 
-	// The self-check. `~/.agent-manager` gets the FR-039 write probe and the
-	// FR-038 lock created and unlinked inside it on EVERY run, so its own mtime
-	// must move. If it did not, the settle was too short or mtime is not being
+	// The self-check. `~/.agent-manager` gets the write probe and the sync
+	// lock created and unlinked inside it on EVERY run, so its own mtime must
+	// move. If it did not, the settle was too short or mtime is not being
 	// compared, and every "unchanged" assertion below would be passing because
 	// it cannot see rather than because nothing happened.
 	if mtimeUsable {
@@ -608,11 +607,11 @@ func rewriteIdentically(t *testing.T, path string) {
 //
 // Deleting the record puts the second sync in exactly the state a build with
 // broken change detection is in permanently: every entry looks like an install.
-// apply's guard finds amctl's own FR-022 marker at the destination with no
-// record row — its "interrupted between the install and the record write" case
-// — and re-installs, which re-extracts and re-swaps BYTE-IDENTICAL content. The
-// verb's own report is honest about what it decided; only the filesystem knows
-// the work was done twice, and that is the whole distinction T045 is about.
+// apply's guard finds amctl's own marker at the destination with no record
+// row — its "interrupted between the install and the record write" case — and
+// re-installs, which re-extracts and re-swaps BYTE-IDENTICAL content. The
+// verb's own report is honest about what it decided; only the filesystem
+// knows the work was done twice.
 func TestARealReinstallOfIdenticalBytesIsSeenByThisCheck(t *testing.T) {
 	env, log, flags := idemEnv(t)
 	settle, mtimeUsable := idemMtimeSettle(t)
@@ -639,8 +638,8 @@ func TestARealReinstallOfIdenticalBytesIsSeenByThisCheck(t *testing.T) {
 			"noticed a broken sync doing the same thing on every run; it reported:\n%s",
 		skillRel, idemLines(changes))
 
-	// The same run must still not have touched the hand-written skill beside the
-	// installed ones (FR-028), and must not have re-downloaded: the cache still
+	// The same run must still not have touched the hand-written skill beside
+	// the installed ones, and must not have re-downloaded: the cache still
 	// holds every bundle, so a re-install is a local operation.
 	require.Empty(t, idemChangesFor(changes, handWritten),
 		"a forced re-install modified a path amctl's record never claimed")

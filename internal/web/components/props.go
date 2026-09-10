@@ -200,6 +200,7 @@ func (c Catalog) Signals() string {
 		"_importRef":       "",
 		"_importSubdir":    "",
 		"_importPublisher": "",
+		"_importVersion":   "",
 	}
 	encoded, err := json.Marshal(state)
 	if err != nil {
@@ -441,3 +442,6 @@ func NoticeClass(notice view.Notice) string {
 // mirrors the api's cap so a reviewer is stopped while typing rather than after
 // submitting; the api is still what decides.
 func ReviewNoteLimit() string { return strconv.Itoa(view.MaxReviewNote) }
+
+// OutcomeClass tones a profile entry's gate outcome pill.
+func OutcomeClass(outcome view.ProfileOutcome) string { return PillClass(outcome.Tone()) }

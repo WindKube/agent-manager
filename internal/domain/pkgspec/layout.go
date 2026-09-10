@@ -10,61 +10,48 @@ import (
 	"agent-manager/internal/bundle"
 )
 
-// The spec-layout filter (T040, FR-005).
-//
-// FR-005 has two halves and the second is the one that gets forgotten: the system
-// MUST discard files outside the spec layout AND MUST report which paths were
-// discarded, before the user commits to registration. Dropping silently would
-// pass every test that only looks at the stored tree and would fail US1 scenario
-// 2, whose whole point is that the preview says `.github/, README.md → outside
-// spec, dropped`.
+// The spec-layout filter must both discard files outside the spec layout and
+// report which paths were discarded, before the user commits to
+// registration: dropping silently would pass every test that only looks at
+// the stored tree while leaving the preview unable to say
+// `.github/, README.md → outside spec, dropped`.
 
 // ErrNoManifest means neither manifest sits at the package root, so there is
 // nothing to register. It is an ingestion failure, never a scan finding.
 var ErrNoManifest = errors.New("no plugin.json or SKILL.md at the package root")
 
-// The directories an Agent Skills tree may carry beside SKILL.md. The
-// specification describes a skill as a directory holding SKILL.md plus the
-// resources it references, so the set is closed here rather than "everything":
-// a closed set is what makes the drop report meaningful.
+// The directories an Agent Skills tree may carry beside SKILL.md, closed
+// rather than "everything" so the drop report stays meaningful.
 var skillSupportDirs = []string{"scripts", "references", "assets"}
 
-// reverseDomainLabel is one label of a reverse-domain namespace directory such as
-// `com.anthropic.claude-code`. Two or more labels are required, because a single
-// label is just a directory and a dotted name with one label is a file with an
-// extension.
+// reverseDomainLabel is one label of a reverse-domain namespace directory
+// such as `com.anthropic.claude-code`. Two or more labels are required: a
+// single label is just a directory, and a dotted name with one label is a
+// file with an extension.
 var reverseDomainLabel = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
 
-// LayoutEntry is one line of the design's archive-contents panel.
+// LayoutEntry is one line of the archive-contents panel: Path is a file, a
+// directory with its trailing slash, or several dropped paths joined by
+// ", "; Note is the right-hand column (`schema valid`, `4 skills`, `1
+// server`, `client extension`, `outside spec, dropped`); Kept renders `✓` or `–`.
 type LayoutEntry struct {
-	// Path is what the panel shows: a file, a directory with its trailing slash,
-	// or several dropped paths joined by ", " — matching the design's
-	// `.github/, README.md` line.
 	Path string
-
-	// Note is the right-hand column: `schema valid`, `4 skills`, `1 server`,
-	// `client extension`, `outside spec, dropped`.
 	Note string
-
-	// Kept is the mark: true renders `✓`, false renders `–`.
 	Kept bool
 }
 
 // LayoutReport is what the filter did, in the order the panel lists it.
+// Dropped holds every discarded path in full, not the grouped rendering:
+// the panel shows the groups, the audit trail and tests need the paths.
 type LayoutReport struct {
 	Entries []LayoutEntry
-
-	// Dropped is every discarded path in full, not the grouped rendering. The
-	// panel shows the groups; the audit trail and the tests need the paths.
 	Dropped []string
-
-	// Kept is every retained path, rerooted.
-	Kept []string
+	Kept    []string
 }
 
 // DroppedGroups renders the discarded paths the way the panel joins them: one
-// entry per top-level name, so `.github/workflows/ci.yml` and `.github/CODEOWNERS`
-// collapse to `.github/`.
+// entry per top-level name, so `.github/workflows/ci.yml` and
+// `.github/CODEOWNERS` collapse to `.github/`.
 func (r LayoutReport) DroppedGroups() []string {
 	seen := make(map[string]struct{}, len(r.Dropped))
 	groups := make([]string, 0, len(r.Dropped))
@@ -90,31 +77,24 @@ type layout struct {
 	kept    []string
 	dropped []string
 
-	// skillDirs are the `skills/<name>` directories present, sorted.
 	skillDirs []string
-
-	// extDirs are the reverse-domain namespace directories present, sorted, each
-	// with the first path under it so the panel can show
-	// `com.anthropic.claude-code/hooks/`.
-	extDirs []extDir
-
-	hasMCP bool
+	extDirs   []extDir
+	hasMCP    bool
 }
 
+// extDir is a reverse-domain namespace directory present in the tree, with
+// firstChild the first segment inside it, for the panel's
+// `com.anthropic.claude-code/hooks/` label.
 type extDir struct {
-	name string
-	// firstChild is the first segment inside the directory, for the panel's label.
+	name       string
 	firstChild string
 }
 
-// filterLayout reroots tree at root, decides the package kind from which manifest
-// is present, and partitions the paths.
-//
-// Rejecting rather than repairing is the rule here as everywhere on this path: a
-// root that names nothing is an error, not an empty tree, because "we found no
-// files under the subdirectory you asked for" and "the subdirectory you asked for
-// does not exist" are the same fetch error and neither is a successful publish of
-// nothing.
+// filterLayout reroots tree at root, decides the package kind from which
+// manifest is present, and partitions the paths. A root that names nothing
+// is an error, not an empty tree: "no files under the subdirectory" and "the
+// subdirectory does not exist" are the same fetch error, and neither is a
+// successful publish of nothing.
 func filterLayout(tree *bundle.Bundle, root string) (*layout, error) {
 	if tree == nil {
 		return nil, errors.New("layout filter: no tree")
@@ -177,7 +157,6 @@ func filterLayout(tree *bundle.Bundle, root string) (*layout, error) {
 	return out, nil
 }
 
-// keptPath is the whole layout rule, per kind.
 func keptPath(kind Kind, path string, dirs map[string]struct{}) bool {
 	segments := splitPath(path)
 	if len(segments) == 0 {
@@ -198,9 +177,9 @@ func keptPath(kind Kind, path string, dirs map[string]struct{}) bool {
 	case top == SkillsDir && len(segments) > 1:
 		return true
 	case len(segments) > 1 && isReverseDomain(top):
-		// A reverse-domain namespace is a client extension directory. Only a
-		// directory qualifies: `plugin.json` and `mcp.json` also carry a dot, and
-		// the `dirs` set is what keeps a dotted FILE from being read as a namespace.
+		// Only a directory qualifies as a client extension: `plugin.json` and
+		// `mcp.json` also carry a dot, and `dirs` keeps a dotted file from
+		// being read as a namespace.
 		_, isDir := dirs[top]
 		return isDir
 	default:
@@ -208,7 +187,6 @@ func keptPath(kind Kind, path string, dirs map[string]struct{}) bool {
 	}
 }
 
-// isReverseDomain reports whether a directory name is a reverse-domain namespace.
 func isReverseDomain(name string) bool {
 	labels := strings.Split(name, ".")
 	if len(labels) < 2 {
@@ -227,7 +205,6 @@ func isReverseDomain(name string) bool {
 	return true
 }
 
-// reroot returns the files under root, keyed by their path relative to it.
 func reroot(tree *bundle.Bundle, root string) (map[string]bundle.File, error) {
 	clean := strings.Trim(strings.TrimSpace(root), "/")
 	if clean == "." {
@@ -265,8 +242,6 @@ func displayRoot(root string) string {
 	return clean
 }
 
-// directorySegments is the set of top-level names that are directories, i.e. that
-// appear as the first of two or more segments.
 func directorySegments(files map[string]bundle.File) map[string]struct{} {
 	dirs := make(map[string]struct{})
 	for path := range files {

@@ -22,32 +22,27 @@ import (
 	"agent-manager/internal/worker/fetcher"
 )
 
-// ErrRegistration is a registration the caller could fix. ErrImmutable is the one
-// it cannot: FR-007 makes a published version final.
 var (
 	ErrRegistration = errors.New("registration refused")
 	ErrImmutable    = errors.New("this version is already published and its bytes are immutable")
 )
 
-// uniqueVersionConstraint is the index behind FR-007. It is named here because
-// Postgres reports the constraint and not the requirement, and translating
-// 23505-on-this-index into the immutability error is the whole point: a bare
-// "duplicate key" tells a publisher nothing about why the hub refused.
+// uniqueVersionConstraint is named here because Postgres reports the
+// constraint, not the requirement: translating 23505-on-this-index into
+// ErrImmutable is what tells a publisher why the hub refused.
 const uniqueVersionConstraint = "version_package_semver"
 
-// Registration is one registration request, already reduced to what the command
-// needs. The HTTP layer owns the multipart form; this owns the database.
+// Registration is one registration request, reduced to what the command
+// needs.
 type Registration struct {
 	Source       fetch.SourceKind
 	URL          string
 	Ref          string
 	Subdirectory string
 
-	// Publisher is the two-segment slug, `example/platform`. Namespace is its
-	// first segment and is DERIVED in normalise, never supplied: it is the segment
-	// the object key and the rendered package id are both built from, so a caller
-	// able to set it independently could put a package's bytes under a namespace
-	// its publisher does not belong to.
+	// Publisher is the two-segment slug, `example/platform`. Namespace is
+	// derived in normalise, never supplied directly, since it's what the
+	// object key is built from.
 	Publisher string
 	Namespace string
 	Name      string
@@ -57,31 +52,22 @@ type Registration struct {
 	Category   string
 	Visibility models.PackageVisibility
 
-	// Keywords are the manifest's, known only for an upload. They seed
-	// version.tags so the catalog can filter a version the fetcher has not
-	// finished yet; the fetcher rewrites them from the authoritative manifest.
+	// Keywords seed version.tags so the catalog can filter a version the
+	// fetcher hasn't finished yet; the fetcher rewrites them from the
+	// authoritative manifest.
 	Keywords []string
 
 	ArchiveName string
 	Archive     []byte
-
-	// Preview is the upload path's pre-submit report, carried through so the
-	// response can show what was accepted.
-	Preview *contract.PackagePreview
+	Preview     *contract.PackagePreview
 }
 
-// RegisterPackage is T042: publisher, package, version, the `fetch` job and the
-// audit row, in ONE transaction.
-//
-// The transaction is not a tidiness preference. The R5 idempotency key for a
-// fetch is (fetch, version id, semver) evaluated against the VERSION ROW, so the
-// row has to exist before the job that fills it in is enqueued — and an outbox
-// row that commits without its version would be a job with nothing to work on,
-// while a version that commits without its job would be a version nothing ever
-// fetches. Neither is recoverable by retrying.
-//
-// Nothing here writes bytes. `worker fetcher` is the only role that may
-// (principle II), so the archive travels in the outbox payload.
+// RegisterPackage is publisher, package, version, the `fetch` job and the
+// audit row in one transaction: the version row must exist before the job
+// that fills it in is enqueued, so an outbox row committing without its
+// version would be a job with nothing to work on. Nothing here writes
+// bytes — `worker fetcher` is the only role that may — so the archive
+// travels in the outbox payload.
 func RegisterPackage(ctx context.Context, db bun.IDB, p auth.Principal, in Registration) (contract.PackageRegistered, error) {
 	in, err := in.normalise()
 	if err != nil {
@@ -129,11 +115,9 @@ func RegisterPackage(ctx context.Context, db bun.IDB, p auth.Principal, in Regis
 			Semver:     in.Version,
 			SemverSort: sortKey,
 			ObjectKey:  ref.BundleKey(),
-			// manifest is NOT NULL and the authoritative manifest is in bytes the
-			// hub has not fetched yet, so it starts empty and the fetcher transcribes
-			// the real one (data-model.md). digest stays null, which the
-			// `digest is not null or verdict = 'scanning'` check permits and which is
-			// what makes this row answer the fetch idempotency question.
+			// manifest starts empty (NOT NULL) since the authoritative one
+			// isn't fetched yet; digest stays null, which the schema's
+			// scanning-check permits.
 			Manifest: json.RawMessage(`{}`),
 			Tags:     in.Keywords,
 			DistTag:  models.DistTagNone,
@@ -145,9 +129,9 @@ func RegisterPackage(ctx context.Context, db bun.IDB, p auth.Principal, in Regis
 		}
 		if _, insertErr := tx.NewInsert().Model(version).Exec(ctx); insertErr != nil {
 			if isUniqueViolation(insertErr, uniqueVersionConstraint) {
-				// FR-007 and US1 scenario 4. The rollback is what leaves the stored
-				// version untouched: no object key is rewritten, no digest is
-				// cleared, and no fetch job is enqueued that could overwrite bytes.
+				// The rollback leaves the stored version untouched: no
+				// object key rewritten, no digest cleared, no fetch job
+				// enqueued that could overwrite bytes.
 				return fmt.Errorf("%w: %s@%s", ErrImmutable, ref.Package(), in.Version)
 			}
 			return fmt.Errorf("create version %s: %w", ref, insertErr)
@@ -197,16 +181,13 @@ func (in Registration) normalise() (Registration, error) {
 	in.Name = strings.ToLower(strings.TrimSpace(in.Name))
 
 	if in.Publisher == "" {
-		// No source carries a publisher: a repository has an owner, an archive URL
-		// has a host, and neither is a namespace this hub chose. Guessing one would
-		// make the object key — which is permanent — a guess.
+		// No source carries a publisher, and guessing one would make the
+		// object key — which is permanent — a guess.
 		return in, fmt.Errorf("%w: a registration needs a publisher", ErrRegistration)
 	}
 
-	// The two-segment shape is load-bearing rather than stylistic. The namespace is
-	// the first segment and nothing else; `publisher_slug_is_two_segments` in the
-	// schema says the same thing, and this is the same rule stated where the caller
-	// can be told what is wrong with their input rather than reading a 23514.
+	// The two-segment shape mirrors the schema's own constraint, stated
+	// here so the caller learns what's wrong instead of reading a 23514.
 	namespace, team, ok := strings.Cut(in.Publisher, "/")
 	if !ok || namespace == "" || team == "" || strings.Contains(team, "/") {
 		return in, fmt.Errorf(
@@ -267,10 +248,7 @@ func (in Registration) normalise() (Registration, error) {
 	return in, nil
 }
 
-// deriveFromURL is what the import modal shows as a default: the repository name
-// becomes the package name and the ref becomes the version. Both are only
-// defaults — the manifest is the authority on the name, and the fetcher refuses a
-// tree whose manifest disagrees.
+// deriveFromURL gives the import modal a default name and version only.
 func deriveFromURL(in Registration) (name, version string) {
 	if repo, err := repourl.Parse(in.URL); err == nil {
 		name = repo.Repo
@@ -305,9 +283,8 @@ func describeRegistrationSource(in Registration) string {
 	}
 }
 
-// upsertPublisher creates the namespace on first use. `verified` is left alone:
-// it is a catalog admin's decision and is never inferred from a registration
-// (data-model.md).
+// upsertPublisher creates the namespace on first use. `verified` is left
+// alone: it is a catalog admin's decision, never inferred from a registration.
 func upsertPublisher(ctx context.Context, tx bun.IDB, slug string) (uuid.UUID, error) {
 	var id uuid.UUID
 	err := tx.NewSelect().Model((*models.Publisher)(nil)).
@@ -328,9 +305,8 @@ func upsertPublisher(ctx context.Context, tx bun.IDB, slug string) (uuid.UUID, e
 	return id, nil
 }
 
-// resolveCategory looks up an admin-curated category by name or slug (FR-049). An
-// unknown one is refused rather than created: the vocabulary is curated, so a
-// registration that could add to it would not be.
+// resolveCategory looks up an admin-curated category by name or slug. An
+// unknown one is refused rather than created: the vocabulary is curated.
 func resolveCategory(ctx context.Context, tx bun.IDB, nameOrSlug string) (*uuid.UUID, error) {
 	if nameOrSlug == "" {
 		return nil, nil
@@ -347,18 +323,13 @@ func resolveCategory(ctx context.Context, tx bun.IDB, nameOrSlug string) (*uuid.
 	return &id, nil
 }
 
-// upsertPackage finds or creates the named package.
-//
-// The kind written here is provisional for a URL source and authoritative for an
-// upload, and either way the fetcher is the one that settles it: kind is decided
-// by which manifest sits at the tree root, which is knowable only once the bytes
-// are in hand. An EXISTING package keeps its kind — a package does not change
-// from a plugin into a skill between versions.
+// upsertPackage finds or creates the named package. The kind written here
+// is provisional for a URL source; the fetcher settles it once the
+// manifest is in hand. An existing package keeps its kind.
 func upsertPackage(ctx context.Context, tx bun.IDB, publisherID uuid.UUID, categoryID *uuid.UUID, in Registration) (*models.Package, error) {
-	// Looked up by (namespace, name), which is what `unique (namespace, name)`
-	// keys on — not by (publisher_id, name). Two teams in one namespace cannot both
-	// own a name, so a lookup scoped to the publisher would miss a package owned by
-	// a sibling team and turn a nameable conflict into a 23505 from the insert.
+	// Looked up by (namespace, name), matching the unique index — not by
+	// (publisher_id, name), which would miss a name owned by a sibling
+	// team in the same namespace.
 	existing := new(models.Package)
 	err := tx.NewSelect().Model(existing).
 		Where("namespace = ? and name = ?", in.Namespace, in.Name).
@@ -396,9 +367,8 @@ func upsertPackage(ctx context.Context, tx bun.IDB, publisherID uuid.UUID, categ
 }
 
 // isUniqueViolation reports whether err is Postgres 23505 on the named
-// constraint. The sqlstate is checked and not the message: a message is
-// localised and reworded between releases, and a check on the wrong constraint
-// would turn some other collision into a false immutability refusal.
+// constraint, checked by sqlstate rather than message since messages are
+// localised and reworded between releases.
 func isUniqueViolation(err error, constraint string) bool {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) {

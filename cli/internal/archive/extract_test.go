@@ -17,19 +17,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Every hostile archive in this file is built here, with archive/tar and a zstd
-// writer, rather than committed as a fixture: a binary fixture cannot be reviewed,
-// gitleaks scans it, and a reader cannot tell a zip bomb from a skill by looking.
-//
-// Two rules the suite lives or dies by:
-//
-//   - Assert the SPECIFIC reason, never err != nil. A symlink-escape case that
-//     passes because the total-size cap fired first has stopped testing symlinks and
-//     nothing about it looks wrong. requireRefusal is the only assertion used for a
-//     negative case, and it compares the Reason for equality.
-//   - Every cap case sets the OTHER caps out of the way, so exactly one of them can
-//     fire. Where that is not done the case would still pass with the cap under test
-//     deleted.
+// Every hostile archive is built here rather than committed as a binary fixture,
+// which cannot be reviewed. Negative cases assert the specific Reason through
+// requireRefusal, and each cap case puts the other caps out of the way.
 
 type member struct {
 	name     string
@@ -37,8 +27,7 @@ type member struct {
 	mode     int64
 	linkname string
 	body     []byte
-	// zeroBody asks for that many zero bytes without materialising them; the zstd
-	// bomb needs 64 MiB of body and no test needs 64 MiB of RAM.
+	// zeroBody asks for that many zero bytes without materialising them.
 	zeroBody int64
 	devmajor int64
 	devminor int64
@@ -60,9 +49,7 @@ func hasBody(typeflag byte) bool {
 	return typeflag == tar.TypeReg
 }
 
-// pack builds a tar+zstd archive with the same encoder settings the hub's
-// bundle.Pack uses, so the decoder under test faces the frame shape it will actually
-// meet in production.
+// pack uses the same encoder settings as the hub's bundle.Pack.
 func pack(t *testing.T, ms ...member) []byte {
 	t.Helper()
 	var buf bytes.Buffer
@@ -117,8 +104,7 @@ func writeZeros(t *testing.T, w io.Writer, n int64) {
 	}
 }
 
-// newDest returns a path that does not exist inside a parent that does, which is
-// Extract's contract.
+// newDest returns a path that does not exist inside a parent that does.
 func newDest(t *testing.T) string {
 	t.Helper()
 	return filepath.Join(t.TempDir(), "skill")
@@ -155,8 +141,7 @@ func treeBytes(t *testing.T, root string) int64 {
 	return total
 }
 
-// looseLimits puts every cap except the named one out of reach, so a case can only
-// fail for the reason it is testing.
+// looseLimits puts every cap out of reach so a case can only fail for the reason under test.
 func looseLimits() Limits {
 	return Limits{
 		MaxCompressedBytes:   1 << 30,
@@ -174,8 +159,7 @@ func looseLimits() Limits {
 func TestExtractWritesTheTree(t *testing.T) {
 	t.Parallel()
 
-	// The hub's bundle.Pack emits regular files only, with no directory members at
-	// all, so implicit parent creation is the production path and not an edge case.
+	// The hub emits regular files only, so implicit parent creation is the production path.
 	data := pack(t,
 		regular("SKILL.md", "# skill\n"),
 		regular("references/notes.md", "notes\n"),
@@ -196,8 +180,7 @@ func TestExtractWritesTheTree(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "notes\n", string(body))
 
-	// The archive chooses executable or not and nothing else: no setuid, no sticky,
-	// no group-write, whatever the header asked for.
+	// Only the executable bit survives from the header.
 	info, err := os.Lstat(filepath.Join(dest, "scripts", "run.sh"))
 	require.NoError(t, err)
 	require.Zero(t, info.Mode()&(fs.ModeSetuid|fs.ModeSetgid|fs.ModeSticky))
@@ -387,9 +370,7 @@ func TestExtractRefusedMembers(t *testing.T) {
 			path:    "pipe",
 		},
 		{
-			// An unrecognised typeflag reports a regular-file mode through
-			// tar.Header.FileInfo, so a mode-based type check waves it straight
-			// through. This case is what forces the switch to be on the typeflag.
+			// An unrecognised typeflag reports a regular-file mode, so the switch must be on the typeflag.
 			name:    "unknown member type",
 			members: []member{{name: "weird", typeflag: 'z', mode: 0o644}},
 			reason:  RejectMemberType,
@@ -423,12 +404,8 @@ func TestExtractRefusedMembers(t *testing.T) {
 	}
 }
 
-// TestExtractRefusesCaseOnlyCollision answers a question the platforms disagree
-// about: a bundle carrying both SKILL.md and Skill.md is ONE file on a
-// case-insensitive filesystem (darwin) and TWO on linux. The extractor
-// refuses it everywhere rather than extracting two files on linux and failing on
-// O_EXCL on darwin, because a digest that installs a different tree per platform
-// breaks FR-024 and R4's install fingerprint.
+// A bundle carrying both SKILL.md and Skill.md is one file on darwin and two on
+// linux; it is refused everywhere.
 func TestExtractRefusesCaseOnlyCollision(t *testing.T) {
 	t.Parallel()
 
@@ -439,11 +416,9 @@ func TestExtractRefusesCaseOnlyCollision(t *testing.T) {
 	require.Contains(t, err.Error(), "differs only in case from SKILL.md")
 }
 
-// TestExtractRefusesPluginAdoptingSubdir covers R2's hazard: the destination root IS
-// the skill directory, so a top-level subdirectory with one of these names makes
-// claude-code adopt the tree as a plugin, with lifecycle hooks and MCP servers. The
-// allow cases matter as much as the refusals — refusing references/hooks/ would
-// reject legitimate content and the rule would be wrong in the expensive direction.
+// The destination root is the skill directory, so a top-level adopting
+// subdirectory turns the tree into a plugin. The allow cases matter as much:
+// refusing references/hooks/ would reject legitimate content.
 func TestExtractRefusesPluginAdoptingSubdir(t *testing.T) {
 	t.Parallel()
 
@@ -504,14 +479,8 @@ func TestExtractRefusesPluginAdoptingSubdir(t *testing.T) {
 	}
 }
 
-// TestExtractSymlinkEscape is the escape a per-entry filepath.Clean check misses.
-// Entry one is a directory. Entry two is a symlink at a path INSIDE it pointing
-// outside the destination. Entry three writes through that symlink with a path that
-// is clean and relative at every step, so nothing about entry three looks wrong.
-//
-// The design's invariant — no path component under the root that this extraction did
-// not itself create — means this is refused at entry TWO. That is what is asserted,
-// rather than merely that the whole thing failed.
+// A directory, then a symlink inside it pointing out, then a write through it
+// with a clean relative path. It must be refused at entry two, and that is asserted.
 func TestExtractSymlinkEscape(t *testing.T) {
 	t.Parallel()
 
@@ -532,8 +501,7 @@ func TestExtractSymlinkEscape(t *testing.T) {
 	requireRefusal(t, err, ErrRejectedMember, RejectSymlink)
 	require.Equal(t, "nested/link", PathOf(err), "must be refused at the symlink, not later")
 
-	// Entry one really was processed, so the refusal happened at entry two rather
-	// than before the walk started.
+	// Entry one really was processed, so the refusal happened at entry two.
 	info, statErr := os.Lstat(filepath.Join(dest, "nested"))
 	require.NoError(t, statErr)
 	require.True(t, info.IsDir())
@@ -546,10 +514,8 @@ func TestExtractSymlinkEscape(t *testing.T) {
 	require.True(t, os.IsNotExist(statErr), "a symlink was created inside the destination")
 }
 
-// TestExtractSymlinkEscapeRelative is the same escape with a relative link target,
-// which is the form os.Root's own containment check would have to catch if the
-// member check were removed. Kept separate so a change that only handles absolute
-// targets fails one of the two.
+// The same escape with a relative link target, kept separate so a change that
+// only handles absolute targets fails one of the two.
 func TestExtractSymlinkEscapeRelative(t *testing.T) {
 	t.Parallel()
 
@@ -574,9 +540,7 @@ func TestExtractSymlinkEscapeRelative(t *testing.T) {
 	require.Equal(t, "original", string(body))
 }
 
-// TestExtractHardlinkEscape: a hardlink needs no symlink resolution and no
-// traversal in the written path — the escape is entirely in Linkname, which a path
-// check never looks at. Refused on the member kind.
+// A hardlink escape is entirely in Linkname, which a path check never sees.
 func TestExtractHardlinkEscape(t *testing.T) {
 	t.Parallel()
 
@@ -598,10 +562,7 @@ func TestExtractHardlinkEscape(t *testing.T) {
 	require.True(t, os.IsNotExist(statErr))
 }
 
-// TestExtractDeepPath uses the REAL default depth cap, not a lowered one: a deep
-// path is a hostile shape in its own right (it exhausts PATH_MAX on the consumer
-// side and can defeat a recursive remove), so the shipped number is the one worth
-// proving.
+// Uses the real default depth cap: a deep path is a hostile shape in its own right.
 func TestExtractDeepPath(t *testing.T) {
 	t.Parallel()
 
@@ -612,11 +573,9 @@ func TestExtractDeepPath(t *testing.T) {
 	requireRefusal(t, err, ErrTooLarge, CapPathDepth)
 }
 
-// TestExtractZstdBomb is a real bomb against the REAL default caps: 64 MiB of zeros
-// in one member, which zstd squeezes into a couple of kilobytes. The assertion that
-// matters is the second one — the refusal has to arrive with barely anything on
-// disk. A ratio cap checked after extraction would pass the first assertion and fail
-// the second, which is exactly the bug FR-019 is about.
+// A real bomb against the real default caps: 64 MiB of zeros in a few kilobytes.
+// The second assertion is the one that matters: the refusal must arrive with
+// barely anything on disk.
 func TestExtractZstdBomb(t *testing.T) {
 	t.Parallel()
 
@@ -675,9 +634,8 @@ func TestExtractUnsafeDestination(t *testing.T) {
 	})
 }
 
-// trickleReader hands back one byte per Read after a delay: a peer that never stops
-// and never stalls inside a single Read. It is the only shape the wall-clock cap can
-// actually catch, which is the point of the test.
+// trickleReader hands back one byte per Read after a delay: the only shape the
+// wall-clock cap can catch.
 type trickleReader struct {
 	data  []byte
 	pos   int
@@ -697,9 +655,7 @@ func (r *trickleReader) Read(p []byte) (int, error) {
 	return 1, nil
 }
 
-// TestExtractWallClockCapAgainstTricklingReader answers "is MaxDuration enforced or
-// is it a field nothing reads": the archive is perfectly valid and every size cap is
-// out of reach, so the ONLY thing that can fail this extraction is the clock.
+// Every size cap is out of reach, so only the clock can fail this extraction.
 func TestExtractWallClockCapAgainstTricklingReader(t *testing.T) {
 	t.Parallel()
 
@@ -716,9 +672,7 @@ func TestExtractWallClockCapAgainstTricklingReader(t *testing.T) {
 	require.Less(t, elapsed, 5*time.Second, "the cap did not stop the trickle promptly")
 }
 
-// TestExtractCallerCancellationIsNotArchiveFailure: a Ctrl-C or a sync-wide deadline
-// is not a defect in the bundle and must not be reported as one, or the publisher
-// gets blamed for the operator's own cancellation.
+// A Ctrl-C or sync-wide deadline is not a defect in the bundle and must not be reported as one.
 func TestExtractCallerCancellationIsNotArchiveFailure(t *testing.T) {
 	t.Parallel()
 
@@ -817,13 +771,8 @@ func rawTar(t *testing.T, ms ...member) []byte {
 	return buf.Bytes()
 }
 
-// TestValidatePathRejectsNUL is the one case asserted below Extract rather than
-// through it, and the reason is worth recording: Go's archive/tar trims the ustar
-// name field at the first NUL and rejects a PAX record containing one, so a NUL
-// CANNOT reach the extractor through this decoder — verified, a hand-built header
-// carrying "a\x00b" reads back as "a". The check is kept because it is one stdlib
-// change or one hand-rolled reader away from mattering and it costs nothing, and it
-// is tested here so it is not dead code nobody can prove.
+// Asserted below Extract because archive/tar trims the name at the first NUL, so a
+// NUL cannot reach the extractor through this decoder; the check is kept anyway.
 func TestValidatePathRejectsNUL(t *testing.T) {
 	t.Parallel()
 
@@ -837,19 +786,13 @@ func TestValidatePathRejectsNUL(t *testing.T) {
 func TestZeroLimitsTakeTheStrictDefault(t *testing.T) {
 	t.Parallel()
 
-	// A caller that forgets a field must get the strict answer, not an unlimited one.
 	require.Equal(t, DefaultLimits(), Limits{}.withDefaults())
 	require.Equal(t, DefaultLimits(), Limits{MaxEntries: -1, MaxDuration: -time.Second}.withDefaults())
 }
 
-// TestOnlyComponentsWeCreated tests the second, independent layer directly.
-//
-// The symlink-escape cases above are refused on the member kind, which means they
-// prove nothing about the containment invariant — with the member check deleted they
-// fail on this instead, which was confirmed by deleting it. These cases exercise the
-// invariant with no hostile member involved at all: something is already on disk
-// where an extracted path has to go, and the rule is that anything this extraction
-// did not itself create is refused rather than reused.
+// Exercises the containment invariant with no hostile member: something is already
+// on disk where an extracted path has to go, and anything this extraction did not
+// create is refused rather than reused.
 func TestOnlyComponentsWeCreated(t *testing.T) {
 	t.Parallel()
 
@@ -888,9 +831,7 @@ func TestOnlyComponentsWeCreated(t *testing.T) {
 		e, dest := newRoot(t)
 		require.NoError(t, os.Mkdir(filepath.Join(dest, "nested"), 0o755))
 
-		// A real directory in the way is refused, not adopted: the destination root
-		// was created empty moments ago, so anything inside it arrived from somewhere
-		// this extraction cannot account for.
+		// A real directory in the way is refused, not adopted.
 		err := e.ensureDir("nested")
 		requireRefusal(t, err, ErrUnsafeDestination, RejectDestExists)
 	})

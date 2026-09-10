@@ -38,7 +38,7 @@ cat >/tmp/ro.json <<JSON
   "Statement": [
     {
       "Effect": "Allow",
-      "Action": ["s3:GetBucketLocation", "s3:ListBucket"],
+      "Action": ["s3:GetBucketLocation", "s3:ListBucket", "s3:GetBucketVersioning", "s3:GetBucketObjectLockConfiguration", "s3:GetEncryptionConfiguration", "s3:GetLifecycleConfiguration"],
       "Resource": ["arn:aws:s3:::$BUCKET"]
     },
     {

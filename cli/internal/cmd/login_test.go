@@ -1,19 +1,20 @@
-// This file covers T030 (login), T031 (logout) and T033. logout's assertions
-// live here rather than in a logout_test.go because the two verbs share every
-// helper below and are the two halves of one requirement: login writes exactly
-// one credential and logout removes exactly that one.
+// login's and logout's assertions live in this one file because the two
+// verbs share every helper below and are the two halves of one
+// requirement: login writes exactly one credential and logout removes
+// exactly that one.
 //
-// HOW THESE TESTS ASSERT, AND WHY IT LOOKS AWKWARD.
+// How these tests assert, and why it looks awkward.
 //
-// Nothing here prints the captured output of a login. The diagnostic stream
-// carries the user code and the verification_uri_complete URL, and that URL
-// embeds the code as `?user_code=...` — precisely the shape
-// internal/leakscan's run-wide scan hunts for in the whole suite's output. A
-// require.Contains that failed would print its haystack, put the code into the
-// output the SC-010 gate reads, and turn one red test into a permanent second
-// failure in a different package. So assertions over these buffers use
-// require.True/False with a hand-written message and never hand testify the
-// haystack — the same discipline leakscan_test.go applies to itself.
+// Nothing here prints the captured output of a login. The diagnostic
+// stream carries the user code and the verification_uri_complete URL, and
+// that URL embeds the code as `?user_code=...` — precisely the shape
+// internal/leakscan's run-wide scan hunts for in the whole suite's output.
+// A require.Contains that failed would print its haystack, put the code
+// into the output the leak-scan gate reads, and turn one red test into a
+// permanent second failure in a different package. So assertions over
+// these buffers use require.True/False with a hand-written message and
+// never hand testify the haystack — the same discipline leakscan_test.go
+// applies to itself.
 //
 // For the same reason no test in this file uses leakscan's sentinel user code:
 // a display assertion needs the fake hub's own randomly generated code, which
@@ -89,7 +90,7 @@ func (s *syncBuffer) String() string {
 // in. Wait records the duration it was asked for, advances the clock by exactly
 // that much, and then blocks until the test releases it.
 //
-// The recording is what proves FR-002: the durations are the intervals the
+// The recording is what proves the durations are the intervals the
 // client was told to honour, and they are asserted against what the fake
 // advertised. The blocking is what makes the suite deterministic — a test can
 // be certain login has polled once and is now between polls, which is the only
@@ -194,8 +195,8 @@ func (c *steppingClock) Wait(ctx context.Context, d time.Duration) error {
 	return nil
 }
 
-// testHome points HOME at a scratch directory. Every verb resolves its state
-// root from HOME (FR-039), so a test that skipped this would write into the
+// testHome points HOME at a scratch directory. Every verb resolves its
+// state root from HOME, so a test that skipped this would write into the
 // developer's own ~/.agent-manager.
 func testHome(t *testing.T) string {
 	t.Helper()
@@ -206,11 +207,11 @@ func testHome(t *testing.T) string {
 
 // fileBackendOnly forces the credential store to the file fallback.
 //
-// Not a shortcut: the alternative is a suite whose result depends on whether a
-// Secret Service happens to be running on the machine, and on Linux CI that is
-// the difference between exercising the fallback and exercising nothing.
-// internal/credentials owns the per-backend round trip (T028); these tests own
-// the wiring.
+// Not a shortcut: the alternative is a suite whose result depends on
+// whether a Secret Service happens to be running on the machine, and on
+// Linux CI that is the difference between exercising the fallback and
+// exercising nothing. internal/credentials owns the per-backend round
+// trip; these tests own the wiring.
 func fileBackendOnly() []keyring.BackendType {
 	return []keyring.BackendType{keyring.FileBackend}
 }
@@ -255,7 +256,7 @@ func logoutDepsFor() logoutDeps {
 // startFake starts the fake hub over TLS with the test's clock.
 //
 // TLS is not optional: amctl refuses a plaintext hub without
-// --allow-plaintext-hub (FR-041), so a test of the normal path against a plain
+// --allow-plaintext-hub, so a test of the normal path against a plain
 // http fake would be testing the refusal.
 func startFake(t *testing.T, clk *gateClock) fake.Target {
 	t.Helper()
@@ -311,8 +312,8 @@ func awaitLogin(t *testing.T, done <-chan error) error {
 
 // ---------------------------------------------------------------- the flow
 
-// TestLoginStoresACredentialTheStoreCanReadBack is the whole of US1's happy
-// path, and it deliberately does not believe login's own report: the credential
+// TestLoginStoresACredentialTheStoreCanReadBack is the whole happy path, and
+// it deliberately does not believe login's own report: the credential
 // is read back through internal/credentials, which is how every other verb will
 // find it. A login that printed a perfect result and stored nothing would pass
 // any test that only read the result.
@@ -331,9 +332,9 @@ func TestLoginStoresACredentialTheStoreCanReadBack(t *testing.T) {
 	clk.letItPoll()
 	require.NoError(t, awaitLogin(t, done))
 
-	// FR-002, and the reason the interval is one second here: internal/device
-	// defaults to the RFC's five when the hub omits `interval`, so a recorded
-	// wait of exactly one second can only have come off the wire.
+	// The reason the interval is one second here: internal/device
+	// defaults to the RFC's five when the hub omits `interval`, so a
+	// recorded wait of exactly one second can only have come off the wire.
 	require.Equal(t, []time.Duration{advertisedInterval}, clk.recorded(),
 		"the client must wait exactly the interval the hub advertised, once, between its two polls")
 
@@ -356,9 +357,9 @@ func TestLoginStoresACredentialTheStoreCanReadBack(t *testing.T) {
 	require.False(t, stored.Expired(stored.ExpiresAt.Add(-time.Second)))
 	require.True(t, stored.Expired(stored.ExpiresAt))
 
-	// FR-007 with the real value rather than a sentinel: the fake's tokens are
-	// random, so this is the only place the actual issued token can be checked
-	// against everything the run printed.
+	// With the real value rather than a sentinel: the fake's tokens are
+	// random, so this is the only place the actual issued token can be
+	// checked against everything the run printed.
 	require.False(t, strings.Contains(result.String(), stored.Token),
 		"the access token reached the result stream")
 	require.False(t, strings.Contains(diag.String(), stored.Token),
@@ -369,13 +370,13 @@ func TestLoginStoresACredentialTheStoreCanReadBack(t *testing.T) {
 	require.False(t, strings.Contains(result.String(), code),
 		"FR-007: the user code must not reach a report")
 
-	// FR-003 at the command layer: the fallback is reported on the diagnostic
+	// At the command layer: the fallback is reported on the diagnostic
 	// stream, and it names the backend actually chosen.
 	require.True(t, strings.Contains(diag.String(), `using "file"`),
 		"the fallback to a file was not reported on the diagnostic stream")
 }
 
-// TestLoginPutsTheCodeOnStderrAndOneJSONDocumentOnStdout is FR-035.
+// TestLoginPutsTheCodeOnStderrAndOneJSONDocumentOnStdout pins that split.
 //
 // The user code cannot go to the result stream, because under --output json
 // that stream must be a single parseable document and the code is only useful
@@ -416,12 +417,12 @@ func TestLoginPutsTheCodeOnStderrAndOneJSONDocumentOnStdout(t *testing.T) {
 		"a user code inside the JSON document breaks every scripted caller")
 }
 
-// TestLoginRunsWithNoTerminalAndNeverPrompts is FR-037's FIRST clause, which is
-// the one that applies to login: the device grant exists so that the machine
-// needing a credential never has to collect one, so login works under a pipe
-// with no flag at all. Under `go test` neither stream is a terminal and both
-// are plain buffers here, so a login that consulted one, or read stdin, could
-// not complete.
+// TestLoginRunsWithNoTerminalAndNeverPrompts covers the clause that
+// applies to login: the device grant exists so that the machine needing a
+// credential never has to collect one, so login works under a pipe with
+// no flag at all. Under `go test` neither stream is a terminal and both
+// are plain buffers here, so a login that consulted one, or read stdin,
+// could not complete.
 //
 // The mechanical half of the same claim is
 // TestNoVerbReachesForATerminalOrStandardInput; this half proves the verb
@@ -448,10 +449,10 @@ func TestLoginRunsWithNoTerminalAndNeverPrompts(t *testing.T) {
 	require.True(t, found)
 }
 
-// TestLoginWithoutAHubRefusesNamingTheFlag is FR-037's SECOND clause. The one
-// question login would otherwise ask is which hub; with no TTY there is nobody
-// to ask, so it refuses and names --hub. This runs the real command tree,
-// because the flag has to be the one the tree registers.
+// TestLoginWithoutAHubRefusesNamingTheFlag: the one question login would
+// otherwise ask is which hub; with no TTY there is nobody to ask, so it
+// refuses and names --hub. This runs the real command tree, because the
+// flag has to be the one the tree registers.
 func TestLoginWithoutAHubRefusesNamingTheFlag(t *testing.T) {
 	testHome(t)
 	var result, diag syncBuffer
@@ -461,7 +462,7 @@ func TestLoginWithoutAHubRefusesNamingTheFlag(t *testing.T) {
 	require.Empty(t, result.String(), "a refusal on the result stream would corrupt the json document")
 }
 
-// TestLoginRefusesAPlaintextHubUntilTheFlagIsPassed is FR-041.
+// TestLoginRefusesAPlaintextHubUntilTheFlagIsPassed checks both directions.
 //
 // Both directions, because the refusal is only worth having if the flag
 // actually lifts it: without the flag the error is hub.ErrInsecureHub and the
@@ -496,7 +497,7 @@ func TestLoginRefusesAPlaintextHubUntilTheFlagIsPassed(t *testing.T) {
 
 // ---------------------------------------------------------------- refusals
 
-// TestLoginReportsADenialAndExitsNonZero is US1 scenario 3's sibling: the human
+// TestLoginReportsADenialAndExitsNonZero is the denial sibling: the human
 // said no. It must be reported as a denial, exit non-zero, and leave nothing
 // stored — a login that wrote a credential it never received is the worst
 // possible outcome here.
@@ -526,7 +527,7 @@ func TestLoginReportsADenialAndExitsNonZero(t *testing.T) {
 	require.False(t, found, "a denied login stored a credential")
 }
 
-// TestLoginReportsAnExpiredCodeAndStopsPolling is US1 scenario 3.
+// TestLoginReportsAnExpiredCodeAndStopsPolling covers an expired device code.
 //
 // The "does not loop" half is the assertion that matters and it is the one
 // easiest to fake: it is proven by the number of PAUSES, because continuing to
@@ -560,7 +561,7 @@ func TestLoginReportsAnExpiredCodeAndStopsPolling(t *testing.T) {
 	require.False(t, found, "an expired login stored a credential")
 }
 
-// TestLoginDistinguishesUnreachableFromEveryOtherFailure is FR-040.
+// TestLoginDistinguishesUnreachableFromEveryOtherFailure checks five outcomes.
 //
 // The four HTTP classes are driven by a server that answers the device
 // authorisation with one fixed status, which is the only way to reach 401 and
@@ -635,9 +636,9 @@ func TestLoginDistinguishesUnreachableFromEveryOtherFailure(t *testing.T) {
 	})
 }
 
-// TestLoginRefusesAHomeItCannotUse is FR-039: the home check happens before any
-// network request. The hub here is a dead port, so if the ordering were the
-// other way round the error would be about the network instead.
+// TestLoginRefusesAHomeItCannotUse: the home check happens before any
+// network request. The hub here is a dead port, so if the ordering were
+// the other way round the error would be about the network instead.
 func TestLoginRefusesAHomeItCannotUse(t *testing.T) {
 	t.Setenv("HOME", "")
 	opts, _, _ := testOptions("https://127.0.0.1:1", output.FormatHuman)
@@ -648,9 +649,9 @@ func TestLoginRefusesAHomeItCannotUse(t *testing.T) {
 	require.Equal(t, CodeRefused, ExitCode(opts.Outcome, err))
 }
 
-// TestLoginWarnsThatAnEnvironmentTokenOutranksWhatItStores is FR-005 seen from
-// login: the credential is still stored, and the user is told it will be
-// ignored. Silence here would let someone believe a login took effect.
+// TestLoginWarnsThatAnEnvironmentTokenOutranksWhatItStores: the
+// credential is still stored, and the user is told it will be ignored.
+// Silence here would let someone believe a login took effect.
 func TestLoginWarnsThatAnEnvironmentTokenOutranksWhatItStores(t *testing.T) {
 	testHome(t)
 	clk := newGateClock()
@@ -680,9 +681,9 @@ func TestLoginWarnsThatAnEnvironmentTokenOutranksWhatItStores(t *testing.T) {
 		"FR-007: naming the variable is the point; printing its value is not")
 }
 
-// TestLoginRefusesWithoutAHostnameToBindTo is FR-001's negative control. The
-// hostname is what the approving human sees, so a login that could not read one
-// must refuse rather than send an anonymous request.
+// TestLoginRefusesWithoutAHostnameToBindTo is the negative control: the
+// hostname is what the approving human sees, so a login that could not
+// read one must refuse rather than send an anonymous request.
 func TestLoginRefusesWithoutAHostnameToBindTo(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -726,8 +727,9 @@ func plantCredentialFile(t *testing.T, home, hubURL string, mode fs.FileMode) st
 	return path
 }
 
-// TestLoginRefusesAWideCredentialStoreBeforeSendingAnyoneToABrowser is FR-004
-// ordered against FR-001, and the ordering is the whole requirement.
+// TestLoginRefusesAWideCredentialStoreBeforeSendingAnyoneToABrowser: the
+// permission check ordered against the hostname check, and the ordering
+// is the whole requirement.
 //
 // Measured before the fix: with a 0644 credential file already present for the
 // hub — a restore from backup, an rsync without -p, a container COPY, since
@@ -853,17 +855,18 @@ func hostileHub(t *testing.T, body string, polls *atomic.Int64) fake.Target {
 	return fake.Target{BaseURL: srv.URL, HTTPClient: srv.Client()}
 }
 
-// TestLoginRefusesDeviceSecondsItCannotMeasure is FR-002 against the arithmetic,
-// and the poll COUNT is the assertion that matters.
+// TestLoginRefusesDeviceSecondsItCannotMeasure is about the arithmetic,
+// and the poll count is the assertion that matters.
 //
 // `expires_in` and `interval` are unbounded int64 seconds on the wire, and
-// time.Duration is int64 NANOSECONDS: `seconds * time.Second` wraps above about
-// 9.22e9 seconds. Measured before the fix, with interval 18446744074 and
-// expires_in 5, the adapter produced 290.448ms, internal/device had nothing to
-// object to — normaliseInterval catches zero and negative, which is all a wrap
-// CAN present as — and login made EIGHTEEN HTTP polls inside the five-second
-// window against a hub that had asked for one poll every 584 years. Scaled to a
-// normal 900-second window that is roughly 3,100 polls instead of 180.
+// time.Duration is int64 nanoseconds: `seconds * time.Second` wraps above
+// about 9.22e9 seconds. Measured before the fix, with interval
+// 18446744074 and expires_in 5, the adapter produced 290.448ms,
+// internal/device had nothing to object to — normaliseInterval catches
+// zero and negative, which is all a wrap can present as — and login made
+// eighteen HTTP polls inside the five-second window against a hub that
+// had asked for one poll every 584 years. Scaled to a normal 900-second
+// window that is roughly 3,100 polls instead of 180.
 //
 // So every row here asserts zero polls of the token endpoint. An assertion that
 // only checked for an error would have passed with the defect present, because
@@ -886,8 +889,9 @@ func TestLoginRefusesDeviceSecondsItCannotMeasure(t *testing.T) {
 			want: "expires_in is 18446744074 seconds",
 		},
 		{
-			// The wrap is symmetric: -9223372037 seconds becomes a POSITIVE 292
-			// years, so bounding only the upper end would leave this one live.
+			// The wrap is symmetric: -9223372037 seconds becomes a
+			// positive 292 years, so bounding only the upper end would
+			// leave this one live.
 			name: "a negative expires_in that wraps positive",
 			body: `{` + codes + `,"expires_in":-9223372037,"interval":5}`,
 			want: "expires_in is -9223372037 seconds",
@@ -924,13 +928,12 @@ func TestLoginRefusesDeviceSecondsItCannotMeasure(t *testing.T) {
 // TestAnInterruptedLoginIsNotBlamedOnTheHub is about a diagnosis, not a failure:
 // both cases below already ended the flow correctly.
 //
-// A context cancelled while a poll is in FLIGHT comes back through
-// internal/hub's classifyTransport, which classifies a cancelled request as
-// ClassUnreachable — correct for that package, since nothing answered. Measured
-// before the fix, wrapping that chain produced "login was interrupted before it
-// was approved: … hub unreachable at https://…: context canceled", and any
-// FR-040 consumer switching on hub.ClassOf got "unreachable" for a hub that was
-// answering perfectly.
+// A context cancelled while a poll is in flight comes back through
+// internal/hub's classifyTransport, which classifies a cancelled request
+// as ClassUnreachable — correct for that package, since nothing answered.
+// Measured before the fix, wrapping that chain produced "login was
+// interrupted before it was approved: … hub unreachable at https://…:
+// context canceled", for a hub that was answering perfectly.
 //
 // Latency worth knowing: nothing in amctl installs a signal handler, so
 // cmd.Context() is context.Background() and Ctrl-C kills the process outright.
@@ -998,7 +1001,7 @@ func TestAnInterruptedLoginIsNotBlamedOnTheHub(t *testing.T) {
 
 // ---------------------------------------------------------------- logout
 
-// TestLogoutRemovesTheCredentialAndTouchesNothingElse is FR-008.
+// TestLogoutRemovesTheCredentialAndTouchesNothingElse proves it byte-for-byte.
 //
 // The tree is snapshotted by content, so "touches nothing installed" is a
 // byte-level claim and not a claim about which functions logout calls. The
@@ -1014,9 +1017,9 @@ func TestLogoutRemovesTheCredentialAndTouchesNothingElse(t *testing.T) {
 	store := openTestStore(t, home)
 	require.NoError(t, store.Save(credentials.Issued(canonical.URL, "a-stored-token", 3600, time.Now())))
 
-	// An installed tree: amctl's own per-hub record, and packages in the two
-	// places a target writes. SC-004's unmanaged neighbour is here too, because
-	// the failure this guards against does not distinguish them.
+	// An installed tree: amctl's own per-hub record, and packages in the
+	// two places a target writes. An unmanaged neighbour is here too,
+	// because the failure this guards against does not distinguish them.
 	seeded := map[string]string{
 		filepath.Join(DirName, canonical.Dir, "state.json"):                `{"schemaVersion":"1.0.0","hub":"` + canonical.URL + `","profiles":[]}`,
 		filepath.Join(DirName, "cache", "sha256-abc", "bundle.zst"):        "not really a bundle",
@@ -1069,9 +1072,10 @@ func TestLogoutRemovesTheCredentialAndTouchesNothingElse(t *testing.T) {
 	})
 }
 
-// TestLogoutOfOneHubLeavesAnotherHubsCredentialAlone is FR-006. Two hubs, one
-// logout. No server is needed: logout makes no request, which is itself part of
-// the requirement — see newLogoutCmd on why it constructs no hub client.
+// TestLogoutOfOneHubLeavesAnotherHubsCredentialAlone: two hubs, one
+// logout. No server is needed: logout makes no request, which is itself
+// part of the requirement — see newLogoutCmd on why it constructs no hub
+// client.
 func TestLogoutOfOneHubLeavesAnotherHubsCredentialAlone(t *testing.T) {
 	home := testHome(t)
 	first, err := ParseHub("https://first.example.com")
@@ -1150,8 +1154,8 @@ func TestLogoutWhenNothingIsStoredSucceedsAndSaysSo(t *testing.T) {
 		"a script must be able to tell 'removed one' from 'there was none' without parsing prose")
 }
 
-// TestLogoutWarnsThatAnEnvironmentTokenStillAuthenticates: FR-005 means
-// removing the stored credential does not log this shell out.
+// TestLogoutWarnsThatAnEnvironmentTokenStillAuthenticates: removing the
+// stored credential does not log this shell out.
 func TestLogoutWarnsThatAnEnvironmentTokenStillAuthenticates(t *testing.T) {
 	testHome(t)
 	opts, _, diag := testOptions("https://hub.example.com", output.FormatHuman)
@@ -1164,9 +1168,9 @@ func TestLogoutWarnsThatAnEnvironmentTokenStillAuthenticates(t *testing.T) {
 	require.False(t, strings.Contains(diag.String(), "an-environment-token"))
 }
 
-// TestLogoutRefusesAHomeItCannotUse: the same FR-039 ordering as login, for the
-// verb that has no network call to be ordered against — the home is still the
-// first thing that has to be true.
+// TestLogoutRefusesAHomeItCannotUse: the same ordering as login, for the
+// verb that has no network call to be ordered against — the home is
+// still the first thing that has to be true.
 func TestLogoutRefusesAHomeItCannotUse(t *testing.T) {
 	t.Setenv("HOME", "")
 	opts, _, _ := testOptions("https://hub.example.com", output.FormatHuman)
@@ -1175,8 +1179,8 @@ func TestLogoutRefusesAHomeItCannotUse(t *testing.T) {
 	require.Equal(t, CodeRefused, ExitCode(opts.Outcome, err))
 }
 
-// TestLogoutWithoutAHubRefusesNamingTheFlag: FR-037 again. logout has exactly
-// one question and it is the same one.
+// TestLogoutWithoutAHubRefusesNamingTheFlag: logout has exactly one
+// question and it is the same one as login's.
 func TestLogoutWithoutAHubRefusesNamingTheFlag(t *testing.T) {
 	testHome(t)
 	var result, diag syncBuffer
@@ -1208,10 +1212,8 @@ func TestLogoutOfAPlaintextHubWorksWithoutTheFlag(t *testing.T) {
 	require.False(t, found)
 }
 
-// ---------------------------------------------------------------- FR-037 gate
-
-// TestNoVerbReachesForATerminalOrStandardInput is FR-037 as a property of the
-// source rather than of one code path.
+// TestNoVerbReachesForATerminalOrStandardInput is the no-TTY contract as
+// a property of the source rather than of one code path.
 //
 // A behavioural test can only prove that the paths it exercises do not prompt.
 // This proves that no path CAN: nothing in internal/cmd names os.Stdin or a
@@ -1220,8 +1222,8 @@ func TestLogoutOfAPlaintextHubWorksWithoutTheFlag(t *testing.T) {
 // carries the same negative control — a synthetic file that does prompt, which
 // the detector must catch.
 //
-// If a verb ever genuinely needs an interactive path, this test is where the
-// conversation starts: FR-037 wants a flag beside it, and T057 is the audit.
+// If a verb ever genuinely needs an interactive path, this test is
+// where the conversation starts: it wants a flag beside it.
 func TestNoVerbReachesForATerminalOrStandardInput(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	require.NoError(t, err)
@@ -1290,7 +1292,7 @@ func interactiveUses(t *testing.T, name, src string) []string {
 
 // ---------------------------------------------------------------- snapshot
 
-// fileState is one path's identity for the FR-008 comparison.
+// fileState is one path's identity for the snapshot comparison.
 type fileState struct {
 	Mode    fs.FileMode
 	Size    int64

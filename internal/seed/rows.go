@@ -74,42 +74,6 @@ func newIndex(built []*builtVersion) (index, error) {
 	return idx, nil
 }
 
-// resolvable is the version an entry resolves to: the highest version whose
-// verdict is not `scanning` and not `rejected`, because neither can enter a
-// lockfile (FR-029). It is a seed's reading of resolution and deliberately not a
-// second implementation of the gate — the gate's effect is recorded in the
-// lockfiles the dataset states, not recomputed here.
-func (i index) resolvable(pkg string) (*builtVersion, error) {
-	var best *builtVersion
-	for _, version := range i.byRef {
-		if version.id() != pkg {
-			continue
-		}
-		switch version.spec.verdict {
-		case models.VerdictScanning, models.VerdictRejected:
-			continue
-		}
-		if best == nil || sortKeyOf(version) > sortKeyOf(best) {
-			best = version
-		}
-	}
-	if best == nil {
-		return nil, fmt.Errorf("%s has no resolvable version", pkg)
-	}
-	return best, nil
-}
-
-func sortKeyOf(version *builtVersion) string {
-	key, err := models.SemverSort(version.ref.Semver)
-	if err != nil {
-		// Every seeded semver goes through SemverSort when its row is written, so a
-		// failure here is unreachable; ordering by the raw string is a worse answer
-		// than any of the alternatives at this call site.
-		return version.ref.Semver
-	}
-	return key
-}
-
 func writeRows(
 	ctx context.Context,
 	db bun.IDB,
@@ -513,11 +477,8 @@ func writeScans(
 		if err != nil {
 			return err
 		}
-		raised := now.Add(-version.spec.age).Add(time.Minute)
-		decided := raised
-		if spec.state != models.FindingStateOpen {
-			decided = now.Add(-3 * time.Hour)
-		}
+		raised := findingRaisedAt(version, now)
+		decided := findingDecidedAt(spec, version, now)
 
 		findingRows = append(findingRows, models.Finding{
 			ID: seedID("finding", spec.rule), ScanID: seedID("scan", ref),
@@ -545,6 +506,32 @@ func writeScans(
 		return err
 	}
 	return insert("overrides", &overrideRows)
+}
+
+// findingFor is the seeded finding against one version, addressed as
+// publisher/name@semver, or nil where the dataset raised none.
+func findingFor(ref string) *findingSpec {
+	for i := range designFindings {
+		if designFindings[i].pkg+"@"+designFindings[i].semver == ref {
+			return &designFindings[i]
+		}
+	}
+	return nil
+}
+
+// findingRaisedAt and findingDecidedAt are the two instants a seeded finding
+// carries. They are functions rather than arithmetic inlined at the one call site
+// because profile resolution reads the acceptance expiry these produce, and two
+// spellings of "when was this decided" is two answers to when an override lapses.
+func findingRaisedAt(version *builtVersion, now time.Time) time.Time {
+	return now.Add(-version.spec.age).Add(time.Minute)
+}
+
+func findingDecidedAt(spec *findingSpec, version *builtVersion, now time.Time) time.Time {
+	if spec.state == models.FindingStateOpen {
+		return findingRaisedAt(version, now)
+	}
+	return now.Add(-3 * time.Hour)
 }
 
 // scanDuration spreads the seeded scans around the design's 18 s median so the

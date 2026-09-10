@@ -1,13 +1,13 @@
 package hub_test
 
-// T039, [SC-003]. This file is `package hub_test` and not `package hub`
-// because it drives the fake hub (gate R5) and internal/hub/fake imports
-// internal/hub: an in-package test file importing it would be an import cycle.
+// This file is `package hub_test` and not `package hub` because it drives
+// the fake hub and internal/hub/fake imports internal/hub: an in-package
+// test file importing it would be an import cycle.
 // The consequence is deliberate rather than a workaround — every assertion here
 // is made through the exported API a verb will use, so nothing passes because a
 // test reached inside.
 //
-// WHAT MAKES THE FR-016 TEST HERE A REAL CONTROL, and it is the assertion most
+// WHAT MAKES THE REDIRECT-LEAK TEST HERE A REAL CONTROL, and it is the assertion most
 // likely to be written wrongly. Measured in $GOROOT/src/net/http/client.go, not
 // assumed: Authorization is dropped on a redirect only when
 // `reqs[0].URL.Host != req.URL.Host` AND shouldCopyHeaderOnRedirect says no,
@@ -126,7 +126,7 @@ func rigFor(t *testing.T, target fake.Target) *rig {
 	h, err := hub.New(hub.Config{
 		URL:   target.BaseURL,
 		Token: target.Token,
-		// The fake defaults to plaintext; FR-041's refusal is hub_test.go's.
+		// The fake defaults to plaintext; that refusal is hub_test.go's.
 		AllowPlaintext: true,
 		HTTPClient:     &client,
 	})
@@ -212,7 +212,7 @@ func sha256Lockfile(b []byte) string {
 }
 
 // ---------------------------------------------------------------------------
-// FR-014, FR-017: verified before anything is usable, cached by digest.
+// Verified before anything is usable, cached by digest.
 // ---------------------------------------------------------------------------
 
 func TestFetchCachesVerifiedBytesAndServesTheSecondCallFromDisk(t *testing.T) {
@@ -444,7 +444,7 @@ func TestFetchRefusesAHandBuiltRefItCannotAddress(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// FR-015 / [SC-003]: a corrupted body writes nothing and names both digests.
+// A corrupted body writes nothing and names both digests.
 // ---------------------------------------------------------------------------
 
 func TestACorruptedBundleWritesNothingAndNamesBothDigests(t *testing.T) {
@@ -499,7 +499,7 @@ func TestACorruptedBundleWritesNothingAndNamesBothDigests(t *testing.T) {
 
 	// Nothing was written: no entry under either digest, and no leftover temp
 	// masquerading as one. This is the "leaves the machine unchanged for that
-	// entry" half of FR-015 at the only layer that writes anything for it.
+	// entry" half of digest verification at the only layer that writes anything for it.
 	require.Empty(t, r.cacheNames(t), "a refused bundle must leave the cache exactly as it was")
 	_, statErr := os.Stat(filepath.Join(r.dir, "sha256-"+mismatch.Got.Hex()))
 	require.ErrorIs(t, statErr, os.ErrNotExist, "the served bytes must not be filed under their own digest either")
@@ -625,7 +625,7 @@ func TestADisagreeingDigestHeaderIsRefusedAndAnUnreadableOneIsIgnored(t *testing
 			} else {
 				require.Equal(t, int64(len(served)), mismatch.Bytes)
 			}
-			// FR-015: both digests, and nothing written.
+			// Both digests, and nothing written.
 			require.Contains(t, err.Error(), mismatch.Want.Lockfile())
 			require.Contains(t, err.Error(), mismatch.Got.Lockfile())
 			names, rerr := os.ReadDir(cacheDir)
@@ -703,7 +703,7 @@ func TestATruncatedBodyIsAConnectionFailureAndNotATamperedBundle(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// FR-016: the bearer token never reaches the pre-signed redirect target.
+// The bearer token never reaches the pre-signed redirect target.
 // ---------------------------------------------------------------------------
 
 func TestTheBearerTokenNeverReachesThePresignedRedirectTarget(t *testing.T) {
@@ -771,7 +771,7 @@ func TestTheBearerTokenNeverReachesThePresignedRedirectTarget(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// FR-011: a 403 mid-sync skips that entry and the sync continues.
+// A 403 mid-sync skips that entry and the sync continues.
 // ---------------------------------------------------------------------------
 
 func TestAForbiddenBundleFailsOnlyThatEntryAndTheOthersStillFetch(t *testing.T) {
@@ -798,7 +798,7 @@ func TestAForbiddenBundleFailsOnlyThatEntryAndTheOthersStillFetch(t *testing.T) 
 			require.Equal(t, hub.ClassForbidden, hub.ClassOf(err),
 				"only a 403 skips an entry; %v", err)
 			require.ErrorIs(t, err, hub.ErrForbidden)
-			// The hub's own reason has to survive to the user (FR-011).
+			// The hub's own reason has to survive to the user.
 			require.Contains(t, err.Error(), "scan gate")
 			require.NotErrorIs(t, err, hub.ErrDigestMismatch,
 				"a gate refusal is not a corrupted bundle; the two exit differently")
@@ -820,7 +820,7 @@ func TestAForbiddenBundleFailsOnlyThatEntryAndTheOthersStillFetch(t *testing.T) 
 // suite came from the hub itself.
 //
 // The two halves are asserted against each other on purpose. A 403 from the hub
-// is the organisation's scan gate and FR-011 skips that entry and exits 0; a 403
+// is the organisation's scan gate and the sync verb skips that entry and exits 0; a 403
 // from the STORE the hub redirected to is a failed download — an expired
 // signature, clock skew, a proxy — and skipping it would install nothing while
 // reporting success. Same status, opposite outcomes, so the classes must not be
@@ -863,7 +863,7 @@ func TestA403FromTheRedirectTargetIsNotTheHubsGate(t *testing.T) {
 	require.True(t, hub.ClassOffload.Retryable(),
 		"a pre-signed URL is short-lived, so the next run gets a fresh one")
 
-	// And the hub's OWN 403 is untouched, or the fix would have closed FR-011's
+	// And the hub's OWN 403 is untouched, or the fix would have closed the
 	// skip along with the hole.
 	gated := r.refByID(t, r.target.Fixtures.ForbiddenBundle, r.target.Fixtures.ForbiddenEntryID)
 	_, gerr := r.dl.Fetch(t.Context(), gated)
@@ -898,7 +898,7 @@ func TestAMissingVersionIsNotSkippableTheWayA403Is(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// FR-018: --offline completes from cache alone or names what is missing.
+// --offline completes from cache alone or names what is missing.
 // ---------------------------------------------------------------------------
 
 func TestOfflineCompletesFromTheCacheOrNamesTheMissingDigest(t *testing.T) {
@@ -930,7 +930,7 @@ func TestOfflineCompletesFromTheCacheOrNamesTheMissingDigest(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// FR-007: no credential in any error this file can produce.
+// No credential in any error this file can produce.
 // ---------------------------------------------------------------------------
 
 func TestNoBundleFailureRendersTheBearerToken(t *testing.T) {
@@ -1034,7 +1034,7 @@ func TestNewDownloaderRefusesAnIncompletePairing(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// The order of cache operations, which is the documented FR-014/FR-017
+// The order of cache operations, which is the documented
 // property and the one thing no assertion on the returned bytes can see.
 // ---------------------------------------------------------------------------
 

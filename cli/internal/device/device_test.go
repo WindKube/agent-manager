@@ -1,13 +1,6 @@
-// The tests live in package device, not device_test, for one reason: the
-// never-polls-faster-than-told assertion needs a negative control, and the only
-// honest way to build one is to break the real poller — set Flow.slowDown to
-// zero so it ignores slow_down — and watch the assertion fire against the same
-// code path the passing case exercised. A control built out of a
-// hand-assembled slice of fake records would only prove the helper works.
-//
-// Nothing here sleeps. The clock is virtual: a suite that took five seconds to
-// prove a five second interval would be deleted by the first person who ran it
-// in a hurry, and one that took thirty to prove backoff would be deleted twice.
+// Tests live in package device, not device_test, so the never-polls-faster
+// negative control can zero Flow.slowDown directly. The clock is virtual;
+// nothing here actually sleeps.
 package device
 
 import (
@@ -23,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The fixtures. Distinctive so the FR-007 scan can find them anywhere.
 const (
 	testDeviceCode  = "DEVICE-CODE-a1b2c3d4e5f6-MUST-NEVER-BE-LOGGED"
 	testUserCode    = "HKQ2-9FTL"
@@ -33,8 +25,6 @@ const (
 )
 
 var epoch = time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
-
-// --- fake clock ---------------------------------------------------------
 
 type fakeClock struct {
 	now   time.Time
@@ -59,26 +49,17 @@ func (c *fakeClock) Wait(ctx context.Context, d time.Duration) error {
 
 func (c *fakeClock) advance(d time.Duration) { c.now = c.now.Add(d) }
 
-// --- fake transport -----------------------------------------------------
-
 type step struct {
-	code   ErrorCode
-	issued *Issued
-	err    error
-	// latency is how far the clock moves while this poll is in flight, so the
-	// gap between polls is never trivially equal to the interval.
-	latency time.Duration
-	// do runs after the clock has moved and before the answer is returned. It
-	// is how a test cancels a context mid-flight.
-	do func()
+	code    ErrorCode
+	issued  *Issued
+	err     error
+	latency time.Duration // how far the clock moves while this poll is in flight
+	do      func()        // runs after the clock moves; how a test cancels mid-flight
 }
 
 type pollRecord struct {
-	at time.Time
-	// interval is what the implementation believed the interval to be at this
-	// poll. Recorded only as a cross-check; the assertion itself uses an
-	// interval derived from the RFC, never this.
-	interval time.Duration
+	at       time.Time
+	interval time.Duration // implementation's own view, recorded only as a cross-check
 }
 
 type fakeHub struct {
@@ -89,13 +70,10 @@ type fakeHub struct {
 	authErr error
 
 	steps []step
-	// tail is the answer given once steps runs out. Without it a hub that
-	// stays pending has to be written out as a hundred identical steps.
-	tail *step
+	tail  *step // answer given once steps runs out
 
-	flow  *Flow
-	polls []pollRecord
-	// authorizeCalls proves Begin makes exactly one call and Wait makes none.
+	flow           *Flow
+	polls          []pollRecord
 	authorizeCalls int
 }
 
@@ -155,8 +133,6 @@ func authorization(expiresIn, interval time.Duration) Authorization {
 	}
 }
 
-// begin wires a flow over the fake clock and hub. The hub keeps a pointer back
-// to the flow so a poll can observe the interval in force.
 func begin(t *testing.T, h *fakeHub) (*Flow, error) {
 	t.Helper()
 	f, err := Begin(context.Background(), h, h.clk, AuthorizeRequest{
@@ -173,16 +149,8 @@ func newHub(t *testing.T, auth Authorization, steps []step, tail *step) *fakeHub
 	return &fakeHub{t: t, clk: newClock(), auth: auth, steps: steps, tail: tail}
 }
 
-// --- the load-bearing assertion -----------------------------------------
-
-// requiredInterval is RFC 8628 §3.2 and §3.5 restated: the client polls no
-// faster than the advertised interval, and each slow_down increases it by five
-// seconds "for this and all subsequent requests".
-//
-// Hand-derived from the RFC, deliberately NOT read off Flow.interval. Reading
-// the implementation's own idea of the interval would make the assertion agree
-// with any bug the implementation has — which is exactly what the negative
-// control below demonstrates.
+// requiredInterval is RFC 8628 §3.2/§3.5 restated, hand-derived rather than
+// read off Flow.interval so a bug in the implementation can't self-validate.
 func requiredInterval(advertised time.Duration, slowDownsSeen int) time.Duration {
 	if advertised <= 0 {
 		advertised = 5 * time.Second
@@ -191,8 +159,7 @@ func requiredInterval(advertised time.Duration, slowDownsSeen int) time.Duration
 }
 
 // violations reports every consecutive pair of polls whose gap was shorter
-// than the interval in force at the earlier poll. answers[i] is what the hub
-// said to poll i, so the count of slow_downs before poll i+1 is known.
+// than the interval in force at the earlier poll.
 func violations(polls []pollRecord, answers []ErrorCode, advertised time.Duration) []string {
 	var out []string
 	slowDowns := 0
@@ -211,8 +178,6 @@ func violations(polls []pollRecord, answers []ErrorCode, advertised time.Duratio
 }
 
 func TestNeverPollsFasterThanItWasTold(t *testing.T) {
-	// A long login with two slow_downs and non-zero request latency, so no gap
-	// is trivially equal to an interval.
 	answers := []ErrorCode{
 		CodeAuthorizationPending, CodeAuthorizationPending, CodeSlowDown,
 		CodeAuthorizationPending, CodeAuthorizationPending, CodeSlowDown,
@@ -240,8 +205,6 @@ func TestNeverPollsFasterThanItWasTold(t *testing.T) {
 		require.Len(t, h.polls, len(answers)+1)
 		require.Empty(t, violations(h.polls, answers, 5*time.Second))
 
-		// The implementation's own view must agree with the RFC-derived one at
-		// every poll — a second, independent side of the same check.
 		slowDowns := 0
 		for i, p := range h.polls {
 			if i > 0 && answers[i-1] == CodeSlowDown {
@@ -251,7 +214,6 @@ func TestNeverPollsFasterThanItWasTold(t *testing.T) {
 				"interval in force at poll %d", i)
 		}
 
-		// No real sleeps: the flow spent over half an hour of virtual time.
 		require.Greater(t, h.clk.Now().Sub(epoch), 30*time.Second)
 		require.Less(t, time.Since(realStart), 2*time.Second, "the suite must not actually sleep")
 	})
@@ -260,7 +222,7 @@ func TestNeverPollsFasterThanItWasTold(t *testing.T) {
 		h := build()
 		f, err := begin(t, h)
 		require.NoError(t, err)
-		f.slowDown = 0 // the bug: slow_down acknowledged and never acted on.
+		f.slowDown = 0 // simulate a poller that ignores slow_down
 
 		_, err = f.Wait(context.Background())
 		require.NoError(t, err)
@@ -270,8 +232,6 @@ func TestNeverPollsFasterThanItWasTold(t *testing.T) {
 		require.Contains(t, bad[0], "the interval in force was 10s")
 	})
 }
-
-// --- outcomes -----------------------------------------------------------
 
 func TestApprovalReturnsTheTokenAndItsLifetime(t *testing.T) {
 	h := newHub(t, authorization(15*time.Minute, 7*time.Second), []step{
@@ -300,8 +260,6 @@ func TestApprovalReturnsTheTokenAndItsLifetime(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, testRefresh, refresh)
 
-	// The lifetime is stamped at RECEIPT, so the second poll's latency and the
-	// two waits are all already spent. Hand-derived: 7s + 0.4s + 7s + 1s.
 	receipt := epoch.Add(7*time.Second + 400*time.Millisecond + 7*time.Second + time.Second)
 	require.Equal(t, receipt, h.clk.Now())
 	require.Equal(t, receipt.Add(time.Hour), tok.ExpiresAt)
@@ -323,9 +281,6 @@ func TestDenialStopsTheLoopAtOnce(t *testing.T) {
 }
 
 func TestTerminalCodesStopAndContinuingCodesDoNot(t *testing.T) {
-	// The 3/2 split is the whole point: three of the five declared codes are
-	// final. Asserted over Codes() so a sixth code cannot be added without
-	// landing in one of these two lists.
 	terminal := map[ErrorCode]error{
 		CodeAccessDenied: ErrDenied,
 		CodeExpiredToken: ErrExpired,
@@ -386,8 +341,6 @@ func TestUnrecognisedRefusalIsTerminalAndQuotedVerbatim(t *testing.T) {
 	}
 }
 
-// --- expiry -------------------------------------------------------------
-
 func TestExpiry(t *testing.T) {
 	t.Run("the hub says expired_token", func(t *testing.T) {
 		h := newHub(t, authorization(15*time.Minute, 5*time.Second),
@@ -402,7 +355,6 @@ func TestExpiry(t *testing.T) {
 	})
 
 	t.Run("the clock passes the deadline while polling", func(t *testing.T) {
-		// One poll that takes longer than the whole window.
 		h := newHub(t, authorization(30*time.Second, 5*time.Second),
 			[]step{{code: CodeAuthorizationPending, latency: 40 * time.Second}}, nil)
 		f, err := begin(t, h)
@@ -415,9 +367,6 @@ func TestExpiry(t *testing.T) {
 	})
 
 	t.Run("the next poll would fall after the deadline", func(t *testing.T) {
-		// 12s window, 5s interval: polls at 0, 5, 10 and then no fourth,
-		// because it could only ever return expired_token. Hand-derived from
-		// the interval and the window, not observed.
 		h := newHub(t, authorization(12*time.Second, 5*time.Second), nil,
 			&step{code: CodeAuthorizationPending})
 		f, err := begin(t, h)
@@ -443,8 +392,6 @@ func TestExpiry(t *testing.T) {
 	})
 }
 
-// --- slow_down ----------------------------------------------------------
-
 func TestSlowDown(t *testing.T) {
 	t.Run("each slow_down adds the RFC's five seconds", func(t *testing.T) {
 		h := newHub(t, authorization(15*time.Minute, 5*time.Second), []step{
@@ -459,13 +406,8 @@ func TestSlowDown(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Equal(t, 15*time.Second, f.Interval())
-		// Gaps hand-derived from RFC 8628 §3.5, whose words are "the interval
-		// MUST be increased by 5 seconds for this and all subsequent requests".
-		// "For this" is the load-bearing half: the widened interval governs the
-		// gap that immediately follows the slow_down, not the one after that. So
-		// slow_down, slow_down, pending gives 10, 15, 15 — and 5, 10, 15 would
-		// mean the first slow_down was acknowledged and then ignored for one
-		// round.
+		// RFC 8628 §3.5: the widened interval governs the gap immediately
+		// following the slow_down, not the one after that.
 		require.Equal(t, []time.Duration{10 * time.Second, 15 * time.Second, 15 * time.Second}, h.clk.waits)
 	})
 
@@ -496,14 +438,7 @@ func TestSlowDown(t *testing.T) {
 	})
 }
 
-// --- the interval the hub gives us --------------------------------------
-
 func TestIntervalNormalisation(t *testing.T) {
-	// RFC 8628 §3.2 on the authorisation response's `interval`: "OPTIONAL. The
-	// minimum amount of time in seconds that the client SHOULD wait between
-	// polling requests to the token endpoint. If no value is provided, clients
-	// MUST use 5 as the default." That sentence is where the 5 comes from —
-	// not from the hub's fake, which happens to send 5 as well.
 	for _, tc := range []struct {
 		name string
 		give time.Duration
@@ -528,19 +463,9 @@ func TestIntervalNormalisation(t *testing.T) {
 	}
 }
 
-// TestBeginRefusesAnIntervalNoWindowCouldFit is the negative control for a
-// MISDIAGNOSIS, not for a crash, which is why it asserts what the error is NOT.
-//
-// Measured before the fix, against a hub answering interval 86400 with
-// expires_in 900: Begin accepted the authorisation, login printed the code and
-// "Waiting for approval. This expires at <T+15min>", pause() then refused to
-// start a wait that would end after the deadline - correct arithmetic - and
-// reported ErrExpired, which login turns into "your code expired; run `amctl
-// login` again and approve it inside the window". The code had its full fifteen
-// minutes. Every retry behaved identically, so the advice was a loop, and the
-// actual fault - a hub whose poll interval outlives its own device code - was
-// never named. It is ErrProtocol, it is refused before a human is sent
-// anywhere, and both numbers are in the message.
+// TestBeginRefusesAnIntervalNoWindowCouldFit proves the failure is reported
+// as ErrProtocol naming both numbers, not misdiagnosed as ErrExpired (which
+// would send the user into a retry loop that can never succeed).
 func TestBeginRefusesAnIntervalNoWindowCouldFit(t *testing.T) {
 	for _, tc := range []struct {
 		name            string
@@ -557,10 +482,6 @@ func TestBeginRefusesAnIntervalNoWindowCouldFit(t *testing.T) {
 			wantInMessage: []string{"15m0s"},
 		},
 		{
-			// The RFC's default is what applies when the hub omits `interval`,
-			// so a window shorter than five seconds is unpollable even though
-			// the hub named no interval at all. Hand-derived from RFC 8628
-			// section 3.2, not from the implementation's constant.
 			name: "no interval and a window shorter than the RFC's default", expiresIn: 3 * time.Second, give: 0,
 			wantInMessage: []string{"5s", "3s"},
 		},
@@ -579,9 +500,6 @@ func TestBeginRefusesAnIntervalNoWindowCouldFit(t *testing.T) {
 		})
 	}
 
-	// The positive control, one nanosecond the other side of the boundary: this
-	// package enforces the hub's floor and imposes none of its own, so an
-	// interval that leaves any window at all is accepted.
 	t.Run("an interval one nanosecond inside the window is accepted", func(t *testing.T) {
 		h := newHub(t, authorization(time.Minute, time.Minute-time.Nanosecond),
 			[]step{{issued: issuedToken()}}, nil)
@@ -591,10 +509,8 @@ func TestBeginRefusesAnIntervalNoWindowCouldFit(t *testing.T) {
 	})
 }
 
-// A one nanosecond interval is honoured rather than clamped up, and that is a
-// deliberate limitation worth stating: this package enforces the hub's floor,
-// it does not impose one of its own. If a rate floor is ever wanted it belongs
-// here, and this test is where it would be asserted.
+// TestSubSecondIntervalIsNotClampedUp proves this package enforces only the
+// hub's floor and imposes none of its own.
 func TestSubSecondIntervalIsNotClampedUp(t *testing.T) {
 	h := newHub(t, authorization(time.Minute, time.Millisecond),
 		[]step{{code: CodeAuthorizationPending}, {issued: issuedToken()}}, nil)
@@ -604,8 +520,6 @@ func TestSubSecondIntervalIsNotClampedUp(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []time.Duration{time.Millisecond}, h.clk.waits)
 }
-
-// --- cancellation, and telling it apart from a refusal ------------------
 
 func TestContextCancellationIsDistinguishableFromAHubRefusal(t *testing.T) {
 	t.Run("cancelled while waiting out the interval", func(t *testing.T) {
@@ -641,10 +555,8 @@ func TestContextCancellationIsDistinguishableFromAHubRefusal(t *testing.T) {
 		defer cancel()
 		h := newHub(t, authorization(15*time.Minute, 5*time.Second), []step{{
 			code: CodeAuthorizationPending,
-			// The transport reports the context error itself, which is what a
-			// real HTTP client does when the deadline lands mid-request.
-			err: fmt.Errorf("Post \"https://hub.example.com/v1/device/token\": %w", context.DeadlineExceeded),
-			do:  func() {},
+			err:  fmt.Errorf("Post \"https://hub.example.com/v1/device/token\": %w", context.DeadlineExceeded),
+			do:   func() {},
 		}}, nil)
 		f, err := begin(t, h)
 		require.NoError(t, err)
@@ -667,8 +579,6 @@ func TestContextCancellationIsDistinguishableFromAHubRefusal(t *testing.T) {
 	})
 }
 
-// --- transport failures are reported, not retried -----------------------
-
 func TestTransportFailureEndsTheFlowWithItsOwnError(t *testing.T) {
 	boom := errors.New("health: hub unreachable at https://hub.example.com/v1/health")
 	h := newHub(t, authorization(15*time.Minute, 5*time.Second),
@@ -681,8 +591,6 @@ func TestTransportFailureEndsTheFlowWithItsOwnError(t *testing.T) {
 	require.NotErrorIs(t, err, ErrDenied)
 	require.Equal(t, 2, f.Polls(), "a transport failure is not retried here")
 }
-
-// --- Begin's refusals ---------------------------------------------------
 
 func TestBeginRefusesAnUnusableAuthorisation(t *testing.T) {
 	full := authorization(15*time.Minute, 5*time.Second)
@@ -733,8 +641,6 @@ func TestBeginRefusesAMiswiredCaller(t *testing.T) {
 	require.ErrorIs(t, err, ErrProtocol)
 	require.ErrorContains(t, err, "no client id")
 
-	// FR-001: the hostname is what the approving human sees. An empty one is
-	// refused before a request is made.
 	_, err = Begin(context.Background(), h, h.clk, AuthorizeRequest{ClientID: "agent-manager-cli"})
 	require.ErrorIs(t, err, ErrProtocol)
 	require.ErrorContains(t, err, "no hostname")
@@ -765,16 +671,9 @@ func TestIssuedTokenIsRefusedWhenItCannotBeUsed(t *testing.T) {
 	}
 }
 
-// --- FR-007 -------------------------------------------------------------
-
-// The device code, the user code and the token must not reach a log, a report
-// or an error message. This package has no logger, so the remaining risk is a
-// caller formatting one of its values — which is why Flow and Token define
-// String and hold their secrets in closures.
-//
-// The user code is the one asymmetry: it MUST be shown to the human, so
-// UserCode() and VerificationURIComplete() return it on purpose. Everything
-// else must not.
+// TestNoCodeAndNoTokenSurvivesFormatting proves no credential leaks through
+// any fmt verb on Flow or Token; the user code is the one deliberate exception,
+// since it must be shown to the human.
 func TestNoCodeAndNoTokenSurvivesFormatting(t *testing.T) {
 	secrets := []string{testDeviceCode, testAccessToken, testRefresh}
 
@@ -785,7 +684,6 @@ func TestNoCodeAndNoTokenSurvivesFormatting(t *testing.T) {
 	tok, err := f.Wait(context.Background())
 	require.NoError(t, err)
 
-	// Errors from every path that can produce one, plus the two values.
 	var rendered []string
 	for _, v := range []any{f, tok, *tok} {
 		for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%q"} {
@@ -805,7 +703,6 @@ func TestNoCodeAndNoTokenSurvivesFormatting(t *testing.T) {
 	} {
 		rendered = append(rendered, e.Error())
 	}
-	// And an error from a real run of each failing path.
 	for _, steps := range [][]step{
 		{{code: CodeAccessDenied}},
 		{{code: CodeExpiredToken}},
@@ -828,21 +725,14 @@ func TestNoCodeAndNoTokenSurvivesFormatting(t *testing.T) {
 		}
 	}
 
-	// Negative control: the same scan over a string that DOES leak must fail,
-	// or this test proves nothing about the scan.
 	leak := fmt.Sprintf("device_code=%s", testDeviceCode)
 	require.Contains(t, leak, testDeviceCode)
 
-	// The user code is deliberately reachable — it is what the human types.
 	require.Equal(t, testUserCode, f.UserCode())
 	require.Contains(t, f.VerificationURIComplete(), testUserCode)
 	require.NotContains(t, f.String(), testUserCode, "but not through a formatted Flow")
 }
 
-// --- the no-clock-in-the-state-machine rule -----------------------------
-
-// touchesTheClock is the check, factored out so the negative control below can
-// feed it a file that breaks the rule.
 func touchesTheClock(src string) []string {
 	var found []string
 	for _, bad := range []string{"time.Now(", "time.Sleep(", "time.After(", "time.Tick(", "time.NewTimer(", "time.NewTicker("} {
@@ -853,10 +743,8 @@ func touchesTheClock(src string) []string {
 	return found
 }
 
-// The design constraint is mechanical, so the check is too: if the state
-// machine ever reads the wall clock or blocks directly, its timing stops being
-// testable and this suite's speed and precision go with it. clock.go is the one
-// sanctioned place, and Clock is how everything else gets there.
+// TestPackageTouchesTheClockOnlyThroughClock enforces mechanically that only
+// clock.go may read the wall clock or block.
 func TestPackageTouchesTheClockOnlyThroughClock(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	require.NoError(t, err)
@@ -875,7 +763,6 @@ func TestPackageTouchesTheClockOnlyThroughClock(t *testing.T) {
 	}
 	require.NotZero(t, checked, "the scan found no source files, so it checked nothing")
 
-	// Negative control.
 	require.Equal(t, []string{"time.Now(", "time.Sleep("},
 		touchesTheClock("func f() { _ = time.Now(); time.Sleep(time.Second) }"))
 }

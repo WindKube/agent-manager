@@ -31,6 +31,9 @@ func (s *Server) register() {
 	s.registerScanner()
 	s.registerAudit()
 	s.registerBadges()
+	s.registerDeviceApproval()
+	s.registerStorage()
+	s.registerOrganization()
 }
 
 // publicSecurity is the empty security requirement that removes the document's
@@ -343,6 +346,212 @@ func (s *Server) registerProfiles() {
 	}, s.listProfiles)
 
 	huma.Register(s.api, huma.Operation{
+		OperationID: "getProfile",
+		Method:      http.MethodGet,
+		Path:        "/v1/profiles/{slug}",
+		Tags:        []string{"profiles"},
+		Summary:     "One profile, resolved under the org gate",
+		Description: "The profile detail screen (001 US5): every package the profile holds, what each one " +
+			"resolves to, its scan state, and what the gate did about it — INCLUDING the entries " +
+			"the gate excludes, which are reported with their reason and never silently omitted " +
+			"(FR-036). " +
+			"The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the " +
+			"same code the published lockfile and the CLI's sync go through. It is not restated " +
+			"in this query, because two implementations of the gate is how the screen and the " +
+			"machine start disagreeing about what is installed. " +
+			"`latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan " +
+			"badge; `version` / `verdict` are what the entry actually resolves to and are absent " +
+			"when it is excluded. The two differ exactly when the gate did something. " +
+			"`unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine " +
+			"until a revision is published, and this says a revision is owed.",
+		Responses: map[string]*huma.Response{
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"404": s.errorResponse("No such profile, or not readable by this identity. The two are " +
+				"deliberately one answer (FR-044)."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.getProfile)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID:   "createProfile",
+		Method:        http.MethodPost,
+		Path:          "/v1/profiles",
+		Tags:          []string{"profiles"},
+		Summary:       "Create a profile, or fork one",
+		DefaultStatus: http.StatusCreated,
+		Description: "Creates a profile and records the caller as its OWNER, in one transaction with one " +
+			"audit row of kind `profile`. The owner membership is not a courtesy: every other " +
+			"profile operation is authorised by membership role, and `am_api` holds no DELETE on " +
+			"`membership`, so a profile created without one would be permanently uneditable. " +
+			"`forkOf` copies the named profile's entries as they stand at this instant and records " +
+			"the lineage. A fork NEVER inherits a revision the upstream publishes afterwards " +
+			"(FR-038) — not by configuration but by construction: nothing reads `forked_from_id` " +
+			"in the other direction. The upstream must be readable by this identity. " +
+			"Visibility defaults to `private`: a profile nobody has chosen to publish is not " +
+			"readable by the whole organisation. " +
+			"Requires an organisation role above read-only.",
+		Responses: map[string]*huma.Response{
+			"201": {
+				Description: "Created.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.Profile{}, "Profile")},
+				},
+			},
+			"400": s.errorResponse("The request body is missing or is not valid JSON."),
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"403": s.errorResponse("This identity may not create a profile."),
+			"404": s.errorResponse("`forkOf` names no profile this identity may read."),
+			"409": s.errorResponse("A profile with this slug already exists."),
+			"415": s.errorResponse("The request body must be sent as application/json."),
+			"422": s.errorResponse("The slug, the visibility or the default policy is not one this hub accepts."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.createProfile)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "setProfileEntries",
+		Method:      http.MethodPut,
+		Path:        "/v1/profiles/{slug}/entries",
+		Tags:        []string{"profiles"},
+		Summary:     "Set the packages a profile holds and how each one tracks versions",
+		Description: "Float or pin per package (FR-032), in one transaction with one audit row of kind " +
+			"`profile`. " +
+			"NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the " +
+			"draft — `profile_entry` — and nothing a machine syncs changes until " +
+			"POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now " +
+			"resolves, with `unpublished` set on every row that differs from the head revision. " +
+			"The body is the WHOLE ordered set, because position is what an ordered set means and " +
+			"a patch cannot express a reorder. Naming a package the profile does not hold adds it. " +
+			"OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE " +
+			"on `profile_entry` (removal is unspecified and no screen carries the control), so " +
+			"quietly keeping it would answer 200 to a request whose stored result disagrees with " +
+			"what was sent. " +
+			"Requires owner or maintainer on the profile.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Set. The body is the profile as it now resolves.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.ProfileDetail{}, "ProfileDetail")},
+				},
+			},
+			"400": s.errorResponse("The request body is missing or is not valid JSON."),
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"403": s.errorResponse("This identity may not curate this profile."),
+			"404": s.errorResponse("No such profile, or not readable by this identity."),
+			"415": s.errorResponse("The request body must be sent as application/json."),
+			"422": s.errorResponse("A package is unknown, a pin names a version this hub does not hold, a " +
+				"range is not a constraint, or the request leaves out a package the profile holds."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.setProfileEntries)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "setProfileSharing",
+		Method:      http.MethodPut,
+		Path:        "/v1/profiles/{slug}/sharing",
+		Tags:        []string{"profiles"},
+		Summary:     "Set the role each member and identity-provider group holds",
+		Description: "Individual members and IdP groups at the four levels FR-037 names — owner, " +
+			"maintainer, reviewer, consumer — in one transaction with one audit row of kind " +
+			"`share`. " +
+			"An UPSERT of roles and not a replacement of the membership set: a subject the body " +
+			"does not name keeps the role it has. FR-037 is about roles, a demotion is an update " +
+			"of `role`, and `am_api` holds no DELETE on `membership`. " +
+			"A body that would leave the profile with NO OWNER is refused, because nothing could " +
+			"add one back — only an owner may change sharing. " +
+			"A group is matched against the `groups` claim on every request rather than expanded " +
+			"into people, so losing a mapped group takes effect at the next token refresh " +
+			"(FR-045) and a near-miss on the group's name silently grants nothing. " +
+			"Nothing here can make a fork inherit a revision (FR-038); sharing grants access to " +
+			"this profile and creates no relationship between two of them. " +
+			"Requires owner on the profile.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Shared. The body is the profile, with its members.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.ProfileDetail{}, "ProfileDetail")},
+				},
+			},
+			"400": s.errorResponse("The request body is missing or is not valid JSON."),
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"403": s.errorResponse("This identity may not change who can see this profile."),
+			"404": s.errorResponse("No such profile, or not readable by this identity."),
+			"415": s.errorResponse("The request body must be sent as application/json."),
+			"422": s.errorResponse("A subject or role is outside its vocabulary, a subject is named twice, " +
+				"or the change would leave the profile with no owner."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.setProfileSharing)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "setProfileTargets",
+		Method:      http.MethodPut,
+		Path:        "/v1/profiles/{slug}/targets",
+		Tags:        []string{"profiles"},
+		Summary:     "Choose which agent directories a client writes",
+		Description: "The enabled set, in full, with one audit row of kind `profile`. An omitted target is " +
+			"disabled rather than removed — `sync_target.enabled` is a column, which is how a " +
+			"replacement works with no DELETE grant. " +
+			"A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores " +
+			"(001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version " +
+			"resolves differently; the list rides in the lockfile so a client knows where to put " +
+			"what it already resolved. " +
+			"An empty list is legal and means the profile writes nothing until somebody chooses. " +
+			"Requires owner or maintainer on the profile.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Set. The body is the profile, with every target and whether it is enabled.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.ProfileDetail{}, "ProfileDetail")},
+				},
+			},
+			"400": s.errorResponse("The request body is missing or is not valid JSON."),
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"403": s.errorResponse("This identity may not curate this profile."),
+			"404": s.errorResponse("No such profile, or not readable by this identity."),
+			"415": s.errorResponse("The request body must be sent as application/json."),
+			"422": s.errorResponse("A named target is not one this hub writes."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.setProfileTargets)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID:   "publishRevision",
+		Method:        http.MethodPost,
+		Path:          "/v1/profiles/{slug}/revisions",
+		Tags:          []string{"profiles"},
+		Summary:       "Publish the next immutable revision",
+		DefaultStatus: http.StatusCreated,
+		Description: "Freezes the current resolution as a new sequential revision and writes one audit row " +
+			"of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. " +
+			"The lockfile comes from the resolver, through the same code path the detail screen " +
+			"reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). " +
+			"THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated " +
+			"under a row lock on the profile so two racing publishes serialise into r15 and r16 " +
+			"with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. " +
+			"REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint " +
+			"rather than a branch (principle IV). " +
+			"Every previous revision stays readable for ever: `am_api` holds no DELETE on " +
+			"`revision` and no UPDATE path reaches one (FR-034). " +
+			"Requires owner or maintainer on the profile — a consumer may not publish.",
+		Responses: map[string]*huma.Response{
+			"201": {
+				Description: "Published. The body conforms to lockfile.schema.json.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.Lockfile{}, "Lockfile")},
+				},
+			},
+			"400": s.errorResponse("The request body is missing or is not valid JSON."),
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"403": s.errorResponse("This identity may not publish a revision of this profile."),
+			"404": s.errorResponse("No such profile, or not readable by this identity."),
+			"415": s.errorResponse("The request body must be sent as application/json."),
+			"422": s.errorResponse("The profile holds a state the resolver refuses."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.publishRevision)
+
+	huma.Register(s.api, huma.Operation{
 		OperationID: "getRevision",
 		Method:      http.MethodGet,
 		Path:        "/v1/profiles/{slug}/revisions/{revision}",
@@ -612,6 +821,69 @@ func (s *Server) registerBadges() {
 	}, s.getBadges)
 }
 
+func (s *Server) registerDeviceApproval() {
+	huma.Register(s.api, huma.Operation{
+		OperationID: "lookupDeviceCode",
+		Method:      http.MethodGet,
+		Path:        "/v1/device/authorizations/{user_code}",
+		Tags:        []string{"device"},
+		Summary:     "Look up a pending device authorisation",
+		Description: "Shows the requesting host and remaining validity BEFORE the viewer confirms " +
+			"(FR-041), so approval is an informed act. Refuses distinguishably when the code is " +
+			"unknown, expired or already decided (FR-042). " +
+			"The path parameter is a bearer-equivalent secret for the length of its validity and " +
+			"is never logged verbatim (see the api role's correlation middleware).",
+		Responses: map[string]*huma.Response{
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"404": s.errorResponse("No such device authorisation."),
+			"409": s.errorResponse("This code has already been decided."),
+			"410": s.errorResponse("This code has expired."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.lookupDeviceCode)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "approveDeviceCode",
+		Method:      http.MethodPost,
+		Path:        "/v1/device/authorizations/{user_code}/approve",
+		Tags:        []string{"device"},
+		Summary:     "Approve a pending device authorisation",
+		Description: "The confirm action (US6). Moves the code from pending to approved in one " +
+			"transaction and writes the `login` audit row naming the host, source `cli / <host>` " +
+			"(FR-050). Single-use: a second approval of the same code refuses the same way any " +
+			"already-decided code does.",
+		Responses: map[string]*huma.Response{
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"404": s.errorResponse("No such device authorisation."),
+			"409": s.errorResponse("This code has already been decided."),
+			"410": s.errorResponse("This code has expired."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.approveDeviceCode)
+}
+
+func (s *Server) registerStorage() {
+	huma.Register(s.api, huma.Operation{
+		OperationID: "getStorage",
+		Method:      http.MethodGet,
+		Path:        "/v1/storage",
+		Tags:        []string{"storage"},
+		Summary:     "The object store's own state",
+		Description: "Object count, compressed size, region, the key layout for skills/ " +
+			"and profiles/, the bucket's own versioning, object-lock, encryption, write-access and " +
+			"retention settings, and the most recent ingestion attempts with an outcome. " +
+			"The screen reports what the bucket reports: this system configures and surfaces object " +
+			"lock and retention, it does not enforce them, so a setting the bucket declines to answer " +
+			"comes back UNKNOWN rather than a guessed default. " +
+			"Restricted to catalog-admin, the role this hub's other administration screens use.",
+		Responses: map[string]*huma.Response{
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"403": s.errorResponse("This identity's role may not read the storage report."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.getStorage)
+}
+
 // ---- handlers ----------------------------------------------------------------
 
 type listProfilesOutput struct {
@@ -715,6 +987,234 @@ func (s *Server) reportSync(ctx context.Context, in *reportSyncInput) (*struct{}
 
 // The device flow's two handlers, its request and response types and its rate
 // limit live in device.go.
+
+func (s *Server) registerOrganization() {
+	orgForbidden := s.errorResponse("This identity may not administer the organisation. Requires the catalog-admin role.")
+	orgUnauthorized := s.errorResponse("Missing, expired or invalid token.")
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "getOrganization",
+		Method:      http.MethodGet,
+		Path:        "/v1/organization",
+		Tags:        []string{"organization"},
+		Summary:     "Identity provider settings, policy, mappings and categories",
+		Description: "The Organization screen's whole read. The provider panel's issuer, " +
+			"client id and scopes are this role's own configuration; the device authorisation " +
+			"endpoint is read from that provider's live discovery document, absent when discovery " +
+			"cannot be completed. " +
+			"NEVER carries the client secret, in any form — not the value, not a masked or " +
+			"length-revealing stand-in. Requires the catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "The organisation's current settings.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.Organization{}, "Organization")},
+				},
+			},
+			"401": orgUnauthorized,
+			"403": orgForbidden,
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.getOrganization)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "testIdentityConnection",
+		Method:      http.MethodPost,
+		Path:        "/v1/organization/identity/test",
+		Tags:        []string{"organization"},
+		Summary:     "Test the identity provider connection",
+		Description: "A real OIDC discovery and signing-key fetch against the configured issuer " +
+			"— not a check that a URL is well formed. Never echoes a secret: " +
+			"it reads none. Requires the catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "The test ran. `ok` says whether it succeeded; a failure carries the reason.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.IdentityConnectionTest{}, "IdentityConnectionTest")},
+				},
+			},
+			"401": orgUnauthorized,
+			"403": orgForbidden,
+		},
+	}, s.testIdentityConnection)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "rotateClientSecret",
+		Method:      http.MethodPost,
+		Path:        "/v1/organization/identity/secret",
+		Tags:        []string{"organization"},
+		Summary:     "Rotate the identity provider's client secret",
+		Description: "Always refuses (409). The client secret is this role's own environment " +
+			"configuration, not a credential this hub holds a provider-side registration for, so " +
+			"there is nothing here for a rotation to act on — see commands.ErrSecretRotationUnsupported. " +
+			"Requires the catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"401": orgUnauthorized,
+			"403": orgForbidden,
+			"409": s.errorResponse("Secret rotation is not supported: the secret is managed by the deployment environment."),
+		},
+	}, s.rotateClientSecret)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "updatePolicy",
+		Method:      http.MethodPut,
+		Path:        "/v1/organization/policy",
+		Tags:        []string{"organization"},
+		Summary:     "Change the scan gate and the organisation's policy toggles",
+		Description: "Writes org_policy and one `policy` audit row in one transaction. " +
+			"Every toggle changes real downstream behaviour on its next use: the " +
+			"gate and require-signed-bundles are read live by the next profile resolution, " +
+			"community-needs-review and rescan-on-new-version are read live by the scanner. " +
+			"Requires the catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "The policy as saved.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.OrganizationPolicy{}, "OrganizationPolicy")},
+				},
+			},
+			"401": orgUnauthorized,
+			"403": orgForbidden,
+			"422": s.errorResponse("The scan gate is not block, approval or warn-with-override."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.updatePolicy)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "listGroupRoleMappings",
+		Method:      http.MethodGet,
+		Path:        "/v1/organization/mappings",
+		Tags:        []string{"organization"},
+		Summary:     "The group-to-role mapping table",
+		Description: "Every group_role_map row, alphabetically. Requires the catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"401": orgUnauthorized,
+			"403": orgForbidden,
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.listGroupRoleMappings)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "createGroupRoleMapping",
+		Method:      http.MethodPost,
+		Path:        "/v1/organization/mappings",
+		Tags:        []string{"organization"},
+		Summary:     "Map a group to a role",
+		Description: "Upserts by group name and writes one `role` audit row. " +
+			"A mapping change takes effect at that identity's next request — auth.Sessions.Resolve " +
+			"reads this table on every one, so there is no cache to invalidate. Requires the " +
+			"catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Mapped.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.GroupRoleMapping{}, "GroupRoleMapping")},
+				},
+			},
+			"401": orgUnauthorized,
+			"403": orgForbidden,
+			"422": s.errorResponse("The group name is blank, or the role is not one of the four the schema allows."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.createGroupRoleMapping)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID:   "deleteGroupRoleMapping",
+		Method:        http.MethodDelete,
+		Path:          "/v1/organization/mappings/{id}",
+		Tags:          []string{"organization"},
+		Summary:       "Remove a group-to-role mapping",
+		DefaultStatus: http.StatusNoContent,
+		Description:   "Writes one `role` audit row. Requires the catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"204": {Description: "Removed."},
+			"401": orgUnauthorized,
+			"403": orgForbidden,
+			"404": s.errorResponse("No such mapping."),
+		},
+	}, s.deleteGroupRoleMapping)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "listCategories",
+		Method:      http.MethodGet,
+		Path:        "/v1/organization/categories",
+		Tags:        []string{"organization"},
+		Summary:     "The curated category vocabulary, with counts",
+		Description: "Every category, alphabetically, with how many packages currently carry it. " +
+			"Tags are never here: they stay manifest-derived and there is no " +
+			"tag endpoint anywhere in this document. Requires the catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"401": orgUnauthorized,
+			"403": orgForbidden,
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.listCategories)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "createCategory",
+		Method:      http.MethodPost,
+		Path:        "/v1/organization/categories",
+		Tags:        []string{"organization"},
+		Summary:     "Add a category to the vocabulary",
+		Description: "Writes one `category` audit row. Requires the " +
+			"catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Added.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.OrganizationCategory{}, "OrganizationCategory")},
+				},
+			},
+			"401": orgUnauthorized,
+			"403": orgForbidden,
+			"409": s.errorResponse("A category with that name or slug already exists."),
+			"422": s.errorResponse("The name is blank, or reduces to no usable slug characters."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.createCategory)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "updateCategory",
+		Method:      http.MethodPatch,
+		Path:        "/v1/organization/categories/{id}",
+		Tags:        []string{"organization"},
+		Summary:     "Rename a category",
+		Description: "Writes one `category` audit row. Requires the catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Renamed.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.OrganizationCategory{}, "OrganizationCategory")},
+				},
+			},
+			"401": orgUnauthorized,
+			"403": orgForbidden,
+			"404": s.errorResponse("No such category."),
+			"409": s.errorResponse("A category with that name or slug already exists."),
+			"422": s.errorResponse("The id is not a uuid, or the name is blank."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.updateCategory)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID:   "deleteCategory",
+		Method:        http.MethodDelete,
+		Path:          "/v1/organization/categories/{id}",
+		Tags:          []string{"organization"},
+		Summary:       "Delete a category",
+		DefaultStatus: http.StatusNoContent,
+		Description: "Writes one `category` audit row. Refuses with 409 when a package still " +
+			"carries the category — the foreign key has no ON DELETE clause, so this is the " +
+			"database's own refusal. Requires the catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"204": {Description: "Deleted."},
+			"401": orgUnauthorized,
+			"403": orgForbidden,
+			"404": s.errorResponse("No such category."),
+			"409": s.errorResponse("The category is still assigned to at least one package."),
+		},
+	}, s.deleteCategory)
+}
 
 // ---- document helpers -------------------------------------------------------
 

@@ -14,13 +14,11 @@ import (
 	"agent-manager/internal/auth"
 )
 
-// listProfilesSQL is purpose-built: head revision and package count come from a
-// lateral join over `revision` rather than from loading every revision of every
-// profile and counting in Go. %s is the FR-044 predicate.
-//
-// jsonb_array_length over the head revision's `entries` array is the count the
-// contract asks for — packages in the head revision, excluding skipped entries —
-// and `skipped` is a sibling array, so exclusion is structural.
+// listProfilesSQL: head revision and package count come from a lateral join
+// over `revision` rather than loading every revision of every profile and
+// counting in Go. %s is the readability predicate. jsonb_array_length over
+// the head revision's `entries` array excludes skipped entries structurally,
+// since `skipped` is a sibling array.
 const listProfilesSQL = `
 select
   p.slug,
@@ -39,7 +37,7 @@ left join lateral (
 where %s
 order by p.name`
 
-// ReadableProfiles returns exactly the profiles this principal may read (FR-044).
+// ReadableProfiles returns exactly the profiles this principal may read.
 func ReadableProfiles(ctx context.Context, db bun.IDB, p auth.Principal) ([]contract.Profile, error) {
 	predicate, args := Readable("p", p)
 

@@ -17,11 +17,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The NIST vector for sha256("abc"), and the SAME value in the two other
-// encodings this package has to speak. Hand-derived from the published vector
-// and an independent base64 implementation, never from a run of this code: a
-// constant copied out of a failing test's "got" is the bug written down as the
-// expectation.
+// The NIST vector for sha256("abc") in all three encodings, hand-derived from
+// the published vector rather than from a run of this code.
 const (
 	abcHex       = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
 	abcBase64    = "ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0="
@@ -41,8 +38,6 @@ func newTestCache(t *testing.T) *Cache {
 	return New(Dir(t.TempDir()))
 }
 
-// --- digest: one canonical form, converted only at the edges -----------------
-
 func TestDigestTheTwoWireEncodingsDecodeToTheSameValue(t *testing.T) {
 	t.Parallel()
 
@@ -50,9 +45,6 @@ func TestDigestTheTwoWireEncodingsDecodeToTheSameValue(t *testing.T) {
 	fromHeader, err := ParseHeaderDigest("sha-256=" + abcBase64)
 	require.NoError(t, err)
 
-	// This is the comparison FR-014 rests on. If Digest held a string, these
-	// two spellings of one value would be unequal and every verification would
-	// silently fail closed in a way no test of the happy path could see.
 	require.Equal(t, fromLockfile, fromHeader)
 	require.Equal(t, Compute([]byte("abc")), fromLockfile)
 }
@@ -146,9 +138,6 @@ func TestParseHeaderDigestRefusesMalformed(t *testing.T) {
 func TestParseHeaderDigestBase64urlIsRefusedRatherThanMisdecoded(t *testing.T) {
 	t.Parallel()
 
-	// The specific reason matters: a tolerant decoder would accept this and
-	// return SOME digest that is not sha256("abc"), which is a wrong answer
-	// rather than an error.
 	_, err := ParseHeaderDigest("sha-256=" + abcBase64URL)
 	require.ErrorIs(t, err, ErrDigest)
 	require.Contains(t, err.Error(), "base64url")
@@ -162,8 +151,6 @@ func TestDigestZeroValueIsNotTheDigestOfAnything(t *testing.T) {
 	require.False(t, Compute(nil).IsZero(), "sha256 of the empty input is a real digest")
 	require.NotEqual(t, zero, Compute(nil))
 }
-
-// --- cache: hit, miss, discard ----------------------------------------------
 
 func TestCacheHitReturnsTheBytesItHashed(t *testing.T) {
 	t.Parallel()
@@ -191,8 +178,6 @@ func TestCacheMissOnAnEmptyStore(t *testing.T) {
 	require.NotErrorIs(t, err, ErrCorrupt, "an absent entry was never corrupt")
 	require.ErrorIs(t, c.Verify(d), ErrMiss)
 
-	// New() creates nothing: a machine that has never synced must not grow
-	// directories from a read.
 	_, statErr := os.Stat(c.Root())
 	require.ErrorIs(t, statErr, fs.ErrNotExist)
 }
@@ -215,11 +200,9 @@ func TestCacheCorruptEntryIsDiscardedNotRepaired(t *testing.T) {
 	require.Contains(t, err.Error(), Compute([]byte("bundle bytez")).Lockfile(),
 		"and the digest actually found")
 
-	// Discarded, not repaired, not left in place to fail again.
 	_, statErr := os.Stat(entry)
 	require.ErrorIs(t, statErr, fs.ErrNotExist)
 
-	// And the second read is a plain miss, because there is nothing left.
 	_, err = c.Get(d)
 	require.ErrorIs(t, err, ErrMiss)
 	require.NotErrorIs(t, err, ErrCorrupt)
@@ -233,8 +216,6 @@ func TestCacheTruncatedEntryUnderTheFinalNameIsDiscarded(t *testing.T) {
 	d := Compute(payload)
 	require.NoError(t, os.MkdirAll(c.Root(), 0o700))
 
-	// The exact failure temp-file-and-rename exists to make impossible: a short
-	// file under the final name. It looks whole to anything but the re-hash.
 	require.NoError(t, os.WriteFile(filepath.Join(c.Root(), d.FileName()), payload[:100], 0o600))
 
 	_, err := c.Get(d)
@@ -277,7 +258,6 @@ func TestCacheNonRegularEntryIsDiscardedRatherThanPoisoningTheDigestForever(t *t
 	_, statErr := os.Stat(entry)
 	require.ErrorIs(t, statErr, fs.ErrNotExist)
 
-	// Self-healing: the digest is usable again after one write.
 	require.NoError(t, c.Put(d, payload))
 	got, err := c.Get(d)
 	require.NoError(t, err)
@@ -298,7 +278,6 @@ func TestCachePutRefusesBytesThatDoNotHashToTheKey(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "refusing to cache")
 
-	// Nothing was filed, not even under the digest of the bytes supplied.
 	_, err = c.Get(claimed)
 	require.ErrorIs(t, err, ErrMiss)
 	_, err = c.Get(Compute([]byte("what the hub sent")))
@@ -335,11 +314,6 @@ func TestCacheZeroDigestIsRefusedOnBothPaths(t *testing.T) {
 	require.ErrorContains(t, err, "zero digest")
 }
 
-// --- the killed write --------------------------------------------------------
-
-// A process killed mid-download cannot run a deferred cleanup, so the partial
-// bytes stay on disk. This asserts the property that matters: they are not
-// visible as an entry, and they do not become one later.
 func TestKilledWriteLeavesAPartialTempAndNoVisibleEntry(t *testing.T) {
 	t.Parallel()
 
@@ -348,14 +322,9 @@ func TestKilledWriteLeavesAPartialTempAndNoVisibleEntry(t *testing.T) {
 	d := Compute(payload)
 	require.NoError(t, os.MkdirAll(c.Root(), 0o700))
 
-	// Written by hand with exactly the name PutReader would have chosen, because
-	// there is no way to kill a goroutine mid-Copy and leave the file behind: a
-	// deferred remove would run. This is the on-disk state after a SIGKILL.
 	partial := filepath.Join(c.Root(), tempPrefix+d.FileName()+"-2735683")
 	require.NoError(t, os.WriteFile(partial, payload[:len(payload)/3], 0o600))
 
-	// It really is there, so the assertions below are about a populated
-	// directory rather than an empty one.
 	info, err := os.Stat(partial)
 	require.NoError(t, err)
 	require.Equal(t, int64(len(payload)/3), info.Size())
@@ -365,12 +334,9 @@ func TestKilledWriteLeavesAPartialTempAndNoVisibleEntry(t *testing.T) {
 	require.NotErrorIs(t, err, ErrCorrupt, "a temp file is invisible, not corrupt")
 	require.ErrorIs(t, c.Verify(d), ErrMiss)
 
-	// Nothing under the final name, and nothing promoted the temp.
 	_, err = os.Stat(filepath.Join(c.Root(), d.FileName()))
 	require.ErrorIs(t, err, fs.ErrNotExist)
 
-	// The re-download converges, and the partial is collected on that write path
-	// once it is old enough to be certainly dead.
 	require.NoError(t, c.Put(d, payload))
 	got, err := c.Get(d)
 	require.NoError(t, err)
@@ -381,7 +347,6 @@ func TestKilledWriteLeavesAPartialTempAndNoVisibleEntry(t *testing.T) {
 	require.Equal(t, 1, removed)
 	requireNoTemps(t, c)
 
-	// Collection took the temp and left the entry.
 	got, err = c.Get(d)
 	require.NoError(t, err)
 	require.Equal(t, payload, got)
@@ -442,13 +407,6 @@ func TestCollectTempsOnAnAbsentDirectoryIsNotAnError(t *testing.T) {
 	require.Zero(t, removed)
 }
 
-// --- concurrent writers ------------------------------------------------------
-
-// Real goroutines, one digest, run under -race. The assertion is about the
-// visible entry being WHOLE and CORRECT afterwards, not about the absence of a
-// panic: every writer renaming onto the same name is only safe because each one
-// wrote digest-verified bytes to its own temp first, and a test that merely
-// survived would pass against a cache that wrote the final name directly.
 func TestConcurrentWritersLeaveOneWholeCorrectEntry(t *testing.T) {
 	t.Parallel()
 
@@ -473,19 +431,11 @@ func TestConcurrentWritersLeaveOneWholeCorrectEntry(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			// Staggered starts plus a drip-feeding reader guarantee that some
-			// writers are mid-write while others are already reading — the only
-			// arrangement in which a non-atomic writer is observable at all.
 			time.Sleep(time.Duration(i) * 2 * time.Millisecond)
 			if err := c.PutReader(d, &drip{r: bytes.NewReader(payload), n: 7919}); err != nil {
 				fail("writer %d: %w", i, err)
 				return
 			}
-			// Reading after this writer's own commit, repeatedly, so the reads
-			// fall inside the other writers' windows. Once ANY writer has
-			// committed, every subsequent read must see whole, correct bytes: a
-			// writer that wrote the final name directly would be caught here
-			// truncating it under a reader.
 			for range 200 {
 				got, err := c.Get(d)
 				if err != nil {
@@ -506,7 +456,6 @@ func TestConcurrentWritersLeaveOneWholeCorrectEntry(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, payload, got)
 
-	// Exactly one visible entry, and every temp cleaned up.
 	entries, err := os.ReadDir(c.Root())
 	require.NoError(t, err)
 	names := make([]string, 0, len(entries))
@@ -546,15 +495,12 @@ func TestConcurrentReadersAndWritersOfTheSameDigest(t *testing.T) {
 				b, err := c.Get(d)
 				switch {
 				case err == nil:
-					// Whatever a reader sees, it sees all of it. A partial read
-					// here is the failure this whole design prevents.
 					if !bytes.Equal(payload, b) {
 						mu.Lock()
 						bad = append(bad, fmt.Errorf("reader saw %d of %d bytes", len(b), len(payload)))
 						mu.Unlock()
 					}
 				case errors.Is(err, ErrMiss) && !errors.Is(err, ErrCorrupt):
-					// Legitimate: no writer has renamed yet.
 				default:
 					mu.Lock()
 					bad = append(bad, err)
@@ -571,14 +517,9 @@ func TestConcurrentReadersAndWritersOfTheSameDigest(t *testing.T) {
 	require.Equal(t, payload, got)
 }
 
-// --- layout ------------------------------------------------------------------
-
 func TestDirIsCentralUnderAgentManagerHome(t *testing.T) {
 	t.Parallel()
 
-	// The cache is central on purpose; staging is a sibling of the destination
-	// (R3). If this ever becomes a per-destination path, the atomic swap and the
-	// cache have been merged and EXDEV is back.
 	home := filepath.Join(string(filepath.Separator), "home", "u", ".agent-manager")
 	require.Equal(t, filepath.Join(home, "cache"), Dir(home))
 	require.Equal(t, "cache", DirName)
@@ -598,8 +539,6 @@ func TestNewWithLimitFallsBackToTheDefaultCap(t *testing.T) {
 func TestEntryFileNameCarriesNoColon(t *testing.T) {
 	t.Parallel()
 
-	// The on-disk spelling of the digest is deliberately the third one: a colon
-	// is special to some darwin tooling and awkward in a shell everywhere.
 	name := Compute([]byte("abc")).FileName()
 	require.NotContains(t, name, ":")
 	require.Equal(t, "sha256-"+abcHex, name)
@@ -619,10 +558,6 @@ func TestPutCreatesTheCacheDirectoryPrivately(t *testing.T) {
 	require.Equal(t, fs.FileMode(dirMode), info.Mode().Perm())
 }
 
-// A discard that cannot remove the entry must SAY so, because the entry then
-// poisons that digest for every future read rather than for this one. The
-// swallowed version of this shipped; this test is what keeps the reporting from
-// being quietly reverted as noise.
 func TestAnUnremovableCorruptEntryIsReportedNotSwallowed(t *testing.T) {
 	t.Parallel()
 
@@ -638,16 +573,13 @@ func TestAnUnremovableCorruptEntryIsReportedNotSwallowed(t *testing.T) {
 	entry := filepath.Join(c.Root(), d.FileName())
 	require.NoError(t, os.WriteFile(entry, []byte("tampered!!!!"), 0o600))
 
-	// Unlinking needs write on the DIRECTORY, not on the entry.
 	require.NoError(t, os.Chmod(c.Root(), 0o500))
 	t.Cleanup(func() { _ = os.Chmod(c.Root(), 0o700) })
 
 	_, err := c.Get(d)
 
-	// Still a miss and still corrupt, so every existing caller behaves the same...
 	require.ErrorIs(t, err, ErrMiss)
 	require.ErrorIs(t, err, ErrCorrupt)
-	// ...but the permanence is now visible.
 	require.ErrorContains(t, err, "could not be removed")
 	require.ErrorContains(t, err, "every future read of this digest will fail the same way")
 
@@ -687,8 +619,6 @@ func TestPutReaderStreamsWithoutRequiringTheBytesInHand(t *testing.T) {
 	require.Equal(t, sha256.Sum256(payload), sha256.Sum256(got))
 }
 
-// --- helpers -----------------------------------------------------------------
-
 func requireNoTemps(t *testing.T, c *Cache) {
 	t.Helper()
 	entries, err := os.ReadDir(c.Root())
@@ -705,8 +635,6 @@ type errReader struct{ err error }
 
 func (r errReader) Read([]byte) (int, error) { return 0, r.err }
 
-// drip hands out at most n bytes per Read, so a write takes many turns and
-// concurrent writers genuinely overlap.
 type drip struct {
 	r *bytes.Reader
 	n int

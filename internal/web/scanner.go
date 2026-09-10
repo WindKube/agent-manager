@@ -15,36 +15,26 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The Scanner screen and the two decisions on it (US4, T071 and T072).
-//
-// A plain server render and two plain form posts. There is no datastar on this
-// screen and that is deliberate: a decision on a finding is not a filter, it
-// changes stored state, and post-redirect-get is what makes the browser's reload
-// button safe. The redirect carries a token naming what happened, never the
-// message itself — a screen that rendered text out of its own query string would
-// be a place to put words in this hub's mouth.
+// The Scanner screen and its two decisions: a plain server render and two
+// plain form posts. No datastar here — a decision changes stored state, and
+// post-redirect-get is what makes the browser's reload button safe. The
+// redirect carries a token naming what happened, never the message itself.
 
-// scannerWindow is the summary period this screen asks for.
-//
-// Zero, which means the api applies its own window and reports what it used. The
-// screen offers no window control, so naming a number here would be this role
-// asserting a policy it does not own — and the figure the card prints comes back
-// from the api either way (FR-121).
+// scannerWindow is the summary period this screen asks for: zero, meaning the
+// api applies its own window and reports what it used.
 const scannerWindow = 0
 
 func (s *Server) scanner(c *gin.Context) {
 	query := scannerQueryFromURL(c)
 	screen := view.Scanner{
-		Query: query,
-		// The viewer this request resolved, and nothing else. There is no default
-		// reviewer and there must not be one (FR-116).
+		Query:  query,
 		Review: s.reviewFor(c),
 		Notice: decisionNotice(c.Query("decided")),
 	}
 
 	if s.deps.Scanner == nil {
-		// A deployment always wires one. This is a screen test that did not, and it
-		// gets the unavailable state rather than a nil dereference.
+		// A screen test that did not wire one gets the unavailable state
+		// rather than a nil dereference.
 		screen.Unavailable = true
 		s.renderScanner(c, http.StatusBadGateway, screen)
 		return
@@ -70,10 +60,9 @@ func (s *Server) scanner(c *gin.Context) {
 		screen.Findings = append(screen.Findings, findingRow(&page.Findings[i], now))
 	}
 
-	// The pane opens on something rather than on nothing: with no explicit
-	// selection the first row of the page is shown, so the screen's first paint is
-	// a finding being triaged. The selection is still addressed by id, so the URL a
-	// reader copies names the finding and not the position.
+	// With no explicit selection the first row of the page is shown, so the
+	// screen's first paint is a finding being triaged. Still addressed by id,
+	// so a copied URL names the finding and not the position.
 	selected := query.Selected
 	if selected == "" && len(page.Findings) > 0 {
 		selected = page.Findings[0].ID
@@ -86,8 +75,8 @@ func (s *Server) scanner(c *gin.Context) {
 	detail, err := s.deps.Scanner.Finding(ctx, selected)
 	switch {
 	case errors.Is(err, view.ErrNotFound):
-		// A finding id out of the URL that names nothing readable. The list beside it
-		// still rendered, so this is the pane's state and not the screen's.
+		// A finding id that names nothing readable. The list beside it still
+		// rendered, so this is the pane's state, not the screen's.
 		screen.Missing = true
 		s.renderScanner(c, http.StatusNotFound, screen)
 		return
@@ -103,14 +92,10 @@ func (s *Server) scanner(c *gin.Context) {
 	s.renderScanner(c, http.StatusOK, screen)
 }
 
-// reviewFor is FR-126's question asked of both halves: may this identity decide,
-// and can this process record a decision at all.
-//
-// The second half matters because the answer to the first is often yes in a
-// deployment that has not wired a reviewer — a screen test, or a misconfiguration
-// — and a control offered against a nil source is offered and then refused, which
-// is exactly what the requirement forbids. The role reason wins when both apply:
-// it is the one the reader can do something about.
+// reviewFor asks both halves: may this identity decide, and can this process
+// record a decision at all. The second matters because a control offered
+// against a nil reviewer is offered and then refused. The role reason wins
+// when both apply — it is the one the reader can do something about.
 func (s *Server) reviewFor(c *gin.Context) view.Review {
 	review := view.ReviewFor(viewerFor(c))
 	if review.Allowed && s.deps.Reviewer == nil {
@@ -137,14 +122,11 @@ func scannerQueryFromURL(c *gin.Context) view.ScannerQuery {
 	}.Normalise()
 }
 
-// governanceFailure maps the three refusals these screens share onto the three
-// states they render as, and reports whether the caller may carry on.
-//
-// It is one function because the same three-way split appears on six calls, and
-// because collapsing any two of them is the defect worth guarding: a 401 rendered
-// as a 403 sends somebody to sign in again to acquire a role they will not get,
-// and either rendered as an empty list presents a refusal as a hub with nothing
-// in it (FR-122).
+// governanceFailure maps the three refusals these screens share onto the
+// three states they render as, and reports whether the caller may carry on.
+// One function because collapsing any two of them is the defect worth
+// guarding: a 401 rendered as a 403 sends somebody to sign in again to
+// acquire a role they will not get.
 func (s *Server) governanceFailure(c *gin.Context, err error, state *view.GovernanceState, what string) (int, bool) {
 	switch {
 	case err == nil:
@@ -154,9 +136,8 @@ func (s *Server) governanceFailure(c *gin.Context, err error, state *view.Govern
 		state.SignedOut = true
 		return http.StatusOK, false
 	case errors.Is(err, hub.ErrForbidden):
-		// Signed in, and this role may not read it. A distinct status as well as
-		// distinct copy: the two refusals ask their reader for completely different
-		// things, and only one of them is fixed by signing in again.
+		// Signed in, but not permitted: a distinct status and copy, since only
+		// one of the two refusals is fixed by signing in again.
 		logFrom(c).Info().Str("read", what).Msg("governance read refused by role")
 		state.Refused = true
 		return http.StatusForbidden, false
@@ -167,17 +148,15 @@ func (s *Server) governanceFailure(c *gin.Context, err error, state *view.Govern
 	}
 }
 
-// ---- the two decisions (T072) -------------------------------------------------
+// ---- the two decisions ---------------------------------------------------------
 
-// decisionOutcome is the closed set of things a decision can end in. It travels in
-// the redirect's query string, and the COPY is looked up here rather than carried:
-// a token cannot be edited into a sentence this hub did not write.
-//
-// A token IS forgeable — anyone can send a colleague `/scanner?...&decided=approved`
-// — so the banner is a hint about what just happened and never the record of it.
-// What the finding actually is sits in the pane below it, read fresh from the api
-// on the same request: its state pill, its verdict and its override panel all
-// contradict a forged banner rather than agreeing with it.
+// decisionOutcome is the closed set of things a decision can end in. It
+// travels in the redirect's query string, and the COPY is looked up here
+// rather than carried: a token cannot be edited into a sentence this hub did
+// not write. A token IS forgeable, so the banner is a hint about what just
+// happened, never the record of it — the pane below it is read fresh from the
+// api on the same request and contradicts a forged banner rather than
+// agreeing with it.
 type decisionOutcome string
 
 const (
@@ -194,9 +173,8 @@ const (
 func decisionNotice(raw string) *view.Notice {
 	switch decisionOutcome(raw) {
 	case decisionApproved:
-		// It says the version stays flagged, because it does. An accept records an
-		// exception with a reviewer's name on it; presenting it as a clean bill of
-		// health is the dishonest surface this whole feature exists to delete.
+		// It says the version stays flagged, because it does: an accept
+		// records an exception, not a clean bill of health.
 		return &view.Notice{Tone: "ok", Text: "Approved. Your note is on record against this " +
 			"finding. The version stays flagged — an override is an accepted risk, not a new verdict."}
 	case decisionRejected:
@@ -233,17 +211,15 @@ func (s *Server) acceptFinding(c *gin.Context) { s.decideFinding(c, true) }
 
 func (s *Server) rejectFinding(c *gin.Context) { s.decideFinding(c, false) }
 
-// decideFinding is both decisions, because the differences between them are three
-// lines and the parts that must not diverge are the rest of it: the role gate, the
-// note validation, and where the browser lands afterwards.
+// decideFinding is both decisions: the differences are three lines, and the
+// rest — role gate, note validation, redirect target — must not diverge.
 func (s *Server) decideFinding(c *gin.Context, accept bool) {
 	id := c.Param("id")
 	back := scannerReturn(c.PostForm("return"), id)
 
-	// FR-126 from the other side. The screen already disables what this viewer may
-	// not do; this is the request that arrives anyway — an old page, a second tab,
-	// a hand-written form — and it must be refused HERE rather than by the api,
-	// because a role this side already knows about is not a round trip's business.
+	// The screen already disables what this viewer may not do; this is a
+	// request that arrived anyway (old page, second tab, hand-written form),
+	// refused HERE rather than round-tripped to the api for a role already known.
 	if review := view.ReviewFor(viewerFor(c)); !review.Allowed {
 		logFrom(c).Warn().Bool("accept", accept).Msg("finding decision from an identity without the role")
 		s.backToScanner(c, back, decisionRefused)
@@ -251,8 +227,8 @@ func (s *Server) decideFinding(c *gin.Context, accept bool) {
 	}
 
 	if s.deps.Reviewer == nil {
-		// The screen already disabled both controls for this case; this is the post
-		// that arrived anyway.
+		// The screen already disabled both controls; this is the post that
+		// arrived anyway.
 		s.backToScanner(c, back, decisionUnavailable)
 		return
 	}
@@ -262,9 +238,8 @@ func (s *Server) decideFinding(c *gin.Context, accept bool) {
 		s.backToScanner(c, back, decisionNoteTooLong)
 		return
 	}
-	// Mirrored from the api, which is still the thing that decides: a blank note on
-	// an accept is a 422 there. Catching it here costs a round trip instead of a
-	// wasted one, and it must never be the only check.
+	// Mirrored from the api, which still decides: a blank note on an accept is
+	// a 422 there, and this must never be the only check.
 	if accept && note == "" {
 		s.backToScanner(c, back, decisionNoteRequired)
 		return
@@ -278,10 +253,8 @@ func (s *Server) decideFinding(c *gin.Context, accept bool) {
 
 	var err error
 	if accept {
-		// days of 0 sends no expiry, and the api then applies its own default. It is
-		// NOT an override that never lapses: nothing in this product can record one
-		// (contract/governance.go, "never unlimited"), so the screen must not offer
-		// one either — see the hint beside the field.
+		// days of 0 sends no expiry, and the api applies its own default —
+		// never an override that lapses never, which nothing here can record.
 		_, err = s.deps.Reviewer.AcceptFinding(session(c), id, note, days)
 	} else {
 		_, err = s.deps.Reviewer.RejectFinding(session(c), id, note)
@@ -297,30 +270,25 @@ func (s *Server) decideFinding(c *gin.Context, accept bool) {
 	case errors.Is(err, view.ErrSignedOut):
 		s.toSignIn(c)
 	case errors.Is(err, hub.ErrForbidden):
-		// The screen offered a control the api then refused, which means the role
-		// this side read and the role the api resolved disagree. Worth a log line
-		// louder than the refusal itself: it is a mapping change landing mid-visit,
-		// or this role's mirror of the gate has drifted.
+		// The role this side read and the role the api resolved disagree — a
+		// mapping change mid-visit, or this role's gate mirror has drifted.
 		logFrom(c).Warn().Msg("the api refused a decision this screen offered")
 		s.backToScanner(c, back, decisionRefused)
 	case errors.Is(err, view.ErrNotFound):
 		logFrom(c).Info().Msg("decision on a finding that does not exist")
 		s.backToScanner(c, back, decisionFailed)
 	default:
-		// Everything else — a 409 on an already-rejected finding, a 422 the mirror
-		// above did not catch, a transport failure. They collapse into one notice
-		// because this side cannot tell them apart through the hub's sentinel set,
-		// and the notice says what all of them have in common: nothing was recorded,
-		// and the screen may be stale.
+		// Everything else collapses into one notice: this side cannot tell a
+		// 409, a 422, or a transport failure apart through the hub's sentinel
+		// set, but all of them mean nothing was recorded and the screen may be stale.
 		logFrom(c).Error().Err(err).Bool("accept", accept).Msg("decide finding")
 		s.backToScanner(c, back, decisionFailed)
 	}
 }
 
-// expiryDays reads the override lifetime. Blank is a valid answer and means "let
-// the api apply its default", so it is not the same as an unparseable one — and it
-// is not a request for an override that never expires, which no part of this
-// product can record.
+// expiryDays reads the override lifetime. Blank means "let the api apply its
+// default" and is distinct from unparseable — neither can request an
+// override that never expires.
 func expiryDays(raw string) (int, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -333,12 +301,10 @@ func expiryDays(raw string) (int, bool) {
 	return days, true
 }
 
-// scannerReturn is where the browser lands after a decision.
-//
-// It is the form's own return path, but only if that path is this screen. localPath
-// already refuses another origin; this refuses another SCREEN, because a decision
-// form is not a general-purpose redirector and a hidden field is a value a client
-// sends.
+// scannerReturn is where the browser lands after a decision: the form's own
+// return path, but only if it names this screen. localPath already refuses
+// another origin; this refuses another SCREEN, since a decision form is not
+// a general-purpose redirector.
 func scannerReturn(raw, id string) string {
 	target := localPath(raw)
 	if target == "/scanner" || strings.HasPrefix(target, "/scanner?") {
@@ -358,18 +324,16 @@ func (s *Server) backToScanner(c *gin.Context, target string, outcome decisionOu
 	values.Set("decided", string(outcome))
 	parsed.RawQuery = values.Encode()
 
-	// no-store, because the page this lands on carries a one-time notice about
-	// something that just changed. A cached copy of it would tell the next reader
-	// that they had approved something.
+	// no-store: the page this lands on carries a one-time notice, and a
+	// cached copy would tell the next reader they had approved something.
 	c.Header("Cache-Control", "no-store")
 	c.Redirect(http.StatusSeeOther, parsed.String())
 }
 
 // ---- mapping the hub's answers onto the screen's models -----------------------
 
-// The hub deliberately renders nothing: it hands over instants, counts and
-// canonical vocabulary. These four functions are where that becomes a screen, and
-// they are the only place in this role that decides how a scanner figure reads.
+// The hub hands over instants, counts and canonical vocabulary. These four
+// functions are the only place in this role that decides how a figure reads.
 
 func scannerSummary(from hub.ScannerSummary, now time.Time) view.ScannerSummary {
 	out := view.ScannerSummary{
@@ -382,8 +346,8 @@ func scannerSummary(from hub.ScannerSummary, now time.Time) view.ScannerSummary 
 		out.NearestExpiry = view.Until(*from.NearestExpiry, now)
 	}
 	if from.MedianScan != nil {
-		// A median of nil is "nothing finished in the window" and stays empty. A
-		// median that rounds to nothing is still a measurement, so it gets its unit.
+		// nil stays empty ("nothing finished in the window"); a median that
+		// rounds to nothing is still a measurement and gets its unit.
 		out.MedianScan = view.Duration(*from.MedianScan)
 		if out.MedianScan == "" {
 			out.MedianScan = "0ms"
@@ -421,10 +385,9 @@ func findingDetail(from hub.FindingDetail, now time.Time) view.FindingDetail {
 		out.Scan.Finished = view.Timestamp(*from.Scan.FinishedAt)
 	}
 
-	// The primary location is found by ROLE and never by position: the api orders
-	// evidence by role but the hub promises nothing about where in the slice it
-	// lands, and reading index 0 would silently promote a supporting location to
-	// the headline the day that ordering changes.
+	// The primary location is found by ROLE, never position: the hub promises
+	// nothing about slice order, and reading index 0 would silently promote a
+	// supporting location the day that ordering changes.
 	for _, item := range from.Evidence {
 		evidence := view.Evidence{Path: item.Path, Line: item.Line, Quote: item.Quote}
 		if item.Role == evidencePrimary && out.Primary == nil {

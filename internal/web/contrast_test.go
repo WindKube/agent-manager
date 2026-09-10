@@ -17,14 +17,19 @@ import (
 //
 // This reads assets/input.css rather than a copy of the hex values, because a
 // test carrying its own palette would keep passing after someone edited the real
-// one. T110 extends the sweep to the remaining screens' pairs; the palette itself
-// is settled here, before nine more screens are built on it.
+// one.
 //
 // AA is 4.5:1 for text below 18.66px bold / 24px regular, which is every use of
 // --fg2 and --fg3 in this design (package ids, counts, badges, notes), and 3:1
 // for larger text. The stricter number is applied throughout: nothing in the
 // palette needs the concession, and applying it per-element would make the test
 // depend on the type scale.
+//
+// This sweep is over the palette, not any one screen, so it covers all ten
+// screens (catalog, package detail, scanner, audit, profiles list, profile
+// detail, cli, org, storage, sign-in) by construction: every one of them paints
+// with these tokens and nothing else, which is what
+// TestEveryColourInTheStylesheetComesFromThePalette enforces below.
 const aa = 4.5
 
 // surfaces are every background a token's text can land on. --bd is not one: it

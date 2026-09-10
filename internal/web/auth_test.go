@@ -16,6 +16,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -25,6 +26,7 @@ import (
 
 	"agent-manager/internal/web/fixture"
 	"agent-manager/internal/web/hub"
+	"agent-manager/internal/web/view"
 )
 
 // ---- the two stand-ins --------------------------------------------------------
@@ -69,7 +71,9 @@ func (p *recordingProvider) VerifyIDToken(_ context.Context, idToken string) err
 // is not a session token anywhere, because nothing in this file may care what one
 // looks like — the api is what recognises them.
 type recordingMinter struct {
-	minted []string
+	minted     []string
+	signedOut  []string
+	signOutErr error
 }
 
 func (m *recordingMinter) MintSession(_ context.Context, idToken string) (hub.Session, error) {
@@ -81,7 +85,10 @@ func (m *recordingMinter) MintSession(_ context.Context, idToken string) (hub.Se
 	}, nil
 }
 
-func (m *recordingMinter) SignOut(context.Context) error { return nil }
+func (m *recordingMinter) SignOut(ctx context.Context) error {
+	m.signedOut = append(m.signedOut, view.TokenFrom(ctx))
+	return m.signOutErr
+}
 
 // ---- the harness --------------------------------------------------------------
 
@@ -317,6 +324,60 @@ func TestNoBrokenRoundTripReachesTheExchangeOrIssuesASession(t *testing.T) {
 			require.Empty(t, cookieNamed(t, rec, sessionCookie), "a session cookie was issued")
 		})
 	}
+}
+
+// TestProviderRefusalDetailIsEscapedOnTheSignInScreen is a real provider refusal,
+// against a round trip that verifies, so providerDetail's text actually reaches
+// the page rather than being short-circuited by an earlier notice.
+func TestProviderRefusalDetailIsEscapedOnTheSignInScreen(t *testing.T) {
+	h := newSignInHarness(t)
+	sealed, round := h.begin(t, "%2Fscanner")
+
+	rec := h.complete(t, sealed, map[string]string{
+		"state":             round.State,
+		"error":             "access_denied",
+		"error_description": url.QueryEscape(`<script>alert(1)</script>`),
+	})
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+	require.Contains(t, body, noticeProviderRefused)
+	require.Contains(t, body, "signin-provider-detail")
+	require.NotContains(t, body, "<script>alert(1)</script>",
+		"the provider's own words must reach the page escaped, not raw")
+	require.Contains(t, body, "&lt;script&gt;")
+}
+
+// TestSignOutExpiresTheSessionServerSideAndClearsTheCookie is the quickstart's
+// third validation, at the layer this role owns: the api's own row expiring is
+// proven in internal/api/session_integration_test.go, and what is proven here is
+// that a POST to /auth/logout actually reaches the api with THIS browser's token
+// before it clears the cookie — a role that cleared the cookie without calling
+// out would leave the row live for anyone else still holding it.
+func TestSignOutExpiresTheSessionServerSideAndClearsTheCookie(t *testing.T) {
+	minter := &recordingMinter{}
+	h := New(Deps{
+		Catalog: fixture.New(), Viewers: fixture.SignedInViewers(), Sessions: minter, Log: zerolog.Nop(),
+	}, Options{}).Handler()
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/logout", http.NoBody)
+	req.AddCookie(&http.Cookie{Name: sessionCookie, Value: "the-browsers-own-session-token"})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	require.Equal(t, []string{"the-browsers-own-session-token"}, minter.signedOut,
+		"the api must be told to expire this browser's own session")
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	require.Equal(t, "/auth/signin", rec.Header().Get("Location"))
+
+	found := false
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == sessionCookie {
+			found = true
+			require.Negative(t, c.MaxAge, "the cookie must be told to expire, not merely emptied")
+		}
+	}
+	require.True(t, found, "logout must set the cookie header at all, to overwrite the browser's copy")
 }
 
 // TestTheRoundTripIsSingleUseBecauseTheCookieIsGoneAfterIt is the replay half of

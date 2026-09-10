@@ -4,22 +4,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
+	"github.com/rs/zerolog"
 
 	"agent-manager/internal/logging"
 )
 
-// stopTimeout bounds the graceful shutdown: River stops fetching immediately and
-// then waits for jobs in flight.
+// stopTimeout bounds the graceful shutdown: River stops fetching immediately
+// and then waits for jobs in flight.
 const stopTimeout = 30 * time.Second
 
-// Run is the whole bootstrap for `agent-manager worker run <name>`.
-//
-// Nothing here knows which role it is running. That is the point of principle
-// VII: this function is what a new Definition must not have to touch.
+// Run is the whole bootstrap for `agent-manager worker run <name>`. Nothing
+// here knows which role it is running: this function is what a new
+// Definition must not have to touch.
 func Run(ctx context.Context, def Definition, cfg Config) error {
 	log := logging.New("worker/"+def.Name, cfg.LogLevel, cfg.LogFormat)
 	ctx = logging.Into(ctx, log)
@@ -62,7 +63,7 @@ func Run(ctx context.Context, def Definition, cfg Config) error {
 	}
 
 	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
-		Logger:       slogFrom(log),
+		Logger:       slog.New(zerolog.NewSlogHandler(log)),
 		PeriodicJobs: periodic,
 		Queues:       queues,
 		Workers:      workers,
@@ -84,8 +85,8 @@ func Run(ctx context.Context, def Definition, cfg Config) error {
 
 	<-ctx.Done()
 
-	// The parent context is already cancelled, so the stop needs a live one or
-	// River would abandon the jobs it is trying to drain.
+	// The parent context is already cancelled, so the stop needs a live one
+	// or River would abandon the jobs it is trying to drain.
 	stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), stopTimeout)
 	defer cancel()
 

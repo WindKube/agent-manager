@@ -149,8 +149,24 @@ templ ImportModal(im Import) {
 						name="publisher"
 						class="am-search"
 						style="font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--surface2)"
-						placeholder="example"
+						placeholder="example/platform"
 						data-bind="_importPublisher"
+					/>
+				</div>
+				<div style="display:none;flex:1;min-width:160px;flex-direction:column;gap:6px" data-style-display="$_importTab === 'upload' ? 'flex' : 'none'">
+					<!--
+						Only the upload tab needs this: a SKILL.md manifest carries no
+						version, unlike a plugin.json, so nothing can be derived here. On
+						the url tab the ref drives the version instead.
+					-->
+					<label for="import-version" style="font-size:12px;color:var(--fg3)">Version</label>
+					<input
+						id="import-version"
+						name="version"
+						class="am-search"
+						style="font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--surface2)"
+						placeholder="1.0.0"
+						data-bind="_importVersion"
 					/>
 				</div>
 				<div style="flex:1;min-width:160px;display:flex;flex-direction:column;gap:6px">

@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// exploding is an Open that fails the test if it is ever called. FR-005's
-// "takes precedence" is only worth something if the store is never OPENED, not
-// merely never preferred.
+// exploding is an Open that fails the test if it is ever called: an
+// environment token "takes precedence" only means something if the store is
+// never opened, not merely never preferred.
 func exploding(t *testing.T) func() (*Store, error) {
 	t.Helper()
 	return func() (*Store, error) {
@@ -175,8 +175,7 @@ func TestResolvePropagatesAStoreThatWillNotOpen(t *testing.T) {
 }
 
 func TestTokenEnvVarIsTheOneDocumentedName(t *testing.T) {
-	// Pinned deliberately. The variable is part of the CLI's contract with CI
-	// (SC-006: no TTY, no credential store, a token from the environment), so
+	// Pinned deliberately: this is part of the CLI's contract with CI, so
 	// renaming it silently breaks every pipeline that sets it.
 	require.Equal(t, "AMCTL_TOKEN", TokenEnvVar)
 }

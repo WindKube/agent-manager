@@ -7,9 +7,9 @@ import (
 	"sort"
 )
 
-// ErrDuplicatePath is returned by Bundle.Add when a path is already present. A bundle is
-// the identity of a stored version (FR-007), so a second write to the same path is a
-// caller bug, never a silent overwrite.
+// ErrDuplicatePath is returned by Bundle.Add when a path is already present. A
+// bundle is the identity of a stored version, so a second write to the same
+// path is a caller bug, never a silent overwrite.
 var ErrDuplicatePath = errors.New("path already present in bundle")
 
 // FileMode and ExecMode are the only two modes a bundle records. Archive modes are

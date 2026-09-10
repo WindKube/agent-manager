@@ -1,12 +1,7 @@
 // Package fetch is the only way anything in this project reaches a
-// user-supplied URL.
-//
-// R10 required that the SSRF control be proven by this project's own six-case
-// suite (safe_test.go) before a client was chosen. github.com/doyensec/safeurl
-// failed case 2: its check is a net.Dialer.Control hook that runs per connect
-// attempt, so a name answering with both a public and a private address has the
-// private attempt refused and then connects over the public one. R10's stated
-// fallback is what ships here.
+// user-supplied URL. Its SSRF control checks every resolved address, not just
+// the first, so a name answering with both a public and a private address
+// cannot connect over the public one after the private attempt is refused.
 package fetch
 
 import (
@@ -23,13 +18,10 @@ import (
 )
 
 // ErrBlocked marks a refusal by the outbound policy rather than a transport
-// failure. FR-002 and US1 scenario 5 need the two to be told apart: a refusal is
-// a fetch error the operator must see, never a scan finding.
+// failure.
 var ErrBlocked = errors.New("refused by outbound policy")
 
-// BlockedError names the address or URL that was refused and why. The target is
-// the offending address, not the URL the user typed, because for a name with
-// several answers only one of them is the problem.
+// BlockedError names the address or URL that was refused and why.
 type BlockedError struct {
 	Target string
 	Reason string
@@ -41,8 +33,7 @@ func (e *BlockedError) Error() string {
 
 func (e *BlockedError) Unwrap() error { return ErrBlocked }
 
-// Client is the interface this project owns. Callers depend on this, never on
-// whatever library sits behind it.
+// Client is the interface this project owns.
 type Client interface {
 	Do(ctx context.Context, req *http.Request) (*http.Response, error)
 	Get(ctx context.Context, url string) (*http.Response, error)
@@ -55,24 +46,18 @@ const (
 	dialTimeout    = 10 * time.Second
 )
 
-// Options configures a Client. The intended call site is the fetcher bootstrap:
-//
-//	fetch.New(fetch.Options{Timeout: cfg.FetchTimeout, Allowlist: cfg.OutboundAllowlist})
+// Options configures a Client.
 type Options struct {
 	// Timeout bounds the whole request including redirects. Zero means
 	// DefaultTimeout.
 	Timeout time.Duration
 
-	// Allowlist widens the refusal for deployments whose package sources really
-	// do live on a private address (an on-prem git mirror, a MinIO in the same
-	// VPC). Entries are "ip", "ip:port" or a CIDR, and a match exempts the
-	// address from both the reserved-range rule and the default port list.
-	//
-	// Hostnames are rejected: a name is not an address, and allowlisting one
-	// would reintroduce exactly the rebinding hole this package exists to close.
+	// Allowlist widens the refusal for deployments whose sources live on a
+	// private address. Entries are "ip", "ip:port" or a CIDR; hostnames are
+	// rejected since a name can be made to resolve to a private address.
 	Allowlist []string
 
-	// Resolver is the seam that makes R10 cases 2 and 4 expressible at all.
+	// Resolver is the seam that makes the multi-address SSRF cases testable.
 	// Nil means net.DefaultResolver.
 	Resolver Resolver
 }
@@ -103,14 +88,11 @@ func New(opts Options) (Client, error) {
 	c.http = &http.Client{
 		Timeout: timeout,
 		Transport: &http.Transport{
-			// Proxy stays nil on purpose. A proxy would move every connection to
-			// the proxy's address, so the dial-time address checks below would be
-			// validating the proxy instead of the destination.
+			// Proxy stays nil: it would move every connection to the proxy's
+			// address, defeating the dial-time checks below.
 			Proxy:       nil,
 			DialContext: c.dialContext,
-			// A reused connection skips DialContext and therefore skips the
-			// connect-time address check. The fetcher makes a handful of requests
-			// per job, so closing that reuse window costs nothing worth keeping.
+			// A reused connection skips DialContext and its address check.
 			DisableKeepAlives:     true,
 			ForceAttemptHTTP2:     true,
 			TLSHandshakeTimeout:   10 * time.Second,
@@ -120,9 +102,7 @@ func New(opts Options) (Client, error) {
 			if len(via) >= maxRedirects {
 				return fmt.Errorf("stopped after %d redirects", maxRedirects)
 			}
-			// Each hop is a fresh attacker-controlled URL. This is the check that
-			// turns a 302 into a private address into a refusal at the hop, before
-			// the transport gets a chance to dial it.
+			// Each redirect hop is checked before the transport dials it.
 			return c.checkURL(req.Context(), req.URL)
 		},
 	}
@@ -154,22 +134,12 @@ func (c *guardedClient) Get(ctx context.Context, rawURL string) (*http.Response,
 	return c.Do(ctx, req)
 }
 
-// credentialsInURL matches the "user:password@" of any URL embedded in a string.
-// The authority cannot contain "/?#@" or whitespace, which is what keeps a path
-// segment or a neighbouring word from being mistaken for one.
+// credentialsInURL matches the "user:password@" of any URL embedded in a
+// string.
 var credentialsInURL = regexp.MustCompile(`//([^/?#@\s"']*):[^/?#@\s"']*@`)
 
-// redactedError renders its message with every embedded password removed, and
-// unwraps to the original chain so errors.Is(err, ErrBlocked) still answers.
-//
-// This scrubs the rendered message rather than a URL field because the secret
-// arrives by several routes and a fetch error is persisted and shown to an
-// operator. On a refused redirect net/http puts the raw, origin-supplied Location
-// header into url.Error.URL without stripping it (net/http/client.go,
-// "ue.(*url.Error).URL = loc"), and into the message verbatim when that header
-// does not parse; net/url likewise repeats an unparseable input in full. So a
-// password an attacker puts in a Location header, or a caller mistypes into a URL
-// that never parses, would otherwise land in the audit trail.
+// redactedError scrubs embedded credentials from its message before a fetch
+// error reaches an audit row or log line, and still unwraps to ErrBlocked.
 type redactedError struct{ err error }
 
 func (e redactedError) Error() string {
@@ -178,9 +148,8 @@ func (e redactedError) Error() string {
 
 func (e redactedError) Unwrap() error { return e.err }
 
-// checkURL is the pre-flight half of the control: it validates the URL shape and
-// every address the name currently answers with. It runs on the initial request
-// and again on every redirect hop.
+// checkURL is the pre-flight half of the control: it validates the URL shape
+// and every address the name currently answers with.
 func (c *guardedClient) checkURL(ctx context.Context, u *url.URL) error {
 	if err := c.policy.checkURL(u); err != nil {
 		return err
@@ -195,9 +164,7 @@ func (c *guardedClient) checkURL(ctx context.Context, u *url.URL) error {
 	if err != nil {
 		return err
 	}
-	// Refusing the whole set, rather than skipping the bad entries, is the
-	// difference between this and safeurl: a name answering with one public and
-	// one private address is unreachable, not reachable over the public half.
+	// The whole set is refused if any address is bad, not just skipped.
 	for _, ip := range ips {
 		if err := c.policy.checkAddr(ip, port); err != nil {
 			return err
@@ -214,8 +181,6 @@ func portOf(u *url.URL) (int, error) {
 		}
 		return port, nil
 	}
-	// Lowercased for the same reason policy.checkURL lowercases: two checks that
-	// disagree about how to read one field are a bypass waiting for a refactor.
 	switch strings.ToLower(u.Scheme) {
 	case "http":
 		return 80, nil

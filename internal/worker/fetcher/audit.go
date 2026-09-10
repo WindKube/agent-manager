@@ -13,23 +13,17 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// auditActor and auditSource are what a background role writes into the audit
-// log. actor_kind `system` is what separates a role's action from a person's
-// (FR-050), and the actor is the role name rather than a hostname or a container
-// id so the row still reads the same after a redeploy.
+// auditActor and auditSource are what a background role writes into the
+// audit log: actor_kind `system` separates a role's action from a person's.
 const (
 	auditActor  = RoleName
 	auditSource = "system"
 )
 
-// writeFetchAudit inserts the one audit row a fetch is accountable for.
-//
-// It takes a transaction rather than a pool. On the success path that is the
-// publish transaction, so the record of what was stored cannot survive a rolled
-// back publish or go missing after a committed one (FR-050, principle IV).
-//
-// audit_event is append-only and nothing here enforces that: UPDATE, DELETE and
-// TRUNCATE are revoked from am_fetcher in the migration layer (FR-052).
+// writeFetchAudit inserts the one audit row a fetch is accountable for. It
+// takes a transaction rather than a pool: on the success path that is the
+// publish transaction, so the record cannot survive a rolled back publish or
+// go missing after a committed one.
 func writeFetchAudit(ctx context.Context, tx bun.IDB, text string) error {
 	event := &models.AuditEvent{
 		ID:        models.NewID(),
@@ -39,29 +33,71 @@ func writeFetchAudit(ctx context.Context, tx bun.IDB, text string) error {
 		Text:      text,
 		Source:    auditSource,
 	}
-	if _, err := tx.NewInsert().Model(event).Exec(ctx); err != nil {
+	// am_fetcher holds INSERT-only on audit_event — no SELECT — and bun appends
+	// RETURNING for OccurredAt's `default:` tag unless told not to.
+	if _, err := tx.NewInsert().Model(event).Returning("NULL").Exec(ctx); err != nil {
 		return fmt.Errorf("write the fetch audit row: %w", err)
 	}
 	return nil
 }
 
-// auditFailure records a fetch that produced no bytes.
-//
-// It runs on its own statement rather than inside a transaction, because the
-// transaction it would have belonged to is the one that did not happen. The
-// reason is in the text and the row's kind is `fetch`: a failed fetch is an
-// ingestion event, never a `finding` row, because a finding is a statement about
-// what a package does and nothing here ever read the package.
+// auditFailure records a fetch that produced no bytes. It runs on its own
+// statement rather than inside a transaction, since the transaction it would
+// have belonged to is the one that did not happen.
 func (w *Worker) auditFailure(ctx context.Context, job Job, reason Reason, cause error) error {
 	text := fmt.Sprintf("failed to fetch %s from %s: %s", job, describeSource(job.Source), reason)
+	detail := ""
 	if cause != nil {
-		text += " (" + firstLine(cause.Error()) + ")"
+		detail = firstLine(cause.Error())
+		text += " (" + detail + ")"
 	}
-	return writeFetchAudit(ctx, w.deps.DB, text)
+	if err := writeFetchAudit(ctx, w.deps.DB, text); err != nil {
+		return err
+	}
+	if outcome, ok := outcomeOf(reason); ok {
+		return writeFetchAttempt(ctx, w.deps.DB, job, outcome, detail)
+	}
+	return nil
 }
 
-// storedText is US1 scenario 6's audit line: what was stored, from where, and
-// what it turned out to contain.
+func writeFetchAttempt(ctx context.Context, tx bun.IDB, job Job, outcome models.FetchOutcome, detail string) error {
+	attempt := &models.FetchAttempt{
+		ID:           models.NewID(),
+		SourceKind:   models.FetchSourceKind(job.Source.Kind),
+		RequestedRef: describeSource(job.Source),
+		Outcome:      outcome,
+		Detail:       detail,
+	}
+	if _, err := tx.NewInsert().Model(attempt).Returning("NULL").Exec(ctx); err != nil {
+		return fmt.Errorf("write the fetch attempt row: %w", err)
+	}
+	return nil
+}
+
+// outcomeOf maps a failure to the outcome the storage screen reports; an
+// internal failure is not a fetch outcome and records nothing.
+func outcomeOf(reason Reason) (models.FetchOutcome, bool) {
+	switch reason {
+	case ReasonRefused:
+		return models.FetchOutcomeBlocked, true
+	case ReasonRefNotFound:
+		return models.FetchOutcomeInvalidRef, true
+	case ReasonCredentials, ReasonRemote:
+		return models.FetchOutcomeUnreachable, true
+	case ReasonUnsupported, ReasonArchiveMalformed, ReasonManifestInvalid, ReasonVersionMismatch:
+		return models.FetchOutcomeMalformed, true
+	case ReasonArchiveTooLarge:
+		return models.FetchOutcomeTooLarge, true
+	case ReasonArchiveMemberRejected:
+		return models.FetchOutcomeRejectedMember, true
+	case ReasonArchiveTimeout:
+		return models.FetchOutcomeExtractTimeout, true
+	}
+	return "", false
+}
+
+// storedText is the audit line: what was stored, from where, and what it
+// turned out to contain.
 func storedText(job Job, pkg *pkgspec.Package, commit blob.Commit) string {
 	text := fmt.Sprintf("stored %s (%s) from %s, digest sha256:%s, %d bytes",
 		job, pkg.Kind, describeSource(job.Source),
@@ -70,17 +106,13 @@ func storedText(job Job, pkg *pkgspec.Package, commit blob.Commit) string {
 	if n := len(pkg.Components); n > 0 {
 		text += fmt.Sprintf(", %d %s", n, plural(n, "component"))
 	}
-	// FR-005: what the layout filter discarded is part of the record of what was
-	// ingested, not a detail of the pre-submit preview.
 	if n := len(pkg.Layout.Dropped); n > 0 {
 		text += fmt.Sprintf(", %d %s dropped as outside the spec layout", n, plural(n, "path"))
 	}
 	return text
 }
 
-// describeSource names where a fetch went without reproducing a credential. A
-// URL is redacted by internal/fetch on the way out; this is the same rule applied
-// to the audit log, which is the copy that is kept.
+// describeSource names where a fetch went without reproducing a credential.
 func describeSource(source JobSource) string {
 	switch {
 	case source.URL != "":
@@ -99,10 +131,8 @@ func describeSource(source JobSource) string {
 	}
 }
 
-// redactCredentials strips userinfo from a URL. It is deliberately a string
-// operation on the raw value rather than a parse: a URL that will not parse must
-// still be redacted, and the failure mode of a parse error here is a secret in
-// the audit log forever.
+// redactCredentials strips userinfo from a URL. It is a string operation
+// rather than a parse: a URL that will not parse must still be redacted.
 func redactCredentials(raw string) string {
 	scheme := ""
 	if i := strings.Index(raw, "://"); i >= 0 {

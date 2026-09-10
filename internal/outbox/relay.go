@@ -15,20 +15,19 @@ import (
 	"github.com/uptrace/bun"
 )
 
-// DefaultSweepInterval is the periodic drain. LISTEN/NOTIFY carries the latency,
-// but a notification is fire-and-forget: it is lost if the listener connection is
-// down at that instant, and Postgres never redelivers it. The sweep is what turns
-// a lost notification into a few seconds of delay instead of a job that never
-// runs, so it is not an optimisation to be tuned away (R5).
+// DefaultSweepInterval is the periodic drain. A LISTEN/NOTIFY notification is
+// fire-and-forget: it is lost if the listener connection is down at that
+// instant, and Postgres never redelivers it. The sweep turns a lost
+// notification into a few seconds of delay instead of a job that never runs.
 const DefaultSweepInterval = 10 * time.Second
 
 const (
-	// DefaultPruneInterval is how often delivered rows are swept out. It is far
-	// shorter than the retention window on purpose: the prune is cheap and a missed
-	// run must not let the table grow.
+	// DefaultPruneInterval is how often delivered rows are swept out. It is
+	// far shorter than the retention window on purpose: the prune is cheap
+	// and a missed run must not let the table grow.
 	DefaultPruneInterval = time.Hour
 
-	// DefaultRetention is data-model.md's "delivered rows pruned after 24 h".
+	// DefaultRetention is how long a delivered row is kept before pruning.
 	DefaultRetention = 24 * time.Hour
 
 	// DefaultBatch is how many rows one claim takes. The claim holds row locks
@@ -39,24 +38,20 @@ const (
 	listenerRetryDelay = time.Second
 )
 
-// Inserter is all the relay needs from River: hand one job over, or fail.
-//
-// It is deliberately narrower than *river.Client and lets no River result type
-// cross the seam, so the relay is testable without a queue database and cannot
-// reach for the rest of the client's surface. RiverInserter adapts the real
-// client.
+// Inserter is all the relay needs from River: hand one job over, or fail. It
+// is deliberately narrower than *river.Client, so the relay is testable
+// without a queue database. RiverInserter adapts the real client.
 type Inserter interface {
 	InsertJob(ctx context.Context, args river.JobArgs, opts *river.InsertOpts) error
 }
 
-// RelayConfig configures the relay. It is hosted in the api role (R5), next to
+// RelayConfig configures the relay. It is hosted in the api role, next to
 // the transactions that feed it.
 type RelayConfig struct {
-	// AppDatabaseURL is the application database. The relay opens ONE dedicated
-	// connection to it for LISTEN: a pooled connection cannot hold a subscription,
-	// because the pool would hand it to somebody else's query. Empty disables the
-	// listener and leaves the sweep as the only delivery path — degraded, not
-	// broken, which is the property the sweep exists to provide.
+	// AppDatabaseURL is the application database. The relay opens one
+	// dedicated connection to it for LISTEN, since a pooled connection
+	// cannot hold a subscription. Empty disables the listener and leaves the
+	// sweep as the only delivery path — degraded, not broken.
 	AppDatabaseURL string
 
 	Batch         int
@@ -125,11 +120,9 @@ func (r *Relay) Stats() RelayStats {
 	}
 }
 
-// Run drains the outbox until ctx is cancelled.
-//
-// Two independent triggers, and that redundancy is the point: LISTEN for latency,
-// a periodic sweep so a notification lost to a dropped connection costs seconds
-// rather than forever.
+// Run drains the outbox until ctx is cancelled, on two independent triggers:
+// LISTEN for latency, a periodic sweep so a notification lost to a dropped
+// connection costs seconds rather than forever.
 func (r *Relay) Run(ctx context.Context) error {
 	wake := make(chan struct{}, 1)
 	if r.cfg.AppDatabaseURL != "" {
@@ -143,8 +136,9 @@ func (r *Relay) Run(ctx context.Context) error {
 	prune := time.NewTicker(r.cfg.PruneInterval)
 	defer prune.Stop()
 
-	// A restart must not wait for the first tick: rows committed while the process
-	// was down are already pending and their notifications are long gone.
+	// A restart must not wait for the first tick: rows committed while the
+	// process was down are already pending and their notifications are
+	// long gone.
 	r.drainLogged(ctx)
 
 	for {
@@ -189,15 +183,11 @@ type pendingRow struct {
 	payload json.RawMessage
 }
 
-// deliverBatch claims a batch, inserts it into River and marks it delivered, all
-// in one transaction.
-//
-// The claim uses `for update skip locked` so several api replicas can drain
-// concurrently without one waiting on another's locks. The River inserts happen
-// inside that transaction — before the mark commits — which is the at-least-once
-// trade: a crash here redelivers, and every handler is idempotent (principle IX).
-// Marking first would silently drop the job instead, and nothing would ever
-// notice.
+// deliverBatch claims a batch, inserts it into River and marks it delivered,
+// all in one transaction. The claim uses `for update skip locked` so several
+// api replicas can drain concurrently. The River inserts happen before the
+// mark commits, which is the at-least-once trade: a crash here redelivers,
+// where marking first would silently drop the job.
 func (r *Relay) deliverBatch(ctx context.Context) (int, error) {
 	var claimed int
 
@@ -238,9 +228,7 @@ func (r *Relay) deliverBatch(ctx context.Context) (int, error) {
 }
 
 func claim(ctx context.Context, tx bun.Tx, batch int) ([]pendingRow, error) {
-	// Ordering by the primary key is ordering by time: the id is a uuid v7. The
-	// placeholder is bun's `?` — bun formats raw SQL itself rather than binding
-	// through the driver.
+	// Ordering by the primary key is ordering by time: the id is a uuid v7.
 	sqlRows, err := tx.QueryContext(ctx, `select id, job_kind, payload
 		from outbox
 		where state = 'pending'
@@ -266,8 +254,8 @@ func claim(ctx context.Context, tx bun.Tx, batch int) ([]pendingRow, error) {
 	return out, nil
 }
 
-// Prune removes delivered rows past the retention window. `DELETE` on `outbox` is
-// the only delete grant am_api holds (data-model.md), so this is the only
+// Prune removes delivered rows past the retention window. `DELETE` on
+// `outbox` is the only delete grant am_api holds, so this is the only
 // statement in the system that may run it.
 func (r *Relay) Prune(ctx context.Context) (int64, error) {
 	res, err := r.db.ExecContext(ctx,
@@ -342,12 +330,11 @@ func (r *Relay) signal(wake chan<- struct{}) {
 	}
 }
 
-// queuedJob carries an outbox row into River unchanged.
-//
-// Kind is the row's job_kind, so the outbox kind and the queue kind are one
-// string and a worker registers against a single name. MarshalJSON hands River the
-// stored payload verbatim rather than re-encoding a Go value, which is what lets
-// the relay stay ignorant of every job type.
+// queuedJob carries an outbox row into River unchanged. Kind is the row's
+// job_kind, so the outbox kind and the queue kind are one string.
+// MarshalJSON hands River the stored payload verbatim rather than
+// re-encoding a Go value, which lets the relay stay ignorant of every job
+// type.
 type queuedJob struct {
 	kind    string
 	payload json.RawMessage

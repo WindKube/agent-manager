@@ -14,15 +14,11 @@ import (
 // SchemaID is the `$id` of the rule contract.
 const SchemaID = "https://agent-manager.dev/schemas/1.0.0/rulepack.schema.json"
 
-// rulepack.schema.json is a COPY of
-// specs/001-agent-manager-hub/contracts/rulepack.schema.json, and it is a copy
-// because go:embed cannot reach outside its own package directory while the
-// contract has to stay where the feature's other contracts live.
-//
-// TestTheEmbeddedSchemaIsTheContract asserts the two files are byte-identical, so
-// the copy cannot drift: a change to the contract that is not copied here fails
-// the build rather than producing a loader that validates rules against a schema
-// nobody agreed to.
+// rulepack.schema.json is a copy of the canonical contract file, made because
+// the embed directive below cannot reach outside its own package directory.
+// TestTheEmbeddedSchemaIsTheContract asserts the two are byte-identical, so a
+// change to the contract that is not copied here fails the build rather than
+// validating rules against a schema nobody agreed to.
 //
 //go:embed rulepack.schema.json
 var schemaFS embed.FS

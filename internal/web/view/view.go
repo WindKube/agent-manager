@@ -1,9 +1,7 @@
-// Package view holds the web role's view models.
-//
-// These types are the contract between a data source and the templ components.
-// The web role never sees a store row: a CatalogPage is assembled by whatever
-// implements web.CatalogSource — today a fixture, from US2 an apiclient call —
-// and the components render nothing else.
+// Package view holds the web role's view models: the contract between a
+// data source and the templ components. The web role never sees a store
+// row — a CatalogPage is assembled by whatever implements
+// web.CatalogSource, and the components render nothing else.
 package view
 
 import (
@@ -17,7 +15,7 @@ import (
 	"unicode/utf8"
 )
 
-// Kind separates a portable plugin from a standalone skill (US3 scenarios 1-2).
+// Kind separates a portable plugin from a standalone skill.
 type Kind string
 
 const (
@@ -66,9 +64,9 @@ func (s Scan) Tone() string {
 	}
 }
 
-// Kind and Status filters are single-selection (FR-011). The strings are the
-// design's chip labels, which are also what the URL and the datastar signals
-// carry, so there is one spelling of each value end to end.
+// Kind and Status filters are single-selection. The strings are the chip
+// labels, also what the URL and datastar signals carry, so there is one
+// spelling of each value end to end.
 const (
 	KindFilterAll     = "All"
 	KindFilterPlugins = "Plugins"
@@ -85,7 +83,6 @@ var (
 	StatusFilters = []string{StatusAll, StatusVerified, StatusCommunity, StatusFlagged}
 )
 
-// SortKey and SortDir back FR-014.
 type SortKey string
 
 const (
@@ -113,8 +110,8 @@ func (d SortDir) Arrow() string {
 // one page. Paging is a plain server round trip.
 const DefaultPageSize = 10
 
-// CatalogQuery is one catalog request. Categories are disjunctive and Tags are
-// conjunctive (FR-013) — the asymmetry is deliberate: categories widen a search,
+// CatalogQuery is one catalog request. Categories are disjunctive and Tags
+// are conjunctive — the asymmetry is deliberate: categories widen a search,
 // tags narrow it.
 type CatalogQuery struct {
 	Text       string
@@ -165,8 +162,8 @@ func (q CatalogQuery) SortState(key SortKey) (active bool, next SortDir, arrow s
 	return true, DirDesc, q.Dir.Arrow()
 }
 
-// Row is one catalog result. Tags belong to the latest version, not the package
-// (data-model.md), so what lands here is already the latest version's set.
+// Row is one catalog result. Tags belong to the latest version, not the
+// package, so what lands here is already the latest version's set.
 type Row struct {
 	Key       string
 	ID        string
@@ -182,9 +179,8 @@ type Row struct {
 }
 
 // Href is the row's link, built from the ID rather than the Key: the detail
-// screen is addressed by `namespace/name`, and Key is whatever the source chose
-// to identify a row by. See PackageHref for why the id is validated and not
-// merely escaped.
+// screen is addressed by `namespace/name`, and Key is whatever the source
+// chose to identify a row by.
 func (r Row) Href() string { return PackageHref(r.ID) }
 
 // FacetOption is one checkbox in a facet menu. Count is what selecting this
@@ -205,9 +201,9 @@ type CatalogPage struct {
 	Categories []FacetOption
 	Tags       []FacetOption
 
-	// SignedOut is the third outcome, and it is neither of the other two. An
-	// empty catalog is an answer; an unreachable api is a 502; this is a screen
-	// that renders because the screen is not the secret — only the rows are.
+	// SignedOut is the third outcome: an empty catalog is an answer, an
+	// unreachable api is a 502, and this renders because the screen is not
+	// the secret — only the rows are.
 	SignedOut bool
 }
 
@@ -223,8 +219,8 @@ func (p CatalogPage) Pages() int {
 	return (p.Total + size - 1) / size
 }
 
-// ResultCount is the design's live count line. Signed out it counts nothing
-// rather than saying "0 results", which would be a claim about the catalog.
+// ResultCount is the live count line. Signed out it counts nothing rather
+// than "0 results", a claim about the catalog.
 func (p CatalogPage) ResultCount() string {
 	switch {
 	case p.SignedOut:
@@ -236,7 +232,6 @@ func (p CatalogPage) ResultCount() string {
 	}
 }
 
-// Empty backs the distinct empty state of FR-015.
 func (p CatalogPage) Empty() bool { return len(p.Rows) == 0 }
 
 // SelectedSummary is the facet trigger's summary text.
@@ -283,19 +278,15 @@ func cleaned(in []string) []string {
 	return out
 }
 
-// Title is the display name of a package.
-//
-// It is DERIVED, and it has to be: `package.name` is the manifest name and
-// matches `^[a-z0-9][a-z0-9.-]*$`, no column carries a human title, and neither
-// Agent Plugins 1.0.0 nor Agent Skills defines one. Title-casing the hyphenated
-// name recovers "Platform Toolkit" from "platform-toolkit"; it cannot recover an
-// acronym, so the design's "PII Redactor" and "ADR Writer" render as "Pii
-// Redactor" and "Adr Writer" until `package` grows a display name.
+// Title is the display name of a package. It is DERIVED: `package.name` is
+// the manifest name and no column carries a human title. Title-casing the
+// hyphenated name recovers "Platform Toolkit" from "platform-toolkit" but
+// cannot recover an acronym, so "PII Redactor" renders as "Pii Redactor".
 func Title(name string) string {
 	words := strings.FieldsFunc(name, func(r rune) bool { return r == '-' || r == '_' })
 	for i, word := range words {
-		// By rune, not by byte: the manifest name is untrusted input (principle III)
-		// and word[:1] on a multi-byte first character renders as U+FFFD.
+		// By rune, not byte: word[:1] on a multi-byte first character
+		// renders as U+FFFD.
 		first, size := utf8.DecodeRuneInString(word)
 		words[i] = string(unicode.ToUpper(first)) + word[size:]
 	}
@@ -305,12 +296,10 @@ func Title(name string) string {
 	return strings.Join(words, " ")
 }
 
-// Relative renders a timestamp the way the design's Updated column reads.
-//
-// The API returns an instant, not a phrase: which words express an age is a
-// rendering decision, and a relative string is wrong the moment anything caches
-// it. A future timestamp reads as "just now" rather than as a negative age —
-// clock skew between the hub and a publisher is not something to render.
+// Relative renders a timestamp as the Updated column reads it. The API
+// returns an instant, not a phrase, since a relative string is wrong the
+// moment anything caches it. A future timestamp reads as "just now" rather
+// than a negative age.
 func Relative(at, now time.Time) string {
 	switch age := now.Sub(at); {
 	case age < time.Minute:
@@ -332,10 +321,8 @@ func Relative(at, now time.Time) string {
 	}
 }
 
-// ago is the age formatter Relative is built from, and it is NOT a pluraliser:
-// every string it returns ends in "ago". It was called `plural` until the detail
-// screen's origin line reused it for a component count and rendered "2 skills
-// ago". The name is the fix — `plural` below does what that caller wanted.
+// ago is the age formatter Relative is built from, and it is NOT a
+// pluraliser: every string it returns ends in "ago".
 func ago(n int, unit string) string {
 	return plural(n, unit) + " ago"
 }
@@ -348,23 +335,15 @@ func plural(n int, unit string) string {
 }
 
 // ErrSignedOut is a CatalogSource reporting that the caller has no usable
-// session, and it is a state to render rather than a failure to log.
-//
-// It lives here, beside the types the source's methods already speak, because
-// both sides of that interface import this package and neither imports the
-// other: internal/web declares the interface and internal/web/hub implements it
-// over the generated client.
+// session, a state to render rather than a failure to log.
 var ErrSignedOut = errors.New("no usable session")
 
 // tokenKey carries the browser's session token from the request into the source.
 type tokenKey struct{}
 
-// WithToken puts the caller's own session token in the context.
-//
-// Constitution principle II: the web role holds no credential of its own, and
-// there is none it could hold — auth.Sessions.Resolve is a lookup in the session
-// table by hashed token, so a token exists only because a person signed in. Every
-// api call the web role makes is therefore made AS the person, or not at all.
+// WithToken puts the caller's own session token in the context. The web
+// role holds no credential of its own, so every api call it makes is made
+// AS the person, or not at all.
 func WithToken(ctx context.Context, token string) context.Context {
 	if token == "" {
 		return ctx
@@ -378,17 +357,10 @@ func TokenFrom(ctx context.Context) string {
 	return token
 }
 
-// Badges are the sidebar's three counts, scoped to the viewer (FR-121, research
-// R5).
-//
-// A pointer to one of these is what the shell holds, and nil is a request that
-// could not read them. That is not the same as three zeroes: a hub whose api is
-// slow would otherwise render "0 packages" beside a catalog full of them.
-//
-// Three indexed counts from one api operation, called once per full page render
-// and never on a fragment update. Not a projection: principle VIII's single
-// allowance is spent on catalog_entry, and R5 records that the answer to these
-// being slow is to drop a badge rather than to add a second one.
+// Badges are the sidebar's three counts, scoped to the viewer. A pointer to
+// one of these is what the shell holds, and nil is a request that could not
+// read them — not the same as three zeroes, which would render "0
+// packages" beside a catalog full of them.
 type Badges struct {
 	Packages     int
 	Profiles     int

@@ -31,25 +31,23 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/uptrace/bun"
-	"github.com/uptrace/bun/dialect/pgdialect"
 
 	"agent-manager/internal/blob"
 	"agent-manager/internal/bundle"
-	"agent-manager/internal/store/migrations"
 	"agent-manager/internal/store/models"
+	"agent-manager/internal/store/storetest"
 	"agent-manager/internal/worker"
 	"agent-manager/internal/worker/scanner"
 	"agent-manager/internal/worker/scanner/checks"
 )
 
 var (
-	pool *pgxpool.Pool
-	db   *bun.DB
+	pool     *pgxpool.Pool
+	db       *bun.DB // superuser: fixtures and assertions
+	workerDB *bun.DB // am_scanner: the worker under test
 )
 
 func TestMain(m *testing.M) {
@@ -64,28 +62,13 @@ func TestMain(m *testing.M) {
 func runSuite(m *testing.M) (int, error) {
 	ctx := context.Background()
 
-	container, err := tcpostgres.Run(ctx, "postgres:16-alpine",
-		tcpostgres.WithDatabase("agent_manager"),
-		tcpostgres.WithUsername("postgres"),
-		tcpostgres.WithPassword("postgres"),
-		tcpostgres.BasicWaitStrategies(),
-	)
+	pg, cleanup, err := storetest.Run(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("start postgres: %w", err)
+		return 0, err
 	}
-	defer func() {
-		if termErr := container.Terminate(ctx); termErr != nil {
-			fmt.Fprintln(os.Stderr, "terminate postgres:", termErr)
-		}
-	}()
+	defer cleanup()
 
-	endpoint, err := container.PortEndpoint(ctx, "5432/tcp", "")
-	if err != nil {
-		return 0, fmt.Errorf("container endpoint: %w", err)
-	}
-
-	pool, err = pgxpool.New(ctx, fmt.Sprintf(
-		"postgres://postgres:postgres@%s/agent_manager?sslmode=disable", endpoint))
+	pool, err = pg.Pool(ctx, "agent_manager")
 	if err != nil {
 		return 0, fmt.Errorf("open pool: %w", err)
 	}
@@ -94,18 +77,21 @@ func runSuite(m *testing.M) (int, error) {
 	// The checked-in migrations, not the desired state: what ships is the migration
 	// directory, so that is what the scan is tested against — including the
 	// `unique (version_id, pack_version)` key the idempotency test leans on.
-	if applyErr := migrations.Apply(ctx, func(ctx context.Context, statement string) error {
-		_, execErr := pool.Exec(ctx, statement)
-		return execErr
-	}); applyErr != nil {
+	if applyErr := storetest.ApplyMigrations(ctx, pool); applyErr != nil {
 		return 0, applyErr
 	}
 
-	sqldb := stdlib.OpenDBFromPool(pool)
-	defer func() { _ = sqldb.Close() }()
+	db = storetest.BunDB(pool)
 
-	db = bun.NewDB(sqldb, pgdialect.New())
-	db.RegisterModel(models.All()...)
+	// The worker under test runs as am_scanner, not the superuser this suite
+	// connects as, so a statement that only works under a superuser's implicit
+	// SELECT is caught here rather than in production.
+	var workerClose func()
+	workerDB, workerClose, err = storetest.RoleDB(ctx, pg.DSN("agent_manager"), "am_scanner")
+	if err != nil {
+		return 0, fmt.Errorf("open am_scanner pool: %w", err)
+	}
+	defer workerClose()
 
 	return m.Run(), nil
 }
@@ -179,7 +165,7 @@ func newHarness(t *testing.T) harness {
 	// hands over. There is deliberately NO BlobWrite: the scanner never writes
 	// bundle bytes, and New refuses to start if one arrives.
 	w, err := scanner.New(worker.Deps{
-		DB:       db,
+		DB:       workerDB,
 		BlobRead: bucket.Reader(),
 		Log:      zerolog.New(io.Discard),
 	}, scanner.Options{})
@@ -283,7 +269,7 @@ func setRescanPolicy(t *testing.T, enabled bool) {
 		`insert into org_policy
 		   (id, scan_gate, default_version_policy, require_signed_bundles,
 		    community_needs_review, rescan_on_new_version, allow_personal_profiles)
-		 values (1, 'approval', 'floating-latest', false, true, $1, true)
+		 values (1, 'approval', 'floating-latest', false, false, $1, true)
 		 on conflict (id) do update set rescan_on_new_version = excluded.rescan_on_new_version`,
 		enabled)
 	require.NoError(t, err)
@@ -597,6 +583,73 @@ func TestARescanDoesNotResurrectARejectedVersion(t *testing.T) {
 		"and the version keeps the verdict a person gave it")
 }
 
+// setCommunityReviewPolicy writes org_policy.community_needs_review directly,
+// the same shape setRescanPolicy uses for its own toggle.
+func setCommunityReviewPolicy(t *testing.T, enabled bool) {
+	t.Helper()
+	_, err := pool.Exec(context.Background(),
+		`insert into org_policy
+		   (id, scan_gate, default_version_policy, require_signed_bundles,
+		    community_needs_review, rescan_on_new_version, allow_personal_profiles)
+		 values (1, 'approval', 'floating-latest', false, $1, false, true)
+		 on conflict (id) do update set community_needs_review = excluded.community_needs_review`,
+		enabled)
+	require.NoError(t, err)
+}
+
+func setPublisherVerified(t *testing.T, packageID uuid.UUID, verified bool) {
+	t.Helper()
+	_, err := pool.Exec(context.Background(),
+		`update publisher set verified = $1
+		   where id = (select publisher_id from package where id = $2)`,
+		verified, packageID)
+	require.NoError(t, err)
+}
+
+// TestCommunityNeedsReviewFlagsAVersionFromAnUnverifiedPublisher proves the
+// toggle changes a real verdict, not just its own stored row.
+func TestCommunityNeedsReviewFlagsAVersionFromAnUnverifiedPublisher(t *testing.T) {
+	// Left false on cleanup so a test that runs after this one and does not set
+	// its own community-review policy is not silently flagging every unverified
+	// publisher's bundle because this test left the singleton row on.
+	t.Cleanup(func() { setCommunityReviewPolicy(t, false) })
+
+	h := newHarness(t)
+	version := seedVersion(t, h, "community-report", "1.0.0", benignTree())
+
+	setCommunityReviewPolicy(t, false)
+	setPublisherVerified(t, version.packageID, false)
+	require.NoError(t, h.worker.Scan(context.Background(), version.job(), false))
+	require.Equal(t, string(models.VerdictClean), versionVerdict(t, version.versionID),
+		"with the policy off, an unverified publisher's clean bundle stays clean")
+
+	// A fresh version, so the idempotency guard (one scan per version per pack
+	// version) does not suppress the second scan below.
+	version2 := seedVersionOf(t, h, stored{
+		packageID: version.packageID, namespace: version.namespace, name: version.name,
+	}, "1.1.0", benignTree())
+
+	setCommunityReviewPolicy(t, true)
+	require.NoError(t, h.worker.Scan(context.Background(), version2.job(), false))
+	require.Equal(t, string(models.VerdictFlagged), versionVerdict(t, version2.versionID),
+		"an otherwise-clean bundle from an unverified publisher must be flagged once the "+
+			"policy is on — the ONLY thing that moved between the two scans")
+	require.Equal(t, 1, countRows(t,
+		`select count(*) from finding where version_id = $1 and rule_id = 'ORG-COMMUNITY-REVIEW'`,
+		version2.versionID))
+
+	// A THIRD version, this time from a verified publisher, must resolve clean
+	// even with the policy on: the toggle is about the publisher, not a blanket
+	// re-flagging of every community bundle.
+	setPublisherVerified(t, version.packageID, true)
+	version3 := seedVersionOf(t, h, stored{
+		packageID: version.packageID, namespace: version.namespace, name: version.name,
+	}, "1.2.0", benignTree())
+	require.NoError(t, h.worker.Scan(context.Background(), version3.job(), false))
+	require.Equal(t, string(models.VerdictClean), versionVerdict(t, version3.versionID),
+		"a verified publisher's bundle is not routed through community review")
+}
+
 // A payload naming a version with no committed bytes is cancelled rather than
 // retried: a fetch that never landed is the fetcher's business and never a finding
 // about the package.
@@ -646,7 +699,7 @@ func movedPackWorker(t *testing.T, h harness) *scanner.Worker {
 	require.NoError(t, os.WriteFile(dir+"/pack.yaml", []byte("packVersion: \"2099.01.01\"\n"), 0o600))
 
 	moved, err := scanner.New(worker.Deps{
-		DB:       db,
+		DB:       workerDB,
 		BlobRead: h.bucket.Reader(),
 		Log:      zerolog.New(io.Discard),
 	}, scanner.Options{RulepackDir: dir, Budget: 30 * time.Second})

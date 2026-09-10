@@ -16,11 +16,17 @@ import (
 //
 // The frozen contract's inventory calls this `GET /v1/packages/{id}`, and the
 // URL is exactly that: `/v1/packages/` followed by the id. The TEMPLATE has two
-// parameters because the id is `namespace/name` — two segments — and a single
-// `{id}` would have to arrive percent-encoded. It would not survive the trip:
-// gin routes on the DECODED path, so `example%2Fplatform-toolkit` reaches the
-// router as two segments anyway and matches nothing. Two parameters is the same
-// URL, honestly declared, and it is the shape /v1/bundles already uses.
+// parameters because the id is `namespace/name` — two segments — and this is the
+// same URL, honestly declared, in the shape /v1/bundles already uses. A reader
+// who counts the parameters against the frozen inventory then sees why they
+// differ.
+//
+// The reason recorded here used to be that an encoded `{id}` could not survive
+// the trip, because gin routed on the decoded path. That is no longer true: the
+// engine sets UseRawPath and UnescapePathValues (api.go says why, and what was
+// measured), so a single percent-encoded parameter would in fact route. Two
+// parameters stay because the id's two halves ARE two things — a namespace and a
+// name, matched against two columns — and not because encoding is impossible.
 type getPackageInput struct {
 	Namespace string `path:"namespace" doc:"The publishing namespace — the FIRST segment of the publisher slug, as it appears in the catalog id. Not the whole slug." example:"example"`
 	Name      string `path:"name" doc:"The package name within that namespace." example:"platform-toolkit"`

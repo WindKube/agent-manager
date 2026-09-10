@@ -2,21 +2,9 @@ package contract
 
 import "time"
 
-// The catalog browse surface (US2). It is web-facing: the frozen contract
-// inventories `GET /v1/packages` but specifies no schema for it, so these shapes
-// are emitted rather than frozen and may still change.
-
-// CatalogPackage is one row of the catalog list (FR-009).
-//
-// `name` is the manifest name — `platform-toolkit` — because nothing in the
-// schema or in Agent Plugins 1.0.0 carries a human title. The design's
-// "Platform Toolkit" is derived from it at render time, which is a view decision
-// and deliberately not made here: an API that returned a title would make it for
-// every client.
-//
-// `updatedAt` is a timestamp for the same reason. The design shows "2 days ago";
-// which words express an age is a rendering choice, and a relative string is
-// wrong the moment it is cached.
+// CatalogPackage is one row of the catalog list. Timestamps and the manifest
+// name are returned raw rather than rendered, since which words express them
+// is a view decision this API deliberately doesn't make.
 type CatalogPackage struct {
 	ID        string    `json:"id" doc:"namespace/name — the first segment of the publisher slug, not the whole slug." example:"example/platform-toolkit"`
 	Name      string    `json:"name" doc:"The manifest name, not a display title — no manifest field and no column carries one." example:"platform-toolkit"`
@@ -30,7 +18,7 @@ type CatalogPackage struct {
 	Tags      []string  `json:"tags" doc:"The latest version's manifest keywords. Tags belong to the version, not the package."`
 }
 
-// CatalogFacetOption is one option of a facet menu with its count (FR-012).
+// CatalogFacetOption is one option of a facet menu with its count.
 type CatalogFacetOption struct {
 	Value string `json:"value" example:"Infrastructure"`
 	Count int    `json:"count" doc:"Packages this option yields under the other filters. See the operation's description for what 'the other filters' means for each facet." example:"4"`

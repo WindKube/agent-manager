@@ -80,6 +80,16 @@ type Deps struct {
 	// health endpoint and the device flow; the consequence is that this is the only
 	// place the contract exists, and commands.SessionMint is where it is enforced.
 	SessionMintSecret string
+
+	// Storage backs the Storage screen's bucket-settings and object-count report.
+	// It is read-and-describe only (blob.Inspector), not the full *blob.Bucket:
+	// this role holds no writer, whatever the driver's own client can do.
+	Storage blob.Inspector
+
+	// Identity is this role's own OIDC configuration, for the Organization
+	// screen's provider panel and connection test. It never carries the client
+	// secret: commands.IdentityConfig has no field for one.
+	Identity commands.IdentityConfig
 }
 
 // Options is the run-time configuration of the surface itself.
@@ -90,6 +100,9 @@ type Options struct {
 	// document's single server entry and is what the device flow's
 	// verification_uri is built from.
 	PublicBaseURL string
+	// DeviceVerificationURL is the page a human opens to enter the device code —
+	// the web role's /cli screen, not this role's own origin.
+	DeviceVerificationURL string
 	// DeviceCodeTTL and DeviceTokenTTL are advertised by the device endpoints.
 	DeviceCodeTTL  time.Duration
 	DeviceTokenTTL time.Duration
@@ -150,6 +163,28 @@ func New(deps Deps, opts Options) *Server {
 	// Off by default in gin, which answers a wrong method with 404. A client that
 	// used the wrong verb deserves to be told so.
 	engine.HandleMethodNotAllowed = true
+	// Route on the RAW path and unescape the captured values afterwards, so a path
+	// parameter may carry an encoded slash.
+	//
+	// It is load-bearing for profiles and it was measured, not assumed. A profile
+	// slug legitimately holds several segments — the representative dataset's are
+	// `example/platform-engineer`, and blob.ProfileRevisionKey validates each
+	// segment because the slug becomes an object-store prefix — while the frozen
+	// contract fixes the path template as `/v1/profiles/{slug}/revisions/{revision}`
+	// with ONE parameter, which gin matches against ONE segment. The generated
+	// clients already send `example%2Fplatform-engineer`: oapi-codegen's `simple`
+	// style escapes a path parameter, and the request's RawPath carries it. With
+	// gin's defaults the router reads URL.Path instead — the DECODED form, two
+	// segments — and answers 404, so every seeded profile was unreachable through
+	// its own revision endpoint. Measured against gin's router on 2026-08-31: with
+	// these two flags the same request routes and `slug` arrives decoded.
+	//
+	// It changes nothing for a parameter with no escape in it. gin falls back to
+	// URL.Path whenever RawPath is empty, which is every request whose path needed
+	// no encoding, so the unescaping applies only where a client actually escaped
+	// something.
+	engine.UseRawPath = true
+	engine.UnescapePathValues = true
 	engine.Use(correlation(deps.Log), recovery())
 	engine.NoRoute(notFound)
 	engine.NoMethod(methodNotAllowed)

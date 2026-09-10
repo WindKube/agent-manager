@@ -16,10 +16,8 @@ import (
 // client and nothing else.
 
 // Package implements web.PackageSource against GET /v1/packages/{namespace}/{name}.
-//
-// A 404 becomes view.ErrNotFound rather than an error to log: a package that
-// does not exist and a package this identity may not read are the same answer by
-// design, and both are a screen rather than a failure.
+// A 404 becomes view.ErrNotFound rather than an error to log: a missing
+// package and an unreadable one are the same answer by design.
 func (c *Client) Package(ctx context.Context, namespace, name string) (view.Package, error) {
 	resp, err := c.api.GetPackageWithResponse(ctx, namespace, name)
 	if err != nil {
@@ -89,10 +87,9 @@ func packageVersion(v *apiclient.PackageVersion, now time.Time) view.PackageVers
 	}
 }
 
-// capabilities merges the two lists into one row per capability name, which is
-// what makes the panel a comparison rather than two lists a reader has to align
-// by eye (T060). A name present on one side only still gets a row, because that
-// asymmetry is the whole point of FR-027.
+// capabilities merges the two lists into one row per capability name, which
+// makes the panel a comparison rather than two lists to align by eye. A name
+// present on one side only still gets a row.
 func capabilities(from apiclient.PackageCapabilities) view.Capabilities {
 	rows := map[string]*view.CapabilityRow{}
 	names := make([]string, 0, len(from.Inferred)+len(from.Expected))
@@ -114,9 +111,8 @@ func capabilities(from apiclient.PackageCapabilities) view.Capabilities {
 		row(string(expected.Name)).Expected = facet(expected)
 	}
 
-	// The api already orders each list by the capability vocabulary; merging two
-	// of them cannot preserve that on its own, so the merged order is restated
-	// here rather than left to map iteration.
+	// Merging two ordered lists cannot preserve order on its own, so it is
+	// restated here rather than left to map iteration.
 	sort.SliceStable(names, func(i, j int) bool {
 		return capabilityRank(names[i]) < capabilityRank(names[j])
 	})
@@ -128,9 +124,8 @@ func capabilities(from apiclient.PackageCapabilities) view.Capabilities {
 	return out
 }
 
-// capabilityOrder is the panel's row order. It is spelled out rather than sorted
-// alphabetically so `network` leads and `shell` — the one that is never below
-// Review — is last, which is the order the design's rows read in.
+// capabilityOrder is spelled out rather than sorted alphabetically so
+// `network` leads and `shell` — never below Review — is last.
 var capabilityOrder = []string{"network", "filesystem.read", "filesystem.write", "shell"}
 
 func capabilityRank(name string) int {
@@ -155,9 +150,8 @@ func facet(from apiclient.PackageCapability) view.CapabilityFacet {
 	return out
 }
 
-// humanSize renders a byte count the way the storage screen will. A version with
-// no size yet — the fetch has not landed — renders as nothing rather than as
-// "0 B", which would be a claim about an empty bundle.
+// humanSize renders a byte count. A version with no size yet renders as
+// nothing rather than "0 B", which would claim an empty bundle.
 func humanSize(bytes int64) string {
 	switch {
 	case bytes <= 0:

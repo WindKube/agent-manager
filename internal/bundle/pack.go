@@ -12,7 +12,7 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
-// epoch is the mtime written for every member. FR-007 makes the digest a version's
+// epoch is the mtime written for every member: the digest is a version's
 // identity, so nothing outside the tree itself may reach the bytes.
 var epoch = time.Unix(0, 0).UTC()
 
@@ -24,11 +24,11 @@ const packWindowSize = 1 << 20
 // checks in ratioGuard. It is a floor under those checks, not a replacement for them.
 const unpackMaxMemory = 1 << 28
 
-// Pack serialises a bundle as tar.zst and returns the bytes, their sha256 and their
-// length. The output is deterministic, which FR-007 immutability depends on: members are
-// written in path order, mtimes and ownership are zeroed, modes come from the two-value
-// set Bundle normalises to, and the encoder is single-threaded because multi-threaded zstd
-// blocks the input differently per host CPU count.
+// Pack serialises a bundle as tar.zst and returns the bytes, their sha256 and
+// their length. The output is deterministic: members are written in path
+// order, mtimes and ownership are zeroed, modes come from the two-value set
+// Bundle normalises to, and the encoder is single-threaded because
+// multi-threaded zstd blocks the input differently per host CPU count.
 func Pack(b *Bundle) (packed io.Reader, digest [32]byte, size int64, err error) {
 	var buf bytes.Buffer
 	enc, encErr := zstd.NewWriter(&buf,

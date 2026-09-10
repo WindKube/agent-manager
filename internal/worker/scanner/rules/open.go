@@ -19,14 +19,13 @@ func Builtin() (*Pack, error) { return Load(rulepack.FS(), BuiltinOrigin) }
 // AGENT_MANAGER_RULEPACK_DIR when one is mounted there, the embedded pack
 // otherwise.
 //
-// A configured directory that is absent is a WARNING and not an error, and that
-// is a deliberate choice between two bad failures. Refusing to start would take
-// the scanner down over a missing volume and leave every imported version at
-// `scanning` for ever (FR-124); loading the embedded pack keeps the queue moving
-// with the rules this build shipped, and Pack.Origin plus the returned note make
-// the substitution visible in the log and in the pack version. A directory that
-// EXISTS but does not load is an error: someone is editing rules there, and
-// silently running different ones is the failure that costs a real finding.
+// A configured directory that is absent is a WARNING and not an error: refusing
+// to start would take the scanner down over a missing volume and leave every
+// imported version at `scanning` for ever, so loading the embedded pack keeps
+// the queue moving, with Pack.Origin and the returned note making the
+// substitution visible. A directory that EXISTS but does not load is an error:
+// someone is editing rules there, and silently running different ones is the
+// failure that costs a real finding.
 func Open(dir string) (pack *Pack, note string, err error) {
 	if dir == "" {
 		pack, err = Builtin()

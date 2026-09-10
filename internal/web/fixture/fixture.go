@@ -1,14 +1,6 @@
-// Package fixture serves the design's catalog dataset in-process.
-//
-// It is the ONE stand-in in the web role: the US2 layer swaps this
-// implementation of web.CatalogSource for an apiclient-backed one, because the
-// api has no catalog operation yet (only the seven frozen CLI-facing ones), and
-// an honest seam is better than a web role that reads a database.
-//
-// The rows are transcribed from docs/design/agent-manager.dc.html items() at
-// lines 867-920. Only catalog-facing fields are carried: the design's manifests
-// are non-conformant with Agent Plugins 1.0.0 (research R1) and are deliberately
-// not reproduced anywhere.
+// Package fixture serves the design's catalog dataset in-process: the one
+// stand-in in the web role for web.CatalogSource, until an apiclient-backed
+// one replaces it. Only catalog-facing fields are carried.
 package fixture
 
 import (
@@ -21,8 +13,8 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// Categories is the design's category vocabulary (line 1005), in the design's
-// order — the facet menu lists it as written, not alphabetically.
+// Categories is the design's order — the facet menu lists it as written,
+// not alphabetically.
 var Categories = []string{
 	"Infrastructure",
 	"Security & compliance",
@@ -40,10 +32,8 @@ type Catalog struct {
 // New returns the design's ten packages.
 func New() *Catalog { return build(baseRows()) }
 
-// Scaled returns at least n rows by cloning the design's ten, so the R7
-// measurement runs against seeded scale instead of ten rows. Clones carry a
-// generated topic tag as well as their base tags, which is also how the tag
-// facet reaches the 50 options the R7 exit criterion names.
+// Scaled returns at least n rows by cloning the design's ten. Clones
+// carry a generated topic tag alongside their base tags.
 func Scaled(n int) *Catalog {
 	base := baseRows()
 	if n <= len(base) {
@@ -126,8 +116,7 @@ func window(rows []view.Row, page, size int) []view.Row {
 	return rows[start:end]
 }
 
-// matches applies every filter except the free-text one's own facet exclusions.
-// FR-013 lives here: categories are OR, tags are AND.
+// matches applies every filter: categories are OR, tags are AND.
 func matches(row *view.Row, q view.CatalogQuery) bool {
 	return matchText(row, q.Text) &&
 		matchKind(row, q.Kind) &&
@@ -136,13 +125,9 @@ func matches(row *view.Row, q view.CatalogQuery) bool {
 		matchTags(row, q.Tags)
 }
 
-// matchText is a case-insensitive substring match against name, id, publisher or
-// a single tag (FR-010).
-//
-// Per field, matching internal/api/queries. Joining them into one string first
-// matches across the gaps between them — "redactor example" would find
-// example/pii-redactor — and the fixture and the api must answer the same screen
-// the same way or the screen tests stop being evidence about the real one.
+// matchText is a case-insensitive substring match against name, id,
+// publisher or a tag, matching internal/api/queries field-by-field: a
+// joined string would match across gaps between fields.
 func matchText(row *view.Row, text string) bool {
 	if text == "" {
 		return true
@@ -168,8 +153,8 @@ func matchKind(row *view.Row, kind string) bool {
 	}
 }
 
-// matchStatus mirrors the design's status chips. Verified is a publisher flag in
-// the real model, never inferred from the id prefix (DESIGN-DATA.md); the
+// matchStatus mirrors the design's status chips. Verified is a publisher
+// flag in the real model, never inferred from the id prefix; the
 // fixture's example/ prefix is seed data expressing that flag.
 func matchStatus(row *view.Row, status string) bool {
 	switch status {
@@ -214,10 +199,8 @@ func hasTag(row *view.Row, want string) bool {
 	return false
 }
 
-// categoryFacet counts what each option would yield if it were the selected
-// category, holding every other filter. That is what makes the count live: a
-// count computed over the unfiltered set never changes and tells the reader
-// nothing about the filter they are building.
+// categoryFacet counts what each option would yield if selected, holding
+// every other filter, so the count stays live rather than static.
 func (c *Catalog) categoryFacet(q view.CatalogQuery) []view.FacetOption {
 	rest := q
 	rest.Categories = nil
@@ -240,9 +223,8 @@ func (c *Catalog) categoryFacet(q view.CatalogQuery) []view.FacetOption {
 	return options
 }
 
-// tagFacet counts the drill-down: rows already matching the selected tags that
-// also carry this one. With AND semantics that is the number the reader is about
-// to get, not a population count.
+// tagFacet counts the drill-down: rows already matching selected tags
+// that also carry this one, not a population count.
 func (c *Catalog) tagFacet(q view.CatalogQuery) []view.FacetOption {
 	rest := q
 	rest.Categories = q.Categories
@@ -288,8 +270,8 @@ func sortRows(rows []view.Row, key view.SortKey, dir view.SortDir) {
 		case view.SortName:
 			return strings.Compare(a.Name, b.Name)*sign < 0
 		case view.SortUpdated:
-			// Recency, not age: descending means newest first, so the comparison
-			// runs against the negated sign. This mirrors the design's `* -dir`.
+			// Recency, not age: descending means newest first, so the
+			// comparison runs against the negated sign.
 			return (ageDays(a.Updated)-ageDays(b.Updated))*-sign < 0
 		default:
 			return (a.Uses-b.Uses)*sign < 0
@@ -297,10 +279,8 @@ func sortRows(rows []view.Row, key view.SortKey, dir view.SortDir) {
 	})
 }
 
-// ageDays parses the design's relative date strings. The real model renders
-// these from stored timestamps (spec Assumptions); the fixture keeps the
-// design's strings so the seeded screen matches the design, and sorts on the
-// same reading of them the design uses.
+// ageDays parses the design's relative date strings, the same reading the
+// design itself sorts by.
 func ageDays(updated string) int {
 	switch {
 	case strings.Contains(updated, "hour"):

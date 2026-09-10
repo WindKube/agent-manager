@@ -46,10 +46,11 @@ type violation struct {
 func (v violation) String() string { return v.path + ": " + v.msg }
 
 type validator struct {
-	// relaxEnumAt suppresses the enum check at exactly this instance path. It exists
-	// for one case and is named after it: FR-011 requires the CLI to report an
-	// unrecognised skip reason verbatim, so the fake must serve one, and the frozen
-	// enum cannot contain it. Every OTHER rule still applies to that document.
+	// relaxEnumAt suppresses the enum check at exactly this instance path. It
+	// exists for one case and is named after it: the CLI must report an
+	// unrecognised skip reason verbatim, so the fake must serve one, and the
+	// frozen enum cannot contain it. Every OTHER rule still applies to that
+	// document.
 	relaxEnumAt string
 	out         []violation
 }

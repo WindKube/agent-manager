@@ -15,16 +15,18 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/hub"
 )
 
-// This file is the R5 self-test: it checks that what the fake SERVES conforms to
-// the frozen contract. It lives in `package fake` because a couple of cases need
-// the catalog. The behavioural tests live in behaviour_test.go, in
-// `package fake_test`, which cannot reach anything unexported — that is the R5
-// seam enforced by the compiler rather than by a comment.
+// This file is this package's own self-test: it checks that what the fake
+// SERVES conforms to the frozen contract. It lives in `package fake` because
+// a couple of cases need the catalog. The behavioural tests live in
+// behaviour_test.go, in `package fake_test`, which cannot reach anything
+// unexported — that seam is enforced by the compiler rather than by a
+// comment.
 //
-// Note for whoever writes internal/hub's own tests (T021): package hub's IN-PACKAGE
-// test files cannot import this package, because fake imports hub and Go treats
-// that as an import cycle. Use `package hub_test` there. That is a real constraint
-// but not the reason for the dependency direction; see doc.go.
+// Note for whoever writes internal/hub's own tests: package hub's IN-PACKAGE
+// test files cannot import this package, because fake imports hub and Go
+// treats that as an import cycle. Use `package hub_test` there. That is a
+// real constraint but not the reason for the dependency direction; see
+// doc.go.
 
 // response is the fetched result with the body already read and closed. It exists
 // so no *http.Response escapes fetch: a helper that hands one back leaves every
@@ -98,7 +100,7 @@ func TestServedLockfilesConformToTheFrozenSchema(t *testing.T) {
 			v := &validator{}
 			if strings.HasPrefix(key, slugFutureSkip+"/") {
 				// The one profile that deliberately carries a reason the frozen enum
-				// does not list, because FR-011 requires the CLI to pass an
+				// does not list, because the CLI must pass an
 				// unrecognised reason through verbatim and it cannot be tested
 				// against a fake that only serves the six.
 				v.relaxEnumAt = "/skipped/0/reason"
@@ -148,7 +150,7 @@ func TestTheBaselineLockfileReportsSkippedEntriesWithLegalReasons(t *testing.T) 
 	require.GreaterOrEqual(t, len(reasons), 2, "at least two distinct reasons must appear")
 }
 
-// FR-023 is about namespace/name, so the fake must contain a namespace shared by
+// The distinct-directory requirement is about namespace/name, so the fake must contain a namespace shared by
 // two publishers. The lockfile carries no publisher field, so the publisher half of
 // this assertion reads the catalog directly — it is a property of the fixture, not
 // of a response, and there is nothing on the wire that could carry it.

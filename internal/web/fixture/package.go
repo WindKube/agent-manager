@@ -10,24 +10,14 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The detail-screen half of the fixture (US3), transcribed from
-// docs/design/agent-manager.dc.html: items() at lines 867-920 for the packages
-// and their components, and the version list and `usedIn` at lines 1053-1063.
-//
-// THE MANIFESTS ARE NOT THE DESIGN'S. research.md R1: the design draws
-// `agentPluginsVersion`, `publisher`, `components`, `signature`, `network` and
-// `filesystem`, and none of those fields exist — Agent Plugins 1.0.0 permits ten
-// fields with additionalProperties:false, and Agent Skills six. Reproducing them
-// here would make every screen test assert against a manifest this hub refuses
-// at registration. They are rewritten as conformant documents, with the expected
-// capability set in the one conformant home it has (FR-018a).
+// The detail-screen half of the fixture. The manifests are not the
+// design's: the design draws fields that don't exist in Agent Plugins
+// 1.0.0 or Agent Skills, so every manifest here is rewritten to conform,
+// with the expected capability set in its one conformant home.
 
 // Package implements web.PackageSource over the same ten rows the catalog
-// serves, so a link the catalog renders leads to a page this fixture can answer.
-//
-// An id that is not one of them is view.ErrNotFound, which is the same answer
-// the api gives for a package the caller may not read — one answer for both, on
-// purpose.
+// serves. An id that is not one of them is view.ErrNotFound — the same
+// answer the api gives for a package the caller may not read.
 func (c *Catalog) Package(_ context.Context, namespace, name string) (view.Package, error) {
 	id := namespace + "/" + name
 	for i := range c.rows {
@@ -38,8 +28,8 @@ func (c *Catalog) Package(_ context.Context, namespace, name string) (view.Packa
 	return view.Package{}, view.ErrNotFound
 }
 
-// IDs is every package the fixture can serve, so a test can walk all of them
-// rather than naming a few and calling it coverage (T062).
+// IDs is every package the fixture can serve, so a test can walk all of
+// them rather than naming a few and calling it coverage.
 func (c *Catalog) IDs() []string {
 	out := make([]string, 0, len(c.rows))
 	for i := range c.rows {
@@ -52,10 +42,9 @@ func (c *Catalog) IDs() []string {
 // carry.
 type extras struct {
 	description string
-	// tools is the skill frontmatter's `allowed-tools`. It is EXPERIMENTAL and is
-	// not an enforcement mechanism — the Agent Skills spec says it pre-approves
-	// the listed tools without blocking others — so it is recorded and displayed
-	// and nothing reads it as a boundary.
+	// tools is the skill frontmatter's `allowed-tools`: experimental, not
+	// an enforcement mechanism, so it's recorded and displayed but nothing
+	// reads it as a boundary.
 	tools      []string
 	parent     string
 	components []view.Component
@@ -113,10 +102,8 @@ func detailOf(row *view.Row) view.Package {
 	return detail
 }
 
-// digestOf is a stable stand-in for a real content digest. It is a hash of the
-// KEY and not of any bytes, because the fixture ships no bytes — which is
-// exactly why it must be obviously derived rather than a plausible-looking
-// literal somebody might later mistake for a recorded one.
+// digestOf is a stable stand-in for a real content digest: a hash of the
+// key, not of any bytes, since the fixture ships no bytes.
 func digestOf(key string) string {
 	sum := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(sum[:])
@@ -137,9 +124,9 @@ func pluginManifest(name string, row *view.Row, e extras) string {
 	return encode(manifest)
 }
 
-// skillManifest is the frontmatter as `version.manifest` holds it: the column is
-// jsonb for both kinds and a Markdown file is not json, so a skill's manifest
-// column carries its frontmatter rather than its SKILL.md.
+// skillManifest is the frontmatter as `version.manifest` holds it: the
+// column is jsonb for both kinds, so a skill's manifest carries its
+// frontmatter rather than its SKILL.md.
 func skillManifest(name string, e extras) string {
 	tools := e.tools
 	if tools == nil {
@@ -152,16 +139,16 @@ func skillManifest(name string, e extras) string {
 		"allowed-tools": tools,
 	}
 	if expected := expectedFrom(e.caps); expected != nil {
-		// A skill's frontmatter has no `extensions` key — the schema refuses one —
-		// so the same reverse-domain name lives inside `metadata`.
+		// A skill's frontmatter has no `extensions` key, so the same
+		// reverse-domain name lives inside `metadata`.
 		manifest["metadata"] = map[string]any{"dev.agent-manager": expected}
 	}
 	return encode(manifest)
 }
 
-// expectedFrom renders the expected side of the capability panel back into the
-// manifest shape it was read from, so the fixture cannot show a declaration on
-// the panel that its own manifest does not contain.
+// expectedFrom renders the expected side of the capability panel back
+// into the manifest shape it was read from, so the fixture can't show a
+// declaration the manifest doesn't contain.
 func expectedFrom(caps view.Capabilities) map[string]any {
 	declared := make([]map[string]any, 0, len(caps.Rows))
 	for i := range caps.Rows {
@@ -193,10 +180,9 @@ func inferred(level string, detail ...string) view.CapabilityFacet {
 	return view.CapabilityFacet{Present: true, Level: level, Detail: detail}
 }
 
-// designExtras is the per-package detail data. Absent keys are deliberate: a
-// package with no entry renders a scanned version with no capabilities and no
-// readable dependants, which is a state the screen has to handle correctly and
-// is the majority state in a young hub.
+// designExtras is the per-package detail data. Absent keys are
+// deliberate: a package with no entry renders a scanned version with no
+// capabilities and no dependants, the majority state in a young hub.
 var designExtras = map[string]extras{
 	"example/platform-toolkit": {
 		description: "Platform guardrails, ADR authoring and service scaffolding in one portable package.",
@@ -241,9 +227,8 @@ var designExtras = map[string]extras{
 			{Kind: "skill", Name: "release-notes", Path: "skills/release-notes", Note: "SKILL.md"},
 			{Kind: "mcp", Name: "github", Path: "mcp.json", Note: "streamable http · api.github.com"},
 		},
-		// Deliberately unscanned. Its verdict is `scanning` in the design, and a
-		// version that has not been scanned has capability rows of NEITHER source —
-		// which the panel must say, rather than render an empty comparison.
+		// Deliberately unscanned: capability rows of neither source, which
+		// the panel must say rather than render an empty comparison.
 		caps: view.Capabilities{Scanned: false},
 	},
 	"community/slack-digest": {
@@ -252,10 +237,8 @@ var designExtras = map[string]extras{
 			{Kind: "skill", Name: "digest", Path: "skills/digest", Note: "SKILL.md + scripts/digest.sh"},
 			{Kind: "mcp", Name: "slack", Path: "mcp.json", Note: "streamable http · slack.com"},
 		},
-		// The design's f1 finding, re-expressed against the expected set: the
-		// manifest field it quoted (`"network": {"allow": ["slack.com"]}`) cannot
-		// exist, and the shell side — a curl to collect.hexley-metrics.io — is the
-		// real control.
+		// The manifest field it quoted (`"network": {"allow": ["slack.com"]}`)
+		// cannot exist; the shell side is the real control.
 		caps: view.Capabilities{Scanned: true, Rows: []view.CapabilityRow{
 			{Name: "network",
 				Inferred: inferred("review", "collect.hexley-metrics.io", "slack.com"),
@@ -270,9 +253,8 @@ var designExtras = map[string]extras{
 		parent: "example/platform-toolkit",
 		versions: []view.PackageVersion{
 			{Version: "2.4.1", DistTag: "latest", Scan: view.ScanClean, Date: "2 days ago"},
-			// The design's `pinned by 2` row. It is DERIVED from profile pins and is
-			// not a distribution tag, which is why this version carries `none` and a
-			// pin count rather than a third dist_tag value.
+			// Derived from profile pins, not a distribution tag, hence `none`
+			// and a pin count rather than a third dist_tag value.
 			{Version: "2.4.0", DistTag: "none", Scan: view.ScanClean, Date: "3 weeks ago", PinnedBy: 2},
 			{Version: "2.3.5", DistTag: "archived", Scan: view.ScanClean, Date: "2 months ago"},
 		},
@@ -280,9 +262,8 @@ var designExtras = map[string]extras{
 			{Name: "filesystem.read", Inferred: inferred("scoped", "references/guardrails.md")},
 			{Name: "shell", Inferred: inferred("review", "terraform")},
 		}},
-		// The design's usedIn at lines 1059-1063. The organisation's fourth
-		// profile, `example/data-migration`, is Private and is absent from this
-		// panel for every viewer who is not a member — see the api's scoping.
+		// A fourth, Private profile is absent from this panel for every
+		// viewer who is not a member.
 		dependents: []view.Dependent{
 			{Slug: "platform-engineer", Name: "Platform Engineer", Mode: "latest"},
 			{Slug: "sre-oncall", Name: "SRE On-call", Mode: "pinned", Pin: "2.4.0"},
@@ -300,9 +281,8 @@ var designExtras = map[string]extras{
 	"community/postgres-migration-guard": {
 		description: "Checks migrations for locking, backfill and rollback hazards before they ship.",
 		tools:       []string{"Read", "Bash(psql)"},
-		// The design's f2 finding: a SKILL.md instructing the agent to read local
-		// credential files. No expected set was recorded, so every inferred
-		// capability is surfaced for review rather than silently accepted (FR-027).
+		// No expected set recorded, so every inferred capability is
+		// surfaced for review rather than silently accepted.
 		caps: view.Capabilities{Scanned: true, Rows: []view.CapabilityRow{
 			{Name: "filesystem.read", Inferred: inferred("review", "~/.aws/credentials", "~/.pgpass")},
 			{Name: "shell", Inferred: inferred("review", "psql")},
@@ -325,8 +305,8 @@ var designExtras = map[string]extras{
 	"community/aws-cost-explainer": {
 		description: "Explains a cost spike by service, account and tag, then proposes cuts.",
 		tools:       []string{"Read", "WebFetch"},
-		// The design's f4 finding, re-expressed: an over-broad write scope inferred
-		// from the scripts and compared against what the publisher declared.
+		// An over-broad write scope inferred from the scripts, compared
+		// against what the publisher declared.
 		caps: view.Capabilities{Scanned: true, Rows: []view.CapabilityRow{
 			{Name: "network", Inferred: inferred("allowlisted", "ce.us-east-1.amazonaws.com")},
 			{Name: "filesystem.write",
@@ -342,8 +322,7 @@ var designExtras = map[string]extras{
 		caps: view.Capabilities{Scanned: true, Rows: []view.CapabilityRow{
 			{Name: "filesystem.read", Inferred: inferred("scoped", "fixtures/")},
 			{Name: "filesystem.write", Inferred: inferred("scoped", "out/")},
-			// Declared but never observed: the publisher expected a shell capability
-			// the scan did not find. The panel must say so rather than hide the row.
+			// Declared but never observed: the panel must say so, not hide the row.
 			{Name: "shell", Expected: inferred("review")},
 		}},
 		dependents: []view.Dependent{

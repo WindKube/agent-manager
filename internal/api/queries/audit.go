@@ -10,31 +10,26 @@ import (
 	"agent-manager/internal/api/contract"
 )
 
-// The audit log's reads (001 FR-050..FR-052, 003 T067-T068).
-//
-// The table is append-only by revoked grant, so nothing here can be wrong about
-// history — but it is also the one table in this schema designed to grow without
-// bound, which is what shapes both reads below: the page is bounded and the
+// The table is append-only by revoked grant, so nothing here can be wrong
+// about history — but it is also the one table in this schema designed to
+// grow without bound, which shapes both reads: the page is bounded and the
 // export never holds more than one row in memory.
 //
-// NO INDEX IS ADDED FOR EITHER, and none is needed. `audit_event_occurred_at_idx`
-// on `("occurred_at" desc)` — created by 001 T017 — is the access path: both
-// statements are an unfiltered `order by occurred_at desc`, which is a forward
-// scan of that index, and the page's `limit`/`offset` stops it early. The `id`
-// tiebreak below is not in the index and does not need to be: it only orders rows
-// that share an instant, which Postgres finishes with an incremental sort over
-// each tied group while the index still supplies the leading key.
+// No index is added for either, and none is needed: `audit_event_occurred_at_idx`
+// on `("occurred_at" desc)` is the access path, since both statements are an
+// unfiltered `order by occurred_at desc` — a forward scan of that index,
+// stopped early by the page's `limit`/`offset`. The `id` tiebreak is not in
+// the index and does not need to be: it only orders rows sharing an
+// instant, which Postgres finishes with an incremental sort per tied group.
 //
-// There is deliberately NO filter on either operation, and the two facts are the
-// same fact. FR-051 requires the export to be "the full CURRENT SCOPE, not merely
-// the visible page": with no filters, the current scope is the whole log and the
-// export is unambiguously it. A filter added to the page later MUST be added to
-// the export in the same commit, or FR-051 quietly stops holding — and it would
-// also need its own index, because a selective predicate over a desc scan reads
-// everything the predicate rejects.
+// There is deliberately no filter on either operation: the export must be
+// the full current scope, not merely the visible page, and with no filters
+// the current scope is unambiguously the whole log. A filter added to the
+// page later must be added to the export in the same commit, and would also
+// need its own index, since a selective predicate over a desc scan reads
+// everything it rejects.
 
-// The audit page and its cap. The design's audit screen shows a screenful; the
-// cap is here because the page size arrives from a client.
+// The audit page and its cap: the page size arrives from a client.
 const (
 	DefaultAuditPageSize = 50
 	MaxAuditPageSize     = 200
@@ -54,7 +49,7 @@ select
 from audit_event as aud
 order by aud.occurred_at desc, aud.id desc`
 
-// Audit returns one page of the audit log, most recent first (T067).
+// Audit returns one page of the audit log, most recent first.
 func Audit(ctx context.Context, db bun.IDB, page, pageSize int) (contract.AuditPage, error) {
 	if page < 1 {
 		page = 1
@@ -96,25 +91,18 @@ func Audit(ctx context.Context, db bun.IDB, page, pageSize int) (contract.AuditP
 	return out, nil
 }
 
-// AuditExport streams the WHOLE log to emit, one row at a time (T068, FR-051).
+// AuditExport streams the whole log to emit, one row at a time. It takes a
+// callback rather than returning a slice: `audit_event` is designed to grow
+// without bound, so a function returning `[]contract.AuditEntry` would hold
+// the whole log in the api's heap before a single byte reached the client.
+// The row travels straight from the driver's cursor to the caller's
+// encoder, so nothing accumulates. The count returned is the number
+// emitted, letting the caller close the stream with a sentinel saying how
+// many there were.
 //
-// It takes a callback rather than returning a slice, an iterator or a channel,
-// and that signature IS the requirement. FR-051 asks for the full current scope
-// and `audit_event` is the one table in this schema designed to grow without
-// bound, so a function that returned `[]contract.AuditEntry` would hold the whole
-// log in the api's heap before a single byte reached the client — and would do it
-// on the one operation whose response size an operator cannot bound. Building the
-// slice is the bug; there is no size at which it becomes correct.
-//
-// The row therefore travels straight from the driver's cursor to the caller's
-// encoder: `rows.Next()` reads one row off the connection at a time, emit writes
-// it, and nothing accumulates. The count returned is the number emitted, which is
-// what lets the caller close the stream with a sentinel saying how many there
-// were.
-//
-// The cost of that is a connection held for the length of the export, and no
-// statement timeout is imposed here: cutting off an operator's export halfway
-// would produce a truncated file that looks complete, which is worse than a slow
+// The cost is a connection held for the length of the export, and no
+// statement timeout is imposed: cutting off an operator's export halfway
+// would produce a truncated file that looks complete, worse than a slow
 // one. It is authenticated, and that is the control.
 func AuditExport(ctx context.Context, db bun.IDB, emit func(contract.AuditEntry) error) (int, error) {
 	rows, err := db.QueryContext(ctx, auditSelect)

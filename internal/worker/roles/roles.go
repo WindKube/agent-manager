@@ -1,12 +1,8 @@
-// Package roles is the worker registry: the one list of background roles, and the
-// only file that changes when a role is added (constitution principle VII).
-//
-// IT IS A PACKAGE OF ITS OWN AND NOT internal/worker, AND THAT IS FORCED RATHER
-// THAN PREFERRED. contracts/worker.md puts this list in internal/worker itself,
-// but a role package imports internal/worker for Definition, Needs and Deps, so a
-// list inside internal/worker that names fetcher.Definition() is an import cycle
-// and will not compile. The registry therefore sits one level down, above the
-// framework and above every role, which is the only place that can see them all.
+// Package roles is the worker registry: the one list of background roles. It
+// is a package of its own rather than living in internal/worker because a
+// role package imports internal/worker for Definition, Needs and Deps, so a
+// list inside internal/worker that names fetcher.Definition() would be an
+// import cycle.
 package roles
 
 import (
@@ -20,12 +16,9 @@ import (
 	"agent-manager/internal/worker/scanner"
 )
 
-// definitions is the one list. It is the ONLY thing that changes when a role is
-// added: not the cobra command, not Build, not the Dockerfile (principle VII).
-//
-// The two roles' Needs are the credential split of principle II, written where a
-// reader can compare them: the fetcher may write bundle bytes and reach the
-// network, the scanner may do neither.
+// definitions is the one list. The two roles' Needs are the credential split
+// written where a reader can compare them: the fetcher may write bundle bytes
+// and reach the network, the scanner may do neither.
 var definitions = []worker.Definition{
 	fetcher.Definition(), // Needs{DB: AccessReadWrite, Blob: AccessReadWrite, Outbound: true}
 	scanner.Definition(), // Needs{DB: AccessReadWrite, Blob: AccessRead,      Outbound: false}

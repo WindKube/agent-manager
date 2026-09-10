@@ -145,12 +145,12 @@ func tokenErrorOf(t *testing.T, rec *httptest.ResponseRecorder) string {
 // ---- T088 --------------------------------------------------------------------
 
 func TestDeviceAuthorizeStoresNoCredentialAndBindsTheHost(t *testing.T) {
-	h := deviceHandler(t, api.Options{PublicBaseURL: "https://hub.example.dev"})
+	h := deviceHandler(t, api.Options{DeviceVerificationURL: "https://hub.example.dev/cli"})
 	const host = "dev-laptop-01"
 
 	out := openDeviceAuthorization(t, h, host)
-	require.Equal(t, "https://hub.example.dev/device", out.VerificationURI)
-	require.Equal(t, "https://hub.example.dev/device?user_code="+out.UserCode, out.VerificationURIComplete)
+	require.Equal(t, "https://hub.example.dev/cli", out.VerificationURI)
+	require.Equal(t, "https://hub.example.dev/cli?user_code="+out.UserCode, out.VerificationURIComplete)
 	require.Equal(t, 600, out.ExpiresIn, "the default DEVICE_CODE_TTL is ten minutes")
 	require.Equal(t, 5, out.Interval)
 
@@ -255,7 +255,7 @@ func TestDeviceAuthorizationRowsAreUniqueAndUndeletable(t *testing.T) {
 // ---- T089 --------------------------------------------------------------------
 
 func TestDeviceTokenPollingFollowsRFC8628ThroughToAWorkingToken(t *testing.T) {
-	h := deviceHandler(t, api.Options{PublicBaseURL: "https://hub.example.dev"})
+	h := deviceHandler(t, api.Options{DeviceVerificationURL: "https://hub.example.dev/cli"})
 	const host = "dev-laptop-01"
 
 	beforeAudit := countRows(t, "select count(*) from audit_event where kind = 'login'")

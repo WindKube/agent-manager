@@ -33,7 +33,8 @@ func TestTheScannerDeclaresTheNarrowestNeedsThatWork(t *testing.T) {
 		"read-write here would hand this role a blob.Writer, and the scanner never writes bundle bytes")
 	require.False(t, def.Needs.Outbound,
 		"a scan is static analysis; an outbound client is a network reach a static analyser cannot need")
-	require.NotEmpty(t, def.Queues)
+	require.Contains(t, def.Queues, outbox.QueueScan,
+		"the scan and rescan-sweep kinds are enqueued onto this queue; a worker that registers a different one never receives them")
 	require.NotNil(t, def.Register)
 }
 

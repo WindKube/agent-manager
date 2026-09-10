@@ -404,7 +404,7 @@ func TestTheWholeLoopFromAnImportedHostilePackageToAChangedResolution(t *testing
 
 	findingID := openFindingOn(t, pkg.versionID, "SH-NET-002")
 
-	before, err := queries.Finding(ctx, db, findingID)
+	before, err := queries.Finding(ctx, db, findingID, auth.Principal{}, true)
 	require.NoError(t, err)
 	require.Equal(t, string(models.FindingStateOpen), before.State)
 	require.Nil(t, before.Override, "nobody has decided anything yet")
@@ -445,7 +445,7 @@ func TestTheWholeLoopFromAnImportedHostilePackageToAChangedResolution(t *testing
 	require.NoError(t, err)
 	require.Equal(t, string(models.FindingStateApproved), decision.State)
 
-	after, err := queries.Finding(ctx, db, findingID)
+	after, err := queries.Finding(ctx, db, findingID, auth.Principal{}, true)
 	require.NoError(t, err)
 	require.Equal(t, string(models.FindingStateApproved), after.State)
 	require.NotNil(t, after.Override,

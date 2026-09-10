@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -290,4 +291,118 @@ func TestNarrowingAPackagesVisibilityAfterItIsInAProfileStopsItResolvingForOther
 	stillMine := profileDetail(t, kw, slug)
 	require.Equal(t, "1.0.0", entryByID(t, stillMine, id).Version,
 		"private means visible to the owner, not invisible to everyone including them")
+}
+
+// TestPackageScanRefusesAPrivatePackageNotOwnedByTheCaller covers the read
+// path that arrived in a branch below this one and so was not on this
+// feature's own list. Its statement hardcoded `visibility = 'organisation'`
+// — the whole predicate before team and private became reachable, and
+// afterwards a 404 for an owner reading their own package's scan. Findings
+// quote paths and snippets out of the bundle, so this door has to answer the
+// same way the bundle's own does.
+func TestPackageScanRefusesAPrivatePackageNotOwnedByTheCaller(t *testing.T) {
+	owner := principalFor(t, an).IdentityID
+	probePackage(t, "scanvisprobe", "secret-scan", models.PackageVisibilityPrivate, &owner)
+
+	handler := liveHandler(t)
+
+	own := request(t, handler, http.MethodGet, "/v1/packages/scanvisprobe/secret-scan/scan", an.token, "")
+	require.Equal(t, http.StatusOK, own.Code, "the owner reads their own package's scan: %s", own.Body.String())
+
+	got := request(t, handler, http.MethodGet, "/v1/packages/scanvisprobe/secret-scan/scan", kw.token, "")
+	wantMissing := request(t, handler, http.MethodGet, "/v1/packages/scanvisprobe/no-such-thing/scan", kw.token, "")
+	require.Equal(t, http.StatusNotFound, got.Code, got.Body.String())
+	require.Equal(t, wantMissing.Code, got.Code,
+		"a private package's scan and one that plain does not exist must answer alike")
+
+	var gotProblem, wantProblem contract.Error
+	require.NoError(t, json.Unmarshal(got.Body.Bytes(), &gotProblem))
+	require.NoError(t, json.Unmarshal(wantMissing.Body.Bytes(), &wantProblem))
+	require.Equal(t, wantProblem.Detail, gotProblem.Detail)
+}
+
+// TestPackageScanOfATeamPackageFollowsTheOwnersGroups is the team half: the
+// scan door must read the same group overlap the catalog and the bundle do.
+func TestPackageScanOfATeamPackageFollowsTheOwnersGroups(t *testing.T) {
+	owner := principalFor(t, an).IdentityID
+	probePackage(t, "scanteamprobe", "team-scan", models.PackageVisibilityTeam, &owner)
+
+	handler := liveHandler(t)
+
+	own := request(t, handler, http.MethodGet, "/v1/packages/scanteamprobe/team-scan/scan", an.token, "")
+	require.Equal(t, http.StatusOK, own.Code, own.Body.String())
+
+	outside := request(t, handler, http.MethodGet, "/v1/packages/scanteamprobe/team-scan/scan", kw.token, "")
+	require.Equal(t, http.StatusNotFound, outside.Code, outside.Body.String())
+}
+
+// TestFindingsOfAPrivatePackageReachReviewersAndNobodyElse is the read path
+// this feature's own list missed. A finding names its package and quotes a
+// path and a line out of that package's bundle, and /v1/findings carried no
+// role gate and no readability predicate, so narrowing a package to private
+// would have hidden it from the catalog while still publishing its contents
+// to every signed-in identity.
+//
+// The widening for a reviewer is deliberate and is asserted here rather than
+// left implicit: `kw` is a catalog admin and is not the owner, and it must
+// still see the finding, because a private package whose findings no reviewer
+// can read is a private package that escapes security review altogether.
+func TestFindingsOfAPrivatePackageReachReviewersAndNobodyElse(t *testing.T) {
+	ctx := context.Background()
+	owner := principalFor(t, an).IdentityID
+	probePackage(t, "findvisprobe", "secret-finding", models.PackageVisibilityPrivate, &owner)
+
+	var versionID uuid.UUID
+	require.NoError(t, db.QueryRowContext(ctx,
+		`select ver.id from version as ver
+		   join package as pkg on pkg.id = ver.package_id
+		  where pkg.namespace = 'findvisprobe' and pkg.name = 'secret-finding'`).Scan(&versionID))
+
+	started := time.Now().UTC().Add(-time.Hour)
+	finished := started.Add(20 * time.Second)
+	scan := &models.Scan{
+		ID: models.NewID(), VersionID: versionID, PackVersion: "test",
+		StartedAt: started, FinishedAt: &finished, Verdict: models.VerdictFlagged, UpdatedAt: finished,
+	}
+	_, err := db.NewInsert().Model(scan).Exec(ctx)
+	require.NoError(t, err)
+
+	line := int32(12)
+	finding := &models.Finding{
+		ID: models.NewID(), ScanID: scan.ID, VersionID: versionID, RuleID: "VIS-NET-001",
+		Severity: models.FindingSeverityHigh, Title: "VIS-NET-001 raised",
+		Detail: "The prose explanation.", EvidencePath: "scripts/secret.sh", EvidenceLine: &line,
+		EvidenceQuote: "curl -sS https://collect.example.invalid/v1/ping",
+		State:         models.FindingStateOpen, CreatedAt: finished, UpdatedAt: finished,
+	}
+	_, err = db.NewInsert().Model(finding).Exec(ctx)
+	require.NoError(t, err)
+
+	handler := liveHandler(t)
+	id := finding.ID.String()
+
+	listed := func(token string) bool {
+		rec := request(t, handler, http.MethodGet, "/v1/findings?pageSize=100", token, "")
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		var page contract.FindingsPage
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &page))
+		for _, f := range page.Findings {
+			if f.ID == id {
+				return true
+			}
+		}
+		return false
+	}
+
+	require.False(t, listed(contractor.token),
+		"an identity with no mapped role must not read a private package's finding")
+	require.True(t, listed(kw.token),
+		"a catalog admin reviews every package, including a private one they do not own")
+	require.True(t, listed(an.token), "the owner sees their own")
+
+	denied := request(t, handler, http.MethodGet, "/v1/findings/"+id, contractor.token, "")
+	require.Equal(t, http.StatusNotFound, denied.Code, denied.Body.String())
+
+	allowed := request(t, handler, http.MethodGet, "/v1/findings/"+id, kw.token, "")
+	require.Equal(t, http.StatusOK, allowed.Code, allowed.Body.String())
 }

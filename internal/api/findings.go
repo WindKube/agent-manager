@@ -10,13 +10,18 @@ import (
 	"agent-manager/internal/api/commands"
 	"agent-manager/internal/api/contract"
 	"agent-manager/internal/api/queries"
+	"agent-manager/internal/auth"
 	"agent-manager/internal/logging"
 	"agent-manager/internal/store/models"
 )
 
 // The Scanner screen's operations (US4, T062-T066).
 //
-// The three reads are open to any authenticated identity; the two decisions are
+// The three reads are open to any authenticated identity, but a finding names
+// its package and quotes paths and snippets out of that package's bundle, so
+// each read is scoped by queries.PackageReadable — widened, for a caller who
+// may already decide a finding, to every package, since a reviewer who cannot
+// see a private package's findings cannot review it at all. The two decisions are
 // not. That asymmetry is the whole authorisation model of this screen: seeing what
 // is quarantined is what a governance tool is for, and accepting a risk on the
 // organisation's behalf is an act with a named person behind it (FR-028, FR-126).
@@ -66,16 +71,27 @@ type listFindingsOutput struct {
 }
 
 func (s *Server) listFindings(ctx context.Context, in *listFindingsInput) (*listFindingsOutput, error) {
+	principal, _ := PrincipalFrom(ctx)
 	page, err := queries.Findings(ctx, s.deps.DB, queries.FindingFilter{
-		State:    findingState(in.State),
-		Severity: findingSeverity(in.Severity),
-		Page:     in.Page,
-		PageSize: in.PageSize,
+		State:        findingState(in.State),
+		Severity:     findingSeverity(in.Severity),
+		Page:         in.Page,
+		PageSize:     in.PageSize,
+		Principal:    principal,
+		EveryPackage: mayReviewEveryPackage(principal),
 	})
 	if err != nil {
 		return nil, fail(logging.From(ctx), err)
 	}
 	return &listFindingsOutput{Body: page}, nil
+}
+
+// mayReviewEveryPackage is the escape FindingFilter.EveryPackage describes,
+// spelled against the roles that may already accept or reject a finding
+// rather than a new role of its own: reading a finding you may act on is
+// not a wider permission than acting on it.
+func mayReviewEveryPackage(p auth.Principal) bool {
+	return requireRole(p.Role, "read every package's findings", scannerDecisionRoles...) == nil
 }
 
 func findingState(state string) models.FindingState {
@@ -133,8 +149,12 @@ func (s *Server) getFinding(ctx context.Context, in *findingInput) (*findingOutp
 	if err != nil {
 		return nil, err
 	}
-	detail, err := queries.Finding(ctx, s.deps.DB, id)
+	principal, _ := PrincipalFrom(ctx)
+	detail, err := queries.Finding(ctx, s.deps.DB, id, principal, mayReviewEveryPackage(principal))
 	if err != nil {
+		if errors.Is(err, queries.ErrNotFound) {
+			return nil, huma.Error404NotFound("no such finding, or it is not readable by this identity")
+		}
 		return nil, fail(logging.From(ctx), err)
 	}
 	return &findingOutput{Body: detail}, nil

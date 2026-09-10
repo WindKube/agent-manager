@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,7 +25,10 @@ import (
 
 var (
 	ErrRegistration = errors.New("registration refused")
-	ErrImmutable    = errors.New("this version is already published and its bytes are immutable")
+	// FR-007's refusal. Which state blocked it is conflictMessage's job: this
+	// row can be held by a version still being fetched, or one whose fetch
+	// failed, and "published" would be a lie in both.
+	ErrImmutable = errors.New("this publisher/name@version cannot be registered again")
 )
 
 // uniqueVersionConstraint is named here because Postgres reports the
@@ -109,6 +113,18 @@ func RegisterPackage(ctx context.Context, db bun.IDB, p auth.Principal, in Regis
 		out.PackageID = pkg.ID.String()
 		out.Kind = string(pkg.Kind)
 
+		// Only so the refusal can name the state. The unique index below is
+		// what enforces FR-007, and it catches the race this SELECT loses.
+		existing := new(models.Version)
+		switch selErr := tx.NewSelect().Model(existing).
+			Where("package_id = ? and semver = ?", pkg.ID, in.Version).
+			Scan(ctx); {
+		case selErr == nil:
+			return fmt.Errorf("%w: %s", ErrImmutable, conflictMessage(ref, existing))
+		case !errors.Is(selErr, sql.ErrNoRows):
+			return fmt.Errorf("check for an existing version of %s: %w", ref, selErr)
+		}
+
 		version := &models.Version{
 			ID:         models.NewID(),
 			PackageID:  pkg.ID,
@@ -129,10 +145,12 @@ func RegisterPackage(ctx context.Context, db bun.IDB, p auth.Principal, in Regis
 		}
 		if _, insertErr := tx.NewInsert().Model(version).Exec(ctx); insertErr != nil {
 			if isUniqueViolation(insertErr, uniqueVersionConstraint) {
-				// The rollback leaves the stored version untouched: no
-				// object key rewritten, no digest cleared, no fetch job
-				// enqueued that could overwrite bytes.
-				return fmt.Errorf("%w: %s@%s", ErrImmutable, ref.Package(), in.Version)
+				// The SELECT above lost the race, and this transaction is
+				// already aborted, so the winning row cannot be re-read for
+				// a state-specific message. The rollback leaves what it
+				// stored untouched: no object key rewritten, no digest
+				// cleared, no fetch job enqueued over its bytes.
+				return fmt.Errorf("%w: %s", ErrImmutable, conflictMessage(ref, nil))
 			}
 			return fmt.Errorf("create version %s: %w", ref, insertErr)
 		}
@@ -366,6 +384,27 @@ func upsertPackage(ctx context.Context, tx bun.IDB, publisherID uuid.UUID, categ
 		return nil, fmt.Errorf("create package %s: %w", in.Name, err)
 	}
 	return pkg, nil
+}
+
+// conflictMessage names the state that blocks a re-registration, since FR-007
+// is only actionable if it says what happened instead of asserting
+// "published" for a version that never got that far. existing is nil for the
+// race the insert-time catch lost, where the winning row cannot be re-read.
+func conflictMessage(ref blob.VersionRef, existing *models.Version) string {
+	subject := ref.String()
+	switch {
+	case existing == nil:
+		return subject + " was just registered by another request; its bytes are immutable"
+	case existing.Digest == nil:
+		return subject + " is already registered; its fetch has not finished, or it failed — " +
+			"check the audit log for the outcome before registering it again"
+	case existing.Verdict == models.VerdictFlagged:
+		return subject + " is published and was flagged by the scanner; its bytes are immutable"
+	case existing.Verdict == models.VerdictRejected:
+		return subject + " is published and was rejected by the scanner; its bytes are immutable"
+	default:
+		return subject + " is already published and its bytes are immutable"
+	}
 }
 
 // isUniqueViolation reports whether err is Postgres 23505 on the named

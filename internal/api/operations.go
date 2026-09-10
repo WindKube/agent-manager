@@ -321,7 +321,8 @@ func (s *Server) registerPackages() {
 			},
 			"401": s.errorResponse("Missing, expired or invalid token."),
 			"403": s.errorResponse("This identity may not register a package."),
-			"409": s.errorResponse("FR-007: this publisher/name@version is already published and its bytes are immutable."),
+			"409": s.errorResponse("FR-007: this publisher/name@version already exists — published and " +
+				"immutable, or still resolving an earlier registration — and cannot be registered again."),
 			"413": s.errorResponse("The archive is larger than this hub accepts."),
 			"422": s.errorResponse("The registration is incomplete, or the uploaded archive was refused."),
 			"500": s.errorResponse("The request could not be completed."),

@@ -5677,7 +5677,7 @@
                 }
               }
             },
-            "description": "FR-007: this publisher/name@version is already published and its bytes are immutable."
+            "description": "FR-007: this publisher/name@version already exists — published and immutable, or still resolving an earlier registration — and cannot be registered again."
           },
           "413": {
             "content": {

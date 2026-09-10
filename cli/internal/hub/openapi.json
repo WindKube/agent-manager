@@ -756,6 +756,13 @@
             ],
             "type": "string"
           },
+          "explain": {
+            "description": "What this check looks for, in general, as the scan recorded it.",
+            "examples": [
+              "Compares every host a script or an instruction file names against the version's declared network capability set, and flags one outside it."
+            ],
+            "type": "string"
+          },
           "label": {
             "description": "The check's own label, as the scan recorded it. A screen that mapped check ids to labels itself would stop naming a check added after it shipped.",
             "examples": [
@@ -787,6 +794,7 @@
           "checkId",
           "engine",
           "label",
+          "explain",
           "result",
           "warnCount"
         ],
@@ -1085,6 +1093,10 @@
       "FindingSummary": {
         "additionalProperties": false,
         "properties": {
+          "detail": {
+            "description": "Why this was raised, in prose.",
+            "type": "string"
+          },
           "engine": {
             "description": "The analyser that raised it. Two engines may use the same rule id, so a finding is identified by the pair.",
             "examples": [

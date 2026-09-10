@@ -288,9 +288,16 @@ func (e ProfileEntryRow) PinTarget() string {
 	return e.LatestVersion
 }
 
-func (e ProfileEntryRow) CanPin() bool { return e.Mode != "pinned" && e.PinTarget() != "" }
-
 func (e ProfileEntryRow) CanFloat() bool { return e.Mode != "latest" }
+
+// PinFieldValue prefills the row's editable pin input: the version already
+// pinned, or PinTarget as a starting guess when the row is not pinned yet.
+func (e ProfileEntryRow) PinFieldValue() string {
+	if e.Mode == "pinned" {
+		return e.PinnedVersion
+	}
+	return e.PinTarget()
+}
 
 // ProfileMemberRow is one subject a profile is shared with.
 type ProfileMemberRow struct {
@@ -333,6 +340,10 @@ type ProfilePermissions struct {
 	Curate  bool
 	Share   bool
 	Publish bool
+	// Delete is the role check alone (owner only). Whether the profile is
+	// ALSO clean enough to delete (no published revision) is a fact of the
+	// profile, not the role, and Profile.CanDelete combines the two.
+	Delete bool
 }
 
 // CurateDisabledReason is why the float and pin controls are disabled for a
@@ -349,6 +360,18 @@ const ShareDisabledReason = "Only this profile's owner may change who it is shar
 // PublishDisabledReason is why the publish-revision control is disabled for a
 // viewer whose role on this profile does not include publishing it.
 const PublishDisabledReason = "Your role on this profile may not publish a revision."
+
+// ProfileDeleteRoleReason is why the delete-profile control is disabled for
+// a viewer who is not this profile's owner.
+const ProfileDeleteRoleReason = "Only this profile's owner may delete it."
+
+// ProfileDeleteHasRevisionsReason is why the delete-profile control is
+// disabled even for an owner: a published revision is what a client may
+// already have synced, and FR-034 forbids deleting one, so deleting the
+// profile that holds it is refused rather than cascaded.
+const ProfileDeleteHasRevisionsReason = "This profile has published revisions that a client " +
+	"may already have synced. Deleting it would either orphan that history or remove a " +
+	"revision, which this hub never does."
 
 // ProfileAddOption is one catalog package the "Add package" select can offer.
 type ProfileAddOption struct {
@@ -471,3 +494,37 @@ func (p Profile) entriesOfKind(kind Kind) []ProfileEntryRow {
 func (p Profile) MembersEmpty() bool { return len(p.Members) == 0 }
 
 func (p Profile) RevisionsEmpty() bool { return len(p.Revisions) == 0 }
+
+// CanDelete combines the role check the api reported with the one business
+// fact that also has to hold: a profile with a published revision refuses
+// to delete regardless of role (see ProfileDeleteHasRevisionsReason).
+func (p Profile) CanDelete() bool { return p.Permissions.Delete && p.HeadRevision == 0 }
+
+// DeleteDisabledReason is empty exactly when CanDelete is true.
+func (p Profile) DeleteDisabledReason() string {
+	switch {
+	case !p.Permissions.Delete:
+		return ProfileDeleteRoleReason
+	case p.HeadRevision > 0:
+		return ProfileDeleteHasRevisionsReason
+	default:
+		return ""
+	}
+}
+
+// SkillAddOptions and PluginAddOptions split AddOptions by kind, so the Add
+// skill and Add plugin controls each offer only their own kind rather than
+// one list a person has to read the kind column of.
+func (p Profile) SkillAddOptions() []ProfileAddOption { return p.addOptionsOfKind(KindSkill) }
+
+func (p Profile) PluginAddOptions() []ProfileAddOption { return p.addOptionsOfKind(KindPlugin) }
+
+func (p Profile) addOptionsOfKind(kind Kind) []ProfileAddOption {
+	var out []ProfileAddOption
+	for _, option := range p.AddOptions {
+		if option.Kind == kind {
+			out = append(out, option)
+		}
+	}
+	return out
+}

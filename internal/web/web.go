@@ -125,9 +125,11 @@ type ProfileSource interface {
 type ProfileCurator interface {
 	CreateProfile(ctx context.Context, creation hub.ProfileCreation) (hub.ProfileSummary, error)
 	SetProfileEntries(ctx context.Context, slug string, entries []hub.EntrySetting) (hub.ProfileDetail, error)
+	RemoveProfileEntry(ctx context.Context, slug, id string) (hub.ProfileDetail, error)
 	SetProfileSharing(ctx context.Context, slug string, members []hub.Share) (hub.ProfileDetail, error)
 	SetProfileTargets(ctx context.Context, slug string, targets []string) (hub.ProfileDetail, error)
 	PublishRevision(ctx context.Context, slug, note string) (hub.PublishedRevision, error)
+	DeleteProfile(ctx context.Context, slug string) error
 }
 
 // DeviceSource is the Connect-the-CLI screen's door to the api: looking a
@@ -296,9 +298,11 @@ func (s *Server) register() {
 	s.engine.POST("/profiles/entries/pin", s.pinEntry)
 	s.engine.POST("/profiles/entries/latest", s.floatEntry)
 	s.engine.POST("/profiles/entries/add", s.addEntry)
+	s.engine.POST("/profiles/entries/remove", s.removeEntry)
 	s.engine.POST("/profiles/sharing", s.shareProfile)
 	s.engine.POST("/profiles/targets", s.setTargets)
 	s.engine.POST("/profiles/revisions", s.publishRevision)
+	s.engine.POST("/profiles/delete", s.deleteProfile)
 	// The confirm action never carries the user code in its own path: it is
 	// bearer-equivalent for the length of its validity.
 	s.engine.GET("/cli", s.cli)

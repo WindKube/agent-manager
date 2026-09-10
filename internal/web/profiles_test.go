@@ -38,6 +38,8 @@ type profiles struct {
 	shares     [][]hub.Share
 	targetSets [][]string
 	published  []string
+	removed    [][2]string // {slug, id}
+	deleted    []string
 	writeErr   error
 
 	// revisions and revisionErr back Revision, the "Show diff" panel's read.
@@ -99,6 +101,16 @@ func (p *profiles) PublishRevision(_ context.Context, slug, _ string) (hub.Publi
 	return hub.PublishedRevision{}, p.writeErr
 }
 
+func (p *profiles) RemoveProfileEntry(_ context.Context, slug, id string) (hub.ProfileDetail, error) {
+	p.removed = append(p.removed, [2]string{slug, id})
+	return p.detail, p.writeErr
+}
+
+func (p *profiles) DeleteProfile(_ context.Context, slug string) error {
+	p.deleted = append(p.deleted, slug)
+	return p.writeErr
+}
+
 // profHandler wires one profiles source behind a viewer. curator is separate so a
 // test can render the screens with the write path absent, which is the state a
 // hub with no curator wired is in.
@@ -143,7 +155,7 @@ func baseProfileDetail() hub.ProfileDetail {
 		Slug: "example/platform-engineer", Name: "Platform Engineer",
 		Visibility: "organisation", DefaultPolicy: "floating-latest", Gate: "warn-with-override",
 		HeadRevision: 3, Role: "owner",
-		Permissions: hub.ProfilePermissions{Curate: true, Share: true, Publish: true},
+		Permissions: hub.ProfilePermissions{Curate: true, Share: true, Publish: true, Delete: true},
 		Entries: []hub.ProfileEntry{
 			{
 				ID: "community/postgres-migration-guard", Name: "Postgres Migration Guard", Kind: "skill",
@@ -310,55 +322,96 @@ func TestProfileEntryFloatRoundTrips(t *testing.T) {
 	require.Empty(t, source.entrySets[0][0].Version)
 }
 
-// TestProfileDetailOffersOnlyPackagesNotAlreadyHeld asserts the Add control
-// lists a catalog row exactly once it is not already an entry, and never lists
-// one that already is.
+// TestProfileEntryRemoveRoundTrips asserts a remove posts through the
+// dedicated RemoveProfileEntry command, not through SetProfileEntries's
+// whole-set contract (which refuses a body that omits a held entry).
+func TestProfileEntryRemoveRoundTrips(t *testing.T) {
+	source := &profiles{detail: baseProfileDetail()}
+	h := profHandler(source, fixture.SignedInViewers(), source)
+
+	rec := post(t, h, "/profiles/entries/remove", url.Values{
+		"slug": {"example/platform-engineer"}, "id": {"community/postgres-migration-guard"},
+	})
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	require.Equal(t, "/profiles/example/platform-engineer?notice=entry-removed", rec.Header().Get("Location"))
+
+	require.Len(t, source.removed, 1)
+	require.Equal(t, [2]string{"example/platform-engineer", "community/postgres-migration-guard"}, source.removed[0])
+	require.Empty(t, source.entrySets, "remove must not go through SetProfileEntries's whole-set contract")
+}
+
+// TestProfileEntryRemoveWithNoIDRefusesWithoutCallingTheCurator asserts a
+// blank id is caught in the handler, not sent on to the api.
+func TestProfileEntryRemoveWithNoIDRefusesWithoutCallingTheCurator(t *testing.T) {
+	source := &profiles{detail: baseProfileDetail()}
+	h := profHandler(source, fixture.SignedInViewers(), source)
+
+	rec := post(t, h, "/profiles/entries/remove", url.Values{"slug": {"example/platform-engineer"}})
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	require.Contains(t, rec.Header().Get("Location"), "entry-missing")
+	require.Empty(t, source.removed)
+}
+
+// TestProfileDetailOffersOnlyPackagesNotAlreadyHeld asserts each kind's Add
+// control lists a catalog row of that kind exactly once it is not already an
+// entry, never lists one that already is, and never lists the other kind.
 func TestProfileDetailOffersOnlyPackagesNotAlreadyHeld(t *testing.T) {
 	source := &profiles{detail: baseProfileDetail()}
 	catalog := catalogStub{rows: []view.Row{
-		{ID: "community/postgres-migration-guard", Name: "Postgres Migration Guard"},
-		{ID: "example/adr-writer", Name: "ADR Writer"},
+		{ID: "community/postgres-migration-guard", Name: "Postgres Migration Guard", Kind: view.KindSkill},
+		{ID: "example/adr-writer", Name: "ADR Writer", Kind: view.KindSkill},
+		{ID: "example/platform-toolkit", Name: "Platform Toolkit", Kind: view.KindPlugin},
 	}}
 	body := get(t, profHandlerWithCatalog(source, source, catalog), "/profiles/example/platform-engineer").Body.String()
 
-	require.Contains(t, body, `id="add-package-id"`)
-	options := addPackageOptions(t, body)
-	require.Contains(t, options, "ADR Writer")
-	require.NotContains(t, options, "Postgres Migration Guard",
+	require.Contains(t, body, `id="add-skill-id"`)
+	require.Contains(t, body, `id="add-plugin-id"`)
+
+	skillOptions := addOptions(t, body, "add-skill-id")
+	require.Contains(t, skillOptions, "ADR Writer")
+	require.NotContains(t, skillOptions, "Postgres Migration Guard",
 		"an entry the profile already holds must not also be offered as an addition")
+	require.NotContains(t, skillOptions, "Platform Toolkit", "a plugin must not be offered in the skill select")
+
+	pluginOptions := addOptions(t, body, "add-plugin-id")
+	require.Contains(t, pluginOptions, "Platform Toolkit")
+	require.NotContains(t, pluginOptions, "ADR Writer", "a skill must not be offered in the plugin select")
 }
 
-// addPackageOptions returns just the "Add package" select's markup, so a test
-// can assert about its options without a package's name elsewhere on the page
+// addOptions returns just one Add control's <select> markup, so a test can
+// assert about its options without a package's name elsewhere on the page
 // (its own entry row, say) producing a false pass.
-func addPackageOptions(t *testing.T, body string) string {
+func addOptions(t *testing.T, body, selectID string) string {
 	t.Helper()
-	start := strings.Index(body, `<select id="add-package-id"`)
-	require.GreaterOrEqual(t, start, 0, "the add-package select is missing")
+	start := strings.Index(body, `<select id="`+selectID+`"`)
+	require.GreaterOrEqual(t, start, 0, "the "+selectID+" select is missing")
 	end := strings.Index(body[start:], "</select>")
-	require.GreaterOrEqual(t, end, 0, "the add-package select is unclosed")
+	require.GreaterOrEqual(t, end, 0, "the "+selectID+" select is unclosed")
 	return body[start : start+end]
 }
 
-// TestProfileDetailAddControlIsAbsentWithoutCatalogOrRole asserts the control
-// degrades to absent rather than to an empty, broken <select> — both when the
-// viewer may not curate and when the catalog cannot be read.
+// TestProfileDetailAddControlIsAbsentWithoutCatalogOrRole asserts both Add
+// controls degrade to absent rather than to an empty, broken <select> — both
+// when the viewer may not curate and when the catalog cannot be read.
 func TestProfileDetailAddControlIsAbsentWithoutCatalogOrRole(t *testing.T) {
 	t.Run("no curate permission", func(t *testing.T) {
 		detail := baseProfileDetail()
 		detail.Permissions = hub.ProfilePermissions{}
 		source := &profiles{detail: detail}
-		catalog := catalogStub{rows: []view.Row{{ID: "example/adr-writer", Name: "ADR Writer"}}}
+		catalog := catalogStub{rows: []view.Row{{ID: "example/adr-writer", Name: "ADR Writer", Kind: view.KindSkill}}}
 		body := get(t, profHandlerWithCatalog(source, nil, catalog), "/profiles/example/platform-engineer").Body.String()
-		require.NotContains(t, body, `id="add-package-id"`)
+		require.NotContains(t, body, `id="add-skill-id"`)
+		require.NotContains(t, body, `id="add-plugin-id"`)
 	})
 
 	t.Run("catalog unreachable", func(t *testing.T) {
 		source := &profiles{detail: baseProfileDetail()}
 		catalog := catalogStub{err: errBoom}
 		body := get(t, profHandlerWithCatalog(source, source, catalog), "/profiles/example/platform-engineer").Body.String()
-		require.NotContains(t, body, `id="add-package-id"`)
-		require.Contains(t, body, `id="profile-add-empty"`)
+		require.NotContains(t, body, `id="add-skill-id"`)
+		require.NotContains(t, body, `id="add-plugin-id"`)
+		require.Contains(t, body, `id="profile-add-skill-empty"`)
+		require.Contains(t, body, `id="profile-add-plugin-empty"`)
 	})
 }
 
@@ -432,6 +485,8 @@ func TestProfileWritesAreGatedByRole(t *testing.T) {
 	require.Contains(t, body, view.ShareDisabledReason,
 		"the disabled sharing form must say why, not just refuse silently")
 	require.Contains(t, body, view.PublishDisabledReason)
+	require.Contains(t, body, view.ProfileDeleteRoleReason,
+		"the disabled delete-profile control must say why, not just refuse silently")
 
 	// The sharing form is still offered, greyed out, rather than absent: a
 	// role that cannot share must still see the control exists.
@@ -476,6 +531,79 @@ func TestProfileWriteWithNoCuratorWiredRefusesRatherThanPanics(t *testing.T) {
 	rec := post(t, h, "/profiles/revisions", url.Values{"slug": {"example/platform-engineer"}})
 	require.Equal(t, http.StatusSeeOther, rec.Code)
 	require.Contains(t, rec.Header().Get("Location"), "unavailable")
+}
+
+// TestDeleteProfileRedirectsToTheListNotTheProfilesOwnPage asserts deletion
+// is the one write that cannot redirect back to the profile's own page —
+// there is no such page any more once it succeeds.
+func TestDeleteProfileRedirectsToTheListNotTheProfilesOwnPage(t *testing.T) {
+	source := &profiles{detail: baseProfileDetail()}
+	h := profHandler(source, fixture.SignedInViewers(), source)
+
+	rec := post(t, h, "/profiles/delete", url.Values{"slug": {"example/platform-engineer"}})
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	require.Equal(t, "/profiles?notice=deleted", rec.Header().Get("Location"))
+	require.Equal(t, []string{"example/platform-engineer"}, source.deleted)
+}
+
+// TestDeleteProfileWithPublishedRevisionsIsRefusedInline asserts the api's
+// refusal (a profile with published revisions a client may have synced
+// cannot be deleted) renders inline against a fresh read, exactly like every
+// other ProfileRefusedError, rather than as a redirect a stale link could
+// replay.
+func TestDeleteProfileWithPublishedRevisionsIsRefusedInline(t *testing.T) {
+	detail := baseProfileDetail()
+	source := &profiles{detail: detail, writeErr: &hub.ProfileRefusedError{
+		Detail: "example/platform-engineer has published revisions that a client may already have synced",
+	}}
+	h := profHandler(source, fixture.SignedInViewers(), source)
+
+	rec := post(t, h, "/profiles/delete", url.Values{"slug": {"example/platform-engineer"}})
+	require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+	require.Contains(t, rec.Body.String(), "published revisions that a client may already have synced")
+	require.Equal(t, []string{"example/platform-engineer"}, source.deleted, "the api, not the web layer, is what refused this")
+}
+
+// TestDeleteProfileWithNoCuratorWiredRefusesRatherThanPanics mirrors
+// TestProfileWriteWithNoCuratorWiredRefusesRatherThanPanics for the delete route.
+func TestDeleteProfileWithNoCuratorWiredRefusesRatherThanPanics(t *testing.T) {
+	source := &profiles{detail: baseProfileDetail()}
+	h := profHandler(source, fixture.SignedInViewers(), nil)
+
+	rec := post(t, h, "/profiles/delete", url.Values{"slug": {"example/platform-engineer"}})
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	require.Contains(t, rec.Header().Get("Location"), "unavailable")
+}
+
+// TestDeleteProfileControlGatedByCanDelete asserts the delete control follows
+// view.Profile.CanDelete: disabled with the role reason when not owner,
+// disabled with the has-revisions reason when the profile still has one, and
+// enabled only when both clear.
+func TestDeleteProfileControlGatedByCanDelete(t *testing.T) {
+	t.Run("not owner", func(t *testing.T) {
+		detail := baseProfileDetail()
+		detail.Permissions.Delete = false
+		body := get(t, profHandler(&profiles{detail: detail}, fixture.SignedInViewers(), nil),
+			"/profiles/example/platform-engineer").Body.String()
+		require.Contains(t, body, html.EscapeString(view.ProfileDeleteRoleReason))
+		require.NotContains(t, body, `data-on:click="$_deleteProfileOpen = true"`)
+	})
+
+	t.Run("has published revisions", func(t *testing.T) {
+		detail := baseProfileDetail()
+		detail.HeadRevision = 3
+		body := get(t, profHandler(&profiles{detail: detail}, fixture.SignedInViewers(), nil),
+			"/profiles/example/platform-engineer").Body.String()
+		require.Contains(t, body, html.EscapeString(view.ProfileDeleteHasRevisionsReason))
+	})
+
+	t.Run("owner with no published revisions", func(t *testing.T) {
+		detail := baseProfileDetail()
+		detail.HeadRevision = 0
+		body := get(t, profHandler(&profiles{detail: detail}, fixture.SignedInViewers(), nil),
+			"/profiles/example/platform-engineer").Body.String()
+		require.Contains(t, body, `data-on:click="$_deleteProfileOpen = true"`)
+	})
 }
 
 // TestProfileEntryDataIsEscapedWhereverItIsRendered: a package name, a policy
@@ -532,31 +660,57 @@ func TestProfileEntriesEmptyKindSectionStillNamesItself(t *testing.T) {
 	require.Contains(t, body, "This profile holds no plugins yet.")
 }
 
-// TestAddEntryFormIsBehindAToggleButtonNotAlwaysVisible is US5's other change:
-// the "Add package" control is a button revealing the form through a
-// client-side signal, not a select sitting permanently on the page. The
-// signal is underscore-prefixed, which is what keeps datastar from ever
-// sending it (the same reason the catalog's own modal signals are).
-func TestAddEntryFormIsBehindAToggleButtonNotAlwaysVisible(t *testing.T) {
+// TestAddEntryFormsAreBehindTwoSeparateToggleButtons is the owner's requested
+// split: "Add package" became two buttons, "Add skill" and "Add plugin", each
+// opening its own popup rather than a single form offering every kind in one
+// select. Both signals are underscore-prefixed, which is what keeps datastar
+// from ever sending them (the same reason the catalog's own modal signals
+// are), and both backdrops are hidden before datastar has a chance to run,
+// exactly like the import modal.
+func TestAddEntryFormsAreBehindTwoSeparateToggleButtons(t *testing.T) {
+	source := &profiles{detail: baseProfileDetail()}
+	catalog := catalogStub{rows: []view.Row{
+		{ID: "example/adr-writer", Name: "ADR Writer", Kind: view.KindSkill},
+		{ID: "example/platform-toolkit", Name: "Platform Toolkit", Kind: view.KindPlugin},
+	}}
+	body := html.UnescapeString(
+		get(t, profHandlerWithCatalog(source, source, catalog), "/profiles/example/platform-engineer").Body.String())
+
+	require.Contains(t, body, `data-on:click="$_addSkillOpen = !$_addSkillOpen"`)
+	require.Contains(t, body, `data-style:display="$_addSkillOpen ? 'flex' : 'none'"`)
+	require.Contains(t, body, `data-on:click="$_addPluginOpen = !$_addPluginOpen"`)
+	require.Contains(t, body, `data-style:display="$_addPluginOpen ? 'flex' : 'none'"`)
+
+	require.Contains(t, body, ">Add skill<")
+	require.Contains(t, body, ">Add plugin<")
+
+	backdropAt := strings.Index(body, `data-style:display="$_addSkillOpen`)
+	require.GreaterOrEqual(t, backdropAt, 0)
+	tagStart := strings.LastIndex(body[:backdropAt], "<div")
+	tagEnd := strings.Index(body[tagStart:], ">")
+	require.GreaterOrEqual(t, tagEnd, 0, "the add-skill backdrop's opening tag is unclosed")
+	require.Contains(t, body[tagStart:tagStart+tagEnd], "display:none", "hidden until datastar says otherwise")
+
+	// Each select is scoped to its own kind: the skill option appears, the
+	// plugin form is a separate one, and vice versa is covered by
+	// TestProfileDetailOffersOnlyPackagesNotAlreadyHeld.
+	require.Contains(t, body, `id="add-skill-id"`)
+	require.Contains(t, body, `id="add-plugin-id"`)
+}
+
+// TestAddEntryFormOffersVersionModeAtAddTime covers the owner's other
+// request: no post-hoc "Pin to 0.83" button — the curator picks floating
+// latest or an exact version at the moment of adding.
+func TestAddEntryFormOffersVersionModeAtAddTime(t *testing.T) {
 	source := &profiles{detail: baseProfileDetail()}
 	catalog := catalogStub{rows: []view.Row{{ID: "example/adr-writer", Name: "ADR Writer", Kind: view.KindSkill}}}
 	body := get(t, profHandlerWithCatalog(source, source, catalog), "/profiles/example/platform-engineer").Body.String()
 
-	require.Contains(t, body, `data-signals="{_addEntryOpen: false}"`)
-	require.Contains(t, body, `data-on:click="$_addEntryOpen = !$_addEntryOpen"`)
-	require.Contains(t, body, `data-style:display="$_addEntryOpen ? 'flex' : 'none'"`)
-
-	// Hidden before datastar has a chance to run, exactly like the import modal.
-	formAt := strings.Index(body, `action="/profiles/entries/add"`)
-	require.GreaterOrEqual(t, formAt, 0, "the add-entry form is missing")
-	tagStart := strings.LastIndex(body[:formAt], "<form")
-	tagEnd := strings.Index(body[tagStart:], ">")
-	require.GreaterOrEqual(t, tagEnd, 0, "the add-entry form's opening tag is unclosed")
-	require.Contains(t, body[tagStart:tagStart+tagEnd], `style="display:none"`)
-
-	// The select still offers every kind of catalog package in one list, so
-	// each option names its own kind rather than splitting into two selects.
-	require.Contains(t, body, "ADR Writer (example/adr-writer) · Skill")
+	require.Contains(t, body, `name="mode"`)
+	require.Contains(t, body, `value="latest"`)
+	require.Contains(t, body, `value="pinned"`)
+	require.Contains(t, body, `name="version"`)
+	require.NotContains(t, body, "Pin to 0.", "there must be no post-hoc \"Pin to X\" button on the add control")
 }
 
 // TestDisabledProfileControlsAreShownGreyedOutNotHidden is 1d: a role that
@@ -571,7 +725,17 @@ func TestDisabledProfileControlsAreShownGreyedOutNotHidden(t *testing.T) {
 	body := html.UnescapeString(get(t, profHandler(source, fixture.SignedInViewers(), nil), "/profiles/example/platform-engineer").Body.String())
 
 	require.Contains(t, body,
-		`<button type="button" class="am-btn" disabled aria-disabled="true" title="`+view.CurateDisabledReason+`">Add package</button>`)
+		`<button type="button" class="am-btn" disabled aria-disabled="true" title="`+view.CurateDisabledReason+`">Add skill</button>`)
+	require.Contains(t, body,
+		`<button type="button" class="am-btn" disabled aria-disabled="true" title="`+view.CurateDisabledReason+`">Add plugin</button>`)
+	require.Contains(t, body,
+		`<button type="button" class="am-btn" disabled aria-disabled="true" title="`+view.CurateDisabledReason+`">Float to latest</button>`)
+	require.Contains(t, body,
+		`<button type="button" class="am-btn" disabled aria-disabled="true" title="`+view.CurateDisabledReason+`">Pin</button>`)
+	require.Contains(t, body,
+		`<button type="button" class="am-btn" disabled aria-disabled="true" title="`+view.CurateDisabledReason+`">Remove</button>`)
+	require.Contains(t, body,
+		`<button type="button" class="am-btn" disabled aria-disabled="true" title="`+view.ProfileDeleteRoleReason+`">Delete profile</button>`)
 	require.Contains(t, body,
 		`<input type="checkbox" checked disabled aria-disabled="true" title="`+view.CurateDisabledReason+`">`,
 		"an enabled target's checkbox must carry aria-disabled, not just disabled")
@@ -585,7 +749,9 @@ func TestDisabledProfileControlsAreShownGreyedOutNotHidden(t *testing.T) {
 
 	// Both, not either: the title is a weak affordance alone, so the same
 	// sentence also appears as visible text.
-	for _, reason := range []string{view.CurateDisabledReason, view.ShareDisabledReason, view.PublishDisabledReason} {
+	for _, reason := range []string{
+		view.CurateDisabledReason, view.ShareDisabledReason, view.PublishDisabledReason, view.ProfileDeleteRoleReason,
+	} {
 		require.GreaterOrEqualf(t, strings.Count(body, reason), 2, "%q must appear both as a title and as visible text", reason)
 	}
 }

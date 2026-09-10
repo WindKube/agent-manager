@@ -79,6 +79,11 @@ type ProfilePermissions struct {
 	Curate  bool
 	Share   bool
 	Publish bool
+	// Delete is the role check alone (owner only). The api refuses
+	// separately, with a distinct error, when the profile holds a
+	// published revision — that is a fact about the profile, not the role,
+	// and the screen reads it off HeadRevision rather than a second bit here.
+	Delete bool
 }
 
 // ProfileEntry is one package in a profile, with two version pairs. Latest*
@@ -319,7 +324,8 @@ func profileSummary(from *apiclient.Profile) ProfileSummary {
 // SetProfileEntries puts PUT /v1/profiles/{slug}/entries — the WHOLE ordered
 // set, since position is what an ordered set means and a patch cannot
 // express a reorder. An empty slice is refused by the api naming every
-// package left out: there is no removal, on this path or any other.
+// package left out, to catch a client acting on stale state — RemoveProfileEntry
+// below is the addressed way to take one out instead.
 func (c *Client) SetProfileEntries(ctx context.Context, slug string, entries []EntrySetting) (ProfileDetail, error) {
 	if err := checkSlug(slug); err != nil {
 		return ProfileDetail{}, err
@@ -350,6 +356,43 @@ func (c *Client) SetProfileEntries(ctx context.Context, slug string, entries []E
 			resp.HTTPResponse, resp.Body)
 	}
 	return profileDetail(resp.JSON200), nil
+}
+
+// RemoveProfileEntry posts POST /v1/profiles/{slug}/entries/remove: the
+// targeted removal SetProfileEntries's whole-set contract does not offer.
+func (c *Client) RemoveProfileEntry(ctx context.Context, slug, id string) (ProfileDetail, error) {
+	if err := checkSlug(slug); err != nil {
+		return ProfileDetail{}, err
+	}
+
+	resp, err := c.api.RemoveProfileEntryWithResponse(ctx, slug, apiclient.ProfileEntryRemoval{Id: id})
+	if err != nil {
+		return ProfileDetail{}, fmt.Errorf("remove %s from %s: %w", id, slug, err)
+	}
+	if resp.JSON200 == nil {
+		return ProfileDetail{}, profileFailure("remove "+id+" from "+slug,
+			resp.HTTPResponse, resp.Body)
+	}
+	return profileDetail(resp.JSON200), nil
+}
+
+// DeleteProfile deletes DELETE /v1/profiles/{slug}. Refuses with a 409,
+// carried as ProfileRefusedError, when the profile holds a published
+// revision (FR-034): deleting a revision is not something this hub does,
+// and a client may already have synced one.
+func (c *Client) DeleteProfile(ctx context.Context, slug string) error {
+	if err := checkSlug(slug); err != nil {
+		return err
+	}
+
+	resp, err := c.api.DeleteProfileWithResponse(ctx, slug)
+	if err != nil {
+		return fmt.Errorf("delete profile %s: %w", slug, err)
+	}
+	if resp.HTTPResponse != nil && resp.HTTPResponse.StatusCode == http.StatusNoContent {
+		return nil
+	}
+	return profileFailure("delete profile "+slug, resp.HTTPResponse, resp.Body)
 }
 
 // SetProfileSharing puts PUT /v1/profiles/{slug}/sharing: an UPSERT of
@@ -549,6 +592,7 @@ func profileDetail(body *apiclient.ProfileDetail) ProfileDetail {
 			Curate:  body.Permissions.Curate,
 			Share:   body.Permissions.Share,
 			Publish: body.Permissions.Publish,
+			Delete:  body.Permissions.Delete,
 		},
 		Entries:   make([]ProfileEntry, 0, len(body.Entries)),
 		Members:   make([]ProfileMember, 0, len(body.Members)),

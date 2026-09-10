@@ -210,63 +210,159 @@ templ profileBody(p view.Profile) {
 	@sharingPanel(p)
 	@targetsPanel(p)
 	@revisionsPanel(p)
+	@deleteProfilePanel(p)
+}
+
+// deleteProfilePanel gives the profile's owner a way to delete it outright.
+// Deletion is refused, never hidden, for two different reasons a viewer needs
+// to see: not being the owner (a role gate) and the profile still holding a
+// published revision (a data gate) — DeleteDisabledReason tells them apart.
+// The control itself is a two-step confirmation, not a single click: the
+// button only opens a dialog, and the dialog's own submit is the one write.
+templ deleteProfilePanel(p view.Profile) {
+	<section class="am-gov-card" id="profile-delete" data-signals="{_deleteProfileOpen: false}">
+		<div class="am-section-head">
+			<div class="am-section-title">Delete this profile</div>
+		</div>
+		<p class="am-note">
+			Deleting removes the profile, its packages and its sharing outright. It cannot be undone.
+		</p>
+		if p.CanDelete() {
+			<button type="button" class="am-btn" data-on:click="$_deleteProfileOpen = true">Delete profile</button>
+		} else {
+			<button type="button" class="am-btn" disabled aria-disabled="true" title={ p.DeleteDisabledReason() }>Delete profile</button>
+			<div class="am-gate-note am-card-note" id="profile-delete-not-permitted">{ p.DeleteDisabledReason() }</div>
+		}
+		<div
+			class="am-import-backdrop"
+			style="display:none;position:fixed;inset:0;z-index:40;background:rgba(15,18,22,0.42);align-items:flex-start;justify-content:center;padding:64px 24px;overflow:auto"
+			data-style:display="$_deleteProfileOpen ? 'flex' : 'none'"
+		>
+			<div
+				role="dialog"
+				aria-modal="true"
+				aria-label="Confirm delete profile"
+				style="width:100%;max-width:440px;border:1px solid var(--bd);border-radius:14px;background:var(--surface);overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.28)"
+			>
+				<div style="padding:20px 24px;border-bottom:1px solid var(--bd)">
+					<div style="font-size:15px;font-weight:500">Delete { p.Name }?</div>
+				</div>
+				<div style="padding:18px 24px;font-size:13px;color:var(--fg2);line-height:1.6">
+					This deletes the profile, its packages and its sharing. It cannot be undone.
+				</div>
+				<form method="post" action="/profiles/delete" style="padding:0 24px 20px;display:flex;justify-content:flex-end;gap:10px">
+					<input type="hidden" name="slug" value={ p.Slug }/>
+					<button type="button" class="am-btn" data-on:click="$_deleteProfileOpen = false">Cancel</button>
+					<button type="submit" class="am-btn am-btn-primary">Yes, delete this profile</button>
+				</form>
+			</div>
+		</div>
+	</section>
 }
 
 templ entriesPanel(p view.Profile) {
-	<section class="am-gov-card" id="profile-entries" data-signals="{_addEntryOpen: false}">
+	<section
+		class="am-gov-card"
+		id="profile-entries"
+		data-signals="{_addSkillOpen: false, _addSkillMode: 'latest', _addPluginOpen: false, _addPluginMode: 'latest'}"
+	>
 		<div class="am-section-head">
 			<div class="am-section-title">Packages</div>
 			<div class="am-section-note">Gate: { p.GateLabel() }</div>
 		</div>
-		@addEntryControl(p)
+		@addEntryControls(p)
 		@entryKindSection("Skills", p.SkillEntries(), p, "profile-entries-empty-skill", "This profile holds no skills yet.")
 		@entryKindSection("Plugins", p.PluginEntries(), p, "profile-entries-empty-plugin", "This profile holds no plugins yet.")
+		@addEntryModal(p, view.KindSkill, "Add skill", "_addSkillOpen", "_addSkillMode", p.SkillAddOptions())
+		@addEntryModal(p, view.KindPlugin, "Add plugin", "_addPluginOpen", "_addPluginMode", p.PluginAddOptions())
 	</section>
 }
 
-// addEntryControl is US5's "Add package" control: a button at the top of the
-// card that reveals the form, rather than a select sitting permanently at the
-// bottom. The button itself is never hidden — a viewer who may not curate
-// sees it greyed out with the reason, following the same precedent as the
-// entry row's Float and Pin controls below.
-templ addEntryControl(p view.Profile) {
+// addEntryControls replaces the single "Add package" toggle with one button
+// per kind, each opening its own popup form offering only that kind's
+// packages — the owner's request in full. Neither button is ever hidden: a
+// viewer who may not curate sees both greyed out with the reason, the same
+// precedent the entry row's Float and Pin controls follow.
+templ addEntryControls(p view.Profile) {
 	<div class="am-panel-toggle-row">
 		if p.Permissions.Curate {
-			<button type="button" class="am-btn" data-on:click="$_addEntryOpen = !$_addEntryOpen">Add package</button>
+			<button type="button" class="am-btn" data-on:click="$_addSkillOpen = !$_addSkillOpen">Add skill</button>
+			<button type="button" class="am-btn" data-on:click="$_addPluginOpen = !$_addPluginOpen">Add plugin</button>
 		} else {
-			<button type="button" class="am-btn" disabled aria-disabled="true" title={ view.CurateDisabledReason }>Add package</button>
+			<button type="button" class="am-btn" disabled aria-disabled="true" title={ view.CurateDisabledReason }>Add skill</button>
+			<button type="button" class="am-btn" disabled aria-disabled="true" title={ view.CurateDisabledReason }>Add plugin</button>
 		}
 	</div>
 	if !p.Permissions.Curate {
 		<div class="am-gate-note am-card-note">{ view.CurateDisabledReason }</div>
-	} else if len(p.AddOptions) > 0 {
-		<form
-			method="post"
-			action="/profiles/entries/add"
-			class="am-field-row"
-			style="display:none"
-			data-style:display="$_addEntryOpen ? 'flex' : 'none'"
-		>
-			<input type="hidden" name="slug" value={ p.Slug }/>
-			<div class="am-field">
-				<label class="am-field-label" for="add-package-id">Add package</label>
-				<select id="add-package-id" class="am-search" name="id">
-					for _, option := range p.AddOptions {
-						<option value={ option.ID }>{ option.Name } ({ option.ID }) · { option.Kind.Label() }</option>
-					}
-				</select>
-			</div>
-			<button type="submit" class="am-btn am-btn-primary am-form-submit">Add, floating latest</button>
-		</form>
-	} else {
+	}
+}
+
+// addEntryModal is one kind's popup form: the registration modal's pattern
+// (import.templ) reused rather than reinvented, including its "hidden until
+// datastar says otherwise" backdrop, since a visible full-viewport overlay
+// would swallow every click before the script attaches. The version choice —
+// latest or a specific version, never a post-hoc "pin to X" button — is
+// asked here, at the moment of adding.
+templ addEntryModal(p view.Profile, kind view.Kind, label, openSignal, modeSignal string, options []view.ProfileAddOption) {
+	if p.Permissions.Curate {
 		<div
-			class="am-empty"
-			id="profile-add-empty"
-			style="display:none"
-			data-style:display="$_addEntryOpen ? 'block' : 'none'"
+			class="am-import-backdrop"
+			style="display:none;position:fixed;inset:0;z-index:40;background:rgba(15,18,22,0.42);align-items:flex-start;justify-content:center;padding:64px 24px;overflow:auto"
+			data-style:display={ "$" + openSignal + " ? 'flex' : 'none'" }
 		>
-			Every catalog package is already in this profile, or the catalog could
-			not be read.
+			<div
+				role="dialog"
+				aria-modal="true"
+				aria-label={ label }
+				style="width:100%;max-width:480px;border:1px solid var(--bd);border-radius:14px;background:var(--surface);overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.28)"
+			>
+				if len(options) > 0 {
+					<form method="post" action="/profiles/entries/add">
+						<input type="hidden" name="slug" value={ p.Slug }/>
+						<div style="padding:20px 24px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;gap:16px">
+							<div style="font-size:15px;font-weight:500">{ label }</div>
+							<button type="button" aria-label="Close" style="border:0;background:none;font-size:16px;color:var(--fg3);cursor:pointer;line-height:1" data-on:click={ "$" + openSignal + " = false" }>×</button>
+						</div>
+						<div style="padding:18px 24px;display:flex;flex-direction:column;gap:14px">
+							<div class="am-field">
+								<label class="am-field-label" for={ "add-" + string(kind) + "-id" }>Package</label>
+								<select id={ "add-" + string(kind) + "-id" } class="am-search" name="id">
+									for _, option := range options {
+										<option value={ option.ID }>{ option.Name } ({ option.ID })</option>
+									}
+								</select>
+							</div>
+							<div class="am-field">
+								<label class="am-field-label" for={ "add-" + string(kind) + "-mode" }>Version</label>
+								<select id={ "add-" + string(kind) + "-mode" } class="am-search" name="mode" data-bind={ modeSignal }>
+									<option value="latest">Floating latest</option>
+									<option value="pinned">Specific version</option>
+								</select>
+							</div>
+							<div class="am-field" style="display:none" data-style:display={ "$" + modeSignal + " === 'pinned' ? 'flex' : 'none'" }>
+								<label class="am-field-label" for={ "add-" + string(kind) + "-version" }>Exact version</label>
+								<input id={ "add-" + string(kind) + "-version" } class="am-search am-mono" name="version" placeholder="1.0.0"/>
+							</div>
+						</div>
+						<div style="padding:16px 24px 20px;display:flex;justify-content:flex-end;gap:10px">
+							<button type="button" class="am-btn" data-on:click={ "$" + openSignal + " = false" }>Cancel</button>
+							<button type="submit" class="am-btn am-btn-primary">{ label }</button>
+						</div>
+					</form>
+				} else {
+					<div style="padding:20px 24px;display:flex;flex-direction:column;gap:14px">
+						<div style="display:flex;align-items:center;justify-content:space-between;gap:16px">
+							<div style="font-size:15px;font-weight:500">{ label }</div>
+							<button type="button" aria-label="Close" style="border:0;background:none;font-size:16px;color:var(--fg3);cursor:pointer;line-height:1" data-on:click={ "$" + openSignal + " = false" }>×</button>
+						</div>
+						<div class="am-empty" id={ "profile-add-" + string(kind) + "-empty" }>
+							Every catalog package of this kind is already in this profile, or the
+							catalog could not be read.
+						</div>
+					</div>
+				}
+			</div>
 		</div>
 	}
 }
@@ -332,7 +428,11 @@ templ entryRow(p view.Profile, entry view.ProfileEntryRow) {
 		if !p.Permissions.Curate {
 			<div class="am-entry-actions">
 				<button type="button" class="am-btn" disabled aria-disabled="true" title={ view.CurateDisabledReason }>Float to latest</button>
-				<button type="button" class="am-btn" disabled aria-disabled="true" title={ view.CurateDisabledReason }>Pin</button>
+				<form class="am-field-row">
+					<input class="am-search am-mono" value={ entry.PinFieldValue() } disabled title={ view.CurateDisabledReason }/>
+					<button type="button" class="am-btn" disabled aria-disabled="true" title={ view.CurateDisabledReason }>Pin</button>
+				</form>
+				<button type="button" class="am-btn" disabled aria-disabled="true" title={ view.CurateDisabledReason }>Remove</button>
 			</div>
 		} else {
 			<div class="am-entry-actions">
@@ -345,17 +445,16 @@ templ entryRow(p view.Profile, entry view.ProfileEntryRow) {
 						<button type="button" class="am-btn" disabled aria-disabled="true">Floating</button>
 					}
 				</form>
-				<form method="post" action="/profiles/entries/pin">
+				<form method="post" action="/profiles/entries/pin" class="am-field-row">
 					<input type="hidden" name="slug" value={ p.Slug }/>
 					<input type="hidden" name="id" value={ entry.ID }/>
-					<input type="hidden" name="version" value={ entry.PinTarget() }/>
-					if entry.CanPin() {
-						<button type="submit" class="am-btn">Pin to { entry.PinTarget() }</button>
-					} else if entry.Mode == "pinned" {
-						<button type="button" class="am-btn" disabled aria-disabled="true">Pinned to { entry.PinnedVersion }</button>
-					} else {
-						<button type="button" class="am-btn" disabled aria-disabled="true">Nothing to pin to</button>
-					}
+					<input class="am-search am-mono" name="version" value={ entry.PinFieldValue() } placeholder="1.0.0"/>
+					<button type="submit" class="am-btn">Pin</button>
+				</form>
+				<form method="post" action="/profiles/entries/remove">
+					<input type="hidden" name="slug" value={ p.Slug }/>
+					<input type="hidden" name="id" value={ entry.ID }/>
+					<button type="submit" class="am-btn">Remove</button>
 				</form>
 			</div>
 		}

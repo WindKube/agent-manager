@@ -147,6 +147,9 @@ templ findingRow(row view.FindingRow) {
 	<div class="am-find-meta">
 		<span class={ FindingStateClass(row.State) }>{ row.State.Label() }</span>
 		<span class="am-mono am-find-rule">{ row.RuleID }</span>
+		// Which analyser made the claim. Two engines may use the same rule id, and
+		// a reviewer calibrates differently for each.
+		<span class="am-find-engine">{ view.EngineLabel(row.Engine) }</span>
 		<span class="am-find-raised">{ row.Raised }</span>
 	</div>
 }
@@ -251,15 +254,19 @@ templ checkMatrix(detail view.FindingDetail) {
 				distinguishable from one that found nothing.
 			</p>
 			<div id="finding-checks">
-				for _, check := range detail.Checks {
+				for i, check := range detail.Checks {
+					// One heading per analyser. Without it the two engines' rows read as
+					// one list, and "this passed" stops saying which analysis passed.
+					if i == 0 || detail.Checks[i-1].Engine != check.Engine {
+						<div class="am-chk-engine">{ view.EngineLabel(check.Engine) }</div>
+					}
 					<div class="am-chk">
 						<span class={ CheckMarkClass(check) } aria-hidden="true">{ check.Result.Mark() }</span>
 						<span class="am-chk-label">
 							{ check.Label }
 							if check.Note() != "" {
-								// The warn count is a blind-spot counter — files the check could
-								// not read — and NOT a number of issues. Rendering it as "2" beside
-								// a warning would read as two problems, which is its opposite.
+								// Not a number of issues. Rendering it as "2" beside a warning
+								// would read as two problems, which is its opposite.
 								<span class="am-chk-note">{ check.Note() }</span>
 							}
 						</span>

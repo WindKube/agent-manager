@@ -25,6 +25,7 @@ type ScannerSummary struct {
 type FindingSummary struct {
 	ID       string `json:"id" format:"uuid" doc:"The finding's identifier, as the detail and decision paths take it."`
 	RuleID   string `json:"ruleId" doc:"Stable rule identifier (FR-024)." example:"SH-NET-002"`
+	Engine   string `json:"engine" doc:"The analyser that raised it. Two engines may use the same rule id, so a finding is identified by the pair." example:"rulepack"`
 	Severity string `json:"severity" enum:"low,medium,high" example:"high"`
 	State    string `json:"state" enum:"open,approved,rejected" example:"open"`
 	Title    string `json:"title" example:"Undeclared network egress"`
@@ -51,6 +52,7 @@ type FindingsPage struct {
 type FindingDetail struct {
 	ID        string    `json:"id" format:"uuid"`
 	RuleID    string    `json:"ruleId" example:"SH-NET-002"`
+	Engine    string    `json:"engine" doc:"The analyser that raised it. Two engines may use the same rule id, so a finding is identified by the pair." example:"rulepack"`
 	Severity  string    `json:"severity" enum:"low,medium,high" example:"high"`
 	State     string    `json:"state" enum:"open,approved,rejected" example:"open"`
 	Title     string    `json:"title" example:"Undeclared network egress"`
@@ -83,6 +85,7 @@ type FindingEvidence struct {
 
 type FindingCheck struct {
 	CheckID   string `json:"checkId" example:"network-allowlist"`
+	Engine    string `json:"engine" doc:"The analyser this row belongs to, so the matrix can be read as \"the rule pack passed, the second engine failed\" rather than as one undifferentiated list." example:"rulepack"`
 	Label     string `json:"label" doc:"The check's own label, as the scan recorded it. A screen that mapped check ids to labels itself would stop naming a check added after it shipped." example:"Network allowlist"`
 	Result    string `json:"result" enum:"pass,fail,warn" example:"fail"`
 	WarnCount int    `json:"warnCount" doc:"How many warnings this check raised. Zero unless the result is warn." example:"2"`

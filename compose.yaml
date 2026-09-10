@@ -186,11 +186,17 @@ services:
         condition: service_completed_successfully
       minio-init:
         condition: service_completed_successfully
+      skill-scanner:
+        condition: service_healthy
+    # The scanner is the only service on both networks: it needs Postgres and
+    # MinIO on the default one, and the engine on the closed one.
+    networks: [default, scan-engine]
     environment:
       <<: [*observability, *queue-url, *blob-read]
       AGENT_MANAGER_DATABASE_URL: >-
         postgres://am_scanner:local-development-am-scanner@postgres:5432/agent_manager?sslmode=disable
       AGENT_MANAGER_RULEPACK_DIR: /etc/agent-manager/rulepack
+      AGENT_MANAGER_SCAN_ENGINE_URL: http://skill-scanner:8000
     # Detection rules are DATA (constitution, Development Workflow): adding or
     # tuning one must not require a code change or a rebuild. The mount is what
     # makes that true of this stack rather than of the design document — edit a
@@ -226,6 +232,40 @@ services:
       disable: true
     restart: "no"
 
+  # The second scan engine (004). Third-party infrastructure under constitution
+  # principle VI, so it does not engage principle I: the image is a pinned pip
+  # install of an Apache 2.0 package and the tool's own entrypoint, with no code
+  # this project writes.
+  #
+  # Read the two lines that are NOT here as the point of it. There is no
+  # environment block, because this service holds no credential of this
+  # system's — no database, no object store, no identity. And it is on
+  # `scan-engine` only, which is `internal: true`, so it reaches neither the
+  # internet nor Postgres nor MinIO; the scanner is its only peer.
+  #
+  # That placement is what principle II buys here. The engine matches YARA
+  # signatures against attacker-controlled bytes, which is C code parsing hostile
+  # input. Running it inside the scanner's own image would put that parser in the
+  # process holding the database credential and the object-store read key.
+  skill-scanner:
+    build:
+      context: ./deploy/local/skill-scanner
+    networks: [scan-engine]
+    # No shell in the image beyond python's, so the probe is python's.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import sys, urllib.request
+          sys.exit(0 if urllib.request.urlopen("http://127.0.0.1:8000/health", timeout=3).status == 200 else 1)
+      interval: 15s
+      timeout: 5s
+      start_period: 40s
+      retries: 3
+    restart: unless-stopped
+
   # ---------------------------------------------------------------------------
   # Optional. `docker compose --profile queue-ui up`
   #
@@ -243,3 +283,11 @@ services:
       RIVER_HOST: ":8085"
     ports:
       - "8085:8085"
+
+# `default` is declared so naming it on a service does not opt that service out
+# of the network every other one is on. `scan-engine` is closed: internal means
+# Compose attaches no gateway, so nothing on it can route off the host.
+networks:
+  default:
+  scan-engine:
+    internal: true

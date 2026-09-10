@@ -187,21 +187,45 @@ func (r CheckResult) Tone() string {
 // recorded so the absence of a finding is distinguishable from the absence
 // of a check: a screen must render the whole slice, never just the failures.
 type Check struct {
-	ID     string
+	ID string
+	// Engine names the analyser this row belongs to, so the matrix reads as one
+	// block per analyser rather than as one undifferentiated list.
+	Engine string
 	Label  string
 	Result CheckResult
-	// WarnCount is a BLIND-SPOT counter, not a finding counter: today only
-	// the shell audit sets it, to scripts its parser could not read.
+	// WarnCount is not a finding counter: the number alone reads as "2
+	// problems" when it can mean the opposite.
 	WarnCount int
 }
 
-// Note says what a non-zero WarnCount means in words: the number alone reads
-// as "2 problems" when it means the opposite — places the scan could not look.
+// Note says what a non-zero WarnCount means in words. The rule pack's is a
+// blind-spot counter — scripts its parser could not read. The second engine's
+// mixes findings held below the reporting threshold with analyses that did not
+// run, so it is reported without a cause it cannot substantiate.
 func (c Check) Note() string {
 	if c.WarnCount == 0 {
 		return ""
 	}
+	if c.Engine != "" && c.Engine != RulepackEngine {
+		return plural(c.WarnCount, "warning")
+	}
 	return plural(c.WarnCount, "file") + " this check could not read"
+}
+
+// RulepackEngine is the analyser id the project's own rule pack records, and
+// the value every row written before there was a second engine carries.
+const RulepackEngine = "rulepack"
+
+// EngineLabel names an analyser for a reader.
+func EngineLabel(engine string) string {
+	switch engine {
+	case "", RulepackEngine:
+		return "Rule pack"
+	case "skill-scanner":
+		return "Skill scanner"
+	default:
+		return engine
+	}
 }
 
 // Evidence is one location a finding points at. Path and Quote are bytes out
@@ -225,8 +249,11 @@ func (e Evidence) Location() string {
 
 // FindingRow is one row of the findings list.
 type FindingRow struct {
-	ID       string
-	RuleID   string
+	ID     string
+	RuleID string
+	// Engine names the analyser that raised it. Two engines may use the same
+	// rule id, so the pair is what identifies a finding to a reader.
+	Engine   string
 	Title    string
 	Subject  string
 	Severity Severity

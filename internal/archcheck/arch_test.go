@@ -91,8 +91,29 @@ var rules = []rule{
 		// beside the role that runs them, and a rule scoped only to the old path is a
 		// rule that passes because it governs nothing.
 		scope:     anyOf(under("internal/scan"), under("internal/worker/scanner")),
-		forbidden: anyOf(exact("os/exec"), exact("plugin"), exact("net/http")),
+		forbidden: anyOf(exact("os/exec"), exact("plugin")),
 	},
+	{
+		name: "only the engine client reaches the second engine",
+		why: "constitution 1.4.0 narrowed principle III: a pinned third-party static engine may " +
+			"be reached over a documented interface, and the interface is HTTP. That permission " +
+			"is scoped to the one package that holds the client, so an analysis elsewhere in the " +
+			"scan tree still cannot open a socket. os/exec and plugin stay forbidden in every " +
+			"scan package including this one, by the rule above: reaching an engine that reads a " +
+			"tree is not the same as running anything out of one.",
+		scope: anyOf(
+			under("internal/scan"),
+			// under() is a prefix, so the engine package has to be excluded by
+			// name rather than by being outside the scope.
+			andNot(under("internal/worker/scanner"), under("internal/worker/scanner/engine")),
+		),
+		forbidden: exact("net/http"),
+	},
+}
+
+// andNot narrows a scope: in it when pred says so and except does not.
+func andNot(pred, except func(string) bool) func(string) bool {
+	return func(path string) bool { return pred(path) && !except(path) }
 }
 
 // webMayImport is every first-party package internal/web is allowed to import.

@@ -360,6 +360,7 @@ func findingRow(from *hub.Finding, now time.Time) view.FindingRow {
 	return view.FindingRow{
 		ID:       from.ID,
 		RuleID:   from.RuleID,
+		Engine:   from.Engine,
 		Title:    from.Title,
 		Subject:  from.Subject,
 		Severity: view.Severity(from.Severity),
@@ -400,6 +401,7 @@ func findingDetail(from hub.FindingDetail, now time.Time) view.FindingDetail {
 	for _, check := range from.Checks {
 		out.Checks = append(out.Checks, view.Check{
 			ID:        check.ID,
+			Engine:    check.Engine,
 			Label:     check.Label,
 			Result:    view.CheckResult(check.Result),
 			WarnCount: check.WarnCount,

@@ -35,6 +35,9 @@ func handler(t *testing.T, source web.CatalogSource) http.Handler {
 	if packages, ok := source.(web.PackageSource); ok {
 		deps.Packages = packages
 	}
+	if files, ok := source.(web.PackageFileSource); ok {
+		deps.Files = files
+	}
 	// Same shape for the two governance screens, and for the sidebar counts. The
 	// fixture answers all three reads and deliberately cannot answer a decision, so
 	// deps.Reviewer stays nil here and the screen renders what a hub with no
@@ -724,6 +727,55 @@ func TestAddToProfileWhenTheReadFailsSaysSoRatherThanClaimingThereAreNone(t *tes
 
 	require.Contains(t, body, "could not be read")
 	require.NotContains(t, body, "You have no profiles yet")
+}
+
+// ---- package files (US3/US5: read a skill's files before using it) -----------
+
+// The fixture opens example/adr-writer on SKILL.md by default (fixture/files.go),
+// the same file listPackageFiles names as the default when a bundle has one at
+// its root — and its heading arrives as real markup, not escaped text, which is
+// what proves the markdown pipeline ran rather than the file being dumped as-is.
+func TestFilesPanelDefaultsToTheBundlesOwnFileAndListsEveryOther(t *testing.T) {
+	body := get(t, handler(t, fixture.New()), "/packages/example/adr-writer").Body.String()
+
+	require.Contains(t, body, `id="files-panel"`)
+	require.Contains(t, body, `am-file-path">SKILL.md<`)
+	require.Contains(t, body, `am-file-path">references/template.md<`)
+
+	require.Contains(t, body, `id="files-panel"`)
+	require.Contains(t, body, "<h1 class=\"am-md-h\">ADR writer",
+		"the default file's own heading must render as markup, not as an escaped literal")
+	require.NotContains(t, body, "# ADR writer", "the raw markdown source must not be dumped verbatim")
+}
+
+// Selecting a different file swaps the detail panel to it and away from the
+// default — the audit screen's own ?entry= idiom, reused for ?file=.
+func TestFilesPanelSelectsTheFileTheQueryNames(t *testing.T) {
+	body := get(t, handler(t, fixture.New()),
+		"/packages/example/adr-writer?file=references%2Ftemplate.md").Body.String()
+
+	require.Contains(t, body, "<h1 class=\"am-md-h\">Template")
+	// "/adr new" is SKILL.md's own content and nowhere else on the page (the
+	// package's Description field happens to share SKILL.md's opening
+	// sentence, which is why this checks a line unique to the file body).
+	require.NotContains(t, body, "/adr new",
+		"only the selected file's content is shown, not every file at once")
+}
+
+func TestFilesPanelNamesAStalePathAsMissingRatherThanAsAnEmptyPanel(t *testing.T) {
+	body := get(t, handler(t, fixture.New()),
+		"/packages/example/adr-writer?file=no-such-file.md").Body.String()
+
+	require.Contains(t, body, `id="file-missing"`)
+}
+
+// A package the fixture records no files for still renders the panel, honestly
+// empty — never silently absent, which would read as "this screen forgot files
+// exist" rather than "this bundle has none".
+func TestFilesPanelIsHonestlyEmptyForAPackageTheFixtureHasNoFilesFor(t *testing.T) {
+	body := get(t, handler(t, fixture.New()), "/packages/community/release-toolkit").Body.String()
+
+	require.Contains(t, body, `id="files-empty"`)
 }
 
 // ---- the viewer, sign-in and the no-role state (US2) -------------------------

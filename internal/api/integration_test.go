@@ -422,14 +422,22 @@ func lockfileFor(slug string, seq int) contract.Lockfile {
 
 // liveHandler is the real router over the real database and a real (in-memory)
 // bucket, so every test below goes through the middleware, the operation and the
-// query exactly as a client would.
-func liveHandler(t *testing.T) http.Handler {
+// query exactly as a client would. extraBlobs lets a file that needs its own
+// object key/bytes (a real packed bundle, say) add them to the same bucket
+// without every other caller having to know about them.
+func liveHandler(t *testing.T, extraBlobs ...map[string][]byte) http.Handler {
 	t.Helper()
 
 	bucket, err := blob.Open(context.Background(), "mem://")
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, bucket.Close()) })
-	for key, body := range map[string][]byte{bundleKey: bundleBytes, siblingKey: siblingBytes} {
+	blobs := map[string][]byte{bundleKey: bundleBytes, siblingKey: siblingBytes}
+	for _, extra := range extraBlobs {
+		for key, body := range extra {
+			blobs[key] = body
+		}
+	}
+	for key, body := range blobs {
 		_, writeErr := bucket.Writer().Write(context.Background(), key, bytes.NewReader(body))
 		require.NoError(t, writeErr)
 	}

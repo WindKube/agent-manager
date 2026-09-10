@@ -62,6 +62,64 @@ type Package struct {
 	// Missing is a package that does not exist, or that this identity may
 	// not read — one state for both, exactly as the api's 404 is.
 	Missing bool
+
+	// Files is the bundle's own file tree (US3/US5: read a skill's files
+	// before using it), read independently of everything above — a
+	// deployment can answer the package detail while its bundle reader is
+	// unavailable, and the two must fail on their own terms.
+	Files        []FileRow
+	FilesDefault string
+	// FilesUnavailable is the list read failing outright. FilesRejected is
+	// the version answering plainly that it was never distributable, which
+	// is not a failure of this read.
+	FilesUnavailable bool
+	FilesRejected    bool
+
+	// SelectedFilePath is the path this screen is showing, from the query
+	// or from FilesDefault when the query named none. It is never used to
+	// build a filesystem path — only ever compared against Files.
+	SelectedFilePath string
+	SelectedFile     *FileDetail
+	// The three reasons a chosen path can come back with nothing to show,
+	// each a different true statement: a stale or tampered link, a refusal
+	// to render something this large, and a kind this hub never renders.
+	FileMissing       bool
+	FileTooLarge      bool
+	FileNotRenderable bool
+}
+
+// FileRow is one file the bundle holds, as the files panel lists it.
+type FileRow struct {
+	Path      string
+	Kind      string // "markdown" | "text" | "binary"
+	SizeLabel string
+	OverLimit bool
+}
+
+// FileList is one read of the panel's list.
+type FileList struct {
+	Files   []FileRow
+	Default string
+}
+
+// FileDetail is one file's rendered content. Markdown is populated only
+// when Kind is "markdown"; Text carries the file's content for both kinds,
+// since a markdown file's own source is what MarkdownBody's own Text nodes
+// escape from — Text is not rendered a second time for a markdown file.
+type FileDetail struct {
+	Path     string
+	Kind     string // "markdown" | "text"
+	Text     string
+	Markdown MarkdownDoc
+}
+
+// FileHref selects one file without disturbing anything else the page
+// shows — the same query-parameter idiom the audit screen's detail panel
+// uses.
+func (p Package) FileHref(path string) string {
+	values := url.Values{}
+	values.Set("file", path)
+	return PackageHref(p.ID) + "?" + values.Encode()
 }
 
 // ProfileOption is one of the viewer's profiles as the add-to-profile

@@ -1,0 +1,175 @@
+package components
+
+import (
+	gmast "github.com/yuin/goldmark/ast"
+
+	"agent-manager/internal/web/view"
+)
+
+// MarkdownBody renders a parsed markdown file (view.ParseMarkdown's result)
+// node by node. Every run of text reaches the page through templ's own
+// `{ expr }` escaping and every link's href through templ's automatic
+// scheme check (a plain string handed to href is sanitised via templ.URL,
+// which rejects anything but http/https/mailto/tel/ftp/ftps) — there is
+// never a pre-built HTML string here for a sanitiser to have missed
+// something in, which is also why this file has no need of the templ.Raw
+// archcheck bans under internal/web (TestWebNeverBypassesTemplEscaping).
+//
+// A raw HTML block or inline span in the source — the exact place a
+// `<script>`, an `<img onerror=...>` or an `<iframe>` would land — is never
+// walked into markup at all: markdownNode's switch has no case that reads
+// gmast.RawHTML or gmast.HTMLBlock content, so @markdownOmitted is the only
+// thing such a node can ever produce.
+templ MarkdownBody(doc view.MarkdownDoc) {
+	<div class="am-md">
+		@markdownChildren(doc.Root, doc.Source)
+	</div>
+}
+
+templ markdownChildren(n gmast.Node, source []byte) {
+	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		@markdownNode(c, source)
+	}
+}
+
+templ markdownNode(n gmast.Node, source []byte) {
+	switch n.Kind() {
+		case gmast.KindParagraph, gmast.KindTextBlock:
+			<p>
+				@markdownChildren(n, source)
+			</p>
+		case gmast.KindHeading:
+			@markdownHeading(n.(*gmast.Heading), source)
+		case gmast.KindThematicBreak:
+			<hr/>
+		case gmast.KindBlockquote:
+			<blockquote class="am-md-quote">
+				@markdownChildren(n, source)
+			</blockquote>
+		case gmast.KindList:
+			@markdownList(n.(*gmast.List), source)
+		case gmast.KindListItem:
+			<li>
+				@markdownChildren(n, source)
+			</li>
+		case gmast.KindCodeBlock:
+			<pre class="am-md-code"><code>{ view.BlockText(n, source) }</code></pre>
+		case gmast.KindFencedCodeBlock:
+			<pre class="am-md-code"><code>{ view.BlockText(n, source) }</code></pre>
+		case gmast.KindText:
+			@markdownText(n.(*gmast.Text), source)
+		case gmast.KindString:
+			{ string(n.(*gmast.String).Value) }
+		case gmast.KindCodeSpan:
+			<code>{ string(n.Text(source)) }</code>
+		case gmast.KindEmphasis:
+			@markdownEmphasis(n.(*gmast.Emphasis), source)
+		case gmast.KindLink:
+			@markdownLink(n.(*gmast.Link), source)
+		case gmast.KindAutoLink:
+			@markdownAutoLink(n.(*gmast.AutoLink), source)
+		case gmast.KindImage:
+			@markdownImage(n.(*gmast.Image), source)
+		case gmast.KindRawHTML, gmast.KindHTMLBlock:
+			// The one case that matters most: dropped outright, never
+			// walked for text, so nothing inside — a script tag, an event
+			// handler attribute, a javascript: href — ever reaches the
+			// page. A placeholder still renders, so a file that had a raw
+			// HTML block does not read as an empty file (FR-055).
+			@markdownOmitted()
+		default:
+			@markdownChildren(n, source)
+	}
+}
+
+templ markdownHeading(h *gmast.Heading, source []byte) {
+	switch h.Level {
+		case 1:
+			<h1 class="am-md-h">
+				@markdownChildren(h, source)
+			</h1>
+		case 2:
+			<h2 class="am-md-h">
+				@markdownChildren(h, source)
+			</h2>
+		case 3:
+			<h3 class="am-md-h">
+				@markdownChildren(h, source)
+			</h3>
+		case 4:
+			<h4 class="am-md-h">
+				@markdownChildren(h, source)
+			</h4>
+		case 5:
+			<h5 class="am-md-h">
+				@markdownChildren(h, source)
+			</h5>
+		default:
+			<h6 class="am-md-h">
+				@markdownChildren(h, source)
+			</h6>
+	}
+}
+
+templ markdownList(l *gmast.List, source []byte) {
+	if l.IsOrdered() {
+		<ol class="am-md-list">
+			@markdownChildren(l, source)
+		</ol>
+	} else {
+		<ul class="am-md-list">
+			@markdownChildren(l, source)
+		</ul>
+	}
+}
+
+templ markdownEmphasis(e *gmast.Emphasis, source []byte) {
+	if e.Level >= 2 {
+		<strong>
+			@markdownChildren(e, source)
+		</strong>
+	} else {
+		<em>
+			@markdownChildren(e, source)
+		</em>
+	}
+}
+
+// markdownLink renders an `[text](destination)`. Destination is a plain Go
+// string handed to href, so templ's own JoinURLErrs/URL sanitiser runs on
+// it — a `javascript:` destination is replaced with an inert placeholder
+// URL before it ever reaches the response, with no sanitiser of this
+// file's own required to catch it.
+templ markdownLink(l *gmast.Link, source []byte) {
+	<a class="am-md-link" href={ string(l.Destination) } target="_blank" rel="noopener noreferrer">
+		@markdownChildren(l, source)
+	</a>
+}
+
+templ markdownAutoLink(a *gmast.AutoLink, source []byte) {
+	<a class="am-md-link" href={ string(a.URL(source)) } target="_blank" rel="noopener noreferrer">{ string(a.URL(source)) }</a>
+}
+
+// markdownImage renders as a link rather than an <img>: the alt text and
+// destination go through the exact same escaping and href sanitisation as
+// any other link, and this hub does not fetch or proxy image bytes on a
+// package's behalf.
+templ markdownImage(img *gmast.Image, source []byte) {
+	<a class="am-md-link am-md-image" href={ string(img.Destination) } target="_blank" rel="noopener noreferrer">
+		image: { string(img.Text(source)) }
+	</a>
+}
+
+templ markdownText(t *gmast.Text, source []byte) {
+	{ string(t.Segment.Value(source)) }
+	if t.SoftLineBreak() {
+		{ " " }
+	}
+	if t.HardLineBreak() {
+		<br/>
+	}
+}
+
+templ markdownOmitted() {
+	<span class="am-md-omitted">[markup omitted]</span>
+}

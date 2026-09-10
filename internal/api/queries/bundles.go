@@ -52,3 +52,29 @@ func Bundle(ctx context.Context, db bun.IDB, namespace, name, version string) (B
 	}
 	return ref, nil
 }
+
+// latestBundleRefSQL is detailSQL's own join (package.go): the LATEST VISIBLE
+// version, the one every other panel on the detail screen describes, not an
+// arbitrary one a caller could name. `visibility = 'organisation'` repeats
+// that statement's unconditional filter for the same reason it does: the
+// FROM clause differs, so it cannot be shared, and it must not drift.
+const latestBundleRefSQL = `
+select v.object_key, v.digest, v.verdict::text, coalesce(v.size_bytes, 0)
+from package as pkg
+join version as v on v.id = pkg.latest_version_id and v.visible
+where pkg.namespace = ? and pkg.name = ? and pkg.visibility = 'organisation'`
+
+// LatestBundle locates the bytes of a package's latest visible version — the
+// file panel's door to the same version view.Package already describes.
+func LatestBundle(ctx context.Context, db bun.IDB, namespace, name string) (BundleRef, error) {
+	var ref BundleRef
+	err := db.QueryRowContext(ctx, latestBundleRefSQL, namespace, name).
+		Scan(&ref.ObjectKey, &ref.Digest, &ref.Verdict, &ref.SizeBytes)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return BundleRef{}, ErrNotFound
+	case err != nil:
+		return BundleRef{}, fmt.Errorf("locate latest bundle for %s/%s: %w", namespace, name, err)
+	}
+	return ref, nil
+}

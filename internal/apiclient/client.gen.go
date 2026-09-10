@@ -894,6 +894,45 @@ func (e PackageDetailVerdict) Valid() bool {
 	}
 }
 
+// Defines values for PackageFileKind.
+const (
+	PackageFileKindBinary   PackageFileKind = "binary"
+	PackageFileKindMarkdown PackageFileKind = "markdown"
+	PackageFileKindText     PackageFileKind = "text"
+)
+
+// Valid indicates whether the value is a known member of the PackageFileKind enum.
+func (e PackageFileKind) Valid() bool {
+	switch e {
+	case PackageFileKindBinary:
+		return true
+	case PackageFileKindMarkdown:
+		return true
+	case PackageFileKindText:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PackageFileContentKind.
+const (
+	PackageFileContentKindMarkdown PackageFileContentKind = "markdown"
+	PackageFileContentKindText     PackageFileContentKind = "text"
+)
+
+// Valid indicates whether the value is a known member of the PackageFileContentKind enum.
+func (e PackageFileContentKind) Valid() bool {
+	switch e {
+	case PackageFileContentKindMarkdown:
+		return true
+	case PackageFileContentKindText:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PackagePreviewKind.
 const (
 	PackagePreviewKindPlugin PackagePreviewKind = "plugin"
@@ -2759,6 +2798,45 @@ type PackageDetailManifestObject string
 // PackageDetailVerdict Examples: clean
 type PackageDetailVerdict string
 
+// PackageFile defines model for PackageFile.
+type PackageFile struct {
+	// Kind markdown renders through the sanitised markdown pipeline; text is shown verbatim, escaped; binary is listed and never rendered.
+	Kind      PackageFileKind `json:"kind"`
+	OverLimit *bool           `json:"overLimit,omitempty"`
+
+	// Path Examples: skills/adr-writer/SKILL.md
+	Path string `json:"path"`
+
+	// SizeBytes Examples: 2048
+	SizeBytes int64 `json:"sizeBytes"`
+}
+
+// PackageFileKind markdown renders through the sanitised markdown pipeline; text is shown verbatim, escaped; binary is listed and never rendered.
+type PackageFileKind string
+
+// PackageFileContent defines model for PackageFileContent.
+type PackageFileContent struct {
+	Content string `json:"content"`
+
+	// Kind Which rendering path the caller should take. Never binary — that answer is a 415, not this type.
+	Kind PackageFileContentKind `json:"kind"`
+
+	// Path Examples: SKILL.md
+	Path string `json:"path"`
+}
+
+// PackageFileContentKind Which rendering path the caller should take. Never binary — that answer is a 415, not this type.
+type PackageFileContentKind string
+
+// PackageFileList defines model for PackageFileList.
+type PackageFileList struct {
+	// Default The file to show first: this version's own SKILL.md or plugin.json, when the bundle has one at its root.
+	Default *string `json:"default,omitempty"`
+
+	// Files Every regular file the bundle holds, in path order.
+	Files []PackageFile `json:"files"`
+}
+
 // PackageOrigin defines model for PackageOrigin.
 type PackageOrigin struct {
 	// ParentId Examples: example/platform-toolkit
@@ -3739,6 +3817,12 @@ type PreviewPackageMultipartBody struct {
 	Archive openapi_types.File `json:"archive"`
 }
 
+// GetPackageFileParams defines parameters for GetPackageFile.
+type GetPackageFileParams struct {
+	// Path The file's path exactly as listPackageFiles named it.
+	Path string `form:"path" json:"path"`
+}
+
 // ScannerSummaryParams defines parameters for ScannerSummary.
 type ScannerSummaryParams struct {
 	// Days The window the scanned count and the median are computed over. The design's card says 30 days; the parameter is what keeps that caption a value rather than a constant (FR-121).
@@ -4157,6 +4241,20 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /v1/packages/{namespace}/{name} (the `GetPackage` operationId).
 	GetPackage(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListPackageFiles The bundle's file tree, to read before using it
+	//
+	// Every regular file the LATEST VISIBLE version's bundle holds. The `component` table records only the significant components — a skill's directory, an MCP server — not a full file list, so this unpacks the bundle itself, under the same extraction caps the fetcher enforces on ingestion, and does so again on every call: nothing here stores a byte-level file list to answer from instead. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029). `default` names this version's own SKILL.md or plugin.json when the bundle has one at its root, since that is the file most worth reading first.
+	//
+	// Corresponds with GET /v1/packages/{namespace}/{name}/files (the `ListPackageFiles` operationId).
+	ListPackageFiles(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetPackageFile One file's content, to read before using the package
+	//
+	// The exact bytes of one file inside the LATEST VISIBLE version's bundle, decoded as UTF-8. `path` is untrusted input off a URL and is resolved against the archive's OWN member list — an exact lookup, never a filesystem path built from the query, so a traversal or an absolute path simply matches nothing and is a 404. A member over 256 KiB is refused outright rather than truncated: a half-read SKILL.md that looks complete is worse than an honest refusal. A binary member is refused the same way and never returned as bytes — this hub renders text and markdown only, and carries no HTML or markdown dependency itself; the caller decides how to render `kind`. Reading this re-unpacks the whole bundle, the same cost listPackageFiles pays, because nothing here is cached.
+	//
+	// Corresponds with GET /v1/packages/{namespace}/{name}/files/content (the `GetPackageFile` operationId).
+	GetPackageFile(ctx context.Context, namespace string, name string, params *GetPackageFileParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListProfiles Profiles readable by this identity
 	//
@@ -4979,6 +5077,40 @@ func (c *Client) PreviewPackageWithBody(ctx context.Context, contentType string,
 // Corresponds with GET /v1/packages/{namespace}/{name} (the `GetPackage` operationId).
 func (c *Client) GetPackage(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetPackageRequest(c.Server, namespace, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListPackageFiles The bundle's file tree, to read before using it
+//
+// Every regular file the LATEST VISIBLE version's bundle holds. The `component` table records only the significant components — a skill's directory, an MCP server — not a full file list, so this unpacks the bundle itself, under the same extraction caps the fetcher enforces on ingestion, and does so again on every call: nothing here stores a byte-level file list to answer from instead. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029). `default` names this version's own SKILL.md or plugin.json when the bundle has one at its root, since that is the file most worth reading first.
+//
+// Corresponds with GET /v1/packages/{namespace}/{name}/files (the `ListPackageFiles` operationId).
+func (c *Client) ListPackageFiles(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListPackageFilesRequest(c.Server, namespace, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetPackageFile One file's content, to read before using the package
+//
+// The exact bytes of one file inside the LATEST VISIBLE version's bundle, decoded as UTF-8. `path` is untrusted input off a URL and is resolved against the archive's OWN member list — an exact lookup, never a filesystem path built from the query, so a traversal or an absolute path simply matches nothing and is a 404. A member over 256 KiB is refused outright rather than truncated: a half-read SKILL.md that looks complete is worse than an honest refusal. A binary member is refused the same way and never returned as bytes — this hub renders text and markdown only, and carries no HTML or markdown dependency itself; the caller decides how to render `kind`. Reading this re-unpacks the whole bundle, the same cost listPackageFiles pays, because nothing here is cached.
+//
+// Corresponds with GET /v1/packages/{namespace}/{name}/files/content (the `GetPackageFile` operationId).
+func (c *Client) GetPackageFile(ctx context.Context, namespace string, name string, params *GetPackageFileParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetPackageFileRequest(c.Server, namespace, name, params)
 	if err != nil {
 		return nil, err
 	}
@@ -6571,6 +6703,111 @@ func NewGetPackageRequest(server string, namespace string, name string) (*http.R
 	return req, nil
 }
 
+// NewListPackageFilesRequest constructs an http.Request for the ListPackageFiles method
+func NewListPackageFilesRequest(server string, namespace string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/packages/%s/%s/files", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetPackageFileRequest constructs an http.Request for the GetPackageFile method
+func NewGetPackageFileRequest(server string, namespace string, name string, params *GetPackageFileParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/packages/%s/%s/files/content", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", false, "path", params.Path, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListProfilesRequest constructs an http.Request for the ListProfiles method
 func NewListProfilesRequest(server string) (*http.Request, error) {
 	var err error
@@ -7510,6 +7747,24 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /v1/packages/{namespace}/{name} (the `GetPackage` operationId).
 	GetPackageWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*GetPackageResponse, error)
+
+	// ListPackageFilesWithResponse The bundle's file tree, to read before using it
+	//
+	// Every regular file the LATEST VISIBLE version's bundle holds. The `component` table records only the significant components — a skill's directory, an MCP server — not a full file list, so this unpacks the bundle itself, under the same extraction caps the fetcher enforces on ingestion, and does so again on every call: nothing here stores a byte-level file list to answer from instead. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029). `default` names this version's own SKILL.md or plugin.json when the bundle has one at its root, since that is the file most worth reading first.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/packages/{namespace}/{name}/files (the `ListPackageFiles` operationId).
+	ListPackageFilesWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*ListPackageFilesResponse, error)
+
+	// GetPackageFileWithResponse One file's content, to read before using the package
+	//
+	// The exact bytes of one file inside the LATEST VISIBLE version's bundle, decoded as UTF-8. `path` is untrusted input off a URL and is resolved against the archive's OWN member list — an exact lookup, never a filesystem path built from the query, so a traversal or an absolute path simply matches nothing and is a 404. A member over 256 KiB is refused outright rather than truncated: a half-read SKILL.md that looks complete is worse than an honest refusal. A binary member is refused the same way and never returned as bytes — this hub renders text and markdown only, and carries no HTML or markdown dependency itself; the caller decides how to render `kind`. Reading this re-unpacks the whole bundle, the same cost listPackageFiles pays, because nothing here is cached.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/packages/{namespace}/{name}/files/content (the `GetPackageFile` operationId).
+	GetPackageFileWithResponse(ctx context.Context, namespace string, name string, params *GetPackageFileParams, reqEditors ...RequestEditorFn) (*GetPackageFileResponse, error)
 
 	// ListProfilesWithResponse Profiles readable by this identity
 	//
@@ -9594,6 +9849,158 @@ func (r GetPackageResponse) ContentType() string {
 	return ""
 }
 
+type ListPackageFilesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PackageFileList
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListPackageFilesResponse) GetJSON200() *PackageFileList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListPackageFilesResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ListPackageFilesResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r ListPackageFilesResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ListPackageFilesResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListPackageFilesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListPackageFilesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListPackageFilesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListPackageFilesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetPackageFileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PackageFileContent
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON413 the response for an HTTP 413 `application/problem+json` response
+	ApplicationproblemJSON413 *Error
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetPackageFileResponse) GetJSON200() *PackageFileContent {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetPackageFileResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetPackageFileResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetPackageFileResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON413 returns the response for an HTTP 413 `application/problem+json` response
+func (r GetPackageFileResponse) GetApplicationproblemJSON413() *Error {
+	return r.ApplicationproblemJSON413
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r GetPackageFileResponse) GetApplicationproblemJSON415() *Error {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r GetPackageFileResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetPackageFileResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetPackageFileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetPackageFileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetPackageFileResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListProfilesResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -11223,6 +11630,36 @@ func (c *ClientWithResponses) GetPackageWithResponse(ctx context.Context, namesp
 		return nil, err
 	}
 	return ParseGetPackageResponse(rsp)
+}
+
+// ListPackageFilesWithResponse The bundle's file tree, to read before using it
+//
+// Every regular file the LATEST VISIBLE version's bundle holds. The `component` table records only the significant components — a skill's directory, an MCP server — not a full file list, so this unpacks the bundle itself, under the same extraction caps the fetcher enforces on ingestion, and does so again on every call: nothing here stores a byte-level file list to answer from instead. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029). `default` names this version's own SKILL.md or plugin.json when the bundle has one at its root, since that is the file most worth reading first.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/packages/{namespace}/{name}/files (the `ListPackageFiles` operationId).
+func (c *ClientWithResponses) ListPackageFilesWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*ListPackageFilesResponse, error) {
+	rsp, err := c.ListPackageFiles(ctx, namespace, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListPackageFilesResponse(rsp)
+}
+
+// GetPackageFileWithResponse One file's content, to read before using the package
+//
+// The exact bytes of one file inside the LATEST VISIBLE version's bundle, decoded as UTF-8. `path` is untrusted input off a URL and is resolved against the archive's OWN member list — an exact lookup, never a filesystem path built from the query, so a traversal or an absolute path simply matches nothing and is a 404. A member over 256 KiB is refused outright rather than truncated: a half-read SKILL.md that looks complete is worse than an honest refusal. A binary member is refused the same way and never returned as bytes — this hub renders text and markdown only, and carries no HTML or markdown dependency itself; the caller decides how to render `kind`. Reading this re-unpacks the whole bundle, the same cost listPackageFiles pays, because nothing here is cached.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/packages/{namespace}/{name}/files/content (the `GetPackageFile` operationId).
+func (c *ClientWithResponses) GetPackageFileWithResponse(ctx context.Context, namespace string, name string, params *GetPackageFileParams, reqEditors ...RequestEditorFn) (*GetPackageFileResponse, error) {
+	rsp, err := c.GetPackageFile(ctx, namespace, name, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetPackageFileResponse(rsp)
 }
 
 // ListProfilesWithResponse Profiles readable by this identity
@@ -13045,6 +13482,128 @@ func ParseGetPackageResponse(rsp *http.Response) (*GetPackageResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListPackageFilesResponse parses an HTTP response from a ListPackageFilesWithResponse call
+func ParseListPackageFilesResponse(rsp *http.Response) (*ListPackageFilesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListPackageFilesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PackageFileList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetPackageFileResponse parses an HTTP response from a GetPackageFileWithResponse call
+func ParseGetPackageFileResponse(rsp *http.Response) (*GetPackageFileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetPackageFileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PackageFileContent
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

@@ -89,3 +89,36 @@ type PackageDependent struct {
 	Version string `json:"version,omitempty" example:"1.3.0"`
 	Range   string `json:"range,omitempty" example:"^1.2"`
 }
+
+// PackageFileList is the bundle's tree, read from the archive itself: the
+// `component` table records only the significant components (a skill's
+// directory, an MCP server), not a full file list.
+type PackageFileList struct {
+	Files []PackageFile `json:"files" doc:"Every regular file the bundle holds, in path order."`
+	// Default is empty when the bundle has neither at its root — an
+	// unregistered edge case, not a claim that one must exist.
+	Default string `json:"default,omitempty" doc:"The file to show first: this version's own SKILL.md or plugin.json, when the bundle has one at its root."`
+}
+
+// PackageFile is one file the bundle holds. Content is a separate operation
+// (getPackageFile): this hub stores no rendered copy, so reading it re-reads
+// and re-unpacks the whole bundle.
+type PackageFile struct {
+	Path      string `json:"path" example:"skills/adr-writer/SKILL.md"`
+	Kind      string `json:"kind" enum:"markdown,text,binary" doc:"markdown renders through the sanitised markdown pipeline; text is shown verbatim, escaped; binary is listed and never rendered."`
+	SizeBytes int64  `json:"sizeBytes" example:"2048"`
+	// OverLimit means getPackageFile refuses this file's content outright —
+	// a 413, never a truncation.
+	OverLimit bool `json:"overLimit,omitempty"`
+}
+
+// PackageFileContent is one file's content, decoded as UTF-8 and otherwise
+// unmodified. A binary member or one over the size this hub renders is a
+// refusal from getPackageFile, never truncated into this type.
+type PackageFileContent struct {
+	Path string `json:"path" example:"SKILL.md"`
+	Kind string `json:"kind" enum:"markdown,text" doc:"Which rendering path the caller should take. Never binary — that answer is a 415, not this type."`
+	// Content is served as-is; the api role carries no markdown or HTML
+	// dependency, so nothing here is pre-rendered.
+	Content string `json:"content"`
+}

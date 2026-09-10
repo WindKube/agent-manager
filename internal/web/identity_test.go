@@ -152,6 +152,11 @@ func sweep() []sweptScreen {
 		inShell("CapabilityPanel", func() templ.Component { return components.CapabilityPanel(view.Capabilities{}) }),
 		inShell("VersionsPanel", func() templ.Component { return components.VersionsPanel(view.Package{}) }),
 		inShell("DependentsPanel", func() templ.Component { return components.DependentsPanel(view.Package{}) }),
+		inShell("FilesPanel", func() templ.Component { return components.FilesPanel(view.Package{}) }),
+		// Empty rather than nil: a MarkdownDoc a package's own file content
+		// parsed to is never nil in production, and nil would panic the
+		// walk rather than render a page with no identity on it.
+		inShell("MarkdownBody", func() templ.Component { return components.MarkdownBody(view.ParseMarkdown(nil)) }),
 		// The two governance screens (US4). They are swept EMPTY on purpose: the
 		// actor column of an audit row and the reviewer on an override are both
 		// person-shaped by nature and both arrive from a source, so feeding rows in

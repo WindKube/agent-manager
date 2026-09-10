@@ -282,6 +282,54 @@ func (s *Server) registerPackages() {
 	}, s.getPackage)
 
 	huma.Register(s.api, huma.Operation{
+		OperationID: "listPackageFiles",
+		Method:      http.MethodGet,
+		Path:        "/v1/packages/{namespace}/{name}/files",
+		Tags:        []string{"catalog"},
+		Summary:     "The bundle's file tree, to read before using it",
+		Description: "Every regular file the LATEST VISIBLE version's bundle holds. The `component` " +
+			"table records only the significant components — a skill's directory, an MCP server " +
+			"— not a full file list, so this unpacks the bundle itself, under the same extraction " +
+			"caps the fetcher enforces on ingestion, and does so again on every call: nothing here " +
+			"stores a byte-level file list to answer from instead. A rejected version is never " +
+			"served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029). " +
+			"`default` names this version's own SKILL.md or plugin.json when the bundle has one at " +
+			"its root, since that is the file most worth reading first.",
+		Responses: map[string]*huma.Response{
+			"401": s.errorResponse("No usable session. The caller must sign in; there is no anonymous view."),
+			"403": s.errorResponse("This version was rejected and is never served."),
+			"404": s.errorResponse("No such package, or it has no published version."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.listPackageFiles)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "getPackageFile",
+		Method:      http.MethodGet,
+		Path:        "/v1/packages/{namespace}/{name}/files/content",
+		Tags:        []string{"catalog"},
+		Summary:     "One file's content, to read before using the package",
+		Description: "The exact bytes of one file inside the LATEST VISIBLE version's bundle, decoded as " +
+			"UTF-8. `path` is untrusted input off a URL and is resolved against the archive's OWN " +
+			"member list — an exact lookup, never a filesystem path built from the query, so a " +
+			"traversal or an absolute path simply matches nothing and is a 404. A member over " +
+			"256 KiB is refused outright rather than truncated: a half-read SKILL.md that looks " +
+			"complete is worse than an honest refusal. A binary member is refused the same way and " +
+			"never returned as bytes — this hub renders text and markdown only, and carries no " +
+			"HTML or markdown dependency itself; the caller decides how to render `kind`. Reading " +
+			"this re-unpacks the whole bundle, the same cost listPackageFiles pays, because nothing " +
+			"here is cached.",
+		Responses: map[string]*huma.Response{
+			"401": s.errorResponse("No usable session. The caller must sign in; there is no anonymous view."),
+			"403": s.errorResponse("This version was rejected and is never served."),
+			"404": s.errorResponse("No such package, its latest version, or this file within it."),
+			"413": s.errorResponse("This file is larger than this hub renders."),
+			"415": s.errorResponse("This file is binary and is not rendered."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.getPackageFile)
+
+	huma.Register(s.api, huma.Operation{
 		OperationID: "previewPackage",
 		Method:      http.MethodPost,
 		Path:        "/v1/packages/preview",

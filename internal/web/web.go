@@ -52,6 +52,15 @@ type PackageSource interface {
 	Package(ctx context.Context, namespace, name string) (view.Package, error)
 }
 
+// PackageFileSource is the files panel's door to the api (US3/US5: read a
+// skill's files before using it), kept separate from PackageSource since a
+// deployment can answer a package's detail while its bundle reader is
+// unavailable, and the two reads must fail on their own terms.
+type PackageFileSource interface {
+	PackageFiles(ctx context.Context, namespace, name string) (view.FileList, error)
+	PackageFile(ctx context.Context, namespace, name, path string) (view.FileDetail, error)
+}
+
 // Registrar is the import modal's door to the two registration operations,
 // separate from CatalogSource so a fixture need not claim to accept one too.
 type Registrar interface {
@@ -144,6 +153,7 @@ type OrganizationSource interface {
 type Deps struct {
 	Catalog   CatalogSource
 	Packages  PackageSource
+	Files     PackageFileSource
 	Registrar Registrar
 	Auth      AuthProvider
 	// Viewers resolves who each request is acting as. Nil fails closed.

@@ -54,6 +54,10 @@ type Finding struct {
 	Severity string
 	State    string
 	Title    string
+	// Detail is the rule's own prose, the same text the detail pane shows in
+	// full — present on the row too so a reader can learn what a rule means
+	// on hover, before selecting it.
+	Detail string
 	// Subject is `community/slack-digest@0.5.1`, assembled here rather than
 	// by the api to avoid repeating it in four places.
 	Subject   string
@@ -108,6 +112,9 @@ type Check struct {
 	// Engine names the analyser this row belongs to.
 	Engine string
 	Label  string
+	// Explain is what this check looks for, in general, as the scan recorded
+	// it — not this scan's result, which is Result and WarnCount below.
+	Explain string
 	// Result is pass, fail or warn, canonical and unrendered.
 	Result    string
 	WarnCount int
@@ -278,6 +285,7 @@ func (c *Client) Finding(ctx context.Context, id string) (FindingDetail, error) 
 			Severity:  string(body.Severity),
 			State:     string(body.State),
 			Title:     body.Title,
+			Detail:    deref(body.Detail),
 			Subject:   body.PackageId + "@" + body.Version,
 			PackageID: body.PackageId,
 			Version:   body.Version,
@@ -312,7 +320,7 @@ func (c *Client) Finding(ctx context.Context, id string) (FindingDetail, error) 
 	}
 	for _, check := range body.Checks {
 		out.Checks = append(out.Checks, Check{
-			ID: check.CheckId, Engine: check.Engine, Label: check.Label,
+			ID: check.CheckId, Engine: check.Engine, Label: check.Label, Explain: check.Explain,
 			Result: string(check.Result), WarnCount: int(check.WarnCount),
 		})
 	}
@@ -461,6 +469,7 @@ func finding(from *apiclient.FindingSummary) Finding {
 		Severity:     string(from.Severity),
 		State:        string(from.State),
 		Title:        from.Title,
+		Detail:       deref(from.Detail),
 		Subject:      from.PackageId + "@" + from.Version,
 		PackageID:    from.PackageId,
 		Version:      from.Version,

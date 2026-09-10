@@ -23,7 +23,7 @@ Then:
 | API + OpenAPI | http://localhost:8082/v1 · `/v1/openapi.json` | Bearer token from the device flow below |
 | MinIO console | http://localhost:9001 | `minioadmin` / `minioadmin` |
 | Identity (Dex) | http://localhost:5556/dex/.well-known/openid-configuration | No console. The whole provider is `deploy/local/dex/config.yaml` plus the directory in `deploy/local/glauth/glauth.cfg` |
-| River UI (optional) | http://localhost:8085 | `docker compose --profile queue-ui up` |
+| River dashboard | http://localhost:8080/river, embedded in the hub | Catalog admin role. Read-only: no verb that changes the queue is proxied |
 
 A second directory user, `anowak@example.com`, same password, is in the `eng-security`
 group and therefore a scanner reviewer — use it to exercise the approve/reject path and see
@@ -53,15 +53,16 @@ compose.infra.yaml — everything the hub depends on and does not build.
      ├─ migrate-schema   arigaio/atlas — atlas migrate apply    (runs to completion)
      └─ migrate-queue    agent-manager migrate queue            (runs to completion)
             │
+            ├─ queue-ui :8085           River's own dashboard, served under /river/embed
+            │
 compose.yaml — the roles this project builds
             │
             ├─ api      :8082 → :8081   REST + OIDC + device flow + the outbox relay
             ├─ web      :8080           templ + datastar; NO database or object-store credential
             ├─ fetcher                  the only role that can write bundle bytes
-            ├─ scanner                  reads bytes, writes verdicts
-            │     │
-            │     └─ seed               one-shot: the design's dataset
-            └─ queue-ui :8085           optional, --profile queue-ui
+            └─ scanner                  reads bytes, writes verdicts
+                  │
+                  └─ seed               one-shot: the design's dataset
 ```
 
 The two migration containers are `depends_on: service_completed_successfully` gates —

@@ -35,13 +35,22 @@ templ PackageScreen(p view.Package) {
 				}
 				<span class={ KindClass(p.Kind) }>{ p.Kind.Label() }</span>
 				<span class={ ScanClass(p.Scan) }>{ p.Scan.Label() }</span>
+				<span class={ VisibilityClass(p.Visibility) }>{ p.VisibilityLabel() }</span>
 				if p.Category != "" {
 					<span class="am-detail-cat">{ p.Category }</span>
 				}
 			</div>
+			if p.Notice != nil {
+				<div class={ NoticeClass(*p.Notice) } id="package-notice">{ p.Notice.Text }</div>
+			}
+			@visibilityControl(p)
 			@addToProfile(p)
+			@packageDeleteControl(p)
 		}
 	</div>
+	if p.Notice != nil {
+		<div class={ NoticeClass(*p.Notice) } id="package-notice">{ p.Notice.Text }</div>
+	}
 	if p.SignedOut {
 		<div class="am-empty am-empty-auth" id="package-signed-out">
 			Sign in to inspect this package. The hub has no anonymous view.
@@ -64,6 +73,7 @@ templ packageBody(p view.Package) {
 			}
 			@packageManifest(p)
 			@CapabilityPanel(p.Capabilities)
+			@PackageScanPanel(p.ScanDetail)
 			@FilesPanel(p)
 		</div>
 		<div class="am-detail-side">
@@ -74,6 +84,42 @@ templ packageBody(p view.Package) {
 	if p.SelectedFile != nil || p.FileMissing || p.FileTooLarge || p.FileNotRenderable {
 		@filesDetailPanel(p)
 	}
+}
+
+// visibilityControl is FR-126's shape for a package's owner or a catalog
+// admin, and everyone else: shown, disabled, with the reason stated rather
+// than the control disappearing for the vast majority of viewers who may
+// only read this screen, not change it.
+templ visibilityControl(p view.Package) {
+	<div class="am-vis-control" id="package-visibility">
+		if !p.CanChangeVisibility {
+			<button type="button" class="am-btn" disabled aria-disabled="true" title={ view.VisibilityChangeDisabledReason }>Change visibility</button>
+			<span class="am-toggle-note">{ view.VisibilityChangeDisabledReason }</span>
+		} else {
+			<form method="post" action="/packages/visibility" class="am-vis-form">
+				<input type="hidden" name="id" value={ p.ID }/>
+				<select name="visibility" class="am-select">
+					for _, option := range p.VisibilityOptions() {
+						if option.Value == p.Visibility && option.Disabled {
+							<option value={ option.Value } selected disabled title={ option.Reason }>{ option.Label }</option>
+						} else if option.Value == p.Visibility {
+							<option value={ option.Value } selected>{ option.Label }</option>
+						} else if option.Disabled {
+							<option value={ option.Value } disabled title={ option.Reason }>{ option.Label }</option>
+						} else {
+							<option value={ option.Value }>{ option.Label }</option>
+						}
+					}
+				</select>
+				<button type="submit" class="am-btn">Save</button>
+			</form>
+			for _, option := range p.VisibilityOptions() {
+				if option.Disabled {
+					<span class="am-toggle-note">{ option.Label }: { option.Reason }</span>
+				}
+			}
+		}
+	</div>
 }
 
 // addToProfile is US5's own words: "add to the profile", personal or
@@ -129,6 +175,48 @@ templ addToProfileRow(p view.Package, option view.ProfileOption) {
 			<span class="am-toggle-note">{ view.CurateDisabledReason }</span>
 		}
 	</div>
+}
+
+// packageDeleteControl is catalog delete's package-level action: a whole
+// package archives every one of its versions. The control is never hidden —
+// a viewer without the role sees it disabled with the reason, the same
+// precedent addToProfileRow and org.templ's own gated controls follow — and
+// it never fires from a bare click: typing the package id is what enables
+// the submit, following addEntryControl's toggle-then-reveal shape.
+templ packageDeleteControl(p view.Package) {
+	<div class="am-panel-toggle-row" data-signals="{_deletePkgOpen: false, _deletePkgConfirm: ''}">
+		if p.DeleteAccess.Allowed {
+			<button type="button" class="am-btn" data-on:click="$_deletePkgOpen = !$_deletePkgOpen">Delete package</button>
+		} else {
+			<button type="button" class="am-btn" disabled aria-disabled="true" title={ p.DeleteAccess.Reason }>
+				Delete package
+			</button>
+		}
+	</div>
+	if !p.DeleteAccess.Allowed {
+		<div class="am-toggle-note">{ p.DeleteAccess.Reason }</div>
+	} else {
+		<form
+			method="post"
+			action={ view.PackageDeleteHref(p.ID) }
+			class="am-field-row"
+			style="display:none"
+			data-style:display="$_deletePkgOpen ? 'flex' : 'none'"
+		>
+			<div class="am-field">
+				<label class="am-field-label" for="delete-pkg-confirm">
+					Type { p.ID } to confirm. Every version archives; an existing profile
+					pin or a published revision still resolves it.
+				</label>
+				<input id="delete-pkg-confirm" class="am-input" type="text" data-bind="_deletePkgConfirm" autocomplete="off"/>
+			</div>
+			<button
+				type="submit"
+				class="am-btn am-form-submit"
+				data-attr:disabled={ PackageDeleteConfirmDisabledExpr(p.ID) }
+			>Delete package</button>
+		</form>
+	}
 }
 
 templ packageDescription(p view.Package) {
@@ -244,7 +332,11 @@ templ capabilityFacet(facet view.CapabilityFacet) {
 // sha256. The key is shown whole rather than abbreviated because the point of
 // showing it is that an operator can find the bytes in the bucket.
 templ VersionsPanel(p view.Package) {
-	<section class="am-section am-section-flush" id="versions-panel">
+	<section
+		class="am-section am-section-flush"
+		id="versions-panel"
+		data-signals="{_deleteVersion: '', _deleteVersionConfirm: ''}"
+	>
 		<div class="am-section-head">
 			<div class="am-section-title">Versions</div>
 			<div class="am-section-note">immutable</div>
@@ -273,9 +365,60 @@ templ VersionsPanel(p view.Package) {
 				if version.Size != "" {
 					<div class="am-ver-size">{ version.Size }</div>
 				}
+				@versionDeleteControl(p, version)
 			</div>
 		}
 	</section>
+}
+
+// versionDeleteControl is catalog delete's per-version action: the same
+// disabled-with-reason and typed-confirmation shape as packageDeleteControl,
+// scoped to one row. $_deleteVersion holds at most one open semver, the
+// single-open idiom the catalog's own facet menu ($menu) already uses, so
+// confirming one row can never leak into another's form.
+templ versionDeleteControl(p view.Package, version view.PackageVersion) {
+	<div class="am-panel-toggle-row">
+		if p.DeleteAccess.Allowed {
+			<button type="button" class="am-btn" data-on:click={ VersionDeleteToggleExpr(version.Version) }>
+				Delete version
+			</button>
+		} else {
+			<button type="button" class="am-btn" disabled aria-disabled="true" title={ p.DeleteAccess.Reason }>
+				Delete version
+			</button>
+		}
+	</div>
+	if !p.DeleteAccess.Allowed {
+		<div class="am-toggle-note">{ p.DeleteAccess.Reason }</div>
+	} else {
+		<form
+			method="post"
+			action={ view.VersionDeleteHref(p.ID, version.Version) }
+			class="am-field-row"
+			style="display:none"
+			data-style:display={ VersionDeleteFormStyleExpr(version.Version) }
+		>
+			<div class="am-field">
+				<label class="am-field-label" for={ "delete-version-confirm-" + version.Version }>
+					Type { p.ID + "@" + version.Version } to confirm. An existing profile pin or a
+					published revision still resolves it; this only stops it being offered for a
+					new install.
+				</label>
+				<input
+					id={ "delete-version-confirm-" + version.Version }
+					class="am-input"
+					type="text"
+					data-bind="_deleteVersionConfirm"
+					autocomplete="off"
+				/>
+			</div>
+			<button
+				type="submit"
+				class="am-btn am-form-submit"
+				data-attr:disabled={ VersionDeleteConfirmDisabledExpr(p.ID, version.Version) }
+			>Delete version</button>
+		</form>
+	}
 }
 
 // DependentsPanel is US3 scenario 5, scoped to the caller.

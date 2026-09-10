@@ -28,6 +28,13 @@ func TestTheSweepIntervalDefaultsToTenSeconds(t *testing.T) {
 	require.Equal(t, explicit, RelayConfig{Batch: 7, SweepInterval: time.Second, PruneInterval: 2 * time.Second, Retention: 3 * time.Second})
 }
 
+// Pinned rather than left at River's own default (25): 25 attempts of a fetch
+// or a scan that keeps failing is 25 attempts of noise nobody reads, and it
+// is what makes the Runtime screen's "retryable" count meaningless.
+func TestMaxJobAttemptsIsThreeNotRiversDefaultTwentyFive(t *testing.T) {
+	require.Equal(t, 3, MaxJobAttempts)
+}
+
 // The relay is generic over job types: it hands River the payload exactly as the
 // outbox stored it, so a new job kind needs no relay change.
 func TestAQueuedJobCarriesTheOutboxRowThrough(t *testing.T) {

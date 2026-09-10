@@ -13,6 +13,7 @@ import (
 
 	"agent-manager/internal/api/contract"
 	"agent-manager/internal/api/queries"
+	"agent-manager/internal/auth"
 	"agent-manager/internal/bundle"
 	"agent-manager/internal/logging"
 )
@@ -40,8 +41,8 @@ var errVersionRejected = errors.New("this version was rejected and is never serv
 // (bundle.Limits{} takes its defaults) — a bundle read back out of object
 // storage is still bytes off a network, and what could not be extracted
 // must not become unpackable either.
-func (s *Server) packageTree(ctx context.Context, namespace, name string) (*bundle.Bundle, error) {
-	ref, err := queries.LatestBundle(ctx, s.deps.DB, namespace, name)
+func (s *Server) packageTree(ctx context.Context, p auth.Principal, namespace, name string) (*bundle.Bundle, error) {
+	ref, err := queries.LatestBundle(ctx, s.deps.DB, p, namespace, name)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +110,8 @@ type listPackageFilesOutput struct {
 // every call — see the package doc comment — because nothing here stores a
 // byte-level file list to answer from instead.
 func (s *Server) listPackageFiles(ctx context.Context, in *listPackageFilesInput) (*listPackageFilesOutput, error) {
-	tree, err := s.packageTree(ctx, in.Namespace, in.Name)
+	principal, _ := PrincipalFrom(ctx)
+	tree, err := s.packageTree(ctx, principal, in.Namespace, in.Name)
 	if err != nil {
 		return nil, packageTreeError(ctx, err)
 	}
@@ -152,7 +154,8 @@ type getPackageFileOutput struct {
 // exact map lookup) — nothing here builds a filesystem path from it, so a
 // traversal or absolute path simply matches nothing and is a 404.
 func (s *Server) getPackageFile(ctx context.Context, in *getPackageFileInput) (*getPackageFileOutput, error) {
-	tree, err := s.packageTree(ctx, in.Namespace, in.Name)
+	principal, _ := PrincipalFrom(ctx)
+	tree, err := s.packageTree(ctx, principal, in.Namespace, in.Name)
 	if err != nil {
 		return nil, packageTreeError(ctx, err)
 	}

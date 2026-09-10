@@ -14,6 +14,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
+
+	"agent-manager/internal/web/view"
 )
 
 // T015 — the compose split (FR-130, FR-132, SC-110).
@@ -44,7 +46,12 @@ func TestTheInfrastructureComposeFileIsAWholeProjectAlone(t *testing.T) {
 	services, err := compose(t, root, "-f", infraComposeFile, "config", "--services")
 	require.NoError(t, err, services)
 	require.ElementsMatch(t,
-		[]string{"postgres", "minio", "minio-init", "dex", "glauth", "migrate-schema", "migrate-queue"},
+		[]string{
+			"postgres", "minio", "minio-init", "dex", "glauth", "migrate-schema", "migrate-queue",
+			// Third-party, built by nothing here, and reads only the queue
+			// database — and unprofiled, so `up` on this file alone brings it.
+			"queue-ui",
+		},
 		lines(services),
 		"FR-129 fixes what infrastructure means; this is the list")
 }
@@ -189,6 +196,40 @@ func TestNoTwoServicesClaimTheSameHostPort(t *testing.T) {
 // anchor with the same string in it, and the file would still look right.
 //
 // Both halves of the count matter and they fail differently. Fewer than two and
+// The dashboard's own prefix and the prefix the web role serves it under are
+// two settings in two files that have to be one value. They cannot be derived
+// from each other — one is a Go constant compiled into the role, the other is
+// an environment variable on a third-party image — so the only thing that
+// keeps them together is this assertion. Wrong, and the embedded dashboard
+// renders a frame of 404s while every other test passes.
+func TestTheQueueDashboardIsServedUnderThePrefixTheWebRoleEmbedsIt(t *testing.T) {
+	root := repoRootForCompose(t)
+	requireDockerCLI(t)
+
+	var doc struct {
+		Services map[string]struct {
+			Environment map[string]*string `json:"environment"`
+		} `json:"services"`
+	}
+	require.NoError(t, json.Unmarshal(composeJSON(t, root, "config", "--format", "json"), &doc))
+
+	queueUI, ok := doc.Services["queue-ui"]
+	require.True(t, ok, "no queue-ui service, so this test is not checking anything")
+	prefix := queueUI.Environment["PATH_PREFIX"]
+	require.NotNil(t, prefix, "queue-ui serves at / without this, and the web role mounts it "+
+		"under a prefix — every asset the frame asks for would 404")
+	require.Equal(t, view.RiverEmbedPrefix, *prefix)
+
+	web, ok := doc.Services["web"]
+	require.True(t, ok)
+	upstream := web.Environment["AGENT_MANAGER_RIVER_UI_URL"]
+	require.NotNil(t, upstream, "the local stack runs a dashboard, so the web role must be "+
+		"pointed at it or the River Dashboard entry renders disabled in a stack that has one")
+	require.Equal(t, "http://queue-ui:8080", *upstream,
+		"the container port, not the published host port: this is reached over the project "+
+			"network, and the host mapping is for a browser")
+}
+
 // sign-in fails at the mint with both roles looking correctly configured. More
 // than two and there is a third process on this network that can ask the api to
 // open a session for any identity it can produce a token for — which is the whole

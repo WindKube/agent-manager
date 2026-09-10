@@ -9,6 +9,16 @@ type PackageDetail struct {
 	Publisher PackagePublisher `json:"publisher"`
 	Category  string           `json:"category,omitempty" doc:"The admin-curated category (FR-049). Empty when none was chosen." example:"Infrastructure"`
 
+	Visibility string `json:"visibility" enum:"organisation,team,private" doc:"Who may see this package." example:"organisation"`
+	// Owner is the identity that registered the package, empty on a
+	// package that predates the owner column. Display only: access is
+	// decided server-side, never by comparing this string.
+	Owner string `json:"owner,omitempty" example:"kwiatrzyk@example.com"`
+	// CanChangeVisibility is FR-126: the caller is the owner or a catalog
+	// admin. The control is shown to every reader and disabled otherwise,
+	// never hidden.
+	CanChangeVisibility bool `json:"canChangeVisibility"`
+
 	Description string `json:"description,omitempty" example:"Platform guardrails, ADR authoring and service scaffolding."`
 
 	Origin  PackageOrigin `json:"origin"`

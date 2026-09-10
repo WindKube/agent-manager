@@ -353,6 +353,16 @@ func decodeRule(validator *jsonschema.Schema, rulePath string, raw []byte) (*Rul
 // value-matches` is meaningless without a pattern, or that `extract:
 // url-argument` has no reading under `dep-manifest`.
 func (r *Rule) compile() error {
+	// The schema's minLength catches an omitted title or detail but not a
+	// whitespace-only one, and a finding a reviewer cannot read is exactly what
+	// this guard exists to make impossible to ship.
+	if strings.TrimSpace(r.Title) == "" {
+		return errors.New("rule has no title")
+	}
+	if strings.TrimSpace(r.Detail) == "" {
+		return errors.New("rule has no detail: a finding with no prose cannot be triaged")
+	}
+
 	if r.Match.Pattern != "" {
 		compiled, err := regexp.Compile(r.Match.Pattern)
 		if err != nil {

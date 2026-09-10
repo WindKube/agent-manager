@@ -1,6 +1,7 @@
 # Everything the hub depends on and does not build: the database, the object
-# store and its bucket policies, the identity provider, and the two migration
-# one-shots that must exit 0 before anything serves.
+# store and its bucket policies, the identity provider, the two migration
+# one-shots that must exit 0 before anything serves, and River's queue
+# dashboard.
 #
 # Startable alone, and meant to be:
 #
@@ -179,6 +180,49 @@ services:
     command: ["migrate", "queue"]
     healthcheck:
       disable: true
+
+  # River's own dashboard for the queue database. Third-party image, nothing
+  # here builds it, and it reads the queue the migrator above just created —
+  # which is why it sits with the dependencies rather than with the roles.
+  #
+  # Always on, no profile. A queue you cannot see is a queue you debug by
+  # guessing, and the Runtime screen answers "how many, how bad, when" but not
+  # "what is in this job's args".
+  #
+  # On 8085 because the api took 8082 on the host, which is where this used to be.
+  # Published, not rebound: this image reads RIVER_HOST as a host and appends
+  # PORT itself, so the ":8085" that used to be here produced ":8085:8080" and
+  # the server refused to listen at all. Behind a profile nobody ran, that went
+  # unnoticed. The container keeps its own default port and the host picks.
+  queue-ui:
+    image: ghcr.io/riverqueue/riverui:0.19.0
+    depends_on:
+      migrate-queue:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: >-
+        postgres://am_queue:local-development-am-queue@postgres:5432/river?sslmode=disable
+      # The prefix the web role serves this dashboard under, and the reason that
+      # role rewrites no bytes: told its prefix, the dashboard emits its own
+      # asset and api URLs already carrying it. It must equal
+      # view.RiverEmbedPrefix, and the direct port below carries it too.
+      PATH_PREFIX: /river/embed
+    ports:
+      - "8085:8080"
+    # `complete` and not one of the shorter paths: this image serves its single
+    # page app for every unmatched route, so /health and /healthz answer 200
+    # with HTML and would pass with the database gone. This one answers 503.
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - -q
+        - -O
+        - /dev/null
+        - http://127.0.0.1:8080/river/embed/api/health-checks/complete
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
 volumes:
   postgres-data:

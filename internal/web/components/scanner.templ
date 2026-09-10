@@ -138,6 +138,29 @@ templ findingsList(s view.Scanner) {
 	</section>
 }
 
+// explainable pairs a short label — a check name, a rule id — with what it
+// means, reachable two ways at once rather than by mouse alone: title is a
+// native tooltip for a pointer, and aria-describedby names text a screen
+// reader announces on its own regardless of hover, which is the WHY behind
+// the second span existing at all rather than relying on title alone. Native
+// attributes only, so nothing here costs a datastar round trip (R7).
+templ explainable(domID, text, explain, class string) {
+	if explain != "" {
+		<span
+			class={ class }
+			tabindex="0"
+			title={ explain }
+			aria-describedby={ domID }
+		>{ text }</span>
+		<span
+			id={ domID }
+			style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0"
+		>{ explain }</span>
+	} else {
+		<span class={ class }>{ text }</span>
+	}
+}
+
 templ findingRow(row view.FindingRow) {
 	<div class="am-find-head">
 		<span class="am-find-title">{ row.Title }</span>
@@ -146,7 +169,7 @@ templ findingRow(row view.FindingRow) {
 	<div class="am-mono am-find-subject">{ row.Subject }</div>
 	<div class="am-find-meta">
 		<span class={ FindingStateClass(row.State) }>{ row.State.Label() }</span>
-		<span class="am-mono am-find-rule">{ row.RuleID }</span>
+		@explainable("explain-rule-"+row.ID, row.RuleID, row.Explanation, "am-mono am-find-rule")
 		// Which analyser made the claim. Two engines may use the same rule id, and
 		// a reviewer calibrates differently for each.
 		<span class="am-find-engine">{ view.EngineLabel(row.Engine) }</span>
@@ -176,7 +199,7 @@ templ findingDetail(s view.Scanner, detail view.FindingDetail) {
 	<div class="am-pane-head">
 		<div class="am-pane-pills">
 			<span class={ SeverityClass(detail.Severity) }>{ detail.Severity.Label() }</span>
-			<span class="am-mono am-pane-rule">{ detail.RuleID }</span>
+			@explainable("explain-rule-pane-"+detail.ID, detail.RuleID, detail.Explanation, "am-mono am-pane-rule")
 			<span class={ FindingStateClass(detail.State) }>{ detail.State.Label() }</span>
 		</div>
 		<div class="am-pane-title">{ detail.Title }</div>
@@ -263,7 +286,7 @@ templ checkMatrix(detail view.FindingDetail) {
 					<div class="am-chk">
 						<span class={ CheckMarkClass(check) } aria-hidden="true">{ check.Result.Mark() }</span>
 						<span class="am-chk-label">
-							{ check.Label }
+							@explainable("explain-check-"+strconv.Itoa(i), check.Label, check.Explain, "")
 							if check.Note() != "" {
 								// Not a number of issues. Rendering it as "2" beside a warning
 								// would read as two problems, which is its opposite.

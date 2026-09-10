@@ -98,6 +98,7 @@ Admin-curated (FR-049). Tags are *not* here — they are free-form strings on th
 | `kind` | enum `plugin \| skill` | |
 | `category_id` | uuid fk → category, nullable | |
 | `visibility` | enum `organisation \| team \| private` | |
+| `owner_identity_id` | uuid fk → identity, nullable | The identity that registered the package. Null on rows that predate the column; a null owner is treated as organisation-only regardless of `visibility`, never as visible to nobody or to everybody |
 | `parent_package_id` | uuid fk → package, nullable | Set when a skill is distributed inside a plugin (FR-016 origin line) |
 | `latest_version_id` | uuid fk → version, nullable | Denormalised pointer; maintained on publish |
 
@@ -512,7 +513,10 @@ against a stated decision instead of a fresh guess.
 | Role | Grant | Cited by |
 | --- | --- | --- |
 | `am_api` | `SELECT`, `INSERT`, `UPDATE` on all app tables | Every write endpoint in the `contracts/openapi.yaml` inventory: registration (FR-001…FR-008), review (FR-028), profiles and revisions (FR-032, FR-033, FR-037, FR-039), org policy (FR-046, FR-047), identity and device flow (FR-040, FR-041) |
-| `am_api` | `DELETE` on `outbox`, **and nowhere else** | The outbox relay (T022), a goroutine hosted in `api` (quickstart.md:43), implementing "delivered rows pruned after 24 h" above |
+| `am_api` | `DELETE` on `outbox` | The outbox relay (T022), a goroutine hosted in `api` (quickstart.md:43), implementing "delivered rows pruned after 24 h" above |
+| `am_api` | `DELETE` on `profile_entry` | The profile screen's remove-one-package control (003), added after this document shipped — see "Grants withheld" below for why it was withheld first and what changed |
+| `am_api` | `DELETE` on `membership`, `sync_target` | The profile screen's delete-profile control (003): both rows belong solely to the profile being deleted and have to go with it, or the delete fails on their own foreign key. Neither grant reaches an "unshare one member" or "remove one sync target" endpoint — there is no such endpoint |
+| `am_api` | `DELETE` on `profile` | The profile screen's delete-profile control (003). Refused by the database itself, not a pre-check, when the profile holds a `revision` or `sync_event` row — see "Grants withheld" |
 | `am_api` | **no `UPDATE`/`DELETE` on `audit_event`** | FR-052 |
 | `am_fetcher` | `SELECT`, `INSERT`, `UPDATE` on `publisher`, `package`, `version`, `version_tag`, `component`, `signature` | The ingestion transaction: FR-006 (one stored tree), FR-007 (digest), FR-008 (commit-last), FR-048 (signature metadata) |
 | `am_fetcher` | `INSERT` on `audit_event`, `outbox` | FR-050 (system actor `fetcher`) and the scan hand-off (principle IX) |
@@ -534,11 +538,9 @@ will reach for by neighbourhood, so each carries the reason it stays withheld.
 
 | Withheld | Plausible because | Reason it stays withheld |
 | --- | --- | --- |
-| `DELETE` on `profile_entry` from `am_api` | Removing a package from a profile looks like a delete | FR-032 gives a profile an ordered set with a per-package policy, and the inventory's verbs are `pin / unpin / reorder` — all `UPDATE`s. "Unpin" is `mode: pinned → latest`. **Row removal is unspecified**, and the design screens carry no control for it |
-| `DELETE` on `membership` from `am_api` | Unsharing a profile looks like a delete | FR-037 is about per-member and per-group *roles*; a demotion is an `UPDATE` of `role` |
 | `DELETE` on `session` from `am_api` | Sign-out looks like a delete | The row carries `expires_at`. No requirement says sign-out removes it, and an expired session is one whose expiry has passed |
 | `DELETE` on `device_authorization` from `am_api` | Expiring a code looks like a delete | The `state` enum already contains `expired` — expiry is a transition (FR-042), not a removal, and the row is the evidence a code was issued |
-| `DELETE` on `revision` from `am_api` | Tidying old revisions looks like housekeeping | FR-034 forbids it outright |
+| `DELETE` on `revision`, `sync_event` from `am_api` | Deleting a profile looks like it should take its history with it | FR-034 forbids deleting a revision outright, and a client may already have synced one. `commands.DeleteProfile` (003) does not pre-check this: `revision` and `sync_event` both hold a `NO ACTION` foreign key to `profile`, so the database itself refuses to delete a profile that either one still references, and that refusal is the whole enforcement |
 | `DELETE`/`UPDATE`/`TRUNCATE` on `audit_event` from **every** role | `am_api` writes audit rows, so it looks like it owns them | FR-052. The revoke is the entire enforcement — no trigger, no ORM hook |
 | `INSERT` on `capability` from `am_fetcher` | It parses the manifest the `expected` set comes from | Both capability sets have one writer, the scanner, which reads the declaration back out of `version.manifest` when it records the scan. The fetcher transcribes the manifest into `version.manifest` and stops. Adding a second writer here would buy nothing and cost a grant |
 | `UPDATE` on `version.digest`, `object_key`, `size_bytes`, `manifest`, `visible` from `am_scanner` | It already holds `UPDATE` on `version` | The scanner does not produce bundle bytes. The column-level grant says so as well as the Go type does, and it survives a hand-written SQL statement, which the Go type does not |
@@ -549,15 +551,20 @@ will reach for by neighbourhood, so each carries the reason it stays withheld.
 | `UPDATE`, `DELETE` on `fetch_attempt` from **every** role | An attempt row looks like something a retention job would tidy | An attempt is a record of something that already happened. Note what this does **not** amount to: `fetch_attempt` is not covered by FR-052's revoke, which names `audit_event` and only `audit_event`, so a table owner can still grant itself back |
 | `SELECT` on `identity`, `session`, `device_authorization`, `profile*`, `audit_event` from `am_scanner` | The grant summary above says "`SELECT` on the catalog and its scan history", which an earlier draft wrote as "SELECT broadly" | `session.token_hash` and `device_authorization.device_code_hash` are bearer credentials at rest. "Broadly" is read as the catalog and its scan history; narrowing a grant is always safe, widening one is the mistake worth avoiding |
 
-Three independent lines of evidence back the `DELETE` half of that list, and all three were
-checked rather than assumed: FR-032 / FR-037 / FR-034 make the profile endpoints
-update-shaped or forbid deletion outright; the openapi inventory's verbs are
-`pin / unpin / reorder`, all updates; and `docs/design/agent-manager.dc.html` contains
+Three independent lines of evidence backed the `DELETE` half of that list as it stood at
+launch, and all three were checked rather than assumed: FR-032 / FR-037 / FR-034 made the
+profile endpoints update-shaped or forbade deletion outright; the openapi inventory's verbs
+were `pin / unpin / reorder`, all updates; and `docs/design/agent-manager.dc.html` contained
 **zero** occurrences of remove, delete or revoke, in any case, in any button or label. No
-removal affordance exists anywhere in the product being built.
+removal affordance existed anywhere in the product as designed.
 
-If the UI later grows a "remove package" control, `DELETE` on `profile_entry` widens — as a
-deliberate decision recorded here, with the FR that asked for it, and not as a bug fix.
+That changed in 003: the profile screen grew a remove-one-package control and a
+delete-profile control, exactly the widening this section predicted — "`DELETE` on
+`profile_entry` widens... as a deliberate decision recorded here, with the FR that asked for
+it, and not as a bug fix" — and the "Grants held" table above now carries it, alongside the
+narrower `membership` / `sync_target` / `profile` grants the delete-profile control needed.
+`session` and `device_authorization` are unaffected: nothing about 003 touches sign-out or
+device-code expiry.
 
 Grants for `finding_evidence` and `fetch_attempt` live in the migration that creates them,
 not in `20260827150200_roles_and_grants.sql` with every other grant. That migration runs first,

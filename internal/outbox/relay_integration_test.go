@@ -194,6 +194,28 @@ func TestACommittedTransactionAlwaysDelivers(t *testing.T) {
 	require.NotNil(t, deliveredAt)
 }
 
+// River defaults an unset MaxAttempts to 25; this is what proves the relay
+// never leaves it unset, against the actual row River wrote rather than
+// against the InsertOpts value the relay merely intended to send.
+func TestQueuedJobsCapAtThreeAttemptsNotRiversDefaultTwentyFive(t *testing.T) {
+	requireInfra(t)
+	ctx := context.Background()
+
+	startRelay(t, outbox.RelayConfig{AppDatabaseURL: appURL, SweepInterval: time.Hour})
+
+	marker := uuid.NewString()
+	require.NoError(t, handle.DB().RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		_, err := outbox.NewWriter().Enqueue(ctx, tx, job(outbox.KindScan, marker))
+		return err
+	}))
+
+	requireEventually(t, "the job reaches the queue", func() bool {
+		return riverJobCount(t, ctx, marker) == 1
+	})
+
+	require.Equal(t, outbox.MaxJobAttempts, riverJobMaxAttempts(t, ctx, marker))
+}
+
 // The property that makes a lost notification survivable, and the one most likely
 // to be quietly broken. The row is inserted with raw SQL, so no NOTIFY is ever
 // raised — the relay's listener is connected and idle. Only the sweep can deliver
@@ -585,6 +607,16 @@ func riverJobCount(t *testing.T, ctx context.Context, marker string) int {
 	var n int
 	require.NoError(t, queuePool.QueryRow(ctx,
 		`select count(*) from river_job where args->>'marker' = $1`, marker).Scan(&n))
+
+	return n
+}
+
+func riverJobMaxAttempts(t *testing.T, ctx context.Context, marker string) int {
+	t.Helper()
+
+	var n int
+	require.NoError(t, queuePool.QueryRow(ctx,
+		`select max_attempts from river_job where args->>'marker' = $1`, marker).Scan(&n))
 
 	return n
 }

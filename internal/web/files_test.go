@@ -140,3 +140,83 @@ func TestScriptInsideACodeFenceIsShownAsTextRatherThanExecuted(t *testing.T) {
 	require.Contains(t, rendered, "&lt;script&gt;alert(1)&lt;/script&gt;",
 		"a documented script tag has to survive as readable text")
 }
+
+// A SKILL.md's leading YAML frontmatter is not CommonMark: read by goldmark's
+// own parser, the opening "---" is a thematic break and everything up to the
+// closing "---" becomes one run-together paragraph. This is the exact defect
+// two screenshots reported — this test is the reproduction, asserted on the
+// markup rather than eyeballed: no <hr>, the frontmatter rendered as a
+// distinct structured block instead of prose, and the document's REAL first
+// heading still arriving as a heading.
+func TestFrontmatterRendersAsAStructuredBlockRatherThanARunTogetherParagraph(t *testing.T) {
+	source := "---\n" +
+		"name: pii-redactor\n" +
+		"description: Finds and masks personal data in logs, fixtures and support transcripts.\n" +
+		"license: Apache-2.0\n" +
+		"allowed-tools:\n  - Read\n  - Write\n" +
+		"---\n\n" +
+		"# pii-redactor\n\nRedacts personal data on the way out.\n"
+
+	var out bytes.Buffer
+	require.NoError(t, components.MarkdownBody(view.ParseMarkdown([]byte(source))).
+		Render(context.Background(), &out))
+	rendered := out.String()
+
+	require.NotContains(t, rendered, "<hr",
+		"the opening --- must not be parsed as a CommonMark thematic break")
+	require.NotContains(t, rendered, "name: pii-redactor description:",
+		"the frontmatter fields must not be merged into one run-together paragraph")
+	require.Contains(t, rendered, `class="am-md-frontmatter`,
+		"the frontmatter must render as its own structured block")
+	require.Contains(t, rendered, "<h1 class=\"am-md-h\">pii-redactor",
+		"the document's real first heading must still render as a heading")
+	require.Contains(t, rendered, "Redacts personal data on the way out.")
+}
+
+// The frontmatter block is shown verbatim, never parsed as YAML (see
+// view.ParseMarkdown), so a hostile value in it has only ONE path to the
+// page: templ's own `{ expr }` escaping, same as every other node this
+// renderer produces. This pins that down the same way
+// TestMarkdownRenderingNeverLetsA... does for the document body.
+func TestFrontmatterCannotEscapeEscapingEvenWithHostileValues(t *testing.T) {
+	source := "---\n" +
+		"name: pii-redactor\n" +
+		"description: <script>alert(1)</script>\n" +
+		"payload: <img src=x onerror=\"alert(2)\">\n" +
+		"link: javascript:alert(3)\n" +
+		"---\n\n" +
+		"# pii-redactor\n\nBody text.\n"
+
+	var out bytes.Buffer
+	require.NoError(t, components.MarkdownBody(view.ParseMarkdown([]byte(source))).
+		Render(context.Background(), &out))
+	rendered := out.String()
+
+	// The RAW, unescaped forms are what would execute; none may appear. Note
+	// "onerror=" as bare text is not itself checked: it is expected to
+	// survive as escaped text, and it is the surrounding "<img" and quote
+	// that must never appear unescaped.
+	for _, banned := range []string{"<script>", "</script>", "<img src=x"} {
+		require.NotContainsf(t, rendered, banned,
+			"the rendered frontmatter still carries the raw %q:\n%s", banned, rendered)
+	}
+	// Escaped, not dropped: the text must still be readable.
+	require.Contains(t, rendered, "&lt;script&gt;alert(1)&lt;/script&gt;")
+	require.Contains(t, rendered, "&lt;img src=x onerror=&#34;alert(2)&#34;&gt;")
+	require.Contains(t, rendered, "javascript:alert(3)",
+		"the frontmatter is shown as text, not a link, so this string is not a live href")
+	require.NotContains(t, rendered, `href="javascript:alert(3)"`)
+}
+
+// A file with no frontmatter at all must render exactly as before: no
+// frontmatter block, and the real content unaffected.
+func TestAFileWithNoFrontmatterRendersUnchanged(t *testing.T) {
+	var out bytes.Buffer
+	require.NoError(t, components.MarkdownBody(
+		view.ParseMarkdown([]byte("# A skill with no frontmatter\n\nJust a body.\n"))).
+		Render(context.Background(), &out))
+	rendered := out.String()
+
+	require.NotContains(t, rendered, "am-md-frontmatter")
+	require.Contains(t, rendered, "<h1 class=\"am-md-h\">A skill with no frontmatter")
+}

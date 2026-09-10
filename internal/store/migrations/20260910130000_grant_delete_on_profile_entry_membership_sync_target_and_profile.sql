@@ -1,0 +1,20 @@
+-- am_api holds DELETE on profile_entry, membership, sync_target and profile.
+--
+-- Deliberate, not an oversight, and specs/001-agent-manager-hub/data-model.md's
+-- grants-withheld list already predicted the first of these: "If the UI later
+-- grows a 'remove package' control, DELETE on profile_entry widens... with the
+-- FR that asked for it, and not as a bug fix." The profile screen now has that
+-- control, plus a "delete this profile" control, so the widening follows here.
+--
+-- membership and sync_target widen for the same reason and no other: deleting a
+-- profile has to take its own membership and sync_target rows with it, or the
+-- delete fails on their foreign keys. Neither grant reaches an "unshare one
+-- member" or "remove one sync target" endpoint — there is no such endpoint —
+-- so FR-037's "a demotion is an UPDATE of role" is untouched.
+--
+-- revision and sync_event are NOT here. FR-034 still forbids deleting a
+-- revision outright, and both still carry NO ACTION foreign keys to profile,
+-- so a profile holding either refuses to delete at the database level —
+-- commands.DeleteProfile relies on exactly that refusal rather than a
+-- pre-check.
+grant delete on table profile_entry, membership, sync_target, profile to am_api;

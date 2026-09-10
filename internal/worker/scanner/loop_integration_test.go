@@ -27,6 +27,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -163,9 +164,28 @@ func newLoopHarness(t *testing.T, forgeURLs ...string) loopHarness {
 
 // ---- the people -------------------------------------------------------------
 
+var (
+	importerIdentityOnce sync.Once
+	importerIdentityID   uuid.UUID
+)
+
+// importer is a real identity row, because `package.owner_identity_id` is a
+// foreign key: registering a package now records who registered it, and a
+// principal carrying an id no identity table holds would fail at that
+// constraint rather than at the assertion.
 func importer() auth.Principal {
+	importerIdentityOnce.Do(func() {
+		importerIdentityID = models.NewID()
+		_, err := pool.Exec(context.Background(),
+			`insert into identity (id, subject, email, display_name) values ($1, $2, $3, $4)`,
+			importerIdentityID, "sub-importer", "importer@example.com", "Importer")
+		if err != nil {
+			panic("seed the loop suite's importer identity: " + err.Error())
+		}
+	})
+
 	return auth.Principal{
-		IdentityID: models.NewID(),
+		IdentityID: importerIdentityID,
 		Subject:    "sub-importer",
 		Email:      "importer@example.com",
 		Role:       models.OrgRoleCatalogAdmin,
@@ -312,7 +332,10 @@ func resolvesToServableBytes(t *testing.T, pkg imported) bool {
 	require.Equal(t, pkg.versionID, latest,
 		"a floating entry resolves to the package's latest version, so that is what must be judged")
 
-	ref, err := queries.Bundle(ctx, db, pkg.namespace, pkg.name, pkg.semver)
+	// The zero principal is enough: every package this suite imports is
+	// organisation-visible, and that clause of queries.PackageReadable does
+	// not depend on who is asking.
+	ref, err := queries.Bundle(ctx, db, auth.Principal{}, pkg.namespace, pkg.name, pkg.semver)
 	if err != nil {
 		require.ErrorIs(t, err, queries.ErrNotFound)
 		return false
@@ -381,7 +404,7 @@ func TestTheWholeLoopFromAnImportedHostilePackageToAChangedResolution(t *testing
 
 	findingID := openFindingOn(t, pkg.versionID, "SH-NET-002")
 
-	before, err := queries.Finding(ctx, db, findingID)
+	before, err := queries.Finding(ctx, db, findingID, auth.Principal{}, true)
 	require.NoError(t, err)
 	require.Equal(t, string(models.FindingStateOpen), before.State)
 	require.Nil(t, before.Override, "nobody has decided anything yet")
@@ -422,7 +445,7 @@ func TestTheWholeLoopFromAnImportedHostilePackageToAChangedResolution(t *testing
 	require.NoError(t, err)
 	require.Equal(t, string(models.FindingStateApproved), decision.State)
 
-	after, err := queries.Finding(ctx, db, findingID)
+	after, err := queries.Finding(ctx, db, findingID, auth.Principal{}, true)
 	require.NoError(t, err)
 	require.Equal(t, string(models.FindingStateApproved), after.State)
 	require.NotNil(t, after.Override,

@@ -35,9 +35,11 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
@@ -224,9 +226,28 @@ func loopbackOf(t *testing.T, rawURL string) string {
 	return parsed.Host
 }
 
+// principalIdentity is seeded once and reused by every principal() call: the
+// package_owner_identity_id_fkey foreign key (feat/package-visibility) means a
+// registration's actor must now be a real identity row, not a bare UUID this
+// suite never persisted.
+var (
+	principalIdentityOnce sync.Once
+	principalIdentityID   uuid.UUID
+)
+
 func principal() auth.Principal {
+	principalIdentityOnce.Do(func() {
+		principalIdentityID = models.NewID()
+		_, err := db.NewInsert().Model(&models.Identity{
+			ID: principalIdentityID, Subject: "sub-kw", Email: "kwiatrzyk@example.com",
+			Groups: []string{},
+		}).Exec(context.Background())
+		if err != nil {
+			panic("seed the fetcher suite's registering identity: " + err.Error())
+		}
+	})
 	return auth.Principal{
-		IdentityID: models.NewID(),
+		IdentityID: principalIdentityID,
 		Subject:    "sub-kw",
 		Email:      "kwiatrzyk@example.com",
 		Role:       models.OrgRoleCatalogAdmin,

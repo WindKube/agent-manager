@@ -10,7 +10,6 @@
 package api_test
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -667,20 +666,16 @@ func TestBrowsingTheCatalogRequiresASession(t *testing.T) {
 	})
 }
 
-// TestTheModalOffersExactlyTheVisibilitiesTheCatalogCanHonour binds three real
-// artifacts that are otherwise free to drift: the package_visibility enum as the
-// LIVE database defines it, the option list the modal actually renders, and what
-// the catalog query actually returns for a package at each value.
-//
-// The failure it exists to catch is silent in both directions. Re-add "Private"
-// to the modal with no predicate behind it and a person's package vanishes with
-// no explanation; widen the predicate with no option beside it and rows appear
-// that nobody chose to publish. Neither shows up in a test of either side alone,
-// which is why this one reads the enum from Postgres rather than from a list in
-// this file.
-func TestTheModalOffersExactlyTheVisibilitiesTheCatalogCanHonour(t *testing.T) {
-	seedCatalog(t)
-	handler := liveHandler(t)
+// TestTheModalOffersTheWholePackageVisibilityVocabulary binds two real
+// artifacts that are otherwise free to drift: the package_visibility enum as
+// the LIVE database defines it, and the option list the modal actually
+// renders. Team and private are both real now — the enforcement lives in
+// queries.PackageReadable — so every value is offered to every viewer;
+// "team" is disabled rather than removed for a viewer with no groups
+// (FR-126), since the api would refuse it for them anyway (see
+// commands.SetPackageVisibility's owner-less guard for the read side of the
+// same reasoning).
+func TestTheModalOffersTheWholePackageVisibilityVocabulary(t *testing.T) {
 	ctx := t.Context()
 
 	var vocabulary []string
@@ -688,87 +683,43 @@ func TestTheModalOffersExactlyTheVisibilitiesTheCatalogCanHonour(t *testing.T) {
 		"select unnest(enum_range(null::package_visibility))::text").Scan(ctx, &vocabulary))
 	require.Len(t, vocabulary, 3, "the enum this test reasons about")
 
-	offered := map[string]bool{}
-	for _, option := range view.ImportVisibilities {
+	withGroups := view.ImportVisibilityOptions([]string{"eng-platform"})
+	require.Len(t, withGroups, len(vocabulary), "every real value is offered, never a subset")
+	for _, option := range withGroups {
 		require.Containsf(t, vocabulary, option.Value,
 			"the modal offers %q, which is not a package_visibility value at all", option.Value)
-		offered[option.Value] = true
+		require.False(t, option.Disabled, "a viewer with groups may choose any of them")
 	}
 
-	// One probe package per enum value, under its own publisher so nothing here
-	// perturbs the totals the rest of this file asserts.
-	publisher := &models.Publisher{
-		ID: models.NewID(), Slug: "probe/visibility", DisplayName: "Visibility Probe",
-	}
-	_, err := db.NewInsert().Model(publisher).Exec(ctx)
-	require.NoError(t, err)
-	// Torn down in dependency order and not by cascade: package.latest_version_id
-	// and version.package_id point at each other, so the pointer is dropped first.
-	// The totals every other test in this file asserts depend on this running.
-	t.Cleanup(func() {
-		for _, statement := range []string{
-			`update package set latest_version_id = null where publisher_id = ?`,
-			`delete from version where package_id in (select id from package where publisher_id = ?)`,
-			`delete from package where publisher_id = ?`,
-			`delete from publisher where id = ?`,
-		} {
-			_, cleanupErr := db.ExecContext(context.Background(), statement, publisher.ID)
-			require.NoError(t, cleanupErr)
-		}
-	})
-
-	for _, visibility := range vocabulary {
-		pkg := &models.Package{
-			ID: models.NewID(), PublisherID: publisher.ID, Namespace: "probe",
-			Name: "probe-" + visibility,
-			Kind: models.PackageKindSkill, Visibility: models.PackageVisibility(visibility),
-		}
-		_, err = db.NewInsert().Model(pkg).Exec(ctx)
-		require.NoError(t, err)
-
-		version := &models.Version{
-			ID: models.NewID(), PackageID: pkg.ID, Semver: "1.0.0", SemverSort: "1.0.0",
-			ObjectKey: "skills/probe/probe-" + visibility + "/1.0.0/bundle.tar.zst", Digest: bundleSHA,
-			Manifest: json.RawMessage(`{"name":"probe-` + visibility + `"}`), Tags: []string{},
-			DistTag: models.DistTagLatest, Verdict: models.VerdictClean, Visible: true,
-			CreatedAt: time.Now().UTC(),
-		}
-		_, err = db.NewInsert().Model(version).Exec(ctx)
-		require.NoError(t, err)
-		_, err = db.NewUpdate().Model((*models.Package)(nil)).
-			Set("latest_version_id = ?", version.ID).Where("id = ?", pkg.ID).Exec(ctx)
-		require.NoError(t, err)
-	}
-
-	visible := idsOf(catalog(t, handler, kw.token, query("q", "probe-", "pageSize", "50")))
-	for _, visibility := range vocabulary {
-		id := "probe/probe-" + visibility
-		if offered[visibility] {
-			require.Containsf(t, visible, id,
-				"the modal offers %q but a package registered with it is not in the catalog: "+
-					"the person who chose it has lost their package with nothing on screen to say so",
-				visibility)
+	noGroups := view.ImportVisibilityOptions(nil)
+	require.Len(t, noGroups, len(vocabulary), "FR-126: disabled, never removed")
+	for _, option := range noGroups {
+		if option.Value == "team" {
+			require.True(t, option.Disabled, "team would match nobody for a groupless registrant")
+			require.NotEmpty(t, option.Reason)
 			continue
 		}
-		require.NotContainsf(t, visible, id,
-			"a package with visibility %q is in the catalog but the modal does not offer it: "+
-				"either the predicate widened without the option or the option was removed "+
-				"while the rows stayed", visibility)
+		require.False(t, option.Disabled)
 	}
 }
 
-// A hub that leaks a private package is a worse failure than one that hides it,
-// and `package` names no owner to compare a caller to, so `team` and `private`
-// are hidden from every caller including the one who published them. This is the
-// limitation, asserted so that giving `package` an owner has to come back here.
-func TestTeamAndPrivatePackagesAreHiddenFromEveryone(t *testing.T) {
+// A hub that leaks a private package is a worse failure than one that hides
+// it. restrictedPackage predates the owner column and names no owner, so
+// queries.PackageReadable's owner-match clause can never fire for it — it
+// must stay hidden from every caller, including ones who could otherwise own
+// a package. Migrating in a column must not turn a pre-existing private row
+// into anybody's default reader.
+func TestAnOwnerLessPrivatePackageStaysHiddenFromEveryone(t *testing.T) {
 	seedCatalog(t)
 	handler := liveHandler(t)
 
-	page := catalog(t, handler, kw.token, query("pageSize", "50"))
-	require.NotContains(t, idsOf(page), restrictedPackage,
-		"a private package must not appear merely because the reader is signed in")
-	require.Equal(t, 10, page.Total)
+	for _, who := range []actor{kw, an, contractor} {
+		page := catalog(t, handler, who.token, query("pageSize", "50"))
+		require.NotContainsf(t, idsOf(page), restrictedPackage,
+			"%s must not see an owner-less private package merely because they are signed in",
+			who.claims.Email)
+	}
+	require.Equal(t, 10, catalog(t, handler, kw.token, query("pageSize", "50")).Total)
 
 	byName := catalog(t, handler, kw.token, query("q", "internal-only", "pageSize", "50"))
 	require.Empty(t, byName.Packages,

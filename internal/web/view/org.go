@@ -1,6 +1,9 @@
 package view
 
-import "net/url"
+import (
+	"net/url"
+	"slices"
+)
 
 // The Organization screen's view models.
 //
@@ -121,6 +124,25 @@ func OrgAccessFor(viewer *Viewer) OrgAccess {
 	}
 	return OrgAccess{Reason: "Your role, " + viewer.RoleLabel() + ", cannot administer the " +
 		"organisation. This screen needs the catalog admin role."}
+}
+
+// PackageDeleteAccessFor is the role gate on withdrawing a version or a
+// whole package from the catalog — the same role /v1/runtime, /v1/storage
+// and /v1/organization/* already demand. It reads the viewer the api
+// resolved, the same source OrgAccessFor and RiverAccessFor read, never a
+// role string this screen guessed at.
+func PackageDeleteAccessFor(viewer *Viewer) OrgAccess {
+	switch {
+	case viewer == nil || !viewer.SignedIn:
+		return OrgAccess{Reason: "Sign in to delete anything from the catalog."}
+	case !viewer.HasRole:
+		return OrgAccess{Reason: "Your identity is not mapped to a role yet, so it may not delete " +
+			"a package or a version."}
+	case !slices.Contains(OrgAdminRoles, viewer.Role):
+		return OrgAccess{Reason: "Your role, " + viewer.RoleLabel() + ", may not delete a package " +
+			"or a version. This needs the catalog admin role."}
+	}
+	return OrgAccess{Allowed: true}
 }
 
 // SecretRotationReason is why the provider panel's rotate action is always

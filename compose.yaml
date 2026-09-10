@@ -149,6 +149,11 @@ services:
       # logins on the sign-in screen, which is what makes the quickstart a
       # quickstart and would be a credential leak anywhere else.
       AGENT_MANAGER_WEB_DEV_CREDENTIAL_HINT: "true"
+      # The queue dashboard this role embeds, reached over the project network and
+      # never published to a browser. Not a credential: queue-ui holds the queue's,
+      # this role holds none. Unset it and the River Dashboard entry renders
+      # disabled with the reason on it rather than disappearing.
+      AGENT_MANAGER_RIVER_UI_URL: http://queue-ui:8080
     command: ["serve", "web"]
     healthcheck:
       test: ["CMD", "/usr/local/bin/agent-manager", "healthcheck", "--url", "http://127.0.0.1:8080/healthz"]
@@ -265,24 +270,6 @@ services:
       start_period: 40s
       retries: 3
     restart: unless-stopped
-
-  # ---------------------------------------------------------------------------
-  # Optional. `docker compose --profile queue-ui up`
-  #
-  # On 8085 because the api took 8082 on the host, which is where this used to be.
-  # ---------------------------------------------------------------------------
-  queue-ui:
-    image: ghcr.io/riverqueue/riverui:0.19.0
-    profiles: ["queue-ui"]
-    depends_on:
-      migrate-queue:
-        condition: service_completed_successfully
-    environment:
-      DATABASE_URL: >-
-        postgres://am_queue:local-development-am-queue@postgres:5432/river?sslmode=disable
-      RIVER_HOST: ":8085"
-    ports:
-      - "8085:8085"
 
 # `default` is declared so naming it on a service does not opt that service out
 # of the network every other one is on. `scan-engine` is closed: internal means

@@ -46,6 +46,40 @@ func TestEveryCheckInTheContractIsRegisteredAndNoOthers(t *testing.T) {
 	require.Len(t, registered, len(contract), "a duplicate id would write one row and drop a result")
 }
 
+// TestEveryRegisteredCheckExplainsItself is what makes an unexplained check
+// impossible to ship: a reader on the Scanner screen has nothing else to learn
+// what a check's own warn or fail means, and the Scanner screen has no other
+// way to show it than what a check's own Explain returns.
+func TestEveryRegisteredCheckExplainsItself(t *testing.T) {
+	registry, err := checks.Default()
+	require.NoError(t, err)
+
+	for _, check := range registry.Checks() {
+		require.NotEmpty(t, strings.TrimSpace(check.Explain()),
+			"%s has no explanation; a reader has no way to learn what it means", check.ID())
+	}
+}
+
+// fakeCheck is a minimal Check this package does not otherwise construct, so
+// the registry's own validation can be exercised without touching a real one.
+type fakeCheck struct{ id, label, explain string }
+
+func (c fakeCheck) ID() string      { return c.id }
+func (c fakeCheck) Label() string   { return c.label }
+func (c fakeCheck) Explain() string { return c.explain }
+func (c fakeCheck) Run(context.Context, *checks.Bundle, []rules.Rule) (checks.Result, []checks.Finding, error) {
+	return checks.Result{}, nil, nil
+}
+
+// TestNewRegistryRefusesACheckWithNoExplanation proves the registry-level
+// guard actually fires, the way TestEveryRegisteredCheckExplainsItself proves
+// the shipped registry passes it.
+func TestNewRegistryRefusesACheckWithNoExplanation(t *testing.T) {
+	_, err := checks.NewRegistry(fakeCheck{id: "x", label: "X", explain: "   "})
+	require.Error(t, err, "a check with no explanation must not register")
+	require.Contains(t, err.Error(), "no explanation")
+}
+
 // The constitution requires both fixtures per rule, and the negative one is the
 // load-bearing half: a rule with only a positive fixture is how a rule that
 // matches everything ships.

@@ -113,6 +113,7 @@ func (a engineAnalyzer) rows(result checks.Result) []checks.CheckRun {
 		runs = append(runs, checks.CheckRun{
 			CheckID: engine.ID + "/" + name,
 			Label:   engine.Label(name),
+			Explain: engine.Explain(name),
 			Result:  result,
 		})
 	}

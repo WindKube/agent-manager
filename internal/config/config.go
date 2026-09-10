@@ -64,6 +64,12 @@ type Web struct {
 	DevCredentialHint bool   `env:"WEB_DEV_CREDENTIAL_HINT" envDefault:"false"`
 	ProviderName      string `env:"WEB_PROVIDER_NAME"`
 	HubURL            string `env:"WEB_HUB_URL" envDefault:"http://localhost:8081"`
+	// RiverUIURL is where River's queue dashboard listens, and empty means this
+	// deployment runs none: the River Dashboard entry is then shown disabled
+	// rather than dropped. It is an operator-supplied address, never anything a
+	// request can influence, and it is not a credential — the dashboard holds the
+	// queue credential, this role holds none.
+	RiverUIURL string `env:"RIVER_UI_URL"`
 }
 
 type Fetcher struct {

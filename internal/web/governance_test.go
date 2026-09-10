@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -188,6 +189,50 @@ func TestTheCheckMatrixShowsEveryCheckThatRanAndNotOnlyTheFailures(t *testing.T)
 	// its opposite.
 	require.Contains(t, body, "2 files this check could not read")
 	require.NotContains(t, body, "2 issues")
+}
+
+// TestACheckAndARuleIdExplainThemselvesOnHoverAndWithoutOne is the reason this
+// feature exists: a reader who moves the cursor to a check name or a rule id
+// gets a title tooltip, and a reader who cannot use a mouse gets the same
+// words through aria-describedby, which a screen reader announces whether or
+// not anything was ever hovered.
+func TestACheckAndARuleIdExplainThemselvesOnHoverAndWithoutOne(t *testing.T) {
+	finding := govFinding()
+	finding.Detail = "Why SH-NET-002 fires, for the list row."
+
+	source := &governance{
+		findings: []hub.Finding{finding},
+		detail: hub.FindingDetail{
+			Finding:     finding,
+			Explanation: "Why SH-NET-002 fires, for the pane.",
+			Checks: []hub.Check{
+				{
+					ID: "network-allowlist", Label: "Network allowlist",
+					Explain: "What the network allowlist check looks for.", Result: "fail",
+				},
+			},
+		},
+	}
+	body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/scanner").Body.String()
+
+	// The list row's rule id: a mouse tooltip and the screen-reader pair.
+	require.Contains(t, body, `title="Why SH-NET-002 fires, for the list row."`)
+	require.Contains(t, body, "Why SH-NET-002 fires, for the list row.")
+
+	// The pane's rule id chip carries the DETAIL fetch's own explanation, not
+	// the list row's — the two come from different api calls.
+	require.Contains(t, body, `title="Why SH-NET-002 fires, for the pane."`)
+
+	// The check matrix's label.
+	require.Contains(t, body, `title="What the network allowlist check looks for."`)
+	require.Contains(t, body, "What the network allowlist check looks for.")
+
+	// Every hover pairs with an aria-describedby naming an id that actually
+	// exists on the page — a tooltip with nothing for a screen reader to read
+	// is the defect this test exists to catch.
+	for _, match := range regexp.MustCompile(`aria-describedby="([^"]+)"`).FindAllStringSubmatch(body, -1) {
+		require.Containsf(t, body, `id="`+match[1]+`"`, "aria-describedby names %s, which nothing on the page carries as an id", match[1])
+	}
 }
 
 // TestScanEvidenceIsEscapedWhereverItIsRendered is FR-127 on the one screen whose

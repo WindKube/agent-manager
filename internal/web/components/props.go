@@ -51,6 +51,7 @@ var Nav = []NavGroup{
 		{ID: "storage", Label: "Storage", Href: "/storage"},
 		{ID: "org", Label: "Organization", Href: "/org"},
 		{ID: "runtime", Label: "Runtime", Href: "/runtime"},
+		{ID: "river", Label: "River Dashboard", Href: "/river"},
 	}},
 	{Label: "Onboarding", Items: []NavItem{
 		{ID: "cli", Label: "Connect the CLI", Href: "/cli"},
@@ -97,6 +98,12 @@ type Shell struct {
 	// it could not. Nil renders no badges rather than three zeroes: a count of zero
 	// is a fact about the hub and must be earned (FR-121).
 	Badges *view.Badges
+	// NavGate is why an entry cannot be followed, keyed by NavItem.ID, and holds
+	// nothing for the entries that can. A gated entry is rendered disabled with
+	// its reason on hover rather than dropped: an entry that vanishes teaches a
+	// reader that the hub has fewer screens than it has, and they cannot ask for
+	// access to something they never saw.
+	NavGate map[string]string
 }
 
 // Badge is the count beside one nav entry, and "" when there is none to show.
@@ -124,6 +131,9 @@ func (s Shell) Badge(id string) string {
 	}
 	return strconv.Itoa(count)
 }
+
+// Gate is why this entry cannot be followed, and "" when it can.
+func (s Shell) Gate(id string) string { return s.NavGate[id] }
 
 func (s Shell) ToggleIcon() string {
 	if s.Theme == "dark" {
@@ -169,6 +179,10 @@ type Catalog struct {
 	Category Facet
 	Tags     Facet
 	Import   Import
+	// Notice is a package delete's own acknowledgement, read back off the
+	// redirect: a delete leaves the package's own detail page 404ing, so
+	// this is where its outcome is said instead.
+	Notice *view.Notice
 }
 
 // Signals is the initial datastar signal state, JSON so it is both a valid
@@ -319,13 +333,29 @@ func ScanClass(scan view.Scan) string {
 	return "am-scan am-scan-" + scan.Tone()
 }
 
+// VisibilityClass tones the visibility badge. Organisation carries no
+// modifier — it is the neutral, everyone-sees-it default, the same
+// unmodified look am-kind gives a skill.
+func VisibilityClass(visibility string) string {
+	switch visibility {
+	case "team", "private":
+		return "am-vis am-vis-" + visibility
+	default:
+		return "am-vis"
+	}
+}
+
 // ---- the registration modal --------------------------------------------------
 
 // Import is the modal's props. It is a distinct type from view.Import so a
 // component signature never becomes the place a new field is added silently.
 type Import struct {
 	Categories []string
-	Preview    *view.ImportPreview
+	// Visibilities is view.ImportVisibilityOptions already scoped to the
+	// viewer, computed by the handler (which holds the session) rather than
+	// by the template — a component has no session to read groups from.
+	Visibilities []view.ImportOption
+	Preview      *view.ImportPreview
 	// Result is the outcome of a submission, when there has been one.
 	Result *view.ImportResult
 }
@@ -488,4 +518,42 @@ func StateRowClass(row view.StateRow) string {
 		return "am-kv-val"
 	}
 	return "am-kv-val am-kv-val-" + tone(row.Tone)
+}
+
+// ---- catalog delete: package and version ---------------------------------
+
+// PackageDeleteConfirmDisabledExpr disables the package delete submit until
+// the typed text exactly matches the package id — the strongest confirmation
+// idiom available to a single text field, one click away from destructive.
+// namespace/name is validated at registration (pkgspec.ValidName and the
+// object-key segment pattern), so it carries no quote a JS string literal
+// would need escaped.
+func PackageDeleteConfirmDisabledExpr(id string) string {
+	return "$_deletePkgConfirm !== '" + id + "' ? 'disabled' : null"
+}
+
+// VersionDeleteConfirmDisabledExpr is the same idiom scoped to one version:
+// the confirmation text is namespace/name@version, so confirming the wrong
+// row's form does nothing even if two rows were open, which they cannot be.
+func VersionDeleteConfirmDisabledExpr(id, version string) string {
+	return "$_deleteVersionConfirm !== '" + id + "@" + version + "' ? 'disabled' : null"
+}
+
+// VersionDeleteToggleExpr opens one version row's confirm form and closes
+// whichever other row had it open — $_deleteVersion holds at most one
+// semver, the same single-open idiom the catalog's own facet menu ($menu)
+// uses — clearing the typed text so it can never carry over onto another
+// version's confirmation.
+func VersionDeleteToggleExpr(version string) string {
+	return "$_deleteVersion = ($_deleteVersion === '" + version + "' ? '' : '" + version +
+		"'); $_deleteVersionConfirm = ''"
+}
+
+// VersionDeleteFormStyleExpr is that row's confirm form's own visibility, as
+// data-style:display rather than data-show: the form is .am-field-row, which
+// is display:flex, and data-show only ever REMOVES display, which would
+// leave it at the flex box's block default — see import.templ's own note on
+// the same hazard.
+func VersionDeleteFormStyleExpr(version string) string {
+	return "$_deleteVersion === '" + version + "' ? 'flex' : 'none'"
 }

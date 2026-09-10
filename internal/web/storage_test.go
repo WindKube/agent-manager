@@ -86,8 +86,29 @@ func TestAnUnknownBucketSettingRendersAsUnknownAndNotAsAGuessedDefault(t *testin
 	// six in total. Write access is known and must not be among them.
 	require.Equal(t, 6, strings.Count(body, "Unknown"))
 	require.Contains(t, body, "read-only; only the fetcher role can write")
-	require.NotContains(t, body, "disabled")
-	require.NotContains(t, body, "false")
+
+	// Scoped to the panel. "disabled" and "false" are the two guesses an unknown
+	// setting must not be rendered as, and the sidebar around this screen has
+	// legitimate uses for both words — a gated nav entry carries aria-disabled,
+	// and a datastar signal block is full of false.
+	settings := bucketSettingsPanel(t, body)
+	require.NotContains(t, settings, "disabled")
+	require.NotContains(t, settings, "false")
+}
+
+// bucketSettingsPanel is the "Bucket settings" card and nothing else, so an
+// assertion about a setting's rendering cannot be satisfied or broken by the
+// chrome around it.
+func bucketSettingsPanel(t *testing.T, body string) string {
+	t.Helper()
+
+	const head = `<div class="am-section-title">Bucket settings</div>`
+	start := strings.Index(body, head)
+	require.GreaterOrEqual(t, start, 0, "the bucket settings panel is not on this page")
+	rest := body[start+len(head):]
+	end := strings.Index(rest, "</section>")
+	require.GreaterOrEqual(t, end, 0, "the bucket settings panel does not close")
+	return rest[:end]
 }
 
 func TestStorageEscapesEverythingAPublisherOrAnOperatorSupplied(t *testing.T) {

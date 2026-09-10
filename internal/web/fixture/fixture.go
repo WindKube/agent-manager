@@ -62,6 +62,12 @@ func build(rows []view.Row) *Catalog {
 	seen := map[string]struct{}{}
 	tags := []string{}
 	for i := range rows {
+		// The design's rows predate the visibility column and name no
+		// owner; organisation is the one value true of every row here,
+		// same as a real pre-migration package.
+		if rows[i].Visibility == "" {
+			rows[i].Visibility = "organisation"
+		}
 		for _, tag := range rows[i].Tags {
 			if _, dup := seen[tag]; dup {
 				continue

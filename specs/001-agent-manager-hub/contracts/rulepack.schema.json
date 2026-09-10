@@ -13,8 +13,8 @@
       "enum": ["manifest-schema", "network-allowlist", "shell-audit", "secret-exfiltration", "prompt-injection", "filesystem-scope", "dependency-pinning"],
       "description": "Which registered Check consumes this rule."
     },
-    "title": { "type": "string" },
-    "detail": { "type": "string", "description": "Prose shown in the finding pane. Explains why it is flagged, not just what matched." },
+    "title": { "type": "string", "minLength": 1 },
+    "detail": { "type": "string", "minLength": 1, "description": "Prose shown in the finding pane. Explains why it is flagged, not just what matched." },
     "match": {
       "type": "object",
       "required": ["kind"],

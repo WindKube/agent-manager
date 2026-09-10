@@ -330,6 +330,27 @@ func (s *Server) registerPackages() {
 	}, s.getPackageFile)
 
 	huma.Register(s.api, huma.Operation{
+		OperationID: "getPackageScan",
+		Method:      http.MethodGet,
+		Path:        "/v1/packages/{namespace}/{name}/scan",
+		Tags:        []string{"catalog"},
+		Summary:     "The latest visible version's scan result, to show beside the package",
+		Description: "The Scanner screen's own rows — verdict, engine, findings, evidence and any " +
+			"reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged " +
+			"across all of them (the package detail screen's collapsible security section). " +
+			"`scanned` distinguishes a version scanned clean from one never scanned, exactly as " +
+			"getPackage's `capabilities.scanned` does: both produce an empty findings list. A " +
+			"rejected version is never served, exactly as GET " +
+			"/v1/bundles/{publisher}/{name}/{version} refuses one (FR-029).",
+		Responses: map[string]*huma.Response{
+			"401": s.errorResponse("No usable session. The caller must sign in; there is no anonymous view."),
+			"403": s.errorResponse("This version was rejected and its scan detail is not served."),
+			"404": s.errorResponse("No such package, or it has no published version."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.getPackageScan)
+
+	huma.Register(s.api, huma.Operation{
 		OperationID: "previewPackage",
 		Method:      http.MethodPost,
 		Path:        "/v1/packages/preview",
@@ -377,6 +398,89 @@ func (s *Server) registerPackages() {
 			"500": s.errorResponse("The request could not be completed."),
 		},
 	}, s.registerPackage)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "deleteVersion",
+		Method:      http.MethodDelete,
+		Path:        "/v1/packages/{namespace}/{name}/versions/{version}",
+		Tags:        []string{"packages"},
+		Summary:     "Withdraw one version from the catalog",
+		Description: "Archives the version (dist_tag becomes `archived`) rather than deleting its row: " +
+			"a version is write-once, and an existing profile pin or a published revision's " +
+			"lockfile keeps resolving it — only new floating or range resolution, and the " +
+			"catalog listing when this was the package's latest, stop offering it. Writes one " +
+			"audit row. Requires the catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Withdrawn.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.VersionDeleted{}, "VersionDeleted")},
+				},
+			},
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"403": s.errorResponse("This identity may not delete a version."),
+			"404": s.errorResponse("No such package or version."),
+			"409": s.errorResponse("This version was already withdrawn."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.deleteVersion)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "deletePackage",
+		Method:      http.MethodDelete,
+		Path:        "/v1/packages/{namespace}/{name}",
+		Tags:        []string{"packages"},
+		Summary:     "Delete a package from the catalog",
+		Description: "Archives every version of the package that is not archived already, and clears " +
+			"the package's latest-version pointer — the same column the catalog and this " +
+			"package's own detail page join through, so both stop finding it, the way an " +
+			"unpublished package already answers. No row and no blob is deleted: see " +
+			"deleteVersion's own description for why. Writes one audit row. Requires the " +
+			"catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Deleted.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.PackageDeleted{}, "PackageDeleted")},
+				},
+			},
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"403": s.errorResponse("This identity may not delete a package."),
+			"404": s.errorResponse("No such package."),
+			"409": s.errorResponse("This package was already withdrawn."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.deletePackage)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "setPackageVisibility",
+		Method:      http.MethodPut,
+		Path:        "/v1/packages/{namespace}/{name}/visibility",
+		Tags:        []string{"packages"},
+		Summary:     "Change who may see a package",
+		Description: "Organisation, team or private (FR-126), in one transaction with one audit row of " +
+			"kind `share`. Team means the caller's own identity-provider groups: there is no " +
+			"team-membership entity here, so a package's team visibility is read against " +
+			"whichever groups its owner carried at registration. " +
+			"Requires the package's recorded owner or a catalog admin — nobody else, including a " +
+			"caller who can otherwise see the package. The response is the package as it now " +
+			"reads, not an echo of the request.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Changed. The body is the package as it now reads.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.PackageDetail{}, "PackageDetail")},
+				},
+			},
+			"400": s.errorResponse("The request body is missing or is not valid JSON."),
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"403": s.errorResponse("This identity may not change this package's visibility."),
+			"404": s.errorResponse("No such package, or it is not readable by this identity."),
+			"415": s.errorResponse("The request body must be sent as application/json."),
+			"422": s.errorResponse("Visibility is outside its vocabulary."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.setPackageVisibility)
 }
 
 func (s *Server) registerProfiles() {
@@ -473,10 +577,8 @@ func (s *Server) registerProfiles() {
 			"resolves, with `unpublished` set on every row that differs from the head revision. " +
 			"The body is the WHOLE ordered set, because position is what an ordered set means and " +
 			"a patch cannot express a reorder. Naming a package the profile does not hold adds it. " +
-			"OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE " +
-			"on `profile_entry` (removal is unspecified and no screen carries the control), so " +
-			"quietly keeping it would answer 200 to a request whose stored result disagrees with " +
-			"what was sent. " +
+			"OMITTING one it does hold is REFUSED and named, to catch a client acting on stale " +
+			"state — POST .../entries/remove is the explicit way to take one out. " +
 			"Requires owner or maintainer on the profile.",
 		Responses: map[string]*huma.Response{
 			"200": {
@@ -495,6 +597,35 @@ func (s *Server) registerProfiles() {
 			"500": s.errorResponse("The request could not be completed."),
 		},
 	}, s.setProfileEntries)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "removeProfileEntry",
+		Method:      http.MethodPost,
+		Path:        "/v1/profiles/{slug}/entries/remove",
+		Tags:        []string{"profiles"},
+		Summary:     "Remove one package from a profile",
+		Description: "Deletes the profile_entry row outright, in one transaction with one audit row " +
+			"of kind `profile`. Distinct from PUT .../entries: that operation still refuses a body " +
+			"omitting an entry the profile holds, and this is the addressed removal offered instead " +
+			"of loosening it. " +
+			"NOT DURABLE UNTIL A REVISION IS PUBLISHED, same as every other entry change. " +
+			"Requires owner or maintainer on the profile.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Removed. The body is the profile as it now resolves.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.ProfileDetail{}, "ProfileDetail")},
+				},
+			},
+			"400": s.errorResponse("The request body is missing or is not valid JSON."),
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"403": s.errorResponse("This identity may not curate this profile."),
+			"404": s.errorResponse("No such profile, or not readable by this identity."),
+			"415": s.errorResponse("The request body must be sent as application/json."),
+			"422": s.errorResponse("The id is not a package id, or the profile does not hold it."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.removeProfileEntry)
 
 	huma.Register(s.api, huma.Operation{
 		OperationID: "setProfileSharing",
@@ -618,6 +749,30 @@ func (s *Server) registerProfiles() {
 			"500": s.errorResponse("The request could not be completed."),
 		},
 	}, s.getRevision)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID:   "deleteProfile",
+		Method:        http.MethodDelete,
+		Path:          "/v1/profiles/{slug}",
+		Tags:          []string{"profiles"},
+		Summary:       "Delete a profile",
+		DefaultStatus: http.StatusNoContent,
+		Description: "Deletes the profile, its entries, its membership and its sync targets, in one " +
+			"transaction with one audit row of kind `profile`. Refuses with 409 when the profile " +
+			"holds any published revision — the foreign key from `revision` has no ON DELETE " +
+			"clause, so this is the database's own refusal, and it is deliberate: FR-034 forbids " +
+			"deleting a revision, and a client may already have synced one. A profile that has " +
+			"never been published carries no such row and deletes cleanly. " +
+			"Requires owner on the profile.",
+		Responses: map[string]*huma.Response{
+			"204": {Description: "Deleted."},
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"403": s.errorResponse("This identity may not delete this profile."),
+			"404": s.errorResponse("No such profile, or not readable by this identity."),
+			"409": s.errorResponse("The profile holds a published revision and cannot be deleted."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.deleteProfile)
 }
 
 func (s *Server) registerBundles() {
@@ -1016,8 +1171,9 @@ type getBundleOutput struct {
 
 func (s *Server) getBundle(ctx context.Context, in *getBundleInput) (*getBundleOutput, error) {
 	log := logging.From(ctx)
+	principal, _ := PrincipalFrom(ctx)
 
-	ref, err := queries.Bundle(ctx, s.deps.DB, in.Publisher, in.Name, in.Version)
+	ref, err := queries.Bundle(ctx, s.deps.DB, principal, in.Publisher, in.Name, in.Version)
 	if err != nil {
 		return nil, fail(log, err)
 	}

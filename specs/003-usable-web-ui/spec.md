@@ -458,8 +458,11 @@ reported figures against the object store's own reported state.
 **The compose topology**
 
 - **FR-129**: The compose topology MUST be split into an infrastructure file — database,
-  object store and its initialisation, identity provider, local directory, and the schema and
-  queue migration one-shots — and an application file holding the roles this project builds.
+  object store and its initialisation, identity provider, local directory, the schema and
+  queue migration one-shots, and the queue dashboard — and an application file holding the
+  roles this project builds. The dashboard is third-party, is built by nothing here, and
+  reads only the queue database, so it belongs with the dependencies; it MUST NOT sit behind
+  a compose profile, because a queue nobody can see is one that gets debugged by guessing.
 - **FR-130**: The infrastructure file MUST be startable alone and MUST reach a healthy or
   completed state with no application container present.
 - **FR-131**: The application file MUST start against already-running infrastructure without

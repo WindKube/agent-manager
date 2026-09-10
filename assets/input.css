@@ -709,7 +709,7 @@
     display: grid;
     grid-template-columns:
       minmax(90px, 2.2fr) 56px minmax(60px, 1fr) minmax(44px, 0.6fr)
-      minmax(64px, 0.8fr) minmax(38px, 0.5fr) minmax(52px, 0.9fr);
+      minmax(64px, 0.8fr) minmax(64px, 0.7fr) minmax(38px, 0.5fr) minmax(52px, 0.9fr);
     gap: 10px;
     padding: 15px 20px;
     border-top: 1px solid var(--bd);
@@ -2364,7 +2364,7 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     gap: 24px;
-    padding: 24px 44px 0;
+    padding: 24px 44px;
   }
 
   .am-kv-val-warn {
@@ -2728,5 +2728,110 @@
   .am-md-omitted {
     font-style: italic;
     color: var(--fg3);
+  }
+
+  /* A sidebar entry a viewer cannot follow: dimmed, not a link, and carrying
+     its own reason in a title. The cursor is the tell that clicking is not the
+     answer, since there is nothing to click. */
+  .am-nav-item-gated {
+    color: var(--fg3);
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .am-nav-item-gated:hover {
+    background: transparent;
+    color: var(--fg3);
+  }
+
+  /* The embedded dashboard is a whole application, so it gets the screen rather
+     than a card: full width inside the gutter, and tall enough that its own
+     header and table are not both fighting for the same 200 pixels. */
+  .am-river-frame {
+    display: block;
+    width: 100%;
+    height: calc(100vh - 190px);
+    min-height: 480px;
+    border: 0;
+    background: var(--bg);
+  }
+
+  /* A SKILL.md's leading YAML frontmatter, shown as the structured metadata
+     it is rather than run into the body's own prose styling. */
+  .am-md-frontmatter {
+    margin: 4px 0 14px;
+    border: 1px solid var(--bd);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .am-md-frontmatter-label {
+    padding: 6px 14px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--bd);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--fg3);
+  }
+
+  .am-md-frontmatter-body {
+    margin: 0;
+    padding: 12px 14px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--fg2);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  /* One finding inside the package screen's scan panel: am-ver's own block
+     shape (padding, top border, stacked gap), not am-find's, since this row
+     is static rather than a link into a triage pane. */
+  .am-scan-finding {
+    padding: 14px 20px;
+    border-top: 1px solid var(--bd);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  /* Package visibility (feat/package-visibility): a pill wherever a package
+     is named, and the change control beside it. Organisation carries no
+     modifier, the same neutral look am-kind gives a skill — it is the
+     everyone-sees-it default and the only one true of a pre-migration row. */
+  .am-vis {
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 500;
+    background: transparent;
+    color: var(--fg2);
+  }
+
+  .am-vis-team {
+    background: var(--sel);
+    color: var(--fg);
+  }
+
+  .am-vis-private {
+    background: var(--warnbg);
+    color: var(--warn);
+  }
+
+  .am-vis-control {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .am-vis-form {
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 }

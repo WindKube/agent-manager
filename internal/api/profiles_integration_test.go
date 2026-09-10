@@ -415,8 +415,8 @@ func TestCreatingAProfileMakesItsAuthorTheOwnerAndWritesOneAuditRow(t *testing.T
 	require.Equal(t, string(models.ProfileVisibilityPrivate), detail.Visibility,
 		"a profile nobody has chosen to publish is not readable by the whole organisation")
 	require.Equal(t, string(models.MembershipRoleOwner), detail.Role)
-	require.Equal(t, contract.ProfilePermissions{Curate: true, Share: true, Publish: true},
-		detail.Permissions)
+	require.Equal(t, contract.ProfilePermissions{Curate: true, Share: true, Publish: true, Delete: true},
+		detail.Permissions, "an owner may delete outright; the has-revisions refusal is a separate, later check")
 	require.Equal(t, 0, detail.HeadRevision)
 	require.True(t, detail.UnpublishedChanges, "nothing has been published, so a revision is owed")
 	require.Equal(t, []contract.ProfileMember{{
@@ -641,16 +641,16 @@ func TestOnlyTheRolesFR037NamesMayCurateShareOrPublish(t *testing.T) {
 	sharing := `{"members":[{"kind":"user","ref":"someone@example.com","role":"consumer"}]}`
 
 	for _, tc := range []struct {
-		name                   string
-		who                    actor
-		role                   models.MembershipRole
-		curate, share, publish bool
+		name                           string
+		who                            actor
+		role                           models.MembershipRole
+		curate, share, publish, delete bool
 	}{
-		{"the owner", curator, models.MembershipRoleOwner, true, true, true},
-		{"a maintainer curates and publishes and does not re-share", mate,
-			models.MembershipRoleMaintainer, true, false, true},
-		{"a consumer holding the organisation's top role still may not publish", punter,
-			models.MembershipRoleConsumer, false, false, false},
+		{"the owner", curator, models.MembershipRoleOwner, true, true, true, true},
+		{"a maintainer curates and publishes and does not re-share or delete", mate,
+			models.MembershipRoleMaintainer, true, false, true, false},
+		{"a consumer holding the organisation's top role still may not publish or delete", punter,
+			models.MembershipRoleConsumer, false, false, false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// Everyone here can READ it, which is what makes the refusals below a
@@ -658,7 +658,7 @@ func TestOnlyTheRolesFR037NamesMayCurateShareOrPublish(t *testing.T) {
 			detail := profileDetail(t, tc.who, slug)
 			require.Equal(t, string(tc.role), detail.Role)
 			require.Equal(t, contract.ProfilePermissions{
-				Curate: tc.curate, Share: tc.share, Publish: tc.publish,
+				Curate: tc.curate, Share: tc.share, Publish: tc.publish, Delete: tc.delete,
 			}, detail.Permissions, "FR-126: the screen is told what it may offer")
 
 			// The bulk list (GET /v1/profiles) carries the same answer, from the
@@ -927,4 +927,156 @@ func TestThePublishedLockfileIsTheResolutionTheScreenWasShowing(t *testing.T) {
 	require.Equal(t, displayed.Gate, frozen.Gate)
 	require.Equal(t, displayed.DefaultPolicy, frozen.DefaultPolicy)
 	require.Equal(t, displayed.Slug, frozen.Profile.Slug)
+}
+
+// ---- profile-entry removal ----------------------------------------------
+
+// removeEntry posts POST /v1/profiles/{slug}/entries/remove, the dedicated
+// command a curator's "Remove" button uses instead of resending the whole
+// entry set (SetProfileEntries refuses a body that omits a held entry).
+func removeEntry(t *testing.T, who actor, slug, id string, want int) []byte {
+	t.Helper()
+	return send(t, who, http.MethodPost, profilePath(slug, "entries", "remove"),
+		fmt.Sprintf(`{"id":%q}`, id), want)
+}
+
+func TestRemovingAnEntryTakesOutExactlyThatPackageAndWritesAnAuditRow(t *testing.T) {
+	first := curatePackage(t, "remove-first",
+		curatedVersion{semver: "1.0.0", verdict: models.VerdictClean, visible: true, latest: true})
+	second := curatePackage(t, "remove-second",
+		curatedVersion{semver: "1.0.0", verdict: models.VerdictClean, visible: true, latest: true})
+
+	slug := "curate/remove-entry"
+	newProfile(t, curator, slug, "Remove entry")
+	setEntries(t, curator, slug, fmt.Sprintf(
+		`[{"id":%q,"mode":"latest"},{"id":%q,"mode":"latest"}]`, first.id, second.id), http.StatusOK)
+
+	before := profileAuditCount(t)
+	detail := sendJSON[contract.ProfileDetail](t, curator, http.MethodPost,
+		profilePath(slug, "entries", "remove"), fmt.Sprintf(`{"id":%q}`, first.id), http.StatusOK)
+	require.Equal(t, before+1, profileAuditCount(t), "a remove must write exactly one audit row")
+	kind, who, text := latestAuditRow(t)
+	require.Equal(t, string(models.AuditKindProfile), kind)
+	require.Equal(t, curator.claims.Email, who)
+	require.Contains(t, text, first.id)
+
+	require.Len(t, detail.Entries, 1, "only the untouched package is left")
+	require.Equal(t, second.id, detail.Entries[0].ID)
+}
+
+// TestRemovingAnEntryNotHeldIsRefusedRatherThanANoOp asserts a stale page or a
+// race that names a package the profile does not hold gets an explicit
+// refusal, not a silent 200 that changed nothing.
+func TestRemovingAnEntryNotHeldIsRefusedRatherThanANoOp(t *testing.T) {
+	pkg := curatePackage(t, "remove-absent",
+		curatedVersion{semver: "1.0.0", verdict: models.VerdictClean, visible: true, latest: true})
+	other := curatePackage(t, "remove-not-held",
+		curatedVersion{semver: "1.0.0", verdict: models.VerdictClean, visible: true, latest: true})
+
+	slug := "curate/remove-absent"
+	newProfile(t, curator, slug, "Remove absent")
+	setEntries(t, curator, slug, fmt.Sprintf(`[{"id":%q,"mode":"latest"}]`, pkg.id), http.StatusOK)
+
+	raw := removeEntry(t, curator, slug, other.id, http.StatusUnprocessableEntity)
+	var body contract.Error
+	require.NoError(t, json.Unmarshal(raw, &body))
+	require.Contains(t, body.Detail, "nothing to remove")
+
+	after := profileDetail(t, curator, slug)
+	require.Len(t, after.Entries, 1, "the refused request must not have changed anything")
+}
+
+// TestRemovingAnEntryIsRefusedForARoleThatMayNotCurate is the api-level half
+// of the disabled Remove button: the gate holds even when the request
+// arrives directly, from an identity that only reads this profile.
+func TestRemovingAnEntryIsRefusedForARoleThatMayNotCurate(t *testing.T) {
+	pkg := curatePackage(t, "remove-role",
+		curatedVersion{semver: "1.0.0", verdict: models.VerdictClean, visible: true, latest: true})
+
+	slug := "curate/remove-role"
+	newProfile(t, curator, slug, "Remove role")
+	setEntries(t, curator, slug, fmt.Sprintf(`[{"id":%q,"mode":"latest"}]`, pkg.id), http.StatusOK)
+	sendJSON[contract.ProfileDetail](t, curator, http.MethodPut, profilePath(slug, "sharing"),
+		fmt.Sprintf(`{"members":[{"kind":"user","ref":%q,"role":"consumer"}]}`, punter.claims.Email),
+		http.StatusOK)
+
+	raw := removeEntry(t, punter, slug, pkg.id, http.StatusForbidden)
+	var body contract.Error
+	require.NoError(t, json.Unmarshal(raw, &body))
+	require.Contains(t, body.Detail, "consumer")
+
+	after := profileDetail(t, curator, slug)
+	require.Len(t, after.Entries, 1, "a refused remove must not have changed anything")
+}
+
+// ---- profile deletion ------------------------------------------------------
+
+// TestDeletingAProfileWithNoRevisionsRemovesItOutrightAndWritesAnAuditRow
+// covers the happy path: a profile nobody has published yet, and therefore
+// nothing a CLI could have synced, deletes cleanly.
+func TestDeletingAProfileWithNoRevisionsRemovesItOutrightAndWritesAnAuditRow(t *testing.T) {
+	pkg := curatePackage(t, "delete-clean",
+		curatedVersion{semver: "1.0.0", verdict: models.VerdictClean, visible: true, latest: true})
+
+	slug := "curate/delete-clean"
+	newProfile(t, curator, slug, "Delete clean")
+	setEntries(t, curator, slug, fmt.Sprintf(`[{"id":%q,"mode":"latest"}]`, pkg.id), http.StatusOK)
+
+	before := profileAuditCount(t)
+	send(t, curator, http.MethodDelete, profilePath(slug), "", http.StatusNoContent)
+	require.Equal(t, before+1, profileAuditCount(t), "a delete must write exactly one audit row")
+	kind, who, text := latestAuditRow(t)
+	require.Equal(t, string(models.AuditKindProfile), kind)
+	require.Equal(t, curator.claims.Email, who)
+	require.Contains(t, text, slug)
+
+	send(t, curator, http.MethodGet, profilePath(slug), "", http.StatusNotFound)
+	require.Equal(t, 0, countRows(t, fmt.Sprintf(
+		`select count(*) from profile where slug = '%s'`, slug)),
+		"the row itself, not only its readability, must be gone")
+}
+
+// TestDeletingAProfileWithPublishedRevisionsIsRefused is the refusal FR-034
+// forces: a client may already have synced a published revision, so deleting
+// the profile out from under it would either orphan that history or remove a
+// revision, which this hub never does. The database's own NO ACTION foreign
+// key is what refuses this — no pre-check duplicates it.
+func TestDeletingAProfileWithPublishedRevisionsIsRefused(t *testing.T) {
+	pkg := curatePackage(t, "delete-published",
+		curatedVersion{semver: "1.0.0", verdict: models.VerdictClean, visible: true, latest: true})
+
+	slug := "curate/delete-published"
+	newProfile(t, curator, slug, "Delete published")
+	setEntries(t, curator, slug, fmt.Sprintf(`[{"id":%q,"mode":"latest"}]`, pkg.id), http.StatusOK)
+	publish(t, curator, slug, "one revision, now unsyncable if deleted")
+
+	raw := send(t, curator, http.MethodDelete, profilePath(slug), "", http.StatusConflict)
+	var body contract.Error
+	require.NoError(t, json.Unmarshal(raw, &body))
+	require.Contains(t, body.Detail, "published revisions")
+
+	// The refused delete must not have half-applied: the profile, its entry
+	// and its revision are all still there.
+	detail := profileDetail(t, curator, slug)
+	require.Len(t, detail.Entries, 1)
+	require.Equal(t, 1, detail.HeadRevision)
+}
+
+// TestDeletingAProfileIsRefusedForARoleThatIsNotOwner is the api-level half
+// of the disabled Delete button: MayDelete is owner-only, and the refusal
+// holds even for a maintainer who may curate and publish this same profile.
+func TestDeletingAProfileIsRefusedForARoleThatIsNotOwner(t *testing.T) {
+	slug := "curate/delete-role"
+	newProfile(t, curator, slug, "Delete role")
+	sendJSON[contract.ProfileDetail](t, curator, http.MethodPut, profilePath(slug, "sharing"),
+		fmt.Sprintf(`{"members":[{"kind":"user","ref":%q,"role":"maintainer"}]}`, mate.claims.Email),
+		http.StatusOK)
+
+	raw := send(t, mate, http.MethodDelete, profilePath(slug), "", http.StatusForbidden)
+	var body contract.Error
+	require.NoError(t, json.Unmarshal(raw, &body))
+	require.Contains(t, body.Detail, "maintainer")
+
+	// Still there, and still the owner's: a refused delete grants nothing.
+	require.Equal(t, string(models.MembershipRoleOwner), profileDetail(t, curator, slug).Role)
 }

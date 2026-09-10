@@ -9,7 +9,9 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/dialect/pgdialect"
 
 	"agent-manager/internal/auth"
 )
@@ -39,6 +41,34 @@ func Readable(alias string, p auth.Principal) (predicate string, args []any) {
 	if matchable {
 		clauses = append(clauses, "exists (select 1 from membership as m where m.profile_id = "+
 			alias+".id and "+subject+")")
+	}
+	return "(" + strings.Join(clauses, " or ") + ")", args
+}
+
+// PackageReadable renders the readability predicate for one principal, as a
+// SQL fragment over the given alias of table `package`, plus its arguments
+// in order — the same WHERE-clause pattern Readable uses for profiles, so a
+// package this identity may not read is never selected, counted or
+// returned, not merely hidden after the fact.
+//
+// Three ways a package becomes readable, and nothing else is one: its
+// visibility is `organisation`; its owner_identity_id names this identity
+// (an owner never loses their own package to a group they later leave); or its
+// visibility is `team` and its owner shares an IdP group with this identity.
+// A package with no owner recorded matches only the first clause — the
+// migration that added the column leaves existing organisation-visibility
+// rows on that clause, never on the other two.
+func PackageReadable(alias string, p auth.Principal) (predicate string, args []any) {
+	clauses := []string{alias + ".visibility = 'organisation'"}
+	if p.IdentityID != uuid.Nil {
+		clauses = append(clauses, alias+".owner_identity_id = ?")
+		args = append(args, p.IdentityID)
+	}
+	if len(p.Groups) > 0 {
+		clauses = append(clauses, "("+alias+".visibility = 'team' and exists ("+
+			"select 1 from identity as owner_idt where owner_idt.id = "+alias+".owner_identity_id "+
+			"and owner_idt.groups && ?::text[]))")
+		args = append(args, pgdialect.Array(p.Groups))
 	}
 	return "(" + strings.Join(clauses, " or ") + ")", args
 }

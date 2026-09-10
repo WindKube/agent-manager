@@ -13,6 +13,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"regexp"
 	"time"
@@ -52,6 +53,17 @@ type PackageSource interface {
 	Package(ctx context.Context, namespace, name string) (view.Package, error)
 }
 
+// PackageCurator is every write the package detail screen offers: changing
+// visibility (FR-126), and the two destructive withdrawals — one version, or
+// the whole package, out of the catalog. Kept apart from PackageSource for
+// the same reason Reviewer sits apart from ScannerSource: each writes an
+// audit row a fixture must not fake.
+type PackageCurator interface {
+	SetVisibility(ctx context.Context, namespace, name, visibility string) (view.Package, error)
+	DeleteVersion(ctx context.Context, namespace, name, version string) (view.VersionDeleted, error)
+	DeletePackage(ctx context.Context, namespace, name string) (view.PackageDeleted, error)
+}
+
 // PackageFileSource is the files panel's door to the api (US3/US5: read a
 // skill's files before using it), kept separate from PackageSource since a
 // deployment can answer a package's detail while its bundle reader is
@@ -59,6 +71,15 @@ type PackageSource interface {
 type PackageFileSource interface {
 	PackageFiles(ctx context.Context, namespace, name string) (view.FileList, error)
 	PackageFile(ctx context.Context, namespace, name, path string) (view.FileDetail, error)
+}
+
+// PackageScanSource is the package detail screen's door to its security
+// section: the latest visible version's scan, findings and any reviewer
+// decision — the Scanner screen's own rows, scoped to one package. Kept
+// separate from PackageSource for the same reason PackageFileSource is: a
+// deployment can answer the rest of the page while this read is unavailable.
+type PackageScanSource interface {
+	PackageScan(ctx context.Context, namespace, name string) (hub.PackageScanDetail, error)
 }
 
 // Registrar is the import modal's door to the two registration operations,
@@ -106,9 +127,11 @@ type ProfileSource interface {
 type ProfileCurator interface {
 	CreateProfile(ctx context.Context, creation hub.ProfileCreation) (hub.ProfileSummary, error)
 	SetProfileEntries(ctx context.Context, slug string, entries []hub.EntrySetting) (hub.ProfileDetail, error)
+	RemoveProfileEntry(ctx context.Context, slug, id string) (hub.ProfileDetail, error)
 	SetProfileSharing(ctx context.Context, slug string, members []hub.Share) (hub.ProfileDetail, error)
 	SetProfileTargets(ctx context.Context, slug string, targets []string) (hub.ProfileDetail, error)
 	PublishRevision(ctx context.Context, slug, note string) (hub.PublishedRevision, error)
+	DeleteProfile(ctx context.Context, slug string) error
 }
 
 // DeviceSource is the Connect-the-CLI screen's door to the api: looking a
@@ -151,11 +174,13 @@ type OrganizationSource interface {
 // Deps is what the role is handed. Nil on any source renders that screen's
 // unavailable state rather than an empty one or a panic.
 type Deps struct {
-	Catalog   CatalogSource
-	Packages  PackageSource
-	Files     PackageFileSource
-	Registrar Registrar
-	Auth      AuthProvider
+	Catalog        CatalogSource
+	Packages       PackageSource
+	PackageCurator PackageCurator
+	Files          PackageFileSource
+	PackageScan    PackageScanSource
+	Registrar      Registrar
+	Auth           AuthProvider
 	// Viewers resolves who each request is acting as. Nil fails closed.
 	Viewers      ViewerSource
 	Sessions     SessionMinter
@@ -190,6 +215,14 @@ type Options struct {
 	OIDCCookieKey []byte
 	// HubURL is the address `amctl login --hub` should name.
 	HubURL string
+	// RiverUI is the base address of River's queue dashboard, or nil when this
+	// deployment runs none — in which case the River Dashboard entry renders
+	// disabled with the reason on it, rather than disappearing.
+	//
+	// Scheme and host only. It is not a credential: the dashboard holds the
+	// queue's, this role holds none, and nothing a request carries can steer
+	// where the proxy points.
+	RiverUI *url.URL
 }
 
 // Server is the assembled router. It owns no connections.
@@ -200,6 +233,9 @@ type Server struct {
 	// secureCookie and oidcKey are decided once, at construction, not per-request.
 	secureCookie bool
 	oidcKey      []byte
+	// riverUI is the reverse proxy onto the queue dashboard, built once, and nil
+	// when no dashboard is configured.
+	riverUI *httputil.ReverseProxy
 }
 
 // New assembles the router. It performs no I/O.
@@ -217,6 +253,7 @@ func New(deps Deps, opts Options) *Server {
 		engine:       engine,
 		secureCookie: secureCookie(opts.PublicBaseURL),
 		oidcKey:      oidcSigningKey(opts.OIDCCookieKey),
+		riverUI:      riverProxy(opts.RiverUI, deps.Log),
 	}
 	// The guard is global, so a new route is protected by default. It runs
 	// after correlation so its own log lines and redirect carry the request's id.
@@ -241,6 +278,12 @@ func (s *Server) register() {
 	// A package id IS two segments: `example/platform-toolkit`. gin routes on
 	// the decoded path, so this splits correctly even if the id arrives encoded.
 	s.engine.GET("/packages/:namespace/:name", s.packageDetail)
+	// POST forms that redirect, like the profile screens' writes, so a reload
+	// cannot resubmit any of them. The two deletes are additionally gated on
+	// the role the api demands and sit behind a typed confirmation.
+	s.engine.POST("/packages/visibility", s.setPackageVisibility)
+	s.engine.POST("/packages/:namespace/:name/delete", s.deletePackage)
+	s.engine.POST("/packages/:namespace/:name/versions/:version/delete", s.deleteVersion)
 
 	// Both governance decisions are POST forms that redirect, so a reload
 	// cannot re-approve anything.
@@ -259,9 +302,11 @@ func (s *Server) register() {
 	s.engine.POST("/profiles/entries/pin", s.pinEntry)
 	s.engine.POST("/profiles/entries/latest", s.floatEntry)
 	s.engine.POST("/profiles/entries/add", s.addEntry)
+	s.engine.POST("/profiles/entries/remove", s.removeEntry)
 	s.engine.POST("/profiles/sharing", s.shareProfile)
 	s.engine.POST("/profiles/targets", s.setTargets)
 	s.engine.POST("/profiles/revisions", s.publishRevision)
+	s.engine.POST("/profiles/delete", s.deleteProfile)
 	// The confirm action never carries the user code in its own path: it is
 	// bearer-equivalent for the length of its validity.
 	s.engine.GET("/cli", s.cli)
@@ -280,6 +325,13 @@ func (s *Server) register() {
 	s.engine.POST("/org/categories/:id/delete", s.deleteCategory)
 
 	s.engine.GET("/runtime", s.runtime)
+
+	// The screen and the dashboard it embeds are separate paths on purpose: the
+	// embed is a byte passthrough with no layout, no shell and no session cookie
+	// on the way out, and a wildcard sharing a segment with a rendered screen is
+	// how one of them starts answering for the other.
+	s.engine.GET("/river", s.riverScreen)
+	s.engine.Any(view.RiverEmbedPrefix+"/*path", s.riverEmbed)
 
 	s.engine.POST("/theme", s.setTheme)
 

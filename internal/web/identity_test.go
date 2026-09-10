@@ -73,8 +73,9 @@ var (
 //
 // Adding to this list is how a compiled-in identity would get past every
 // assertion in this file, so an entry needs a reason a reviewer would accept:
-// these three are a product name and two published specification names, and none
-// of them is a claim about who is looking at the page.
+// these are a product name, two published specification names, a directory
+// convention and a dependency's own dashboard — none of them a claim about who
+// is looking at the page.
 var productVocabulary = []string{
 	components.ProductName,
 	"Agent Plugins",
@@ -82,6 +83,10 @@ var productVocabulary = []string{
 	// The agent directory convention a sync target writes to, not a claim about
 	// who is looking at the page.
 	"Claude Code",
+	// The job queue this hub runs on, and the sidebar entry that embeds its own
+	// dashboard. River is a library's name; the entry names the thing being
+	// looked at, never the person looking.
+	"River Dashboard",
 }
 
 // identityClasses are the design's three identity elements. They are asserted on
@@ -150,6 +155,7 @@ func sweep() []sweptScreen {
 		inShell("CatalogNotice", func() templ.Component { return components.CatalogNotice(nil) }),
 		inShell("PackageScreen", func() templ.Component { return components.PackageScreen(view.Package{}) }),
 		inShell("CapabilityPanel", func() templ.Component { return components.CapabilityPanel(view.Capabilities{}) }),
+		inShell("PackageScanPanel", func() templ.Component { return components.PackageScanPanel(view.PackageScan{}) }),
 		inShell("VersionsPanel", func() templ.Component { return components.VersionsPanel(view.Package{}) }),
 		inShell("DependentsPanel", func() templ.Component { return components.DependentsPanel(view.Package{}) }),
 		inShell("FilesPanel", func() templ.Component { return components.FilesPanel(view.Package{}) }),
@@ -184,6 +190,12 @@ func sweep() []sweptScreen {
 		// still swept empty for the same reason every other governance screen
 		// is: what matters here is the chrome, not a claim that its rows are safe.
 		inShell("RuntimeScreen", func() templ.Component { return components.RuntimeScreen(view.Runtime{}) }),
+		// The embedded state, not the gated one: a frame is what this screen
+		// renders when there is something to render, and the sweep should see
+		// the page that actually has content on it.
+		inShell("RiverScreen", func() templ.Component {
+			return components.RiverScreen(view.River{EmbedPath: view.RiverEmbedPrefix + "/"})
+		}),
 		{
 			name: "NoRoleScreen",
 			// The one screen whose body renders the viewer itself. Signed out there is

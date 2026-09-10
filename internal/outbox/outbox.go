@@ -71,6 +71,12 @@ func Queue(k Kind) string {
 	return queueByKind[k]
 }
 
+// MaxJobAttempts caps every kind's retries. River defaults an unset
+// InsertOpts.MaxAttempts to 25 (river.MaxAttemptsDefault); 25 attempts of a
+// fetch or a scan that keeps failing is 25 attempts of noise nobody reads,
+// and it is what makes the Runtime screen's "retryable" count meaningless.
+const MaxJobAttempts = 3
+
 // Job is one queued unit of work as the caller describes it.
 type Job struct {
 	Kind Kind

@@ -38,6 +38,9 @@ func handler(t *testing.T, source web.CatalogSource) http.Handler {
 	if files, ok := source.(web.PackageFileSource); ok {
 		deps.Files = files
 	}
+	if scan, ok := source.(web.PackageScanSource); ok {
+		deps.PackageScan = scan
+	}
 	// Same shape for the two governance screens, and for the sidebar counts. The
 	// fixture answers all three reads and deliberately cannot answer a decision, so
 	// deps.Reviewer stays nil here and the screen renders what a hub with no
@@ -733,23 +736,25 @@ func TestAddToProfileWhenTheReadFailsSaysSoRatherThanClaimingThereAreNone(t *tes
 
 // The fixture opens example/adr-writer on SKILL.md by default (fixture/files.go),
 // the same file listPackageFiles names as the default when a bundle has one at
-// its root — and its heading arrives as real markup, not escaped text, which is
-// what proves the markdown pipeline ran rather than the file being dumped as-is.
-func TestFilesPanelDefaultsToTheBundlesOwnFileAndListsEveryOther(t *testing.T) {
+// its root — but the panel itself must stay CLOSED until a reader picks one:
+// listing files is not the same as opening one.
+func TestFilesPanelListsFilesButStaysClosedUntilOneIsChosen(t *testing.T) {
 	body := get(t, handler(t, fixture.New()), "/packages/example/adr-writer").Body.String()
 
 	require.Contains(t, body, `id="files-panel"`)
 	require.Contains(t, body, `am-file-path">SKILL.md<`)
 	require.Contains(t, body, `am-file-path">references/template.md<`)
 
-	require.Contains(t, body, `id="files-panel"`)
-	require.Contains(t, body, "<h1 class=\"am-md-h\">ADR writer",
-		"the default file's own heading must render as markup, not as an escaped literal")
-	require.NotContains(t, body, "# ADR writer", "the raw markdown source must not be dumped verbatim")
+	require.NotContains(t, body, `aria-label="File content"`,
+		"the file panel must not be open on a plain page load")
+	require.NotContains(t, body, "<h1 class=\"am-md-h\">ADR writer",
+		"no file's content should render before one is selected")
 }
 
-// Selecting a different file swaps the detail panel to it and away from the
-// default — the audit screen's own ?entry= idiom, reused for ?file=.
+// Selecting a file — the same click a reader makes on any row — opens the
+// panel on it, the audit screen's own ?entry= idiom, reused for ?file=. Its
+// heading arrives as real markup, not escaped text, which is what proves the
+// markdown pipeline ran rather than the file being dumped as-is.
 func TestFilesPanelSelectsTheFileTheQueryNames(t *testing.T) {
 	body := get(t, handler(t, fixture.New()),
 		"/packages/example/adr-writer?file=references%2Ftemplate.md").Body.String()
@@ -760,6 +765,23 @@ func TestFilesPanelSelectsTheFileTheQueryNames(t *testing.T) {
 	// sentence, which is why this checks a line unique to the file body).
 	require.NotContains(t, body, "/adr new",
 		"only the selected file's content is shown, not every file at once")
+}
+
+// The defect this replaces: the close button linked to the clean URL, but the
+// clean URL still picked a default file to show, so closing looked like it did
+// nothing. Reopening the SAME file the panel was just closed on is the sharpest
+// version of that bug — a stale default reasserting itself is invisible if the
+// test only ever asks for a file the panel was never open on.
+func TestFilesPanelCloseLinkActuallyClosesRatherThanReopeningTheDefault(t *testing.T) {
+	h := handler(t, fixture.New())
+
+	opened := get(t, h, "/packages/example/adr-writer?file=SKILL.md").Body.String()
+	require.Contains(t, opened, `aria-label="File content"`)
+	require.Contains(t, opened, `class="am-audit-panel-close" aria-label="Close" href="/packages/example/adr-writer"`)
+
+	closed := get(t, h, "/packages/example/adr-writer").Body.String()
+	require.NotContains(t, closed, `aria-label="File content"`,
+		"following the close link's own href must not reopen the panel on the default file")
 }
 
 func TestFilesPanelNamesAStalePathAsMissingRatherThanAsAnEmptyPanel(t *testing.T) {

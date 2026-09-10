@@ -29,20 +29,37 @@ var ImportTabs = []struct {
 // decide.
 const MaxTagsFieldLength = 20 * (40 + 1)
 
-// ImportVisibilities is the part of the package_visibility vocabulary the
-// modal may offer: currently one value of three. `team` and `private` are
-// omitted because `package` has no owner column to compare a reader to, so
-// the catalog fails closed and shows neither. Offering them anyway would be
-// worse: a person picks "Private" and their package becomes invisible to
-// everyone including themselves.
-var ImportVisibilities = []ImportOption{
-	{Value: "organisation", Label: "Organisation"},
+// ImportVisibilityOptions is the whole package_visibility vocabulary the
+// modal offers, scoped to what THIS viewer's choice would actually mean.
+// Organisation and private always work: private is "visible only to the
+// owner", and the owner is always the registering identity, never a value
+// the form can name. Team is disabled when the viewer carries no
+// identity-provider groups, because team visibility is enforced by
+// overlapping the package owner's groups with a reader's groups
+// (queries.PackageReadable) — an owner with no groups could never be
+// matched by anyone, so the option would silently behave like private
+// while claiming to be something else.
+func ImportVisibilityOptions(viewerGroups []string) []ImportOption {
+	options := []ImportOption{
+		{Value: "organisation", Label: "Organisation"},
+		{Value: "team", Label: "Team"},
+		{Value: "private", Label: "Private"},
+	}
+	if len(viewerGroups) == 0 {
+		options[1].Disabled = true
+		options[1].Reason = "Team visibility is matched against your identity provider groups, " +
+			"and your identity carries none."
+	}
+	return options
 }
 
-// ImportOption is one entry of a select in the modal.
+// ImportOption is one entry of a select in the modal. Disabled and Reason
+// are FR-126's shape: shown, never hidden, disabled with why.
 type ImportOption struct {
-	Value string
-	Label string
+	Value    string
+	Label    string
+	Disabled bool
+	Reason   string
 }
 
 // Import is everything the modal renders.

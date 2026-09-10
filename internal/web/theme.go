@@ -105,7 +105,21 @@ func (s *Server) shell(c *gin.Context, title, active string) components.Shell {
 		AppCSS:   assetURL("app.css"),
 		AppJS:    assetURL("app.js"),
 		VendorJS: assetURL("vendor/datastar.js"),
+		NavGate:  s.navGate(c),
 	}
+}
+
+// navGate is why each sidebar entry a viewer cannot follow cannot be followed.
+//
+// It answers for the River Dashboard only, which has two ways to be
+// unavailable — no dashboard deployed, or a role that may not read the queue —
+// and both are sentences worth reading rather than a missing entry.
+func (s *Server) navGate(c *gin.Context) map[string]string {
+	river := view.RiverFor(viewerFor(c), s.riverUI != nil)
+	if river.Gate == "" {
+		return nil
+	}
+	return map[string]string{"river": river.Gate}
 }
 
 // badges reads the sidebar's three counts for one page render — once per

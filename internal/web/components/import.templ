@@ -204,16 +204,20 @@ templ ImportModal(im Import) {
 				<div style="flex:1;min-width:160px;display:flex;flex-direction:column;gap:6px">
 					<label for="import-visibility" style="font-size:12px;color:var(--fg3)">Visibility</label>
 					<select id="import-visibility" name="visibility" class="am-search am-import-field">
-						for _, option := range view.ImportVisibilities {
-							<option value={ option.Value }>{ option.Label }</option>
+						for _, option := range im.Visibilities {
+							if option.Disabled {
+								<option value={ option.Value } disabled title={ option.Reason }>{ option.Label }</option>
+							} else {
+								<option value={ option.Value }>{ option.Label }</option>
+							}
 						}
 					</select>
-					if len(view.ImportVisibilities) == 1 {
-						// One option is not a control, and a control that silently does
-						// nothing is worse than a sentence saying so.
-						<span style="font-size:11.5px;color:var(--fg3)">
-							Team and private packages need an owner on the package record, which the hub does not store yet.
-						</span>
+					for _, option := range im.Visibilities {
+						if option.Disabled {
+							// FR-126: disabled, never hidden, and stated up front rather
+							// than only on hover.
+							<span style="font-size:11.5px;color:var(--fg3)">{ option.Label }: { option.Reason }</span>
+						}
 					}
 				</div>
 				<div style="flex:1 1 100%;min-width:200px;display:flex;flex-direction:column;gap:6px">
@@ -232,17 +236,9 @@ templ ImportModal(im Import) {
 				</div>
 			</div>
 
-			<div style="margin:18px 24px 0;padding:14px 16px;border:1px solid var(--bd);border-radius:10px;background:var(--surface2);font-size:12.5px;color:var(--fg2);line-height:1.6">
-				The hub unpacks the tree, validates plugin.json against the Agent Plugins schema it
-				names, derives the components from the files rather than the manifest, then writes
-				the tree as an immutable version in object storage and queues the scan. Files
-				outside the spec layout are dropped, and listed above before anything is stored.
-			</div>
-
 			@ImportResultBanner(im.Result)
 
-			<div style="padding:18px 24px 22px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
-				<div style="font-size:12px;color:var(--fg3)">Scanner verdict usually lands in under a minute</div>
+			<div style="padding:18px 24px 22px;display:flex;align-items:center;justify-content:flex-end;gap:16px;flex-wrap:wrap">
 				<div style="display:flex;gap:10px">
 					<button type="button" class="am-btn" data-on:click="$_importOpen = false">Cancel</button>
 					<button

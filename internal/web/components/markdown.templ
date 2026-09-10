@@ -22,7 +22,23 @@ import (
 // thing such a node can ever produce.
 templ MarkdownBody(doc view.MarkdownDoc) {
 	<div class="am-md">
+		if doc.Frontmatter != "" {
+			@markdownFrontmatter(doc.Frontmatter)
+		}
 		@markdownChildren(doc.Root, doc.Source)
+	</div>
+}
+
+// markdownFrontmatter shows a file's leading YAML block as the structured,
+// non-prose metadata it is, rather than the run-together paragraph
+// CommonMark would make of it. It is never parsed (view.splitFrontmatter
+// only pulls its lines out), so the text below reaches the page through the
+// same `{ expr }` escaping as every other node this file renders — there is
+// nothing here for a hostile key or value to break out of.
+templ markdownFrontmatter(fm string) {
+	<div class="am-md-frontmatter">
+		<div class="am-md-frontmatter-label">Frontmatter</div>
+		<pre class="am-md-frontmatter-body">{ fm }</pre>
 	</div>
 }
 

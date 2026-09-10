@@ -246,13 +246,18 @@ func profileSlugForm(c *gin.Context) string {
 
 // ---- the writes -----------------------------------------------------------
 
-// addEntry adds a package the profile does not yet hold, floating latest. An
-// id already held is not an error — the select only ever offers ids the
-// profile lacks, so this is a race rather than a mistake — and it takes the
-// same path as floating an existing entry to latest.
+// addEntry adds a package the profile does not yet hold, at the mode and
+// version the add form chose — latest by default, so the package detail
+// screen's plain "Add" form (which sends neither field) keeps floating an
+// entry to latest exactly as before. An id already held is not an error —
+// the select only ever offers ids the profile lacks, so this is a race
+// rather than a mistake — and it takes the same path as changing an
+// existing entry's mode.
 func (s *Server) addEntry(c *gin.Context) {
 	slug := profileSlugForm(c)
 	id := strings.TrimSpace(c.PostForm("id"))
+	mode := c.DefaultPostForm("mode", "latest")
+	version := c.PostForm("version")
 
 	if s.deps.Profiles == nil || s.deps.Curator == nil {
 		s.backToProfile(c, slug, profileUnavailable)
@@ -276,18 +281,18 @@ func (s *Server) addEntry(c *gin.Context) {
 		entry := &detail.Entries[i]
 		setting := entrySettingFor(entry)
 		if entry.ID == id {
-			setting.Mode = "latest"
-			setting.Version = ""
+			setting.Mode = mode
+			setting.Version = version
 			found = true
 		}
 		settings = append(settings, setting)
 	}
 	outcome := profileEntryAdded
 	if !found {
-		settings = append(settings, hub.EntrySetting{ID: id, Mode: "latest"})
+		settings = append(settings, hub.EntrySetting{ID: id, Mode: mode, Version: version})
 	} else {
-		// Already held: nothing new to add, so this is the same outcome floating
-		// an existing entry to latest already reports.
+		// Already held: nothing new to add, so this is the same outcome
+		// changing an existing entry's mode already reports.
 		outcome = profileEntryUpdated
 	}
 
@@ -296,6 +301,29 @@ func (s *Server) addEntry(c *gin.Context) {
 		return
 	}
 	s.backToProfile(c, slug, outcome)
+}
+
+// removeEntry takes one package out of a profile, through the dedicated
+// removal command rather than SetProfileEntries's whole-set contract, which
+// refuses a body that omits an entry the profile holds.
+func (s *Server) removeEntry(c *gin.Context) {
+	slug := profileSlugForm(c)
+	id := strings.TrimSpace(c.PostForm("id"))
+
+	if s.deps.Curator == nil {
+		s.backToProfile(c, slug, profileUnavailable)
+		return
+	}
+	if id == "" {
+		s.backToProfile(c, slug, profileEntryMissing)
+		return
+	}
+
+	if _, err := s.deps.Curator.RemoveProfileEntry(session(c), slug, id); err != nil {
+		s.profileWriteFailed(c, slug, err)
+		return
+	}
+	s.backToProfile(c, slug, profileEntryRemoved)
 }
 
 func (s *Server) pinEntry(c *gin.Context) { s.setEntryMode(c, "pinned") }
@@ -410,6 +438,23 @@ func (s *Server) publishRevision(c *gin.Context) {
 	s.backToProfile(c, slug, profilePublished)
 }
 
+// deleteProfile removes a profile outright. Unlike every other write here it
+// redirects to the profile LIST on success, not back to the profile's own
+// page — there is no such page any more.
+func (s *Server) deleteProfile(c *gin.Context) {
+	slug := profileSlugForm(c)
+	if s.deps.Curator == nil {
+		s.backToProfile(c, slug, profileUnavailable)
+		return
+	}
+
+	if err := s.deps.Curator.DeleteProfile(session(c), slug); err != nil {
+		s.profileWriteFailed(c, slug, err)
+		return
+	}
+	s.redirectProfiles(c, "/profiles", profileDeleted)
+}
+
 // profileWriteFailed maps a curation write's error onto a redirect, except a
 // refusal the api understood (hub.ProfileRefusedError), which renders inline
 // against a fresh read so a redirect can't turn it into forgeable link text.
@@ -451,10 +496,12 @@ const (
 	profileCreated      profileOutcome = "created"
 	profileEntryAdded   profileOutcome = "entry-added"
 	profileEntryUpdated profileOutcome = "entry-updated"
+	profileEntryRemoved profileOutcome = "entry-removed"
 	profileEntryMissing profileOutcome = "entry-missing"
 	profileShared       profileOutcome = "shared"
 	profileTargetsSaved profileOutcome = "targets-saved"
 	profilePublished    profileOutcome = "published"
+	profileDeleted      profileOutcome = "deleted"
 	profileRefusedRole  profileOutcome = "refused-role"
 	profileMissing      profileOutcome = "missing"
 	profileUnavailable  profileOutcome = "unavailable"
@@ -471,6 +518,9 @@ func profileNotice(raw string) *view.Notice {
 	case profileEntryUpdated:
 		return &view.Notice{Tone: "ok", Text: "Saved. This is not durable until a revision is " +
 			"published — no machine has seen it yet."}
+	case profileEntryRemoved:
+		return &view.Notice{Tone: "ok", Text: "Removed. This is not durable until a revision is " +
+			"published — the package still reaches any machine on the head revision until then."}
 	case profileShared:
 		return &view.Notice{Tone: "ok", Text: "Sharing updated."}
 	case profileTargetsSaved:
@@ -479,6 +529,8 @@ func profileNotice(raw string) *view.Notice {
 	case profilePublished:
 		return &view.Notice{Tone: "ok", Text: "Revision published. The previous revision stays " +
 			"readable, and a synced machine picks this one up on its next sync."}
+	case profileDeleted:
+		return &view.Notice{Tone: "ok", Text: "Profile deleted."}
 	case profileRefusedRole:
 		return &view.Notice{Tone: "dan", Text: "Your role on this profile may not take that " +
 			"action, so nothing was recorded."}
@@ -539,7 +591,7 @@ func profileScreen(from hub.ProfileDetail) view.Profile {
 		Role: from.Role,
 		Permissions: view.ProfilePermissions{
 			Curate: from.Permissions.Curate, Share: from.Permissions.Share,
-			Publish: from.Permissions.Publish,
+			Publish: from.Permissions.Publish, Delete: from.Permissions.Delete,
 		},
 		UnpublishedChanges: from.UnpublishedChanges,
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"agent-manager/internal/api/contract"
+	"agent-manager/internal/auth"
 	"agent-manager/internal/store/models"
 )
 
@@ -103,6 +104,15 @@ type FindingFilter struct {
 	Severity models.FindingSeverity
 	Page     int
 	PageSize int
+	// Principal is whose readability applies. A finding names its package
+	// and quotes paths and snippets out of its bundle, so an unfiltered
+	// listing publishes a private package's contents to anyone signed in.
+	Principal auth.Principal
+	// EveryPackage lifts that filter for a caller who may already decide a
+	// finding. A reviewer who cannot see a private package's findings cannot
+	// review it at all, and a private package that escapes review entirely
+	// is the one outcome narrowing visibility must not buy.
+	EveryPackage bool
 }
 
 // The findings page and its cap, for the same reason as the catalog.
@@ -156,6 +166,10 @@ func (f FindingFilter) predicates() *predicates {
 	if f.Severity != "" {
 		p.add("fnd.severity = ?", f.Severity)
 	}
+	if !f.EveryPackage {
+		readable, args := PackageReadable("pkg", f.Principal)
+		p.add(readable, args...)
+	}
 	return p
 }
 
@@ -181,6 +195,7 @@ select
   fnd.severity::text,
   fnd.state::text,
   fnd.title,
+  coalesce(fnd.detail, ''),
   pkg.namespace || '/' || pkg.name,
   ver.semver,
   ver.verdict::text,
@@ -212,7 +227,7 @@ limit ? offset ?`
 			line  sql.NullInt32
 		)
 		if err := rows.Scan(&entry.ID, &entry.RuleID, &entry.Engine, &entry.Severity, &entry.State, &entry.Title,
-			&entry.PackageID, &entry.Version, &entry.Verdict, &entry.RaisedAt,
+			&entry.Detail, &entry.PackageID, &entry.Version, &entry.Verdict, &entry.RaisedAt,
 			&entry.EvidencePath, &line); err != nil {
 			return contract.FindingsPage{}, fmt.Errorf("scan a findings row: %w", err)
 		}
@@ -226,9 +241,12 @@ limit ? offset ?`
 }
 
 func findingCount(ctx context.Context, db bun.IDB, where *predicates) (int, error) {
-	// No join: every column the filters read is on `finding` itself.
+	// findingFrom, not a bare `from finding`: the readability predicate reads
+	// pkg.visibility, so the count has to reach `package` the same way the
+	// page does or it counts rows the page will not return. Both joins are
+	// inner and on non-null foreign keys, so they cannot change the total.
 	var total int
-	query := "select count(*) from finding as fnd\n" + where.where()
+	query := "select count(*)" + findingFrom + "\n" + where.where()
 	if err := db.QueryRowContext(ctx, query, where.args...).Scan(&total); err != nil {
 		return 0, fmt.Errorf("count the findings: %w", err)
 	}
@@ -264,13 +282,13 @@ select
 join scan as scn on scn.id = fnd.scan_id
 left join override as ovr on ovr.finding_id = fnd.id
 left join identity as idt on idt.id = ovr.reviewer_identity_id
-where fnd.id = ?`
+where fnd.id = ? and %s`
 
 // Finding answers the detail pane with three sequential statements: the
 // header above, every check the scan ran, and every evidence location.
 // Each is a cheap index lookup, unlike the scans Catalog and Package need
 // concurrency for.
-func Finding(ctx context.Context, db bun.IDB, id uuid.UUID) (contract.FindingDetail, error) {
+func Finding(ctx context.Context, db bun.IDB, id uuid.UUID, p auth.Principal, everyPackage bool) (contract.FindingDetail, error) {
 	var (
 		out       contract.FindingDetail
 		scan      contract.FindingScan
@@ -281,7 +299,12 @@ func Finding(ctx context.Context, db bun.IDB, id uuid.UUID) (contract.FindingDet
 		expires   sql.NullTime
 		decidedAt sql.NullTime
 	)
-	err := db.QueryRowContext(ctx, findingDetailSQL, id).Scan(
+	readable, readableArgs := PackageReadable("pkg", p)
+	if everyPackage {
+		readable, readableArgs = "true", nil
+	}
+	err := db.QueryRowContext(ctx, fmt.Sprintf(findingDetailSQL, readable),
+		append([]any{id}, readableArgs...)...).Scan(
 		&out.ID, &out.RuleID, &out.Engine, &out.Severity, &out.State, &out.Title, &out.Detail,
 		&out.PackageID, &out.Version, &out.Verdict, &out.RaisedAt,
 		&scan.PackVersion, &scan.StartedAt, &finished, &scan.Verdict, &scan.TimedOut,
@@ -331,7 +354,7 @@ func Finding(ctx context.Context, db bun.IDB, id uuid.UUID) (contract.FindingDet
 // the matrix renders alphabetically, not in registration order.
 func findingChecks(ctx context.Context, db bun.IDB, id uuid.UUID) ([]contract.FindingCheck, error) {
 	const query = `
-select schk.check_id, schk.engine, schk.label, schk.result::text, schk.warn_count
+select schk.check_id, schk.engine, schk.label, schk.explain, schk.result::text, schk.warn_count
 from scan_check as schk
 join finding as fnd on fnd.scan_id = schk.scan_id
 where fnd.id = ?
@@ -346,7 +369,8 @@ order by schk.engine, schk.created_at, schk.check_id`
 	checks := []contract.FindingCheck{}
 	for rows.Next() {
 		var check contract.FindingCheck
-		if err := rows.Scan(&check.CheckID, &check.Engine, &check.Label, &check.Result, &check.WarnCount); err != nil {
+		if err := rows.Scan(&check.CheckID, &check.Engine, &check.Label, &check.Explain,
+			&check.Result, &check.WarnCount); err != nil {
 			return nil, fmt.Errorf("scan a check row: %w", err)
 		}
 		checks = append(checks, check)

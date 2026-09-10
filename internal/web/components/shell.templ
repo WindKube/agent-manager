@@ -45,7 +45,11 @@ templ sidebar(s Shell) {
 				<div class="am-nav-group">
 					<div class="am-nav-label">{ group.Label }</div>
 					for _, item := range group.Items {
-						if item.ID == s.Active {
+						if reason := s.Gate(item.ID); reason != "" {
+							<span class="am-nav-item am-nav-item-gated" aria-disabled="true" title={ reason }>
+								@navLabel(s, item)
+							</span>
+						} else if item.ID == s.Active {
 							<a class="am-nav-item" href={ item.Href } aria-current="page">
 								@navLabel(s, item)
 							</a>

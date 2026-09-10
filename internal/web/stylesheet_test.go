@@ -116,6 +116,7 @@ func TestEveryScreenSitsInsideThePageGutter(t *testing.T) {
 
 	for _, path := range []string{
 		"/catalog", "/scanner", "/profiles", "/storage", "/org", "/cli", "/audit", "/runtime",
+		"/river",
 		"/profiles/platform-engineer", "/packages/example/terraform-module-review",
 	} {
 		t.Run(path, func(t *testing.T) {
@@ -254,3 +255,44 @@ func declaredMinWidths(t *testing.T) map[string]declaration {
 // source. Both spellings appear: an attribute on its own line, and one inline in
 // a tag.
 var controlClassPattern = regexp.MustCompile(`(?s)<(?:input|select)\b[^>]*?class="([^"]*)"`)
+
+// TestRuntimeQueuePanelsHaveAClosingGutterBeforeRunHistory guards the reported
+// gap bug: the Run history card right after the queue panels is an .am-card,
+// which carries margin-top:0 by convention (the element before it is expected
+// to close the gap, the way .am-facets does before the catalog table). The
+// queue panels wrapper had padding-bottom:0 too, so the two touched directly.
+//
+// This reads assets/input.css, not the built static/app.css: the rule is
+// hand-authored inside the one @layer components block, not a Tailwind
+// utility, so its value does not depend on running the standalone binary.
+func TestRuntimeQueuePanelsHaveAClosingGutterBeforeRunHistory(t *testing.T) {
+	sheet, err := os.ReadFile("../../assets/input.css")
+	require.NoError(t, err)
+
+	var box []string
+	for _, rule := range rulePattern.FindAllStringSubmatch(string(sheet), -1) {
+		if rule[1] == "am-runtime-queues" {
+			box = boxPattern.FindStringSubmatch(rule[2])
+			break
+		}
+	}
+	require.NotNil(t, box, "no padding or margin rule found for am-runtime-queues")
+
+	require.NotEqualf(t, "0", paddingBottom(box[1]),
+		"am-runtime-queues has no bottom padding, so it renders flush against the Run history "+
+			"card below it, which supplies no top margin of its own")
+}
+
+// paddingBottom applies the CSS shorthand rules for a padding or margin value
+// to find the bottom component: 1 value sets all four sides, 2 sets
+// top/bottom then left/right, 3 sets top, left/right, then bottom, and 4 sets
+// top, right, bottom, left in that order.
+func paddingBottom(value string) string {
+	parts := strings.Fields(value)
+	switch len(parts) {
+	case 1, 2:
+		return parts[0]
+	default:
+		return parts[2]
+	}
+}

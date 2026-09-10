@@ -174,6 +174,7 @@ var wantForeignKeys = []string{
 	"finding_evidence(finding_id) -> finding",
 	"override(reviewer_identity_id) -> identity",
 	"package(category_id) -> category",
+	"package(owner_identity_id) -> identity",
 	"package(parent_package_id) -> package",
 	"package(publisher_id) -> publisher",
 	"profile(forked_from_id) -> profile",

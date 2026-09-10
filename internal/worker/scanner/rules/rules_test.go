@@ -41,8 +41,9 @@ func TestTheShippedPackLoadsAndAddressesOnlyKnownChecks(t *testing.T) {
 	require.True(t, strings.HasPrefix(pack.Version(), pack.Declared()+"+"))
 
 	for _, rule := range pack.All() {
-		require.NotEmpty(t, rule.Title, "%s has no title", rule.ID)
-		require.NotEmpty(t, rule.Detail, "%s has no detail; a finding with no prose cannot be triaged", rule.ID)
+		require.NotEmpty(t, strings.TrimSpace(rule.Title), "%s has no title", rule.ID)
+		require.NotEmpty(t, strings.TrimSpace(rule.Detail),
+			"%s has no detail; a finding with no prose cannot be triaged", rule.ID)
 		require.NotEmpty(t, rule.Fixtures.Trips, "%s ships no trip fixture", rule.ID)
 		require.NotEmpty(t, rule.Fixtures.Clean, "%s ships no clean fixture", rule.ID)
 
@@ -148,6 +149,27 @@ func TestLoadRefusesAPackThatCannotWork(t *testing.T) {
 				delete(m, "rules/SH-NET-002.yaml")
 			},
 			message: "does not conform",
+		},
+		{
+			// Whitespace satisfies the schema's minLength, which is why this is
+			// asserted in Go rather than left to the schema alone: a rule that
+			// only LOOKS like it carries a title is how one ships with none.
+			name: "a title that is whitespace only",
+			mutate: func(m fstest.MapFS) {
+				m["rules/SH-NET-002.yaml"] = &fstest.MapFile{Data: []byte(strings.ReplaceAll(
+					string(m["rules/SH-NET-002.yaml"].Data),
+					"title: Undeclared network egress", "title: \"   \""))}
+			},
+			message: "no title",
+		},
+		{
+			name: "a detail that is whitespace only",
+			mutate: func(m fstest.MapFS) {
+				m["rules/SH-NET-002.yaml"] = &fstest.MapFile{Data: []byte(strings.ReplaceAll(
+					string(m["rules/SH-NET-002.yaml"].Data),
+					"detail: Prose a reviewer reads.", "detail: \"   \""))}
+			},
+			message: "no detail",
 		},
 	} {
 		t.Run(tc.name+" is a load failure", func(t *testing.T) {

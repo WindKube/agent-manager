@@ -248,13 +248,17 @@ func pathCovered(target string, declared []string) bool {
 type ruleCheck struct {
 	id    string
 	label string
+	// explain is this check's own explanation, in general: what it looks
+	// for and why, independent of any one scan's result.
+	explain string
 	// blindSpots counts what this check could not analyse, added to the warn
 	// count.
 	blindSpots func(b *Bundle) int
 }
 
-func (c ruleCheck) ID() string    { return c.id }
-func (c ruleCheck) Label() string { return c.label }
+func (c ruleCheck) ID() string      { return c.id }
+func (c ruleCheck) Label() string   { return c.label }
+func (c ruleCheck) Explain() string { return c.explain }
 
 func (c ruleCheck) Run(ctx context.Context, b *Bundle, rs []rules.Rule) (Result, []Finding, error) {
 	findings, err := run(ctx, b, rs)

@@ -31,6 +31,18 @@ type Package struct {
 	Scan        Scan
 	Tags        []string
 
+	// Visibility and Owner are read straight off the api's PackageDetail:
+	// Visibility is always one of organisation/team/private (an owner-less
+	// pre-migration row is still "organisation" — see the migration note on
+	// the store side), and Owner is empty for one, never a placeholder like
+	// "unknown".
+	Visibility string
+	Owner      string
+	// CanChangeVisibility mirrors the api's own gate (owner or catalog
+	// admin) so the control can be shown disabled rather than omitted
+	// (FR-126) instead of the screen guessing from the role alone.
+	CanChangeVisibility bool
+
 	// SpecVersion is the version the manifest's $schema names, empty for a skill.
 	SpecVersion string
 	// ParentID and ParentName name the plugin a skill is distributed inside.
@@ -45,6 +57,12 @@ type Package struct {
 	Capabilities Capabilities
 	Versions     []PackageVersion
 	Dependents   []Dependent
+
+	// ScanDetail is the security section: the latest version's scan result,
+	// its findings and any reviewer decision, read independently of
+	// everything above (loadScan) so a deployment can answer the rest of the
+	// page while this read is unavailable.
+	ScanDetail PackageScan
 
 	// ProfileOptions is every profile this identity may read, for the
 	// add-to-profile control (US5). One this identity may not curate, or
@@ -67,7 +85,12 @@ type Package struct {
 	// before using it), read independently of everything above — a
 	// deployment can answer the package detail while its bundle reader is
 	// unavailable, and the two must fail on their own terms.
-	Files        []FileRow
+	Files []FileRow
+	// FilesDefault is the file listPackageFiles would recommend reading
+	// first. The panel no longer opens on it by itself — see
+	// SelectedFilePath — so today this is read only by the api's own
+	// response; it stays on the view in case a future control wants to
+	// point at it explicitly.
 	FilesDefault string
 	// FilesUnavailable is the list read failing outright. FilesRejected is
 	// the version answering plainly that it was never distributable, which
@@ -75,9 +98,11 @@ type Package struct {
 	FilesUnavailable bool
 	FilesRejected    bool
 
-	// SelectedFilePath is the path this screen is showing, from the query
-	// or from FilesDefault when the query named none. It is never used to
-	// build a filesystem path — only ever compared against Files.
+	// SelectedFilePath is the path this screen is showing, set only when
+	// the query names one explicitly. Empty means the panel is closed —
+	// the panel never falls back to FilesDefault, which is what used to
+	// force it open on every page load. It is never used to build a
+	// filesystem path — only ever compared against Files.
 	SelectedFilePath string
 	SelectedFile     *FileDetail
 	// The three reasons a chosen path can come back with nothing to show,
@@ -86,6 +111,94 @@ type Package struct {
 	FileMissing       bool
 	FileTooLarge      bool
 	FileNotRenderable bool
+
+	// DeleteAccess is whether this identity may delete a package or a
+	// version from the catalog, computed the same way OrgAccessFor is: from
+	// the viewer the api resolved, never from a role string this screen
+	// guessed at. Every delete button on this screen reads the same value.
+	DeleteAccess OrgAccess
+	// Notice is a write's own outcome — a delete's, or a visibility change's
+	// — read back off the redirect exactly as scanner.go's decisionNotice
+	// is: a token looked up here, never rendered prose the redirect itself
+	// carried.
+	Notice *Notice
+}
+
+// PackageNotice is a delete's outcome, carried by the post-redirect-get
+// query string as a token rather than as rendered prose.
+type PackageNotice string
+
+const (
+	PackageNoticeVersionDeleted PackageNotice = "version-deleted"
+	PackageNoticeRefused        PackageNotice = "refused"
+	PackageNoticeFailed         PackageNotice = "failed"
+)
+
+// PackageNoticeFrom maps a delete's outcome onto the notice banner. detail is
+// the api's own explanation for a conflict (already withdrawn, say);
+// subject is the version string for a version delete, escaped by templ on
+// render like everything else here.
+func PackageNoticeFrom(raw, detail, subject string) *Notice {
+	switch PackageNotice(raw) {
+	case PackageNoticeVersionDeleted:
+		text := "Version withdrawn from the catalog. An existing profile pin or a published " +
+			"revision still resolves it; this hub only stops offering it for a new install."
+		if subject != "" {
+			text = "Version " + subject + " withdrawn from the catalog. An existing profile pin " +
+				"or a published revision still resolves it; this hub only stops offering it for " +
+				"a new install."
+		}
+		return &Notice{Tone: "ok", Text: text}
+	case PackageNoticeRefused:
+		return &Notice{Tone: "dan", Text: "Your role may not delete anything from the catalog, so " +
+			"nothing changed."}
+	case PackageNoticeFailed:
+		text := "That delete was refused."
+		if detail != "" {
+			text = detail
+		}
+		return &Notice{Tone: "warn", Text: text}
+	default:
+		return nil
+	}
+}
+
+// VersionDeleted is a version delete's acknowledgement.
+type VersionDeleted struct {
+	PinnedByProfiles int
+}
+
+// PackageDeleted is a package delete's acknowledgement.
+type PackageDeleted struct {
+	VersionsArchived int
+}
+
+// VisibilityLabel is the badge beside the package's identity.
+func (p Package) VisibilityLabel() string { return visibilityLabels[p.Visibility] }
+
+// VisibilityChangeDisabledReason is why the change-visibility control is
+// disabled for a viewer who is neither the owner nor a catalog admin
+// (FR-126): stated once, up front, rather than discovered by submitting.
+const VisibilityChangeDisabledReason = "Only this package's owner or a catalog admin may change its visibility."
+
+// VisibilityOptions is the change-visibility control's vocabulary. Team and
+// private are both enforced by matching a reader against the OWNER
+// (queries.PackageReadable), so an owner-less package narrowed to either
+// would match nobody, ever — the same guard commands.SetPackageVisibility
+// itself applies, restated here so the control never offers a choice the
+// api would refuse.
+func (p Package) VisibilityOptions() []ImportOption {
+	options := []ImportOption{
+		{Value: "organisation", Label: "Organisation"},
+		{Value: "team", Label: "Team"},
+		{Value: "private", Label: "Private"},
+	}
+	if p.Owner == "" {
+		reason := "This package has no recorded owner, so only organisation visibility is safe for it."
+		options[1].Disabled, options[1].Reason = true, reason
+		options[2].Disabled, options[2].Reason = true, reason
+	}
+	return options
 }
 
 // FileRow is one file the bundle holds, as the files panel lists it.
@@ -498,13 +611,45 @@ func (p Package) DependentsLine() string {
 // of /packages/. Each half must match the object-key segment pattern, or it
 // is not linked at all.
 func PackageHref(id string) string {
-	namespace, name, ok := strings.Cut(id, "/")
-	if !ok || !validIDSegment(namespace) || !validIDSegment(name) {
+	namespace, name, ok := SplitPackageID(id)
+	if !ok {
 		return "/catalog"
 	}
 	// Escaped as well as validated, so widening the pattern later cannot
 	// silently become a URL injection.
 	return "/packages/" + url.PathEscape(namespace) + "/" + url.PathEscape(name)
+}
+
+// SplitPackageID is a package id's two halves, validated the same way
+// PackageHref validates them — shared so a form posting an id (the
+// visibility control) rejects the same malformed values a link would rather
+// than re-deriving the rule.
+func SplitPackageID(id string) (namespace, name string, ok bool) {
+	namespace, name, cut := strings.Cut(id, "/")
+	if !cut || !validIDSegment(namespace) || !validIDSegment(name) {
+		return "", "", false
+	}
+	return namespace, name, true
+}
+
+// PackageDeleteHref links the package-level delete form, validated the same
+// way PackageHref is.
+func PackageDeleteHref(id string) string {
+	namespace, name, ok := SplitPackageID(id)
+	if !ok {
+		return "/catalog"
+	}
+	return "/packages/" + url.PathEscape(namespace) + "/" + url.PathEscape(name) + "/delete"
+}
+
+// VersionDeleteHref links one version row's delete form.
+func VersionDeleteHref(id, version string) string {
+	namespace, name, ok := SplitPackageID(id)
+	if !ok {
+		return "/catalog"
+	}
+	return "/packages/" + url.PathEscape(namespace) + "/" + url.PathEscape(name) +
+		"/versions/" + url.PathEscape(version) + "/delete"
 }
 
 // ProfileHref links to one profile, validating its slug for the same reason

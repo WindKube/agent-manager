@@ -56,6 +56,14 @@ type PreviewProblem struct {
 	Message      string `json:"message" example:"additionalProperties 'repository' not allowed"`
 }
 
+// PackageVisibilityUpdate is the body of PUT
+// /v1/packages/{namespace}/{name}/visibility. There is no owner field: the
+// owner is set once, at registration, from the authenticated actor, and
+// never travels in a request body again.
+type PackageVisibilityUpdate struct {
+	Visibility string `json:"visibility" enum:"organisation,team,private" doc:"Who may see the package in the catalog." example:"team"`
+}
+
 // PackageRegistered is an acknowledgement, not a published version: bytes
 // are fetched by `worker fetcher`, so the version has no digest yet.
 type PackageRegistered struct {
@@ -75,4 +83,16 @@ type PackageRegistered struct {
 	Visible bool   `json:"visible" doc:"Always false here. Commit-last (FR-008): the fetcher flips it."`
 
 	Preview *PackagePreview `json:"preview,omitempty" doc:"Present for an upload, where the archive was inspected in-process before the version row was written."`
+}
+
+// VersionDeleted is a version delete's acknowledgement. Nothing about the
+// bytes moved: dist_tag is now `archived`, and PinnedByProfiles is what an
+// operator is told stays resolvable rather than being asked to guess.
+type VersionDeleted struct {
+	PinnedByProfiles int `json:"pinnedByProfiles" doc:"How many profile_entry rows pin this exact version. They keep resolving it; only new floating or range resolution stops offering it."`
+}
+
+// PackageDeleted is a package delete's acknowledgement.
+type PackageDeleted struct {
+	VersionsArchived int `json:"versionsArchived" doc:"How many of the package's versions were not already archived, and just were."`
 }

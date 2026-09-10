@@ -3406,6 +3406,14 @@ type ProfileEntryOutcome string
 // ProfileEntryVerdict The RESOLVED version's verdict. The vocabulary is narrower than the catalog's on purpose: a rejected version never resolves, under any gate (FR-029).
 type ProfileEntryVerdict string
 
+// ProfileEntryRemoval defines model for ProfileEntryRemoval.
+type ProfileEntryRemoval struct {
+	// Id namespace/name of the package to remove from the profile.
+	//
+	// Examples: example/adr-writer
+	Id string `json:"id"`
+}
+
 // ProfileEntrySetting defines model for ProfileEntrySetting.
 type ProfileEntrySetting struct {
 	// Id namespace/name of a registered package.
@@ -3462,6 +3470,9 @@ type ProfileMemberRole string
 type ProfilePermissions struct {
 	// Curate May change entries and sync targets. Owner or maintainer.
 	Curate bool `json:"curate"`
+
+	// Delete May delete the profile outright. Owner only. Deleting is refused separately, by the api, when the profile holds a published revision — this bit is the role check alone.
+	Delete bool `json:"delete"`
 
 	// Publish May publish a revision. Owner or maintainer — a consumer may not (FR-037).
 	Publish bool `json:"publish"`
@@ -3982,6 +3993,9 @@ type CreateProfileJSONRequestBody = ProfileCreate
 // SetProfileEntriesJSONRequestBody defines body for SetProfileEntries for application/json ContentType.
 type SetProfileEntriesJSONRequestBody = ProfileEntries
 
+// RemoveProfileEntryJSONRequestBody defines body for RemoveProfileEntry for application/json ContentType.
+type RemoveProfileEntryJSONRequestBody = ProfileEntryRemoval
+
 // PublishRevisionJSONRequestBody defines body for PublishRevision for application/json ContentType.
 type PublishRevisionJSONRequestBody = RevisionPublish
 
@@ -4419,6 +4433,13 @@ type ClientInterface interface {
 	// Corresponds with POST /v1/profiles (the `CreateProfile` operationId).
 	CreateProfile(ctx context.Context, body CreateProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// DeleteProfile Delete a profile
+	//
+	// Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: FR-034 forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.
+	//
+	// Corresponds with DELETE /v1/profiles/{slug} (the `DeleteProfile` operationId).
+	DeleteProfile(ctx context.Context, slug string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetProfile One profile, resolved under the org gate
 	//
 	// The profile detail screen (001 US5): every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted (FR-036). The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
@@ -4428,7 +4449,7 @@ type ClientInterface interface {
 
 	// SetProfileEntriesWithBody Set the packages a profile holds and how each one tracks versions
 	//
-	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.
+	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -4437,12 +4458,30 @@ type ClientInterface interface {
 
 	// SetProfileEntries Set the packages a profile holds and how each one tracks versions
 	//
-	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.
+	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
 	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with PUT /v1/profiles/{slug}/entries (the `SetProfileEntries` operationId).
 	SetProfileEntries(ctx context.Context, slug string, body SetProfileEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RemoveProfileEntryWithBody Remove one package from a profile
+	//
+	// Deletes the profile_entry row outright, in one transaction with one audit row of kind `profile`. Distinct from PUT .../entries: that operation still refuses a body omitting an entry the profile holds, and this is the addressed removal offered instead of loosening it. NOT DURABLE UNTIL A REVISION IS PUBLISHED, same as every other entry change. Requires owner or maintainer on the profile.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/profiles/{slug}/entries/remove (the `RemoveProfileEntry` operationId).
+	RemoveProfileEntryWithBody(ctx context.Context, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RemoveProfileEntry Remove one package from a profile
+	//
+	// Deletes the profile_entry row outright, in one transaction with one audit row of kind `profile`. Distinct from PUT .../entries: that operation still refuses a body omitting an entry the profile holds, and this is the addressed removal offered instead of loosening it. NOT DURABLE UNTIL A REVISION IS PUBLISHED, same as every other entry change. Requires owner or maintainer on the profile.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/profiles/{slug}/entries/remove (the `RemoveProfileEntry` operationId).
+	RemoveProfileEntry(ctx context.Context, slug string, body RemoveProfileEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PublishRevisionWithBody Publish the next immutable revision
 	//
@@ -5365,6 +5404,23 @@ func (c *Client) CreateProfile(ctx context.Context, body CreateProfileJSONReques
 	return c.Client.Do(req)
 }
 
+// DeleteProfile Delete a profile
+//
+// Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: FR-034 forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.
+//
+// Corresponds with DELETE /v1/profiles/{slug} (the `DeleteProfile` operationId).
+func (c *Client) DeleteProfile(ctx context.Context, slug string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteProfileRequest(c.Server, slug)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetProfile One profile, resolved under the org gate
 //
 // The profile detail screen (001 US5): every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted (FR-036). The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
@@ -5384,7 +5440,7 @@ func (c *Client) GetProfile(ctx context.Context, slug string, reqEditors ...Requ
 
 // SetProfileEntriesWithBody Set the packages a profile holds and how each one tracks versions
 //
-// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.
+// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
 //
 // Takes any type of body and a specified content type.
 //
@@ -5403,13 +5459,51 @@ func (c *Client) SetProfileEntriesWithBody(ctx context.Context, slug string, con
 
 // SetProfileEntries Set the packages a profile holds and how each one tracks versions
 //
-// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.
+// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
 //
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with PUT /v1/profiles/{slug}/entries (the `SetProfileEntries` operationId).
 func (c *Client) SetProfileEntries(ctx context.Context, slug string, body SetProfileEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetProfileEntriesRequest(c.Server, slug, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RemoveProfileEntryWithBody Remove one package from a profile
+//
+// Deletes the profile_entry row outright, in one transaction with one audit row of kind `profile`. Distinct from PUT .../entries: that operation still refuses a body omitting an entry the profile holds, and this is the addressed removal offered instead of loosening it. NOT DURABLE UNTIL A REVISION IS PUBLISHED, same as every other entry change. Requires owner or maintainer on the profile.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/profiles/{slug}/entries/remove (the `RemoveProfileEntry` operationId).
+func (c *Client) RemoveProfileEntryWithBody(ctx context.Context, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemoveProfileEntryRequestWithBody(c.Server, slug, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RemoveProfileEntry Remove one package from a profile
+//
+// Deletes the profile_entry row outright, in one transaction with one audit row of kind `profile`. Distinct from PUT .../entries: that operation still refuses a body omitting an entry the profile holds, and this is the addressed removal offered instead of loosening it. NOT DURABLE UNTIL A REVISION IS PUBLISHED, same as every other entry change. Requires owner or maintainer on the profile.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/profiles/{slug}/entries/remove (the `RemoveProfileEntry` operationId).
+func (c *Client) RemoveProfileEntry(ctx context.Context, slug string, body RemoveProfileEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemoveProfileEntryRequest(c.Server, slug, body)
 	if err != nil {
 		return nil, err
 	}
@@ -7194,6 +7288,40 @@ func NewCreateProfileRequestWithBody(server string, contentType string, body io.
 	return req, nil
 }
 
+// NewDeleteProfileRequest constructs an http.Request for the DeleteProfile method
+func NewDeleteProfileRequest(server string, slug string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "slug", slug, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/profiles/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetProfileRequest constructs an http.Request for the GetProfile method
 func NewGetProfileRequest(server string, slug string) (*http.Request, error) {
 	var err error
@@ -7266,6 +7394,53 @@ func NewSetProfileEntriesRequestWithBody(server string, slug string, contentType
 	}
 
 	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRemoveProfileEntryRequest calls the generic RemoveProfileEntry builder with application/json body
+func NewRemoveProfileEntryRequest(server string, slug string, body RemoveProfileEntryJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRemoveProfileEntryRequestWithBody(server, slug, "application/json", bodyReader)
+}
+
+// NewRemoveProfileEntryRequestWithBody constructs an http.Request for the RemoveProfileEntry method, with any body, and a specified content type
+func NewRemoveProfileEntryRequestWithBody(server string, slug string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "slug", slug, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/profiles/%s/entries/remove", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -8139,6 +8314,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /v1/profiles (the `CreateProfile` operationId).
 	CreateProfileWithResponse(ctx context.Context, body CreateProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateProfileResponse, error)
 
+	// DeleteProfileWithResponse Delete a profile
+	//
+	// Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: FR-034 forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/profiles/{slug} (the `DeleteProfile` operationId).
+	DeleteProfileWithResponse(ctx context.Context, slug string, reqEditors ...RequestEditorFn) (*DeleteProfileResponse, error)
+
 	// GetProfileWithResponse One profile, resolved under the org gate
 	//
 	// The profile detail screen (001 US5): every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted (FR-036). The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
@@ -8150,7 +8334,7 @@ type ClientWithResponsesInterface interface {
 
 	// SetProfileEntriesWithBodyWithResponse Set the packages a profile holds and how each one tracks versions
 	//
-	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.
+	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8159,12 +8343,30 @@ type ClientWithResponsesInterface interface {
 
 	// SetProfileEntriesWithResponse Set the packages a profile holds and how each one tracks versions
 	//
-	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.
+	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PUT /v1/profiles/{slug}/entries (the `SetProfileEntries` operationId).
 	SetProfileEntriesWithResponse(ctx context.Context, slug string, body SetProfileEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*SetProfileEntriesResponse, error)
+
+	// RemoveProfileEntryWithBodyWithResponse Remove one package from a profile
+	//
+	// Deletes the profile_entry row outright, in one transaction with one audit row of kind `profile`. Distinct from PUT .../entries: that operation still refuses a body omitting an entry the profile holds, and this is the addressed removal offered instead of loosening it. NOT DURABLE UNTIL A REVISION IS PUBLISHED, same as every other entry change. Requires owner or maintainer on the profile.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/profiles/{slug}/entries/remove (the `RemoveProfileEntry` operationId).
+	RemoveProfileEntryWithBodyWithResponse(ctx context.Context, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RemoveProfileEntryResponse, error)
+
+	// RemoveProfileEntryWithResponse Remove one package from a profile
+	//
+	// Deletes the profile_entry row outright, in one transaction with one audit row of kind `profile`. Distinct from PUT .../entries: that operation still refuses a body omitting an entry the profile holds, and this is the addressed removal offered instead of loosening it. NOT DURABLE UNTIL A REVISION IS PUBLISHED, same as every other entry change. Requires owner or maintainer on the profile.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/profiles/{slug}/entries/remove (the `RemoveProfileEntry` operationId).
+	RemoveProfileEntryWithResponse(ctx context.Context, slug string, body RemoveProfileEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*RemoveProfileEntryResponse, error)
 
 	// PublishRevisionWithBodyWithResponse Publish the next immutable revision
 	//
@@ -10720,6 +10922,75 @@ func (r CreateProfileResponse) ContentType() string {
 	return ""
 }
 
+type DeleteProfileResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DeleteProfileResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r DeleteProfileResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DeleteProfileResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r DeleteProfileResponse) GetApplicationproblemJSON409() *Error {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r DeleteProfileResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteProfileResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteProfileResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteProfileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteProfileResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetProfileResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -10866,6 +11137,96 @@ func (r SetProfileEntriesResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r SetProfileEntriesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RemoveProfileEntryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ProfileDetail
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RemoveProfileEntryResponse) GetJSON200() *ProfileDetail {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r RemoveProfileEntryResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r RemoveProfileEntryResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r RemoveProfileEntryResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r RemoveProfileEntryResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r RemoveProfileEntryResponse) GetApplicationproblemJSON415() *Error {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r RemoveProfileEntryResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r RemoveProfileEntryResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r RemoveProfileEntryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RemoveProfileEntryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RemoveProfileEntryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RemoveProfileEntryResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -12319,6 +12680,21 @@ func (c *ClientWithResponses) CreateProfileWithResponse(ctx context.Context, bod
 	return ParseCreateProfileResponse(rsp)
 }
 
+// DeleteProfileWithResponse Delete a profile
+//
+// Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: FR-034 forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/profiles/{slug} (the `DeleteProfile` operationId).
+func (c *ClientWithResponses) DeleteProfileWithResponse(ctx context.Context, slug string, reqEditors ...RequestEditorFn) (*DeleteProfileResponse, error) {
+	rsp, err := c.DeleteProfile(ctx, slug, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteProfileResponse(rsp)
+}
+
 // GetProfileWithResponse One profile, resolved under the org gate
 //
 // The profile detail screen (001 US5): every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted (FR-036). The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
@@ -12336,7 +12712,7 @@ func (c *ClientWithResponses) GetProfileWithResponse(ctx context.Context, slug s
 
 // SetProfileEntriesWithBodyWithResponse Set the packages a profile holds and how each one tracks versions
 //
-// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.
+// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12351,7 +12727,7 @@ func (c *ClientWithResponses) SetProfileEntriesWithBodyWithResponse(ctx context.
 
 // SetProfileEntriesWithResponse Set the packages a profile holds and how each one tracks versions
 //
-// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.
+// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12362,6 +12738,36 @@ func (c *ClientWithResponses) SetProfileEntriesWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParseSetProfileEntriesResponse(rsp)
+}
+
+// RemoveProfileEntryWithBodyWithResponse Remove one package from a profile
+//
+// Deletes the profile_entry row outright, in one transaction with one audit row of kind `profile`. Distinct from PUT .../entries: that operation still refuses a body omitting an entry the profile holds, and this is the addressed removal offered instead of loosening it. NOT DURABLE UNTIL A REVISION IS PUBLISHED, same as every other entry change. Requires owner or maintainer on the profile.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/profiles/{slug}/entries/remove (the `RemoveProfileEntry` operationId).
+func (c *ClientWithResponses) RemoveProfileEntryWithBodyWithResponse(ctx context.Context, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RemoveProfileEntryResponse, error) {
+	rsp, err := c.RemoveProfileEntryWithBody(ctx, slug, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemoveProfileEntryResponse(rsp)
+}
+
+// RemoveProfileEntryWithResponse Remove one package from a profile
+//
+// Deletes the profile_entry row outright, in one transaction with one audit row of kind `profile`. Distinct from PUT .../entries: that operation still refuses a body omitting an entry the profile holds, and this is the addressed removal offered instead of loosening it. NOT DURABLE UNTIL A REVISION IS PUBLISHED, same as every other entry change. Requires owner or maintainer on the profile.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/profiles/{slug}/entries/remove (the `RemoveProfileEntry` operationId).
+func (c *ClientWithResponses) RemoveProfileEntryWithResponse(ctx context.Context, slug string, body RemoveProfileEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*RemoveProfileEntryResponse, error) {
+	rsp, err := c.RemoveProfileEntry(ctx, slug, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemoveProfileEntryResponse(rsp)
 }
 
 // PublishRevisionWithBodyWithResponse Publish the next immutable revision
@@ -14527,6 +14933,63 @@ func ParseCreateProfileResponse(rsp *http.Response) (*CreateProfileResponse, err
 	return response, nil
 }
 
+// ParseDeleteProfileResponse parses an HTTP response from a DeleteProfileWithResponse call
+func ParseDeleteProfileResponse(rsp *http.Response) (*DeleteProfileResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteProfileResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetProfileResponse parses an HTTP response from a GetProfileWithResponse call
 func ParseGetProfileResponse(rsp *http.Response) (*GetProfileResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -14583,6 +15046,81 @@ func ParseSetProfileEntriesResponse(rsp *http.Response) (*SetProfileEntriesRespo
 	}
 
 	response := &SetProfileEntriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ProfileDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRemoveProfileEntryResponse parses an HTTP response from a RemoveProfileEntryWithResponse call
+func ParseRemoveProfileEntryResponse(rsp *http.Response) (*RemoveProfileEntryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RemoveProfileEntryResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}

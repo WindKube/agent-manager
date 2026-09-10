@@ -38,6 +38,7 @@ type ProfilePermissions struct {
 	Curate  bool `json:"curate" doc:"May change entries and sync targets. Owner or maintainer."`
 	Share   bool `json:"share" doc:"May change who the profile is shared with. Owner only: who can see a profile is not a curation decision."`
 	Publish bool `json:"publish" doc:"May publish a revision. Owner or maintainer — a consumer may not (FR-037)."`
+	Delete  bool `json:"delete" doc:"May delete the profile outright. Owner only. Deleting is refused separately, by the api, when the profile holds a published revision — this bit is the role check alone."`
 }
 
 // ProfileEntry: Version/Verdict are what this entry resolves to, distinct
@@ -115,6 +116,12 @@ type ProfileEntrySetting struct {
 	ID      string `json:"id" minLength:"1" doc:"namespace/name of a registered package." example:"example/adr-writer"`
 	Mode    string `json:"mode" enum:"latest,pinned,range" example:"pinned"`
 	Version string `json:"version,omitempty" doc:"The exact version when mode is pinned, the constraint expression when mode is range, and unused for latest." example:"3.0.2"`
+}
+
+// ProfileEntryRemoval names the one package a removal takes out of a
+// profile, as opposed to ProfileEntries' whole-set replacement.
+type ProfileEntryRemoval struct {
+	ID string `json:"id" minLength:"1" doc:"namespace/name of the package to remove from the profile." example:"example/adr-writer"`
 }
 
 // ProfileSharing is an UPSERT of roles, not a replacement of the membership

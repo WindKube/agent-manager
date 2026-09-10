@@ -547,10 +547,8 @@ func (s *Server) registerProfiles() {
 			"resolves, with `unpublished` set on every row that differs from the head revision. " +
 			"The body is the WHOLE ordered set, because position is what an ordered set means and " +
 			"a patch cannot express a reorder. Naming a package the profile does not hold adds it. " +
-			"OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE " +
-			"on `profile_entry` (removal is unspecified and no screen carries the control), so " +
-			"quietly keeping it would answer 200 to a request whose stored result disagrees with " +
-			"what was sent. " +
+			"OMITTING one it does hold is REFUSED and named, to catch a client acting on stale " +
+			"state — POST .../entries/remove is the explicit way to take one out. " +
 			"Requires owner or maintainer on the profile.",
 		Responses: map[string]*huma.Response{
 			"200": {
@@ -569,6 +567,35 @@ func (s *Server) registerProfiles() {
 			"500": s.errorResponse("The request could not be completed."),
 		},
 	}, s.setProfileEntries)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "removeProfileEntry",
+		Method:      http.MethodPost,
+		Path:        "/v1/profiles/{slug}/entries/remove",
+		Tags:        []string{"profiles"},
+		Summary:     "Remove one package from a profile",
+		Description: "Deletes the profile_entry row outright, in one transaction with one audit row " +
+			"of kind `profile`. Distinct from PUT .../entries: that operation still refuses a body " +
+			"omitting an entry the profile holds, and this is the addressed removal offered instead " +
+			"of loosening it. " +
+			"NOT DURABLE UNTIL A REVISION IS PUBLISHED, same as every other entry change. " +
+			"Requires owner or maintainer on the profile.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Removed. The body is the profile as it now resolves.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.ProfileDetail{}, "ProfileDetail")},
+				},
+			},
+			"400": s.errorResponse("The request body is missing or is not valid JSON."),
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"403": s.errorResponse("This identity may not curate this profile."),
+			"404": s.errorResponse("No such profile, or not readable by this identity."),
+			"415": s.errorResponse("The request body must be sent as application/json."),
+			"422": s.errorResponse("The id is not a package id, or the profile does not hold it."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.removeProfileEntry)
 
 	huma.Register(s.api, huma.Operation{
 		OperationID: "setProfileSharing",
@@ -692,6 +719,30 @@ func (s *Server) registerProfiles() {
 			"500": s.errorResponse("The request could not be completed."),
 		},
 	}, s.getRevision)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID:   "deleteProfile",
+		Method:        http.MethodDelete,
+		Path:          "/v1/profiles/{slug}",
+		Tags:          []string{"profiles"},
+		Summary:       "Delete a profile",
+		DefaultStatus: http.StatusNoContent,
+		Description: "Deletes the profile, its entries, its membership and its sync targets, in one " +
+			"transaction with one audit row of kind `profile`. Refuses with 409 when the profile " +
+			"holds any published revision — the foreign key from `revision` has no ON DELETE " +
+			"clause, so this is the database's own refusal, and it is deliberate: FR-034 forbids " +
+			"deleting a revision, and a client may already have synced one. A profile that has " +
+			"never been published carries no such row and deletes cleanly. " +
+			"Requires owner on the profile.",
+		Responses: map[string]*huma.Response{
+			"204": {Description: "Deleted."},
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"403": s.errorResponse("This identity may not delete this profile."),
+			"404": s.errorResponse("No such profile, or not readable by this identity."),
+			"409": s.errorResponse("The profile holds a published revision and cannot be deleted."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.deleteProfile)
 }
 
 func (s *Server) registerBundles() {

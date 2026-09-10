@@ -3182,6 +3182,23 @@
         ],
         "type": "object"
       },
+      "ProfileEntryRemoval": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "namespace/name of the package to remove from the profile.",
+            "examples": [
+              "example/adr-writer"
+            ],
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
       "ProfileEntrySetting": {
         "additionalProperties": false,
         "properties": {
@@ -3288,6 +3305,10 @@
             "description": "May change entries and sync targets. Owner or maintainer.",
             "type": "boolean"
           },
+          "delete": {
+            "description": "May delete the profile outright. Owner only. Deleting is refused separately, by the api, when the profile holds a published revision — this bit is the role check alone.",
+            "type": "boolean"
+          },
           "publish": {
             "description": "May publish a revision. Owner or maintainer — a consumer may not (FR-037).",
             "type": "boolean"
@@ -3300,7 +3321,8 @@
         "required": [
           "curate",
           "share",
-          "publish"
+          "publish",
+          "delete"
         ],
         "type": "object"
       },
@@ -7058,6 +7080,84 @@
       }
     },
     "/v1/profiles/{slug}": {
+      "delete": {
+        "description": "Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: FR-034 forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.",
+        "operationId": "deleteProfile",
+        "parameters": [
+          {
+            "description": "The profile's URL-safe identifier. It may carry several segments, as the design's example/platform-engineer does.",
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "description": "The profile's URL-safe identifier. It may carry several segments, as the design's example/platform-engineer does.",
+              "examples": [
+                "example/platform-engineer"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity may not delete this profile."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such profile, or not readable by this identity."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The profile holds a published revision and cannot be deleted."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Delete a profile",
+        "tags": [
+          "profiles"
+        ]
+      },
       "get": {
         "description": "The profile detail screen (001 US5): every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted (FR-036). The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.",
         "operationId": "getProfile",
@@ -7126,7 +7226,7 @@
     },
     "/v1/profiles/{slug}/entries": {
       "put": {
-        "description": "Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.",
+        "description": "Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.",
         "operationId": "setProfileEntries",
         "parameters": [
           {
@@ -7231,6 +7331,118 @@
           }
         },
         "summary": "Set the packages a profile holds and how each one tracks versions",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/v1/profiles/{slug}/entries/remove": {
+      "post": {
+        "description": "Deletes the profile_entry row outright, in one transaction with one audit row of kind `profile`. Distinct from PUT .../entries: that operation still refuses a body omitting an entry the profile holds, and this is the addressed removal offered instead of loosening it. NOT DURABLE UNTIL A REVISION IS PUBLISHED, same as every other entry change. Requires owner or maintainer on the profile.",
+        "operationId": "removeProfileEntry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileEntryRemoval"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileDetail"
+                }
+              }
+            },
+            "description": "Removed. The body is the profile as it now resolves."
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is missing or is not valid JSON."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity may not curate this profile."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such profile, or not readable by this identity."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body must be sent as application/json."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The id is not a package id, or the profile does not hold it."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Remove one package from a profile",
         "tags": [
           "profiles"
         ]

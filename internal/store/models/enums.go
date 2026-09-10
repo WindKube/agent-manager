@@ -300,6 +300,11 @@ func (v MembershipRole) MayCurate() bool {
 // decision the owner made.
 func (v MembershipRole) MayShare() bool { return v == MembershipRoleOwner }
 
+// MayDelete reports whether this role may delete the profile outright.
+// Owner only, for the same reason as MayShare: deleting is a decision about
+// the profile's own existence, not its curation.
+func (v MembershipRole) MayDelete() bool { return v == MembershipRoleOwner }
+
 // MayPublish reports whether this role may publish a revision: the sharpest
 // of the three, since a revision is what reaches machines.
 func (v MembershipRole) MayPublish() bool {

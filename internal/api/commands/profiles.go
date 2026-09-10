@@ -21,14 +21,20 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The profile write path: five commands, one transaction and one audit
-// row each. Shared shape: the profile is read under a row lock so an
-// unreadable profile is a not-found and every check decides against one
-// state; the caller's membership role decides what they may do, not their
+// The profile write path: one transaction and one audit row per command.
+// Shared shape: the profile is read under a row lock so an unreadable
+// profile is a not-found and every check decides against one state; the
+// caller's membership role decides what they may do, not their
 // organisation role (except creating a profile, gated on org role since
-// there's no membership yet to consult); and nothing is deleted — no
-// DELETE grant on profile_entry, membership or revision, so a removal is
-// refused and named rather than silently ignored.
+// there's no membership yet to consult).
+//
+// Two commands DO delete now: RemoveProfileEntry takes one package out
+// (am_api holds DELETE on profile_entry for exactly this), and DeleteProfile
+// removes a profile that has never been published (am_api also holds DELETE
+// on profile, membership and sync_target). Neither touches `revision`:
+// am_api still holds no DELETE there, FR-034 still forbids it outright, and
+// DeleteProfile relies on the database's own foreign key to refuse a
+// profile that has one — see DeleteProfile.
 //
 // Deliberately absent: any way a fork could learn about the upstream's
 // later revisions. ForkOf copies entries once; nothing follows that
@@ -39,6 +45,12 @@ import (
 var ErrProfileExists = errors.New("a profile with this slug already exists")
 
 var ErrProfileRefused = errors.New("the profile change was refused")
+
+// ErrProfileHasRevisions is DeleteProfile's refusal for a profile that has
+// ever been published: FR-034 forbids deleting a revision, and a client may
+// already have synced one, so this is a permanent conflict with the
+// profile's own history rather than something to fix and retry.
+var ErrProfileHasRevisions = errors.New("this profile has published revisions and cannot be deleted")
 
 // uniqueProfileSlugConstraint is named here because Postgres reports the
 // constraint, not the requirement, and a bare "duplicate key" explains nothing.
@@ -425,6 +437,48 @@ func versionID(ctx context.Context, tx bun.IDB, pkg uuid.UUID, id, semver string
 	return version, nil
 }
 
+// RemoveProfileEntry takes one package out of a profile.
+//
+// SetProfileEntries deliberately refuses a whole-set body that OMITS an
+// entry the profile holds (entryRowsFor), to catch a client acting on stale
+// state — that refusal stays exactly as strict. This is the explicit,
+// addressed removal the screen now offers instead of loosening it: a
+// targeted delete of the one row named, nothing else.
+func RemoveProfileEntry(ctx context.Context, db bun.IDB, p auth.Principal, slug, id string) error {
+	namespace, name, ok := strings.Cut(id, "/")
+	if !ok || namespace == "" || name == "" {
+		return refused("%q is not a package id: it is namespace/name", id)
+	}
+
+	return db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		facts, err := queries.LockProfile(ctx, tx, p, slug)
+		if err != nil {
+			return err
+		}
+		if !facts.Role.MayCurate() {
+			return notPermitted("change the packages in", "owner or maintainer", facts.Role)
+		}
+
+		pkgID, err := packageID(ctx, tx, namespace, name)
+		if err != nil {
+			return err
+		}
+
+		res, err := tx.NewDelete().Model((*models.ProfileEntry)(nil)).
+			Where("profile_id = ? and package_id = ?", facts.ID, pkgID).
+			Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("remove %s from %s: %w", id, slug, err)
+		}
+		if affected, _ := res.RowsAffected(); affected == 0 {
+			return refused("%s does not hold %s, so there is nothing to remove", slug, id)
+		}
+
+		return writeProfileAudit(ctx, tx, p, models.AuditKindProfile,
+			fmt.Sprintf("removed %s from %s", id, slug))
+	})
+}
+
 // SetProfileSharing sets the role each named subject holds. An upsert, not
 // a replacement: a subject the body omits keeps its role, since there's
 // no DELETE on `membership`. A demotion is an update of `role`.
@@ -677,6 +731,55 @@ func PublishRevision(ctx context.Context, db bun.IDB, p auth.Principal,
 		return contract.Lockfile{}, err
 	}
 	return lockfile, nil
+}
+
+// DeleteProfile permanently removes a profile that has never been
+// published. A profile with any revision is refused rather than cascaded:
+// FR-034 forbids deleting a revision outright, and a revision is what a
+// client may already have synced, so cascading would either orphan that
+// history or force removing a revision to avoid it — neither is
+// acceptable. The database's own foreign key is what catches this, the
+// same shape DeleteCategory already relies on for "still in use": not a
+// pre-check, so there is no race between checking and deleting.
+func DeleteProfile(ctx context.Context, db bun.IDB, p auth.Principal, slug string) error {
+	return db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		facts, err := queries.LockProfile(ctx, tx, p, slug)
+		if err != nil {
+			return err
+		}
+		if !facts.Role.MayDelete() {
+			return notPermitted("delete", "owner", facts.Role)
+		}
+
+		// Children first: profile_entry, membership and sync_target carry no
+		// history worth keeping once the profile they belong to is gone, and
+		// am_api holds DELETE on exactly these three. revision and sync_event
+		// do not appear here on purpose — see the function comment.
+		if _, err := tx.NewDelete().Model((*models.ProfileEntry)(nil)).
+			Where("profile_id = ?", facts.ID).Exec(ctx); err != nil {
+			return fmt.Errorf("clear the entries of %s before deleting it: %w", slug, err)
+		}
+		if _, err := tx.NewDelete().Model((*models.Membership)(nil)).
+			Where("profile_id = ?", facts.ID).Exec(ctx); err != nil {
+			return fmt.Errorf("clear the membership of %s before deleting it: %w", slug, err)
+		}
+		if _, err := tx.NewDelete().Model((*models.SyncTarget)(nil)).
+			Where("profile_id = ?", facts.ID).Exec(ctx); err != nil {
+			return fmt.Errorf("clear the sync targets of %s before deleting it: %w", slug, err)
+		}
+
+		if _, err := tx.NewDelete().Model((*models.Profile)(nil)).
+			Where("id = ?", facts.ID).Exec(ctx); err != nil {
+			if isForeignKeyViolation(err) {
+				return fmt.Errorf("%w: %s has published revisions that a client may already "+
+					"have synced", ErrProfileHasRevisions, slug)
+			}
+			return fmt.Errorf("delete %s: %w", slug, err)
+		}
+
+		return writeProfileAudit(ctx, tx, p, models.AuditKindProfile,
+			fmt.Sprintf("deleted profile %s (%s)", slug, facts.Name))
+	})
 }
 
 // memberRef is the value a membership row or an audit actor names this

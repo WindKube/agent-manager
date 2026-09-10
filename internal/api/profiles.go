@@ -110,6 +110,19 @@ func (s *Server) setProfileEntries(ctx context.Context, in *setEntriesInput) (*p
 	})
 }
 
+// ---- POST /v1/profiles/{slug}/entries/remove ---------------------------------
+
+type removeEntryInput struct {
+	Slug string `path:"slug"`
+	Body contract.ProfileEntryRemoval
+}
+
+func (s *Server) removeProfileEntry(ctx context.Context, in *removeEntryInput) (*profileDetailOutput, error) {
+	return s.mutateProfile(ctx, in.Slug, func(principal auth.Principal) error {
+		return commands.RemoveProfileEntry(ctx, s.deps.DB, principal, in.Slug, in.Body.ID)
+	})
+}
+
 // ---- PUT /v1/profiles/{slug}/sharing -----------------------------------------
 
 type setSharingInput struct {
@@ -189,6 +202,16 @@ func (s *Server) publishRevision(ctx context.Context, in *publishRevisionInput) 
 	}, nil
 }
 
+// ---- DELETE /v1/profiles/{slug} -----------------------------------------------
+
+func (s *Server) deleteProfile(ctx context.Context, in *profileSlugInput) (*struct{}, error) {
+	principal, _ := PrincipalFrom(ctx)
+	if err := commands.DeleteProfile(ctx, s.deps.DB, principal, in.Slug); err != nil {
+		return nil, profileFailure(ctx, err)
+	}
+	return &struct{}{}, nil
+}
+
 // profileFailure maps the profile commands' refusals onto the wire.
 //
 // queries.ErrNotFound reaches fail() and becomes the 404 that makes an unreadable
@@ -200,10 +223,11 @@ func profileFailure(ctx context.Context, err error) error {
 	switch {
 	case errors.As(err, &notPermitted):
 		return huma.Error403Forbidden(notPermitted.Error())
-	case errors.Is(err, commands.ErrProfileExists):
+	case errors.Is(err, commands.ErrProfileExists), errors.Is(err, commands.ErrProfileHasRevisions):
 		// A 409 and not a 422: the request is well formed and the caller is
-		// permitted; the slug is taken and will stay taken. Same reading
-		// registerPackage's immutability conflict uses.
+		// permitted; the resource's own state is what refuses it. Same
+		// reading registerPackage's immutability conflict and DeleteCategory's
+		// still-in-use refusal both use.
 		return huma.Error409Conflict(err.Error())
 	case errors.Is(err, commands.ErrProfileRefused):
 		return huma.Error422UnprocessableEntity(err.Error())

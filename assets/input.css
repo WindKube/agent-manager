@@ -2755,4 +2755,34 @@
     border: 0;
     background: var(--bg);
   }
+
+  /* A SKILL.md's leading YAML frontmatter, shown as the structured metadata
+     it is rather than run into the body's own prose styling. */
+  .am-md-frontmatter {
+    margin: 4px 0 14px;
+    border: 1px solid var(--bd);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .am-md-frontmatter-label {
+    padding: 6px 14px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--bd);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--fg3);
+  }
+
+  .am-md-frontmatter-body {
+    margin: 0;
+    padding: 12px 14px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--fg2);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
 }

@@ -266,24 +266,6 @@ services:
       retries: 3
     restart: unless-stopped
 
-  # ---------------------------------------------------------------------------
-  # Optional. `docker compose --profile queue-ui up`
-  #
-  # On 8085 because the api took 8082 on the host, which is where this used to be.
-  # ---------------------------------------------------------------------------
-  queue-ui:
-    image: ghcr.io/riverqueue/riverui:0.19.0
-    profiles: ["queue-ui"]
-    depends_on:
-      migrate-queue:
-        condition: service_completed_successfully
-    environment:
-      DATABASE_URL: >-
-        postgres://am_queue:local-development-am-queue@postgres:5432/river?sslmode=disable
-      RIVER_HOST: ":8085"
-    ports:
-      - "8085:8085"
-
 # `default` is declared so naming it on a service does not opt that service out
 # of the network every other one is on. `scan-engine` is closed: internal means
 # Compose attaches no gateway, so nothing on it can route off the host.

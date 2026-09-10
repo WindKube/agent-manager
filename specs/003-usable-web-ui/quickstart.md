@@ -39,6 +39,7 @@ compose.infra.yaml
   dex ───────── OIDC + device grant          178 MB, discovery live in ~1 s
     └ glauth ── LDAP directory, 2 users in 2 groups    90 MB
   migrate-schema  ──> migrate-queue           (both run to completion)
+  queue-ui :8085            River's queue dashboard
 
 compose.yaml   (include: compose.infra.yaml)
   api      :8082 -> :8081   REST + OIDC + device flow + outbox relay
@@ -46,7 +47,6 @@ compose.yaml   (include: compose.infra.yaml)
   fetcher                   the only role that can write bundle bytes
   scanner                   reads bytes, writes verdicts     <-- no longer behind a profile
   seed                      one-shot, the design's dataset   <-- no longer a stub
-  queue-ui :8085            optional, --profile queue-ui
 ```
 
 Three things are different from 001's stack beyond the file split:
@@ -65,7 +65,7 @@ Three things are different from 001's stack beyond the file split:
 | API + OpenAPI | http://localhost:8082/v1 · `/v1/openapi.json` | bearer token from the device flow |
 | Dex discovery | http://localhost:5556/dex/.well-known/openid-configuration | — |
 | MinIO console | http://localhost:9001 | `minioadmin` / `minioadmin` |
-| River UI (optional) | http://localhost:8085 | `docker compose --profile queue-ui up` |
+| River UI | http://localhost:8085 | — |
 
 All three share one password, `local-only-directory-password`. glauth holds only its sha256, so
 the plaintext is spelled exactly once in code — `seed.DirectoryPassword` — and the sign-in

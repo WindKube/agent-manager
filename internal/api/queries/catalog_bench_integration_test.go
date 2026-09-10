@@ -127,10 +127,9 @@ func generateCatalog(ctx context.Context, pool *pgxpool.Pool) error {
 
 		// Half the publishers verified, so the Verified filter is a real
 		// discriminator rather than a full scan that matches everything. Slugs are
-		// two-segment because a check constraint refuses anything else, and four
-		// namespaces across forty publishers so the composite foreign key on
-		// package has more than one publisher per namespace to resolve — which is
-		// the shape the real data has.
+		// two-segment, and four namespaces across forty publishers so the
+		// composite foreign key on package has more than one publisher per
+		// namespace to resolve — which is the shape the real data has.
 		`insert into publisher (id, slug, display_name, verified)
 		 select gen_random_uuid(), 'ns' || (g % 4) || '/pub' || g, 'Publisher ' || g, (g % 2 = 0)
 		 from generate_series(1, 40) as g`,

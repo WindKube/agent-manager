@@ -32,19 +32,21 @@ alter table "publisher"
   add column "namespace" text
   generated always as (split_part("slug", '/', 1)) stored not null;
 
--- The two-segment shape is load-bearing now: the first segment is the object-key
--- prefix, so a one-segment slug would silently produce keys with an empty
--- namespace and a second slash. It is a check rather than a comment for that
--- reason.
+-- A namespace on its own (`community`) or a namespace and a team
+-- (`community/platform`): split_part's first field is the whole string when
+-- there is no slash, so either shape gives the object key a non-empty
+-- namespace. What has to be refused is a segment split_part would make
+-- empty — a leading slash, a trailing slash — or a third segment, which
+-- split_part would silently drop.
 --
 -- The per-segment character set is deliberately NOT re-stated here. Registration
 -- validates each segment against one pattern; a second, looser copy in the
 -- database would be a rule that disagrees with the real one the first time either
--- moves. This constraint asserts only what the object key depends on: exactly two
+-- moves. This constraint asserts only what the object key depends on: one or two
 -- segments, neither empty.
 alter table "publisher"
-  add constraint "publisher_slug_is_two_segments"
-  check ("slug" ~ '^[^/]+/[^/]+$');
+  add constraint "publisher_slug_is_one_or_two_segments"
+  check ("slug" ~ '^[^/]+(/[^/]+)?$');
 
 -- Redundant against the primary key on its own, and it is not here for its own
 -- sake: a composite foreign key can only reference a set of columns that carries

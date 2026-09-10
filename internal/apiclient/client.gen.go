@@ -3551,7 +3551,7 @@ type RegisterPackageMultipartBody struct {
 	// Examples: platform-toolkit
 	Name *string `json:"name,omitempty"`
 
-	// Publisher The publisher, as <namespace>/<team>. Required: no source carries one — a repository has an owner and an archive URL has a host, and neither is a namespace this hub chose. The namespace is the first segment, and it is what the object key and the package id are built from.
+	// Publisher The publisher, as <namespace> or <namespace>/<team>. Required: no source carries one — a repository has an owner and an archive URL has a host, and neither is a namespace this hub chose. The namespace is the first segment, and it is what the object key and the package id are built from.
 	//
 	// Examples: example/platform
 	Publisher string `json:"publisher"`

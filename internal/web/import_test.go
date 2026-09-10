@@ -209,8 +209,8 @@ func TestTheImportFormHasAVersionFieldAndAUsablePublisherPlaceholder(t *testing.
 	require.Contains(t, body, `id="import-version"`)
 	require.Contains(t, body, `name="version"`)
 	require.Contains(t, body, `placeholder="1.0.0"`)
-	// The api refuses anything that is not "<namespace>/<team>" — "example" alone
-	// was a placeholder nobody could actually submit.
+	// A bare namespace is a legal publisher too, but the placeholder models the
+	// more common two-segment shape.
 	require.Contains(t, body, `placeholder="example/platform"`)
 }
 

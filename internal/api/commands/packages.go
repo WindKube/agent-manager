@@ -40,8 +40,8 @@ type Registration struct {
 	Ref          string
 	Subdirectory string
 
-	// Publisher is the two-segment slug, `example/platform`. Namespace is
-	// derived in normalise, never supplied directly, since it's what the
+	// Publisher is the slug, `example/platform` or just `example`. Namespace
+	// is derived in normalise, never supplied directly, since it's what the
 	// object key is built from.
 	Publisher string
 	Namespace string
@@ -186,12 +186,14 @@ func (in Registration) normalise() (Registration, error) {
 		return in, fmt.Errorf("%w: a registration needs a publisher", ErrRegistration)
 	}
 
-	// The two-segment shape mirrors the schema's own constraint, stated
-	// here so the caller learns what's wrong instead of reading a 23514.
+	// One or two segments mirrors the schema's own constraint, stated here
+	// so the caller learns what's wrong instead of reading a 23514. Either
+	// shape gives the namespace a non-empty first segment; what's refused is
+	// an empty segment or a third one.
 	namespace, team, ok := strings.Cut(in.Publisher, "/")
-	if !ok || namespace == "" || team == "" || strings.Contains(team, "/") {
+	if namespace == "" || (ok && (team == "" || strings.Contains(team, "/"))) {
 		return in, fmt.Errorf(
-			"%w: a publisher is <namespace>/<team>, for example example/platform, not %q",
+			"%w: a publisher is <namespace> or <namespace>/<team>, for example example or example/platform, not %q",
 			ErrRegistration, in.Publisher)
 	}
 	in.Namespace = namespace

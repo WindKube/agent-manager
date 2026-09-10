@@ -48,17 +48,19 @@ them, by construction.
 | Column | Type | Notes |
 | --- | --- | --- |
 | `id` | uuid pk | |
-| `slug` | text, **unique** | `example/platform`, `community/dbtools` |
+| `slug` | text, **unique** | `example`, `example/platform`, `community/dbtools` |
 | `namespace` | text, **stored generated** `split_part(slug, '/', 1)` | `example`. Not a column anybody writes: Postgres recomputes it from the slug and refuses a direct assignment |
 | `display_name` | text | |
 | `verified` | bool, default false | Drives the Verified/Community filter. Set by a catalog admin — **never** inferred from the slug prefix (spec Assumptions). |
 
-**`check (slug ~ '^[^/]+/[^/]+$')`** — exactly two non-empty segments. The shape is
-load-bearing rather than conventional: the first segment is the rendered package id and the
-object-key prefix, so a one-segment slug produces keys with an empty namespace. The
-per-segment character set is deliberately *not* restated here — registration validates it
-against one pattern, and a second, looser copy in the database would be a rule that disagrees
-with the real one the first time either moves.
+**`check (slug ~ '^[^/]+(/[^/]+)?$')`** — one or two non-empty segments. `split_part`'s
+first field is the whole string when there is no slash, so a bare namespace such as
+`community` gives the object key a non-empty namespace exactly as a two-segment slug does.
+What the check refuses is a segment `split_part` would leave empty (a leading or trailing
+slash) or a third segment `split_part` would silently drop. The per-segment character set is
+deliberately *not* restated here — registration validates it against one pattern, and a
+second, looser copy in the database would be a rule that disagrees with the real one the
+first time either moves.
 
 **`unique (id, namespace)`** — not needed for its own sake, since `id` is already the primary
 key. It exists because a composite foreign key can only reference a column set carrying a

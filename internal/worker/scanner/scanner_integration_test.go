@@ -332,7 +332,7 @@ func TestAHostileBundleReachesAFlaggedVerdictWithFindingsAReviewerCanRead(t *tes
 	scans := readScans(t, version.versionID)
 	require.Len(t, scans, 1)
 	require.Equal(t, string(models.VerdictFlagged), scans[0].Verdict)
-	require.Equal(t, h.worker.PackVersion(), scans[0].PackVersion)
+	require.Equal(t, h.worker.Fingerprint(context.Background()), scans[0].PackVersion)
 	require.False(t, scans[0].TimedOut)
 	require.True(t, scans[0].Finished, "finished_at null means in flight, and drives the median-duration stat")
 
@@ -704,6 +704,6 @@ func movedPackWorker(t *testing.T, h harness) *scanner.Worker {
 		Log:      zerolog.New(io.Discard),
 	}, scanner.Options{RulepackDir: dir, Budget: 30 * time.Second})
 	require.NoError(t, err)
-	require.NotEqual(t, h.worker.PackVersion(), moved.PackVersion())
+	require.NotEqual(t, h.worker.Fingerprint(context.Background()), moved.Fingerprint(context.Background()))
 	return moved
 }

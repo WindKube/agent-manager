@@ -20,7 +20,7 @@ const maxDetailBytes = 4000
 // record is the one transaction the scan hangs on: the `scan` row, every
 // `scan_check`, `finding` and `finding_evidence` row, the version's verdict
 // and the audit row land together or not at all.
-func (w *Worker) record(ctx context.Context, job Job, result analysis, started time.Time, print string) (Outcome, error) {
+func (w *Worker) record(ctx context.Context, job Job, result analysis, started time.Time, stamp string) (Outcome, error) {
 	verdict := verdictOf(result)
 	outcome := Outcome{
 		Verdict:  verdict,
@@ -33,7 +33,7 @@ func (w *Worker) record(ctx context.Context, job Job, result analysis, started t
 	scan := &models.Scan{
 		ID:          models.NewID(),
 		VersionID:   job.VersionID,
-		PackVersion: print,
+		PackVersion: stamp,
 		StartedAt:   started.UTC(),
 		FinishedAt:  &finished,
 		Verdict:     verdict,
@@ -67,7 +67,7 @@ func (w *Worker) record(ctx context.Context, job Job, result analysis, started t
 		if err := w.setVerdict(ctx, tx, job, verdict); err != nil {
 			return err
 		}
-		return writeScanAudit(ctx, tx, scanText(job, print, result, verdict))
+		return writeScanAudit(ctx, tx, scanText(job, stamp, result, verdict))
 	})
 	if err != nil {
 		return Outcome{}, err

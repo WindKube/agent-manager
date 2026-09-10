@@ -48,16 +48,16 @@ func (w *Worker) scan(ctx context.Context, job Job, lastAttempt bool) (Outcome, 
 	// Resolved before the idempotency check rather than after: the key includes
 	// every analyzer's own version, so a scan cannot be suppressed by a guard
 	// written under a different set of them.
-	print := w.Fingerprint(ctx)
+	stamp := w.Fingerprint(ctx)
 
 	log := w.deps.Log.With().
 		Str("job", "scan").
 		Str("version", job.String()).
-		Str("pack_version", print).
+		Str("pack_version", stamp).
 		Logger()
 
 	already, err := outbox.Delivered(ctx, w.deps.DB, outbox.Job{
-		Kind: outbox.KindScan, SubjectID: job.VersionID, SubjectVersion: print,
+		Kind: outbox.KindScan, SubjectID: job.VersionID, SubjectVersion: stamp,
 	})
 	if err != nil {
 		return Outcome{}, fmt.Errorf("scan %s: %w", job, err)
@@ -84,7 +84,7 @@ func (w *Worker) scan(ctx context.Context, job Job, lastAttempt bool) (Outcome, 
 		if !lastAttempt {
 			return Outcome{TimedOut: true, Duration: elapsed}, err
 		}
-		outcome, recordErr := w.record(ctx, job, analysis{timedOut: true}, started, print)
+		outcome, recordErr := w.record(ctx, job, analysis{timedOut: true}, started, stamp)
 		if recordErr != nil {
 			return Outcome{}, recordErr
 		}
@@ -100,7 +100,7 @@ func (w *Worker) scan(ctx context.Context, job Job, lastAttempt bool) (Outcome, 
 		return Outcome{}, err
 	}
 
-	outcome, err := w.record(ctx, job, result, started, print)
+	outcome, err := w.record(ctx, job, result, started, stamp)
 	if err != nil {
 		return Outcome{}, err
 	}

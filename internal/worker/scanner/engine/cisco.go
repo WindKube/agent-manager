@@ -100,7 +100,7 @@ var analyzerToggles = map[string]string{
 // display metadata only — the engine writes the upload under a name of its own.
 const uploadFilename = "bundle.zip"
 
-func (s *service) uploadBody(zipped []byte) ([]byte, string, error) {
+func (s *service) uploadBody(zipped []byte) (body []byte, contentType string, err error) {
 	var buf bytes.Buffer
 	form := multipart.NewWriter(&buf)
 
@@ -132,7 +132,7 @@ func (s *service) url(path string) string {
 }
 
 func (s *service) get(ctx context.Context, path string, out any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.url(path), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.url(path), http.NoBody)
 	if err != nil {
 		return fmt.Errorf("engine: build the %s request: %w", path, err)
 	}

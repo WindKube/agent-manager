@@ -158,8 +158,8 @@ func TestTheFingerprintNamesEveryAnalyzer(t *testing.T) {
 		down, err := newAnalyzers(registry, pack,
 			stubEngine{versionErr: errors.New("connection refused")}, true, quietLog())
 		require.NoError(t, err)
-		print := fingerprint(ctx, down)
-		require.Contains(t, print, engine.ID+"="+unavailable)
-		require.NotEqual(t, both, print)
+		stamp := fingerprint(ctx, down)
+		require.Contains(t, stamp, engine.ID+"="+unavailable)
+		require.NotEqual(t, both, stamp)
 	})
 }

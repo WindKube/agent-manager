@@ -64,7 +64,8 @@ func translate(rep report, threshold rules.Severity) (Result, error) {
 	}
 
 	parsed := 0
-	for _, raw := range rep.Findings {
+	for i := range rep.Findings {
+		raw := &rep.Findings[i]
 		if strings.TrimSpace(raw.RuleID) == "" {
 			continue
 		}
@@ -127,7 +128,7 @@ func crossCheck(rep report, parsed int) error {
 	return nil
 }
 
-func translateFinding(raw finding, level rules.Severity) checks.Finding {
+func translateFinding(raw *finding, level rules.Severity) checks.Finding {
 	out := checks.Finding{
 		RuleID:   raw.RuleID,
 		Severity: level,
@@ -147,7 +148,7 @@ func translateFinding(raw finding, level rules.Severity) checks.Finding {
 	return out
 }
 
-func title(raw finding) string {
+func title(raw *finding) string {
 	if t := strings.TrimSpace(raw.Title); t != "" {
 		return t
 	}
@@ -156,7 +157,7 @@ func title(raw finding) string {
 
 // detail carries the engine's prose plus its remediation. Both are the
 // engine's own text about its own rule, not bundle content.
-func detail(raw finding) string {
+func detail(raw *finding) string {
 	parts := make([]string, 0, 3)
 	if d := strings.TrimSpace(raw.Description); d != "" {
 		parts = append(parts, d)

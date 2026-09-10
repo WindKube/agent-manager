@@ -130,7 +130,7 @@ func New(deps worker.Deps, opts Options) (*Worker, error) {
 
 	// Verified unconditionally: a bad pattern or missing fixture path would
 	// otherwise start cleanly and flag or skip for no reason a reviewer can act on.
-	if err := checks.Verify(context.Background(), pack); err != nil {
+	if err = checks.Verify(context.Background(), pack); err != nil {
 		return nil, fmt.Errorf("scanner: %w", err)
 	}
 

@@ -18,6 +18,37 @@ var labels = map[string]string{
 	"behavioral":  "Dataflow",
 }
 
+// explanations say what each of this engine's own analyzers looks for, in
+// general. Grounded in what this project can actually verify: the golden
+// reports under testdata/ (real responses from the pinned engine) and
+// specs/004-scanner-engine/spec.md, not this build's own guess at a
+// third-party's detection logic. "pipeline" says so rather than guessing,
+// because neither source describes it more precisely than "static".
+//
+// The individual rule ids these analyzers raise (YARA_prompt_injection_generic
+// and the like) are the pinned engine's own and not enumerable here, so this
+// explains the ANALYZER, the thing this project's own code names and can keep
+// a promise about; the per-finding prose for one of its rules comes from the
+// engine's own response instead (detail below).
+var explanations = map[string]string{
+	"static": "Matches the bundle's files against the engine's signature and pattern rules — " +
+		"YARA byte signatures plus built-in checks — covering prompt injection, tool-chaining " +
+		"abuse, outbound network primitives, obfuscated shell content, and basic manifest " +
+		"hygiene such as a missing licence or a vague description.",
+	"bytecode": "Looks for compiled Python (`.pyc`) shipped without its source, which hides " +
+		"what actually runs behind bytes nobody can read.",
+	"pipeline": "One of the engine's four static analyzers. This project's own spec groups it " +
+		"with the others as covering encoded or hidden content a text-only pattern cannot see, " +
+		"but the pinned engine's own documentation for what it inspects is not vendored in " +
+		"this repository, so it cannot be described more precisely than that here.",
+	"correlation": "Looks for a chain across the bundle rather than one match on its own — for " +
+		"example, content that is decoded or unpacked and then reaches code execution, which " +
+		"no single line reveals by itself.",
+	"behavioral": "Builds a dataflow graph from the bundle's code and flags dataflow from a " +
+		"sensitive read, such as a credential file, to a network write across function " +
+		"boundaries — a chain a line-by-line pattern cannot follow.",
+}
+
 // severities maps the engine's five onto the schema's three. An unrecognised
 // value maps to high rather than low: the engine version is pinned, so a
 // severity this build has not seen means the response changed under it, and
@@ -105,6 +136,7 @@ func translate(rep report, threshold rules.Severity) (Result, error) {
 		result.Checks = append(result.Checks, checks.CheckRun{
 			CheckID: ID + "/" + name,
 			Label:   Label(name),
+			Explain: Explain(name),
 			Result:  checks.Grade(slot.findings, slot.below),
 		})
 		result.Findings = append(result.Findings, slot.findings...)
@@ -188,4 +220,13 @@ func Label(name string) string {
 		return l
 	}
 	return "Engine analyzer " + name
+}
+
+// Explain says what one analyzer looks for, in general, for the checks
+// matrix's hover text.
+func Explain(name string) string {
+	if e, ok := explanations[name]; ok {
+		return e
+	}
+	return "An analyzer of the " + ID + " engine this build does not have a description for."
 }

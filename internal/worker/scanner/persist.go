@@ -109,6 +109,7 @@ func insertChecks(ctx context.Context, tx bun.IDB, scanID uuid.UUID, runs []chec
 			CheckID:   run.CheckID,
 			Engine:    run.Engine,
 			Label:     run.Label,
+			Explain:   run.Explain,
 			Result:    result,
 			WarnCount: countAsInt32(run.Result.WarnCount),
 		})

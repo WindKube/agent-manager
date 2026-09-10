@@ -72,6 +72,12 @@ type Check interface {
 	ID() string
 	// Label is what the checks-run matrix renders.
 	Label() string
+	// Explain is what this check looks for, in general — not this scan's
+	// result, which is Result and Finding.Detail below, but the standing
+	// question a reader has no other way to answer: what does a warn or a
+	// fail on this row actually mean. Required, like ID and Label: a check
+	// with nothing here is exactly the gap this feature closes.
+	Explain() string
 	// Run applies the rules addressed to this check.
 	Run(ctx context.Context, b *Bundle, rs []rules.Rule) (Result, []Finding, error)
 }
@@ -80,9 +86,10 @@ type Check interface {
 type CheckRun struct {
 	CheckID string
 	// Engine names the analyser the row belongs to.
-	Engine string
-	Label  string
-	Result Result
+	Engine  string
+	Label   string
+	Explain string
+	Result  Result
 }
 
 // Registry is the one list of checks.
@@ -98,8 +105,8 @@ func NewRegistry(checks ...Check) (*Registry, error) {
 		if check == nil {
 			return nil, fmt.Errorf("check registry: nil check")
 		}
-		if check.ID() == "" || check.Label() == "" {
-			return nil, fmt.Errorf("check registry: a check has no id or no label")
+		if check.ID() == "" || check.Label() == "" || strings.TrimSpace(check.Explain()) == "" {
+			return nil, fmt.Errorf("check registry: %s has no id, no label, or no explanation", check.ID())
 		}
 		if _, dup := seen[check.ID()]; dup {
 			return nil, fmt.Errorf("check registry: %s is registered twice", check.ID())
@@ -157,7 +164,9 @@ func (r *Registry) Run(ctx context.Context, b *Bundle, pack *rules.Pack) ([]Chec
 		if err != nil {
 			return nil, nil, fmt.Errorf("check %s: %w", check.ID(), err)
 		}
-		runs = append(runs, CheckRun{CheckID: check.ID(), Label: check.Label(), Result: result})
+		runs = append(runs, CheckRun{
+			CheckID: check.ID(), Label: check.Label(), Explain: check.Explain(), Result: result,
+		})
 		findings = append(findings, raised...)
 	}
 

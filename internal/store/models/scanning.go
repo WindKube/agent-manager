@@ -36,8 +36,13 @@ type ScanCheck struct {
 	ScanID  uuid.UUID `bun:"scan_id,pk,type:uuid,notnull"`
 	CheckID string    `bun:"check_id,pk,type:text,notnull"`
 	// Engine names the analyser this row belongs to.
-	Engine    string      `bun:"engine,type:text,notnull,default:'rulepack'"`
-	Label     string      `bun:"label,type:text,notnull"`
+	Engine string `bun:"engine,type:text,notnull,default:'rulepack'"`
+	Label  string `bun:"label,type:text,notnull"`
+	// Explain is the check's own explanation of what it looks for, denormalised
+	// onto the row the same way Label is: a screen must not need its own
+	// check-id map to say what a check means, any more than it needs one to
+	// name it.
+	Explain   string      `bun:"explain,type:text,notnull,default:''"`
 	Result    CheckResult `bun:"result,type:check_result,notnull"`
 	WarnCount int32       `bun:"warn_count,type:integer,notnull,default:0"`
 	CreatedAt time.Time   `bun:"created_at,type:timestamptz,notnull,default:now()"`

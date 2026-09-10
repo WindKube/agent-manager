@@ -161,6 +161,29 @@ func TestSeverityMapping(t *testing.T) {
 	}
 }
 
+// TestEveryEnabledAnalyzerHasALabelAndAnExplanation is what makes an
+// analyzer added to Analyzers with no label or explanation impossible to
+// ship silently: Label and Explain both fall back to a generic string for
+// a name they don't recognise, so this walks Analyzers itself rather than
+// the maps, to catch exactly the case the fallback would otherwise hide.
+//
+// This covers the analyzer NAMES this project's own code enumerates. The
+// individual rule ids the pinned engine raises under them (e.g.
+// YARA_prompt_injection_generic) are the third-party engine's own and are
+// not enumerable here — that per-rule prose comes from the engine's live
+// response instead (see translateFinding), not from this package.
+func TestEveryEnabledAnalyzerHasALabelAndAnExplanation(t *testing.T) {
+	for _, name := range Analyzers {
+		label, ok := labels[name]
+		require.Truef(t, ok, "%s has no entry in labels", name)
+		require.NotEmpty(t, strings.TrimSpace(label), "%s has a blank label", name)
+
+		explain, ok := explanations[name]
+		require.Truef(t, ok, "%s has no entry in explanations", name)
+		require.NotEmpty(t, strings.TrimSpace(explain), "%s has a blank explanation", name)
+	}
+}
+
 func TestAnalyzerNameNormalisesBothSpellings(t *testing.T) {
 	// /health lists static_analyzer; a finding carries static.
 	require.Equal(t, "static", analyzerName("static_analyzer"))

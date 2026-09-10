@@ -39,26 +39,31 @@ func (w *Worker) Scan(ctx context.Context, job Job, lastAttempt bool) error {
 }
 
 func (w *Worker) scan(ctx context.Context, job Job, lastAttempt bool) (Outcome, error) {
-	log := w.deps.Log.With().
-		Str("job", "scan").
-		Str("version", job.String()).
-		Str("pack_version", w.pack.Version()).
-		Logger()
-
 	if err := job.Validate(); err != nil {
 		// A payload that names nothing will name nothing on the fourth
 		// attempt either.
 		return Outcome{}, river.JobCancel(err)
 	}
 
+	// Resolved before the idempotency check rather than after: the key includes
+	// every analyzer's own version, so a scan cannot be suppressed by a guard
+	// written under a different set of them.
+	print := w.Fingerprint(ctx)
+
+	log := w.deps.Log.With().
+		Str("job", "scan").
+		Str("version", job.String()).
+		Str("pack_version", print).
+		Logger()
+
 	already, err := outbox.Delivered(ctx, w.deps.DB, outbox.Job{
-		Kind: outbox.KindScan, SubjectID: job.VersionID, SubjectVersion: w.pack.Version(),
+		Kind: outbox.KindScan, SubjectID: job.VersionID, SubjectVersion: print,
 	})
 	if err != nil {
 		return Outcome{}, fmt.Errorf("scan %s: %w", job, err)
 	}
 	if already {
-		log.Info().Msg("scan redelivered for a version already scanned at this rule-pack version; nothing to do")
+		log.Info().Msg("scan redelivered for a version already scanned by this set of analyzers; nothing to do")
 		return Outcome{}, nil
 	}
 
@@ -79,7 +84,7 @@ func (w *Worker) scan(ctx context.Context, job Job, lastAttempt bool) (Outcome, 
 		if !lastAttempt {
 			return Outcome{TimedOut: true, Duration: elapsed}, err
 		}
-		outcome, recordErr := w.record(ctx, job, analysis{timedOut: true}, started)
+		outcome, recordErr := w.record(ctx, job, analysis{timedOut: true}, started, print)
 		if recordErr != nil {
 			return Outcome{}, recordErr
 		}
@@ -95,7 +100,7 @@ func (w *Worker) scan(ctx context.Context, job Job, lastAttempt bool) (Outcome, 
 		return Outcome{}, err
 	}
 
-	outcome, err := w.record(ctx, job, result, started)
+	outcome, err := w.record(ctx, job, result, started, print)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -137,11 +142,32 @@ func (w *Worker) analyse(ctx context.Context, key string) (analysis, error) {
 		return analysis{}, w.classifyClock(ctx, err)
 	}
 
-	runs, findings, err := w.registry.Run(ctx, inspected, w.pack)
-	if err != nil {
-		return analysis{}, w.classifyClock(ctx, err)
+	var result analysis
+	for _, a := range w.analyzers {
+		runs, findings, err := a.Analyze(ctx, inspected)
+		if err != nil {
+			return analysis{}, w.classifyClock(ctx, err)
+		}
+		result.checks = append(result.checks, tag(runs, a.ID())...)
+		result.findings = append(result.findings, tagFindings(findings, a.ID())...)
 	}
-	return analysis{checks: runs, findings: findings}, nil
+	return result, nil
+}
+
+// tag stamps the analyzer that produced each row, which is what makes a
+// reviewer able to read "the rule pack passed, the second engine failed".
+func tag(runs []checks.CheckRun, id string) []checks.CheckRun {
+	for i := range runs {
+		runs[i].Engine = id
+	}
+	return runs
+}
+
+func tagFindings(findings []checks.Finding, id string) []checks.Finding {
+	for i := range findings {
+		findings[i].Engine = id
+	}
+	return findings
 }
 
 // classifyClock separates "the scan ran out of its own budget" from "the

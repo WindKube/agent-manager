@@ -20,7 +20,7 @@ const maxDetailBytes = 4000
 // record is the one transaction the scan hangs on: the `scan` row, every
 // `scan_check`, `finding` and `finding_evidence` row, the version's verdict
 // and the audit row land together or not at all.
-func (w *Worker) record(ctx context.Context, job Job, result analysis, started time.Time) (Outcome, error) {
+func (w *Worker) record(ctx context.Context, job Job, result analysis, started time.Time, print string) (Outcome, error) {
 	verdict := verdictOf(result)
 	outcome := Outcome{
 		Verdict:  verdict,
@@ -33,7 +33,7 @@ func (w *Worker) record(ctx context.Context, job Job, result analysis, started t
 	scan := &models.Scan{
 		ID:          models.NewID(),
 		VersionID:   job.VersionID,
-		PackVersion: w.pack.Version(),
+		PackVersion: print,
 		StartedAt:   started.UTC(),
 		FinishedAt:  &finished,
 		Verdict:     verdict,
@@ -67,7 +67,7 @@ func (w *Worker) record(ctx context.Context, job Job, result analysis, started t
 		if err := w.setVerdict(ctx, tx, job, verdict); err != nil {
 			return err
 		}
-		return writeScanAudit(ctx, tx, scanText(job, w.pack.Version(), result, verdict))
+		return writeScanAudit(ctx, tx, scanText(job, print, result, verdict))
 	})
 	if err != nil {
 		return Outcome{}, err
@@ -107,6 +107,7 @@ func insertChecks(ctx context.Context, tx bun.IDB, scanID uuid.UUID, runs []chec
 		rows = append(rows, models.ScanCheck{
 			ScanID:    scanID,
 			CheckID:   run.CheckID,
+			Engine:    run.Engine,
 			Label:     run.Label,
 			Result:    result,
 			WarnCount: countAsInt32(run.Result.WarnCount),
@@ -141,6 +142,7 @@ func insertFindings(ctx context.Context, tx bun.IDB, scanID, versionID uuid.UUID
 			ScanID:        scanID,
 			VersionID:     versionID,
 			RuleID:        finding.RuleID,
+			Engine:        finding.Engine,
 			Severity:      severity,
 			Title:         finding.Title,
 			Detail:        truncate(finding.Detail, maxDetailBytes),

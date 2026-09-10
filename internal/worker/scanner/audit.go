@@ -41,14 +41,14 @@ func writeScanAudit(ctx context.Context, tx bun.IDB, text string) error {
 
 // scanText is the audit line: what was scanned, under which rules, and what
 // came of it.
-func scanText(job Job, packVersion string, result analysis, verdict models.Verdict) string {
+func scanText(job Job, print string, result analysis, verdict models.Verdict) string {
 	switch {
 	case result.timedOut:
-		return fmt.Sprintf("scan of %s timed out under rule pack %s; verdict unchanged", job, packVersion)
+		return fmt.Sprintf("scan of %s timed out under analyzers %s; verdict unchanged", job, print)
 	case verdict == models.VerdictFlagged:
-		return fmt.Sprintf("flagged %s — %s (rule pack %s)", job, strings.Join(ruleIDs(result.findings), ", "), packVersion)
+		return fmt.Sprintf("flagged %s — %s (analyzers %s)", job, strings.Join(ruleIDs(result.findings), ", "), print)
 	default:
-		return fmt.Sprintf("cleared %s — %d checks, no findings (rule pack %s)", job, len(result.checks), packVersion)
+		return fmt.Sprintf("cleared %s — %d checks, no findings (analyzers %s)", job, len(result.checks), print)
 	}
 }
 

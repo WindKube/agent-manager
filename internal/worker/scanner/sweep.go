@@ -56,7 +56,7 @@ func (s *Sweeper) Sweep(ctx context.Context, job SweepJob) (SweepOutcome, error)
 	log := s.worker.deps.Log.With().
 		Str("job", "rescan-sweep").
 		Str("package", job.String()).
-		Str("pack_version", s.worker.pack.Version()).
+		Str("pack_version", s.worker.Fingerprint(ctx)).
 		Logger()
 
 	if err := job.Validate(); err != nil {
@@ -145,7 +145,7 @@ func (s *Sweeper) candidates(ctx context.Context, job SweepJob) ([]Job, error) {
 		        )
 		  order by v.semver_sort desc
 		  limit ?`,
-		job.PackageID, job.TriggerVersionID, s.worker.pack.Version(), maxSweepVersions)
+		job.PackageID, job.TriggerVersionID, s.worker.Fingerprint(ctx), maxSweepVersions)
 	if err != nil {
 		return nil, fmt.Errorf("read the versions of %s to rescan: %w", job, err)
 	}

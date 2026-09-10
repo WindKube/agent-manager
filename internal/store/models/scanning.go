@@ -33,8 +33,10 @@ type Scan struct {
 type ScanCheck struct {
 	bun.BaseModel `bun:"table:scan_check,alias:schk"`
 
-	ScanID    uuid.UUID   `bun:"scan_id,pk,type:uuid,notnull"`
-	CheckID   string      `bun:"check_id,pk,type:text,notnull"`
+	ScanID  uuid.UUID `bun:"scan_id,pk,type:uuid,notnull"`
+	CheckID string    `bun:"check_id,pk,type:text,notnull"`
+	// Engine names the analyser this row belongs to.
+	Engine    string      `bun:"engine,type:text,notnull,default:'rulepack'"`
 	Label     string      `bun:"label,type:text,notnull"`
 	Result    CheckResult `bun:"result,type:check_result,notnull"`
 	WarnCount int32       `bun:"warn_count,type:integer,notnull,default:0"`
@@ -49,13 +51,16 @@ type ScanCheck struct {
 type Finding struct {
 	bun.BaseModel `bun:"table:finding,alias:fnd"`
 
-	ID        uuid.UUID       `bun:"id,pk,type:uuid,notnull"`
-	ScanID    uuid.UUID       `bun:"scan_id,type:uuid,notnull"`
-	VersionID uuid.UUID       `bun:"version_id,type:uuid,notnull"`
-	RuleID    string          `bun:"rule_id,type:text,notnull"`
-	Severity  FindingSeverity `bun:"severity,type:finding_severity,notnull"`
-	Title     string          `bun:"title,type:text,notnull"`
-	Detail    string          `bun:"detail,type:text,nullzero"`
+	ID        uuid.UUID `bun:"id,pk,type:uuid,notnull"`
+	ScanID    uuid.UUID `bun:"scan_id,type:uuid,notnull"`
+	VersionID uuid.UUID `bun:"version_id,type:uuid,notnull"`
+	RuleID    string    `bun:"rule_id,type:text,notnull"`
+	// Engine names the analyser that raised it. Two engines may use the same
+	// rule id, so a finding is identified by the pair.
+	Engine   string          `bun:"engine,type:text,notnull,default:'rulepack'"`
+	Severity FindingSeverity `bun:"severity,type:finding_severity,notnull"`
+	Title    string          `bun:"title,type:text,notnull"`
+	Detail   string          `bun:"detail,type:text,nullzero"`
 	// EvidenceQuote is attacker-controlled bundle content, quoted verbatim
 	// and always rendered escaped.
 	EvidencePath  string       `bun:"evidence_path,type:text,nullzero"`

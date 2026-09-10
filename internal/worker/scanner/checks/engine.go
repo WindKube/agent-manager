@@ -104,7 +104,7 @@ func group(rule rules.Rule, hits []hit) []Finding {
 			finding.Evidence = append(finding.Evidence, Evidence{
 				Path:       h.path,
 				Line:       h.line,
-				Quote:      clip(h.quote),
+				Quote:      Clip(h.quote),
 				Supporting: i > 0,
 			})
 		}
@@ -128,7 +128,7 @@ func detailFor(rule rules.Rule, hits []hit) string {
 		}
 		seen[h.value] = struct{}{}
 		if len(values) < 8 {
-			values = append(values, clip(h.value))
+			values = append(values, Clip(h.value))
 		}
 	}
 
@@ -265,5 +265,5 @@ func (c ruleCheck) Run(ctx context.Context, b *Bundle, rs []rules.Rule) (Result,
 	if c.blindSpots != nil {
 		spots = c.blindSpots(b)
 	}
-	return grade(findings, spots), findings, nil
+	return Grade(findings, spots), findings, nil
 }

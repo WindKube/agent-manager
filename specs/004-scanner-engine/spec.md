@@ -67,13 +67,21 @@ obfuscation as the standard delivery method — the exact class the rule pack mi
 
 - **R5** The scanner submits the bundle it has already extracted and capped, re-serialised
   as a zip, to the engine's `/scan-upload`. It never hands the engine an object-store key,
-  a URL, or a shared filesystem path.
+  a URL, or a shared filesystem path. Members are written non-executable.
+- **R5a** The engine's upload endpoint caps at 500 entries and 200 MB uncompressed,
+  compiled in rather than configurable, and this project extracts up to 10 000 entries and
+  250 MB. A package between the two, or one the engine declines to load, is a **blind spot
+  warned on the check row** and not a finding: it is a property of the package, the rule
+  pack still ran, and flagging every large package would be a worse answer than saying
+  plainly what was not covered.
 - **R6** Every optional analyzer that would reach a network or an API key is sent
-  explicitly false on every request. The request builder is the only place a toggle can be
-  set, and a configuration that would enable one is a startup error, not a request-time
-  decision.
+  explicitly false on every request, and none of them is reachable from configuration —
+  the toggles are a package constant, so the state is unrepresentable rather than
+  rejected at startup. The engine takes its API keys as request headers, which this
+  client never sets, so a flipped toggle still could not authenticate.
 - **R7** The engine's five severities map onto the schema's three: `critical` and `high`
-  to `high`, `medium` to `medium`, `low` to `low`, `info` is dropped.
+  to `high`, `medium` to `medium`, `low` and `info` to `low`. One mapping and one
+  threshold, rather than a mapping plus a separate drop rule.
 - **R8** A finding below the report threshold (default `medium`) is not stored as a
   finding. It is counted on the engine's check row as a warning. This is what keeps a
   version from being flagged by a pile of low-severity noise.
@@ -95,8 +103,10 @@ obfuscation as the standard delivery method — the exact class the rule pack mi
 
 ### Attribution
 
-- **R12** `finding` and `scan_check` each carry an `engine` column. Existing rows are
-  `rulepack`. The engine's rows are `skill-scanner`.
+- **R12** `finding` and `scan_check` each carry an `engine` column, defaulting to
+  `rulepack` so existing rows are correct without a backfill. The engine's rows are
+  `skill-scanner`, and its check ids are prefixed with it so two engines cannot collide on
+  `scan_check`'s `(scan_id, check_id)` key.
 - **R13** The API exposes `engine` on a finding and on a check row. The findings list and
   the check matrix group by it, so a reviewer reads "the rule pack passed, the second
   engine failed" rather than one undifferentiated list.

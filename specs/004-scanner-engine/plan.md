@@ -104,9 +104,17 @@ test runs against the pinned image.
 - `rulepackAnalyzer` wrapping the existing registry. No behaviour change.
 - `engineAnalyzer` wrapping `engine.Client`, including the R9 `ENG-UNAVAILABLE` finding.
 - `analyse` walks the list; the fingerprint (R15) joins each analyzer's own.
-- `Needs.Engine` on `worker.Needs`, `Deps.Engine` on `worker.Deps`, constructed by
-  `worker.Build` — the role declares it, per principle VII, and a role that did not
-  declare it gets nil.
+- The engine URL and its knobs live in `config.Scanner`, read by the role's own
+  `Definition`, **not** in `worker.Needs`.
+
+  The plan first put it on `Needs`, alongside DB, Blob and Outbound. That was wrong.
+  `Needs` is the set of clients the shared bootstrap may construct, and every field on it
+  is a capability more than one role could hold; an `Engine` field would be settable only
+  by this role for ever, so it would widen the shared framework to describe one consumer.
+  `worker.Build`'s own comment already draws the line the other way — per-role knobs, the
+  rule-pack directory and the scan budget among them, stay in the role's config struct.
+  The engine is one of those. A configured engine that will not build is a startup error,
+  which is what keeps "the url was mistyped so it silently ran one engine" out.
 
 ### 3. Schema and surface
 
@@ -145,7 +153,6 @@ this is a refactor that added a network call.
 | --- | --- | --- |
 | A fourth service in compose | R2 isolation; principle VI exempts third-party images from principle I | Python in the scanner image puts a C-extension parser of hostile input next to the database credential |
 | An HTTP hop inside a scan | The engine's only documented machine interfaces are its CLI and its REST server | The CLI needs an interpreter in our image, which is the same deviation with worse isolation |
-| `Needs.Engine` widens the worker framework | Principle VII: a role declares what it needs and the bootstrap constructs exactly that | Reading the URL from config inside the role hides a capability from the declaration that principle II is checked against |
 | Response shape parsed against partly undocumented JSON | Pinned engine version, plus the R11 cross-check degrading rather than passing on mismatch | Trusting the shape silently records `clean` when the engine changes a field name |
 
 ## Risks

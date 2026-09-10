@@ -155,6 +155,7 @@ func sweep() []sweptScreen {
 		inShell("CatalogNotice", func() templ.Component { return components.CatalogNotice(nil) }),
 		inShell("PackageScreen", func() templ.Component { return components.PackageScreen(view.Package{}) }),
 		inShell("CapabilityPanel", func() templ.Component { return components.CapabilityPanel(view.Capabilities{}) }),
+		inShell("PackageScanPanel", func() templ.Component { return components.PackageScanPanel(view.PackageScan{}) }),
 		inShell("VersionsPanel", func() templ.Component { return components.VersionsPanel(view.Package{}) }),
 		inShell("DependentsPanel", func() templ.Component { return components.DependentsPanel(view.Package{}) }),
 		inShell("FilesPanel", func() templ.Component { return components.FilesPanel(view.Package{}) }),

@@ -2785,4 +2785,16 @@
     white-space: pre-wrap;
     word-break: break-word;
   }
+
+  /* One finding inside the package screen's scan panel: am-ver's own block
+     shape (padding, top border, stacked gap), not am-find's, since this row
+     is static rather than a link into a triage pane. */
+  .am-scan-finding {
+    padding: 14px 20px;
+    border-top: 1px solid var(--bd);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+  }
 }

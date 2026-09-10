@@ -1,0 +1,101 @@
+package components
+
+import "agent-manager/internal/web/view"
+
+// PackageScanPanel is the package detail screen's collapsible security
+// section (owner request: "on the skill view, there should be a collapsible
+// section (default hidden) that shows the security scan result and
+// approval and comment"): the latest version's verdict and engine, its
+// findings with severity, evidence and the check they came from, and any
+// reviewer decision.
+//
+// It is read-only. Reusing it does not offer the accept/reject decision:
+// that stays on the Scanner screen, whose review form redirects back to
+// /scanner and would strand a reviewer who decided from here. Instead this
+// panel reuses the Scanner screen's own findingRow, evidencePanel,
+// checkMatrix, scanPanel and overridePanel (scanner.templ) so the two
+// screens render one finding one way, never a second copy of it.
+//
+// Collapsed by default via a local datastar signal, never sent to the
+// server (the underscore prefix). Every finding this panel can show already
+// arrived with the rest of the page's render (package_scan.go's loadScan),
+// so expanding it costs no round trip — the content is inline in the
+// document from the first byte, hidden by the same inline style="display:none"
+// the catalog's own overlays use, so nothing here paints visible before
+// datastar attaches.
+templ PackageScanPanel(scan view.PackageScan) {
+	<section class="am-section" id="scan-panel" data-signals="{_scanOpen: false}">
+		<div class="am-section-head">
+			<div class="am-section-title">Security scan</div>
+			<div class="am-section-note">{ scan.Summary() }</div>
+		</div>
+		<div class="am-panel-toggle-row">
+			<button
+				type="button"
+				class="am-btn"
+				data-on:click="$_scanOpen = !$_scanOpen"
+				data-attr:aria-expanded="$_scanOpen ? 'true' : 'false'"
+				aria-controls="scan-panel-body"
+			>
+				<span data-text="$_scanOpen ? 'Hide scan detail' : 'Show scan detail'">Show scan detail</span>
+			</button>
+		</div>
+		<div id="scan-panel-body" style="display:none" data-show="$_scanOpen">
+			@scanPanelBody(scan)
+		</div>
+	</section>
+}
+
+templ scanPanelBody(scan view.PackageScan) {
+	if scan.Rejected {
+		<div class="am-empty" id="scan-rejected">
+			This version was rejected, so its scan detail is not served — the same rule that keeps
+			the hub from distributing its bundle and its files.
+		</div>
+	} else if scan.Unavailable {
+		<div class="am-empty" id="scan-unavailable">
+			This version's scan could not be read. That is not the same as a clean scan — retry in
+			a moment.
+		</div>
+	} else if !scan.Scanned {
+		<div class="am-empty" id="scan-unscanned">
+			This version has not been scanned yet.
+		</div>
+	} else {
+		@scanPanel(scan.Scan)
+		@checkMatrix(view.FindingDetail{Checks: scan.Checks})
+		if len(scan.Findings) == 0 {
+			<div class="am-empty" id="scan-no-findings">
+				The scan raised no findings against this version.
+			</div>
+		} else {
+			for _, finding := range scan.Findings {
+				@scanFinding(finding)
+			}
+		}
+	}
+}
+
+// scanFinding is one finding: its severity, rule, state and engine
+// (findingRow), the rule pack's own prose when it recorded one, its
+// evidence (evidencePanel) and, when a reviewer decided it, that decision
+// (overridePanel). A rejected finding carries no override row — Reject
+// writes no override, only the version's verdict — so the audit log, not
+// this finding, is where its reviewer and note are recorded.
+templ scanFinding(finding view.FindingDetail) {
+	<div class="am-scan-finding" id={ "scan-finding-" + finding.ID }>
+		@findingRow(finding.FindingRow)
+		if finding.Explanation != "" {
+			<p class="am-desc">{ finding.Explanation }</p>
+		}
+		@evidencePanel(finding)
+		if finding.Override != nil {
+			@overridePanel(*finding.Override)
+		} else if finding.State == view.FindingRejected {
+			<div class="am-gate-note" id="scan-finding-rejected">
+				This finding is part of a rejected version. Who decided and their note are in the
+				audit log, not on the finding itself.
+			</div>
+		}
+	</div>
+}

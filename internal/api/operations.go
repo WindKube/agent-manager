@@ -330,6 +330,27 @@ func (s *Server) registerPackages() {
 	}, s.getPackageFile)
 
 	huma.Register(s.api, huma.Operation{
+		OperationID: "getPackageScan",
+		Method:      http.MethodGet,
+		Path:        "/v1/packages/{namespace}/{name}/scan",
+		Tags:        []string{"catalog"},
+		Summary:     "The latest visible version's scan result, to show beside the package",
+		Description: "The Scanner screen's own rows — verdict, engine, findings, evidence and any " +
+			"reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged " +
+			"across all of them (the package detail screen's collapsible security section). " +
+			"`scanned` distinguishes a version scanned clean from one never scanned, exactly as " +
+			"getPackage's `capabilities.scanned` does: both produce an empty findings list. A " +
+			"rejected version is never served, exactly as GET " +
+			"/v1/bundles/{publisher}/{name}/{version} refuses one (FR-029).",
+		Responses: map[string]*huma.Response{
+			"401": s.errorResponse("No usable session. The caller must sign in; there is no anonymous view."),
+			"403": s.errorResponse("This version was rejected and its scan detail is not served."),
+			"404": s.errorResponse("No such package, or it has no published version."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.getPackageScan)
+
+	huma.Register(s.api, huma.Operation{
 		OperationID: "previewPackage",
 		Method:      http.MethodPost,
 		Path:        "/v1/packages/preview",

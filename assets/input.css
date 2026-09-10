@@ -385,6 +385,18 @@
     flex-direction: column;
   }
 
+  /* The main column has no padding of its own, so a screen's content has to
+     bring the page gutter. Every screen does it through whichever wrapper it
+     already needs — am-stats, am-gov, am-controls, am-org — and this is the one
+     for a screen with no such wrapper. A screen with none renders flush against
+     both window edges. */
+  .am-screen-body {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 24px 44px 48px;
+  }
+
   /* Screen header -------------------------------------------------------- */
 
   .am-header {
@@ -829,6 +841,20 @@
   .am-import-note-dan {
     background: var(--danbg);
     color: var(--dan);
+  }
+
+  /* Every control in the modal. am-search is the catalog toolbar's control: it
+     grows to fill the bar and refuses to go under 240px, which is wider than a
+     column of a 580px dialog. Carrying am-search alone, a field painted over its
+     neighbour and past the dialog's right edge, so this drops the minimum and
+     fills the column instead. It has to stay after am-search in this file: both
+     are one class deep, so source order is what decides the minimum. */
+  .am-import-field {
+    flex: none;
+    width: 100%;
+    min-width: 0;
+    background: var(--surface2);
+    font-size: 12.5px;
   }
 
   .am-empty {
@@ -2206,5 +2232,29 @@
     padding: 14px 20px;
     border-top: 1px solid var(--bd);
     background: var(--surface2);
+  }
+
+  /* Connect the CLI ------------------------------------------------------- */
+
+  .am-cli-lookup {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* The code and the button that looks it up belong on one line. The screen
+     used am-gate-actions, which is a card footer's right-aligned row, so on a
+     wide window the button sat at the far edge with the field it acts on a
+     thousand pixels away. */
+  .am-cli-lookup-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .am-cli-code {
+    flex: 0 1 240px;
+    min-width: 0;
+    font-family: var(--font-mono);
   }
 }

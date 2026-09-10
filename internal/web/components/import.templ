@@ -108,8 +108,7 @@ templ ImportModal(im Import) {
 					<input
 						id="import-url"
 						name="url"
-						class="am-search"
-						style="font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--surface2)"
+						class="am-search am-import-field am-mono"
 						placeholder="https://github.com/org/plugin or https://.../plugin-1.3.0.zip"
 						data-bind="_importURL"
 					/>
@@ -120,8 +119,7 @@ templ ImportModal(im Import) {
 						<input
 							id="import-ref"
 							name="ref"
-							class="am-search"
-							style="font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--surface2)"
+							class="am-search am-import-field am-mono"
 							placeholder="v1.3.0"
 							data-bind="_importRef"
 						/>
@@ -131,8 +129,7 @@ templ ImportModal(im Import) {
 						<input
 							id="import-subdir"
 							name="subdirectory"
-							class="am-search"
-							style="font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--surface2)"
+							class="am-search am-import-field am-mono"
 							placeholder="plugins/platform-toolkit"
 							data-bind="_importSubdir"
 						/>
@@ -152,8 +149,7 @@ templ ImportModal(im Import) {
 					<input
 						id="import-publisher"
 						name="publisher"
-						class="am-search"
-						style="font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--surface2)"
+						class="am-search am-import-field am-mono"
 						placeholder="example/platform"
 						data-bind="_importPublisher"
 					/>
@@ -168,15 +164,14 @@ templ ImportModal(im Import) {
 					<input
 						id="import-version"
 						name="version"
-						class="am-search"
-						style="font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--surface2)"
+						class="am-search am-import-field am-mono"
 						placeholder="1.0.0"
 						data-bind="_importVersion"
 					/>
 				</div>
 				<div style="flex:1;min-width:160px;display:flex;flex-direction:column;gap:6px">
 					<label for="import-category" style="font-size:12px;color:var(--fg3)">Category</label>
-					<select id="import-category" name="category" class="am-search" style="background:var(--surface2);font-size:12.5px">
+					<select id="import-category" name="category" class="am-search am-import-field">
 						for _, name := range im.Categories {
 							<option value={ name }>{ name }</option>
 						}
@@ -184,7 +179,7 @@ templ ImportModal(im Import) {
 				</div>
 				<div style="flex:1;min-width:160px;display:flex;flex-direction:column;gap:6px">
 					<label for="import-visibility" style="font-size:12px;color:var(--fg3)">Visibility</label>
-					<select id="import-visibility" name="visibility" class="am-search" style="background:var(--surface2);font-size:12.5px">
+					<select id="import-visibility" name="visibility" class="am-search am-import-field">
 						for _, option := range view.ImportVisibilities {
 							<option value={ option.Value }>{ option.Label }</option>
 						}

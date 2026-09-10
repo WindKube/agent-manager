@@ -276,19 +276,9 @@ func TestExtractRejectsTarMembers(t *testing.T) {
 		reason  string
 	}{
 		{
-			name:    "symlink escaping the tree",
-			members: []tarMember{{hdr: tar.Header{Typeflag: tar.TypeSymlink, Name: "escape", Linkname: "../../etc/passwd"}}},
-			reason:  RejectSymlink,
-		},
-		{
-			name:    "symlink pointing inside the tree is refused all the same",
-			members: []tarMember{{hdr: tar.Header{Name: "a.txt", Mode: 0o644}, body: "a"}, {hdr: tar.Header{Typeflag: tar.TypeSymlink, Name: "link", Linkname: "a.txt"}}},
-			reason:  RejectSymlink,
-		},
-		{
-			name:    "hardlink",
-			members: []tarMember{{hdr: tar.Header{Name: "a.txt", Mode: 0o644}, body: "a"}, {hdr: tar.Header{Typeflag: tar.TypeLink, Name: "hard", Linkname: "a.txt"}}},
-			reason:  RejectHardlink,
+			name:    "a symlink whose own path is a traversal",
+			members: []tarMember{{hdr: tar.Header{Typeflag: tar.TypeSymlink, Name: "../escape", Linkname: "a.txt"}}},
+			reason:  RejectTraversal,
 		},
 		{
 			name:    "character device",
@@ -355,9 +345,9 @@ func TestExtractRejectsZipMembers(t *testing.T) {
 		reason  string
 	}{
 		{
-			name:    "symlink escaping the tree",
-			members: []zipMember{{name: "escape", mode: fs.ModeSymlink | 0o777, body: "../../etc/passwd"}},
-			reason:  RejectSymlink,
+			name:    "a symlink whose own path is a traversal",
+			members: []zipMember{{name: "../escape", mode: fs.ModeSymlink | 0o777, body: "a.txt"}},
+			reason:  RejectTraversal,
 		},
 		{
 			name:    "fifo",
@@ -916,4 +906,78 @@ func TestExtractSparseTarMemberIsNotRefusedVacuously(t *testing.T) {
 	const logical = 4096
 	_, err := Extract(context.Background(), bytes.NewReader(sparseTarGz(t, logical)), Limits{})
 	require.NoError(t, err)
+}
+
+// A symlink and a hardlink are left out of the tree rather than refusing the
+// archive over them. Refusing made every repository carrying one permanently
+// unimportable: a forge tarball of a repo with an AGENTS.md symlink at its root
+// failed even when the caller asked for a subdirectory the link is nowhere near.
+//
+// Nothing about the link is extracted and nothing follows it, so what is under
+// test is that the tree does not contain it, that the caller is told, and that
+// the rest of the archive still arrives.
+func TestALinkIsDroppedAndReportedRatherThanRefusingTheArchive(t *testing.T) {
+	t.Run("tar", func(t *testing.T) {
+		files, err := Extract(context.Background(), bytes.NewReader(makeTarGz(t,
+			tarMember{hdr: tar.Header{Name: "plugin.json", Mode: 0o644}, body: "{}"},
+			// The target escapes the tree, which is the case that made refusal
+			// look necessary. It is not read, so it cannot escape anything.
+			tarMember{hdr: tar.Header{Typeflag: tar.TypeSymlink, Name: "AGENTS.md", Linkname: "../../etc/passwd"}},
+			tarMember{hdr: tar.Header{Typeflag: tar.TypeLink, Name: "hard", Linkname: "plugin.json"}},
+			tarMember{hdr: tar.Header{Name: "skills/one/SKILL.md", Mode: 0o644}, body: "# one"},
+		)), Limits{})
+		require.NoError(t, err)
+
+		require.Equal(t, []string{"plugin.json", "skills/one/SKILL.md"}, files.Paths(),
+			"a link reached the tree, or a real file was lost with it")
+
+		require.Equal(t, []SkippedMember{
+			{Path: "AGENTS.md", Reason: RejectSymlink},
+			{Path: "hard", Reason: RejectHardlink},
+		}, files.Skipped(), "the caller was not told what is missing from the tree")
+	})
+
+	t.Run("zip", func(t *testing.T) {
+		files, err := Extract(context.Background(), bytes.NewReader(makeZip(t,
+			zipMember{name: "plugin.json", mode: 0o644, body: "{}"},
+			zipMember{name: "AGENTS.md", mode: fs.ModeSymlink | 0o777, body: "../../etc/passwd"},
+		)), Limits{})
+		require.NoError(t, err)
+		require.Equal(t, []string{"plugin.json"}, files.Paths())
+		require.Equal(t, []SkippedMember{{Path: "AGENTS.md", Reason: RejectSymlink}}, files.Skipped())
+	})
+
+	t.Run("a device node still refuses the archive", func(t *testing.T) {
+		// No plugin or skill tree has a legitimate reason to carry one, so its
+		// presence says the archive is hostile or broken rather than ordinary.
+		_, err := Extract(context.Background(), bytes.NewReader(makeTarGz(t,
+			tarMember{hdr: tar.Header{Name: "plugin.json", Mode: 0o644}, body: "{}"},
+			tarMember{hdr: tar.Header{Typeflag: tar.TypeChar, Name: "dev/null", Devmajor: 1, Devminor: 3}},
+		)), Limits{})
+		requireKind(t, err, KindRejectedMember, RejectDevice)
+	})
+
+	t.Run("links count against the entry cap", func(t *testing.T) {
+		// Otherwise an archive of nothing but symlinks is unbounded work for a
+		// tree that comes out empty.
+		members := []tarMember{}
+		for i := 0; i <= 12; i++ {
+			members = append(members, tarMember{hdr: tar.Header{
+				Typeflag: tar.TypeSymlink, Name: fmt.Sprintf("link%02d", i), Linkname: "x",
+			}})
+		}
+		_, err := Extract(context.Background(), bytes.NewReader(makeTarGz(t, members...)), Limits{MaxEntries: 12})
+		requireKind(t, err, KindTooLarge, CapEntryCount)
+	})
+
+	t.Run("an archive of only links is not a package", func(t *testing.T) {
+		// Extraction succeeds and the tree is empty; whether an empty tree is a
+		// package is the manifest check's call, not this layer's.
+		files, err := Extract(context.Background(), bytes.NewReader(makeTarGz(t,
+			tarMember{hdr: tar.Header{Typeflag: tar.TypeSymlink, Name: "only", Linkname: "x"}},
+		)), Limits{})
+		require.NoError(t, err)
+		require.Empty(t, files.Paths())
+		require.Len(t, files.Skipped(), 1)
+	})
 }

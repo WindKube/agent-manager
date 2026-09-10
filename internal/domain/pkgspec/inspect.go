@@ -73,6 +73,7 @@ func InspectWith(validator *Validator, tree *bundle.Bundle, root string) (*Packa
 		Layout: LayoutReport{
 			Kept:    filtered.kept,
 			Dropped: filtered.dropped,
+			Links:   filtered.links,
 		},
 	}
 
@@ -229,6 +230,13 @@ func describeLayout(filtered *layout, manifestNote string) []LayoutEntry {
 		entries = append(entries, LayoutEntry{
 			Path: joinGroups(groups),
 			Note: "outside spec, dropped",
+			Kept: false,
+		})
+	}
+	if groups := (LayoutReport{Dropped: filtered.links}).DroppedGroups(); len(groups) > 0 {
+		entries = append(entries, LayoutEntry{
+			Path: joinGroups(groups),
+			Note: "link, not stored",
 			Kept: false,
 		})
 	}

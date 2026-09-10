@@ -67,6 +67,7 @@ func (w *Worker) Fetch(ctx context.Context, job Job) error {
 		Int64("size_bytes", result.Commit.Bundle.Size).
 		Int("components", len(result.Package.Components)).
 		Int("dropped", len(result.Package.Layout.Dropped)).
+		Strs("links_not_stored", result.Package.Layout.Links).
 		Msg("version stored")
 	return nil
 }

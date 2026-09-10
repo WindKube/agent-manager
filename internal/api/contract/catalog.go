@@ -6,17 +6,17 @@ import "time"
 // name are returned raw rather than rendered, since which words express them
 // is a view decision this API deliberately doesn't make.
 type CatalogPackage struct {
-	ID        string    `json:"id" doc:"namespace/name — the first segment of the publisher slug, not the whole slug." example:"example/platform-toolkit"`
-	Name      string    `json:"name" doc:"The manifest name, not a display title — no manifest field and no column carries one." example:"platform-toolkit"`
-	Publisher string    `json:"publisher" doc:"The owning publisher's full slug. A different string from the id's namespace: example/security publishes example/pii-redactor." example:"example/platform"`
-	Kind      string    `json:"kind" enum:"plugin,skill" example:"plugin"`
-	Visibility string   `json:"visibility" enum:"organisation,team,private" doc:"Who may see this package (FR-016)." example:"organisation"`
-	Category  string    `json:"category,omitempty" doc:"The admin-curated category (FR-049). Empty when none was chosen." example:"Infrastructure"`
-	Version   string    `json:"version" doc:"The latest visible version's semver." example:"1.3.0"`
-	Verdict   string    `json:"verdict" enum:"scanning,clean,flagged,rejected" doc:"The latest version's scan verdict." example:"clean"`
-	Uses      int       `json:"uses" doc:"Profiles containing this package, derived at query time and never self-reported (R8)." example:"42"`
-	UpdatedAt time.Time `json:"updatedAt" doc:"When the latest visible version was published."`
-	Tags      []string  `json:"tags" doc:"The latest version's manifest keywords. Tags belong to the version, not the package."`
+	ID         string    `json:"id" doc:"namespace/name — the first segment of the publisher slug, not the whole slug." example:"example/platform-toolkit"`
+	Name       string    `json:"name" doc:"The manifest name, not a display title — no manifest field and no column carries one." example:"platform-toolkit"`
+	Publisher  string    `json:"publisher" doc:"The owning publisher's full slug. A different string from the id's namespace: example/security publishes example/pii-redactor." example:"example/platform"`
+	Kind       string    `json:"kind" enum:"plugin,skill" example:"plugin"`
+	Visibility string    `json:"visibility" enum:"organisation,team,private" doc:"Who may see this package (FR-016)." example:"organisation"`
+	Category   string    `json:"category,omitempty" doc:"The admin-curated category (FR-049). Empty when none was chosen." example:"Infrastructure"`
+	Version    string    `json:"version" doc:"The latest visible version's semver." example:"1.3.0"`
+	Verdict    string    `json:"verdict" enum:"scanning,clean,flagged,rejected" doc:"The latest version's scan verdict." example:"clean"`
+	Uses       int       `json:"uses" doc:"Profiles containing this package, derived at query time and never self-reported (R8)." example:"42"`
+	UpdatedAt  time.Time `json:"updatedAt" doc:"When the latest visible version was published."`
+	Tags       []string  `json:"tags" doc:"The latest version's manifest keywords. Tags belong to the version, not the package."`
 }
 
 // CatalogFacetOption is one option of a facet menu with its count.

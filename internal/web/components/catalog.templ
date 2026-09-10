@@ -32,6 +32,7 @@ templ CatalogScreen(c Catalog) {
 				>Add source</button>
 			</div>
 		</div>
+		@CatalogNotice(nil)
 		<div class="am-controls">
 			<input
 				class="am-search"
@@ -213,4 +214,16 @@ templ CatalogTable(page view.CatalogPage) {
 // in step with it.
 templ CatalogCount(page view.CatalogPage) {
 	<div class="am-count" id="catalog-count">{ page.ResultCount() }</div>
+}
+
+// CatalogNotice is where a registration's outcome lands once the modal has
+// closed. The wrapper is always rendered so the patch has something to replace,
+// and it is on this screen rather than in the modal because the modal is gone by
+// the time there is anything to say.
+templ CatalogNotice(notice *view.Notice) {
+	<div id="catalog-notice">
+		if notice != nil {
+			<div class={ NoticeClass(*notice) }>{ notice.Text }</div>
+		}
+	</div>
 }

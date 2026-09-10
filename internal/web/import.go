@@ -67,7 +67,9 @@ func (s *Server) importRegister(c *gin.Context) {
 		Ref:          c.PostForm("ref"),
 		Subdirectory: c.PostForm("subdirectory"),
 		Publisher:    c.PostForm("publisher"),
+		Name:         c.PostForm("name"),
 		Version:      c.PostForm("version"),
+		Kind:         c.PostForm("kind"),
 		Category:     c.PostForm("category"),
 		Visibility:   c.PostForm("visibility"),
 	}
@@ -91,6 +93,22 @@ func (s *Server) importRegister(c *gin.Context) {
 	}
 
 	sse := datastar.NewSSE(c.Writer, c.Request)
+
+	// A registration that was accepted is finished, so the modal goes away and
+	// the outcome moves to the screen behind it. Leaving the modal open with an
+	// acknowledgement in it invited a second press of the same button, which
+	// registers the same version again and is refused as a conflict.
+	if result.Registered {
+		if err := sse.PatchElementTempl(components.CatalogNotice(registeredNotice(result))); err != nil {
+			logFrom(c).Error().Err(err).Msg("patch the registration notice")
+			return
+		}
+		if err := sse.MarshalAndPatchSignals(closedImportSignals()); err != nil {
+			logFrom(c).Error().Err(err).Msg("close the registration modal")
+		}
+		return
+	}
+
 	if err := sse.PatchElementTempl(components.ImportResultBanner(&result)); err != nil {
 		logFrom(c).Error().Err(err).Msg("patch import result")
 		return
@@ -101,6 +119,34 @@ func (s *Server) importRegister(c *gin.Context) {
 		if err := sse.PatchElementTempl(components.ImportPreviewPanel(result.Preview)); err != nil {
 			logFrom(c).Error().Err(err).Msg("patch import preview")
 		}
+	}
+}
+
+// registeredNotice is the acknowledgement, on the screen the person is returned
+// to. The tone is warn rather than ok for the same reason the banner's was: a
+// 202 means the fetch is queued and nothing has been scanned yet.
+func registeredNotice(result view.ImportResult) *view.Notice {
+	text := "Registered " + result.ID
+	if result.Version != "" {
+		text += "@" + result.Version
+	}
+	return &view.Notice{Tone: "warn", Text: text + ". The fetch is queued; the scan follows it."}
+}
+
+// closedImportSignals shuts the modal and empties every field in it. Resetting
+// matters as much as closing: reopening a modal still holding the last
+// registration's URL is how the same version gets submitted twice.
+func closedImportSignals() map[string]any {
+	return map[string]any{
+		"_importOpen":      false,
+		"_importFile":      "",
+		"_importURL":       "",
+		"_importRef":       "",
+		"_importSubdir":    "",
+		"_importPublisher": "",
+		"_importName":      "",
+		"_importVersion":   "",
+		"_importKind":      "",
 	}
 }
 

@@ -147,6 +147,7 @@ func sweep() []sweptScreen {
 		inShell("ImportModal", func() templ.Component { return components.ImportModal(components.Import{}) }),
 		inShell("ImportPreviewPanel", func() templ.Component { return components.ImportPreviewPanel(nil) }),
 		inShell("ImportResultBanner", func() templ.Component { return components.ImportResultBanner(nil) }),
+		inShell("CatalogNotice", func() templ.Component { return components.CatalogNotice(nil) }),
 		inShell("PackageScreen", func() templ.Component { return components.PackageScreen(view.Package{}) }),
 		inShell("CapabilityPanel", func() templ.Component { return components.CapabilityPanel(view.Capabilities{}) }),
 		inShell("VersionsPanel", func() templ.Component { return components.VersionsPanel(view.Package{}) }),

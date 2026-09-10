@@ -29,11 +29,14 @@ var ImportTabs = []struct {
 // the catalog fails closed and shows neither. Offering them anyway would be
 // worse: a person picks "Private" and their package becomes invisible to
 // everyone including themselves.
-var ImportVisibilities = []struct {
+var ImportVisibilities = []ImportOption{
+	{Value: "organisation", Label: "Organisation"},
+}
+
+// ImportOption is one entry of a select in the modal.
+type ImportOption struct {
 	Value string
 	Label string
-}{
-	{"organisation", "Organisation"},
 }
 
 // Import is everything the modal renders.
@@ -133,6 +136,10 @@ type Registration struct {
 	Name      string
 	Version   string
 
+	// Kind is provisional. Which manifest sits at the tree root is what decides
+	// it, so the fetcher overwrites this once it has the bytes; an empty value
+	// asks for that detection rather than declaring anything.
+	Kind       string
 	Category   string
 	Visibility string
 

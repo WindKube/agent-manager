@@ -200,7 +200,13 @@ func (c Catalog) Signals() string {
 		"_importRef":       "",
 		"_importSubdir":    "",
 		"_importPublisher": "",
+		"_importName":      "",
 		"_importVersion":   "",
+		"_importKind":      "",
+		// Set by data-indicator on the submit control while its request is in
+		// flight. Declared here so the disabled expression has a value to read on
+		// first paint rather than on the plugin's own initialisation order.
+		"_importBusy": false,
 	}
 	encoded, err := json.Marshal(state)
 	if err != nil {
@@ -345,10 +351,32 @@ func ImportSubmitExpr() string {
 	return "@post('/catalog/import', {contentType: 'form', selector: '" + importFormSelector + "'})"
 }
 
-// ImportSubmitDisabledExpr is T046's disabled-until-attached submit. It applies
-// to the upload tab only: the URL tab has nothing to attach.
+// ImportSubmitDisabledExpr is T046's disabled-until-attached submit, plus the
+// in-flight guard. The attachment half applies to the upload tab only: the URL
+// tab has nothing to attach. The in-flight half is what stops a second
+// registration of the same version, which the api answers as a conflict and
+// which read as the button doing nothing at all.
 func ImportSubmitDisabledExpr() string {
-	return "$_importTab === '" + string(view.ImportUpload) + "' && $_importFile === '' ? 'disabled' : null"
+	return "$_importBusy || ($_importTab === '" + string(view.ImportUpload) +
+		"' && $_importFile === '') ? 'disabled' : null"
+}
+
+// ImportBusySignal is the signal data-indicator sets while the registration is
+// in flight. The underscore keeps it out of every request, like the modal's
+// other state.
+const ImportBusySignal = "_importBusy"
+
+// ImportKinds are the kind selector's options. The empty value is first and is
+// the default: kind is decided by which manifest is at the tree root, so a
+// choice here is a provisional label the fetcher overwrites once it has the
+// bytes, and "detect" is the honest default rather than a guess presented as a
+// setting.
+func ImportKinds() []view.ImportOption {
+	return []view.ImportOption{
+		{Value: "", Label: "Detect from the manifest"},
+		{Value: "plugin", Label: "Plugin"},
+		{Value: "skill", Label: "Skill"},
+	}
 }
 
 // ImportResultClass tones the outcome banner. A refusal is --dan and an

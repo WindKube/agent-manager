@@ -127,6 +127,7 @@ func runWeb(ctx context.Context) error {
 	server := web.New(web.Deps{
 		Catalog:   client,
 		Packages:  client,
+		Files:     client,
 		Registrar: client,
 		Auth:      authProvider,
 		// Same client, different fields: resolving the viewer and minting
@@ -144,6 +145,7 @@ func runWeb(ctx context.Context) error {
 		Device:       client,
 		Storage:      client,
 		Organization: client,
+		Runtime:      client,
 		Log:          log,
 	}, web.Options{
 		Addr: cfg.Addr,

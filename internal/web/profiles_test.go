@@ -2,6 +2,7 @@ package web_test
 
 import (
 	"context"
+	"html"
 	"net/http"
 	"net/url"
 	"strings"
@@ -38,6 +39,12 @@ type profiles struct {
 	targetSets [][]string
 	published  []string
 	writeErr   error
+
+	// revisions and revisionErr back Revision, the "Show diff" panel's read.
+	// revisionErr, when set, is returned for every revision number so a test
+	// can drive PredecessorUnavailable by giving revision N but not N-1.
+	revisions   map[int]hub.RevisionLockfile
+	revisionErr error
 }
 
 func (p *profiles) Profiles(context.Context) ([]hub.ProfileSummary, error) {
@@ -55,6 +62,17 @@ func (p *profiles) Profile(_ context.Context, slug string) (hub.ProfileDetail, e
 		return hub.ProfileDetail{}, view.ErrNotFound
 	}
 	return p.detail, nil
+}
+
+func (p *profiles) Revision(_ context.Context, _ string, revision int) (hub.RevisionLockfile, error) {
+	if p.revisionErr != nil {
+		return hub.RevisionLockfile{}, p.revisionErr
+	}
+	lockfile, ok := p.revisions[revision]
+	if !ok {
+		return hub.RevisionLockfile{}, view.ErrNotFound
+	}
+	return lockfile, nil
 }
 
 func (p *profiles) CreateProfile(context.Context, hub.ProfileCreation) (hub.ProfileSummary, error) {
@@ -395,21 +413,30 @@ func TestProfileEntryAddOfAnIDAlreadyHeldFloatsRatherThanDuplicating(t *testing.
 }
 
 // TestProfileWritesAreGatedByRole asserts a role that may not curate, share
-// or publish gets the control absent or disabled, and a request that arrives
-// anyway is refused and records nothing.
+// or publish gets every control still rendered — visibly disabled, with a
+// reason — rather than hidden, and a request that arrives anyway is refused
+// and records nothing.
 func TestProfileWritesAreGatedByRole(t *testing.T) {
 	detail := baseProfileDetail()
 	detail.Permissions = hub.ProfilePermissions{}
 	source := &profiles{detail: detail}
 	h := profHandler(source, fixture.SignedInViewers(), source)
 
-	body := get(t, h, "/profiles/example/platform-engineer").Body.String()
-	require.NotContains(t, body, "Save targets")
+	body := html.UnescapeString(get(t, h, "/profiles/example/platform-engineer").Body.String())
+
+	require.Contains(t, body, "Save targets", "the control must still be rendered, only disabled")
+	require.Contains(t, body, `id="profile-targets-not-permitted"`)
 	require.Contains(t, body, `id="profile-publish-not-permitted"`)
 	require.Contains(t, body, view.CurateDisabledReason,
-		"the disabled float and pin controls must say why, not just refuse silently")
-	require.NotContains(t, body, `id="share-role"`,
-		"a role that may not share this profile must not be offered the sharing form")
+		"the disabled float, pin, add-entry and targets controls must say why, not just refuse silently")
+	require.Contains(t, body, view.ShareDisabledReason,
+		"the disabled sharing form must say why, not just refuse silently")
+	require.Contains(t, body, view.PublishDisabledReason)
+
+	// The sharing form is still offered, greyed out, rather than absent: a
+	// role that cannot share must still see the control exists.
+	require.Contains(t, body, `id="share-role"`)
+	require.Contains(t, body, `<fieldset class="am-fieldset-plain" disabled aria-disabled="true"`)
 
 	rec := post(t, h, "/profiles/entries/pin", url.Values{
 		"slug": {"example/platform-engineer"}, "id": {"community/postgres-migration-guard"}, "version": {"0.8.3"},
@@ -468,6 +495,233 @@ func TestProfileEntryDataIsEscapedWhereverItIsRendered(t *testing.T) {
 	require.NotContains(t, body, payload, "attacker-supplied markup rendered unescaped")
 	require.Contains(t, body, "&lt;img src=x onerror=", "the value was not rendered at all, "+
 		"so this test asserts nothing")
+}
+
+// TestProfileEntriesAreSplitIntoSkillsAndPlugins asserts "Packages" is broken
+// into a Skills section and a Plugins section, each listing only its own kind.
+func TestProfileEntriesAreSplitIntoSkillsAndPlugins(t *testing.T) {
+	detail := baseProfileDetail()
+	detail.Entries = []hub.ProfileEntry{
+		{ID: "example/adr-writer", Name: "ADR Writer", Kind: "skill", Mode: "latest", Outcome: "resolved"},
+		{ID: "example/platform-toolkit", Name: "Platform Toolkit", Kind: "plugin", Mode: "latest", Outcome: "resolved"},
+	}
+	source := &profiles{detail: detail}
+	body := get(t, profHandler(source, fixture.SignedInViewers(), nil), "/profiles/example/platform-engineer").Body.String()
+
+	skillsAt := strings.Index(body, `class="am-entry-kind-head">Skills`)
+	pluginsAt := strings.Index(body, `class="am-entry-kind-head">Plugins`)
+	adrAt := strings.Index(body, "ADR Writer")
+	toolkitAt := strings.Index(body, "Platform Toolkit")
+
+	require.GreaterOrEqual(t, skillsAt, 0, "no Skills section was rendered")
+	require.GreaterOrEqual(t, pluginsAt, 0, "no Plugins section was rendered")
+	require.Greaterf(t, adrAt, skillsAt, "the skill entry must be listed under Skills")
+	require.Lessf(t, adrAt, pluginsAt, "the skill entry must not be listed under Plugins")
+	require.Greaterf(t, toolkitAt, pluginsAt, "the plugin entry must be listed under Plugins")
+}
+
+// TestProfileEntriesEmptyKindSectionStillNamesItself asserts a profile that
+// holds only skills still shows the Plugins section, saying it holds none,
+// rather than omitting the section — "this profile holds no plugins" is a
+// fact worth reading.
+func TestProfileEntriesEmptyKindSectionStillNamesItself(t *testing.T) {
+	source := &profiles{detail: baseProfileDetail()} // one skill, no plugin
+	body := get(t, profHandler(source, fixture.SignedInViewers(), nil), "/profiles/example/platform-engineer").Body.String()
+
+	require.Contains(t, body, `id="profile-entries-empty-plugin"`)
+	require.Contains(t, body, "This profile holds no plugins yet.")
+}
+
+// TestAddEntryFormIsBehindAToggleButtonNotAlwaysVisible is US5's other change:
+// the "Add package" control is a button revealing the form through a
+// client-side signal, not a select sitting permanently on the page. The
+// signal is underscore-prefixed, which is what keeps datastar from ever
+// sending it (the same reason the catalog's own modal signals are).
+func TestAddEntryFormIsBehindAToggleButtonNotAlwaysVisible(t *testing.T) {
+	source := &profiles{detail: baseProfileDetail()}
+	catalog := catalogStub{rows: []view.Row{{ID: "example/adr-writer", Name: "ADR Writer", Kind: view.KindSkill}}}
+	body := get(t, profHandlerWithCatalog(source, source, catalog), "/profiles/example/platform-engineer").Body.String()
+
+	require.Contains(t, body, `data-signals="{_addEntryOpen: false}"`)
+	require.Contains(t, body, `data-on:click="$_addEntryOpen = !$_addEntryOpen"`)
+	require.Contains(t, body, `data-style:display="$_addEntryOpen ? 'flex' : 'none'"`)
+
+	// Hidden before datastar has a chance to run, exactly like the import modal.
+	formAt := strings.Index(body, `action="/profiles/entries/add"`)
+	require.GreaterOrEqual(t, formAt, 0, "the add-entry form is missing")
+	tagStart := strings.LastIndex(body[:formAt], "<form")
+	tagEnd := strings.Index(body[tagStart:], ">")
+	require.GreaterOrEqual(t, tagEnd, 0, "the add-entry form's opening tag is unclosed")
+	require.Contains(t, body[tagStart:tagStart+tagEnd], `style="display:none"`)
+
+	// The select still offers every kind of catalog package in one list, so
+	// each option names its own kind rather than splitting into two selects.
+	require.Contains(t, body, "ADR Writer (example/adr-writer) · Skill")
+}
+
+// TestDisabledProfileControlsAreShownGreyedOutNotHidden is 1d: a role that
+// may not curate, share or publish still sees every control the screen
+// offers — visibly disabled, with a title and the same reason in visible
+// text beneath it — rather than a control that silently disappears.
+func TestDisabledProfileControlsAreShownGreyedOutNotHidden(t *testing.T) {
+	detail := baseProfileDetail()
+	detail.Permissions = hub.ProfilePermissions{}
+	detail.Targets = []hub.ProfileTarget{{Target: "claude-code", Enabled: true}, {Target: "codex", Enabled: false}}
+	source := &profiles{detail: detail}
+	body := html.UnescapeString(get(t, profHandler(source, fixture.SignedInViewers(), nil), "/profiles/example/platform-engineer").Body.String())
+
+	require.Contains(t, body,
+		`<button type="button" class="am-btn" disabled aria-disabled="true" title="`+view.CurateDisabledReason+`">Add package</button>`)
+	require.Contains(t, body,
+		`<input type="checkbox" checked disabled aria-disabled="true" title="`+view.CurateDisabledReason+`">`,
+		"an enabled target's checkbox must carry aria-disabled, not just disabled")
+	require.Contains(t, body,
+		`<input type="checkbox" disabled aria-disabled="true" title="`+view.CurateDisabledReason+`">`,
+		"a disabled target's checkbox must carry aria-disabled, not just disabled")
+	require.Contains(t, body,
+		`<button type="button" class="am-btn am-btn-primary" disabled aria-disabled="true" title="`+view.CurateDisabledReason+`">Save targets</button>`)
+	require.Contains(t, body, `<fieldset class="am-fieldset-plain" disabled aria-disabled="true" title="`+view.ShareDisabledReason+`">`)
+	require.Contains(t, body, `<fieldset class="am-fieldset-plain" disabled aria-disabled="true" title="`+view.PublishDisabledReason+`">`)
+
+	// Both, not either: the title is a weak affordance alone, so the same
+	// sentence also appears as visible text.
+	for _, reason := range []string{view.CurateDisabledReason, view.ShareDisabledReason, view.PublishDisabledReason} {
+		require.GreaterOrEqualf(t, strings.Count(body, reason), 2, "%q must appear both as a title and as visible text", reason)
+	}
+}
+
+// TestProfileRevisionDiffIsAbsentWithoutAQuery asserts the panel is purely
+// additive: a plain profile read carries no diff, and nothing on the page
+// hints one could appear except the per-revision "Show diff" link.
+func TestProfileRevisionDiffIsAbsentWithoutAQuery(t *testing.T) {
+	detail := baseProfileDetail()
+	detail.Revisions = []hub.ProfileRevision{{Revision: 5}, {Revision: 4}}
+	source := &profiles{detail: detail}
+	body := get(t, profHandler(source, fixture.SignedInViewers(), nil), "/profiles/example/platform-engineer").Body.String()
+
+	require.NotContains(t, body, `id="profile-diff-panel"`)
+	require.Contains(t, body, view.RevisionDiffHref("example/platform-engineer", 5))
+}
+
+// TestProfileRevisionDiffReportsAddedRemovedChangedAndGovernance covers the
+// diff's full report: a package added, one removed, one whose version and
+// pin mode both changed, a skip that stopped applying, and the gate, default
+// policy and targets all differing between the two revisions.
+func TestProfileRevisionDiffReportsAddedRemovedChangedAndGovernance(t *testing.T) {
+	detail := baseProfileDetail()
+	detail.HeadRevision = 5
+	detail.Revisions = []hub.ProfileRevision{{Revision: 5}, {Revision: 4}}
+	source := &profiles{
+		detail: detail,
+		revisions: map[int]hub.RevisionLockfile{
+			4: {
+				Revision: 4, Gate: "warn-with-override", DefaultPolicy: "floating-latest",
+				Targets: []string{"claude-code"},
+				Entries: []hub.LockedEntry{
+					{ID: "example/adr-writer", Version: "3.0.1", Resolution: "latest"},
+					{ID: "community/postgres-migration-guard", Version: "0.8.2", Resolution: "latest"},
+				},
+				Skipped: []hub.Skip{{ID: "community/release-notes", Reason: "flagged-awaiting-approval"}},
+			},
+			5: {
+				Revision: 5, Gate: "block", DefaultPolicy: "pinned",
+				Targets: []string{"claude-code", "codex"},
+				Entries: []hub.LockedEntry{
+					{ID: "example/adr-writer", Version: "3.0.2", Resolution: "pinned"},
+					{ID: "example/security-review-kit", Version: "1.0.0", Resolution: "latest"},
+				},
+			},
+		},
+	}
+	body := get(t, profHandler(source, fixture.SignedInViewers(), nil),
+		view.RevisionDiffHref("example/platform-engineer", 5)).Body.String()
+
+	require.Contains(t, body, `id="profile-diff-panel"`)
+
+	// Added.
+	require.Contains(t, body, "example/security-review-kit")
+	require.Contains(t, body, "1.0.0")
+
+	// Removed.
+	require.Contains(t, body, "community/postgres-migration-guard")
+	require.Contains(t, body, "0.8.2")
+
+	// Changed: both the version and the pin mode.
+	require.Contains(t, body, "example/adr-writer")
+	require.Contains(t, body, "3.0.1")
+	require.Contains(t, body, "3.0.2")
+	require.Contains(t, body, view.EntryModeLabel("latest"))
+	require.Contains(t, body, view.EntryModeLabel("pinned"))
+
+	// A skip that stopped applying, with its reason.
+	require.Contains(t, body, "community/release-notes")
+	require.Contains(t, body, view.SkipReasonLabel("flagged-awaiting-approval"))
+
+	// Gate, default policy and targets, all differing.
+	require.Contains(t, body, view.GateLabel("warn-with-override"))
+	require.Contains(t, body, view.GateLabel("block"))
+	require.Contains(t, body, view.DefaultPolicyLabel("floating-latest"))
+	require.Contains(t, body, view.DefaultPolicyLabel("pinned"))
+	require.Contains(t, body, "codex")
+}
+
+// TestProfileRevisionDiffFirstRevisionShowsWhatItIntroduced asserts revision
+// 1, which has no predecessor, says so plainly and shows what it introduced
+// rather than an empty diff or an error.
+func TestProfileRevisionDiffFirstRevisionShowsWhatItIntroduced(t *testing.T) {
+	detail := baseProfileDetail()
+	detail.Revisions = []hub.ProfileRevision{{Revision: 1}}
+	source := &profiles{
+		detail: detail,
+		revisions: map[int]hub.RevisionLockfile{
+			1: {
+				Revision: 1, Gate: "warn-with-override", DefaultPolicy: "floating-latest",
+				Entries: []hub.LockedEntry{{ID: "example/adr-writer", Version: "3.0.0", Resolution: "latest"}},
+				Skipped: []hub.Skip{{ID: "community/release-notes", Reason: "flagged-awaiting-approval"}},
+			},
+		},
+	}
+	body := get(t, profHandler(source, fixture.SignedInViewers(), nil),
+		view.RevisionDiffHref("example/platform-engineer", 1)).Body.String()
+
+	require.Contains(t, body, "Revision 1 has no predecessor")
+	require.Contains(t, body, "example/adr-writer")
+	require.Contains(t, body, "community/release-notes")
+	require.NotContains(t, body, `id="profile-diff-missing"`)
+	require.NotContains(t, body, `id="profile-diff-predecessor-unavailable"`)
+}
+
+// TestProfileRevisionDiffMissingRevisionSaysSoPlainly asserts a revision this
+// profile does not have, or that could not be read, answers honestly rather
+// than as an empty diff — the same answer a nonexistent one and an
+// unreadable one give.
+func TestProfileRevisionDiffMissingRevisionSaysSoPlainly(t *testing.T) {
+	detail := baseProfileDetail()
+	source := &profiles{detail: detail, revisions: map[int]hub.RevisionLockfile{}}
+	rec := get(t, profHandler(source, fixture.SignedInViewers(), nil),
+		view.RevisionDiffHref("example/platform-engineer", 99))
+
+	require.Equal(t, http.StatusOK, rec.Code, "the rest of the profile still reads fine")
+	require.Contains(t, rec.Body.String(), `id="profile-diff-missing"`)
+}
+
+// TestProfileRevisionDiffPredecessorUnavailableSaysSoRatherThanEmptyDiff
+// asserts a revision that reads fine but whose predecessor cannot be read
+// reports that honestly instead of rendering a silently empty diff.
+func TestProfileRevisionDiffPredecessorUnavailableSaysSoRatherThanEmptyDiff(t *testing.T) {
+	detail := baseProfileDetail()
+	detail.HeadRevision = 5
+	source := &profiles{
+		detail: detail,
+		revisions: map[int]hub.RevisionLockfile{
+			5: {Revision: 5, Entries: []hub.LockedEntry{{ID: "example/adr-writer", Version: "3.0.2", Resolution: "pinned"}}},
+		},
+	}
+	body := get(t, profHandler(source, fixture.SignedInViewers(), nil),
+		view.RevisionDiffHref("example/platform-engineer", 5)).Body.String()
+
+	require.Contains(t, body, `id="profile-diff-predecessor-unavailable"`)
+	require.NotContains(t, body, `id="profile-diff-missing"`)
 }
 
 // TestProfileScreensRenderInBothThemes asserts both screens render correctly

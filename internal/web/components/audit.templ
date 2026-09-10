@@ -67,23 +67,17 @@ templ AuditScreen(a view.Audit) {
 				<div>Source</div>
 			</div>
 			for _, row := range a.Rows {
-				<div class="am-audit-row">
-					<div class="am-mono am-audit-time">{ row.At }</div>
-					<div class="am-audit-actor">
-						<span>{ row.Actor }</span>
-						if row.ActorNote() != "" {
-							// A system actor is labelled as one. 001 FR-050 names `fetcher` and
-							// `scanner` as actors, and a screen that let them read as usernames
-							// would attribute a machine's action to a person with that name.
-							<span class="am-audit-actor-kind">{ row.ActorNote() }</span>
-						}
-					</div>
-					<div class="am-audit-event">
-						<span class={ AuditKindClass(row) }>{ row.Kind }</span>
-						<span class="am-audit-text">{ row.Text }</span>
-					</div>
-					<div class="am-mono am-audit-source">{ row.SourceLabel() }</div>
-				</div>
+				// An anchor, not a click handler on a div: focusable, and named by
+				// its own text.
+				if a.Query.Selected == row.ID {
+					<a class="am-audit-row am-audit-row-on" href={ a.Query.EntryHref(row.ID) } aria-current="true">
+						@auditRowCells(row)
+					</a>
+				} else {
+					<a class="am-audit-row" href={ a.Query.EntryHref(row.ID) }>
+						@auditRowCells(row)
+					</a>
+				}
 			}
 			if a.Empty() {
 				// FR-122: what would be here, and how it gets here. An audit row is written
@@ -111,5 +105,80 @@ templ AuditScreen(a view.Audit) {
 				</div>
 			}
 		</div>
+		if a.Selected != nil || a.Missing {
+			@auditPanel(a)
+		}
 	}
+}
+
+templ auditRowCells(row view.AuditRow) {
+	<div class="am-mono am-audit-time">{ row.At }</div>
+	<div class="am-audit-actor">
+		<span>{ row.Actor }</span>
+		if row.ActorNote() != "" {
+			// A system actor is labelled as one. 001 FR-050 names `fetcher` and
+			// `scanner` as actors, and a screen that let them read as usernames
+			// would attribute a machine's action to a person with that name.
+			<span class="am-audit-actor-kind">{ row.ActorNote() }</span>
+		}
+	</div>
+	<div class="am-audit-event">
+		<span class={ AuditKindClass(row) }>{ row.Kind }</span>
+		<span class="am-audit-text">{ row.Text }</span>
+	</div>
+	<div class="am-mono am-audit-source">{ row.SourceLabel() }</div>
+}
+
+// auditPanel shows the row in full, including the entry id the table never
+// renders. No aria-modal: a server round trip moves no focus and traps none,
+// so claiming it would promise what this markup does not do.
+templ auditPanel(a view.Audit) {
+	<div class="am-audit-panel-backdrop" style="background:rgba(15,18,22,0.42)" aria-hidden="true"></div>
+	<aside class="am-audit-panel" role="dialog" aria-label="Audit entry detail">
+		<div class="am-audit-panel-head">
+			<div class="am-audit-panel-title">Audit entry</div>
+			<a class="am-audit-panel-close" aria-label="Close" href={ a.Query.CloseHref() }>×</a>
+		</div>
+		<div class="am-pane-body">
+			if a.Missing {
+				<div class="am-empty" id="audit-entry-missing">
+					No such entry on this page. It may be on another page, or the link is stale.
+				</div>
+			} else {
+				@auditDetail(*a.Selected)
+			}
+		</div>
+	</aside>
+}
+
+templ auditDetail(row view.AuditRow) {
+	<div class="am-pane-block">
+		<div class="am-kv-key">Message</div>
+		<p class="am-audit-detail-message">{ row.Text }</p>
+	</div>
+	<div class="am-kv">
+		<span class="am-kv-key">Occurred at</span>
+		<span class="am-mono am-kv-val">{ row.At }</span>
+	</div>
+	<div class="am-kv">
+		<span class="am-kv-key">Actor</span>
+		<span class="am-kv-val">
+			{ row.Actor }
+			if row.ActorNote() != "" {
+				<span class="am-audit-actor-kind">{ row.ActorNote() }</span>
+			}
+		</span>
+	</div>
+	<div class="am-kv">
+		<span class="am-kv-key">Event</span>
+		<span class="am-kv-val"><span class={ AuditKindClass(row) }>{ row.Kind }</span></span>
+	</div>
+	<div class="am-kv">
+		<span class="am-kv-key">Source</span>
+		<span class="am-kv-val">{ row.SourceDetail() }</span>
+	</div>
+	<div class="am-kv">
+		<span class="am-kv-key">Entry ID</span>
+		<span class="am-mono am-kv-val">{ row.ID }</span>
+	</div>
 }

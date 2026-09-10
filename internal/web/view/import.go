@@ -23,17 +23,26 @@ var ImportTabs = []struct {
 	{ImportURL, "Fetch from URL"},
 }
 
+// MaxTagsFieldLength bounds the modal's one tags input: commands.MaxTagCount
+// tags of commands.MaxTagLength characters, plus a separator each. A typist
+// is stopped here before submitting; the api's per-tag checks are still what
+// decide.
+const MaxTagsFieldLength = 20 * (40 + 1)
+
 // ImportVisibilities is the part of the package_visibility vocabulary the
 // modal may offer: currently one value of three. `team` and `private` are
 // omitted because `package` has no owner column to compare a reader to, so
 // the catalog fails closed and shows neither. Offering them anyway would be
 // worse: a person picks "Private" and their package becomes invisible to
 // everyone including themselves.
-var ImportVisibilities = []struct {
+var ImportVisibilities = []ImportOption{
+	{Value: "organisation", Label: "Organisation"},
+}
+
+// ImportOption is one entry of a select in the modal.
+type ImportOption struct {
 	Value string
 	Label string
-}{
-	{"organisation", "Organisation"},
 }
 
 // Import is everything the modal renders.
@@ -133,8 +142,16 @@ type Registration struct {
 	Name      string
 	Version   string
 
+	// Kind is provisional. Which manifest sits at the tree root is what decides
+	// it, so the fetcher overwrites this once it has the bytes; an empty value
+	// asks for that detection rather than declaring anything.
+	Kind       string
 	Category   string
 	Visibility string
+
+	// Tags is one comma-separated field, forwarded to the api verbatim: it
+	// is the one that splits, dedupes and validates.
+	Tags string
 
 	Archive *Archive
 }

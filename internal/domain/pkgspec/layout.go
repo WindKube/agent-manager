@@ -47,6 +47,12 @@ type LayoutReport struct {
 	Entries []LayoutEntry
 	Dropped []string
 	Kept    []string
+
+	// Links are paths extraction left out because the member was a symlink or a
+	// hardlink. They are not Dropped: a dropped path was outside the spec
+	// layout, and telling someone their AGENTS.md is outside the layout when it
+	// is a link would send them looking in the wrong place.
+	Links []string
 }
 
 // DroppedGroups renders the discarded paths the way the panel joins them: one
@@ -70,12 +76,32 @@ func (r LayoutReport) DroppedGroups() []string {
 	return groups
 }
 
+// linksUnder names the members extraction left out, relative to the package
+// root. A link elsewhere in the archive says nothing about this package: a forge
+// tarball of a monorepo carries links the requested subdirectory never sees.
+func linksUnder(tree *bundle.Bundle, root string) []string {
+	prefix := ""
+	if root != "" && root != "." {
+		prefix = root + "/"
+	}
+	links := make([]string, 0, len(tree.Skipped()))
+	for _, member := range tree.Skipped() {
+		if !strings.HasPrefix(member.Path, prefix) {
+			continue
+		}
+		links = append(links, strings.TrimPrefix(member.Path, prefix))
+	}
+	sort.Strings(links)
+	return links
+}
+
 // layout is the structural result of filtering, before any manifest is read.
 type layout struct {
 	kind    Kind
 	files   *bundle.Bundle
 	kept    []string
 	dropped []string
+	links   []string
 
 	skillDirs []string
 	extDirs   []extDir
@@ -130,6 +156,7 @@ func filterLayout(tree *bundle.Bundle, root string) (*layout, error) {
 		}
 		out.dropped = append(out.dropped, path)
 	}
+	out.links = linksUnder(tree, root)
 
 	for _, path := range out.kept {
 		segments := splitPath(path)

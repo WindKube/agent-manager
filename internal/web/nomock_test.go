@@ -32,6 +32,7 @@ func TestEverySidebarEntryIsARealScreen(t *testing.T) {
 		Audit:        source,
 		Badges:       source,
 		Storage:      source,
+		Runtime:      source,
 		Profiles:     &profiles{},
 		Organization: &organization{},
 		Device:       &device{},

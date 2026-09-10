@@ -2,9 +2,11 @@ package commands
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
@@ -24,13 +26,30 @@ import (
 
 var (
 	ErrRegistration = errors.New("registration refused")
-	ErrImmutable    = errors.New("this version is already published and its bytes are immutable")
+	// FR-007's refusal. Which state blocked it is conflictMessage's job: this
+	// row can be held by a version still being fetched, or one whose fetch
+	// failed, and "published" would be a lie in both.
+	ErrImmutable = errors.New("this publisher/name@version cannot be registered again")
 )
 
 // uniqueVersionConstraint is named here because Postgres reports the
 // constraint, not the requirement: translating 23505-on-this-index into
 // ErrImmutable is what tells a publisher why the hub refused.
 const uniqueVersionConstraint = "version_package_semver"
+
+const (
+	// MaxTagCount bounds a registration's own tags. High enough for real
+	// use, low enough that the catalog's tag facet stays a facet.
+	MaxTagCount = 20
+	// MaxTagLength bounds one tag. Every tag in internal/seed and
+	// internal/web/fixture is well under this.
+	MaxTagLength = 40
+)
+
+// tagRE is a tag's character set: what the catalog's tag facet and pill
+// already render as plain mono text, with no separator character a
+// comma-separated field could confuse for another tag.
+var tagRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]*$`)
 
 // Registration is one registration request, reduced to what the command
 // needs.
@@ -40,8 +59,8 @@ type Registration struct {
 	Ref          string
 	Subdirectory string
 
-	// Publisher is the two-segment slug, `example/platform`. Namespace is
-	// derived in normalise, never supplied directly, since it's what the
+	// Publisher is the slug, `example/platform` or just `example`. Namespace
+	// is derived in normalise, never supplied directly, since it's what the
 	// object key is built from.
 	Publisher string
 	Namespace string
@@ -53,9 +72,15 @@ type Registration struct {
 	Visibility models.PackageVisibility
 
 	// Keywords seed version.tags so the catalog can filter a version the
-	// fetcher hasn't finished yet; the fetcher rewrites them from the
-	// authoritative manifest.
+	// fetcher hasn't finished yet. Keywords is the archive's own manifest
+	// keywords (upload only); Tags is what the publisher typed on the
+	// form. Both are unioned into version.tags here, and unioned again
+	// with the fetched manifest's keywords at publish — never replaced,
+	// in either direction.
 	Keywords []string
+	// Tags is validated and deduplicated in normalise, matching
+	// fetcher.VersionTags's own rule rather than a second one.
+	Tags []string
 
 	ArchiveName string
 	Archive     []byte
@@ -109,6 +134,18 @@ func RegisterPackage(ctx context.Context, db bun.IDB, p auth.Principal, in Regis
 		out.PackageID = pkg.ID.String()
 		out.Kind = string(pkg.Kind)
 
+		// Only so the refusal can name the state. The unique index below is
+		// what enforces FR-007, and it catches the race this SELECT loses.
+		existing := new(models.Version)
+		switch selErr := tx.NewSelect().Model(existing).
+			Where("package_id = ? and semver = ?", pkg.ID, in.Version).
+			Scan(ctx); {
+		case selErr == nil:
+			return fmt.Errorf("%w: %s", ErrImmutable, conflictMessage(ref, existing))
+		case !errors.Is(selErr, sql.ErrNoRows):
+			return fmt.Errorf("check for an existing version of %s: %w", ref, selErr)
+		}
+
 		version := &models.Version{
 			ID:         models.NewID(),
 			PackageID:  pkg.ID,
@@ -119,20 +156,19 @@ func RegisterPackage(ctx context.Context, db bun.IDB, p auth.Principal, in Regis
 			// isn't fetched yet; digest stays null, which the schema's
 			// scanning-check permits.
 			Manifest: json.RawMessage(`{}`),
-			Tags:     in.Keywords,
+			Tags:     fetcher.VersionTags(append(in.Keywords, in.Tags...)),
 			DistTag:  models.DistTagNone,
 			Verdict:  models.VerdictScanning,
 			Visible:  false,
 		}
-		if version.Tags == nil {
-			version.Tags = []string{}
-		}
 		if _, insertErr := tx.NewInsert().Model(version).Exec(ctx); insertErr != nil {
 			if isUniqueViolation(insertErr, uniqueVersionConstraint) {
-				// The rollback leaves the stored version untouched: no
-				// object key rewritten, no digest cleared, no fetch job
-				// enqueued that could overwrite bytes.
-				return fmt.Errorf("%w: %s@%s", ErrImmutable, ref.Package(), in.Version)
+				// The SELECT above lost the race, and this transaction is
+				// already aborted, so the winning row cannot be re-read for
+				// a state-specific message. The rollback leaves what it
+				// stored untouched: no object key rewritten, no digest
+				// cleared, no fetch job enqueued over its bytes.
+				return fmt.Errorf("%w: %s", ErrImmutable, conflictMessage(ref, nil))
 			}
 			return fmt.Errorf("create version %s: %w", ref, insertErr)
 		}
@@ -186,12 +222,14 @@ func (in Registration) normalise() (Registration, error) {
 		return in, fmt.Errorf("%w: a registration needs a publisher", ErrRegistration)
 	}
 
-	// The two-segment shape mirrors the schema's own constraint, stated
-	// here so the caller learns what's wrong instead of reading a 23514.
+	// One or two segments mirrors the schema's own constraint, stated here
+	// so the caller learns what's wrong instead of reading a 23514. Either
+	// shape gives the namespace a non-empty first segment; what's refused is
+	// an empty segment or a third one.
 	namespace, team, ok := strings.Cut(in.Publisher, "/")
-	if !ok || namespace == "" || team == "" || strings.Contains(team, "/") {
+	if namespace == "" || (ok && (team == "" || strings.Contains(team, "/"))) {
 		return in, fmt.Errorf(
-			"%w: a publisher is <namespace>/<team>, for example example/platform, not %q",
+			"%w: a publisher is <namespace> or <namespace>/<team>, for example example or example/platform, not %q",
 			ErrRegistration, in.Publisher)
 	}
 	in.Namespace = namespace
@@ -245,7 +283,42 @@ func (in Registration) normalise() (Registration, error) {
 	if !in.Visibility.Valid() {
 		return in, fmt.Errorf("%w: %q is not a visibility", ErrRegistration, in.Visibility)
 	}
+
+	tags, err := normaliseTags(in.Tags)
+	if err != nil {
+		return in, err
+	}
+	in.Tags = tags
+
 	return in, nil
+}
+
+// normaliseTags trims and drops empties before deduping, so "aws" and
+// " aws " are the same tag, and dedupes before counting, so typing the same
+// tag twice never refuses a registration that would otherwise pass. Unlike
+// Decision.Note, which truncates, an over-long or ill-formed tag is refused:
+// prose surviving a cut is still readable, but a truncated or stripped tag is
+// a silent lie about what was registered.
+func normaliseTags(raw []string) ([]string, error) {
+	trimmed := make([]string, 0, len(raw))
+	for _, tag := range raw {
+		if tag = strings.TrimSpace(tag); tag != "" {
+			trimmed = append(trimmed, tag)
+		}
+	}
+
+	tags := fetcher.VersionTags(trimmed)
+	if len(tags) > MaxTagCount {
+		return nil, fmt.Errorf("%w: at most %d tags are allowed, not %d", ErrRegistration, MaxTagCount, len(tags))
+	}
+	for _, tag := range tags {
+		if len(tag) > MaxTagLength || !tagRE.MatchString(tag) {
+			return nil, fmt.Errorf(
+				"%w: %q is not a valid tag: letters, digits and hyphens, at most %d characters",
+				ErrRegistration, tag, MaxTagLength)
+		}
+	}
+	return tags, nil
 }
 
 // deriveFromURL gives the import modal a default name and version only.
@@ -364,6 +437,27 @@ func upsertPackage(ctx context.Context, tx bun.IDB, publisherID uuid.UUID, categ
 		return nil, fmt.Errorf("create package %s: %w", in.Name, err)
 	}
 	return pkg, nil
+}
+
+// conflictMessage names the state that blocks a re-registration, since FR-007
+// is only actionable if it says what happened instead of asserting
+// "published" for a version that never got that far. existing is nil for the
+// race the insert-time catch lost, where the winning row cannot be re-read.
+func conflictMessage(ref blob.VersionRef, existing *models.Version) string {
+	subject := ref.String()
+	switch {
+	case existing == nil:
+		return subject + " was just registered by another request; its bytes are immutable"
+	case existing.Digest == nil:
+		return subject + " is already registered; its fetch has not finished, or it failed — " +
+			"check the audit log for the outcome before registering it again"
+	case existing.Verdict == models.VerdictFlagged:
+		return subject + " is published and was flagged by the scanner; its bytes are immutable"
+	case existing.Verdict == models.VerdictRejected:
+		return subject + " is published and was rejected by the scanner; its bytes are immutable"
+	default:
+		return subject + " is already published and its bytes are immutable"
+	}
 }
 
 // isUniqueViolation reports whether err is Postgres 23505 on the named

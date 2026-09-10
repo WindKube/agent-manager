@@ -535,10 +535,12 @@ func TestPublisherNamespaceIsDerivedFromTheSlugAndCannotBeWrittenDirectly(t *tes
 	require.Equal(t, "renamed", namespaceOf())
 }
 
-// The two-segment shape is load-bearing rather than conventional: the first
-// segment is the object-key prefix, so a slug with any other shape produces keys
-// nothing else in the system expects. It is a check for that reason.
-func TestAPublisherSlugMustBeExactlyTwoNonEmptySegments(t *testing.T) {
+// One segment (a namespace on its own) or two (namespace and team) are both
+// accepted, because split_part's first field is the whole string when there is
+// no slash: `lonely` and `lonely/platform` both give the object key a
+// non-empty namespace. What's refused is a segment split_part would leave
+// empty, or a third segment split_part would silently drop.
+func TestAPublisherSlugIsOneOrTwoNonEmptySegments(t *testing.T) {
 	ctx := context.Background()
 
 	insert := func(slug string) error {
@@ -549,20 +551,24 @@ func TestAPublisherSlugMustBeExactlyTwoNonEmptySegments(t *testing.T) {
 	}
 
 	for _, slug := range []string{
-		"lonely",    // no namespace at all
 		"a/b/c",     // split_part would happily return "a" and lose b/c
 		"/platform", // empty namespace: the object key would start skills//
 		"example/",  // empty team
-		"example",   // the namespace on its own
 		"",          //
 	} {
 		t.Run("rejects "+strconv.Quote(slug), func(t *testing.T) {
-			requirePgError(t, insert(slug), "23514", "publisher_slug_is_two_segments")
+			requirePgError(t, insert(slug), "23514", "publisher_slug_is_one_or_two_segments")
 		})
 	}
 
-	require.NoError(t, insert("example/platform-"+models.NewID().String()),
-		"a check that rejected everything would also pass the assertions above")
+	for _, slug := range []string{
+		"lonely", // the namespace on its own
+		"example/platform-" + models.NewID().String(), // namespace and team
+	} {
+		t.Run("accepts "+strconv.Quote(slug), func(t *testing.T) {
+			require.NoError(t, insert(slug))
+		})
+	}
 }
 
 // ---------------------------------------------------------------------------

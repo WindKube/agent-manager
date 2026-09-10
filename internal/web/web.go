@@ -52,6 +52,15 @@ type PackageSource interface {
 	Package(ctx context.Context, namespace, name string) (view.Package, error)
 }
 
+// PackageFileSource is the files panel's door to the api (US3/US5: read a
+// skill's files before using it), kept separate from PackageSource since a
+// deployment can answer a package's detail while its bundle reader is
+// unavailable, and the two reads must fail on their own terms.
+type PackageFileSource interface {
+	PackageFiles(ctx context.Context, namespace, name string) (view.FileList, error)
+	PackageFile(ctx context.Context, namespace, name, path string) (view.FileDetail, error)
+}
+
 // Registrar is the import modal's door to the two registration operations,
 // separate from CatalogSource so a fixture need not claim to accept one too.
 type Registrar interface {
@@ -81,11 +90,14 @@ type AuditSource interface {
 	AuditExport(ctx context.Context) (io.ReadCloser, string, error)
 }
 
-// ProfileSource is the Profiles screens' two reads, kept separate from
+// ProfileSource is the Profiles screens' reads, kept separate from
 // ProfileCurator's writes as ScannerSource is from Reviewer.
 type ProfileSource interface {
 	Profiles(ctx context.Context) ([]hub.ProfileSummary, error)
 	Profile(ctx context.Context, slug string) (hub.ProfileDetail, error)
+	// Revision is the "Show diff" panel's read: one published revision's
+	// resolved lockfile, by number.
+	Revision(ctx context.Context, slug string, revision int) (hub.RevisionLockfile, error)
 }
 
 // ProfileCurator is every write the profile screens offer: create, curate,
@@ -117,6 +129,12 @@ type StorageSource interface {
 	Storage(ctx context.Context) (view.Storage, error)
 }
 
+// RuntimeSource is the Runtime screen's one read: job counts, runner errors
+// and the run-history chart, all from one api call.
+type RuntimeSource interface {
+	Runtime(ctx context.Context) (view.Runtime, error)
+}
+
 // OrganizationSource is the Organization screen's door to the api. Reads and
 // writes share one interface since every mutation needs the same role.
 type OrganizationSource interface {
@@ -135,6 +153,7 @@ type OrganizationSource interface {
 type Deps struct {
 	Catalog   CatalogSource
 	Packages  PackageSource
+	Files     PackageFileSource
 	Registrar Registrar
 	Auth      AuthProvider
 	// Viewers resolves who each request is acting as. Nil fails closed.
@@ -149,6 +168,7 @@ type Deps struct {
 	Curator      ProfileCurator
 	Storage      StorageSource
 	Organization OrganizationSource
+	Runtime      RuntimeSource
 	Log          zerolog.Logger
 }
 
@@ -258,6 +278,8 @@ func (s *Server) register() {
 	s.engine.POST("/org/categories", s.createCategory)
 	s.engine.POST("/org/categories/:id", s.renameCategory)
 	s.engine.POST("/org/categories/:id/delete", s.deleteCategory)
+
+	s.engine.GET("/runtime", s.runtime)
 
 	s.engine.POST("/theme", s.setTheme)
 

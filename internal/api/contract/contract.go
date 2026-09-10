@@ -11,6 +11,10 @@ type Profile struct {
 	Visibility   string `json:"visibility,omitempty" enum:"organisation,shared,private" doc:"How this profile came to be readable by this identity." example:"organisation"`
 	PackageCount int    `json:"packageCount" doc:"Packages in the head revision, excluding skipped entries." example:"12"`
 	HeadRevision int    `json:"headRevision" doc:"The most recent published revision number." example:"7"`
+	// CanCurate is FR-126 at list scope: owner or maintainer membership, so a
+	// caller can offer this profile as an add-to-profile target without a
+	// per-profile detail read just to find out.
+	CanCurate bool `json:"canCurate" doc:"Whether this identity's role on this profile lets it change what the profile holds."`
 }
 
 type ProfileList struct {

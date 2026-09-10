@@ -297,7 +297,7 @@ func (e *extractor) tarGz(r io.Reader) (*Bundle, error) {
 type zipEntry struct {
 	file  *zip.File
 	clean string
-	dir   bool
+	skip  bool
 	mode  fs.FileMode
 }
 
@@ -311,15 +311,15 @@ func (e *extractor) extractZip(zr *zip.Reader) (*Bundle, error) {
 			return nil, err
 		}
 		mode := f.Mode()
-		clean, isDir, err := e.acceptMember(f.Name, mode, zipMemberReason(mode))
+		clean, skip, err := e.acceptMember(f.Name, mode, zipMemberReason(mode))
 		if err != nil {
 			return nil, err
 		}
-		entries = append(entries, zipEntry{file: f, clean: clean, dir: isDir, mode: mode})
+		entries = append(entries, zipEntry{file: f, clean: clean, skip: skip, mode: mode})
 	}
 
 	for _, ent := range entries {
-		if ent.dir {
+		if ent.skip {
 			continue
 		}
 		if err := e.alive(); err != nil {
@@ -360,11 +360,11 @@ func (e *extractor) walkTar(tr *tar.Reader) (*Bundle, error) {
 			continue
 		}
 		mode := hdr.FileInfo().Mode()
-		clean, isDir, memberErr := e.acceptMember(hdr.Name, mode, tarMemberReason(hdr.Typeflag))
+		clean, skip, memberErr := e.acceptMember(hdr.Name, mode, tarMemberReason(hdr.Typeflag))
 		if memberErr != nil {
 			return nil, memberErr
 		}
-		if isDir {
+		if skip {
 			continue
 		}
 		data, readErr := e.readMember(tr, clean)
@@ -377,18 +377,43 @@ func (e *extractor) walkTar(tr *tar.Reader) (*Bundle, error) {
 	}
 }
 
+// droppable reports whether a member of this kind is left out of the tree
+// instead of refusing the archive.
+//
+// A symlink or a hardlink is not extracted either way: neither can be
+// represented in a bundle, and nothing here writes to a filesystem, so no link
+// is ever followed. What differs is the blast radius. Ordinary repositories
+// carry symlinks — a tarball of one with an AGENTS.md link at its root is the
+// case that found this — and refusing the archive made every such repository
+// permanently unimportable, including when the link is nowhere near the
+// subdirectory the caller asked for.
+//
+// A device node, a fifo or a socket is not the same: no plugin or skill tree has
+// a legitimate reason to carry one, so its presence says the archive is hostile
+// or broken, and the loud outcome is the useful one. Path-shape rejections stay
+// fatal for the same reason — a traversal is an attack on this extractor, not an
+// artefact of a normal repository.
+func droppable(reason string) bool {
+	return reason == RejectSymlink || reason == RejectHardlink
+}
+
 // acceptMember applies every path rule and every member-kind rule. memberReason is the
 // rejection reason for this member's type, or "" when the type is a plain file or a
-// directory.
-func (e *extractor) acceptMember(name string, mode fs.FileMode, memberReason string) (clean string, isDir bool, err error) {
-	if memberReason != "" {
+// directory. skip is true for anything that contributes no file to the tree: a
+// directory, or a member dropped under droppable.
+func (e *extractor) acceptMember(name string, mode fs.FileMode, memberReason string) (clean string, skip bool, err error) {
+	if memberReason != "" && !droppable(memberReason) {
 		return "", false, rejected(memberReason, name)
 	}
 	e.count++
 	if e.count > e.limits.MaxEntries {
 		return "", false, tooLarge(CapEntryCount, name)
 	}
-	clean, isDir, err = e.validatePath(name)
+	// A dropped member is validated like any other. A symlink is harmless; a
+	// symlink whose own path is a traversal is not an artefact of a normal
+	// repository, and reporting the path it named means never recording an
+	// unchecked one.
+	clean, isDir, err := e.validatePath(name)
 	if err != nil {
 		return "", false, err
 	}
@@ -398,6 +423,10 @@ func (e *extractor) acceptMember(name string, mode fs.FileMode, memberReason str
 		return "", false, rejected(RejectDuplicate, name)
 	}
 	e.seen[clean] = struct{}{}
+	if memberReason != "" {
+		e.out.skip(clean, memberReason)
+		return "", true, nil
+	}
 	return clean, isDir || mode.IsDir(), nil
 }
 

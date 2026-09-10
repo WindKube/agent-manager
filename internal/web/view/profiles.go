@@ -339,10 +339,22 @@ type ProfilePermissions struct {
 // viewer whose role on this profile does not include curating it.
 const CurateDisabledReason = "Your role on this profile may not change its entries."
 
+// ShareDisabledReason is why the sharing form is disabled for anyone but the
+// owner. MembershipRole.MayShare is owner-only by design — a maintainer who
+// could re-share could widen an access decision the owner made — and this is
+// the screen saying so rather than hiding the form.
+const ShareDisabledReason = "Only this profile's owner may change who it is shared with: a " +
+	"maintainer who could re-share it could widen an access decision the owner made."
+
+// PublishDisabledReason is why the publish-revision control is disabled for a
+// viewer whose role on this profile does not include publishing it.
+const PublishDisabledReason = "Your role on this profile may not publish a revision."
+
 // ProfileAddOption is one catalog package the "Add package" select can offer.
 type ProfileAddOption struct {
 	ID   string
 	Name string
+	Kind Kind
 }
 
 // Profile is the detail screen.
@@ -385,21 +397,35 @@ type Profile struct {
 	// understood but refused (a name already shared twice, a range on an entry
 	// that holds no versions in it). It renders inline on the same request.
 	Refusal string
+
+	// Diff is "Show diff": present exactly when the URL carries a revision
+	// query parameter, the same plain-round-trip idiom the audit screen uses
+	// for its own detail panel.
+	Diff *RevisionDiffPanel
 }
 
 func (p Profile) VisibilityLabel() string { return visibilityLabels[p.Visibility] }
 
-func (p Profile) DefaultPolicyLabel() string {
+func (p Profile) DefaultPolicyLabel() string { return DefaultPolicyLabel(p.DefaultPolicy) }
+
+// DefaultPolicyLabel is the free function Profile.DefaultPolicyLabel wraps,
+// so the revision diff panel can label a from/to pair without a Profile to
+// hang it off of.
+func DefaultPolicyLabel(policy string) string {
 	for _, option := range ProfileDefaultPolicies {
-		if option.Value == p.DefaultPolicy {
+		if option.Value == policy {
 			return option.Label
 		}
 	}
-	return p.DefaultPolicy
+	return policy
 }
 
-func (p Profile) GateLabel() string {
-	switch p.Gate {
+func (p Profile) GateLabel() string { return GateLabel(p.Gate) }
+
+// GateLabel is the free function Profile.GateLabel wraps, for the same
+// reason DefaultPolicyLabel is.
+func GateLabel(gate string) string {
+	switch gate {
 	case "block":
 		return "Block"
 	case "approval":
@@ -407,7 +433,7 @@ func (p Profile) GateLabel() string {
 	case "warn-with-override":
 		return "Warn, with override"
 	default:
-		return p.Gate
+		return gate
 	}
 }
 
@@ -425,7 +451,22 @@ func (p Profile) HeadRevisionLabel() string {
 	return "r" + strconv.Itoa(p.HeadRevision)
 }
 
-func (p Profile) EntriesEmpty() bool { return len(p.Entries) == 0 }
+// SkillEntries and PluginEntries split Entries by kind, so the screen can
+// name and empty-state skills and plugins separately instead of one
+// undifferentiated "Packages" list.
+func (p Profile) SkillEntries() []ProfileEntryRow { return p.entriesOfKind(KindSkill) }
+
+func (p Profile) PluginEntries() []ProfileEntryRow { return p.entriesOfKind(KindPlugin) }
+
+func (p Profile) entriesOfKind(kind Kind) []ProfileEntryRow {
+	var out []ProfileEntryRow
+	for i := range p.Entries {
+		if p.Entries[i].Kind == kind {
+			out = append(out, p.Entries[i])
+		}
+	}
+	return out
+}
 
 func (p Profile) MembersEmpty() bool { return len(p.Members) == 0 }
 

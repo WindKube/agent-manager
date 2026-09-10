@@ -50,6 +50,7 @@ var Nav = []NavGroup{
 	{Label: "Administration", Items: []NavItem{
 		{ID: "storage", Label: "Storage", Href: "/storage"},
 		{ID: "org", Label: "Organization", Href: "/org"},
+		{ID: "runtime", Label: "Runtime", Href: "/runtime"},
 	}},
 	{Label: "Onboarding", Items: []NavItem{
 		{ID: "cli", Label: "Connect the CLI", Href: "/cli"},
@@ -200,7 +201,14 @@ func (c Catalog) Signals() string {
 		"_importRef":       "",
 		"_importSubdir":    "",
 		"_importPublisher": "",
+		"_importName":      "",
 		"_importVersion":   "",
+		"_importKind":      "",
+		"_importTags":      "",
+		// Set by data-indicator on the submit control while its request is in
+		// flight. Declared here so the disabled expression has a value to read on
+		// first paint rather than on the plugin's own initialisation order.
+		"_importBusy": false,
 	}
 	encoded, err := json.Marshal(state)
 	if err != nil {
@@ -345,11 +353,37 @@ func ImportSubmitExpr() string {
 	return "@post('/catalog/import', {contentType: 'form', selector: '" + importFormSelector + "'})"
 }
 
-// ImportSubmitDisabledExpr is T046's disabled-until-attached submit. It applies
-// to the upload tab only: the URL tab has nothing to attach.
+// ImportSubmitDisabledExpr is T046's disabled-until-attached submit, plus the
+// in-flight guard. The attachment half applies to the upload tab only: the URL
+// tab has nothing to attach. The in-flight half is what stops a second
+// registration of the same version, which the api answers as a conflict and
+// which read as the button doing nothing at all.
 func ImportSubmitDisabledExpr() string {
-	return "$_importTab === '" + string(view.ImportUpload) + "' && $_importFile === '' ? 'disabled' : null"
+	return "$_importBusy || ($_importTab === '" + string(view.ImportUpload) +
+		"' && $_importFile === '') ? 'disabled' : null"
 }
+
+// ImportBusySignal is the signal data-indicator sets while the registration is
+// in flight. The underscore keeps it out of every request, like the modal's
+// other state.
+const ImportBusySignal = "_importBusy"
+
+// ImportKinds are the kind selector's options. The empty value is first and is
+// the default: kind is decided by which manifest is at the tree root, so a
+// choice here is a provisional label the fetcher overwrites once it has the
+// bytes, and "detect" is the honest default rather than a guess presented as a
+// setting.
+func ImportKinds() []view.ImportOption {
+	return []view.ImportOption{
+		{Value: "", Label: "Detect from the manifest"},
+		{Value: "plugin", Label: "Plugin"},
+		{Value: "skill", Label: "Skill"},
+	}
+}
+
+// ImportTagsLimit is the tags field's maxlength, as a string for the
+// attribute. Mirrors view.MaxTagsFieldLength; the api still decides.
+func ImportTagsLimit() string { return strconv.Itoa(view.MaxTagsFieldLength) }
 
 // ImportResultClass tones the outcome banner. A refusal is --dan and an
 // acknowledgement is --warn, not --ok: a 202 means the fetch is queued, and
@@ -445,3 +479,13 @@ func ReviewNoteLimit() string { return strconv.Itoa(view.MaxReviewNote) }
 
 // OutcomeClass tones a profile entry's gate outcome pill.
 func OutcomeClass(outcome view.ProfileOutcome) string { return PillClass(outcome.Tone()) }
+
+// StateRowClass tones the Runtime screen's job-count rows: a state whose
+// presence itself is the concern (retryable, discarded) colours its count,
+// where every other state's is left neutral.
+func StateRowClass(row view.StateRow) string {
+	if row.Tone == "" {
+		return "am-kv-val"
+	}
+	return "am-kv-val am-kv-val-" + tone(row.Tone)
+}

@@ -291,6 +291,12 @@ func fixtureAudit() []hub.AuditEntry {
 		{"a5", "fetcher", "system", "fetch", "stored example/terraform-module-review@2.4.1", "system", 8 * 24 * time.Hour},
 		{"a6", "scanner", "system", "scan", "cleared example/pii-redactor@1.4.2 — 7 checks, no findings (rule pack 2026.08.31+cc7c5c486030)", "system", 9 * 24 * time.Hour},
 		{"a7", "fixture-operator", "identity", "login", "device authorisation approved", "cli / fixture-host", 10 * 24 * time.Hour},
+		// Long enough that the row's own am-audit-text cell clips it with an
+		// ellipsis — the exact shape of row that had no way to be read in full
+		// before the detail panel.
+		{"a8", "fetcher", "system", "fetch", "failed to fetch community/skills@1.2.3 from git " +
+			"https://github.com/mattpocock/skills@v1.2.3 (skills/engineering/code-review): archive " +
+			"member rejected: symlink (member \"mattpocock-skills-835450e/AGENTS.md\")", "system", 11 * 24 * time.Hour},
 	}
 
 	entries := make([]hub.AuditEntry, 0, len(rows))

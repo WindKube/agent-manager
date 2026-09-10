@@ -14,12 +14,11 @@ import (
 // contents" over an empty tree says something false about the package rather
 // than nothing about it.
 //
-// Two controls the design draws are deliberately absent. "View source" has no
+// One control the design draws is deliberately absent: "View source" has no
 // target — `version` records where bytes were STORED and nothing about where
 // they came from, so the button is unimplementable for a URL registration and
-// meaningless for an uploaded archive. "Add to profile" belongs to US5, and
-// there is no operation behind it in this layer. A control with nothing behind
-// it is worse than a screen without it.
+// meaningless for an uploaded archive. A control with nothing behind it is
+// worse than a screen without it.
 templ PackageScreen(p view.Package) {
 	<div class="am-detail-head">
 		<a class="am-back" href="/catalog">← Catalog</a>
@@ -40,6 +39,7 @@ templ PackageScreen(p view.Package) {
 					<span class="am-detail-cat">{ p.Category }</span>
 				}
 			</div>
+			@addToProfile(p)
 		}
 	</div>
 	if p.SignedOut {
@@ -64,11 +64,70 @@ templ packageBody(p view.Package) {
 			}
 			@packageManifest(p)
 			@CapabilityPanel(p.Capabilities)
+			@FilesPanel(p)
 		</div>
 		<div class="am-detail-side">
 			@VersionsPanel(p)
 			@DependentsPanel(p)
 		</div>
+	</div>
+	if p.SelectedFile != nil || p.FileMissing || p.FileTooLarge || p.FileNotRenderable {
+		@filesDetailPanel(p)
+	}
+}
+
+// addToProfile is US5's own words: "add to the profile", personal or
+// organisation, beside the package's identity rather than the bottom of the
+// page. Grouped by visibility (view.ProfileVisibilities) so a viewer can
+// tell a private profile from an organisation-wide one at a glance.
+templ addToProfile(p view.Package) {
+	<div class="am-add-to-profile" id="add-to-profile">
+		<div class="am-label">Add to profile</div>
+		if p.ProfilesUnavailable {
+			<p class="am-desc am-desc-none">Your profiles could not be read, so nothing can be added here.</p>
+		} else if len(p.ProfileOptions) == 0 {
+			<p class="am-desc am-desc-none">
+				You have no profiles yet. <a href="/profiles">Create one</a> to add this package to it.
+			</p>
+		} else {
+			for _, group := range view.ProfileVisibilities {
+				if options := p.ProfileOptionsFor(group.Value); len(options) > 0 {
+					<div class="am-add-group">
+						<div class="am-add-group-label">{ group.Label }</div>
+						for _, option := range options {
+							@addToProfileRow(p, option)
+						}
+					</div>
+				}
+			}
+		}
+	</div>
+}
+
+// addToProfileRow follows org.templ's pattern for a control a role may not
+// use: shown, disabled, with a tooltip AND a visible sentence naming why —
+// never hidden. A profile already holding the package gets neither the
+// button nor the reason — it is told instead, which is the other honest
+// answer a select offering it as new would not give.
+templ addToProfileRow(p view.Package, option view.ProfileOption) {
+	<div class="am-add-row">
+		<div class="am-dep">
+			<a class="am-dep-name" href={ option.Href() }>{ option.Name }</a>
+			if option.Held {
+				<span class="am-dep-pin">Already in this profile</span>
+			} else if !option.CanCurate {
+				<button type="button" class="am-btn" disabled aria-disabled="true" title={ view.CurateDisabledReason }>Add</button>
+			} else {
+				<form method="post" action="/profiles/entries/add">
+					<input type="hidden" name="slug" value={ option.Slug }/>
+					<input type="hidden" name="id" value={ p.ID }/>
+					<button type="submit" class="am-btn">Add</button>
+				</form>
+			}
+		</div>
+		if !option.Held && !option.CanCurate {
+			<span class="am-toggle-note">{ view.CurateDisabledReason }</span>
+		}
 	</div>
 }
 
@@ -236,4 +295,92 @@ templ DependentsPanel(p view.Package) {
 			</div>
 		}
 	</section>
+}
+
+// FilesPanel is US3/US5: read a skill's or plugin's files — SKILL.md and
+// whatever else the bundle carries — before using it. It is a plain server
+// round trip with no signals, exactly like the rest of this screen: a row
+// is a link that sets ?file= and the page renders on the new request, the
+// same idiom the audit screen's own detail panel uses for ?entry=.
+templ FilesPanel(p view.Package) {
+	<section class="am-section am-section-flush" id="files-panel">
+		<div class="am-section-head">
+			<div class="am-section-title">Files</div>
+			<div class="am-section-note">read before using it</div>
+		</div>
+		if p.FilesRejected {
+			<div class="am-empty" id="files-rejected">
+				This version was rejected, so its files are never served — the same rule
+				that keeps the hub from distributing its bundle at all.
+			</div>
+		} else if p.FilesUnavailable {
+			<div class="am-empty" id="files-unavailable">
+				This version's files could not be read. That is not the same as an empty
+				bundle — retry in a moment.
+			</div>
+		} else if len(p.Files) == 0 {
+			<div class="am-empty" id="files-empty">
+				This version's bundle holds no files.
+			</div>
+		} else {
+			for _, file := range p.Files {
+				if file.Path == p.SelectedFilePath {
+					<a class="am-file-row am-file-row-on" href={ p.FileHref(file.Path) } aria-current="true">
+						@fileRowCells(file)
+					</a>
+				} else {
+					<a class="am-file-row" href={ p.FileHref(file.Path) }>
+						@fileRowCells(file)
+					</a>
+				}
+			}
+		}
+	</section>
+}
+
+templ fileRowCells(file view.FileRow) {
+	<span class="am-mono am-file-path">{ file.Path }</span>
+	<span class="am-file-kind">{ file.Kind }</span>
+	<span class="am-file-size">{ file.SizeLabel }</span>
+}
+
+// filesDetailPanel shows one file's content, chosen by ?file= — the audit
+// screen's own detail-panel idiom (internal/web/components/audit.templ),
+// reused rather than reinvented.
+templ filesDetailPanel(p view.Package) {
+	<div class="am-audit-panel-backdrop" style="background:rgba(15,18,22,0.42)" aria-hidden="true"></div>
+	<aside class="am-audit-panel" role="dialog" aria-label="File content">
+		<div class="am-audit-panel-head">
+			<div class="am-audit-panel-title am-mono">{ p.SelectedFilePath }</div>
+			<a class="am-audit-panel-close" aria-label="Close" href={ view.PackageHref(p.ID) }>×</a>
+		</div>
+		<div class="am-pane-body">
+			@filesDetail(p)
+		</div>
+	</aside>
+}
+
+templ filesDetail(p view.Package) {
+	if p.FileMissing {
+		<div class="am-empty" id="file-missing">
+			No such file in this version. The link may be stale, or the version has
+			changed since it was shared.
+		</div>
+	} else if p.FileTooLarge {
+		<div class="am-empty" id="file-too-large">
+			This file is larger than this hub renders. It is refused rather than
+			shown partially, since a partial SKILL.md that looks complete is worse
+			than an honest refusal.
+		</div>
+	} else if p.FileNotRenderable {
+		<div class="am-empty" id="file-not-renderable">
+			This file is binary and is not rendered.
+		</div>
+	} else if p.SelectedFile != nil {
+		if p.SelectedFile.Kind == "markdown" {
+			@MarkdownBody(p.SelectedFile.Markdown)
+		} else {
+			<pre class="am-file-text">{ p.SelectedFile.Text }</pre>
+		}
+	}
 }

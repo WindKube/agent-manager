@@ -422,6 +422,46 @@ func TestAGitRegistrationBecomesAStoredVisibleVersionWithAQueuedScan(t *testing.
 	require.Equal(t, 0, countRows(t, `select count(*) from finding where version_id = $1`, versionID))
 }
 
+// A publisher's own registration tags must survive the fetch: publish's tags
+// column write is a compare-and-set on a row the registration already wrote,
+// and version.tags already carries whatever the registration seeded it with.
+// A publish that Sets tags from the manifest's keywords alone, rather than
+// unioning them with what is already on the row, would silently drop
+// "needs-review" here — it is not a manifest keyword and nothing else would
+// ever write it back.
+func TestARegistrationTagSurvivesPublishAlongsideTheManifestsKeywords(t *testing.T) {
+	ctx := context.Background()
+	base, _ := forge(t, fixtureTree())
+	h := newHarness(t, []string{loopbackOf(t, base)})
+
+	versionID, job := register(t, commands.Registration{
+		Source: fetch.SourceGit,
+		URL:    base + "/org/plugin",
+		Ref:    "v1.3.0",
+		// A namespace of its own: `unique (namespace, name)` scopes the
+		// package to the namespace, and "example" already owns
+		// platform-toolkit from the git-registration test above.
+		Publisher: "tagged/team",
+		Name:      "platform-toolkit",
+		// "terraform" overlaps a manifest keyword, proving the union dedupes
+		// rather than doubling up; "needs-review" does not appear in the
+		// manifest at all, so it only survives if publish keeps it.
+		Tags: []string{"needs-review", "terraform"},
+	})
+
+	seeded := readVersion(t, versionID)
+	require.Equal(t, []string{"needs-review", "terraform"}, seeded.Tags,
+		"the registration's own tags are on the row before the fetch ever runs")
+
+	require.NoError(t, h.worker.Fetch(ctx, job))
+
+	after := readVersion(t, versionID)
+	require.Equal(t, []string{"kubernetes", "needs-review", "terraform"}, after.Tags,
+		"the manifest's keywords are unioned onto the row, not swapped in over it")
+	require.Equal(t, 3, countRows(t,
+		`select count(*) from version_tag where version_id = $1`, versionID))
+}
+
 // The kind is the one field a URL registration cannot know: it is decided by which
 // manifest sits at the tree root, and the api holds no outbound client, so it
 // wrote a default and the fetcher is what settles it.

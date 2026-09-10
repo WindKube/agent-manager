@@ -18,7 +18,7 @@ type Publisher struct {
 	bun.BaseModel `bun:"table:publisher,alias:pub"`
 
 	ID uuid.UUID `bun:"id,pk,type:uuid,notnull"`
-	// Slug is the whole two-segment owner, `example/platform`.
+	// Slug is the whole owner, `example` or `example/platform`.
 	Slug        string    `bun:"slug,type:text,notnull,unique"`
 	DisplayName string    `bun:"display_name,type:text,notnull"`
 	Verified    bool      `bun:"verified,type:boolean,notnull,default:false"`

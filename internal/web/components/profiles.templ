@@ -2,6 +2,7 @@ package components
 
 import (
 	"strconv"
+	"strings"
 
 	"agent-manager/internal/web/view"
 )
@@ -58,7 +59,7 @@ templ createProfileForm(p view.Profiles) {
 			<div class="am-section-title">Create a profile</div>
 		</div>
 		if p.CreateRefused != "" {
-			<div class="am-gov-notice am-gov-notice-dan" id="profile-create-refused" style="margin:0 20px">
+			<div class="am-gov-notice am-gov-notice-dan am-notice-card-inset" id="profile-create-refused">
 				{ p.CreateRefused }
 			</div>
 		}
@@ -95,7 +96,7 @@ templ createProfileForm(p view.Profiles) {
 					<input id="profile-fork" class="am-search" name="forkOf" placeholder="example/sre-oncall"/>
 				</div>
 			</div>
-			<div class="am-field-row" style="padding-bottom:18px">
+			<div class="am-field-row am-form-row-end">
 				<div class="am-field">
 					<label class="am-field-label" for="profile-description">Description (optional)</label>
 					<input id="profile-description" class="am-search" name="description"/>
@@ -104,7 +105,7 @@ templ createProfileForm(p view.Profiles) {
 					<label class="am-field-label" for="profile-owner">Owner team (optional)</label>
 					<input id="profile-owner" class="am-search" name="ownerTeam" placeholder="example/platform"/>
 				</div>
-				<button type="submit" class="am-btn am-btn-primary" style="align-self:flex-end">Create</button>
+				<button type="submit" class="am-btn am-btn-primary am-form-submit">Create</button>
 			</div>
 		</form>
 	</section>
@@ -112,7 +113,7 @@ templ createProfileForm(p view.Profiles) {
 
 templ profilesList(p view.Profiles) {
 	<div class="am-card" id="profiles-list">
-		<div class="am-section-head" style="padding:15px 20px 0">
+		<div class="am-section-head">
 			<div class="am-section-title">Your profiles</div>
 			<div class="am-section-note">{ p.Count() }</div>
 		</div>
@@ -168,6 +169,12 @@ templ ProfileScreen(p view.Profile) {
 	if p.Refusal != "" {
 		<div class="am-gov-notice am-gov-notice-dan" id="profile-refusal">{ p.Refusal }</div>
 	}
+	if p.UnpublishedChanges {
+		<div class="am-gov-notice am-gov-notice-warn" id="profile-unpublished">
+			Publishing now would write a lockfile different from the head revision's. Nothing
+			below has reached a machine yet.
+		</div>
+	}
 	if p.SignedOut {
 		<div class="am-empty am-empty-auth" id="profile-signed-out">
 			Sign in to inspect this profile. The hub has no anonymous view.
@@ -187,7 +194,9 @@ templ ProfileScreen(p view.Profile) {
 			</p>
 		</div>
 	} else {
-		@profileBody(p)
+		<div class="am-screen-body">
+			@profileBody(p)
+		</div>
 	}
 }
 
@@ -197,12 +206,6 @@ templ profileBody(p view.Profile) {
 			<p class="am-desc">{ p.Description }</p>
 		</section>
 	}
-	if p.UnpublishedChanges {
-		<div class="am-gov-notice am-gov-notice-warn" id="profile-unpublished">
-			Publishing now would write a lockfile different from the head revision's. Nothing
-			below has reached a machine yet.
-		</div>
-	}
 	@entriesPanel(p)
 	@sharingPanel(p)
 	@targetsPanel(p)
@@ -210,42 +213,78 @@ templ profileBody(p view.Profile) {
 }
 
 templ entriesPanel(p view.Profile) {
-	<section class="am-card">
-		<div class="am-section-head" style="padding:15px 20px 0">
+	<section class="am-gov-card" id="profile-entries" data-signals="{_addEntryOpen: false}">
+		<div class="am-section-head">
 			<div class="am-section-title">Packages</div>
 			<div class="am-section-note">Gate: { p.GateLabel() }</div>
 		</div>
-		for _, entry := range p.Entries {
+		@addEntryControl(p)
+		@entryKindSection("Skills", p.SkillEntries(), p, "profile-entries-empty-skill", "This profile holds no skills yet.")
+		@entryKindSection("Plugins", p.PluginEntries(), p, "profile-entries-empty-plugin", "This profile holds no plugins yet.")
+	</section>
+}
+
+// addEntryControl is US5's "Add package" control: a button at the top of the
+// card that reveals the form, rather than a select sitting permanently at the
+// bottom. The button itself is never hidden — a viewer who may not curate
+// sees it greyed out with the reason, following the same precedent as the
+// entry row's Float and Pin controls below.
+templ addEntryControl(p view.Profile) {
+	<div class="am-panel-toggle-row">
+		if p.Permissions.Curate {
+			<button type="button" class="am-btn" data-on:click="$_addEntryOpen = !$_addEntryOpen">Add package</button>
+		} else {
+			<button type="button" class="am-btn" disabled aria-disabled="true" title={ view.CurateDisabledReason }>Add package</button>
+		}
+	</div>
+	if !p.Permissions.Curate {
+		<div class="am-gate-note am-card-note">{ view.CurateDisabledReason }</div>
+	} else if len(p.AddOptions) > 0 {
+		<form
+			method="post"
+			action="/profiles/entries/add"
+			class="am-field-row"
+			style="display:none"
+			data-style:display="$_addEntryOpen ? 'flex' : 'none'"
+		>
+			<input type="hidden" name="slug" value={ p.Slug }/>
+			<div class="am-field">
+				<label class="am-field-label" for="add-package-id">Add package</label>
+				<select id="add-package-id" class="am-search" name="id">
+					for _, option := range p.AddOptions {
+						<option value={ option.ID }>{ option.Name } ({ option.ID }) · { option.Kind.Label() }</option>
+					}
+				</select>
+			</div>
+			<button type="submit" class="am-btn am-btn-primary am-form-submit">Add, floating latest</button>
+		</form>
+	} else {
+		<div
+			class="am-empty"
+			id="profile-add-empty"
+			style="display:none"
+			data-style:display="$_addEntryOpen ? 'block' : 'none'"
+		>
+			Every catalog package is already in this profile, or the catalog could
+			not be read.
+		</div>
+	}
+}
+
+// entryKindSection is one of the two groups US5 splits "Packages" into. A
+// group with nothing in it still renders its own empty state rather than
+// disappearing: "this profile holds no plugins" is a fact worth reading, not
+// a reason to hide the section.
+templ entryKindSection(heading string, entries []view.ProfileEntryRow, p view.Profile, emptyID, emptyText string) {
+	<div class="am-entry-kind-section">
+		<div class="am-entry-kind-head">{ heading }</div>
+		for _, entry := range entries {
 			@entryRow(p, entry)
 		}
-		if p.EntriesEmpty() {
-			<div class="am-empty" id="profile-entries-empty">
-				This profile holds no packages yet. Add one from the catalog to start
-				curating it.
-			</div>
+		if len(entries) == 0 {
+			<div class="am-empty" id={ emptyID }>{ emptyText }</div>
 		}
-		if p.Permissions.Curate {
-			if len(p.AddOptions) > 0 {
-				<form method="post" action="/profiles/entries/add" class="am-field-row" style="padding:14px 20px">
-					<input type="hidden" name="slug" value={ p.Slug }/>
-					<div class="am-field">
-						<label class="am-field-label" for="add-package-id">Add package</label>
-						<select id="add-package-id" class="am-search" name="id">
-							for _, option := range p.AddOptions {
-								<option value={ option.ID }>{ option.Name } ({ option.ID })</option>
-							}
-						</select>
-					</div>
-					<button type="submit" class="am-btn am-btn-primary" style="align-self:flex-end">Add, floating latest</button>
-				</form>
-			} else {
-				<div class="am-empty" id="profile-add-empty">
-					Every catalog package is already in this profile, or the catalog could
-					not be read.
-				</div>
-			}
-		}
-	</section>
+	</div>
 }
 
 templ entryRow(p view.Profile, entry view.ProfileEntryRow) {
@@ -324,8 +363,8 @@ templ entryRow(p view.Profile, entry view.ProfileEntryRow) {
 }
 
 templ sharingPanel(p view.Profile) {
-	<section class="am-card">
-		<div class="am-section-head" style="padding:15px 20px 0">
+	<section class="am-gov-card">
+		<div class="am-section-head">
 			<div class="am-section-title">Sharing</div>
 		</div>
 		for _, member := range p.Members {
@@ -340,38 +379,56 @@ templ sharingPanel(p view.Profile) {
 				Nobody has been named on this profile. Its visibility is { p.VisibilityLabel() }.
 			</div>
 		}
-		if p.Permissions.Share {
-			<form method="post" action="/profiles/sharing" class="am-field-row" style="padding-bottom:18px">
-				<input type="hidden" name="slug" value={ p.Slug }/>
-				<div class="am-field" style="min-width:120px;flex:0 0 auto">
-					<label class="am-field-label" for="share-kind">Kind</label>
-					<select id="share-kind" class="am-search" name="kind">
-						for _, option := range view.ProfileMemberKinds {
-							<option value={ option.Value }>{ option.Label }</option>
-						}
-					</select>
-				</div>
-				<div class="am-field">
-					<label class="am-field-label" for="share-ref">Person or group</label>
-					<input id="share-ref" class="am-search" name="ref" required placeholder="name@example.com or eng-platform"/>
-				</div>
-				<div class="am-field" style="min-width:140px;flex:0 0 auto">
-					<label class="am-field-label" for="share-role">Role</label>
-					<select id="share-role" class="am-search" name="role">
-						for _, option := range view.ProfileMemberRoles {
-							<option value={ option.Value }>{ option.Label }</option>
-						}
-					</select>
-				</div>
-				<button type="submit" class="am-btn am-btn-primary" style="align-self:flex-end">Share</button>
-			</form>
+		<form method="post" action="/profiles/sharing" class="am-field-row am-form-row-end">
+			<input type="hidden" name="slug" value={ p.Slug }/>
+			if p.Permissions.Share {
+				<fieldset class="am-fieldset-plain">
+					@shareFields()
+				</fieldset>
+			} else {
+				<fieldset class="am-fieldset-plain" disabled aria-disabled="true" title={ view.ShareDisabledReason }>
+					@shareFields()
+				</fieldset>
+			}
+		</form>
+		if !p.Permissions.Share {
+			<div class="am-gate-note am-card-note">{ view.ShareDisabledReason }</div>
 		}
 	</section>
 }
 
+// shareFields is the sharing form's three inputs and its submit button,
+// shared between the enabled and the disabled fieldset so the markup is
+// written once. The disabled fieldset is what stops an Enter keypress in the
+// text field from submitting anyway — a viewer's role, not the button alone,
+// is what must gate this.
+templ shareFields() {
+	<div class="am-field am-field-kind">
+		<label class="am-field-label" for="share-kind">Kind</label>
+		<select id="share-kind" class="am-search" name="kind">
+			for _, option := range view.ProfileMemberKinds {
+				<option value={ option.Value }>{ option.Label }</option>
+			}
+		</select>
+	</div>
+	<div class="am-field">
+		<label class="am-field-label" for="share-ref">Person or group</label>
+		<input id="share-ref" class="am-search" name="ref" required placeholder="name@example.com or eng-platform"/>
+	</div>
+	<div class="am-field am-field-role">
+		<label class="am-field-label" for="share-role">Role</label>
+		<select id="share-role" class="am-search" name="role">
+			for _, option := range view.ProfileMemberRoles {
+				<option value={ option.Value }>{ option.Label }</option>
+			}
+		</select>
+	</div>
+	<button type="submit" class="am-btn am-btn-primary am-form-submit">Share</button>
+}
+
 templ targetsPanel(p view.Profile) {
-	<section class="am-card">
-		<div class="am-section-head" style="padding:15px 20px 0">
+	<section class="am-gov-card">
+		<div class="am-section-head">
 			<div class="am-section-title">Sync targets</div>
 			<div class="am-section-note">Affects only what a client writes locally</div>
 		</div>
@@ -388,9 +445,9 @@ templ targetsPanel(p view.Profile) {
 							}
 						} else {
 							if target.Enabled {
-								<input type="checkbox" checked disabled title={ view.CurateDisabledReason }/>
+								<input type="checkbox" checked disabled aria-disabled="true" title={ view.CurateDisabledReason }/>
 							} else {
-								<input type="checkbox" disabled title={ view.CurateDisabledReason }/>
+								<input type="checkbox" disabled aria-disabled="true" title={ view.CurateDisabledReason }/>
 							}
 						}
 						<span>{ target.Label() }</span>
@@ -398,18 +455,23 @@ templ targetsPanel(p view.Profile) {
 					<span class="am-mono am-cell-dim">{ target.Path() }</span>
 				</div>
 			}
-			if p.Permissions.Curate {
-				<div style="padding:14px 20px">
+			<div class="am-form-footer">
+				if p.Permissions.Curate {
 					<button type="submit" class="am-btn am-btn-primary">Save targets</button>
-				</div>
-			}
+				} else {
+					<button type="button" class="am-btn am-btn-primary" disabled aria-disabled="true" title={ view.CurateDisabledReason }>Save targets</button>
+				}
+			</div>
 		</form>
+		if !p.Permissions.Curate {
+			<div class="am-gate-note am-card-note" id="profile-targets-not-permitted">{ view.CurateDisabledReason }</div>
+		}
 	</section>
 }
 
 templ revisionsPanel(p view.Profile) {
-	<section class="am-card">
-		<div class="am-section-head" style="padding:15px 20px 0">
+	<section class="am-gov-card">
+		<div class="am-section-head">
 			<div class="am-section-title">Revisions</div>
 		</div>
 		for _, revision := range p.Revisions {
@@ -420,6 +482,7 @@ templ revisionsPanel(p view.Profile) {
 				if revision.Note != "" {
 					<span>{ revision.Note }</span>
 				}
+				<a class="am-rev-diff-link" href={ view.RevisionDiffHref(p.Slug, revision.Revision) }>Show diff</a>
 			</div>
 		}
 		if p.RevisionsEmpty() {
@@ -427,19 +490,176 @@ templ revisionsPanel(p view.Profile) {
 				No revision has been published yet. Nothing here has reached a machine.
 			</div>
 		}
-		if p.Permissions.Publish {
-			<form method="post" action="/profiles/revisions" class="am-field-row" style="padding-bottom:18px">
-				<input type="hidden" name="slug" value={ p.Slug }/>
-				<div class="am-field">
-					<label class="am-field-label" for="revision-note">Note (optional)</label>
-					<input id="revision-note" class="am-search" name="note" maxlength="500"/>
-				</div>
-				<button type="submit" class="am-btn am-btn-primary" style="align-self:flex-end">Publish revision</button>
-			</form>
-		} else {
-			<div class="am-gate-note" id="profile-publish-not-permitted" style="padding:0 20px 18px">
-				Your role on this profile may not publish a revision.
-			</div>
+		<form method="post" action="/profiles/revisions" class="am-field-row am-form-row-end">
+			<input type="hidden" name="slug" value={ p.Slug }/>
+			if p.Permissions.Publish {
+				<fieldset class="am-fieldset-plain">
+					@publishFields()
+				</fieldset>
+			} else {
+				<fieldset class="am-fieldset-plain" disabled aria-disabled="true" title={ view.PublishDisabledReason }>
+					@publishFields()
+				</fieldset>
+			}
+		</form>
+		if !p.Permissions.Publish {
+			<div class="am-gate-note am-card-note" id="profile-publish-not-permitted">{ view.PublishDisabledReason }</div>
 		}
 	</section>
+	if p.Diff != nil {
+		@revisionDiffPanel(p)
+	}
+}
+
+// revisionDiffPanel is "Show diff": a plain server round trip on a query
+// parameter, exactly the idiom the audit log's own detail panel uses, closed
+// by a link back rather than any client-side interaction.
+templ revisionDiffPanel(p view.Profile) {
+	<div class="am-rev-diff-backdrop" style="background:rgba(15,18,22,0.42)" aria-hidden="true"></div>
+	<aside class="am-rev-diff-panel" id="profile-diff-panel" role="dialog" aria-label="Revision diff">
+		<div class="am-rev-diff-head">
+			<div class="am-rev-diff-title">Revision diff</div>
+			<a class="am-rev-diff-close" aria-label="Close" href={ view.ProfileHref(p.Slug) }>×</a>
+		</div>
+		<div class="am-pane-body">
+			if p.Diff.Missing {
+				<div class="am-empty" id="profile-diff-missing">
+					No such revision, or it is not readable by your identity.
+				</div>
+			} else if p.Diff.PredecessorUnavailable {
+				<div class="am-empty" id="profile-diff-predecessor-unavailable">
+					Revision { strconv.Itoa(p.Diff.Revision) } could not be compared: its
+					predecessor, revision { strconv.Itoa(p.Diff.Revision - 1) }, could not be read.
+				</div>
+			} else {
+				@revisionDiffBody(p.Diff.Diff)
+			}
+		</div>
+	</aside>
+}
+
+templ revisionDiffBody(d view.RevisionDiff) {
+	<div class="am-pane-block" id="profile-diff-heading">
+		if d.FirstRevision {
+			<div class="am-label">Revision { strconv.Itoa(d.Revision) }</div>
+			<p class="am-desc">Revision 1 has no predecessor. This is what it introduced.</p>
+		} else {
+			<div class="am-label">
+				Revision { strconv.Itoa(d.Revision - 1) } → revision { strconv.Itoa(d.Revision) }
+			</div>
+			if d.Empty() {
+				<p class="am-desc" id="profile-diff-empty">Nothing changed.</p>
+			}
+		}
+	</div>
+	if len(d.Added) > 0 {
+		<div class="am-pane-block">
+			<div class="am-label">Added</div>
+			for _, entry := range d.Added {
+				<div class="am-kv">
+					<span class="am-kv-key am-mono">{ entry.ID }</span>
+					<span class="am-kv-val">{ entry.Version } · { view.EntryModeLabel(entry.Resolution) }</span>
+				</div>
+			}
+		</div>
+	}
+	if len(d.Removed) > 0 {
+		<div class="am-pane-block">
+			<div class="am-label">Removed</div>
+			for _, entry := range d.Removed {
+				<div class="am-kv">
+					<span class="am-kv-key am-mono">{ entry.ID }</span>
+					<span class="am-kv-val">{ entry.Version } · { view.EntryModeLabel(entry.Resolution) }</span>
+				</div>
+			}
+		</div>
+	}
+	if len(d.Changed) > 0 {
+		<div class="am-pane-block">
+			<div class="am-label">Changed</div>
+			for _, entry := range d.Changed {
+				<div class="am-rev-diff-entry">
+					<div class="am-kv-key am-mono">{ entry.ID }</div>
+					if entry.VersionChanged() {
+						<div class="am-kv-val">Version: { entry.VersionFrom } → { entry.VersionTo }</div>
+					}
+					if entry.ResolutionChanged() {
+						<div class="am-kv-val">
+							Pin mode: { view.EntryModeLabel(entry.ResolutionFrom) } → { view.EntryModeLabel(entry.ResolutionTo) }
+						</div>
+					}
+				</div>
+			}
+		</div>
+	}
+	if len(d.SkipsAdded) > 0 {
+		<div class="am-pane-block">
+			<div class="am-label">Newly skipped</div>
+			for _, skip := range d.SkipsAdded {
+				<div class="am-kv">
+					<span class="am-kv-key am-mono">{ skip.ID }</span>
+					<span class="am-kv-val">{ view.SkipReasonLabel(skip.Reason) }</span>
+				</div>
+			}
+		</div>
+	}
+	if len(d.SkipsRemoved) > 0 {
+		<div class="am-pane-block">
+			<div class="am-label">No longer skipped</div>
+			for _, skip := range d.SkipsRemoved {
+				<div class="am-kv">
+					<span class="am-kv-key am-mono">{ skip.ID }</span>
+					<span class="am-kv-val">was { view.SkipReasonLabel(skip.Reason) }</span>
+				</div>
+			}
+		</div>
+	}
+	if len(d.SkipsChanged) > 0 {
+		<div class="am-pane-block">
+			<div class="am-label">Skip reason changed</div>
+			for _, skip := range d.SkipsChanged {
+				<div class="am-kv">
+					<span class="am-kv-key am-mono">{ skip.ID }</span>
+					<span class="am-kv-val">
+						{ view.SkipReasonLabel(skip.ReasonFrom) } → { view.SkipReasonLabel(skip.ReasonTo) }
+					</span>
+				</div>
+			}
+		</div>
+	}
+	if d.GateChanged() || d.DefaultPolicyChanged() || d.TargetsChanged() {
+		<div class="am-pane-block">
+			<div class="am-label">Governance</div>
+			if d.GateChanged() {
+				<div class="am-kv">
+					<span class="am-kv-key">Gate</span>
+					<span class="am-kv-val">{ view.GateLabel(d.GateFrom) } → { view.GateLabel(d.GateTo) }</span>
+				</div>
+			}
+			if d.DefaultPolicyChanged() {
+				<div class="am-kv">
+					<span class="am-kv-key">Default policy</span>
+					<span class="am-kv-val">
+						{ view.DefaultPolicyLabel(d.DefaultPolicyFrom) } → { view.DefaultPolicyLabel(d.DefaultPolicyTo) }
+					</span>
+				</div>
+			}
+			if d.TargetsChanged() {
+				<div class="am-kv">
+					<span class="am-kv-key">Targets</span>
+					<span class="am-kv-val">
+						{ strings.Join(d.TargetsFrom, ", ") } → { strings.Join(d.TargetsTo, ", ") }
+					</span>
+				</div>
+			}
+		</div>
+	}
+}
+
+templ publishFields() {
+	<div class="am-field">
+		<label class="am-field-label" for="revision-note">Note (optional)</label>
+		<input id="revision-note" class="am-search" name="note" maxlength="500"/>
+	</div>
+	<button type="submit" class="am-btn am-btn-primary am-form-submit">Publish revision</button>
 }

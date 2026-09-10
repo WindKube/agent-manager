@@ -109,6 +109,9 @@ func storedText(job Job, pkg *pkgspec.Package, commit blob.Commit) string {
 	if n := len(pkg.Layout.Dropped); n > 0 {
 		text += fmt.Sprintf(", %d %s dropped as outside the spec layout", n, plural(n, "path"))
 	}
+	if n := len(pkg.Layout.Links); n > 0 {
+		text += fmt.Sprintf(", %d %s not stored", n, plural(n, "link"))
+	}
 	return text
 }
 

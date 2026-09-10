@@ -29,8 +29,10 @@ const (
 // Profiles implements the list half of web.ProfileSource.
 func (c *Catalog) Profiles(context.Context) ([]hub.ProfileSummary, error) {
 	return []hub.ProfileSummary{
-		{Slug: fixtureProfileSlug, Name: "Platform Engineer", Visibility: "organisation", PackageCount: 2, HeadRevision: 14},
-		{Slug: fixtureProfileForkedSlug, Name: "SRE On-call", Visibility: "shared", PackageCount: 0, HeadRevision: 0},
+		{Slug: fixtureProfileSlug, Name: "Platform Engineer", Visibility: "organisation",
+			PackageCount: 2, HeadRevision: 14, CanCurate: true},
+		{Slug: fixtureProfileForkedSlug, Name: "SRE On-call", Visibility: "shared",
+			PackageCount: 0, HeadRevision: 0, CanCurate: false},
 	}, nil
 }
 
@@ -101,3 +103,35 @@ func (c *Catalog) Profile(_ context.Context, slug string) (hub.ProfileDetail, er
 }
 
 const fixtureDigest = "9f2c6a1e4b7d3f5081a2c9e6b7d4f1a3c8e5b2d9f6a1c4e7b0d3f6a9c2e5b8d1"
+
+// Revision implements the "Show diff" panel's read: one published revision's
+// resolved lockfile. Revision 14's note above ("pinned ADR Writer to 3.0.2")
+// is what the diff between these two revisions shows: a version bump and a
+// pin-mode change on that one entry, nothing else.
+func (c *Catalog) Revision(_ context.Context, slug string, revision int) (hub.RevisionLockfile, error) {
+	if slug != fixtureProfileSlug {
+		return hub.RevisionLockfile{}, view.ErrNotFound
+	}
+	switch revision {
+	case 14:
+		return hub.RevisionLockfile{
+			Revision: 14, Gate: "warn-with-override", DefaultPolicy: "floating-latest",
+			Targets: []string{"claude-code"},
+			Entries: []hub.LockedEntry{
+				{ID: "example/adr-writer", Kind: "skill", Version: "3.0.2", Resolution: "pinned", Verdict: "clean", Digest: fixtureDigest},
+				{ID: "community/postgres-migration-guard", Kind: "skill", Version: "0.8.3", Resolution: "latest", Verdict: "flagged", Digest: fixtureDigest},
+			},
+		}, nil
+	case 13:
+		return hub.RevisionLockfile{
+			Revision: 13, Gate: "warn-with-override", DefaultPolicy: "floating-latest",
+			Targets: []string{"claude-code"},
+			Entries: []hub.LockedEntry{
+				{ID: "example/adr-writer", Kind: "skill", Version: "3.0.1", Resolution: "latest", Verdict: "clean", Digest: fixtureDigest},
+				{ID: "community/postgres-migration-guard", Kind: "skill", Version: "0.8.3", Resolution: "latest", Verdict: "flagged", Digest: fixtureDigest},
+			},
+		}, nil
+	default:
+		return hub.RevisionLockfile{}, view.ErrNotFound
+	}
+}

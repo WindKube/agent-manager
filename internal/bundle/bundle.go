@@ -29,14 +29,31 @@ type File struct {
 	Data []byte
 }
 
+// SkippedMember is a member left out of the tree without the archive being
+// refused over it. A symlink and a hardlink cannot be represented in a bundle
+// and are never written to disk, and ordinary repositories carry both, so the
+// honest outcome is a tree without them and a record of what is missing.
+type SkippedMember struct {
+	Path   string
+	Reason string
+}
+
 // Bundle is an in-memory package tree: regular files only, keyed by slash-separated
 // relative path. Directories are implicit, so an archive's directory members carry no
 // information past the path checks they must pass.
 type Bundle struct {
-	byPath map[string]int
-	files  []File
-	sorted bool
-	total  int64
+	byPath  map[string]int
+	files   []File
+	skipped []SkippedMember
+	sorted  bool
+	total   int64
+}
+
+// Skipped lists what extraction left out, in the order the archive named it.
+func (b *Bundle) Skipped() []SkippedMember { return b.skipped }
+
+func (b *Bundle) skip(path, reason string) {
+	b.skipped = append(b.skipped, SkippedMember{Path: path, Reason: reason})
 }
 
 func New() *Bundle {

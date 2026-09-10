@@ -103,8 +103,10 @@ func writeRegistration(form *multipart.Writer, r view.Registration) error {
 		{"publisher", r.Publisher},
 		{"name", r.Name},
 		{"version", r.Version},
+		{"kind", r.Kind},
 		{"category", r.Category},
 		{"visibility", r.Visibility},
+		{"tags", r.Tags},
 	} {
 		if field.value == "" {
 			continue

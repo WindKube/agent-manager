@@ -1,0 +1,183 @@
+package components
+
+import (
+	"fmt"
+	"strconv"
+
+	"agent-manager/internal/web/view"
+)
+
+// RuntimeScreen answers "is the pipeline working, and if not, why": job
+// counts by River's own state for each queue, the runners' own errors, and
+// a run-history chart. Kind, queue and error text can carry a redacted
+// fragment of a publisher-supplied reference, so they are rendered escaped
+// like every other operator-facing field on this screen.
+templ RuntimeScreen(s view.Runtime) {
+	<div class="am-header">
+		<div class="am-header-text">
+			<h1 class="am-h1">Runtime</h1>
+			<p class="am-lede">
+				Job counts by state for each queue, the errors the runners recorded, and when jobs
+				ran. A discarded job — retries exhausted — is never mixed into the list of jobs
+				still retrying on their own.
+			</p>
+		</div>
+	</div>
+	if s.SignedOut {
+		<div class="am-empty am-empty-auth" id="runtime-signed-out">
+			Sign in to read the runtime report. The hub has no anonymous view.
+		</div>
+	} else if s.Refused {
+		<div class="am-empty am-empty-auth" id="runtime-refused">
+			Your role may not read the runtime report. Runtime internals and runner errors are
+			restricted; ask whoever administers this hub for the catalog admin role.
+		</div>
+	} else if s.Unavailable {
+		<div class="am-notice am-notice-dan" id="runtime-unavailable">
+			<p class="am-note">
+				The hub's api did not answer, so nothing here is a statement about the queue: the
+				job counts, the errors and the run history are all unread. Retry in a moment.
+			</p>
+		</div>
+	} else {
+		@runtimeStats(s)
+		@runtimeQueues(s)
+		@runtimeChart(s)
+		@runtimeJobs(runtimeJobsProps{
+			Title: "Discarded jobs", ID: "runtime-discarded", Tone: "dan",
+			Caption: "Retries exhausted. These need manual attention before they will run again.",
+			Empty:   "No discarded jobs. Nothing has run out of retries.",
+			Rows:    s.Discarded,
+		})
+		@runtimeJobs(runtimeJobsProps{
+			Title: "Retrying jobs", ID: "runtime-retrying", Tone: "warn",
+			Caption: "Failed at least once and scheduled to run again on its own.",
+			Empty:   "No jobs are currently retrying.",
+			Rows:    s.Retrying,
+		})
+	}
+}
+
+templ runtimeStats(s view.Runtime) {
+	<div class="am-stats" id="runtime-summary">
+		for _, card := range s.Cards() {
+			<div class="am-stat">
+				<div class="am-stat-label">{ card.Label }</div>
+				<div class={ StatValueClass(card) }>{ card.Value }</div>
+				<div class="am-stat-note">{ card.Note }</div>
+			</div>
+		}
+	</div>
+}
+
+templ runtimeQueues(s view.Runtime) {
+	<div class="am-runtime-queues">
+		for _, q := range s.Queues {
+			@queueCard(q)
+		}
+	</div>
+}
+
+templ queueCard(q view.QueueCounts) {
+	<section class="am-gov-card">
+		<div class="am-section-head">
+			<div class="am-section-title">{ q.Label() }</div>
+		</div>
+		<div class="am-gov-body">
+			for _, row := range q.Rows() {
+				<div class="am-kv">
+					<div class="am-kv-key">{ row.Label }</div>
+					<div class={ StateRowClass(row) }>{ stateCount(row.Count) }</div>
+				</div>
+			}
+		</div>
+	</section>
+}
+
+func stateCount(n int64) string { return strconv.FormatInt(n, 10) }
+
+templ runtimeChart(s view.Runtime) {
+	<div class="am-card">
+		<div class="am-section-head">
+			<div class="am-section-title">Run history</div>
+			<div class="am-section-note">tallest bar { s.ChartPeakLabel() } jobs, one bar per queue per { s.BucketLabel() }, UTC</div>
+		</div>
+		<div class="am-runtime-chart">
+			<div class="am-runtime-legend">
+				<span class="am-runtime-legend-item">
+					<span class="am-runtime-swatch am-runtime-swatch-fetch"></span>
+					Fetch
+				</span>
+				<span class="am-runtime-legend-item">
+					<span class="am-runtime-swatch am-runtime-swatch-scan"></span>
+					Scan
+				</span>
+			</div>
+			<div class="am-runtime-bar-track">
+				for _, bar := range s.Bars() {
+					<div class="am-runtime-bar-group" title={ bar.Title() }>
+						<div class="am-runtime-bar am-runtime-bar-fetch" style={ barHeight(bar.FetchHeight) }></div>
+						<div class="am-runtime-bar am-runtime-bar-scan" style={ barHeight(bar.ScanHeight) }></div>
+					</div>
+				}
+			</div>
+			<div class="am-runtime-bar-labels">
+				for _, bar := range s.Bars() {
+					<div class="am-runtime-bar-label">
+						if bar.ShowLabel {
+							{ bar.Label }
+						}
+					</div>
+				}
+			</div>
+		</div>
+	</div>
+}
+
+// barHeight is a bar's inline height. ChartBarMaxHeight bounds it, so this
+// never exceeds the track's own CSS height.
+func barHeight(px int) string { return fmt.Sprintf("height:%dpx", px) }
+
+// runtimeJobsProps is one job list's props: the discarded and retrying
+// sections share a template and differ only in these five fields.
+type runtimeJobsProps struct {
+	Title, ID, Tone, Caption, Empty string
+	Rows                            []view.JobRow
+}
+
+templ runtimeJobs(p runtimeJobsProps) {
+	<div class="am-card">
+		<div class="am-section-head">
+			<div class="am-section-title">{ p.Title }</div>
+			<div class="am-section-note">{ p.Caption }</div>
+		</div>
+		if len(p.Rows) > 0 {
+			<div class="am-audit-row am-audit-head">
+				<div>When</div>
+				<div>Queue</div>
+				<div>Kind and error</div>
+				<div>Attempt</div>
+			</div>
+		}
+		for _, row := range p.Rows {
+			<div class="am-audit-row">
+				<div class="am-mono am-audit-time">{ row.When }</div>
+				<div class="am-audit-actor">
+					<span class="am-audit-actor-kind">{ row.Queue }</span>
+				</div>
+				<div class="am-audit-event">
+					<span class="am-audit-text am-mono">{ row.Kind }</span>
+					if err := row.LatestError(); err != "" {
+						<span class="am-audit-text">{ err }</span>
+					}
+				</div>
+				<div><span class={ PillClass(p.Tone) }>{ strconv.Itoa(row.Attempt) }/{ strconv.Itoa(row.MaxAttempts) }</span></div>
+			</div>
+		}
+		if len(p.Rows) == 0 {
+			<div class="am-empty" id={ p.ID + "-empty" }>
+				{ p.Empty }
+			</div>
+		}
+	</div>
+}

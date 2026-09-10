@@ -36,6 +36,8 @@ require (
 
 require mvdan.cc/sh/v3 v3.12.0
 
+require github.com/yuin/goldmark v1.8.6
+
 require (
 	ariga.io/atlas v0.36.2-0.20250801020723-2aaaf0682dd9 // indirect
 	ariga.io/atlas-provider-bun v0.0.3 // indirect

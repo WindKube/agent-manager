@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"agent-manager/internal/api"
+	"agent-manager/internal/api/commands"
 	"agent-manager/internal/api/contract"
 	"agent-manager/internal/auth"
 	"agent-manager/internal/store/models"
@@ -272,6 +274,25 @@ func TestRegistrationRefusesWhatItCannotResolveBeforeTouchingTheDatabase(t *test
 			status: http.StatusUnprocessableEntity,
 			detail: "carries no archive",
 		},
+		{
+			name: "a tag with a character the facet cannot render",
+			values: map[string]string{
+				"source": "git", "url": "https://github.com/org/plugin", "ref": "v1.0.0",
+				"publisher": "example", "name": "widget", "tags": "terraform, not a tag",
+			},
+			status: http.StatusUnprocessableEntity,
+			detail: "not a valid tag",
+		},
+		{
+			name: "more distinct tags than the cap allows",
+			values: map[string]string{
+				"source": "git", "url": "https://github.com/org/plugin", "ref": "v1.0.0",
+				"publisher": "example", "name": "widget",
+				"tags": tooManyTags(),
+			},
+			status: http.StatusUnprocessableEntity,
+			detail: "at most",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var archive []byte
@@ -284,6 +305,16 @@ func TestRegistrationRefusesWhatItCannotResolveBeforeTouchingTheDatabase(t *test
 			require.Contains(t, rec.Body.String(), tc.detail)
 		})
 	}
+}
+
+// tooManyTags is one more distinct tag than commands.MaxTagCount allows, so
+// the refusal below cannot be confused with the dedup that runs first.
+func tooManyTags() string {
+	tags := make([]string, commands.MaxTagCount+1)
+	for i := range tags {
+		tags[i] = fmt.Sprintf("tag%d", i)
+	}
+	return strings.Join(tags, ",")
 }
 
 func TestAReadOnlyIdentityCannotRegisterAPackage(t *testing.T) {

@@ -385,6 +385,18 @@
     flex-direction: column;
   }
 
+  /* The main column has no padding of its own, so a screen's content has to
+     bring the page gutter. Every screen does it through whichever wrapper it
+     already needs — am-stats, am-gov, am-controls, am-org — and this is the one
+     for a screen with no such wrapper. A screen with none renders flush against
+     both window edges. */
+  .am-screen-body {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 24px 44px 48px;
+  }
+
   /* Screen header -------------------------------------------------------- */
 
   .am-header {
@@ -829,6 +841,20 @@
   .am-import-note-dan {
     background: var(--danbg);
     color: var(--dan);
+  }
+
+  /* Every control in the modal. am-search is the catalog toolbar's control: it
+     grows to fill the bar and refuses to go under 240px, which is wider than a
+     column of a 580px dialog. Carrying am-search alone, a field painted over its
+     neighbour and past the dialog's right edge, so this drops the minimum and
+     fills the column instead. It has to stay after am-search in this file: both
+     are one class deep, so source order is what decides the minimum. */
+  .am-import-field {
+    flex: none;
+    width: 100%;
+    min-width: 0;
+    background: var(--surface2);
+    font-size: 12.5px;
   }
 
   .am-empty {
@@ -2206,5 +2232,501 @@
     padding: 14px 20px;
     border-top: 1px solid var(--bd);
     background: var(--surface2);
+  }
+
+  /* Connect the CLI ------------------------------------------------------- */
+
+  .am-cli-lookup {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* The code and the button that looks it up belong on one line. The screen
+     used am-gate-actions, which is a card footer's right-aligned row, so on a
+     wide window the button sat at the far edge with the field it acts on a
+     thousand pixels away. */
+  .am-cli-lookup-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .am-cli-code {
+    flex: 0 1 240px;
+    min-width: 0;
+    font-family: var(--font-mono);
+  }
+
+  /* Catalog refresh -------------------------------------------------------- */
+
+  .am-btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+  }
+
+  .am-icon-refresh {
+    display: inline-block;
+    font-size: 15px;
+    line-height: 1;
+  }
+
+  .am-icon-refresh.am-spin {
+    animation: am-spin-rotate 0.8s linear infinite;
+  }
+
+  @keyframes am-spin-rotate {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  /* Audit entry detail: over the table, not beside it, so the message column
+     keeps its width. */
+
+  .am-audit-row:hover {
+    background: var(--surface2);
+  }
+
+  .am-audit-row-on {
+    background: var(--sel);
+  }
+
+  /* Dimming only: pointer-events:none leaves the close link as the one way
+     out. The scrim colour is inline in the markup, as the modal's is, since a
+     translucent literal is not a pair contrast_test.go sweeps. */
+  .am-audit-panel-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    pointer-events: none;
+  }
+
+  .am-audit-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 41;
+    display: flex;
+    flex-direction: column;
+    width: min(440px, 100vw);
+    border-left: 1px solid var(--bd);
+    background: var(--surface);
+    box-shadow: -24px 0 60px rgba(0, 0, 0, 0.28);
+    overflow-y: auto;
+  }
+
+  .am-audit-panel-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--bd);
+  }
+
+  .am-audit-panel-title {
+    font-size: 15px;
+    font-weight: 500;
+  }
+
+  .am-audit-panel-close {
+    flex: none;
+    font-size: 16px;
+    color: var(--fg3);
+    line-height: 1;
+  }
+
+  .am-audit-panel-close:hover {
+    color: var(--fg);
+  }
+
+  /* am-audit-text clips to one line; this wraps. */
+  .am-audit-detail-message {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    line-height: 1.6;
+    color: var(--fg2);
+  }
+
+  /* Runtime ---------------------------------------------------------------- */
+
+  /* Symmetric, unlike am-gov's 1fr/1.3fr: one card per queue, all equally the
+     point, so auto-fit rather than a fixed asymmetric split. */
+  .am-runtime-queues {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 24px;
+    padding: 24px 44px 0;
+  }
+
+  .am-kv-val-warn {
+    color: var(--warn);
+  }
+
+  .am-kv-val-dan {
+    color: var(--dan);
+  }
+
+  /* am-card carries no padding of its own (its rows bring their own), so the
+     chart's legend, bars and axis labels need one wrapper that does. */
+  .am-runtime-chart {
+    padding: 18px 22px 22px;
+  }
+
+  .am-runtime-legend {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 14px;
+    font-size: 12px;
+    color: var(--fg2);
+  }
+
+  .am-runtime-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .am-runtime-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+  }
+
+  /* Two neutral tones rather than a status colour: these are categories, not
+     an ok/warn/dan judgement about the queue. */
+  .am-runtime-swatch-fetch {
+    background: var(--fg);
+  }
+
+  .am-runtime-swatch-scan {
+    background: var(--fg3);
+  }
+
+  /* ChartBarMaxHeight in internal/web/view/runtime.go computes every bar's
+     height against this same number; the two must agree, or a bar taller
+     than its track clips. */
+  .am-runtime-bar-track {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    height: 120px;
+    border-bottom: 1px solid var(--bd);
+  }
+
+  .am-runtime-bar-group {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 2px;
+    height: 100%;
+  }
+
+  .am-runtime-bar {
+    flex: 1;
+    min-width: 2px;
+    max-width: 10px;
+    border-radius: 2px 2px 0 0;
+  }
+
+  .am-runtime-bar-fetch {
+    background: var(--fg);
+  }
+
+  .am-runtime-bar-scan {
+    background: var(--fg3);
+  }
+
+  .am-runtime-bar-labels {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .am-runtime-bar-label {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+    font-size: 10.5px;
+    color: var(--fg3);
+  }
+
+  /* Profile detail (US5) --------------------------------------------------- */
+
+  /* The last field row in a card needs its own bottom gutter; every other row
+     relies on the next row's top padding instead. */
+  .am-form-row-end {
+    padding-bottom: 18px;
+  }
+
+  .am-form-submit {
+    align-self: flex-end;
+  }
+
+  .am-field-kind {
+    min-width: 120px;
+    flex: 0 0 auto;
+  }
+
+  .am-field-role {
+    min-width: 140px;
+    flex: 0 0 auto;
+  }
+
+  .am-form-footer {
+    padding: 14px 20px;
+  }
+
+  /* A note that needs the card's own inner gutter — a disabled-control
+     explanation sitting under a form, not a list row. */
+  .am-card-note {
+    padding: 0 20px 18px;
+  }
+
+  /* am-gov-notice carries the PAGE's 44px gutter; a card whose own inner
+     gutter is 20px (the create-profile form) needs that instead. */
+  .am-notice-card-inset {
+    margin: 0 20px;
+  }
+
+  .am-panel-toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--bd);
+  }
+
+  /* Lets a <fieldset> disable a group of controls without adding a box of its
+     own: the browser's default fieldset border and padding would otherwise
+     reflow everything the enabled state already lays out with am-field-row. */
+  .am-fieldset-plain {
+    display: contents;
+  }
+
+  .am-entry-kind-section {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .am-entry-kind-head {
+    padding: 10px 20px 4px;
+    border-top: 1px solid var(--bd);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--fg3);
+  }
+
+  /* "Show diff" and its panel, on the revisions row. Its own prefix rather
+     than reuse of am-audit-panel: same shape, different screen, and every
+     other panel here (am-find-, am-audit-) is namespaced the same way. */
+  .am-rev-diff-link {
+    margin-left: auto;
+    padding: 5px 10px;
+    border: 1px solid var(--bd);
+    border-radius: 7px;
+    background: var(--surface);
+    color: var(--fg2);
+    font-size: 12px;
+  }
+
+  .am-rev-diff-link:hover {
+    background: var(--sel);
+  }
+
+  /* Dimming only: pointer-events:none leaves the close link as the one way
+     out, and the scrim colour is inline in the markup, as the audit panel's
+     is, since a translucent literal is not a pair contrast_test.go sweeps. */
+  .am-rev-diff-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    pointer-events: none;
+  }
+
+  .am-rev-diff-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 41;
+    display: flex;
+    flex-direction: column;
+    width: min(440px, 100vw);
+    border-left: 1px solid var(--bd);
+    background: var(--surface);
+    box-shadow: -24px 0 60px rgba(0, 0, 0, 0.28);
+    overflow-y: auto;
+  }
+
+  .am-rev-diff-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--bd);
+  }
+
+  .am-rev-diff-title {
+    font-size: 15px;
+    font-weight: 500;
+  }
+
+  .am-rev-diff-close {
+    flex: none;
+    font-size: 16px;
+    color: var(--fg3);
+    line-height: 1;
+  }
+
+  .am-rev-diff-close:hover {
+    color: var(--fg);
+  }
+
+  .am-rev-diff-entry {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 0;
+    border-top: 1px solid var(--bd);
+  }
+
+  .am-rev-diff-entry:first-child {
+    border-top: none;
+    padding-top: 0;
+  }
+
+  /* Package detail (US5): add to profile ---------------------------------- */
+
+  .am-add-to-profile {
+    width: 100%;
+  }
+
+  .am-add-group + .am-add-group {
+    margin-top: 14px;
+  }
+
+  .am-add-group-label {
+    font-size: 12px;
+    color: var(--fg3);
+    margin-bottom: 4px;
+  }
+
+  .am-add-row .am-toggle-note {
+    display: block;
+    margin: 2px 0 0;
+  }
+
+  /* Package detail: files panel (US3/US5) ---------------------------------- */
+
+  .am-file-row {
+    display: grid;
+    grid-template-columns: minmax(160px, 2.4fr) minmax(70px, 0.7fr) minmax(60px, 0.6fr);
+    align-items: center;
+    gap: 16px;
+    padding: 11px 22px;
+    border-top: 1px solid var(--bd);
+    font-size: 13px;
+  }
+
+  .am-file-row:hover {
+    background: var(--surface2);
+  }
+
+  .am-file-row-on {
+    background: var(--sel);
+  }
+
+  .am-file-path {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .am-file-kind {
+    font-size: 11.5px;
+    color: var(--fg3);
+  }
+
+  .am-file-size {
+    font-size: 11.5px;
+    color: var(--fg3);
+    text-align: right;
+  }
+
+  .am-file-text {
+    margin: 0;
+    padding: 20px 22px;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.7;
+    color: var(--fg2);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  /* The rendered markdown body. Headings and paragraphs use the page's own
+     type scale rather than a second one this file would have to keep in
+     step with it. */
+
+  .am-md {
+    padding: 4px 2px 8px;
+    font-size: 13.5px;
+    line-height: 1.65;
+    color: var(--fg2);
+  }
+
+  .am-md-h {
+    margin: 18px 0 8px;
+    color: var(--fg);
+  }
+
+  .am-md-quote {
+    margin: 10px 0;
+    padding: 2px 14px;
+    border-left: 3px solid var(--bd);
+    color: var(--fg3);
+  }
+
+  .am-md-list {
+    margin: 8px 0;
+    padding-left: 22px;
+  }
+
+  .am-md-code {
+    margin: 10px 0;
+    padding: 12px 14px;
+    background: var(--surface2);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    overflow: auto;
+  }
+
+  .am-md-link {
+    color: var(--fg);
+    text-decoration: underline;
+  }
+
+  .am-md-image {
+    font-style: italic;
+  }
+
+  .am-md-omitted {
+    font-style: italic;
+    color: var(--fg3);
   }
 }

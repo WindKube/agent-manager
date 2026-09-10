@@ -422,14 +422,22 @@ func lockfileFor(slug string, seq int) contract.Lockfile {
 
 // liveHandler is the real router over the real database and a real (in-memory)
 // bucket, so every test below goes through the middleware, the operation and the
-// query exactly as a client would.
-func liveHandler(t *testing.T) http.Handler {
+// query exactly as a client would. extraBlobs lets a file that needs its own
+// object key/bytes (a real packed bundle, say) add them to the same bucket
+// without every other caller having to know about them.
+func liveHandler(t *testing.T, extraBlobs ...map[string][]byte) http.Handler {
 	t.Helper()
 
 	bucket, err := blob.Open(context.Background(), "mem://")
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, bucket.Close()) })
-	for key, body := range map[string][]byte{bundleKey: bundleBytes, siblingKey: siblingBytes} {
+	blobs := map[string][]byte{bundleKey: bundleBytes, siblingKey: siblingBytes}
+	for _, extra := range extraBlobs {
+		for key, body := range extra {
+			blobs[key] = body
+		}
+	}
+	for key, body := range blobs {
 		_, writeErr := bucket.Writer().Write(context.Background(), key, bytes.NewReader(body))
 		require.NoError(t, writeErr)
 	}
@@ -508,6 +516,32 @@ func TestListProfilesEnumeratesExactlyWhatTheIdentityMayRead(t *testing.T) {
 		b := listSlugs(t, handler, an)
 		require.NotEqual(t, a, b, "FR-044 is not a filtered view of one shared list")
 	})
+}
+
+// canCurate is FR-126 at list scope. kw reads platform-baseline through
+// organisation visibility alone — no membership row names them there — while
+// kw-private is a profile they own outright, which is what makes this two
+// answers from ONE list rather than a single flag that happens to be false.
+func TestTheListsCanCurateIsFalseForOrganisationVisibilityWithNoMembership(t *testing.T) {
+	rec := request(t, liveHandler(t), http.MethodGet, "/v1/profiles", kw.token, "")
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	var body contract.ProfileList
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+
+	var sawOwned, sawOrgOnly bool
+	for _, profile := range body.Profiles {
+		switch profile.Slug {
+		case "kw-private":
+			sawOwned = true
+			require.True(t, profile.CanCurate, "kw owns kw-private outright")
+		case "platform-baseline":
+			sawOrgOnly = true
+			require.False(t, profile.CanCurate,
+				"organisation visibility grants reading, never curating, with no membership row")
+		}
+	}
+	require.True(t, sawOwned && sawOrgOnly, "the fixture must seed both profiles for this to test anything")
 }
 
 func listSlugs(t *testing.T, handler http.Handler, who actor) []string {

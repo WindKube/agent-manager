@@ -135,6 +135,12 @@ func runAPI(ctx context.Context) error {
 		},
 		Log:     log,
 		Storage: bucket.Inspector(),
+		// The Runtime screen's read into River's own database. handle already
+		// opened it alongside the application pool (constitution principle
+		// IX), so this is the same pool the outbox relay inserts through —
+		// read-only from this side, since queries.RuntimeQueue declares no
+		// write method.
+		Queue: handle.Queue(),
 	}, api.Options{
 		Addr:                  cfg.Addr,
 		PublicBaseURL:         cfg.PublicBaseURL,

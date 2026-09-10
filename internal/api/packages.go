@@ -45,13 +45,15 @@ type registrationForm struct {
 	Ref          string `form:"ref" required:"false" doc:"Branch, tag or commit. Defaults to the remote's HEAD." example:"v1.3.0"`
 	Subdirectory string `form:"subdirectory" required:"false" doc:"Path inside the tree holding the manifest." example:"plugins/platform-toolkit"`
 
-	Publisher string `form:"publisher" required:"true" doc:"The publisher, as <namespace>/<team>. Required: no source carries one — a repository has an owner and an archive URL has a host, and neither is a namespace this hub chose. The namespace is the first segment, and it is what the object key and the package id are built from." example:"example/platform"`
+	Publisher string `form:"publisher" required:"true" doc:"The publisher, as <namespace> or <namespace>/<team>. Required: no source carries one — a repository has an owner and an archive URL has a host, and neither is a namespace this hub chose. The namespace is the first segment, and it is what the object key and the package id are built from." example:"example/platform"`
 	Name      string `form:"name" required:"false" doc:"The package name. Derived from the repository name when omitted, and always checked against the manifest." example:"platform-toolkit"`
 	Version   string `form:"version" required:"false" doc:"The exact version. Derived from the ref when omitted." example:"1.3.0"`
 
 	Kind       string `form:"kind" required:"false" enum:"plugin,skill" doc:"Provisional only. Kind is decided by which manifest is at the tree root, so the fetcher overwrites this once it has the bytes." example:"plugin"`
 	Category   string `form:"category" required:"false" doc:"A category name or slug from the admin-curated vocabulary (FR-049)." example:"Infrastructure"`
 	Visibility string `form:"visibility" required:"false" enum:"organisation,team,private" doc:"Who may see the package in the catalog." example:"organisation"`
+
+	Tags string `form:"tags" required:"false" doc:"Comma-separated tags. Added to whatever the manifest's own keywords contribute at publish — this does not replace them, and is not replaced by them." example:"terraform,aws,guardrails"`
 
 	Archive huma.FormFile `form:"archive" required:"false" contentType:"application/zip,application/gzip,application/x-gzip,application/x-tar,application/octet-stream" doc:"Required when source is upload, and refused otherwise. huma treats a form field as required unless told otherwise, which is what required:\"false\" is doing on every optional field here."`
 }
@@ -164,6 +166,10 @@ func registrationFrom(ctx context.Context, form *registrationForm) (commands.Reg
 		Kind:         models.PackageKind(strings.TrimSpace(form.Kind)),
 		Category:     strings.TrimSpace(form.Category),
 		Visibility:   models.PackageVisibility(strings.TrimSpace(form.Visibility)),
+		// Trimming, dropping empties, deduplicating and validating are all
+		// commands.Registration.normalise's job, same as every other field
+		// this function hands it unrefined.
+		Tags: strings.Split(form.Tags, ","),
 	}
 
 	switch kind {

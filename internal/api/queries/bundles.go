@@ -8,6 +8,7 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"agent-manager/internal/auth"
 	"agent-manager/internal/store/models"
 )
 
@@ -30,19 +31,30 @@ func (b BundleRef) Distributable() bool { return b.Verdict != models.VerdictReje
 // segment would be two segments. The frozen contract calls the parameter
 // `publisher` and describes it as "the publishing namespace, as it appears in the
 // catalog" — the description is the accurate half, and this query follows it. The
-// publisher table is not joined at all, because nothing here needs it.
+// publisher table is not joined at all, because nothing here needs it beyond the
+// readability predicate, which is over `package` and not `publisher`.
+//
+// %s is PackageReadable over `pkg`. Folding it into this statement rather than
+// checking it afterwards is what makes a private package's specific version
+// answer identically to a version that does not exist: both are ErrNotFound,
+// and getBundle's separate 403 for a REJECTED version is only reachable once a
+// row is actually found, so it can never fire for a version this caller was
+// never shown existed.
 const bundleRefSQL = `
 select v.object_key, v.digest, v.verdict::text, coalesce(v.size_bytes, 0)
 from version as v
 join package as pkg on pkg.id = v.package_id
-where pkg.namespace = ? and pkg.name = ? and v.semver = ? and v.visible`
+where pkg.namespace = ? and pkg.name = ? and v.semver = ? and v.visible and %s`
 
 // Bundle locates one immutable version's bytes. Only a visible version is
 // findable: `visible` is commit-last (FR-008), so an in-flight publish is not a
 // 500 waiting to happen.
-func Bundle(ctx context.Context, db bun.IDB, namespace, name, version string) (BundleRef, error) {
+func Bundle(ctx context.Context, db bun.IDB, p auth.Principal, namespace, name, version string) (BundleRef, error) {
+	readable, readableArgs := PackageReadable("pkg", p)
+	args := append([]any{namespace, name, version}, readableArgs...)
+
 	var ref BundleRef
-	err := db.QueryRowContext(ctx, bundleRefSQL, namespace, name, version).
+	err := db.QueryRowContext(ctx, fmt.Sprintf(bundleRefSQL, readable), args...).
 		Scan(&ref.ObjectKey, &ref.Digest, &ref.Verdict, &ref.SizeBytes)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
@@ -55,20 +67,23 @@ func Bundle(ctx context.Context, db bun.IDB, namespace, name, version string) (B
 
 // latestBundleRefSQL is detailSQL's own join (package.go): the LATEST VISIBLE
 // version, the one every other panel on the detail screen describes, not an
-// arbitrary one a caller could name. `visibility = 'organisation'` repeats
-// that statement's unconditional filter for the same reason it does: the
-// FROM clause differs, so it cannot be shared, and it must not drift.
+// arbitrary one a caller could name. %s is PackageReadable, the same
+// predicate that statement composes — repeated rather than shared because
+// the FROM clause differs, but the two must not drift.
 const latestBundleRefSQL = `
 select v.object_key, v.digest, v.verdict::text, coalesce(v.size_bytes, 0)
 from package as pkg
 join version as v on v.id = pkg.latest_version_id and v.visible
-where pkg.namespace = ? and pkg.name = ? and pkg.visibility = 'organisation'`
+where pkg.namespace = ? and pkg.name = ? and %s`
 
 // LatestBundle locates the bytes of a package's latest visible version — the
 // file panel's door to the same version view.Package already describes.
-func LatestBundle(ctx context.Context, db bun.IDB, namespace, name string) (BundleRef, error) {
+func LatestBundle(ctx context.Context, db bun.IDB, p auth.Principal, namespace, name string) (BundleRef, error) {
+	readable, readableArgs := PackageReadable("pkg", p)
+	args := append([]any{namespace, name}, readableArgs...)
+
 	var ref BundleRef
-	err := db.QueryRowContext(ctx, latestBundleRefSQL, namespace, name).
+	err := db.QueryRowContext(ctx, fmt.Sprintf(latestBundleRefSQL, readable), args...).
 		Scan(&ref.ObjectKey, &ref.Digest, &ref.Verdict, &ref.SizeBytes)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):

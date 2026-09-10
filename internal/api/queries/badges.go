@@ -17,10 +17,11 @@ import (
 // counts over the base tables, not a materialised view.
 
 // badgeCountsSQL is one statement of three scalar subqueries, so the shell
-// costs one round trip. %s is the readability predicate over `profile`.
+// costs one round trip. The first %s is PackageReadable over `package`, the
+// second is Readable over `profile`.
 //
 // `packages` reproduces the catalog's own base relation exactly — the
-// latest version pointer, `visible`, and `visibility = 'organisation'` —
+// latest version pointer, `visible`, and the same readability predicate —
 // because a badge that counted differently from the list under it is a
 // badge nobody trusts twice. Both halves of the join condition matter for
 // the same reason they do elsewhere: commit-last means a half-published
@@ -43,16 +44,18 @@ select
   (select count(*)
      from package as pkg
      join version as ver on ver.id = pkg.latest_version_id and ver.visible
-    where pkg.visibility = 'organisation'),
+    where %s),
   (select count(*) from profile as prf where %s),
   (select count(*) from finding as fnd where fnd.state = 'open')`
 
 // Badges answers the shell's counts for one principal.
 func Badges(ctx context.Context, db bun.IDB, p auth.Principal) (contract.Badges, error) {
-	predicate, args := Readable("prf", p)
+	packagePredicate, packageArgs := PackageReadable("pkg", p)
+	profilePredicate, profileArgs := Readable("prf", p)
+	args := append(append([]any{}, packageArgs...), profileArgs...)
 
 	var out contract.Badges
-	if err := db.QueryRowContext(ctx, fmt.Sprintf(badgeCountsSQL, predicate), args...).
+	if err := db.QueryRowContext(ctx, fmt.Sprintf(badgeCountsSQL, packagePredicate, profilePredicate), args...).
 		Scan(&out.Packages, &out.Profiles, &out.OpenFindings); err != nil {
 		return contract.Badges{}, fmt.Errorf("read the badge counts: %w", err)
 	}

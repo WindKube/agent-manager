@@ -692,7 +692,7 @@ func PublishRevision(ctx context.Context, db bun.IDB, p auth.Principal,
 		seq := head + 1
 		revision := int(seq)
 
-		resolution, txErr := queries.ResolveProfileFacts(ctx, tx, facts)
+		resolution, txErr := queries.ResolveProfileFacts(ctx, tx, facts, p)
 		if txErr != nil {
 			return txErr
 		}

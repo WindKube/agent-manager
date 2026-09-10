@@ -10,11 +10,13 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 
 	"agent-manager/internal/api/contract"
 	"agent-manager/internal/auth"
+	"agent-manager/internal/store/models"
 )
 
 // The package detail read is five statements: one that identifies the
@@ -25,16 +27,19 @@ import (
 
 // detailSQL identifies the package and everything one-to-one with it. The
 // `latest_version_id` join is the same rule catalogFrom uses, so the
-// detail page shows exactly what the catalog links to. `visibility =
-// 'organisation'` is the same unconditional filter as
-// CatalogFilter.baseFilters — repeated rather than shared because this
-// statement's FROM clause differs, but the two must not drift.
+// detail page shows exactly what the catalog links to. %s is
+// PackageReadable over `pkg` — the same predicate CatalogFilter.baseFilters
+// composes, repeated rather than shared because this statement's FROM
+// clause differs, but the two must not drift.
 const detailSQL = `
 select
   pkg.id,
   pkg.namespace || '/' || pkg.name,
   pkg.name,
   pkg.kind::text,
+  pkg.visibility::text,
+  coalesce(pkg.owner_identity_id::text, ''),
+  coalesce(nullif(owner_idt.email, ''), owner_idt.subject, ''),
   pub.slug,
   pub.display_name,
   pub.verified,
@@ -52,7 +57,8 @@ join publisher as pub on pub.id = pkg.publisher_id
 join version as ver on ver.id = pkg.latest_version_id and ver.visible
 left join category as cat on cat.id = pkg.category_id
 left join package as parent on parent.id = pkg.parent_package_id
-where pkg.visibility = 'organisation'
+left join identity as owner_idt on owner_idt.id = pkg.owner_identity_id
+where %s
   and pkg.namespace = ?
   and pkg.name = ?`
 
@@ -63,17 +69,23 @@ func Package(ctx context.Context, db bun.IDB, principal auth.Principal,
 	namespace, name string,
 ) (contract.PackageDetail, error) {
 	var (
-		detail    contract.PackageDetail
-		packageID string
-		versionID string
-		manifest  string
-		parentID  string
-		parent    string
+		detail      contract.PackageDetail
+		packageID   string
+		ownerIDText string
+		versionID   string
+		manifest    string
+		parentID    string
+		parent      string
 	)
 	detail.Tags = []string{}
 
-	err := db.QueryRowContext(ctx, detailSQL, namespace, name).Scan(
-		&packageID, &detail.ID, &detail.Name, &detail.Kind,
+	readable, readableArgs := PackageReadable("pkg", principal)
+	query := fmt.Sprintf(detailSQL, readable)
+	args := append(append([]any{}, readableArgs...), namespace, name)
+
+	err := db.QueryRowContext(ctx, query, args...).Scan(
+		&packageID, &detail.ID, &detail.Name, &detail.Kind, &detail.Visibility,
+		&ownerIDText, &detail.Owner,
 		&detail.Publisher.Slug, &detail.Publisher.DisplayName, &detail.Publisher.Verified,
 		&detail.Category,
 		&versionID, &detail.Version, &detail.Verdict, &manifest, pgdialect.Array(&detail.Tags),
@@ -87,6 +99,12 @@ func Package(ctx context.Context, db bun.IDB, principal auth.Principal,
 	if detail.Tags == nil {
 		detail.Tags = []string{}
 	}
+	// Owner or catalog admin, mirroring the org.templ pattern: the control
+	// is offered to every reader of this page and disabled, with its
+	// reason, for everyone else (FR-126).
+	ownerID, _ := uuid.Parse(ownerIDText)
+	detail.CanChangeVisibility = (ownerID != uuid.Nil && ownerID == principal.IdentityID) ||
+		principal.Role == models.OrgRoleCatalogAdmin
 
 	detail.Manifest = manifest
 	detail.ManifestObject = manifestObject(detail.Kind)

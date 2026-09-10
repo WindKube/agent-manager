@@ -56,6 +56,14 @@ type PreviewProblem struct {
 	Message      string `json:"message" example:"additionalProperties 'repository' not allowed"`
 }
 
+// PackageVisibilityUpdate is the body of PUT
+// /v1/packages/{namespace}/{name}/visibility. There is no owner field: the
+// owner is set once, at registration, from the authenticated actor, and
+// never travels in a request body again.
+type PackageVisibilityUpdate struct {
+	Visibility string `json:"visibility" enum:"organisation,team,private" doc:"Who may see the package in the catalog." example:"team"`
+}
+
 // PackageRegistered is an acknowledgement, not a published version: bytes
 // are fetched by `worker fetcher`, so the version has no digest yet.
 type PackageRegistered struct {

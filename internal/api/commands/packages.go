@@ -14,6 +14,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"agent-manager/internal/api/contract"
+	"agent-manager/internal/api/queries"
 	"agent-manager/internal/auth"
 	"agent-manager/internal/blob"
 	"agent-manager/internal/domain/pkgspec"
@@ -127,7 +128,7 @@ func RegisterPackage(ctx context.Context, db bun.IDB, p auth.Principal, in Regis
 		if txErr != nil {
 			return txErr
 		}
-		pkg, txErr := upsertPackage(ctx, tx, publisherID, categoryID, in)
+		pkg, txErr := upsertPackage(ctx, tx, publisherID, categoryID, p, in)
 		if txErr != nil {
 			return txErr
 		}
@@ -399,7 +400,9 @@ func resolveCategory(ctx context.Context, tx bun.IDB, nameOrSlug string) (*uuid.
 // upsertPackage finds or creates the named package. The kind written here
 // is provisional for a URL source; the fetcher settles it once the
 // manifest is in hand. An existing package keeps its kind.
-func upsertPackage(ctx context.Context, tx bun.IDB, publisherID uuid.UUID, categoryID *uuid.UUID, in Registration) (*models.Package, error) {
+func upsertPackage(ctx context.Context, tx bun.IDB, publisherID uuid.UUID, categoryID *uuid.UUID,
+	p auth.Principal, in Registration,
+) (*models.Package, error) {
 	// Looked up by (namespace, name), matching the unique index — not by
 	// (publisher_id, name), which would miss a name owned by a sibling
 	// team in the same namespace.
@@ -432,6 +435,14 @@ func upsertPackage(ctx context.Context, tx bun.IDB, publisherID uuid.UUID, categ
 		Kind:        in.Kind,
 		CategoryID:  categoryID,
 		Visibility:  in.Visibility,
+	}
+	// The owner is the authenticated actor, never a value the request body
+	// could name — an identity registering a package it does not control
+	// itself would be exactly the hole an owner column exists to close.
+	// Set once, at creation: a later registration of the same
+	// publisher/name reuses the existing row above and never reassigns it.
+	if p.IdentityID != uuid.Nil {
+		pkg.OwnerIdentityID = &p.IdentityID
 	}
 	if _, err := tx.NewInsert().Model(pkg).Exec(ctx); err != nil {
 		return nil, fmt.Errorf("create package %s: %w", in.Name, err)
@@ -469,4 +480,86 @@ func isUniqueViolation(err error, constraint string) bool {
 		return false
 	}
 	return pgErr.Code == "23505" && pgErr.ConstraintName == constraint
+}
+
+// PackageNotPermittedError is a visibility-change refusal by an identity
+// that is neither the package's owner nor a catalog admin, mirroring
+// NotPermittedError's shape for the same reason: the caller can already see
+// the package (it answered 200, not 404), so the only useful thing left to
+// say is who may act on it.
+type PackageNotPermittedError struct {
+	Owner string
+}
+
+func (e *PackageNotPermittedError) Error() string {
+	who := "it has no recorded owner"
+	if e.Owner != "" {
+		who = "its owner is " + e.Owner
+	}
+	return "this identity may not change this package's visibility: that needs the owner or a " +
+		"catalog admin, and " + who
+}
+
+// SetPackageVisibility changes an existing package's visibility. FR-126 and
+// constitution principle IV: this is a state change distinct from
+// registration, gated the same way and audited the same way. Reusing
+// AuditKindShare rather than adding a new enum value: both record a
+// decision about who may see something, and this is the smaller change.
+func SetPackageVisibility(ctx context.Context, db bun.IDB, p auth.Principal,
+	namespace, name string, visibility models.PackageVisibility,
+) error {
+	if !visibility.Valid() {
+		return fmt.Errorf("%w: %q is not a visibility", ErrRegistration, visibility)
+	}
+
+	return db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		pkg := new(models.Package)
+		if err := tx.NewSelect().Model(pkg).
+			Where("namespace = ? and name = ?", namespace, name).
+			Limit(1).Scan(ctx); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return queries.ErrNotFound
+			}
+			return fmt.Errorf("read package %s/%s: %w", namespace, name, err)
+		}
+
+		owns := pkg.OwnerIdentityID != nil && *pkg.OwnerIdentityID == p.IdentityID
+		if !owns && p.Role != models.OrgRoleCatalogAdmin {
+			owner := ""
+			if pkg.OwnerIdentityID != nil {
+				owner = pkg.OwnerIdentityID.String()
+			}
+			return &PackageNotPermittedError{Owner: owner}
+		}
+		if pkg.Visibility == visibility {
+			return nil
+		}
+		// team and private are both enforced by comparing a reader against
+		// the OWNER (queries.PackageReadable): an owner-less package narrowed
+		// to either would match nobody, ever, including the catalog admin who
+		// just narrowed it — a self-inflicted version of the exact leak this
+		// whole feature exists to close, just pointed at invisibility instead.
+		// Only reachable here at all because a catalog admin may act on a
+		// package whose owner is nil; the owner branch above already implies
+		// a non-nil owner.
+		if visibility != models.PackageVisibilityOrganisation && pkg.OwnerIdentityID == nil {
+			return fmt.Errorf("%w: %s/%s has no recorded owner, so only organisation visibility is safe for it",
+				ErrRegistration, namespace, name)
+		}
+
+		if _, err := tx.NewUpdate().Model(pkg).
+			Set("visibility = ?", visibility).
+			Set("updated_at = now()").
+			WherePK().Exec(ctx); err != nil {
+			return fmt.Errorf("set the visibility of %s/%s: %w", namespace, name, err)
+		}
+
+		actor := p.Email
+		if actor == "" {
+			actor = p.Subject
+		}
+		text := fmt.Sprintf("changed the visibility of %s/%s to %s", namespace, name, visibility)
+		return writeAudit(ctx, tx, models.AuditKindShare, actor, string(models.ActorKindIdentity),
+			text, p.Source)
+	})
 }

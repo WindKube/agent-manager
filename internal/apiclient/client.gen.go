@@ -123,6 +123,27 @@ func (e CatalogPackageVerdict) Valid() bool {
 	}
 }
 
+// Defines values for CatalogPackageVisibility.
+const (
+	CatalogPackageVisibilityOrganisation CatalogPackageVisibility = "organisation"
+	CatalogPackageVisibilityPrivate      CatalogPackageVisibility = "private"
+	CatalogPackageVisibilityTeam         CatalogPackageVisibility = "team"
+)
+
+// Valid indicates whether the value is a known member of the CatalogPackageVisibility enum.
+func (e CatalogPackageVisibility) Valid() bool {
+	switch e {
+	case CatalogPackageVisibilityOrganisation:
+		return true
+	case CatalogPackageVisibilityPrivate:
+		return true
+	case CatalogPackageVisibilityTeam:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreateMappingRequestRole.
 const (
 	CreateMappingRequestRoleCatalogAdmin    CreateMappingRequestRole = "catalog-admin"
@@ -894,6 +915,27 @@ func (e PackageDetailVerdict) Valid() bool {
 	}
 }
 
+// Defines values for PackageDetailVisibility.
+const (
+	PackageDetailVisibilityOrganisation PackageDetailVisibility = "organisation"
+	PackageDetailVisibilityPrivate      PackageDetailVisibility = "private"
+	PackageDetailVisibilityTeam         PackageDetailVisibility = "team"
+)
+
+// Valid indicates whether the value is a known member of the PackageDetailVisibility enum.
+func (e PackageDetailVisibility) Valid() bool {
+	switch e {
+	case PackageDetailVisibilityOrganisation:
+		return true
+	case PackageDetailVisibilityPrivate:
+		return true
+	case PackageDetailVisibilityTeam:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PackageFileKind.
 const (
 	PackageFileKindBinary   PackageFileKind = "binary"
@@ -993,48 +1035,6 @@ func (e PackageRegisteredVerdict) Valid() bool {
 	}
 }
 
-// Defines values for PackageScanFindingSeverity.
-const (
-	PackageScanFindingSeverityHigh   PackageScanFindingSeverity = "high"
-	PackageScanFindingSeverityLow    PackageScanFindingSeverity = "low"
-	PackageScanFindingSeverityMedium PackageScanFindingSeverity = "medium"
-)
-
-// Valid indicates whether the value is a known member of the PackageScanFindingSeverity enum.
-func (e PackageScanFindingSeverity) Valid() bool {
-	switch e {
-	case PackageScanFindingSeverityHigh:
-		return true
-	case PackageScanFindingSeverityLow:
-		return true
-	case PackageScanFindingSeverityMedium:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PackageScanFindingState.
-const (
-	PackageScanFindingStateApproved PackageScanFindingState = "approved"
-	PackageScanFindingStateOpen     PackageScanFindingState = "open"
-	PackageScanFindingStateRejected PackageScanFindingState = "rejected"
-)
-
-// Valid indicates whether the value is a known member of the PackageScanFindingState enum.
-func (e PackageScanFindingState) Valid() bool {
-	switch e {
-	case PackageScanFindingStateApproved:
-		return true
-	case PackageScanFindingStateOpen:
-		return true
-	case PackageScanFindingStateRejected:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for PackageVersionDistTag.
 const (
 	PackageVersionDistTagArchived PackageVersionDistTag = "archived"
@@ -1074,6 +1074,27 @@ func (e PackageVersionVerdict) Valid() bool {
 	case PackageVersionVerdictRejected:
 		return true
 	case PackageVersionVerdictScanning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PackageVisibilityUpdateVisibility.
+const (
+	PackageVisibilityUpdateVisibilityOrganisation PackageVisibilityUpdateVisibility = "organisation"
+	PackageVisibilityUpdateVisibilityPrivate      PackageVisibilityUpdateVisibility = "private"
+	PackageVisibilityUpdateVisibilityTeam         PackageVisibilityUpdateVisibility = "team"
+)
+
+// Valid indicates whether the value is a known member of the PackageVisibilityUpdateVisibility enum.
+func (e PackageVisibilityUpdateVisibility) Valid() bool {
+	switch e {
+	case PackageVisibilityUpdateVisibilityOrganisation:
+		return true
+	case PackageVisibilityUpdateVisibilityPrivate:
+		return true
+	case PackageVisibilityUpdateVisibilityTeam:
 		return true
 	default:
 		return false
@@ -1988,6 +2009,11 @@ type CatalogPackage struct {
 	//
 	// Examples: 1.3.0
 	Version string `json:"version"`
+
+	// Visibility Who may see this package (FR-016).
+	//
+	// Examples: organisation
+	Visibility CatalogPackageVisibility `json:"visibility"`
 }
 
 // CatalogPackageKind Examples: plugin
@@ -1997,6 +2023,11 @@ type CatalogPackageKind string
 //
 // Examples: clean
 type CatalogPackageVerdict string
+
+// CatalogPackageVisibility Who may see this package (FR-016).
+//
+// Examples: organisation
+type CatalogPackageVisibility string
 
 // CatalogPage defines model for CatalogPage.
 type CatalogPage struct {
@@ -2215,11 +2246,6 @@ type FindingCheck struct {
 	// Examples: rulepack
 	Engine string `json:"engine"`
 
-	// Explain What this check looks for, in general, as the scan recorded it.
-	//
-	// Examples: Compares every host a script or an instruction file names against the version's declared network capability set, and flags one outside it.
-	Explain string `json:"explain"`
-
 	// Label The check's own label, as the scan recorded it. A screen that mapped check ids to labels itself would stop naming a check added after it shipped.
 	//
 	// Examples: Network allowlist
@@ -2378,9 +2404,6 @@ type FindingScanVerdict string
 
 // FindingSummary defines model for FindingSummary.
 type FindingSummary struct {
-	// Detail Why this was raised, in prose.
-	Detail *string `json:"detail,omitempty"`
-
 	// Engine The analyser that raised it. Two engines may use the same rule id, so a finding is identified by the pair.
 	//
 	// Examples: rulepack
@@ -2758,12 +2781,6 @@ type PackageComponent struct {
 // PackageComponentKind Examples: skill
 type PackageComponentKind string
 
-// PackageDeleted defines model for PackageDeleted.
-type PackageDeleted struct {
-	// VersionsArchived How many of the package's versions were not already archived, and just were.
-	VersionsArchived int64 `json:"versionsArchived"`
-}
-
 // PackageDependent defines model for PackageDependent.
 type PackageDependent struct {
 	// Mode How this profile resolves the package.
@@ -2791,7 +2808,8 @@ type PackageDependentMode string
 
 // PackageDetail defines model for PackageDetail.
 type PackageDetail struct {
-	Capabilities PackageCapabilities `json:"capabilities"`
+	CanChangeVisibility bool                `json:"canChangeVisibility"`
+	Capabilities        PackageCapabilities `json:"capabilities"`
 
 	// Category The admin-curated category (FR-049). Empty when none was chosen.
 	//
@@ -2824,8 +2842,11 @@ type PackageDetail struct {
 	// Name The manifest name. No manifest field and no column carries a human title.
 	//
 	// Examples: platform-toolkit
-	Name      string           `json:"name"`
-	Origin    PackageOrigin    `json:"origin"`
+	Name   string        `json:"name"`
+	Origin PackageOrigin `json:"origin"`
+
+	// Owner Examples: kwiatrzyk@example.com
+	Owner     *string          `json:"owner,omitempty"`
 	Publisher PackagePublisher `json:"publisher"`
 
 	// Tags The latest version's manifest keywords. Tags belong to the version, not the package.
@@ -2841,6 +2862,11 @@ type PackageDetail struct {
 
 	// Versions Every visible version, newest first.
 	Versions []PackageVersion `json:"versions"`
+
+	// Visibility Who may see this package.
+	//
+	// Examples: organisation
+	Visibility PackageDetailVisibility `json:"visibility"`
 }
 
 // PackageDetailKind Decided by which manifest is at the tree root, never by a manifest field.
@@ -2853,6 +2879,11 @@ type PackageDetailManifestObject string
 
 // PackageDetailVerdict Examples: clean
 type PackageDetailVerdict string
+
+// PackageDetailVisibility Who may see this package.
+//
+// Examples: organisation
+type PackageDetailVisibility string
 
 // PackageFile defines model for PackageFile.
 type PackageFile struct {
@@ -2998,61 +3029,6 @@ type PackageRegisteredKind string
 // Examples: scanning
 type PackageRegisteredVerdict string
 
-// PackageScan defines model for PackageScan.
-type PackageScan struct {
-	// Checks Every check the scan ran, passes included (FR-025).
-	Checks []FindingCheck `json:"checks"`
-
-	// Findings Every finding this scan raised against this version.
-	Findings []PackageScanFinding `json:"findings"`
-
-	// Scan The zero value while Scanned is false.
-	Scan    FindingScan `json:"scan"`
-	Scanned bool        `json:"scanned"`
-
-	// Version The latest visible version this scan describes.
-	//
-	// Examples: 1.3.0
-	Version string `json:"version"`
-}
-
-// PackageScanFinding defines model for PackageScanFinding.
-type PackageScanFinding struct {
-	// Detail Why this was raised, in prose.
-	Detail *string `json:"detail,omitempty"`
-
-	// Engine The analyser that raised it.
-	//
-	// Examples: rulepack
-	Engine string `json:"engine"`
-
-	// Evidence Every location this finding points at, cause first.
-	Evidence []FindingEvidence  `json:"evidence"`
-	Id       openapi_types.UUID `json:"id"`
-
-	// Override Present only when a reviewer has accepted this finding.
-	Override *FindingOverride `json:"override,omitempty"`
-	RaisedAt time.Time        `json:"raisedAt"`
-
-	// RuleId Examples: SH-NET-002
-	RuleId string `json:"ruleId"`
-
-	// Severity Examples: high
-	Severity PackageScanFindingSeverity `json:"severity"`
-
-	// State Examples: open
-	State PackageScanFindingState `json:"state"`
-
-	// Title Examples: Undeclared network egress
-	Title string `json:"title"`
-}
-
-// PackageScanFindingSeverity Examples: high
-type PackageScanFindingSeverity string
-
-// PackageScanFindingState Examples: open
-type PackageScanFindingState string
-
 // PackageVersion defines model for PackageVersion.
 type PackageVersion struct {
 	CreatedAt time.Time `json:"createdAt"`
@@ -3080,6 +3056,19 @@ type PackageVersionDistTag string
 
 // PackageVersionVerdict Examples: clean
 type PackageVersionVerdict string
+
+// PackageVisibilityUpdate defines model for PackageVisibilityUpdate.
+type PackageVisibilityUpdate struct {
+	// Visibility Who may see the package in the catalog.
+	//
+	// Examples: team
+	Visibility PackageVisibilityUpdateVisibility `json:"visibility"`
+}
+
+// PackageVisibilityUpdateVisibility Who may see the package in the catalog.
+//
+// Examples: team
+type PackageVisibilityUpdateVisibility string
 
 // PendingDeviceAuthorization defines model for PendingDeviceAuthorization.
 type PendingDeviceAuthorization struct {
@@ -3406,14 +3395,6 @@ type ProfileEntryOutcome string
 // ProfileEntryVerdict The RESOLVED version's verdict. The vocabulary is narrower than the catalog's on purpose: a rejected version never resolves, under any gate (FR-029).
 type ProfileEntryVerdict string
 
-// ProfileEntryRemoval defines model for ProfileEntryRemoval.
-type ProfileEntryRemoval struct {
-	// Id namespace/name of the package to remove from the profile.
-	//
-	// Examples: example/adr-writer
-	Id string `json:"id"`
-}
-
 // ProfileEntrySetting defines model for ProfileEntrySetting.
 type ProfileEntrySetting struct {
 	// Id namespace/name of a registered package.
@@ -3470,9 +3451,6 @@ type ProfileMemberRole string
 type ProfilePermissions struct {
 	// Curate May change entries and sync targets. Owner or maintainer.
 	Curate bool `json:"curate"`
-
-	// Delete May delete the profile outright. Owner only. Deleting is refused separately, by the api, when the profile holds a published revision — this bit is the role check alone.
-	Delete bool `json:"delete"`
 
 	// Publish May publish a revision. Owner or maintainer — a consumer may not (FR-037).
 	Publish bool `json:"publish"`
@@ -3765,12 +3743,6 @@ type UpdatePolicyRequest struct {
 // UpdatePolicyRequestScanGate defines model for UpdatePolicyRequest.ScanGate.
 type UpdatePolicyRequestScanGate string
 
-// VersionDeleted defines model for VersionDeleted.
-type VersionDeleted struct {
-	// PinnedByProfiles How many profile_entry rows pin this exact version. They keep resolving it; only new floating or range resolution stops offering it.
-	PinnedByProfiles int64 `json:"pinnedByProfiles"`
-}
-
 // Viewer defines model for Viewer.
 type Viewer struct {
 	// DisplayName The name a screen shows. Derived by the hub from whichever of name, preferred_username or email the provider populated.
@@ -3987,14 +3959,14 @@ type RegisterPackageMultipartRequestBody RegisterPackageMultipartBody
 // PreviewPackageMultipartRequestBody defines body for PreviewPackage for multipart/form-data ContentType.
 type PreviewPackageMultipartRequestBody PreviewPackageMultipartBody
 
+// SetPackageVisibilityJSONRequestBody defines body for SetPackageVisibility for application/json ContentType.
+type SetPackageVisibilityJSONRequestBody = PackageVisibilityUpdate
+
 // CreateProfileJSONRequestBody defines body for CreateProfile for application/json ContentType.
 type CreateProfileJSONRequestBody = ProfileCreate
 
 // SetProfileEntriesJSONRequestBody defines body for SetProfileEntries for application/json ContentType.
 type SetProfileEntriesJSONRequestBody = ProfileEntries
-
-// RemoveProfileEntryJSONRequestBody defines body for RemoveProfileEntry for application/json ContentType.
-type RemoveProfileEntryJSONRequestBody = ProfileEntryRemoval
 
 // PublishRevisionJSONRequestBody defines body for PublishRevision for application/json ContentType.
 type PublishRevisionJSONRequestBody = RevisionPublish
@@ -4366,13 +4338,6 @@ type ClientInterface interface {
 	// Corresponds with POST /v1/packages/preview (the `PreviewPackage` operationId).
 	PreviewPackageWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// DeletePackage Delete a package from the catalog
-	//
-	// Archives every version of the package that is not archived already, and clears the package's latest-version pointer — the same column the catalog and this package's own detail page join through, so both stop finding it, the way an unpublished package already answers. No row and no blob is deleted: see deleteVersion's own description for why. Writes one audit row. Requires the catalog-admin role.
-	//
-	// Corresponds with DELETE /v1/packages/{namespace}/{name} (the `DeletePackage` operationId).
-	DeletePackage(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
-
 	// GetPackage One package's detail
 	//
 	// Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package (FR-016). The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read (FR-044), and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
@@ -4394,19 +4359,23 @@ type ClientInterface interface {
 	// Corresponds with GET /v1/packages/{namespace}/{name}/files/content (the `GetPackageFile` operationId).
 	GetPackageFile(ctx context.Context, namespace string, name string, params *GetPackageFileParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetPackageScan The latest visible version's scan result, to show beside the package
+	// SetPackageVisibilityWithBody Change who may see a package
 	//
-	// The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029).
+	// Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
 	//
-	// Corresponds with GET /v1/packages/{namespace}/{name}/scan (the `GetPackageScan` operationId).
-	GetPackageScan(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /v1/packages/{namespace}/{name}/visibility (the `SetPackageVisibility` operationId).
+	SetPackageVisibilityWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// DeleteVersion Withdraw one version from the catalog
+	// SetPackageVisibility Change who may see a package
 	//
-	// Archives the version (dist_tag becomes `archived`) rather than deleting its row: a version is write-once, and an existing profile pin or a published revision's lockfile keeps resolving it — only new floating or range resolution, and the catalog listing when this was the package's latest, stop offering it. Writes one audit row. Requires the catalog-admin role.
+	// Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
 	//
-	// Corresponds with DELETE /v1/packages/{namespace}/{name}/versions/{version} (the `DeleteVersion` operationId).
-	DeleteVersion(ctx context.Context, namespace string, name string, version string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /v1/packages/{namespace}/{name}/visibility (the `SetPackageVisibility` operationId).
+	SetPackageVisibility(ctx context.Context, namespace string, name string, body SetPackageVisibilityJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListProfiles Profiles readable by this identity
 	//
@@ -4433,13 +4402,6 @@ type ClientInterface interface {
 	// Corresponds with POST /v1/profiles (the `CreateProfile` operationId).
 	CreateProfile(ctx context.Context, body CreateProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// DeleteProfile Delete a profile
-	//
-	// Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: FR-034 forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.
-	//
-	// Corresponds with DELETE /v1/profiles/{slug} (the `DeleteProfile` operationId).
-	DeleteProfile(ctx context.Context, slug string, reqEditors ...RequestEditorFn) (*http.Response, error)
-
 	// GetProfile One profile, resolved under the org gate
 	//
 	// The profile detail screen (001 US5): every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted (FR-036). The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
@@ -4449,7 +4411,7 @@ type ClientInterface interface {
 
 	// SetProfileEntriesWithBody Set the packages a profile holds and how each one tracks versions
 	//
-	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
+	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -4458,30 +4420,12 @@ type ClientInterface interface {
 
 	// SetProfileEntries Set the packages a profile holds and how each one tracks versions
 	//
-	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
+	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.
 	//
 	// Takes a body of the `application/json` content type.
 	//
 	// Corresponds with PUT /v1/profiles/{slug}/entries (the `SetProfileEntries` operationId).
 	SetProfileEntries(ctx context.Context, slug string, body SetProfileEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// RemoveProfileEntryWithBody Remove one package from a profile
-	//
-	// Deletes the profile_entry row outright, in one transaction with one audit row of kind `profile`. Distinct from PUT .../entries: that operation still refuses a body omitting an entry the profile holds, and this is the addressed removal offered instead of loosening it. NOT DURABLE UNTIL A REVISION IS PUBLISHED, same as every other entry change. Requires owner or maintainer on the profile.
-	//
-	// Takes any type of body and a specified content type.
-	//
-	// Corresponds with POST /v1/profiles/{slug}/entries/remove (the `RemoveProfileEntry` operationId).
-	RemoveProfileEntryWithBody(ctx context.Context, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// RemoveProfileEntry Remove one package from a profile
-	//
-	// Deletes the profile_entry row outright, in one transaction with one audit row of kind `profile`. Distinct from PUT .../entries: that operation still refuses a body omitting an entry the profile holds, and this is the addressed removal offered instead of loosening it. NOT DURABLE UNTIL A REVISION IS PUBLISHED, same as every other entry change. Requires owner or maintainer on the profile.
-	//
-	// Takes a body of the `application/json` content type.
-	//
-	// Corresponds with POST /v1/profiles/{slug}/entries/remove (the `RemoveProfileEntry` operationId).
-	RemoveProfileEntry(ctx context.Context, slug string, body RemoveProfileEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PublishRevisionWithBody Publish the next immutable revision
 	//
@@ -5247,23 +5191,6 @@ func (c *Client) PreviewPackageWithBody(ctx context.Context, contentType string,
 	return c.Client.Do(req)
 }
 
-// DeletePackage Delete a package from the catalog
-//
-// Archives every version of the package that is not archived already, and clears the package's latest-version pointer — the same column the catalog and this package's own detail page join through, so both stop finding it, the way an unpublished package already answers. No row and no blob is deleted: see deleteVersion's own description for why. Writes one audit row. Requires the catalog-admin role.
-//
-// Corresponds with DELETE /v1/packages/{namespace}/{name} (the `DeletePackage` operationId).
-func (c *Client) DeletePackage(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDeletePackageRequest(c.Server, namespace, name)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
 // GetPackage One package's detail
 //
 // Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package (FR-016). The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read (FR-044), and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
@@ -5315,13 +5242,15 @@ func (c *Client) GetPackageFile(ctx context.Context, namespace string, name stri
 	return c.Client.Do(req)
 }
 
-// GetPackageScan The latest visible version's scan result, to show beside the package
+// SetPackageVisibilityWithBody Change who may see a package
 //
-// The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029).
+// Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
 //
-// Corresponds with GET /v1/packages/{namespace}/{name}/scan (the `GetPackageScan` operationId).
-func (c *Client) GetPackageScan(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetPackageScanRequest(c.Server, namespace, name)
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /v1/packages/{namespace}/{name}/visibility (the `SetPackageVisibility` operationId).
+func (c *Client) SetPackageVisibilityWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetPackageVisibilityRequestWithBody(c.Server, namespace, name, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -5332,13 +5261,15 @@ func (c *Client) GetPackageScan(ctx context.Context, namespace string, name stri
 	return c.Client.Do(req)
 }
 
-// DeleteVersion Withdraw one version from the catalog
+// SetPackageVisibility Change who may see a package
 //
-// Archives the version (dist_tag becomes `archived`) rather than deleting its row: a version is write-once, and an existing profile pin or a published revision's lockfile keeps resolving it — only new floating or range resolution, and the catalog listing when this was the package's latest, stop offering it. Writes one audit row. Requires the catalog-admin role.
+// Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
 //
-// Corresponds with DELETE /v1/packages/{namespace}/{name}/versions/{version} (the `DeleteVersion` operationId).
-func (c *Client) DeleteVersion(ctx context.Context, namespace string, name string, version string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDeleteVersionRequest(c.Server, namespace, name, version)
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /v1/packages/{namespace}/{name}/visibility (the `SetPackageVisibility` operationId).
+func (c *Client) SetPackageVisibility(ctx context.Context, namespace string, name string, body SetPackageVisibilityJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetPackageVisibilityRequest(c.Server, namespace, name, body)
 	if err != nil {
 		return nil, err
 	}
@@ -5404,23 +5335,6 @@ func (c *Client) CreateProfile(ctx context.Context, body CreateProfileJSONReques
 	return c.Client.Do(req)
 }
 
-// DeleteProfile Delete a profile
-//
-// Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: FR-034 forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.
-//
-// Corresponds with DELETE /v1/profiles/{slug} (the `DeleteProfile` operationId).
-func (c *Client) DeleteProfile(ctx context.Context, slug string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDeleteProfileRequest(c.Server, slug)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
 // GetProfile One profile, resolved under the org gate
 //
 // The profile detail screen (001 US5): every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted (FR-036). The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
@@ -5440,7 +5354,7 @@ func (c *Client) GetProfile(ctx context.Context, slug string, reqEditors ...Requ
 
 // SetProfileEntriesWithBody Set the packages a profile holds and how each one tracks versions
 //
-// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
+// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.
 //
 // Takes any type of body and a specified content type.
 //
@@ -5459,51 +5373,13 @@ func (c *Client) SetProfileEntriesWithBody(ctx context.Context, slug string, con
 
 // SetProfileEntries Set the packages a profile holds and how each one tracks versions
 //
-// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
+// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.
 //
 // Takes a body of the `application/json` content type.
 //
 // Corresponds with PUT /v1/profiles/{slug}/entries (the `SetProfileEntries` operationId).
 func (c *Client) SetProfileEntries(ctx context.Context, slug string, body SetProfileEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetProfileEntriesRequest(c.Server, slug, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// RemoveProfileEntryWithBody Remove one package from a profile
-//
-// Deletes the profile_entry row outright, in one transaction with one audit row of kind `profile`. Distinct from PUT .../entries: that operation still refuses a body omitting an entry the profile holds, and this is the addressed removal offered instead of loosening it. NOT DURABLE UNTIL A REVISION IS PUBLISHED, same as every other entry change. Requires owner or maintainer on the profile.
-//
-// Takes any type of body and a specified content type.
-//
-// Corresponds with POST /v1/profiles/{slug}/entries/remove (the `RemoveProfileEntry` operationId).
-func (c *Client) RemoveProfileEntryWithBody(ctx context.Context, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewRemoveProfileEntryRequestWithBody(c.Server, slug, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// RemoveProfileEntry Remove one package from a profile
-//
-// Deletes the profile_entry row outright, in one transaction with one audit row of kind `profile`. Distinct from PUT .../entries: that operation still refuses a body omitting an entry the profile holds, and this is the addressed removal offered instead of loosening it. NOT DURABLE UNTIL A REVISION IS PUBLISHED, same as every other entry change. Requires owner or maintainer on the profile.
-//
-// Takes a body of the `application/json` content type.
-//
-// Corresponds with POST /v1/profiles/{slug}/entries/remove (the `RemoveProfileEntry` operationId).
-func (c *Client) RemoveProfileEntry(ctx context.Context, slug string, body RemoveProfileEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewRemoveProfileEntryRequest(c.Server, slug, body)
 	if err != nil {
 		return nil, err
 	}
@@ -6945,47 +6821,6 @@ func NewPreviewPackageRequestWithBody(server string, contentType string, body io
 	return req, nil
 }
 
-// NewDeletePackageRequest constructs an http.Request for the DeletePackage method
-func NewDeletePackageRequest(server string, namespace string, name string) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	var pathParam1 string
-
-	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/packages/%s/%s", pathParam0, pathParam1)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
 // NewGetPackageRequest constructs an http.Request for the GetPackage method
 func NewGetPackageRequest(server string, namespace string, name string) (*http.Request, error) {
 	var err error
@@ -7132,49 +6967,19 @@ func NewGetPackageFileRequest(server string, namespace string, name string, para
 	return req, nil
 }
 
-// NewGetPackageScanRequest constructs an http.Request for the GetPackageScan method
-func NewGetPackageScanRequest(server string, namespace string, name string) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+// NewSetPackageVisibilityRequest calls the generic SetPackageVisibility builder with application/json body
+func NewSetPackageVisibilityRequest(server string, namespace string, name string, body SetPackageVisibilityJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
-
-	var pathParam1 string
-
-	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/packages/%s/%s/scan", pathParam0, pathParam1)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
+	bodyReader = bytes.NewReader(buf)
+	return NewSetPackageVisibilityRequestWithBody(server, namespace, name, "application/json", bodyReader)
 }
 
-// NewDeleteVersionRequest constructs an http.Request for the DeleteVersion method
-func NewDeleteVersionRequest(server string, namespace string, name string, version string) (*http.Request, error) {
+// NewSetPackageVisibilityRequestWithBody constructs an http.Request for the SetPackageVisibility method, with any body, and a specified content type
+func NewSetPackageVisibilityRequestWithBody(server string, namespace string, name string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -7191,19 +6996,12 @@ func NewDeleteVersionRequest(server string, namespace string, name string, versi
 		return nil, err
 	}
 
-	var pathParam2 string
-
-	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "version", version, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
 	serverURL, err := url.Parse(server)
 	if err != nil {
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/v1/packages/%s/%s/versions/%s", pathParam0, pathParam1, pathParam2)
+	operationPath := fmt.Sprintf("/v1/packages/%s/%s/visibility", pathParam0, pathParam1)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -7213,10 +7011,12 @@ func NewDeleteVersionRequest(server string, namespace string, name string, versi
 		return nil, err
 	}
 
-	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -7284,40 +7084,6 @@ func NewCreateProfileRequestWithBody(server string, contentType string, body io.
 	}
 
 	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
-// NewDeleteProfileRequest constructs an http.Request for the DeleteProfile method
-func NewDeleteProfileRequest(server string, slug string) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "slug", slug, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/profiles/%s", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
 
 	return req, nil
 }
@@ -7394,53 +7160,6 @@ func NewSetProfileEntriesRequestWithBody(server string, slug string, contentType
 	}
 
 	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
-// NewRemoveProfileEntryRequest calls the generic RemoveProfileEntry builder with application/json body
-func NewRemoveProfileEntryRequest(server string, slug string, body RemoveProfileEntryJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewRemoveProfileEntryRequestWithBody(server, slug, "application/json", bodyReader)
-}
-
-// NewRemoveProfileEntryRequestWithBody constructs an http.Request for the RemoveProfileEntry method, with any body, and a specified content type
-func NewRemoveProfileEntryRequestWithBody(server string, slug string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "slug", slug, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/v1/profiles/%s/entries/remove", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -8233,15 +7952,6 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /v1/packages/preview (the `PreviewPackage` operationId).
 	PreviewPackageWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewPackageResponse, error)
 
-	// DeletePackageWithResponse Delete a package from the catalog
-	//
-	// Archives every version of the package that is not archived already, and clears the package's latest-version pointer — the same column the catalog and this package's own detail page join through, so both stop finding it, the way an unpublished package already answers. No row and no blob is deleted: see deleteVersion's own description for why. Writes one audit row. Requires the catalog-admin role.
-	//
-	// Returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with DELETE /v1/packages/{namespace}/{name} (the `DeletePackage` operationId).
-	DeletePackageWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*DeletePackageResponse, error)
-
 	// GetPackageWithResponse One package's detail
 	//
 	// Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package (FR-016). The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read (FR-044), and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
@@ -8269,23 +7979,23 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/packages/{namespace}/{name}/files/content (the `GetPackageFile` operationId).
 	GetPackageFileWithResponse(ctx context.Context, namespace string, name string, params *GetPackageFileParams, reqEditors ...RequestEditorFn) (*GetPackageFileResponse, error)
 
-	// GetPackageScanWithResponse The latest visible version's scan result, to show beside the package
+	// SetPackageVisibilityWithBodyWithResponse Change who may see a package
 	//
-	// The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029).
+	// Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
 	//
-	// Returns a wrapper object for the known response body format(s).
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
-	// Corresponds with GET /v1/packages/{namespace}/{name}/scan (the `GetPackageScan` operationId).
-	GetPackageScanWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*GetPackageScanResponse, error)
+	// Corresponds with PUT /v1/packages/{namespace}/{name}/visibility (the `SetPackageVisibility` operationId).
+	SetPackageVisibilityWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetPackageVisibilityResponse, error)
 
-	// DeleteVersionWithResponse Withdraw one version from the catalog
+	// SetPackageVisibilityWithResponse Change who may see a package
 	//
-	// Archives the version (dist_tag becomes `archived`) rather than deleting its row: a version is write-once, and an existing profile pin or a published revision's lockfile keeps resolving it — only new floating or range resolution, and the catalog listing when this was the package's latest, stop offering it. Writes one audit row. Requires the catalog-admin role.
+	// Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
 	//
-	// Returns a wrapper object for the known response body format(s).
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
-	// Corresponds with DELETE /v1/packages/{namespace}/{name}/versions/{version} (the `DeleteVersion` operationId).
-	DeleteVersionWithResponse(ctx context.Context, namespace string, name string, version string, reqEditors ...RequestEditorFn) (*DeleteVersionResponse, error)
+	// Corresponds with PUT /v1/packages/{namespace}/{name}/visibility (the `SetPackageVisibility` operationId).
+	SetPackageVisibilityWithResponse(ctx context.Context, namespace string, name string, body SetPackageVisibilityJSONRequestBody, reqEditors ...RequestEditorFn) (*SetPackageVisibilityResponse, error)
 
 	// ListProfilesWithResponse Profiles readable by this identity
 	//
@@ -8314,15 +8024,6 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /v1/profiles (the `CreateProfile` operationId).
 	CreateProfileWithResponse(ctx context.Context, body CreateProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateProfileResponse, error)
 
-	// DeleteProfileWithResponse Delete a profile
-	//
-	// Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: FR-034 forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.
-	//
-	// Returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with DELETE /v1/profiles/{slug} (the `DeleteProfile` operationId).
-	DeleteProfileWithResponse(ctx context.Context, slug string, reqEditors ...RequestEditorFn) (*DeleteProfileResponse, error)
-
 	// GetProfileWithResponse One profile, resolved under the org gate
 	//
 	// The profile detail screen (001 US5): every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted (FR-036). The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
@@ -8334,7 +8035,7 @@ type ClientWithResponsesInterface interface {
 
 	// SetProfileEntriesWithBodyWithResponse Set the packages a profile holds and how each one tracks versions
 	//
-	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
+	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8343,30 +8044,12 @@ type ClientWithResponsesInterface interface {
 
 	// SetProfileEntriesWithResponse Set the packages a profile holds and how each one tracks versions
 	//
-	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
+	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PUT /v1/profiles/{slug}/entries (the `SetProfileEntries` operationId).
 	SetProfileEntriesWithResponse(ctx context.Context, slug string, body SetProfileEntriesJSONRequestBody, reqEditors ...RequestEditorFn) (*SetProfileEntriesResponse, error)
-
-	// RemoveProfileEntryWithBodyWithResponse Remove one package from a profile
-	//
-	// Deletes the profile_entry row outright, in one transaction with one audit row of kind `profile`. Distinct from PUT .../entries: that operation still refuses a body omitting an entry the profile holds, and this is the addressed removal offered instead of loosening it. NOT DURABLE UNTIL A REVISION IS PUBLISHED, same as every other entry change. Requires owner or maintainer on the profile.
-	//
-	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /v1/profiles/{slug}/entries/remove (the `RemoveProfileEntry` operationId).
-	RemoveProfileEntryWithBodyWithResponse(ctx context.Context, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RemoveProfileEntryResponse, error)
-
-	// RemoveProfileEntryWithResponse Remove one package from a profile
-	//
-	// Deletes the profile_entry row outright, in one transaction with one audit row of kind `profile`. Distinct from PUT .../entries: that operation still refuses a body omitting an entry the profile holds, and this is the addressed removal offered instead of loosening it. NOT DURABLE UNTIL A REVISION IS PUBLISHED, same as every other entry change. Requires owner or maintainer on the profile.
-	//
-	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /v1/profiles/{slug}/entries/remove (the `RemoveProfileEntry` operationId).
-	RemoveProfileEntryWithResponse(ctx context.Context, slug string, body RemoveProfileEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*RemoveProfileEntryResponse, error)
 
 	// PublishRevisionWithBodyWithResponse Publish the next immutable revision
 	//
@@ -10335,82 +10018,6 @@ func (r PreviewPackageResponse) ContentType() string {
 	return ""
 }
 
-type DeletePackageResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *PackageDeleted
-	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
-	ApplicationproblemJSON401 *Error
-	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
-	ApplicationproblemJSON403 *Error
-	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
-	ApplicationproblemJSON404 *Error
-	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
-	ApplicationproblemJSON409 *Error
-	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
-	ApplicationproblemJSON500 *Error
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r DeletePackageResponse) GetJSON200() *PackageDeleted {
-	return r.JSON200
-}
-
-// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
-func (r DeletePackageResponse) GetApplicationproblemJSON401() *Error {
-	return r.ApplicationproblemJSON401
-}
-
-// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
-func (r DeletePackageResponse) GetApplicationproblemJSON403() *Error {
-	return r.ApplicationproblemJSON403
-}
-
-// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
-func (r DeletePackageResponse) GetApplicationproblemJSON404() *Error {
-	return r.ApplicationproblemJSON404
-}
-
-// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
-func (r DeletePackageResponse) GetApplicationproblemJSON409() *Error {
-	return r.ApplicationproblemJSON409
-}
-
-// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
-func (r DeletePackageResponse) GetApplicationproblemJSON500() *Error {
-	return r.ApplicationproblemJSON500
-}
-
-// GetBody returns the raw response body bytes
-func (r DeletePackageResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r DeletePackageResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r DeletePackageResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r DeletePackageResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
 type GetPackageResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -10625,53 +10232,74 @@ func (r GetPackageFileResponse) ContentType() string {
 	return ""
 }
 
-type GetPackageScanResponse struct {
+type SetPackageVisibilityResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *PackageScan
+	JSON200 *PackageDetail
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Error
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
 	ApplicationproblemJSON403 *Error
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
 	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
 	ApplicationproblemJSON500 *Error
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r GetPackageScanResponse) GetJSON200() *PackageScan {
+func (r SetPackageVisibilityResponse) GetJSON200() *PackageDetail {
 	return r.JSON200
 }
 
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r SetPackageVisibilityResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
+}
+
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
-func (r GetPackageScanResponse) GetApplicationproblemJSON401() *Error {
+func (r SetPackageVisibilityResponse) GetApplicationproblemJSON401() *Error {
 	return r.ApplicationproblemJSON401
 }
 
 // GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
-func (r GetPackageScanResponse) GetApplicationproblemJSON403() *Error {
+func (r SetPackageVisibilityResponse) GetApplicationproblemJSON403() *Error {
 	return r.ApplicationproblemJSON403
 }
 
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
-func (r GetPackageScanResponse) GetApplicationproblemJSON404() *Error {
+func (r SetPackageVisibilityResponse) GetApplicationproblemJSON404() *Error {
 	return r.ApplicationproblemJSON404
 }
 
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r SetPackageVisibilityResponse) GetApplicationproblemJSON415() *Error {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r SetPackageVisibilityResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
 // GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
-func (r GetPackageScanResponse) GetApplicationproblemJSON500() *Error {
+func (r SetPackageVisibilityResponse) GetApplicationproblemJSON500() *Error {
 	return r.ApplicationproblemJSON500
 }
 
 // GetBody returns the raw response body bytes
-func (r GetPackageScanResponse) GetBody() []byte {
+func (r SetPackageVisibilityResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
-func (r GetPackageScanResponse) Status() string {
+func (r SetPackageVisibilityResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -10679,7 +10307,7 @@ func (r GetPackageScanResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r GetPackageScanResponse) StatusCode() int {
+func (r SetPackageVisibilityResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -10687,83 +10315,7 @@ func (r GetPackageScanResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r GetPackageScanResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type DeleteVersionResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *VersionDeleted
-	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
-	ApplicationproblemJSON401 *Error
-	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
-	ApplicationproblemJSON403 *Error
-	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
-	ApplicationproblemJSON404 *Error
-	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
-	ApplicationproblemJSON409 *Error
-	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
-	ApplicationproblemJSON500 *Error
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r DeleteVersionResponse) GetJSON200() *VersionDeleted {
-	return r.JSON200
-}
-
-// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
-func (r DeleteVersionResponse) GetApplicationproblemJSON401() *Error {
-	return r.ApplicationproblemJSON401
-}
-
-// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
-func (r DeleteVersionResponse) GetApplicationproblemJSON403() *Error {
-	return r.ApplicationproblemJSON403
-}
-
-// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
-func (r DeleteVersionResponse) GetApplicationproblemJSON404() *Error {
-	return r.ApplicationproblemJSON404
-}
-
-// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
-func (r DeleteVersionResponse) GetApplicationproblemJSON409() *Error {
-	return r.ApplicationproblemJSON409
-}
-
-// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
-func (r DeleteVersionResponse) GetApplicationproblemJSON500() *Error {
-	return r.ApplicationproblemJSON500
-}
-
-// GetBody returns the raw response body bytes
-func (r DeleteVersionResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r DeleteVersionResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r DeleteVersionResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r DeleteVersionResponse) ContentType() string {
+func (r SetPackageVisibilityResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -10922,75 +10474,6 @@ func (r CreateProfileResponse) ContentType() string {
 	return ""
 }
 
-type DeleteProfileResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
-	ApplicationproblemJSON401 *Error
-	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
-	ApplicationproblemJSON403 *Error
-	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
-	ApplicationproblemJSON404 *Error
-	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
-	ApplicationproblemJSON409 *Error
-	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
-	ApplicationproblemJSON500 *Error
-}
-
-// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
-func (r DeleteProfileResponse) GetApplicationproblemJSON401() *Error {
-	return r.ApplicationproblemJSON401
-}
-
-// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
-func (r DeleteProfileResponse) GetApplicationproblemJSON403() *Error {
-	return r.ApplicationproblemJSON403
-}
-
-// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
-func (r DeleteProfileResponse) GetApplicationproblemJSON404() *Error {
-	return r.ApplicationproblemJSON404
-}
-
-// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
-func (r DeleteProfileResponse) GetApplicationproblemJSON409() *Error {
-	return r.ApplicationproblemJSON409
-}
-
-// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
-func (r DeleteProfileResponse) GetApplicationproblemJSON500() *Error {
-	return r.ApplicationproblemJSON500
-}
-
-// GetBody returns the raw response body bytes
-func (r DeleteProfileResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r DeleteProfileResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r DeleteProfileResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r DeleteProfileResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
 type GetProfileResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -11137,96 +10620,6 @@ func (r SetProfileEntriesResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r SetProfileEntriesResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type RemoveProfileEntryResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *ProfileDetail
-	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
-	ApplicationproblemJSON400 *Error
-	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
-	ApplicationproblemJSON401 *Error
-	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
-	ApplicationproblemJSON403 *Error
-	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
-	ApplicationproblemJSON404 *Error
-	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
-	ApplicationproblemJSON415 *Error
-	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
-	ApplicationproblemJSON422 *Error
-	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
-	ApplicationproblemJSON500 *Error
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r RemoveProfileEntryResponse) GetJSON200() *ProfileDetail {
-	return r.JSON200
-}
-
-// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
-func (r RemoveProfileEntryResponse) GetApplicationproblemJSON400() *Error {
-	return r.ApplicationproblemJSON400
-}
-
-// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
-func (r RemoveProfileEntryResponse) GetApplicationproblemJSON401() *Error {
-	return r.ApplicationproblemJSON401
-}
-
-// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
-func (r RemoveProfileEntryResponse) GetApplicationproblemJSON403() *Error {
-	return r.ApplicationproblemJSON403
-}
-
-// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
-func (r RemoveProfileEntryResponse) GetApplicationproblemJSON404() *Error {
-	return r.ApplicationproblemJSON404
-}
-
-// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
-func (r RemoveProfileEntryResponse) GetApplicationproblemJSON415() *Error {
-	return r.ApplicationproblemJSON415
-}
-
-// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
-func (r RemoveProfileEntryResponse) GetApplicationproblemJSON422() *Error {
-	return r.ApplicationproblemJSON422
-}
-
-// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
-func (r RemoveProfileEntryResponse) GetApplicationproblemJSON500() *Error {
-	return r.ApplicationproblemJSON500
-}
-
-// GetBody returns the raw response body bytes
-func (r RemoveProfileEntryResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r RemoveProfileEntryResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r RemoveProfileEntryResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r RemoveProfileEntryResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -12545,21 +11938,6 @@ func (c *ClientWithResponses) PreviewPackageWithBodyWithResponse(ctx context.Con
 	return ParsePreviewPackageResponse(rsp)
 }
 
-// DeletePackageWithResponse Delete a package from the catalog
-//
-// Archives every version of the package that is not archived already, and clears the package's latest-version pointer — the same column the catalog and this package's own detail page join through, so both stop finding it, the way an unpublished package already answers. No row and no blob is deleted: see deleteVersion's own description for why. Writes one audit row. Requires the catalog-admin role.
-//
-// Returns a wrapper object for the known response body format(s).
-//
-// Corresponds with DELETE /v1/packages/{namespace}/{name} (the `DeletePackage` operationId).
-func (c *ClientWithResponses) DeletePackageWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*DeletePackageResponse, error) {
-	rsp, err := c.DeletePackage(ctx, namespace, name, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseDeletePackageResponse(rsp)
-}
-
 // GetPackageWithResponse One package's detail
 //
 // Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package (FR-016). The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read (FR-044), and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
@@ -12605,34 +11983,34 @@ func (c *ClientWithResponses) GetPackageFileWithResponse(ctx context.Context, na
 	return ParseGetPackageFileResponse(rsp)
 }
 
-// GetPackageScanWithResponse The latest visible version's scan result, to show beside the package
+// SetPackageVisibilityWithBodyWithResponse Change who may see a package
 //
-// The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029).
+// Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
 //
-// Returns a wrapper object for the known response body format(s).
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
-// Corresponds with GET /v1/packages/{namespace}/{name}/scan (the `GetPackageScan` operationId).
-func (c *ClientWithResponses) GetPackageScanWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*GetPackageScanResponse, error) {
-	rsp, err := c.GetPackageScan(ctx, namespace, name, reqEditors...)
+// Corresponds with PUT /v1/packages/{namespace}/{name}/visibility (the `SetPackageVisibility` operationId).
+func (c *ClientWithResponses) SetPackageVisibilityWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetPackageVisibilityResponse, error) {
+	rsp, err := c.SetPackageVisibilityWithBody(ctx, namespace, name, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseGetPackageScanResponse(rsp)
+	return ParseSetPackageVisibilityResponse(rsp)
 }
 
-// DeleteVersionWithResponse Withdraw one version from the catalog
+// SetPackageVisibilityWithResponse Change who may see a package
 //
-// Archives the version (dist_tag becomes `archived`) rather than deleting its row: a version is write-once, and an existing profile pin or a published revision's lockfile keeps resolving it — only new floating or range resolution, and the catalog listing when this was the package's latest, stop offering it. Writes one audit row. Requires the catalog-admin role.
+// Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
 //
-// Returns a wrapper object for the known response body format(s).
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
-// Corresponds with DELETE /v1/packages/{namespace}/{name}/versions/{version} (the `DeleteVersion` operationId).
-func (c *ClientWithResponses) DeleteVersionWithResponse(ctx context.Context, namespace string, name string, version string, reqEditors ...RequestEditorFn) (*DeleteVersionResponse, error) {
-	rsp, err := c.DeleteVersion(ctx, namespace, name, version, reqEditors...)
+// Corresponds with PUT /v1/packages/{namespace}/{name}/visibility (the `SetPackageVisibility` operationId).
+func (c *ClientWithResponses) SetPackageVisibilityWithResponse(ctx context.Context, namespace string, name string, body SetPackageVisibilityJSONRequestBody, reqEditors ...RequestEditorFn) (*SetPackageVisibilityResponse, error) {
+	rsp, err := c.SetPackageVisibility(ctx, namespace, name, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseDeleteVersionResponse(rsp)
+	return ParseSetPackageVisibilityResponse(rsp)
 }
 
 // ListProfilesWithResponse Profiles readable by this identity
@@ -12680,21 +12058,6 @@ func (c *ClientWithResponses) CreateProfileWithResponse(ctx context.Context, bod
 	return ParseCreateProfileResponse(rsp)
 }
 
-// DeleteProfileWithResponse Delete a profile
-//
-// Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: FR-034 forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.
-//
-// Returns a wrapper object for the known response body format(s).
-//
-// Corresponds with DELETE /v1/profiles/{slug} (the `DeleteProfile` operationId).
-func (c *ClientWithResponses) DeleteProfileWithResponse(ctx context.Context, slug string, reqEditors ...RequestEditorFn) (*DeleteProfileResponse, error) {
-	rsp, err := c.DeleteProfile(ctx, slug, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseDeleteProfileResponse(rsp)
-}
-
 // GetProfileWithResponse One profile, resolved under the org gate
 //
 // The profile detail screen (001 US5): every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted (FR-036). The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
@@ -12712,7 +12075,7 @@ func (c *ClientWithResponses) GetProfileWithResponse(ctx context.Context, slug s
 
 // SetProfileEntriesWithBodyWithResponse Set the packages a profile holds and how each one tracks versions
 //
-// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
+// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12727,7 +12090,7 @@ func (c *ClientWithResponses) SetProfileEntriesWithBodyWithResponse(ctx context.
 
 // SetProfileEntriesWithResponse Set the packages a profile holds and how each one tracks versions
 //
-// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
+// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named: `am_api` deliberately holds no DELETE on `profile_entry` (removal is unspecified and no screen carries the control), so quietly keeping it would answer 200 to a request whose stored result disagrees with what was sent. Requires owner or maintainer on the profile.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12738,36 +12101,6 @@ func (c *ClientWithResponses) SetProfileEntriesWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParseSetProfileEntriesResponse(rsp)
-}
-
-// RemoveProfileEntryWithBodyWithResponse Remove one package from a profile
-//
-// Deletes the profile_entry row outright, in one transaction with one audit row of kind `profile`. Distinct from PUT .../entries: that operation still refuses a body omitting an entry the profile holds, and this is the addressed removal offered instead of loosening it. NOT DURABLE UNTIL A REVISION IS PUBLISHED, same as every other entry change. Requires owner or maintainer on the profile.
-//
-// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /v1/profiles/{slug}/entries/remove (the `RemoveProfileEntry` operationId).
-func (c *ClientWithResponses) RemoveProfileEntryWithBodyWithResponse(ctx context.Context, slug string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RemoveProfileEntryResponse, error) {
-	rsp, err := c.RemoveProfileEntryWithBody(ctx, slug, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseRemoveProfileEntryResponse(rsp)
-}
-
-// RemoveProfileEntryWithResponse Remove one package from a profile
-//
-// Deletes the profile_entry row outright, in one transaction with one audit row of kind `profile`. Distinct from PUT .../entries: that operation still refuses a body omitting an entry the profile holds, and this is the addressed removal offered instead of loosening it. NOT DURABLE UNTIL A REVISION IS PUBLISHED, same as every other entry change. Requires owner or maintainer on the profile.
-//
-// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /v1/profiles/{slug}/entries/remove (the `RemoveProfileEntry` operationId).
-func (c *ClientWithResponses) RemoveProfileEntryWithResponse(ctx context.Context, slug string, body RemoveProfileEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*RemoveProfileEntryResponse, error) {
-	rsp, err := c.RemoveProfileEntry(ctx, slug, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseRemoveProfileEntryResponse(rsp)
 }
 
 // PublishRevisionWithBodyWithResponse Publish the next immutable revision
@@ -14466,67 +13799,6 @@ func ParsePreviewPackageResponse(rsp *http.Response) (*PreviewPackageResponse, e
 	return response, nil
 }
 
-// ParseDeletePackageResponse parses an HTTP response from a DeletePackageWithResponse call
-func ParseDeletePackageResponse(rsp *http.Response) (*DeletePackageResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &DeletePackageResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest PackageDeleted
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON409 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
 // ParseGetPackageResponse parses an HTTP response from a GetPackageWithResponse call
 func ParseGetPackageResponse(rsp *http.Response) (*GetPackageResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -14696,26 +13968,33 @@ func ParseGetPackageFileResponse(rsp *http.Response) (*GetPackageFileResponse, e
 	return response, nil
 }
 
-// ParseGetPackageScanResponse parses an HTTP response from a GetPackageScanWithResponse call
-func ParseGetPackageScanResponse(rsp *http.Response) (*GetPackageScanResponse, error) {
+// ParseSetPackageVisibilityResponse parses an HTTP response from a SetPackageVisibilityWithResponse call
+func ParseSetPackageVisibilityResponse(rsp *http.Response) (*SetPackageVisibilityResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &GetPackageScanResponse{
+	response := &SetPackageVisibilityResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest PackageScan
+		var dest PackageDetail
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Error
@@ -14738,66 +14017,19 @@ func ParseGetPackageScanResponse(rsp *http.Response) (*GetPackageScanResponse, e
 		}
 		response.ApplicationproblemJSON404 = &dest
 
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSON500 = &dest
+		response.ApplicationproblemJSON415 = &dest
 
-	}
-
-	return response, nil
-}
-
-// ParseDeleteVersionResponse parses an HTTP response from a DeleteVersionWithResponse call
-func ParseDeleteVersionResponse(rsp *http.Response) (*DeleteVersionResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &DeleteVersionResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest VersionDeleted
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.ApplicationproblemJSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON409 = &dest
+		response.ApplicationproblemJSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
@@ -14933,63 +14165,6 @@ func ParseCreateProfileResponse(rsp *http.Response) (*CreateProfileResponse, err
 	return response, nil
 }
 
-// ParseDeleteProfileResponse parses an HTTP response from a DeleteProfileWithResponse call
-func ParseDeleteProfileResponse(rsp *http.Response) (*DeleteProfileResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &DeleteProfileResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case rsp.StatusCode == 204:
-		break // No content-type
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON409 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
 // ParseGetProfileResponse parses an HTTP response from a GetProfileWithResponse call
 func ParseGetProfileResponse(rsp *http.Response) (*GetProfileResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -15046,81 +14221,6 @@ func ParseSetProfileEntriesResponse(rsp *http.Response) (*SetProfileEntriesRespo
 	}
 
 	response := &SetProfileEntriesResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest ProfileDetail
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON400 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON403 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON415 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON422 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest Error
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseRemoveProfileEntryResponse parses an HTTP response from a RemoveProfileEntryWithResponse call
-func ParseRemoveProfileEntryResponse(rsp *http.Response) (*RemoveProfileEntryResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &RemoveProfileEntryResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}

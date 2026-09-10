@@ -12,6 +12,7 @@ import (
 	"github.com/uptrace/bun/dialect/pgdialect"
 
 	"agent-manager/internal/api/contract"
+	"agent-manager/internal/auth"
 	"agent-manager/internal/store/models"
 )
 
@@ -54,6 +55,7 @@ const maxTagOptions = 200
 // tags conjunctively: a category widens ("infra OR data"), a tag narrows
 // ("terraform AND aws").
 type CatalogFilter struct {
+	Principal  auth.Principal
 	Text       string
 	Kind       models.PackageKind
 	Status     CatalogStatus
@@ -187,15 +189,13 @@ func (p *predicates) where() string {
 }
 
 // baseFilters constrains both the result set and every facet count.
-// `visibility = 'organisation'` is unconditional: the schema names no
-// owning team or identity for `team`/`private` packages, so this fails
-// closed and they are invisible to everyone, their publisher included.
-// There is no caller-dependent branch here on purpose — the schema offers
-// nothing to key one off of, so any branch would be a guess wearing an
-// access check.
+// PackageReadable is the one predicate every package-scoped statement
+// composes (queries.go), so the catalog, the facet counts and the detail
+// screen can never disagree about what "readable" means.
 func (f CatalogFilter) baseFilters() *predicates {
 	p := &predicates{}
-	p.add("pkg.visibility = 'organisation'")
+	readable, readableArgs := PackageReadable("pkg", f.Principal)
+	p.add(readable, readableArgs...)
 	if f.Text != "" {
 		p.add(catalogSearch, f.Text, f.Text, f.Text, f.Text)
 	}
@@ -268,6 +268,7 @@ select
   pkg.name,
   pub.slug,
   pkg.kind::text,
+  pkg.visibility::text,
   coalesce(cat.name, ''),
   ver.semver,
   ver.verdict::text,
@@ -291,8 +292,8 @@ limit ? offset ?`
 	packages := []contract.CatalogPackage{}
 	for rows.Next() {
 		entry := contract.CatalogPackage{Tags: []string{}}
-		if err := rows.Scan(&entry.ID, &entry.Name, &entry.Publisher, &entry.Kind, &entry.Category,
-			&entry.Version, &entry.Verdict, pgdialect.Array(&entry.Tags), &entry.UpdatedAt,
+		if err := rows.Scan(&entry.ID, &entry.Name, &entry.Publisher, &entry.Kind, &entry.Visibility,
+			&entry.Category, &entry.Version, &entry.Verdict, pgdialect.Array(&entry.Tags), &entry.UpdatedAt,
 			&entry.Uses); err != nil {
 			return nil, fmt.Errorf("scan a catalog row: %w", err)
 		}

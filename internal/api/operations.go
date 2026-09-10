@@ -451,6 +451,36 @@ func (s *Server) registerPackages() {
 			"500": s.errorResponse("The request could not be completed."),
 		},
 	}, s.deletePackage)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "setPackageVisibility",
+		Method:      http.MethodPut,
+		Path:        "/v1/packages/{namespace}/{name}/visibility",
+		Tags:        []string{"packages"},
+		Summary:     "Change who may see a package",
+		Description: "Organisation, team or private (FR-126), in one transaction with one audit row of " +
+			"kind `share`. Team means the caller's own identity-provider groups: there is no " +
+			"team-membership entity here, so a package's team visibility is read against " +
+			"whichever groups its owner carried at registration. " +
+			"Requires the package's recorded owner or a catalog admin — nobody else, including a " +
+			"caller who can otherwise see the package. The response is the package as it now " +
+			"reads, not an echo of the request.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Changed. The body is the package as it now reads.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.PackageDetail{}, "PackageDetail")},
+				},
+			},
+			"400": s.errorResponse("The request body is missing or is not valid JSON."),
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"403": s.errorResponse("This identity may not change this package's visibility."),
+			"404": s.errorResponse("No such package, or it is not readable by this identity."),
+			"415": s.errorResponse("The request body must be sent as application/json."),
+			"422": s.errorResponse("Visibility is outside its vocabulary."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.setPackageVisibility)
 }
 
 func (s *Server) registerProfiles() {
@@ -1141,8 +1171,9 @@ type getBundleOutput struct {
 
 func (s *Server) getBundle(ctx context.Context, in *getBundleInput) (*getBundleOutput, error) {
 	log := logging.From(ctx)
+	principal, _ := PrincipalFrom(ctx)
 
-	ref, err := queries.Bundle(ctx, s.deps.DB, in.Publisher, in.Name, in.Version)
+	ref, err := queries.Bundle(ctx, s.deps.DB, principal, in.Publisher, in.Name, in.Version)
 	if err != nil {
 		return nil, fail(log, err)
 	}

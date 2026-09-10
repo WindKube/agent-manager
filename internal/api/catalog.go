@@ -51,11 +51,12 @@ type listPackagesOutput struct {
 // role's login lands the screen renders signed out, which is a sequencing cost
 // and not a reason to open the operation.
 //
-// There is no principal-dependent branch in the filter either. See
-// queries.CatalogFilter.baseFilters for why `team` and `private` are hidden from
-// everybody rather than scoped to somebody.
+// The filter is scoped to the caller (queries.PackageReadable): `team` and
+// `private` packages resolve per viewer, never as a blanket hide.
 func (s *Server) listPackages(ctx context.Context, in *listPackagesInput) (*listPackagesOutput, error) {
+	principal, _ := PrincipalFrom(ctx)
 	page, err := queries.Catalog(ctx, s.deps.DB, queries.CatalogFilter{
+		Principal:  principal,
 		Text:       in.Q,
 		Kind:       packageKind(in.Kind),
 		Status:     catalogStatus(in.Status),

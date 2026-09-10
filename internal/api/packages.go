@@ -12,6 +12,7 @@ import (
 
 	"agent-manager/internal/api/commands"
 	"agent-manager/internal/api/contract"
+	"agent-manager/internal/api/queries"
 	"agent-manager/internal/bundle"
 	"agent-manager/internal/domain/pkgspec"
 	"agent-manager/internal/fetch"
@@ -134,6 +135,54 @@ func (s *Server) registerPackage(ctx context.Context, in *registerInput) (*regis
 		out.Body.Preview = request.Preview
 	}
 	return out, nil
+}
+
+// ---- PUT /v1/packages/{namespace}/{name}/visibility --------------------------
+
+type setPackageVisibilityInput struct {
+	Namespace string `path:"namespace" doc:"The publishing namespace — the FIRST segment of the publisher slug, as it appears in the catalog id. Not the whole slug." example:"example"`
+	Name      string `path:"name" doc:"The package name within that namespace." example:"platform-toolkit"`
+	Body      contract.PackageVisibilityUpdate
+}
+
+// setPackageVisibility is a state change distinct from registration
+// (constitution principle IV), gated the same way commands.SetPackageVisibility
+// gates it: the owner or a catalog admin, nobody else. The response re-reads
+// the package rather than echoing the request, the same reason mutateProfile
+// re-reads a profile — the caller's own visibility is scoped by
+// queries.PackageReadable, so the read is the authority on what actually
+// changed, not the write.
+func (s *Server) setPackageVisibility(ctx context.Context, in *setPackageVisibilityInput) (*getPackageOutput, error) {
+	principal, _ := PrincipalFrom(ctx)
+
+	err := commands.SetPackageVisibility(ctx, s.deps.DB, principal, in.Namespace, in.Name,
+		models.PackageVisibility(in.Body.Visibility))
+	if err != nil {
+		return nil, packageFailure(ctx, err)
+	}
+
+	detail, err := queries.Package(ctx, s.deps.DB, principal, in.Namespace, in.Name)
+	if err != nil {
+		return nil, packageFailure(ctx, err)
+	}
+	return &getPackageOutput{Body: detail}, nil
+}
+
+// packageFailure maps SetPackageVisibility's refusals onto the wire, the same
+// shape profileFailure gives the profile commands: queries.ErrNotFound reaches
+// fail() and becomes the 404 that makes an unreadable package indistinguishable
+// from a missing one, and a role/ownership refusal is a 403 naming who may act,
+// because the caller can already see the package (it answered 200 on the GET).
+func packageFailure(ctx context.Context, err error) error {
+	var notPermitted *commands.PackageNotPermittedError
+	switch {
+	case errors.As(err, &notPermitted):
+		return huma.Error403Forbidden(notPermitted.Error())
+	case errors.Is(err, commands.ErrRegistration):
+		return huma.Error422UnprocessableEntity(err.Error())
+	default:
+		return fail(logging.From(ctx), err)
+	}
 }
 
 // registrationFrom turns the form into the command's input, refusing everything

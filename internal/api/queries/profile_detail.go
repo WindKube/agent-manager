@@ -173,13 +173,16 @@ func ResolveProfile(ctx context.Context, db bun.IDB, p auth.Principal, slug stri
 	if err != nil {
 		return ProfileResolution{}, err
 	}
-	return ResolveProfileFacts(ctx, db, facts)
+	return ResolveProfileFacts(ctx, db, facts, p)
 }
 
 // ResolveProfileFacts is the half a caller that already identified the
 // profile runs, without re-reading it through the readability predicate,
-// which would be a second, weaker answer.
-func ResolveProfileFacts(ctx context.Context, db bun.IDB, facts ProfileFacts) (ProfileResolution, error) {
+// which would be a second, weaker answer. p is who the resolution is FOR:
+// a package whose visibility narrowed since it was added resolves for this
+// principal exactly as PackageReadable says it should, and never resolves
+// for anybody else's sake — see profileCandidates.
+func ResolveProfileFacts(ctx context.Context, db bun.IDB, facts ProfileFacts, p auth.Principal) (ProfileResolution, error) {
 	out := ProfileResolution{Profile: facts}
 
 	err := db.QueryRowContext(ctx,
@@ -195,7 +198,7 @@ func ResolveProfileFacts(ctx context.Context, db bun.IDB, facts ProfileFacts) (P
 	if out.Targets, err = profileTargets(ctx, db, facts.ID); err != nil {
 		return ProfileResolution{}, err
 	}
-	if out.entries, err = profileEntries(ctx, db, facts.ID); err != nil {
+	if out.entries, err = profileEntries(ctx, db, p, facts.ID); err != nil {
 		return ProfileResolution{}, err
 	}
 
@@ -205,7 +208,7 @@ func ResolveProfileFacts(ctx context.Context, db bun.IDB, facts ProfileFacts) (P
 		At:                time.Now().UTC(),
 		Entries:           make([]resolve.Entry, 0, len(out.entries)),
 	}
-	candidates, err := profileCandidates(ctx, db, out.entries)
+	candidates, err := profileCandidates(ctx, db, p, out.entries)
 	if err != nil {
 		return ProfileResolution{}, err
 	}
@@ -235,6 +238,13 @@ func ResolveProfileFacts(ctx context.Context, db bun.IDB, facts ProfileFacts) (P
 // answering both questions from one value is how a row claims a package is
 // clean because the version it fell back to is. The order-by carries a
 // tie-break because `position` has no unique constraint.
+//
+// %s is PackageReadable, folded into the `latest` join rather than the
+// WHERE clause: a curator may see WHICH packages a profile they can read
+// holds (the id, name and kind below are never gated on it), but a
+// package whose visibility has narrowed since it was added answers with
+// no latest version at all — the same empty state an unpublished package
+// already produces, not a distinguishable one.
 const profileEntriesSQL = `
 select
   pkg.id,
@@ -250,12 +260,16 @@ select
 from profile_entry as pent
 join package as pkg on pkg.id = pent.package_id
 left join version as pinned on pinned.id = pent.pinned_version_id
-left join version as latest on latest.id = pkg.latest_version_id and latest.visible
+left join version as latest on latest.id = pkg.latest_version_id and latest.visible and %s
 where pent.profile_id = ?
 order by pent.position, pkg.namespace, pkg.name`
 
-func profileEntries(ctx context.Context, db bun.IDB, profileID uuid.UUID) ([]profileEntryRow, error) {
-	rows, err := db.QueryContext(ctx, profileEntriesSQL, profileID)
+func profileEntries(ctx context.Context, db bun.IDB, p auth.Principal, profileID uuid.UUID) ([]profileEntryRow, error) {
+	readable, readableArgs := PackageReadable("pkg", p)
+	query := fmt.Sprintf(profileEntriesSQL, readable)
+	args := append(append([]any{}, readableArgs...), profileID)
+
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("read profile entries: %w", err)
 	}
@@ -289,6 +303,14 @@ func profileEntries(ctx context.Context, db bun.IDB, profileID uuid.UUID) ([]pro
 // version's exclusion still names the rule that rejected it); `acc` is the
 // acceptance that lapses soonest. `has_open` means an acceptance counts for
 // nothing while any finding on the version is still open.
+//
+// The join to `package` carries %s, PackageReadable: a package whose
+// visibility has narrowed since it joined a profile offers this resolution
+// NO candidates at all, so the resolver's own "nothing to resolve" path
+// (ReasonNoCleanVersionAvailable / ReasonPinTargetMissing) is what excludes
+// it — there is no separate visibility reason to invent, and none of these
+// notes says why, which is the point: this must read the same as a package
+// that genuinely has no clean version, not as one this identity may not see.
 const profileCandidatesSQL = `
 select
   ver.package_id,
@@ -307,6 +329,7 @@ select
   coalesce(acc.note, ''),
   acc.expires_at
 from version as ver
+join package as pkg on pkg.id = ver.package_id and %s
 left join signature as sig on sig.version_id = ver.id
 left join lateral (
   select fnd.rule_id, coalesce(fnd.evidence_path, '') as evidence_path
@@ -329,7 +352,7 @@ left join lateral (
 ) as acc on true
 where ver.package_id in (?) and ver.digest is not null`
 
-func profileCandidates(ctx context.Context, db bun.IDB,
+func profileCandidates(ctx context.Context, db bun.IDB, p auth.Principal,
 	entries []profileEntryRow,
 ) (map[uuid.UUID][]resolve.Candidate, error) {
 	out := map[uuid.UUID][]resolve.Candidate{}
@@ -342,7 +365,11 @@ func profileCandidates(ctx context.Context, db bun.IDB,
 		ids = append(ids, entries[i].packageID)
 	}
 
-	rows, err := db.QueryContext(ctx, profileCandidatesSQL, bun.List(ids))
+	readable, readableArgs := PackageReadable("pkg", p)
+	query := fmt.Sprintf(profileCandidatesSQL, readable)
+	args := append(append([]any{}, readableArgs...), bun.List(ids))
+
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("read the versions a profile may resolve to: %w", err)
 	}

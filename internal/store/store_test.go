@@ -1488,11 +1488,60 @@ func TestAPIRoleCanRunTheWholeOutboxRelayLoopIncludingThePrune(t *testing.T) {
 	require.Equal(t, "delivered", state)
 }
 
+// TestAPIRoleCanDeleteProfileEntryMembershipSyncTargetAndProfile is the
+// positive half of "003" widening the outbox-only DELETE grant: the profile
+// screen grew a "Remove" control on each entry and a "Delete this profile"
+// control, and both reach through am_api. profile_entry's grant is the
+// Remove control alone. membership and sync_target's grants exist for no
+// reason but clearing a profile's own dependents before deleting it — there
+// is still no "unshare one member" or "remove one sync target" endpoint, so
+// this only proves the delete-profile path, not a new membership surface.
+func TestAPIRoleCanDeleteProfileEntryMembershipSyncTargetAndProfile(t *testing.T) {
+	ctx := context.Background()
+
+	profileID, pkg := seedProfile(t, ctx), seedPackage(t, ctx)
+	_, err := pool.Exec(ctx,
+		`insert into profile_entry (profile_id, package_id, mode, position) values ($1, $2, 'latest', 1)`,
+		profileID, pkg)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx,
+		`insert into membership (profile_id, subject_kind, subject_ref, role) values ($1, 'user', 'a@example.com', 'owner')`,
+		profileID)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx,
+		`insert into sync_target (profile_id, target, enabled) values ($1, 'codex', true)`, profileID)
+	require.NoError(t, err)
+
+	asRole(t, "am_api", func(ctx context.Context, conn *pgxpool.Conn) {
+		tag, err := conn.Exec(ctx,
+			`delete from profile_entry where profile_id = $1 and package_id = $2`, profileID, pkg)
+		require.NoError(t, err, "the Remove control's own statement")
+		require.EqualValues(t, 1, tag.RowsAffected())
+
+		// The order commands.DeleteProfile itself uses: entries, membership and
+		// sync targets cleared before the profile row, so its own FK never fires.
+		tag, err = conn.Exec(ctx, `delete from membership where profile_id = $1`, profileID)
+		require.NoError(t, err)
+		require.EqualValues(t, 1, tag.RowsAffected())
+
+		tag, err = conn.Exec(ctx, `delete from sync_target where profile_id = $1`, profileID)
+		require.NoError(t, err)
+		require.EqualValues(t, 1, tag.RowsAffected())
+
+		tag, err = conn.Exec(ctx, `delete from profile where id = $1`, profileID)
+		require.NoError(t, err, "the Delete-profile control's own statement")
+		require.EqualValues(t, 1, tag.RowsAffected())
+	})
+}
+
 // TestAPIRoleCannotDeleteWhereDeletionIsUnspecified is the other half of the
 // outbox decision: that grant is exactly one table wide. Every table here is a
 // plausible candidate somebody will widen to by neighbourhood, so each case
 // carries the reason it was withheld — the same reasons as the withheld-grant list
-// in data-model.md.
+// in data-model.md. profile_entry, membership and sync_target moved off this
+// list in "003" (see the test above) once the profile screen grew controls
+// that need them; revision and sync_event are still here, and always will be:
+// FR-034 forbids deleting a revision outright, so no FR will ever ask for this.
 //
 // Each case asserts sqlstate 42501 and not merely `err != nil`. A negative case
 // that accepts any error stops testing the privilege the moment the statement
@@ -1503,20 +1552,8 @@ func TestAPIRoleCanRunTheWholeOutboxRelayLoopIncludingThePrune(t *testing.T) {
 func TestAPIRoleCannotDeleteWhereDeletionIsUnspecified(t *testing.T) {
 	ctx := context.Background()
 
-	entryProfile, entryPackage := seedProfile(t, ctx), seedPackage(t, ctx)
-	_, err := pool.Exec(ctx,
-		`insert into profile_entry (profile_id, package_id, mode, position) values ($1, $2, 'latest', 1)`,
-		entryProfile, entryPackage)
-	require.NoError(t, err)
-
-	memberProfile := seedProfile(t, ctx)
-	_, err = pool.Exec(ctx,
-		`insert into membership (profile_id, subject_kind, subject_ref, role) values ($1, 'user', 'a@example.com', 'owner')`,
-		memberProfile)
-	require.NoError(t, err)
-
 	sessionID, identityID := models.NewID(), seedIdentity(t, ctx)
-	_, err = pool.Exec(ctx,
+	_, err := pool.Exec(ctx,
 		`insert into session (id, token_hash, identity_id, expires_at) values ($1, $2, $3, now() + interval '1 hour')`,
 		sessionID, sessionID[:], identityID)
 	require.NoError(t, err)
@@ -1538,22 +1575,6 @@ func TestAPIRoleCannotDeleteWhereDeletionIsUnspecified(t *testing.T) {
 		name, stmt string
 		args       []any
 	}{
-		{
-			// FR-032's per-package policy and the openapi inventory's pin / unpin /
-			// reorder are all update-shaped: "unpin" is mode pinned -> latest, an
-			// UPDATE. Removing a package from a profile is unspecified, and the design
-			// screens contain no removal affordance at all.
-			name: "profile_entry, where pin, unpin and reorder are all updates",
-			stmt: `delete from profile_entry where profile_id = $1 and package_id = $2`,
-			args: []any{entryProfile, entryPackage},
-		},
-		{
-			// FR-037 is about per-member and per-group roles; changing or demoting a
-			// member is an UPDATE of `role`.
-			name: "membership, where a role change is an update",
-			stmt: `delete from membership where profile_id = $1`,
-			args: []any{memberProfile},
-		},
 		{
 			// The row carries expires_at. No requirement says signing out deletes it,
 			// and an expired session is one whose expiry has passed.

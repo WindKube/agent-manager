@@ -137,3 +137,22 @@ func TestRuntimeChartLabelsItsOwnUnits(t *testing.T) {
 	// bar — the last bucket's fetch 23, not its fetch 23 plus scan 1.
 	require.Contains(t, body, "tallest bar 23 jobs")
 }
+
+// TestRuntimeHeaderHasAPlainRefreshLink is the counterpart to the catalog's
+// refresh button: this screen has no fragment endpoint, so its refresh must
+// be an honest full-page navigation to /runtime rather than a datastar round
+// trip to a route that does not exist.
+func TestRuntimeHeaderHasAPlainRefreshLink(t *testing.T) {
+	body := get(t, govHandler(&governance{}, fixture.SignedInViewers(), nil), "/runtime").Body.String()
+
+	require.Contains(t, body, `href="/runtime"`, "the refresh control must reload this same screen")
+	require.Contains(t, body, `aria-label="Refresh runtime report"`,
+		"an icon-only control needs a name a screen reader can announce")
+	require.Contains(t, body, `class="am-btn am-btn-icon"`,
+		"the refresh control must reuse the catalog header's own button styling")
+	require.Contains(t, body, `<span class="am-icon-refresh"`,
+		"the refresh control must reuse the catalog header's own icon glyph")
+
+	require.NotContains(t, body, "@get('/runtime')",
+		"there is no fragment endpoint for this screen; the refresh must not pretend there is one")
+}

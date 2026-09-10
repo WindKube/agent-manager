@@ -378,3 +378,19 @@ func TestTheFormWorksWithNoTags(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Empty(t, reg.got.Tags)
 }
+
+// The owner asked for both removed by screenshot: the explanatory panel above
+// the buttons and the footer note beside them. Both must be gone, and the
+// buttons themselves must still render and still work.
+func TestTheImportModalHasNoExplanatoryBannerOrFooterNote(t *testing.T) {
+	body := get(t, handler(t, fixture.New()), "/catalog").Body.String()
+
+	require.NotContains(t, body, "The hub unpacks the tree",
+		"the registration modal's explanatory panel is still on the page")
+	require.NotContains(t, body, "Scanner verdict usually lands",
+		"the modal's footer note is still on the page")
+
+	require.Contains(t, body, ">Cancel<", "removing the footer note must not take the Cancel button with it")
+	require.Contains(t, body, ">Validate and scan<",
+		"removing the footer note must not take the submit button with it")
+}

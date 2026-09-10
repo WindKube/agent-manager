@@ -53,6 +53,15 @@ type PackageSource interface {
 	Package(ctx context.Context, namespace, name string) (view.Package, error)
 }
 
+// PackageCurator is the package detail screen's two destructive actions —
+// withdrawing a version, or the whole package, from the catalog — kept
+// apart from PackageSource for the same reason Reviewer sits apart from
+// ScannerSource: each writes an audit row a fixture must not fake.
+type PackageCurator interface {
+	DeleteVersion(ctx context.Context, namespace, name, version string) (view.VersionDeleted, error)
+	DeletePackage(ctx context.Context, namespace, name string) (view.PackageDeleted, error)
+}
+
 // PackageFileSource is the files panel's door to the api (US3/US5: read a
 // skill's files before using it), kept separate from PackageSource since a
 // deployment can answer a package's detail while its bundle reader is
@@ -161,12 +170,13 @@ type OrganizationSource interface {
 // Deps is what the role is handed. Nil on any source renders that screen's
 // unavailable state rather than an empty one or a panic.
 type Deps struct {
-	Catalog     CatalogSource
-	Packages    PackageSource
-	Files       PackageFileSource
-	PackageScan PackageScanSource
-	Registrar   Registrar
-	Auth        AuthProvider
+	Catalog        CatalogSource
+	Packages       PackageSource
+	PackageCurator PackageCurator
+	Files          PackageFileSource
+	PackageScan    PackageScanSource
+	Registrar      Registrar
+	Auth           AuthProvider
 	// Viewers resolves who each request is acting as. Nil fails closed.
 	Viewers      ViewerSource
 	Sessions     SessionMinter
@@ -264,6 +274,10 @@ func (s *Server) register() {
 	// A package id IS two segments: `example/platform-toolkit`. gin routes on
 	// the decoded path, so this splits correctly even if the id arrives encoded.
 	s.engine.GET("/packages/:namespace/:name", s.packageDetail)
+	// Both destructive: POST forms that redirect, gated on the same role the
+	// api demands, and behind a typed confirmation on the screen itself.
+	s.engine.POST("/packages/:namespace/:name/delete", s.deletePackage)
+	s.engine.POST("/packages/:namespace/:name/versions/:version/delete", s.deleteVersion)
 
 	// Both governance decisions are POST forms that redirect, so a reload
 	// cannot re-approve anything.

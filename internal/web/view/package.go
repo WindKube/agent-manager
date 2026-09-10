@@ -99,6 +99,65 @@ type Package struct {
 	FileMissing       bool
 	FileTooLarge      bool
 	FileNotRenderable bool
+
+	// DeleteAccess is whether this identity may delete a package or a
+	// version from the catalog, computed the same way OrgAccessFor is: from
+	// the viewer the api resolved, never from a role string this screen
+	// guessed at. Every delete button on this screen reads the same value.
+	DeleteAccess OrgAccess
+	// Notice is a delete's own outcome, read back off the redirect exactly
+	// as scanner.go's decisionNotice is: a token looked up here, never
+	// rendered prose the redirect itself carried.
+	Notice *Notice
+}
+
+// PackageNotice is a delete's outcome, carried by the post-redirect-get
+// query string as a token rather than as rendered prose.
+type PackageNotice string
+
+const (
+	PackageNoticeVersionDeleted PackageNotice = "version-deleted"
+	PackageNoticeRefused        PackageNotice = "refused"
+	PackageNoticeFailed         PackageNotice = "failed"
+)
+
+// PackageNoticeFrom maps a delete's outcome onto the notice banner. detail is
+// the api's own explanation for a conflict (already withdrawn, say);
+// subject is the version string for a version delete, escaped by templ on
+// render like everything else here.
+func PackageNoticeFrom(raw, detail, subject string) *Notice {
+	switch PackageNotice(raw) {
+	case PackageNoticeVersionDeleted:
+		text := "Version withdrawn from the catalog. An existing profile pin or a published " +
+			"revision still resolves it; this hub only stops offering it for a new install."
+		if subject != "" {
+			text = "Version " + subject + " withdrawn from the catalog. An existing profile pin " +
+				"or a published revision still resolves it; this hub only stops offering it for " +
+				"a new install."
+		}
+		return &Notice{Tone: "ok", Text: text}
+	case PackageNoticeRefused:
+		return &Notice{Tone: "dan", Text: "Your role may not delete anything from the catalog, so " +
+			"nothing changed."}
+	case PackageNoticeFailed:
+		text := "That delete was refused."
+		if detail != "" {
+			text = detail
+		}
+		return &Notice{Tone: "warn", Text: text}
+	default:
+		return nil
+	}
+}
+
+// VersionDeleted is a version delete's acknowledgement.
+type VersionDeleted struct {
+	PinnedByProfiles int
+}
+
+// PackageDeleted is a package delete's acknowledgement.
+type PackageDeleted struct {
+	VersionsArchived int
 }
 
 // FileRow is one file the bundle holds, as the files panel lists it.
@@ -518,6 +577,26 @@ func PackageHref(id string) string {
 	// Escaped as well as validated, so widening the pattern later cannot
 	// silently become a URL injection.
 	return "/packages/" + url.PathEscape(namespace) + "/" + url.PathEscape(name)
+}
+
+// PackageDeleteHref links the package-level delete form, validated the same
+// way PackageHref is.
+func PackageDeleteHref(id string) string {
+	namespace, name, ok := strings.Cut(id, "/")
+	if !ok || !validIDSegment(namespace) || !validIDSegment(name) {
+		return "/catalog"
+	}
+	return "/packages/" + url.PathEscape(namespace) + "/" + url.PathEscape(name) + "/delete"
+}
+
+// VersionDeleteHref links one version row's delete form.
+func VersionDeleteHref(id, version string) string {
+	namespace, name, ok := strings.Cut(id, "/")
+	if !ok || !validIDSegment(namespace) || !validIDSegment(name) {
+		return "/catalog"
+	}
+	return "/packages/" + url.PathEscape(namespace) + "/" + url.PathEscape(name) +
+		"/versions/" + url.PathEscape(version) + "/delete"
 }
 
 // ProfileHref links to one profile, validating its slug for the same reason

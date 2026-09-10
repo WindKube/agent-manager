@@ -234,6 +234,22 @@ func (p CatalogPage) ResultCount() string {
 
 func (p CatalogPage) Empty() bool { return len(p.Rows) == 0 }
 
+// CatalogNoticeFrom is a package delete's own acknowledgement, read back off
+// the redirect the same way PackageNoticeFrom is: a package delete leaves the
+// package's own detail page 404ing (its latest_version_id is cleared), so the
+// notice belongs here instead.
+func CatalogNoticeFrom(raw, id string) *Notice {
+	if raw != "package-deleted" {
+		return nil
+	}
+	text := "Package deleted from the catalog."
+	if id != "" {
+		text = "Package " + id + " deleted from the catalog. An existing profile pin or a " +
+			"published revision still resolves its versions."
+	}
+	return &Notice{Tone: "ok", Text: text}
+}
+
 // SelectedSummary is the facet trigger's summary text.
 func SelectedSummary(selected []string) string {
 	switch len(selected) {

@@ -2,6 +2,8 @@ package hub
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -31,6 +33,50 @@ func (c *Client) Package(ctx context.Context, namespace, name string) (view.Pack
 			statusError(resp.HTTPResponse, resp.Body))
 	}
 	return packageDetail(resp.JSON200, c.now()), nil
+}
+
+// DeleteVersion implements web.PackageCurator against
+// DELETE /v1/packages/{namespace}/{name}/versions/{version}.
+func (c *Client) DeleteVersion(ctx context.Context, namespace, name, version string) (view.VersionDeleted, error) {
+	resp, err := c.api.DeleteVersionWithResponse(ctx, namespace, name, version)
+	if err != nil {
+		return view.VersionDeleted{}, fmt.Errorf("delete version %s/%s@%s: %w", namespace, name, version, err)
+	}
+	if resp.JSON200 == nil {
+		return view.VersionDeleted{}, packageDeleteError(resp.HTTPResponse, resp.Body)
+	}
+	return view.VersionDeleted{PinnedByProfiles: int(resp.JSON200.PinnedByProfiles)}, nil
+}
+
+// DeletePackage implements web.PackageCurator against
+// DELETE /v1/packages/{namespace}/{name}.
+func (c *Client) DeletePackage(ctx context.Context, namespace, name string) (view.PackageDeleted, error) {
+	resp, err := c.api.DeletePackageWithResponse(ctx, namespace, name)
+	if err != nil {
+		return view.PackageDeleted{}, fmt.Errorf("delete package %s/%s: %w", namespace, name, err)
+	}
+	if resp.JSON200 == nil {
+		return view.PackageDeleted{}, packageDeleteError(resp.HTTPResponse, resp.Body)
+	}
+	return view.PackageDeleted{VersionsArchived: int(resp.JSON200.VersionsArchived)}, nil
+}
+
+// packageDeleteError adds this pair's own not-found and already-withdrawn
+// cases to governanceError, carrying the api's own detail text for the
+// latter the way orgError does for a save.
+func packageDeleteError(resp *http.Response, body []byte) error {
+	if resp != nil {
+		switch resp.StatusCode {
+		case http.StatusNotFound:
+			return view.ErrNotFound
+		case http.StatusConflict:
+			var problem apiclient.Error
+			if err := json.Unmarshal(body, &problem); err == nil && problem.Detail != nil && *problem.Detail != "" {
+				return errors.New(*problem.Detail)
+			}
+		}
+	}
+	return governanceError(resp, body)
 }
 
 func packageDetail(body *apiclient.PackageDetail, now time.Time) view.Package {

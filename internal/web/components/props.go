@@ -179,6 +179,10 @@ type Catalog struct {
 	Category Facet
 	Tags     Facet
 	Import   Import
+	// Notice is a package delete's own acknowledgement, read back off the
+	// redirect: a delete leaves the package's own detail page 404ing, so
+	// this is where its outcome is said instead.
+	Notice *view.Notice
 }
 
 // Signals is the initial datastar signal state, JSON so it is both a valid
@@ -498,4 +502,42 @@ func StateRowClass(row view.StateRow) string {
 		return "am-kv-val"
 	}
 	return "am-kv-val am-kv-val-" + tone(row.Tone)
+}
+
+// ---- catalog delete: package and version ---------------------------------
+
+// PackageDeleteConfirmDisabledExpr disables the package delete submit until
+// the typed text exactly matches the package id — the strongest confirmation
+// idiom available to a single text field, one click away from destructive.
+// namespace/name is validated at registration (pkgspec.ValidName and the
+// object-key segment pattern), so it carries no quote a JS string literal
+// would need escaped.
+func PackageDeleteConfirmDisabledExpr(id string) string {
+	return "$_deletePkgConfirm !== '" + id + "' ? 'disabled' : null"
+}
+
+// VersionDeleteConfirmDisabledExpr is the same idiom scoped to one version:
+// the confirmation text is namespace/name@version, so confirming the wrong
+// row's form does nothing even if two rows were open, which they cannot be.
+func VersionDeleteConfirmDisabledExpr(id, version string) string {
+	return "$_deleteVersionConfirm !== '" + id + "@" + version + "' ? 'disabled' : null"
+}
+
+// VersionDeleteToggleExpr opens one version row's confirm form and closes
+// whichever other row had it open — $_deleteVersion holds at most one
+// semver, the same single-open idiom the catalog's own facet menu ($menu)
+// uses — clearing the typed text so it can never carry over onto another
+// version's confirmation.
+func VersionDeleteToggleExpr(version string) string {
+	return "$_deleteVersion = ($_deleteVersion === '" + version + "' ? '' : '" + version +
+		"'); $_deleteVersionConfirm = ''"
+}
+
+// VersionDeleteFormStyleExpr is that row's confirm form's own visibility, as
+// data-style:display rather than data-show: the form is .am-field-row, which
+// is display:flex, and data-show only ever REMOVES display, which would
+// leave it at the flex box's block default — see import.templ's own note on
+// the same hazard.
+func VersionDeleteFormStyleExpr(version string) string {
+	return "$_deleteVersion === '" + version + "' ? 'flex' : 'none'"
 }

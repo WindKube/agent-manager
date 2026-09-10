@@ -135,11 +135,12 @@ func runWeb(ctx context.Context) error {
 	}
 
 	server := web.New(web.Deps{
-		Catalog:   client,
-		Packages:  client,
-		Files:     client,
-		Registrar: client,
-		Auth:      authProvider,
+		Catalog:        client,
+		Packages:       client,
+		PackageCurator: client,
+		Files:          client,
+		Registrar:      client,
+		Auth:           authProvider,
 		// Same client, different fields: resolving the viewer and minting
 		// a session are different claims.
 		Viewers:  client,

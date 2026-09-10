@@ -31,6 +31,7 @@ func (s *Server) catalog(c *gin.Context) {
 		// option lists: it is the admin-curated vocabulary (FR-049), a select rather
 		// than a searchable menu, and a registration can only choose from it.
 		Import: components.Import{Categories: categoryNames(page)},
+		Notice: view.CatalogNoticeFrom(c.Query("notice"), c.Query("id")),
 	}))
 }
 

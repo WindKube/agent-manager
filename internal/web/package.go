@@ -3,6 +3,7 @@ package web
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -11,6 +12,10 @@ import (
 	"agent-manager/internal/web/hub"
 	"agent-manager/internal/web/view"
 )
+
+// maxPackageNoticeDetailLength bounds what a failed delete's reason carries
+// into a redirect's query string, mirroring org.go's maxOrgDetailLength.
+const maxPackageNoticeDetailLength = 300
 
 // The package detail screen (US3). It is a plain server render with no signals:
 // nothing on it filters, sorts or pages, so there is nothing for datastar to do
@@ -51,6 +56,8 @@ func (s *Server) packageDetail(c *gin.Context) {
 		s.loadProfileOptions(c, &detail)
 		s.loadFiles(c, &detail, namespace, name)
 		s.loadScan(c, &detail, namespace, name)
+		detail.DeleteAccess = view.PackageDeleteAccessFor(viewerFor(c))
+		detail.Notice = view.PackageNoticeFrom(c.Query("notice"), packageNoticeDetailFromURL(c), c.Query("version"))
 	}
 
 	title := detail.Name
@@ -58,6 +65,111 @@ func (s *Server) packageDetail(c *gin.Context) {
 		title = "Package"
 	}
 	s.render(c, status, title, "catalog", components.PackageScreen(detail))
+}
+
+func packageNoticeDetailFromURL(c *gin.Context) string {
+	detail := c.Query("detail")
+	if len(detail) > maxPackageNoticeDetailLength {
+		return ""
+	}
+	return detail
+}
+
+// packageAccessGuard refuses a request from an identity the screen already
+// hides or disables the action for. Refused HERE, before any call to the
+// api, mirroring org.go's orgAccessGuard and for the same reason.
+func (s *Server) packageAccessGuard(c *gin.Context, namespace, name string) bool {
+	if view.PackageDeleteAccessFor(viewerFor(c)).Allowed {
+		return true
+	}
+	logFrom(c).Warn().Str("package", namespace+"/"+name).
+		Msg("catalog delete requested by an identity without the role")
+	s.backToPackage(c, namespace, name, view.PackageNoticeRefused, "", "")
+	return false
+}
+
+// backToPackage is post-redirect-get's redirect half, carrying the outcome
+// and an optional detail or subject as tokens the screen looks its copy up
+// from, never as rendered prose this handler wrote — the same idiom
+// backToOrg follows.
+func (s *Server) backToPackage(c *gin.Context, namespace, name string, notice view.PackageNotice, detail, version string) {
+	values := url.Values{}
+	values.Set("notice", string(notice))
+	if detail != "" && len(detail) <= maxPackageNoticeDetailLength {
+		values.Set("detail", detail)
+	}
+	if version != "" {
+		values.Set("version", version)
+	}
+	c.Header("Cache-Control", "no-store")
+	c.Redirect(http.StatusSeeOther, view.PackageHref(namespace+"/"+name)+"?"+values.Encode())
+}
+
+// backToCatalogAfterDelete is deletePackage's own redirect: the package's
+// own detail page 404s the instant latest_version_id clears, so the
+// acknowledgement belongs on the catalog instead of on a page that just
+// stopped resolving.
+func (s *Server) backToCatalogAfterDelete(c *gin.Context, id string) {
+	values := url.Values{}
+	values.Set("notice", "package-deleted")
+	values.Set("id", id)
+	c.Header("Cache-Control", "no-store")
+	c.Redirect(http.StatusSeeOther, "/catalog?"+values.Encode())
+}
+
+// deleteVersion withdraws one version (US-catalog-delete). The archive
+// itself, and why it is one rather than a hard delete, is
+// commands.DeleteVersion's own comment.
+func (s *Server) deleteVersion(c *gin.Context) {
+	namespace, name, version := c.Param("namespace"), c.Param("name"), c.Param("version")
+	if !s.packageAccessGuard(c, namespace, name) {
+		return
+	}
+	if s.deps.PackageCurator == nil {
+		s.backToPackage(c, namespace, name, view.PackageNoticeFailed,
+			"this hub is not configured to delete from the catalog", "")
+		return
+	}
+	if _, err := s.deps.PackageCurator.DeleteVersion(session(c), namespace, name, version); err != nil {
+		s.packageDeleteFailed(c, namespace, name, err)
+		return
+	}
+	s.backToPackage(c, namespace, name, view.PackageNoticeVersionDeleted, "", version)
+}
+
+// deletePackage withdraws every version of a package.
+func (s *Server) deletePackage(c *gin.Context) {
+	namespace, name := c.Param("namespace"), c.Param("name")
+	if !s.packageAccessGuard(c, namespace, name) {
+		return
+	}
+	if s.deps.PackageCurator == nil {
+		s.backToPackage(c, namespace, name, view.PackageNoticeFailed,
+			"this hub is not configured to delete from the catalog", "")
+		return
+	}
+	if _, err := s.deps.PackageCurator.DeletePackage(session(c), namespace, name); err != nil {
+		s.packageDeleteFailed(c, namespace, name, err)
+		return
+	}
+	s.backToCatalogAfterDelete(c, namespace+"/"+name)
+}
+
+// packageDeleteFailed maps a delete's refusal onto the redirect's notice
+// token, following orgSaveFailed's own split.
+func (s *Server) packageDeleteFailed(c *gin.Context, namespace, name string, err error) {
+	switch {
+	case errors.Is(err, view.ErrSignedOut):
+		s.toSignIn(c)
+	case errors.Is(err, hub.ErrForbidden):
+		logFrom(c).Warn().Msg("the api refused a catalog delete this screen offered")
+		s.backToPackage(c, namespace, name, view.PackageNoticeRefused, "", "")
+	case errors.Is(err, view.ErrNotFound):
+		s.notFound(c)
+	default:
+		logFrom(c).Info().Err(err).Msg("catalog delete refused")
+		s.backToPackage(c, namespace, name, view.PackageNoticeFailed, err.Error(), "")
+	}
 }
 
 // loadProfileOptions fills in the add-to-profile control (US5) from the same

@@ -204,7 +204,7 @@ func (r *Relay) deliverBatch(ctx context.Context) (int, error) {
 		ids := make([]uuid.UUID, 0, len(rows))
 		for _, row := range rows {
 			args := queuedJob{kind: row.kind, payload: row.payload}
-			opts := &river.InsertOpts{Queue: Queue(Kind(row.kind))}
+			opts := &river.InsertOpts{Queue: Queue(Kind(row.kind)), MaxAttempts: MaxJobAttempts}
 			if err := r.queue.InsertJob(ctx, args, opts); err != nil {
 				return fmt.Errorf("insert %s job %s into the queue: %w", row.kind, row.id, err)
 			}

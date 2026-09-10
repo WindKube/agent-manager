@@ -50,8 +50,13 @@ Every package that enters the system is hostile until proven otherwise. Concrete
   count, per-entry size, total decompressed size, and path depth. Absolute paths,
   `..` traversal, symlinks and hardlinks are rejected, not sanitised.
 - The scanner performs **static analysis only**. It never executes, sources, imports or
-  evaluates anything from a bundle. No `exec`, no interpreter, no container escape
-  hatch "just to run the postinstall".
+  evaluates anything **from a bundle**. No container escape hatch "just to run the
+  postinstall". A pinned third-party static-analysis engine may read an extracted tree,
+  provided it is reached over a documented interface, its analyzer set is fixed in code,
+  and no analyzer that executes bundle content or reaches a network is enabled. Such an
+  engine runs as infrastructure under principle VI, holding no credential of this
+  system's, on a network with no egress — never as an interpreter inside a role's own
+  image.
 - Content rendered from a manifest, a `SKILL.md` or a scan evidence snippet is escaped
   at the template layer. `templ.Raw` on package-derived content is forbidden.
 
@@ -157,6 +162,7 @@ in the feature's `plan.md` Complexity Tracking table.
 | Web UI | `a-h/templ` components, `starfederation/datastar-go` for reactivity, Tailwind standalone binary. **No Node.js in any image.** |
 | Identity | `coreos/go-oidc/v3` + `golang.org/x/oauth2`, RFC 8628 device flow; locally **Dex in front of glauth**. The directory is not optional: Dex's static-password connector emits no `groups` claim, and that claim is the sole input to the group-to-role map (003 R1) |
 | Scanner analysis | `santhosh-tekuri/jsonschema/v6`, `goccy/go-yaml`, `mvdan.cc/sh/v3/syntax`, stdlib `regexp` (RE2) |
+| Second scan engine | `cisco-ai-defense/skill-scanner` (Apache 2.0), pinned, as its own credential-free service reached over its REST interface. Static analyzers only: `static`, `bytecode`, `pipeline`, `behavioral`. The LLM, VirusTotal and AI Defense analyzers are forbidden — they need an API key and a network call |
 | Config / CLI / logs | `caarlos0/env/v11`, `spf13/cobra`, `rs/zerolog` |
 | Tests | `stretchr/testify`, `testcontainers-go` |
 
@@ -213,9 +219,23 @@ project owner to change.
 Versioning is semantic: MAJOR for removing or redefining a principle, MINOR for adding a
 principle or a materially new constraint, PATCH for wording and clarification.
 
-**Version**: 1.3.2 | **Ratified**: 2026-08-27 | **Last Amended**: 2026-09-04
+**Version**: 1.4.0 | **Ratified**: 2026-08-27 | **Last Amended**: 2026-09-10
 
 ### Amendment record
+
+- **1.4.0** (2026-09-10) — Principle III's static-analysis clause is narrowed to what it
+  was protecting. It read "No `exec`, no interpreter", which forbids bundle execution and,
+  read literally, also forbids any analysis engine not written in Go. Feature 004 adds a
+  second engine (`cisco-ai-defense/skill-scanner`) whose analyzers are all static; the
+  clause now forbids executing anything *from a bundle* and states the conditions a
+  third-party engine must meet. The conditions are the load-bearing part: a documented
+  interface, an analyzer set fixed in code, no network-reaching analyzer, no credential of
+  this system's, and no egress. Principle II decided the hosting: the engine parses hostile
+  input with a C extension (YARA), so it runs in a credential-free service rather than as
+  an interpreter inside the scanner's own image, which would have put that parser next to
+  the database credential and the object-store key. Principle I is not engaged — principle
+  VI already excludes third-party infrastructure images from it, and the engine image
+  carries no code this project writes.
 
 - **1.3.2** (2026-09-04) — No principle changed. The Technology Constraints table named
   `doyensec/safeurl` as the sanctioned SSRF client, but R10 rejected it before feature 001

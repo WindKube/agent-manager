@@ -177,6 +177,7 @@ func Findings(ctx context.Context, db bun.IDB, filter FindingFilter) (contract.F
 select
   fnd.id,
   fnd.rule_id,
+  fnd.engine,
   fnd.severity::text,
   fnd.state::text,
   fnd.title,
@@ -210,7 +211,7 @@ limit ? offset ?`
 			entry contract.FindingSummary
 			line  sql.NullInt32
 		)
-		if err := rows.Scan(&entry.ID, &entry.RuleID, &entry.Severity, &entry.State, &entry.Title,
+		if err := rows.Scan(&entry.ID, &entry.RuleID, &entry.Engine, &entry.Severity, &entry.State, &entry.Title,
 			&entry.PackageID, &entry.Version, &entry.Verdict, &entry.RaisedAt,
 			&entry.EvidencePath, &line); err != nil {
 			return contract.FindingsPage{}, fmt.Errorf("scan a findings row: %w", err)
@@ -241,6 +242,7 @@ const findingDetailSQL = `
 select
   fnd.id,
   fnd.rule_id,
+  fnd.engine,
   fnd.severity::text,
   fnd.state::text,
   fnd.title,
@@ -280,7 +282,7 @@ func Finding(ctx context.Context, db bun.IDB, id uuid.UUID) (contract.FindingDet
 		decidedAt sql.NullTime
 	)
 	err := db.QueryRowContext(ctx, findingDetailSQL, id).Scan(
-		&out.ID, &out.RuleID, &out.Severity, &out.State, &out.Title, &out.Detail,
+		&out.ID, &out.RuleID, &out.Engine, &out.Severity, &out.State, &out.Title, &out.Detail,
 		&out.PackageID, &out.Version, &out.Verdict, &out.RaisedAt,
 		&scan.PackVersion, &scan.StartedAt, &finished, &scan.Verdict, &scan.TimedOut,
 		&hasOvr, &reviewer, &note, &expires, &decidedAt)
@@ -321,18 +323,19 @@ func Finding(ctx context.Context, db bun.IDB, id uuid.UUID) (contract.FindingDet
 // The scan is the relation, not the finding, since a passing check has no
 // finding to hang off.
 //
-// Order is check_id ascending; the `created_at` in front of it never
+// Order groups by engine first, so the matrix reads as one block per
+// analyser. Within an engine it is check_id ascending; the `created_at` in front of it never
 // breaks a tie in practice, since the scanner writes the whole matrix in
 // one transaction and the column defaults to the transaction timestamp —
 // every row shares an instant, so the sort falls through to check_id and
 // the matrix renders alphabetically, not in registration order.
 func findingChecks(ctx context.Context, db bun.IDB, id uuid.UUID) ([]contract.FindingCheck, error) {
 	const query = `
-select schk.check_id, schk.label, schk.result::text, schk.warn_count
+select schk.check_id, schk.engine, schk.label, schk.result::text, schk.warn_count
 from scan_check as schk
 join finding as fnd on fnd.scan_id = schk.scan_id
 where fnd.id = ?
-order by schk.created_at, schk.check_id`
+order by schk.engine, schk.created_at, schk.check_id`
 
 	rows, err := db.QueryContext(ctx, query, id)
 	if err != nil {
@@ -343,7 +346,7 @@ order by schk.created_at, schk.check_id`
 	checks := []contract.FindingCheck{}
 	for rows.Next() {
 		var check contract.FindingCheck
-		if err := rows.Scan(&check.CheckID, &check.Label, &check.Result, &check.WarnCount); err != nil {
+		if err := rows.Scan(&check.CheckID, &check.Engine, &check.Label, &check.Result, &check.WarnCount); err != nil {
 			return nil, fmt.Errorf("scan a check row: %w", err)
 		}
 		checks = append(checks, check)

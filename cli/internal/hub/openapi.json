@@ -749,6 +749,13 @@
             ],
             "type": "string"
           },
+          "engine": {
+            "description": "The analyser this row belongs to, so the matrix can be read as \"the rule pack passed, the second engine failed\" rather than as one undifferentiated list.",
+            "examples": [
+              "rulepack"
+            ],
+            "type": "string"
+          },
           "label": {
             "description": "The check's own label, as the scan recorded it. A screen that mapped check ids to labels itself would stop naming a check added after it shipped.",
             "examples": [
@@ -778,6 +785,7 @@
         },
         "required": [
           "checkId",
+          "engine",
           "label",
           "result",
           "warnCount"
@@ -839,6 +847,13 @@
           },
           "detail": {
             "description": "Why this was raised, in prose.",
+            "type": "string"
+          },
+          "engine": {
+            "description": "The analyser that raised it. Two engines may use the same rule id, so a finding is identified by the pair.",
+            "examples": [
+              "rulepack"
+            ],
             "type": "string"
           },
           "evidence": {
@@ -925,6 +940,7 @@
         "required": [
           "id",
           "ruleId",
+          "engine",
           "severity",
           "state",
           "title",
@@ -1069,6 +1085,13 @@
       "FindingSummary": {
         "additionalProperties": false,
         "properties": {
+          "engine": {
+            "description": "The analyser that raised it. Two engines may use the same rule id, so a finding is identified by the pair.",
+            "examples": [
+              "rulepack"
+            ],
+            "type": "string"
+          },
           "evidenceLine": {
             "description": "Absent when the finding names a file without a line.",
             "examples": [
@@ -1158,6 +1181,7 @@
         "required": [
           "id",
           "ruleId",
+          "engine",
           "severity",
           "state",
           "title",

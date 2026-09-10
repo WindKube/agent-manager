@@ -1,6 +1,7 @@
 package scanner_test
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"os"
@@ -75,7 +76,7 @@ func TestTheScannerRefusesDependenciesItDidNotDeclare(t *testing.T) {
 	t.Run("the declared set builds", func(t *testing.T) {
 		w, err := scanner.New(base, scanner.Options{})
 		require.NoError(t, err)
-		require.NotEmpty(t, w.PackVersion(), "every scan records the pack version it ran")
+		require.NotEmpty(t, w.Fingerprint(context.Background()), "every scan records the pack version it ran")
 	})
 }
 
@@ -205,7 +206,7 @@ func TestAMountedPackThatFailsItsOwnFixturesCannotStartTheRole(t *testing.T) {
 		// wearing this test's clothes.
 		w, err := scanner.New(deps, scanner.Options{RulepackDir: mountedPack(t, nil)})
 		require.NoError(t, err)
-		require.NotEmpty(t, w.PackVersion())
+		require.NotEmpty(t, w.Fingerprint(context.Background()))
 	})
 
 	t.Run("a rule widened until it matches everything", func(t *testing.T) {

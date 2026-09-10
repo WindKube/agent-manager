@@ -191,14 +191,14 @@ func cliPending(s view.CLI) templ.Component {
 			templ_7745c5c3_Var7 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<div class=\"am-gov-card\" id=\"cli-pending\"><div class=\"am-label\">Requesting machine</div><p class=\"am-note am-mono\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<div class=\"am-gov-card\" id=\"cli-pending\"><div class=\"am-gov-body am-gov-body-stack\"><div class=\"am-label\">Requesting machine</div><p class=\"am-note am-mono\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var8 string
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(s.Pending.RequestingHost)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 83, Col: 55}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 84, Col: 56}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 		if templ_7745c5c3_Err != nil {
@@ -211,7 +211,7 @@ func cliPending(s view.CLI) templ.Component {
 		var templ_7745c5c3_Var9 string
 		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(s.Countdown)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 85, Col: 53}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 86, Col: 54}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 		if templ_7745c5c3_Err != nil {
@@ -224,13 +224,13 @@ func cliPending(s view.CLI) templ.Component {
 		var templ_7745c5c3_Var10 string
 		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue(s.UserCode)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 87, Col: 59}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 88, Col: 60}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "\"><div class=\"am-gate-actions\"><button type=\"submit\" class=\"am-btn am-btn-primary\">Approve this machine</button></div></form></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "\"><div class=\"am-gate-actions\"><button type=\"submit\" class=\"am-btn am-btn-primary\">Approve this machine</button></div></form></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -261,7 +261,7 @@ func cliNoPending(s view.CLI) templ.Component {
 			templ_7745c5c3_Var11 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<div class=\"am-gov-card\" id=\"cli-no-pending\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<div class=\"am-gov-card\" id=\"cli-no-pending\"><div class=\"am-gov-body am-gov-body-stack\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -278,7 +278,7 @@ func cliNoPending(s view.CLI) templ.Component {
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(s.Command)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 106, Col: 41}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 109, Col: 42}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 			if templ_7745c5c3_Err != nil {
@@ -291,7 +291,7 @@ func cliNoPending(s view.CLI) templ.Component {
 			var templ_7745c5c3_Var13 string
 			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(s.HubURL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 108, Col: 40}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 111, Col: 41}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 			if templ_7745c5c3_Err != nil {
@@ -302,7 +302,7 @@ func cliNoPending(s view.CLI) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

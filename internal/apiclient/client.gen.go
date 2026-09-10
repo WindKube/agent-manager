@@ -2093,6 +2093,11 @@ type FindingCheck struct {
 	// CheckId Examples: network-allowlist
 	CheckId string `json:"checkId"`
 
+	// Engine The analyser this row belongs to, so the matrix can be read as "the rule pack passed, the second engine failed" rather than as one undifferentiated list.
+	//
+	// Examples: rulepack
+	Engine string `json:"engine"`
+
 	// Label The check's own label, as the scan recorded it. A screen that mapped check ids to labels itself would stop naming a check added after it shipped.
 	//
 	// Examples: Network allowlist
@@ -2136,6 +2141,11 @@ type FindingDetail struct {
 
 	// Detail Why this was raised, in prose.
 	Detail *string `json:"detail,omitempty"`
+
+	// Engine The analyser that raised it. Two engines may use the same rule id, so a finding is identified by the pair.
+	//
+	// Examples: rulepack
+	Engine string `json:"engine"`
 
 	// Evidence Every location this finding points at, cause first. Rendered escaped, always (FR-055).
 	Evidence []FindingEvidence  `json:"evidence"`
@@ -2246,6 +2256,11 @@ type FindingScanVerdict string
 
 // FindingSummary defines model for FindingSummary.
 type FindingSummary struct {
+	// Engine The analyser that raised it. Two engines may use the same rule id, so a finding is identified by the pair.
+	//
+	// Examples: rulepack
+	Engine string `json:"engine"`
+
 	// EvidenceLine Absent when the finding names a file without a line.
 	//
 	// Examples: 41

@@ -58,38 +58,40 @@ templ orgProvider(s view.Org) {
 		<div class="am-section-head">
 			<div class="am-section-title">Identity provider</div>
 		</div>
-		<div class="am-kv">
-			<div class="am-kv-key">Issuer</div>
-			<div class="am-mono am-kv-val">{ s.Data.Provider.Issuer }</div>
-		</div>
-		<div class="am-kv">
-			<div class="am-kv-key">Client ID</div>
-			<div class="am-mono am-kv-val">{ s.Data.Provider.ClientID }</div>
-		</div>
-		<div class="am-kv">
-			<div class="am-kv-key">Scopes</div>
-			<div class="am-mono am-kv-val">
-				for i, scope := range s.Data.Provider.Scopes {
-					if i > 0 {
-						{ " " }
-					}
-					{ scope }
-				}
-			</div>
-		</div>
-		if s.Data.Provider.DeviceAuthorizationEndpoint != "" {
+		<div class="am-gov-body">
 			<div class="am-kv">
-				<div class="am-kv-key">Device authorization endpoint</div>
-				<div class="am-mono am-kv-val">{ s.Data.Provider.DeviceAuthorizationEndpoint }</div>
+				<div class="am-kv-key">Issuer</div>
+				<div class="am-mono am-kv-val">{ s.Data.Provider.Issuer }</div>
 			</div>
-		}
-		if s.Connected != nil {
-			if s.Connected.OK {
-				<div class="am-notice am-notice-ok" id="org-connection-ok">Connection ok.</div>
-			} else {
-				<div class="am-notice am-notice-dan" id="org-connection-failed">{ s.Connected.Detail }</div>
+			<div class="am-kv">
+				<div class="am-kv-key">Client ID</div>
+				<div class="am-mono am-kv-val">{ s.Data.Provider.ClientID }</div>
+			</div>
+			<div class="am-kv">
+				<div class="am-kv-key">Scopes</div>
+				<div class="am-mono am-kv-val">
+					for i, scope := range s.Data.Provider.Scopes {
+						if i > 0 {
+							{ " " }
+						}
+						{ scope }
+					}
+				</div>
+			</div>
+			if s.Data.Provider.DeviceAuthorizationEndpoint != "" {
+				<div class="am-kv">
+					<div class="am-kv-key">Device authorization endpoint</div>
+					<div class="am-mono am-kv-val">{ s.Data.Provider.DeviceAuthorizationEndpoint }</div>
+				</div>
 			}
-		}
+			if s.Connected != nil {
+				if s.Connected.OK {
+					<div class="am-card-notice am-gov-notice-ok" id="org-connection-ok">Connection ok.</div>
+				} else {
+					<div class="am-card-notice am-gov-notice-dan" id="org-connection-failed">{ s.Connected.Detail }</div>
+				}
+			}
+		</div>
 		<div class="am-org-form-row">
 			<form method="post" action="/org/identity/test">
 				<button type="submit" class="am-btn">Test connection</button>
@@ -109,63 +111,65 @@ templ orgPolicy(s view.Org) {
 		<div class="am-section-head">
 			<div class="am-section-title">Policy</div>
 		</div>
-		<form class="am-field" method="post" action="/org/policy">
-			<div class="am-field">
-				<label class="am-label" for="org-scan-gate">Scan gate</label>
-				<select id="org-scan-gate" class="am-select" name="scanGate">
-					for _, gate := range view.ScanGates {
-						if gate == s.Data.Policy.ScanGate {
-							<option value={ gate } selected>{ view.ScanGateLabel(gate) }</option>
-						} else {
-							<option value={ gate }>{ view.ScanGateLabel(gate) }</option>
+		<form method="post" action="/org/policy">
+			<div class="am-gov-body am-gov-body-stack">
+				<div class="am-field">
+					<label class="am-label" for="org-scan-gate">Scan gate</label>
+					<select id="org-scan-gate" class="am-select" name="scanGate">
+						for _, gate := range view.ScanGates {
+							if gate == s.Data.Policy.ScanGate {
+								<option value={ gate } selected>{ view.ScanGateLabel(gate) }</option>
+							} else {
+								<option value={ gate }>{ view.ScanGateLabel(gate) }</option>
+							}
 						}
-					}
-				</select>
+					</select>
+				</div>
+				<label class="am-toggle">
+					<input type="checkbox" name="requireSignedBundles" if s.Data.Policy.RequireSignedBundles {
+						checked
+					}/>
+					<span class="am-toggle-label">
+						Require signed bundles
+						<span class="am-toggle-note">
+							A version with no verifiable signature is excluded from every resolution,
+							whatever its verdict.
+						</span>
+					</span>
+				</label>
+				<label class="am-toggle">
+					<input type="checkbox" name="communityNeedsReview" if s.Data.Policy.CommunityNeedsReview {
+						checked
+					}/>
+					<span class="am-toggle-label">
+						Community sources need review
+						<span class="am-toggle-note">
+							A version from a publisher this hub has not verified is flagged for a
+							reviewer before it is treated as distributable.
+						</span>
+					</span>
+				</label>
+				<label class="am-toggle">
+					<input type="checkbox" name="rescanOnNewVersion" if s.Data.Policy.RescanOnNewVersion {
+						checked
+					}/>
+					<span class="am-toggle-label">
+						Rescan on new version
+						<span class="am-toggle-note">
+							A newly published version is picked up by the scan sweep rather than
+							waiting for the next scheduled pass.
+						</span>
+					</span>
+				</label>
+				<label class="am-toggle">
+					<input type="checkbox" name="allowPersonalProfiles" if s.Data.Policy.AllowPersonalProfiles {
+						checked
+					}/>
+					<span class="am-toggle-label">
+						Allow personal profiles
+					</span>
+				</label>
 			</div>
-			<label class="am-toggle">
-				<input type="checkbox" name="requireSignedBundles" if s.Data.Policy.RequireSignedBundles {
-					checked
-				}/>
-				<span class="am-toggle-label">
-					Require signed bundles
-					<span class="am-toggle-note">
-						A version with no verifiable signature is excluded from every resolution,
-						whatever its verdict.
-					</span>
-				</span>
-			</label>
-			<label class="am-toggle">
-				<input type="checkbox" name="communityNeedsReview" if s.Data.Policy.CommunityNeedsReview {
-					checked
-				}/>
-				<span class="am-toggle-label">
-					Community sources need review
-					<span class="am-toggle-note">
-						A version from a publisher this hub has not verified is flagged for a
-						reviewer before it is treated as distributable.
-					</span>
-				</span>
-			</label>
-			<label class="am-toggle">
-				<input type="checkbox" name="rescanOnNewVersion" if s.Data.Policy.RescanOnNewVersion {
-					checked
-				}/>
-				<span class="am-toggle-label">
-					Rescan on new version
-					<span class="am-toggle-note">
-						A newly published version is picked up by the scan sweep rather than
-						waiting for the next scheduled pass.
-					</span>
-				</span>
-			</label>
-			<label class="am-toggle">
-				<input type="checkbox" name="allowPersonalProfiles" if s.Data.Policy.AllowPersonalProfiles {
-					checked
-				}/>
-				<span class="am-toggle-label">
-					Allow personal profiles
-				</span>
-			</label>
 			<div class="am-org-form-row">
 				<button type="submit" class="am-btn am-btn-primary">Save policy</button>
 			</div>

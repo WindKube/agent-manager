@@ -19,6 +19,7 @@ import (
 	"agent-manager/internal/outbox"
 	"agent-manager/internal/worker"
 	"agent-manager/internal/worker/scanner/checks"
+	"agent-manager/internal/worker/scanner/engine"
 	"agent-manager/internal/worker/scanner/rules"
 )
 
@@ -59,7 +60,17 @@ func register(deps worker.Deps, workers *river.Workers) error {
 		return fmt.Errorf("scanner: %w", err)
 	}
 
-	handler, err := New(deps, Options{RulepackDir: cfg.RulepackDir, Budget: cfg.ScanBudget})
+	client, err := engineClient(cfg)
+	if err != nil {
+		return err
+	}
+
+	handler, err := New(deps, Options{
+		RulepackDir:    cfg.RulepackDir,
+		Budget:         cfg.ScanBudget,
+		Engine:         client,
+		EngineRequired: cfg.ScanEngineRequired,
+	})
 	if err != nil {
 		return err
 	}
@@ -76,17 +87,22 @@ type Options struct {
 	RulepackDir string
 	// Budget bounds one scan. Zero takes the config default.
 	Budget time.Duration
+	// Engine is the second analysis engine. Nil runs the rule pack alone.
+	Engine engine.Client
+	// EngineRequired fails a version the engine could not analyse rather than
+	// clearing it on the rule pack alone.
+	EngineRequired bool
 }
 
 // Worker works one `scan` job.
 type Worker struct {
 	river.WorkerDefaults[Job]
 
-	deps     worker.Deps
-	pack     *rules.Pack
-	registry *checks.Registry
-	limits   bundle.Limits
-	budget   time.Duration
+	deps      worker.Deps
+	pack      *rules.Pack
+	analyzers []analyzer
+	limits    bundle.Limits
+	budget    time.Duration
 }
 
 // New assembles the handler from what the bootstrap handed the role.
@@ -114,7 +130,7 @@ func New(deps worker.Deps, opts Options) (*Worker, error) {
 
 	// Verified unconditionally: a bad pattern or missing fixture path would
 	// otherwise start cleanly and flag or skip for no reason a reviewer can act on.
-	if err := checks.Verify(context.Background(), pack); err != nil {
+	if err = checks.Verify(context.Background(), pack); err != nil {
 		return nil, fmt.Errorf("scanner: %w", err)
 	}
 
@@ -133,12 +149,17 @@ func New(deps worker.Deps, opts Options) (*Worker, error) {
 	}
 	log.Msg("rule pack loaded")
 
+	analyzers, err := newAnalyzers(registry, pack, opts.Engine, opts.EngineRequired, deps.Log)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Worker{
-		deps:     deps,
-		pack:     pack,
-		registry: registry,
-		limits:   bundle.DefaultLimits(),
-		budget:   budget,
+		deps:      deps,
+		pack:      pack,
+		analyzers: analyzers,
+		limits:    bundle.DefaultLimits(),
+		budget:    budget,
 	}, nil
 }
 
@@ -146,8 +167,12 @@ func New(deps worker.Deps, opts Options) (*Worker, error) {
 // without one.
 const defaultBudget = 120 * time.Second
 
-// PackVersion is the value this worker records in `scan.pack_version`.
-func (w *Worker) PackVersion() string { return w.pack.Version() }
+// Fingerprint is the value this worker records in `scan.pack_version`. It names
+// every analyzer that will run, so upgrading either one makes the next scan of
+// an already-scanned version run instead of being suppressed by its own guard.
+func (w *Worker) Fingerprint(ctx context.Context) string {
+	return fingerprint(ctx, w.analyzers)
+}
 
 // Timeout is River's per-job budget.
 func (w *Worker) Timeout(*river.Job[Job]) time.Duration { return jobTimeout }

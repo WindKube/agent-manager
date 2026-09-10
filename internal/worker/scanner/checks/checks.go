@@ -45,7 +45,10 @@ type Evidence struct {
 
 // Finding is one problem a check raised.
 type Finding struct {
-	RuleID   string
+	RuleID string
+	// Engine names the analyser that raised it. Two engines may use the same
+	// rule id, so this is what disambiguates them.
+	Engine   string
 	Severity rules.Severity
 	Title    string
 	Detail   string
@@ -76,8 +79,10 @@ type Check interface {
 // CheckRun is one row of the checks-run matrix.
 type CheckRun struct {
 	CheckID string
-	Label   string
-	Result  Result
+	// Engine names the analyser the row belongs to.
+	Engine string
+	Label  string
+	Result Result
 }
 
 // Registry is the one list of checks.
@@ -184,9 +189,10 @@ func severityRank(s rules.Severity) int {
 	}
 }
 
-// grade turns a check's findings into its matrix result: a high-severity
-// finding fails the check, anything else warns with a count.
-func grade(findings []Finding, blindSpots int) Result {
+// Grade turns a check's findings into its matrix result: a high-severity
+// finding fails the check, anything else warns with a count. It is exported so
+// a check outside this package grades on the same rule.
+func Grade(findings []Finding, blindSpots int) Result {
 	result := Result{Outcome: OutcomePass, WarnCount: blindSpots}
 	for _, finding := range findings {
 		if finding.Severity == rules.SeverityHigh {
@@ -201,11 +207,13 @@ func grade(findings []Finding, blindSpots int) Result {
 	return result
 }
 
-// clip bounds a quote taken from bundle content: attacker-controlled, so
-// neither its size nor its control characters may be trusted.
+// maxQuoteBytes bounds a quote taken from bundle content: attacker-controlled,
+// so neither its size nor its control characters may be trusted.
 const maxQuoteBytes = 240
 
-func clip(text string) string {
+// Clip is the one way bundle content becomes a stored quote. Exported so an
+// analyser outside this package cannot grow a second, laxer copy.
+func Clip(text string) string {
 	text = strings.Map(func(r rune) rune {
 		switch {
 		case r == '\t', r == '\n', r == '\r':

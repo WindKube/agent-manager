@@ -46,8 +46,11 @@ type ScannerSummary struct {
 // Finding is one row of the findings list.
 type Finding struct {
 	// ID is the api's uuid as a string, since it goes straight back into a URL.
-	ID       string
-	RuleID   string
+	ID     string
+	RuleID string
+	// Engine names the analyser that raised it; two engines may use the same
+	// rule id.
+	Engine   string
 	Severity string
 	State    string
 	Title    string
@@ -101,8 +104,10 @@ type Evidence struct {
 
 // Check is one check the scan ran.
 type Check struct {
-	ID    string
-	Label string
+	ID string
+	// Engine names the analyser this row belongs to.
+	Engine string
+	Label  string
 	// Result is pass, fail or warn, canonical and unrendered.
 	Result    string
 	WarnCount int
@@ -269,6 +274,7 @@ func (c *Client) Finding(ctx context.Context, id string) (FindingDetail, error) 
 		Finding: Finding{
 			ID:        body.Id.String(),
 			RuleID:    body.RuleId,
+			Engine:    body.Engine,
 			Severity:  string(body.Severity),
 			State:     string(body.State),
 			Title:     body.Title,
@@ -306,7 +312,7 @@ func (c *Client) Finding(ctx context.Context, id string) (FindingDetail, error) 
 	}
 	for _, check := range body.Checks {
 		out.Checks = append(out.Checks, Check{
-			ID: check.CheckId, Label: check.Label,
+			ID: check.CheckId, Engine: check.Engine, Label: check.Label,
 			Result: string(check.Result), WarnCount: int(check.WarnCount),
 		})
 	}
@@ -451,6 +457,7 @@ func finding(from *apiclient.FindingSummary) Finding {
 	return Finding{
 		ID:           from.Id.String(),
 		RuleID:       from.RuleId,
+		Engine:       from.Engine,
 		Severity:     string(from.Severity),
 		State:        string(from.State),
 		Title:        from.Title,

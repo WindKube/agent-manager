@@ -89,6 +89,24 @@ type Scanner struct {
 	BlobURL          string        `env:"BLOB_URL,required,notEmpty"`
 	RulepackDir      string        `env:"RULEPACK_DIR" envDefault:"/etc/agent-manager/rulepack"`
 	ScanBudget       time.Duration `env:"SCAN_BUDGET" envDefault:"120s"`
+
+	// ScanEngineURL is the second analysis engine. Empty runs the rule pack
+	// alone.
+	ScanEngineURL string `env:"SCAN_ENGINE_URL"`
+	// ScanEngineRequired fails a version the engine could not analyse rather
+	// than clearing it on the rule pack alone. It defaults to on: an engine
+	// outage that silently narrowed coverage across the catalog is the failure
+	// worth being loud about.
+	ScanEngineRequired bool `env:"SCAN_ENGINE_REQUIRED" envDefault:"true"`
+	// ScanEngineTimeout bounds one engine request.
+	ScanEngineTimeout time.Duration `env:"SCAN_ENGINE_TIMEOUT" envDefault:"60s"`
+	// ScanEnginePolicy is the engine's own preset: strict, balanced or
+	// permissive.
+	ScanEnginePolicy string `env:"SCAN_ENGINE_POLICY" envDefault:"balanced"`
+	// ScanEngineThreshold is the lowest severity the engine's findings are
+	// stored at. Below it they are counted on the check row, which is what
+	// keeps skill-quality complaints from flagging a version.
+	ScanEngineThreshold string `env:"SCAN_ENGINE_THRESHOLD" envDefault:"medium"`
 }
 
 type Migrate struct {

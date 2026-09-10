@@ -12,20 +12,24 @@ import (
 
 	"agent-manager/internal/api/contract"
 	"agent-manager/internal/auth"
+	"agent-manager/internal/store/models"
 )
 
 // listProfilesSQL: head revision and package count come from a lateral join
 // over `revision` rather than loading every revision of every profile and
-// counting in Go. %s is the readability predicate. jsonb_array_length over
-// the head revision's `entries` array excludes skipped entries structurally,
-// since `skipped` is a sibling array.
+// counting in Go. The first %s is the role subquery — the same one
+// readProfile uses, so a bulk list and the detail screen never disagree on
+// what a membership row means — and the second is the readability
+// predicate. jsonb_array_length over the head revision's `entries` array
+// excludes skipped entries structurally, since `skipped` is a sibling array.
 const listProfilesSQL = `
 select
   p.slug,
   p.name,
   p.visibility::text,
   coalesce(head.seq, 0) as head_revision,
-  coalesce(jsonb_array_length(head.lockfile -> 'entries'), 0) as package_count
+  coalesce(jsonb_array_length(head.lockfile -> 'entries'), 0) as package_count,
+  %s as role
 from profile as p
 left join lateral (
   select r.seq, r.lockfile
@@ -38,10 +42,26 @@ where %s
 order by p.name`
 
 // ReadableProfiles returns exactly the profiles this principal may read.
+//
+// The role behind CanCurate is one correlated subquery evaluated once per
+// row of THIS query, not a second request per profile: exactly the shape
+// readProfile already uses for one profile, applied to every readable row.
 func ReadableProfiles(ctx context.Context, db bun.IDB, p auth.Principal) ([]contract.Profile, error) {
 	predicate, args := Readable("p", p)
 
-	rows, err := db.QueryContext(ctx, fmt.Sprintf(listProfilesSQL, predicate), args...)
+	role := "null::text"
+	subject, subjectArgs, matchable := subjectPredicate("m", p)
+	if matchable {
+		role = "(select min(m.role)::text from membership as m where m.profile_id = p.id and " + subject + ")"
+	}
+
+	// The role subquery is rendered before the WHERE clause, so its
+	// arguments come first — see readProfile, which the same ordering rule
+	// comes from.
+	query := fmt.Sprintf(listProfilesSQL, role, predicate)
+	queryArgs := append(append([]any{}, subjectArgs...), args...)
+
+	rows, err := db.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("list readable profiles: %w", err)
 	}
@@ -49,10 +69,15 @@ func ReadableProfiles(ctx context.Context, db bun.IDB, p auth.Principal) ([]cont
 
 	profiles := []contract.Profile{}
 	for rows.Next() {
-		var prof contract.Profile
-		if err := rows.Scan(&prof.Slug, &prof.Name, &prof.Visibility, &prof.HeadRevision, &prof.PackageCount); err != nil {
+		var (
+			prof     contract.Profile
+			roleText sql.NullString
+		)
+		if err := rows.Scan(&prof.Slug, &prof.Name, &prof.Visibility, &prof.HeadRevision,
+			&prof.PackageCount, &roleText); err != nil {
 			return nil, fmt.Errorf("scan readable profile: %w", err)
 		}
+		prof.CanCurate = models.MembershipRole(roleText.String).MayCurate()
 		profiles = append(profiles, prof)
 	}
 	if err := rows.Err(); err != nil {

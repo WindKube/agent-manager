@@ -247,3 +247,36 @@ func TestProfileHrefRefusesASlugThatCouldClimbOut(t *testing.T) {
 		require.Equalf(t, "/profiles", view.ProfileHref(hostile), "%q was not refused", hostile)
 	}
 }
+
+// US5's add-to-profile control (view.Package.ProfileOptions) groups by
+// visibility and knows which options already hold the package — both derived
+// from data the screen already reads, never a second request per profile.
+func TestProfileOptionsGroupByVisibility(t *testing.T) {
+	pkg := view.Package{ProfileOptions: []view.ProfileOption{
+		{Slug: "kw-private", Visibility: "private"},
+		{Slug: "platform-baseline", Visibility: "organisation"},
+		{Slug: "sre-oncall", Visibility: "shared"},
+		{Slug: "another-private", Visibility: "private"},
+	}}
+
+	require.Len(t, pkg.ProfileOptionsFor("private"), 2)
+	require.Len(t, pkg.ProfileOptionsFor("shared"), 1)
+	require.Len(t, pkg.ProfileOptionsFor("organisation"), 1)
+	require.Empty(t, pkg.ProfileOptionsFor("bogus"))
+}
+
+func TestProfileOptionsHeldMarksExactlyTheDependentSlugs(t *testing.T) {
+	options := []view.ProfileOption{
+		{Slug: "platform-engineer", Name: "Platform Engineer"},
+		{Slug: "sre-oncall", Name: "SRE On-call"},
+	}
+	dependents := []view.Dependent{{Slug: "platform-engineer", Mode: "latest"}}
+
+	marked := view.ProfileOptionsHeld(options, dependents)
+	require.True(t, marked[0].Held, "the dependent profile is marked held")
+	require.False(t, marked[1].Held, "a profile absent from Dependents is not held")
+
+	// The input is never mutated: a caller building options once and reusing
+	// them for a second package must not see the first package's answer.
+	require.False(t, options[0].Held)
+}

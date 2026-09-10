@@ -14,12 +14,11 @@ import (
 // contents" over an empty tree says something false about the package rather
 // than nothing about it.
 //
-// Two controls the design draws are deliberately absent. "View source" has no
+// One control the design draws is deliberately absent: "View source" has no
 // target — `version` records where bytes were STORED and nothing about where
 // they came from, so the button is unimplementable for a URL registration and
-// meaningless for an uploaded archive. "Add to profile" belongs to US5, and
-// there is no operation behind it in this layer. A control with nothing behind
-// it is worse than a screen without it.
+// meaningless for an uploaded archive. A control with nothing behind it is
+// worse than a screen without it.
 templ PackageScreen(p view.Package) {
 	<div class="am-detail-head">
 		<a class="am-back" href="/catalog">← Catalog</a>
@@ -40,6 +39,7 @@ templ PackageScreen(p view.Package) {
 					<span class="am-detail-cat">{ p.Category }</span>
 				}
 			</div>
+			@addToProfile(p)
 		}
 	</div>
 	if p.SignedOut {
@@ -69,6 +69,61 @@ templ packageBody(p view.Package) {
 			@VersionsPanel(p)
 			@DependentsPanel(p)
 		</div>
+	</div>
+}
+
+// addToProfile is US5's own words: "add to the profile", personal or
+// organisation, beside the package's identity rather than the bottom of the
+// page. Grouped by visibility (view.ProfileVisibilities) so a viewer can
+// tell a private profile from an organisation-wide one at a glance.
+templ addToProfile(p view.Package) {
+	<div class="am-add-to-profile" id="add-to-profile">
+		<div class="am-label">Add to profile</div>
+		if p.ProfilesUnavailable {
+			<p class="am-desc am-desc-none">Your profiles could not be read, so nothing can be added here.</p>
+		} else if len(p.ProfileOptions) == 0 {
+			<p class="am-desc am-desc-none">
+				You have no profiles yet. <a href="/profiles">Create one</a> to add this package to it.
+			</p>
+		} else {
+			for _, group := range view.ProfileVisibilities {
+				if options := p.ProfileOptionsFor(group.Value); len(options) > 0 {
+					<div class="am-add-group">
+						<div class="am-add-group-label">{ group.Label }</div>
+						for _, option := range options {
+							@addToProfileRow(p, option)
+						}
+					</div>
+				}
+			}
+		}
+	</div>
+}
+
+// addToProfileRow follows org.templ's pattern for a control a role may not
+// use: shown, disabled, with a tooltip AND a visible sentence naming why —
+// never hidden. A profile already holding the package gets neither the
+// button nor the reason — it is told instead, which is the other honest
+// answer a select offering it as new would not give.
+templ addToProfileRow(p view.Package, option view.ProfileOption) {
+	<div class="am-add-row">
+		<div class="am-dep">
+			<a class="am-dep-name" href={ option.Href() }>{ option.Name }</a>
+			if option.Held {
+				<span class="am-dep-pin">Already in this profile</span>
+			} else if !option.CanCurate {
+				<button type="button" class="am-btn" disabled aria-disabled="true" title={ view.CurateDisabledReason }>Add</button>
+			} else {
+				<form method="post" action="/profiles/entries/add">
+					<input type="hidden" name="slug" value={ option.Slug }/>
+					<input type="hidden" name="id" value={ p.ID }/>
+					<button type="submit" class="am-btn">Add</button>
+				</form>
+			}
+		</div>
+		if !option.Held && !option.CanCurate {
+			<span class="am-toggle-note">{ view.CurateDisabledReason }</span>
+		}
 	</div>
 }
 

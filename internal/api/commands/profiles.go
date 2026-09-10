@@ -205,6 +205,9 @@ func CreateProfile(ctx context.Context, db bun.IDB, p auth.Principal,
 		Slug:       profile.Slug,
 		Name:       profile.Name,
 		Visibility: string(profile.Visibility),
+		// The membership inserted above is always Owner, since a caller who
+		// forked or created a profile is the one identity guaranteed one.
+		CanCurate: true,
 	}, nil
 }
 

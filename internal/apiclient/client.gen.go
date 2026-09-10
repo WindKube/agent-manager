@@ -2988,6 +2988,9 @@ type PreviewProblem struct {
 
 // Profile defines model for Profile.
 type Profile struct {
+	// CanCurate Whether this identity's role on this profile lets it change what the profile holds.
+	CanCurate bool `json:"canCurate"`
+
 	// HeadRevision The most recent published revision number.
 	//
 	// Examples: 7
@@ -4157,7 +4160,7 @@ type ClientInterface interface {
 
 	// ListProfiles Profiles readable by this identity
 	//
-	// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all.
+	// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate (FR-126), so a caller choosing among them need not read every one's detail just to find out which allow it.
 	//
 	// Corresponds with GET /v1/profiles (the `ListProfiles` operationId).
 	ListProfiles(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4988,7 +4991,7 @@ func (c *Client) GetPackage(ctx context.Context, namespace string, name string, 
 
 // ListProfiles Profiles readable by this identity
 //
-// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all.
+// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate (FR-126), so a caller choosing among them need not read every one's detail just to find out which allow it.
 //
 // Corresponds with GET /v1/profiles (the `ListProfiles` operationId).
 func (c *Client) ListProfiles(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -7510,7 +7513,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListProfilesWithResponse Profiles readable by this identity
 	//
-	// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all.
+	// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate (FR-126), so a caller choosing among them need not read every one's detail just to find out which allow it.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -11224,7 +11227,7 @@ func (c *ClientWithResponses) GetPackageWithResponse(ctx context.Context, namesp
 
 // ListProfilesWithResponse Profiles readable by this identity
 //
-// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all.
+// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate (FR-126), so a caller choosing among them need not read every one's detail just to find out which allow it.
 //
 // Returns a wrapper object for the known response body format(s).
 //

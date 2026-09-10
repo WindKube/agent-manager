@@ -46,12 +46,67 @@ type Package struct {
 	Versions     []PackageVersion
 	Dependents   []Dependent
 
+	// ProfileOptions is every profile this identity may read, for the
+	// add-to-profile control (US5). One this identity may not curate, or
+	// one that already holds this package, is still listed — never hidden
+	// — and marked accordingly.
+	ProfileOptions []ProfileOption
+	// ProfilesUnavailable is true when the viewer's profiles could not be
+	// read, so the control says the read failed rather than claiming there
+	// are none.
+	ProfilesUnavailable bool
+
 	// SignedOut is the same third outcome the catalog has: a screen renders
 	// because the screen is not the secret, only the contents are.
 	SignedOut bool
 	// Missing is a package that does not exist, or that this identity may
 	// not read — one state for both, exactly as the api's 404 is.
 	Missing bool
+}
+
+// ProfileOption is one of the viewer's profiles as the add-to-profile
+// control offers it.
+type ProfileOption struct {
+	Slug       string
+	Name       string
+	Visibility string
+	CanCurate  bool
+	// Held is whether this profile already holds the package this screen
+	// is showing.
+	Held bool
+}
+
+func (o ProfileOption) VisibilityLabel() string { return visibilityLabels[o.Visibility] }
+
+func (o ProfileOption) Href() string { return ProfileHref(o.Slug) }
+
+// ProfileOptionsFor is one visibility group of ProfileOptions, in the order
+// the add-to-profile control renders them.
+func (p Package) ProfileOptionsFor(visibility string) []ProfileOption {
+	var out []ProfileOption
+	for _, option := range p.ProfileOptions {
+		if option.Visibility == visibility {
+			out = append(out, option)
+		}
+	}
+	return out
+}
+
+// ProfileOptionsHeld marks each option already present among dependents.
+// Dependents already answers "does this profile hold this package", scoped
+// identically to the profile list itself, so this is what makes the
+// add-to-profile control honest without a second read per profile.
+func ProfileOptionsHeld(options []ProfileOption, dependents []Dependent) []ProfileOption {
+	held := make(map[string]bool, len(dependents))
+	for _, dependent := range dependents {
+		held[dependent.Slug] = true
+	}
+	out := make([]ProfileOption, len(options))
+	for i, option := range options {
+		option.Held = held[option.Slug]
+		out[i] = option
+	}
+	return out
 }
 
 // Component is one component the file tree revealed.

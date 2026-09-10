@@ -256,6 +256,25 @@ func profileDetail(t *testing.T, who actor, slug string) contract.ProfileDetail 
 	return sendJSON[contract.ProfileDetail](t, who, http.MethodGet, profilePath(slug), "", http.StatusOK)
 }
 
+func profileList(t *testing.T, who actor) contract.ProfileList {
+	t.Helper()
+	return sendJSON[contract.ProfileList](t, who, http.MethodGet, "/v1/profiles", "", http.StatusOK)
+}
+
+// findProfile fails the test rather than returning a zero value: a profile
+// absent from an identity's own readable list is a different bug from the
+// one every caller of this helper is checking for.
+func findProfile(t *testing.T, list contract.ProfileList, slug string) contract.Profile {
+	t.Helper()
+	for _, profile := range list.Profiles {
+		if profile.Slug == slug {
+			return profile
+		}
+	}
+	t.Fatalf("%s is not in this identity's own readable list", slug)
+	return contract.Profile{}
+}
+
 func setEntries(t *testing.T, who actor, slug, entries string, want int) []byte {
 	t.Helper()
 	return send(t, who, http.MethodPut, profilePath(slug, "entries"),
@@ -641,6 +660,14 @@ func TestOnlyTheRolesFR037NamesMayCurateShareOrPublish(t *testing.T) {
 			require.Equal(t, contract.ProfilePermissions{
 				Curate: tc.curate, Share: tc.share, Publish: tc.publish,
 			}, detail.Permissions, "FR-126: the screen is told what it may offer")
+
+			// The bulk list (GET /v1/profiles) carries the same answer, from the
+			// same role, so a caller choosing among several profiles — the package
+			// detail screen's add-to-profile control — need not read every one's
+			// detail just to find out which allow it.
+			row := findProfile(t, profileList(t, tc.who), slug)
+			require.Equal(t, tc.curate, row.CanCurate,
+				"the list's canCurate must agree with the detail's Permissions.Curate")
 
 			for _, attempt := range []struct {
 				what, method, path, body string

@@ -2,6 +2,7 @@ package web_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,7 @@ import (
 	"agent-manager/internal/web"
 	"agent-manager/internal/web/components"
 	"agent-manager/internal/web/fixture"
+	"agent-manager/internal/web/hub"
 	"agent-manager/internal/web/view"
 )
 
@@ -611,6 +613,117 @@ func TestBothVariantsRenderForEverySeededPackage(t *testing.T) {
 
 	require.Positive(t, plugins, "the fixtures must contain a plugin")
 	require.Positive(t, skills, "and a standalone skill, or this test proves one variant")
+}
+
+// ---- add to profile (US5) -----------------------------------------------------
+
+// noProfiles is a viewer with a working profiles read that simply answers
+// none — distinct from profilesUnavailable below, whose read fails outright.
+// The two must render different sentences, or a person cannot tell "you have
+// nothing to add to" from "this could not be checked". It forwards Catalog
+// and Package by hand rather than embedding *fixture.Catalog: that type's
+// name collides with its own Catalog method under promotion.
+type noProfiles struct{ base *fixture.Catalog }
+
+func (s noProfiles) Catalog(ctx context.Context, q view.CatalogQuery) (view.CatalogPage, error) {
+	return s.base.Catalog(ctx, q)
+}
+
+func (s noProfiles) Package(ctx context.Context, namespace, name string) (view.Package, error) {
+	return s.base.Package(ctx, namespace, name)
+}
+
+func (noProfiles) Profiles(context.Context) ([]hub.ProfileSummary, error) { return nil, nil }
+
+func (noProfiles) Profile(_ context.Context, slug string) (hub.ProfileDetail, error) {
+	return hub.ProfileDetail{}, view.ErrNotFound
+}
+
+// Revision is unread by this screen, but a stub that omits it stops satisfying
+// web.ProfileSource — and a stub that fails that assertion in handler() leaves
+// deps.Profiles nil, which renders as "you have no profiles" and would make
+// the tests below pass without exercising anything.
+func (noProfiles) Revision(context.Context, string, int) (hub.RevisionLockfile, error) {
+	return hub.RevisionLockfile{}, view.ErrNotFound
+}
+
+type profilesUnavailable struct{ base *fixture.Catalog }
+
+func (s profilesUnavailable) Catalog(ctx context.Context, q view.CatalogQuery) (view.CatalogPage, error) {
+	return s.base.Catalog(ctx, q)
+}
+
+func (s profilesUnavailable) Package(ctx context.Context, namespace, name string) (view.Package, error) {
+	return s.base.Package(ctx, namespace, name)
+}
+
+func (profilesUnavailable) Profiles(context.Context) ([]hub.ProfileSummary, error) {
+	return nil, errors.New("the profiles api is down")
+}
+
+func (profilesUnavailable) Profile(_ context.Context, slug string) (hub.ProfileDetail, error) {
+	return hub.ProfileDetail{}, view.ErrNotFound
+}
+
+func (profilesUnavailable) Revision(context.Context, string, int) (hub.RevisionLockfile, error) {
+	return hub.RevisionLockfile{}, view.ErrNotFound
+}
+
+// A profile that already holds the package is told so, not offered as new —
+// and the fixture's platform-toolkit is exactly that for platform-engineer
+// (fixture/package.go's dependents), while sre-oncall does not hold it and
+// may not curate it either (fixture/profiles.go's CanCurate).
+func TestAddToProfileTellsAHeldProfileApartFromACuratableOne(t *testing.T) {
+	body := get(t, handler(t, fixture.New()), "/packages/example/platform-toolkit").Body.String()
+
+	require.Contains(t, body, `id="add-to-profile"`)
+	require.Contains(t, body, "Add to profile")
+
+	// Grouped and labelled, not a flat list of names (organisation here, shared
+	// for sre-oncall below) — the owner's own requirement.
+	require.Contains(t, body, `<div class="am-add-group-label">Organisation</div>`)
+	require.Contains(t, body, `<div class="am-add-group-label">Shared</div>`)
+
+	// Held: no button offering to add what is already there, and no curate-role
+	// reason attached to it either — those are two different kinds of "no".
+	require.Contains(t, body,
+		`<a class="am-dep-name" href="/profiles/platform-engineer">Platform Engineer</a> `+
+			`<span class="am-dep-pin">Already in this profile</span>`)
+
+	// Not held, and this role may not curate it: shown, disabled, a tooltip AND a
+	// visible sentence — never hidden (the owner's general instruction).
+	require.Contains(t, body,
+		`<button type="button" class="am-btn" disabled aria-disabled="true" `+
+			`title="`+view.CurateDisabledReason+`">Add</button>`)
+	require.Contains(t, body, `<span class="am-toggle-note">`+view.CurateDisabledReason+`</span>`)
+	// The reason is never left to the tooltip alone.
+	require.Contains(t, body, view.CurateDisabledReason)
+}
+
+// The same package, held by nobody: the curatable profile gets a real
+// plain-post form, signal-free, naming the exact package it would add.
+func TestAddToProfileOffersAPlainFormToACuratableProfile(t *testing.T) {
+	body := get(t, handler(t, fixture.New()), "/packages/community/postgres-migration-guard").Body.String()
+
+	require.Contains(t, body, `<form method="post" action="/profiles/entries/add">`+
+		`<input type="hidden" name="slug" value="platform-engineer"> `+
+		`<input type="hidden" name="id" value="community/postgres-migration-guard"> `+
+		`<button type="submit" class="am-btn">Add</button></form>`)
+}
+
+func TestAddToProfileWithNoProfilesPointsAtProfiles(t *testing.T) {
+	body := get(t, handler(t, noProfiles{base: fixture.New()}), "/packages/example/platform-toolkit").Body.String()
+
+	require.Contains(t, body, "You have no profiles yet")
+	require.Contains(t, body, `href="/profiles"`)
+	require.NotContains(t, body, "could not be read", "zero profiles is not the same fact as a failed read")
+}
+
+func TestAddToProfileWhenTheReadFailsSaysSoRatherThanClaimingThereAreNone(t *testing.T) {
+	body := get(t, handler(t, profilesUnavailable{base: fixture.New()}), "/packages/example/platform-toolkit").Body.String()
+
+	require.Contains(t, body, "could not be read")
+	require.NotContains(t, body, "You have no profiles yet")
 }
 
 // ---- the viewer, sign-in and the no-role state (US2) -------------------------

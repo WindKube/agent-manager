@@ -340,7 +340,8 @@ func (s *Server) registerProfiles() {
 		Summary:     "Profiles readable by this identity",
 		Description: "Returns exactly the profiles this identity may read via direct membership or group " +
 			"mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable " +
-			"profiles are not enumerated at all.",
+			"profiles are not enumerated at all. Each row carries canCurate (FR-126), so a caller " +
+			"choosing among them need not read every one's detail just to find out which allow it.",
 		Responses: map[string]*huma.Response{
 			"401": s.errorResponse("Missing, expired or invalid token."),
 			"500": s.errorResponse("The request could not be completed."),

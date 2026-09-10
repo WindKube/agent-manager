@@ -45,9 +45,39 @@ func (s *Server) packageDetail(c *gin.Context) {
 		return
 	}
 
+	if !detail.SignedOut && !detail.Missing {
+		s.loadProfileOptions(c, &detail)
+	}
+
 	title := detail.Name
 	if title == "" {
 		title = "Package"
 	}
 	s.render(c, status, title, "catalog", components.PackageScreen(detail))
+}
+
+// loadProfileOptions fills in the add-to-profile control (US5) from the same
+// bulk profile list the Profiles screen reads — one request, not one per
+// profile — and marks which of them already hold this package by
+// cross-referencing Dependents rather than reading each profile's entries
+// again.
+func (s *Server) loadProfileOptions(c *gin.Context, detail *view.Package) {
+	if s.deps.Profiles == nil {
+		return
+	}
+
+	rows, err := s.deps.Profiles.Profiles(session(c))
+	if err != nil {
+		logFrom(c).Error().Err(err).Msg("load profiles for the add-to-profile control")
+		detail.ProfilesUnavailable = true
+		return
+	}
+
+	options := make([]view.ProfileOption, 0, len(rows))
+	for _, row := range rows {
+		options = append(options, view.ProfileOption{
+			Slug: row.Slug, Name: row.Name, Visibility: row.Visibility, CanCurate: row.CanCurate,
+		})
+	}
+	detail.ProfileOptions = view.ProfileOptionsHeld(options, detail.Dependents)
 }

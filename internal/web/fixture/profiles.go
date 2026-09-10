@@ -29,8 +29,10 @@ const (
 // Profiles implements the list half of web.ProfileSource.
 func (c *Catalog) Profiles(context.Context) ([]hub.ProfileSummary, error) {
 	return []hub.ProfileSummary{
-		{Slug: fixtureProfileSlug, Name: "Platform Engineer", Visibility: "organisation", PackageCount: 2, HeadRevision: 14},
-		{Slug: fixtureProfileForkedSlug, Name: "SRE On-call", Visibility: "shared", PackageCount: 0, HeadRevision: 0},
+		{Slug: fixtureProfileSlug, Name: "Platform Engineer", Visibility: "organisation",
+			PackageCount: 2, HeadRevision: 14, CanCurate: true},
+		{Slug: fixtureProfileForkedSlug, Name: "SRE On-call", Visibility: "shared",
+			PackageCount: 0, HeadRevision: 0, CanCurate: false},
 	}, nil
 }
 

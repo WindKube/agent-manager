@@ -174,6 +174,10 @@ type ProfileSummary struct {
 	Visibility   string
 	PackageCount int
 	HeadRevision int
+	// CanCurate is FR-126 at list scope: whether this identity's role on
+	// this profile lets it change what the profile holds, so a caller
+	// choosing among several profiles need not read each one's detail.
+	CanCurate bool
 }
 
 // ProfileCreation is the create form. Every optional field is omitted from
@@ -304,6 +308,7 @@ func profileSummary(from *apiclient.Profile) ProfileSummary {
 		Name:         from.Name,
 		PackageCount: int(from.PackageCount),
 		HeadRevision: int(from.HeadRevision),
+		CanCurate:    from.CanCurate,
 	}
 	if from.Visibility != nil {
 		summary.Visibility = string(*from.Visibility)

@@ -2538,6 +2538,10 @@
       "Profile": {
         "additionalProperties": false,
         "properties": {
+          "canCurate": {
+            "description": "Whether this identity's role on this profile lets it change what the profile holds.",
+            "type": "boolean"
+          },
           "headRevision": {
             "description": "The most recent published revision number.",
             "examples": [
@@ -2585,7 +2589,8 @@
           "slug",
           "name",
           "packageCount",
-          "headRevision"
+          "headRevision",
+          "canCurate"
         ],
         "type": "object"
       },
@@ -6157,7 +6162,7 @@
     },
     "/v1/profiles": {
       "get": {
-        "description": "Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all.",
+        "description": "Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate (FR-126), so a caller choosing among them need not read every one's detail just to find out which allow it.",
         "operationId": "listProfiles",
         "responses": {
           "200": {

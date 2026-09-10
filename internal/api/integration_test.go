@@ -510,6 +510,32 @@ func TestListProfilesEnumeratesExactlyWhatTheIdentityMayRead(t *testing.T) {
 	})
 }
 
+// canCurate is FR-126 at list scope. kw reads platform-baseline through
+// organisation visibility alone — no membership row names them there — while
+// kw-private is a profile they own outright, which is what makes this two
+// answers from ONE list rather than a single flag that happens to be false.
+func TestTheListsCanCurateIsFalseForOrganisationVisibilityWithNoMembership(t *testing.T) {
+	rec := request(t, liveHandler(t), http.MethodGet, "/v1/profiles", kw.token, "")
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	var body contract.ProfileList
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+
+	var sawOwned, sawOrgOnly bool
+	for _, profile := range body.Profiles {
+		switch profile.Slug {
+		case "kw-private":
+			sawOwned = true
+			require.True(t, profile.CanCurate, "kw owns kw-private outright")
+		case "platform-baseline":
+			sawOrgOnly = true
+			require.False(t, profile.CanCurate,
+				"organisation visibility grants reading, never curating, with no membership row")
+		}
+	}
+	require.True(t, sawOwned && sawOrgOnly, "the fixture must seed both profiles for this to test anything")
+}
+
 func listSlugs(t *testing.T, handler http.Handler, who actor) []string {
 	t.Helper()
 

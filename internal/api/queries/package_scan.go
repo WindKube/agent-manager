@@ -9,6 +9,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"agent-manager/internal/api/contract"
+	"agent-manager/internal/auth"
 	"agent-manager/internal/store/models"
 )
 
@@ -24,13 +25,17 @@ var ErrRejected = errors.New("this version was rejected and its scan is not serv
 // latestScanVersionSQL is LatestBundle's own predicate (bundles.go), reading
 // the version id and verdict instead of the object key: this is the other
 // door onto the same "latest visible version", and the two must not drift.
+// %s is PackageReadable, for exactly that reason — this statement once
+// hardcoded `visibility = 'organisation'`, which was the whole predicate
+// before team and private became reachable and afterwards 404'd an owner
+// looking at their own package's scan.
 const latestScanVersionSQL = `
 select v.id, v.semver, v.verdict::text
 from package as pkg
 join version as v on v.id = pkg.latest_version_id and v.visible
-where pkg.namespace = ? and pkg.name = ? and pkg.visibility = 'organisation'`
+where pkg.namespace = ? and pkg.name = ? and %s`
 
-func PackageScan(ctx context.Context, db bun.IDB, namespace, name string) (contract.PackageScan, error) {
+func PackageScan(ctx context.Context, db bun.IDB, p auth.Principal, namespace, name string) (contract.PackageScan, error) {
 	var (
 		versionID string
 		verdict   models.Verdict
@@ -39,7 +44,9 @@ func PackageScan(ctx context.Context, db bun.IDB, namespace, name string) (contr
 	out.Checks = []contract.FindingCheck{}
 	out.Findings = []contract.PackageScanFinding{}
 
-	err := db.QueryRowContext(ctx, latestScanVersionSQL, namespace, name).
+	readable, readableArgs := PackageReadable("pkg", p)
+	args := append([]any{namespace, name}, readableArgs...)
+	err := db.QueryRowContext(ctx, fmt.Sprintf(latestScanVersionSQL, readable), args...).
 		Scan(&versionID, &out.Version, &verdict)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):

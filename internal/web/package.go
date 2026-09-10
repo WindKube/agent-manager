@@ -273,7 +273,7 @@ func (s *Server) setPackageVisibility(c *gin.Context) {
 	}
 
 	if s.deps.PackageCurator == nil {
-		s.backToPackage(c, namespace, name, packageVisibilityUnavailable)
+		s.backToPackageAfterVisibility(c, namespace, name, packageVisibilityUnavailable)
 		return
 	}
 
@@ -281,7 +281,7 @@ func (s *Server) setPackageVisibility(c *gin.Context) {
 		s.packageVisibilityWriteFailed(c, namespace, name, err)
 		return
 	}
-	s.backToPackage(c, namespace, name, packageVisibilityChanged)
+	s.backToPackageAfterVisibility(c, namespace, name, packageVisibilityChanged)
 }
 
 // packageVisibilityWriteFailed maps the write's error onto a redirect,
@@ -294,15 +294,15 @@ func (s *Server) packageVisibilityWriteFailed(c *gin.Context, namespace, name st
 	case errors.Is(err, view.ErrSignedOut):
 		s.toSignIn(c)
 	case errors.Is(err, view.ErrNotFound):
-		s.backToPackage(c, namespace, name, packageVisibilityMissing)
+		s.backToPackageAfterVisibility(c, namespace, name, packageVisibilityMissing)
 	default:
 		var refused *hub.PackageRefusedError
 		if errors.As(err, &refused) {
-			s.backToPackage(c, namespace, name, packageVisibilityRefused)
+			s.backToPackageAfterVisibility(c, namespace, name, packageVisibilityRefused)
 			return
 		}
 		logFrom(c).Error().Err(err).Msg("set package visibility")
-		s.backToPackage(c, namespace, name, packageVisibilityFailed)
+		s.backToPackageAfterVisibility(c, namespace, name, packageVisibilityFailed)
 	}
 }
 
@@ -338,12 +338,8 @@ func packageNotice(raw string) *view.Notice {
 	}
 }
 
-func (s *Server) backToPackage(c *gin.Context, namespace, name string, outcome packageOutcome) {
-	target := &url.URL{Path: "/packages/" + url.PathEscape(namespace) + "/" + url.PathEscape(name)}
-	values := target.Query()
-	values.Set("notice", string(outcome))
-	target.RawQuery = values.Encode()
-
-	c.Header("Cache-Control", "no-store")
-	c.Redirect(http.StatusSeeOther, target.String())
+// backToPackageAfterVisibility is backToPackage for the visibility change's
+// own token vocabulary, which carries neither a detail nor a subject.
+func (s *Server) backToPackageAfterVisibility(c *gin.Context, namespace, name string, outcome packageOutcome) {
+	s.backToPackage(c, namespace, name, view.PackageNotice(outcome), "", "")
 }

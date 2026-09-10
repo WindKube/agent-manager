@@ -28,6 +28,19 @@ type packageCurator struct {
 	packageResult view.PackageDeleted
 	packageErr    error
 	packageCalls  [][2]string // namespace, name
+
+	visibilityResult view.Package
+	visibilityErr    error
+	visibilityCalls  [][3]string // namespace, name, visibility
+}
+
+// SetVisibility is unexercised by this file's tests, but PackageCurator is
+// one interface: a stub missing it stops satisfying web.PackageCurator, and
+// Go's structural satisfaction means the failure lands wherever the stub is
+// passed rather than here.
+func (c *packageCurator) SetVisibility(_ context.Context, namespace, name, visibility string) (view.Package, error) {
+	c.visibilityCalls = append(c.visibilityCalls, [3]string{namespace, name, visibility})
+	return c.visibilityResult, c.visibilityErr
 }
 
 func (c *packageCurator) DeleteVersion(_ context.Context, namespace, name, version string) (view.VersionDeleted, error) {

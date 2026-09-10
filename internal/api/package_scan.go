@@ -31,7 +31,8 @@ type getPackageScanOutput struct {
 // /v1/bundles/{publisher}/{name}/{version} does (FR-029): a version that is
 // never distributed does not have its scan detail served either.
 func (s *Server) getPackageScan(ctx context.Context, in *getPackageScanInput) (*getPackageScanOutput, error) {
-	scan, err := queries.PackageScan(ctx, s.deps.DB, in.Namespace, in.Name)
+	principal, _ := PrincipalFrom(ctx)
+	scan, err := queries.PackageScan(ctx, s.deps.DB, principal, in.Namespace, in.Name)
 	if err != nil {
 		if errors.Is(err, queries.ErrRejected) {
 			return nil, huma.Error403Forbidden(err.Error())

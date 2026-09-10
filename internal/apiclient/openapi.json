@@ -756,13 +756,6 @@
             ],
             "type": "string"
           },
-          "explain": {
-            "description": "What this check looks for, in general, as the scan recorded it.",
-            "examples": [
-              "Compares every host a script or an instruction file names against the version's declared network capability set, and flags one outside it."
-            ],
-            "type": "string"
-          },
           "label": {
             "description": "The check's own label, as the scan recorded it. A screen that mapped check ids to labels itself would stop naming a check added after it shipped.",
             "examples": [
@@ -794,7 +787,6 @@
           "checkId",
           "engine",
           "label",
-          "explain",
           "result",
           "warnCount"
         ],
@@ -1093,10 +1085,6 @@
       "FindingSummary": {
         "additionalProperties": false,
         "properties": {
-          "detail": {
-            "description": "Why this was raised, in prose.",
-            "type": "string"
-          },
           "engine": {
             "description": "The analyser that raised it. Two engines may use the same rule id, so a finding is identified by the pair.",
             "examples": [
@@ -1907,6 +1895,20 @@
         ],
         "type": "object"
       },
+      "PackageDeleted": {
+        "additionalProperties": false,
+        "properties": {
+          "versionsArchived": {
+            "description": "How many of the package's versions were not already archived, and just were.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "versionsArchived"
+        ],
+        "type": "object"
+      },
       "PackageDependent": {
         "additionalProperties": false,
         "properties": {
@@ -2380,127 +2382,6 @@
           "objectKey",
           "verdict",
           "visible"
-        ],
-        "type": "object"
-      },
-      "PackageScan": {
-        "additionalProperties": false,
-        "properties": {
-          "checks": {
-            "description": "Every check the scan ran, passes included (FR-025).",
-            "items": {
-              "$ref": "#/components/schemas/FindingCheck"
-            },
-            "type": "array"
-          },
-          "findings": {
-            "description": "Every finding this scan raised against this version.",
-            "items": {
-              "$ref": "#/components/schemas/PackageScanFinding"
-            },
-            "type": "array"
-          },
-          "scan": {
-            "$ref": "#/components/schemas/FindingScan",
-            "description": "The zero value while Scanned is false."
-          },
-          "scanned": {
-            "type": "boolean"
-          },
-          "version": {
-            "description": "The latest visible version this scan describes.",
-            "examples": [
-              "1.3.0"
-            ],
-            "type": "string"
-          }
-        },
-        "required": [
-          "version",
-          "scanned",
-          "scan",
-          "checks",
-          "findings"
-        ],
-        "type": "object"
-      },
-      "PackageScanFinding": {
-        "additionalProperties": false,
-        "properties": {
-          "detail": {
-            "description": "Why this was raised, in prose.",
-            "type": "string"
-          },
-          "engine": {
-            "description": "The analyser that raised it.",
-            "examples": [
-              "rulepack"
-            ],
-            "type": "string"
-          },
-          "evidence": {
-            "description": "Every location this finding points at, cause first.",
-            "items": {
-              "$ref": "#/components/schemas/FindingEvidence"
-            },
-            "type": "array"
-          },
-          "id": {
-            "format": "uuid",
-            "type": "string"
-          },
-          "override": {
-            "$ref": "#/components/schemas/FindingOverride",
-            "description": "Present only when a reviewer has accepted this finding."
-          },
-          "raisedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "ruleId": {
-            "examples": [
-              "SH-NET-002"
-            ],
-            "type": "string"
-          },
-          "severity": {
-            "enum": [
-              "low",
-              "medium",
-              "high"
-            ],
-            "examples": [
-              "high"
-            ],
-            "type": "string"
-          },
-          "state": {
-            "enum": [
-              "open",
-              "approved",
-              "rejected"
-            ],
-            "examples": [
-              "open"
-            ],
-            "type": "string"
-          },
-          "title": {
-            "examples": [
-              "Undeclared network egress"
-            ],
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "ruleId",
-          "engine",
-          "severity",
-          "state",
-          "title",
-          "raisedAt",
-          "evidence"
         ],
         "type": "object"
       },
@@ -3959,6 +3840,20 @@
           "communityNeedsReview",
           "rescanOnNewVersion",
           "allowPersonalProfiles"
+        ],
+        "type": "object"
+      },
+      "VersionDeleted": {
+        "additionalProperties": false,
+        "properties": {
+          "pinnedByProfiles": {
+            "description": "How many profile_entry rows pin this exact version. They keep resolving it; only new floating or range resolution stops offering it.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pinnedByProfiles"
         ],
         "type": "object"
       },
@@ -6298,6 +6193,98 @@
       }
     },
     "/v1/packages/{namespace}/{name}": {
+      "delete": {
+        "description": "Archives every version of the package that is not archived already, and clears the package's latest-version pointer — the same column the catalog and this package's own detail page join through, so both stop finding it, the way an unpublished package already answers. No row and no blob is deleted: see deleteVersion's own description for why. Writes one audit row. Requires the catalog-admin role.",
+        "operationId": "deletePackage",
+        "parameters": [
+          {
+            "description": "The publishing namespace, as it appears in the catalog.",
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "description": "The publishing namespace, as it appears in the catalog.",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The package name within that namespace.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "The package name within that namespace.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageDeleted"
+                }
+              }
+            },
+            "description": "Deleted."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity may not delete a package."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such package."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This package was already withdrawn."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Delete a package from the catalog",
+        "tags": [
+          "packages"
+        ]
+      },
       "get": {
         "description": "Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package (FR-016). The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read (FR-044), and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.",
         "operationId": "getPackage",
@@ -6591,21 +6578,18 @@
         ]
       }
     },
-    "/v1/packages/{namespace}/{name}/scan": {
-      "get": {
-        "description": "The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029).",
-        "operationId": "getPackageScan",
+    "/v1/packages/{namespace}/{name}/versions/{version}": {
+      "delete": {
+        "description": "Archives the version (dist_tag becomes `archived`) rather than deleting its row: a version is write-once, and an existing profile pin or a published revision's lockfile keeps resolving it — only new floating or range resolution, and the catalog listing when this was the package's latest, stop offering it. Writes one audit row. Requires the catalog-admin role.",
+        "operationId": "deleteVersion",
         "parameters": [
           {
-            "description": "The publishing namespace — the FIRST segment of the publisher slug, as it appears in the catalog id. Not the whole slug.",
+            "description": "The publishing namespace, as it appears in the catalog.",
             "in": "path",
             "name": "namespace",
             "required": true,
             "schema": {
-              "description": "The publishing namespace — the FIRST segment of the publisher slug, as it appears in the catalog id. Not the whole slug.",
-              "examples": [
-                "example"
-              ],
+              "description": "The publishing namespace, as it appears in the catalog.",
               "type": "string"
             }
           },
@@ -6616,9 +6600,16 @@
             "required": true,
             "schema": {
               "description": "The package name within that namespace.",
-              "examples": [
-                "platform-toolkit"
-              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "An exact semver. Ranges and dist-tags are not accepted.",
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "description": "An exact semver. Ranges and dist-tags are not accepted.",
               "type": "string"
             }
           }
@@ -6628,11 +6619,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PackageScan"
+                  "$ref": "#/components/schemas/VersionDeleted"
                 }
               }
             },
-            "description": "OK"
+            "description": "Withdrawn."
           },
           "401": {
             "content": {
@@ -6642,7 +6633,7 @@
                 }
               }
             },
-            "description": "No usable session. The caller must sign in; there is no anonymous view."
+            "description": "Missing, expired or invalid token."
           },
           "403": {
             "content": {
@@ -6652,7 +6643,7 @@
                 }
               }
             },
-            "description": "This version was rejected and its scan detail is not served."
+            "description": "This identity may not delete a version."
           },
           "404": {
             "content": {
@@ -6662,7 +6653,17 @@
                 }
               }
             },
-            "description": "No such package, or it has no published version."
+            "description": "No such package or version."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This version was already withdrawn."
           },
           "500": {
             "content": {
@@ -6675,9 +6676,9 @@
             "description": "The request could not be completed."
           }
         },
-        "summary": "The latest visible version's scan result, to show beside the package",
+        "summary": "Withdraw one version from the catalog",
         "tags": [
-          "catalog"
+          "packages"
         ]
       }
     },

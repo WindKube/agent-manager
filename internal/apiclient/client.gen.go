@@ -993,48 +993,6 @@ func (e PackageRegisteredVerdict) Valid() bool {
 	}
 }
 
-// Defines values for PackageScanFindingSeverity.
-const (
-	PackageScanFindingSeverityHigh   PackageScanFindingSeverity = "high"
-	PackageScanFindingSeverityLow    PackageScanFindingSeverity = "low"
-	PackageScanFindingSeverityMedium PackageScanFindingSeverity = "medium"
-)
-
-// Valid indicates whether the value is a known member of the PackageScanFindingSeverity enum.
-func (e PackageScanFindingSeverity) Valid() bool {
-	switch e {
-	case PackageScanFindingSeverityHigh:
-		return true
-	case PackageScanFindingSeverityLow:
-		return true
-	case PackageScanFindingSeverityMedium:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for PackageScanFindingState.
-const (
-	PackageScanFindingStateApproved PackageScanFindingState = "approved"
-	PackageScanFindingStateOpen     PackageScanFindingState = "open"
-	PackageScanFindingStateRejected PackageScanFindingState = "rejected"
-)
-
-// Valid indicates whether the value is a known member of the PackageScanFindingState enum.
-func (e PackageScanFindingState) Valid() bool {
-	switch e {
-	case PackageScanFindingStateApproved:
-		return true
-	case PackageScanFindingStateOpen:
-		return true
-	case PackageScanFindingStateRejected:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for PackageVersionDistTag.
 const (
 	PackageVersionDistTagArchived PackageVersionDistTag = "archived"
@@ -2215,11 +2173,6 @@ type FindingCheck struct {
 	// Examples: rulepack
 	Engine string `json:"engine"`
 
-	// Explain What this check looks for, in general, as the scan recorded it.
-	//
-	// Examples: Compares every host a script or an instruction file names against the version's declared network capability set, and flags one outside it.
-	Explain string `json:"explain"`
-
 	// Label The check's own label, as the scan recorded it. A screen that mapped check ids to labels itself would stop naming a check added after it shipped.
 	//
 	// Examples: Network allowlist
@@ -2378,9 +2331,6 @@ type FindingScanVerdict string
 
 // FindingSummary defines model for FindingSummary.
 type FindingSummary struct {
-	// Detail Why this was raised, in prose.
-	Detail *string `json:"detail,omitempty"`
-
 	// Engine The analyser that raised it. Two engines may use the same rule id, so a finding is identified by the pair.
 	//
 	// Examples: rulepack
@@ -2758,6 +2708,12 @@ type PackageComponent struct {
 // PackageComponentKind Examples: skill
 type PackageComponentKind string
 
+// PackageDeleted defines model for PackageDeleted.
+type PackageDeleted struct {
+	// VersionsArchived How many of the package's versions were not already archived, and just were.
+	VersionsArchived int64 `json:"versionsArchived"`
+}
+
 // PackageDependent defines model for PackageDependent.
 type PackageDependent struct {
 	// Mode How this profile resolves the package.
@@ -2991,61 +2947,6 @@ type PackageRegisteredKind string
 //
 // Examples: scanning
 type PackageRegisteredVerdict string
-
-// PackageScan defines model for PackageScan.
-type PackageScan struct {
-	// Checks Every check the scan ran, passes included (FR-025).
-	Checks []FindingCheck `json:"checks"`
-
-	// Findings Every finding this scan raised against this version.
-	Findings []PackageScanFinding `json:"findings"`
-
-	// Scan The zero value while Scanned is false.
-	Scan    FindingScan `json:"scan"`
-	Scanned bool        `json:"scanned"`
-
-	// Version The latest visible version this scan describes.
-	//
-	// Examples: 1.3.0
-	Version string `json:"version"`
-}
-
-// PackageScanFinding defines model for PackageScanFinding.
-type PackageScanFinding struct {
-	// Detail Why this was raised, in prose.
-	Detail *string `json:"detail,omitempty"`
-
-	// Engine The analyser that raised it.
-	//
-	// Examples: rulepack
-	Engine string `json:"engine"`
-
-	// Evidence Every location this finding points at, cause first.
-	Evidence []FindingEvidence  `json:"evidence"`
-	Id       openapi_types.UUID `json:"id"`
-
-	// Override Present only when a reviewer has accepted this finding.
-	Override *FindingOverride `json:"override,omitempty"`
-	RaisedAt time.Time        `json:"raisedAt"`
-
-	// RuleId Examples: SH-NET-002
-	RuleId string `json:"ruleId"`
-
-	// Severity Examples: high
-	Severity PackageScanFindingSeverity `json:"severity"`
-
-	// State Examples: open
-	State PackageScanFindingState `json:"state"`
-
-	// Title Examples: Undeclared network egress
-	Title string `json:"title"`
-}
-
-// PackageScanFindingSeverity Examples: high
-type PackageScanFindingSeverity string
-
-// PackageScanFindingState Examples: open
-type PackageScanFindingState string
 
 // PackageVersion defines model for PackageVersion.
 type PackageVersion struct {
@@ -3748,6 +3649,12 @@ type UpdatePolicyRequest struct {
 // UpdatePolicyRequestScanGate defines model for UpdatePolicyRequest.ScanGate.
 type UpdatePolicyRequestScanGate string
 
+// VersionDeleted defines model for VersionDeleted.
+type VersionDeleted struct {
+	// PinnedByProfiles How many profile_entry rows pin this exact version. They keep resolving it; only new floating or range resolution stops offering it.
+	PinnedByProfiles int64 `json:"pinnedByProfiles"`
+}
+
 // Viewer defines model for Viewer.
 type Viewer struct {
 	// DisplayName The name a screen shows. Derived by the hub from whichever of name, preferred_username or email the provider populated.
@@ -4340,6 +4247,13 @@ type ClientInterface interface {
 	// Corresponds with POST /v1/packages/preview (the `PreviewPackage` operationId).
 	PreviewPackageWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// DeletePackage Delete a package from the catalog
+	//
+	// Archives every version of the package that is not archived already, and clears the package's latest-version pointer — the same column the catalog and this package's own detail page join through, so both stop finding it, the way an unpublished package already answers. No row and no blob is deleted: see deleteVersion's own description for why. Writes one audit row. Requires the catalog-admin role.
+	//
+	// Corresponds with DELETE /v1/packages/{namespace}/{name} (the `DeletePackage` operationId).
+	DeletePackage(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetPackage One package's detail
 	//
 	// Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package (FR-016). The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read (FR-044), and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
@@ -4361,12 +4275,12 @@ type ClientInterface interface {
 	// Corresponds with GET /v1/packages/{namespace}/{name}/files/content (the `GetPackageFile` operationId).
 	GetPackageFile(ctx context.Context, namespace string, name string, params *GetPackageFileParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetPackageScan The latest visible version's scan result, to show beside the package
+	// DeleteVersion Withdraw one version from the catalog
 	//
-	// The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029).
+	// Archives the version (dist_tag becomes `archived`) rather than deleting its row: a version is write-once, and an existing profile pin or a published revision's lockfile keeps resolving it — only new floating or range resolution, and the catalog listing when this was the package's latest, stop offering it. Writes one audit row. Requires the catalog-admin role.
 	//
-	// Corresponds with GET /v1/packages/{namespace}/{name}/scan (the `GetPackageScan` operationId).
-	GetPackageScan(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// Corresponds with DELETE /v1/packages/{namespace}/{name}/versions/{version} (the `DeleteVersion` operationId).
+	DeleteVersion(ctx context.Context, namespace string, name string, version string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListProfiles Profiles readable by this identity
 	//
@@ -5182,6 +5096,23 @@ func (c *Client) PreviewPackageWithBody(ctx context.Context, contentType string,
 	return c.Client.Do(req)
 }
 
+// DeletePackage Delete a package from the catalog
+//
+// Archives every version of the package that is not archived already, and clears the package's latest-version pointer — the same column the catalog and this package's own detail page join through, so both stop finding it, the way an unpublished package already answers. No row and no blob is deleted: see deleteVersion's own description for why. Writes one audit row. Requires the catalog-admin role.
+//
+// Corresponds with DELETE /v1/packages/{namespace}/{name} (the `DeletePackage` operationId).
+func (c *Client) DeletePackage(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeletePackageRequest(c.Server, namespace, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetPackage One package's detail
 //
 // Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package (FR-016). The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read (FR-044), and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
@@ -5233,13 +5164,13 @@ func (c *Client) GetPackageFile(ctx context.Context, namespace string, name stri
 	return c.Client.Do(req)
 }
 
-// GetPackageScan The latest visible version's scan result, to show beside the package
+// DeleteVersion Withdraw one version from the catalog
 //
-// The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029).
+// Archives the version (dist_tag becomes `archived`) rather than deleting its row: a version is write-once, and an existing profile pin or a published revision's lockfile keeps resolving it — only new floating or range resolution, and the catalog listing when this was the package's latest, stop offering it. Writes one audit row. Requires the catalog-admin role.
 //
-// Corresponds with GET /v1/packages/{namespace}/{name}/scan (the `GetPackageScan` operationId).
-func (c *Client) GetPackageScan(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetPackageScanRequest(c.Server, namespace, name)
+// Corresponds with DELETE /v1/packages/{namespace}/{name}/versions/{version} (the `DeleteVersion` operationId).
+func (c *Client) DeleteVersion(ctx context.Context, namespace string, name string, version string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteVersionRequest(c.Server, namespace, name, version)
 	if err != nil {
 		return nil, err
 	}
@@ -6791,6 +6722,47 @@ func NewPreviewPackageRequestWithBody(server string, contentType string, body io
 	return req, nil
 }
 
+// NewDeletePackageRequest constructs an http.Request for the DeletePackage method
+func NewDeletePackageRequest(server string, namespace string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/packages/%s/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetPackageRequest constructs an http.Request for the GetPackage method
 func NewGetPackageRequest(server string, namespace string, name string) (*http.Request, error) {
 	var err error
@@ -6937,8 +6909,8 @@ func NewGetPackageFileRequest(server string, namespace string, name string, para
 	return req, nil
 }
 
-// NewGetPackageScanRequest constructs an http.Request for the GetPackageScan method
-func NewGetPackageScanRequest(server string, namespace string, name string) (*http.Request, error) {
+// NewDeleteVersionRequest constructs an http.Request for the DeleteVersion method
+func NewDeleteVersionRequest(server string, namespace string, name string, version string) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -6955,12 +6927,19 @@ func NewGetPackageScanRequest(server string, namespace string, name string) (*ht
 		return nil, err
 	}
 
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "version", version, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
 	serverURL, err := url.Parse(server)
 	if err != nil {
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/v1/packages/%s/%s/scan", pathParam0, pathParam1)
+	operationPath := fmt.Sprintf("/v1/packages/%s/%s/versions/%s", pathParam0, pathParam1, pathParam2)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -6970,7 +6949,7 @@ func NewGetPackageScanRequest(server string, namespace string, name string) (*ht
 		return nil, err
 	}
 
-	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -7909,6 +7888,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /v1/packages/preview (the `PreviewPackage` operationId).
 	PreviewPackageWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewPackageResponse, error)
 
+	// DeletePackageWithResponse Delete a package from the catalog
+	//
+	// Archives every version of the package that is not archived already, and clears the package's latest-version pointer — the same column the catalog and this package's own detail page join through, so both stop finding it, the way an unpublished package already answers. No row and no blob is deleted: see deleteVersion's own description for why. Writes one audit row. Requires the catalog-admin role.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/packages/{namespace}/{name} (the `DeletePackage` operationId).
+	DeletePackageWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*DeletePackageResponse, error)
+
 	// GetPackageWithResponse One package's detail
 	//
 	// Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package (FR-016). The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read (FR-044), and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
@@ -7936,14 +7924,14 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/packages/{namespace}/{name}/files/content (the `GetPackageFile` operationId).
 	GetPackageFileWithResponse(ctx context.Context, namespace string, name string, params *GetPackageFileParams, reqEditors ...RequestEditorFn) (*GetPackageFileResponse, error)
 
-	// GetPackageScanWithResponse The latest visible version's scan result, to show beside the package
+	// DeleteVersionWithResponse Withdraw one version from the catalog
 	//
-	// The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029).
+	// Archives the version (dist_tag becomes `archived`) rather than deleting its row: a version is write-once, and an existing profile pin or a published revision's lockfile keeps resolving it — only new floating or range resolution, and the catalog listing when this was the package's latest, stop offering it. Writes one audit row. Requires the catalog-admin role.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
-	// Corresponds with GET /v1/packages/{namespace}/{name}/scan (the `GetPackageScan` operationId).
-	GetPackageScanWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*GetPackageScanResponse, error)
+	// Corresponds with DELETE /v1/packages/{namespace}/{name}/versions/{version} (the `DeleteVersion` operationId).
+	DeleteVersionWithResponse(ctx context.Context, namespace string, name string, version string, reqEditors ...RequestEditorFn) (*DeleteVersionResponse, error)
 
 	// ListProfilesWithResponse Profiles readable by this identity
 	//
@@ -9966,6 +9954,82 @@ func (r PreviewPackageResponse) ContentType() string {
 	return ""
 }
 
+type DeletePackageResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PackageDeleted
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r DeletePackageResponse) GetJSON200() *PackageDeleted {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DeletePackageResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r DeletePackageResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DeletePackageResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r DeletePackageResponse) GetApplicationproblemJSON409() *Error {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r DeletePackageResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r DeletePackageResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeletePackageResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeletePackageResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeletePackageResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetPackageResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -10180,53 +10244,60 @@ func (r GetPackageFileResponse) ContentType() string {
 	return ""
 }
 
-type GetPackageScanResponse struct {
+type DeleteVersionResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *PackageScan
+	JSON200 *VersionDeleted
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Error
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
 	ApplicationproblemJSON403 *Error
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Error
 	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
 	ApplicationproblemJSON500 *Error
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r GetPackageScanResponse) GetJSON200() *PackageScan {
+func (r DeleteVersionResponse) GetJSON200() *VersionDeleted {
 	return r.JSON200
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
-func (r GetPackageScanResponse) GetApplicationproblemJSON401() *Error {
+func (r DeleteVersionResponse) GetApplicationproblemJSON401() *Error {
 	return r.ApplicationproblemJSON401
 }
 
 // GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
-func (r GetPackageScanResponse) GetApplicationproblemJSON403() *Error {
+func (r DeleteVersionResponse) GetApplicationproblemJSON403() *Error {
 	return r.ApplicationproblemJSON403
 }
 
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
-func (r GetPackageScanResponse) GetApplicationproblemJSON404() *Error {
+func (r DeleteVersionResponse) GetApplicationproblemJSON404() *Error {
 	return r.ApplicationproblemJSON404
 }
 
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r DeleteVersionResponse) GetApplicationproblemJSON409() *Error {
+	return r.ApplicationproblemJSON409
+}
+
 // GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
-func (r GetPackageScanResponse) GetApplicationproblemJSON500() *Error {
+func (r DeleteVersionResponse) GetApplicationproblemJSON500() *Error {
 	return r.ApplicationproblemJSON500
 }
 
 // GetBody returns the raw response body bytes
-func (r GetPackageScanResponse) GetBody() []byte {
+func (r DeleteVersionResponse) GetBody() []byte {
 	return r.Body
 }
 
 // Status returns HTTPResponse.Status
-func (r GetPackageScanResponse) Status() string {
+func (r DeleteVersionResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -10234,7 +10305,7 @@ func (r GetPackageScanResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r GetPackageScanResponse) StatusCode() int {
+func (r DeleteVersionResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -10242,7 +10313,7 @@ func (r GetPackageScanResponse) StatusCode() int {
 }
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r GetPackageScanResponse) ContentType() string {
+func (r DeleteVersionResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -11865,6 +11936,21 @@ func (c *ClientWithResponses) PreviewPackageWithBodyWithResponse(ctx context.Con
 	return ParsePreviewPackageResponse(rsp)
 }
 
+// DeletePackageWithResponse Delete a package from the catalog
+//
+// Archives every version of the package that is not archived already, and clears the package's latest-version pointer — the same column the catalog and this package's own detail page join through, so both stop finding it, the way an unpublished package already answers. No row and no blob is deleted: see deleteVersion's own description for why. Writes one audit row. Requires the catalog-admin role.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/packages/{namespace}/{name} (the `DeletePackage` operationId).
+func (c *ClientWithResponses) DeletePackageWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*DeletePackageResponse, error) {
+	rsp, err := c.DeletePackage(ctx, namespace, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeletePackageResponse(rsp)
+}
+
 // GetPackageWithResponse One package's detail
 //
 // Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package (FR-016). The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read (FR-044), and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
@@ -11910,19 +11996,19 @@ func (c *ClientWithResponses) GetPackageFileWithResponse(ctx context.Context, na
 	return ParseGetPackageFileResponse(rsp)
 }
 
-// GetPackageScanWithResponse The latest visible version's scan result, to show beside the package
+// DeleteVersionWithResponse Withdraw one version from the catalog
 //
-// The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029).
+// Archives the version (dist_tag becomes `archived`) rather than deleting its row: a version is write-once, and an existing profile pin or a published revision's lockfile keeps resolving it — only new floating or range resolution, and the catalog listing when this was the package's latest, stop offering it. Writes one audit row. Requires the catalog-admin role.
 //
 // Returns a wrapper object for the known response body format(s).
 //
-// Corresponds with GET /v1/packages/{namespace}/{name}/scan (the `GetPackageScan` operationId).
-func (c *ClientWithResponses) GetPackageScanWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*GetPackageScanResponse, error) {
-	rsp, err := c.GetPackageScan(ctx, namespace, name, reqEditors...)
+// Corresponds with DELETE /v1/packages/{namespace}/{name}/versions/{version} (the `DeleteVersion` operationId).
+func (c *ClientWithResponses) DeleteVersionWithResponse(ctx context.Context, namespace string, name string, version string, reqEditors ...RequestEditorFn) (*DeleteVersionResponse, error) {
+	rsp, err := c.DeleteVersion(ctx, namespace, name, version, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseGetPackageScanResponse(rsp)
+	return ParseDeleteVersionResponse(rsp)
 }
 
 // ListProfilesWithResponse Profiles readable by this identity
@@ -13711,6 +13797,67 @@ func ParsePreviewPackageResponse(rsp *http.Response) (*PreviewPackageResponse, e
 	return response, nil
 }
 
+// ParseDeletePackageResponse parses an HTTP response from a DeletePackageWithResponse call
+func ParseDeletePackageResponse(rsp *http.Response) (*DeletePackageResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeletePackageResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PackageDeleted
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetPackageResponse parses an HTTP response from a GetPackageWithResponse call
 func ParseGetPackageResponse(rsp *http.Response) (*GetPackageResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -13880,22 +14027,22 @@ func ParseGetPackageFileResponse(rsp *http.Response) (*GetPackageFileResponse, e
 	return response, nil
 }
 
-// ParseGetPackageScanResponse parses an HTTP response from a GetPackageScanWithResponse call
-func ParseGetPackageScanResponse(rsp *http.Response) (*GetPackageScanResponse, error) {
+// ParseDeleteVersionResponse parses an HTTP response from a DeleteVersionWithResponse call
+func ParseDeleteVersionResponse(rsp *http.Response) (*DeleteVersionResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &GetPackageScanResponse{
+	response := &DeleteVersionResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest PackageScan
+		var dest VersionDeleted
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -13921,6 +14068,13 @@ func ParseGetPackageScanResponse(rsp *http.Response) (*GetPackageScanResponse, e
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

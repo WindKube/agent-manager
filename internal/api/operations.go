@@ -398,6 +398,59 @@ func (s *Server) registerPackages() {
 			"500": s.errorResponse("The request could not be completed."),
 		},
 	}, s.registerPackage)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "deleteVersion",
+		Method:      http.MethodDelete,
+		Path:        "/v1/packages/{namespace}/{name}/versions/{version}",
+		Tags:        []string{"packages"},
+		Summary:     "Withdraw one version from the catalog",
+		Description: "Archives the version (dist_tag becomes `archived`) rather than deleting its row: " +
+			"a version is write-once, and an existing profile pin or a published revision's " +
+			"lockfile keeps resolving it — only new floating or range resolution, and the " +
+			"catalog listing when this was the package's latest, stop offering it. Writes one " +
+			"audit row. Requires the catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Withdrawn.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.VersionDeleted{}, "VersionDeleted")},
+				},
+			},
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"403": s.errorResponse("This identity may not delete a version."),
+			"404": s.errorResponse("No such package or version."),
+			"409": s.errorResponse("This version was already withdrawn."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.deleteVersion)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "deletePackage",
+		Method:      http.MethodDelete,
+		Path:        "/v1/packages/{namespace}/{name}",
+		Tags:        []string{"packages"},
+		Summary:     "Delete a package from the catalog",
+		Description: "Archives every version of the package that is not archived already, and clears " +
+			"the package's latest-version pointer — the same column the catalog and this " +
+			"package's own detail page join through, so both stop finding it, the way an " +
+			"unpublished package already answers. No row and no blob is deleted: see " +
+			"deleteVersion's own description for why. Writes one audit row. Requires the " +
+			"catalog-admin role.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Deleted.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.PackageDeleted{}, "PackageDeleted")},
+				},
+			},
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"403": s.errorResponse("This identity may not delete a package."),
+			"404": s.errorResponse("No such package."),
+			"409": s.errorResponse("This package was already withdrawn."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.deletePackage)
 }
 
 func (s *Server) registerProfiles() {

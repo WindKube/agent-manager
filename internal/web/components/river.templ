@@ -1,0 +1,37 @@
+package components
+
+import "agent-manager/internal/web/view"
+
+// RiverScreen embeds River's own queue dashboard in this hub, on this hub's
+// origin, so reading it does not mean opening a second port and signing in to
+// nothing.
+//
+// The frame is same-origin: every byte in it came through this role's proxy,
+// which forwards no session cookie upstream and refuses every verb but GET and
+// HEAD. What the reader gets is the dashboard, read-only.
+templ RiverScreen(r view.River) {
+	<div class="am-header">
+		<div class="am-header-text">
+			<h1 class="am-h1">River Dashboard</h1>
+			<p class="am-lede">
+				River's own view of the job queue — every job, its arguments, its attempts and its
+				errors. Served through this hub, so it is read as you. Actions on jobs are not
+				proxied: a cancel or a retry here would change the queue without writing an audit
+				row, so this view reads and does not write.
+			</p>
+		</div>
+	</div>
+	<div class="am-screen-body">
+		if r.Gate != "" {
+			<div class="am-empty am-empty-auth" id="river-gate">{ r.Gate }</div>
+		} else {
+			<iframe
+				class="am-river-frame"
+				id="river-frame"
+				src={ r.EmbedPath }
+				title="River queue dashboard"
+				referrerpolicy="no-referrer"
+			></iframe>
+		}
+	</div>
+}

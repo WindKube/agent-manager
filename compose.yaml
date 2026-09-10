@@ -149,6 +149,11 @@ services:
       # logins on the sign-in screen, which is what makes the quickstart a
       # quickstart and would be a credential leak anywhere else.
       AGENT_MANAGER_WEB_DEV_CREDENTIAL_HINT: "true"
+      # The queue dashboard this role embeds, reached over the project network and
+      # never published to a browser. Not a credential: queue-ui holds the queue's,
+      # this role holds none. Unset it and the River Dashboard entry renders
+      # disabled with the reason on it rather than disappearing.
+      AGENT_MANAGER_RIVER_UI_URL: http://queue-ui:8080
     command: ["serve", "web"]
     healthcheck:
       test: ["CMD", "/usr/local/bin/agent-manager", "healthcheck", "--url", "http://127.0.0.1:8080/healthz"]

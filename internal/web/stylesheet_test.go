@@ -116,6 +116,7 @@ func TestEveryScreenSitsInsideThePageGutter(t *testing.T) {
 
 	for _, path := range []string{
 		"/catalog", "/scanner", "/profiles", "/storage", "/org", "/cli", "/audit", "/runtime",
+		"/river",
 		"/profiles/platform-engineer", "/packages/example/terraform-module-review",
 	} {
 		t.Run(path, func(t *testing.T) {

@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -124,6 +126,14 @@ func runWeb(ctx context.Context) error {
 		log.Error().Err(err).Msg("configure the identity provider; sign-in is unavailable in this process")
 	}
 
+	// Parsed here, not in web.New, so a typo is a boot failure with the value in
+	// it. Silently treating an unparseable address as "no dashboard configured"
+	// would grey the entry out and look like a deliberate deployment choice.
+	riverUI, err := riverUIURL(cfg.RiverUIURL)
+	if err != nil {
+		return err
+	}
+
 	server := web.New(web.Deps{
 		Catalog:   client,
 		Packages:  client,
@@ -158,9 +168,35 @@ func runWeb(ctx context.Context) error {
 		ProviderName:      cfg.ProviderName,
 		DevCredentialHint: cfg.DevCredentialHint,
 		DevCredentials:    devCredentials(cfg.DevCredentialHint),
+		RiverUI:           riverUI,
 	})
 
 	return server.Run(ctx)
+}
+
+// riverUIURL turns the configured dashboard address into the base the web role
+// proxies to, and nil when none is configured.
+//
+// A path on it is refused rather than joined: the dashboard is mounted at a
+// prefix this role also serves under, and two prefixes to keep in step is one
+// more than the feature needs.
+func riverUIURL(raw string) (*url.URL, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return nil, fmt.Errorf("RIVER_UI_URL %q: %w", raw, err)
+	}
+	switch {
+	case parsed.Scheme != "http" && parsed.Scheme != "https":
+		return nil, fmt.Errorf("RIVER_UI_URL %q: scheme must be http or https", raw)
+	case parsed.Host == "":
+		return nil, fmt.Errorf("RIVER_UI_URL %q: needs a host", raw)
+	case parsed.Path != "" && parsed.Path != "/":
+		return nil, fmt.Errorf("RIVER_UI_URL %q: must carry no path", raw)
+	}
+	return &url.URL{Scheme: parsed.Scheme, Host: parsed.Host}, nil
 }
 
 // webAuthProvider discovers the provider and builds the browser flow over

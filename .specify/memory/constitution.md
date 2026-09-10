@@ -29,7 +29,15 @@ Each role gets exactly the credentials its job needs, and the compose file and
 deployment manifests must make that visible:
 
 - `serve web` holds **no** database credential and **no** object-store credential. It
-  reaches data only through `serve api` over HTTP, carrying the end user's identity.
+  reaches data only through `serve api` over HTTP, carrying the end user's identity. The one
+  exception is an operator-configured third-party **dashboard** that `serve web` may reverse
+  proxy onto its own origin, so that reading it needs no second port and no second sign-in.
+  Such a proxy must hold no credential for the thing it proxies, must be gated on the same
+  role the api demands for the equivalent read, must forward no session cookie upstream and
+  return no upstream cookie, and must refuse every method that could change state — the
+  dashboard writes none of this system's audit rows, and principle IV does not bend for a
+  passthrough. It carries no data this hub owns: the dashboard reads its own store with its
+  own credential, and this role only relays bytes.
 - `worker fetcher` is the **only** role with object-store *write* access.
 - `worker scanner` gets object-store *read* and may write scan verdicts and findings.
   It never writes bundle bytes and never gets a publish credential.

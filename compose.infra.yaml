@@ -202,6 +202,11 @@ services:
     environment:
       DATABASE_URL: >-
         postgres://am_queue:local-development-am-queue@postgres:5432/river?sslmode=disable
+      # The prefix the web role serves this dashboard under, and the reason that
+      # role rewrites no bytes: told its prefix, the dashboard emits its own
+      # asset and api URLs already carrying it. It must equal
+      # view.RiverEmbedPrefix, and the direct port below carries it too.
+      PATH_PREFIX: /river/embed
     ports:
       - "8085:8080"
     # `complete` and not one of the shorter paths: this image serves its single
@@ -214,7 +219,7 @@ services:
         - -q
         - -O
         - /dev/null
-        - http://127.0.0.1:8080/api/health-checks/complete
+        - http://127.0.0.1:8080/river/embed/api/health-checks/complete
       interval: 10s
       timeout: 3s
       retries: 5

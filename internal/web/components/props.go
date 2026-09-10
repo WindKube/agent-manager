@@ -51,6 +51,7 @@ var Nav = []NavGroup{
 		{ID: "storage", Label: "Storage", Href: "/storage"},
 		{ID: "org", Label: "Organization", Href: "/org"},
 		{ID: "runtime", Label: "Runtime", Href: "/runtime"},
+		{ID: "river", Label: "River Dashboard", Href: "/river"},
 	}},
 	{Label: "Onboarding", Items: []NavItem{
 		{ID: "cli", Label: "Connect the CLI", Href: "/cli"},
@@ -97,6 +98,12 @@ type Shell struct {
 	// it could not. Nil renders no badges rather than three zeroes: a count of zero
 	// is a fact about the hub and must be earned (FR-121).
 	Badges *view.Badges
+	// NavGate is why an entry cannot be followed, keyed by NavItem.ID, and holds
+	// nothing for the entries that can. A gated entry is rendered disabled with
+	// its reason on hover rather than dropped: an entry that vanishes teaches a
+	// reader that the hub has fewer screens than it has, and they cannot ask for
+	// access to something they never saw.
+	NavGate map[string]string
 }
 
 // Badge is the count beside one nav entry, and "" when there is none to show.
@@ -124,6 +131,9 @@ func (s Shell) Badge(id string) string {
 	}
 	return strconv.Itoa(count)
 }
+
+// Gate is why this entry cannot be followed, and "" when it can.
+func (s Shell) Gate(id string) string { return s.NavGate[id] }
 
 func (s Shell) ToggleIcon() string {
 	if s.Theme == "dark" {

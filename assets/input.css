@@ -2729,4 +2729,30 @@
     font-style: italic;
     color: var(--fg3);
   }
+
+  /* A sidebar entry a viewer cannot follow: dimmed, not a link, and carrying
+     its own reason in a title. The cursor is the tell that clicking is not the
+     answer, since there is nothing to click. */
+  .am-nav-item-gated {
+    color: var(--fg3);
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .am-nav-item-gated:hover {
+    background: transparent;
+    color: var(--fg3);
+  }
+
+  /* The embedded dashboard is a whole application, so it gets the screen rather
+     than a card: full width inside the gutter, and tall enough that its own
+     header and table are not both fighting for the same 200 pixels. */
+  .am-river-frame {
+    display: block;
+    width: 100%;
+    height: calc(100vh - 190px);
+    min-height: 480px;
+    border: 0;
+    background: var(--bg);
+  }
 }

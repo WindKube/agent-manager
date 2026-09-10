@@ -13,6 +13,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"regexp"
 	"time"
@@ -190,6 +191,14 @@ type Options struct {
 	OIDCCookieKey []byte
 	// HubURL is the address `amctl login --hub` should name.
 	HubURL string
+	// RiverUI is the base address of River's queue dashboard, or nil when this
+	// deployment runs none — in which case the River Dashboard entry renders
+	// disabled with the reason on it, rather than disappearing.
+	//
+	// Scheme and host only. It is not a credential: the dashboard holds the
+	// queue's, this role holds none, and nothing a request carries can steer
+	// where the proxy points.
+	RiverUI *url.URL
 }
 
 // Server is the assembled router. It owns no connections.
@@ -200,6 +209,9 @@ type Server struct {
 	// secureCookie and oidcKey are decided once, at construction, not per-request.
 	secureCookie bool
 	oidcKey      []byte
+	// riverUI is the reverse proxy onto the queue dashboard, built once, and nil
+	// when no dashboard is configured.
+	riverUI *httputil.ReverseProxy
 }
 
 // New assembles the router. It performs no I/O.
@@ -217,6 +229,7 @@ func New(deps Deps, opts Options) *Server {
 		engine:       engine,
 		secureCookie: secureCookie(opts.PublicBaseURL),
 		oidcKey:      oidcSigningKey(opts.OIDCCookieKey),
+		riverUI:      riverProxy(opts.RiverUI, deps.Log),
 	}
 	// The guard is global, so a new route is protected by default. It runs
 	// after correlation so its own log lines and redirect carry the request's id.
@@ -280,6 +293,13 @@ func (s *Server) register() {
 	s.engine.POST("/org/categories/:id/delete", s.deleteCategory)
 
 	s.engine.GET("/runtime", s.runtime)
+
+	// The screen and the dashboard it embeds are separate paths on purpose: the
+	// embed is a byte passthrough with no layout, no shell and no session cookie
+	// on the way out, and a wildcard sharing a segment with a rendered screen is
+	// how one of them starts answering for the other.
+	s.engine.GET("/river", s.riverScreen)
+	s.engine.Any(view.RiverEmbedPrefix+"/*path", s.riverEmbed)
 
 	s.engine.POST("/theme", s.setTheme)
 

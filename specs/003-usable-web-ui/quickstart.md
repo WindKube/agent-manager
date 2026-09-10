@@ -39,7 +39,7 @@ compose.infra.yaml
   dex ───────── OIDC + device grant          178 MB, discovery live in ~1 s
     └ glauth ── LDAP directory, 2 users in 2 groups    90 MB
   migrate-schema  ──> migrate-queue           (both run to completion)
-  queue-ui :8085            River's queue dashboard
+  queue-ui :8085            River's queue dashboard, on /river/embed
 
 compose.yaml   (include: compose.infra.yaml)
   api      :8082 -> :8081   REST + OIDC + device flow + outbox relay
@@ -65,7 +65,7 @@ Three things are different from 001's stack beyond the file split:
 | API + OpenAPI | http://localhost:8082/v1 · `/v1/openapi.json` | bearer token from the device flow |
 | Dex discovery | http://localhost:5556/dex/.well-known/openid-configuration | — |
 | MinIO console | http://localhost:9001 | `minioadmin` / `minioadmin` |
-| River UI | http://localhost:8085 | — |
+| River dashboard | http://localhost:8080/river — or http://localhost:8085/river/embed/ direct | catalog admin role; embedded read-only |
 
 All three share one password, `local-only-directory-password`. glauth holds only its sha256, so
 the plaintext is spelled exactly once in code — `seed.DirectoryPassword` — and the sign-in

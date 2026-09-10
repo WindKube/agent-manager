@@ -3,6 +3,7 @@ package view
 import (
 	"net/url"
 	"strconv"
+	"strings"
 )
 
 // The audit log screen's view models (US4; 001 FR-050 through FR-052).
@@ -53,6 +54,15 @@ func (r AuditRow) SourceLabel() string {
 	return r.Source
 }
 
+// SourceDetail spells out what SourceLabel leaves as a dash: alone in a panel a
+// dash reads as a rendering bug rather than as "not recorded".
+func (r AuditRow) SourceDetail() string {
+	if r.Source == "" {
+		return "Not recorded"
+	}
+	return r.Source
+}
+
 // KindTone colours the badge. The vocabulary is the api's and it grows, so
 // anything unrecognised gets the neutral badge rather than no badge — a kind this
 // screen has not been taught is still a kind, and hiding it would hide the row's
@@ -76,12 +86,55 @@ func (r AuditRow) KindTone() string { return KindTone(r.Kind) }
 // honest before the first answer arrives.
 const DefaultAuditPageSize = 50
 
+// AuditQuery is one request for the screen: which page, and which of its rows
+// is open in the detail panel.
+type AuditQuery struct {
+	Page int
+	// Selected is a row id off the URL: untrusted text, only ever a query
+	// value and never used to build a path, so bounded rather than validated.
+	Selected string
+}
+
+// maxAuditIDLength bounds what a URL can push back into every row's href.
+const maxAuditIDLength = 64
+
+func (q AuditQuery) Normalise() AuditQuery {
+	if q.Page < 1 {
+		q.Page = 1
+	}
+	q.Selected = strings.TrimSpace(q.Selected)
+	if len(q.Selected) > maxAuditIDLength {
+		q.Selected = ""
+	}
+	return q
+}
+
+// EntryHref opens one row's detail panel without disturbing the page.
+func (q AuditQuery) EntryHref(id string) string {
+	values := url.Values{}
+	if q.Page > 1 {
+		values.Set("page", strconv.Itoa(q.Page))
+	}
+	values.Set("entry", id)
+	return "/audit?" + values.Encode()
+}
+
+// CloseHref is the page with no row open — the pager's own target, since
+// closing the panel and turning the page land on the same place.
+func (q AuditQuery) CloseHref() string { return AuditPageHref(q.Page) }
+
 // Audit is the whole screen.
 type Audit struct {
+	Query    AuditQuery
 	Rows     []AuditRow
 	Total    int
 	Page     int
 	PageSize int
+
+	// Selected is found on the page already read: AuditRow carries every field
+	// the api's AuditEntry does. Missing is set when the id names no row here.
+	Selected *AuditRow
+	Missing  bool
 
 	// The three states that are not a page of rows, each with its own copy and its
 	// own markup id (FR-122). 001 FR-052 makes the last of them matter more here

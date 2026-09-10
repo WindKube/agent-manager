@@ -215,6 +215,31 @@ func TestAnAuditRowNeverLeavesACellSilentlyBlank(t *testing.T) {
 		"a person's row is annotated by nothing; the actor column is the statement")
 }
 
+// TestTheAuditDetailPanelNamesAnUnrecordedSourceRatherThanLeavingADash. The
+// row's own em dash is right beside three other cells; alone in the panel it
+// reads as a rendering bug, so the panel spells the same fact out.
+func TestTheAuditDetailPanelNamesAnUnrecordedSourceRatherThanLeavingADash(t *testing.T) {
+	require.Equal(t, "Not recorded", view.AuditRow{}.SourceDetail())
+	require.Equal(t, "web", view.AuditRow{Source: "web"}.SourceDetail())
+}
+
+// TestTheAuditScreensLinksCarryTheRestOfItsState. Opening a row must not lose
+// the page it came from, and a page turn must not leave a stale selection
+// pointed at a row that is no longer on the page.
+func TestTheAuditScreensLinksCarryTheRestOfItsState(t *testing.T) {
+	q := view.AuditQuery{Page: 2, Selected: "abc"}.Normalise()
+
+	require.Equal(t, "/audit?entry=e1", view.AuditQuery{Page: 1}.EntryHref("e1"))
+	require.Equal(t, "/audit?entry=e1&page=2", q.EntryHref("e1"))
+	require.Equal(t, "/audit?page=2", q.CloseHref())
+	require.Equal(t, "/audit", view.AuditQuery{Page: 1}.CloseHref())
+
+	t.Run("an unbounded id from the url is not echoed back into every row's link", func(t *testing.T) {
+		long := view.AuditQuery{Selected: strings.Repeat("a", 500)}.Normalise()
+		require.Empty(t, long.Selected)
+	})
+}
+
 // TestNeitherScreenCountsWhatItCouldNotRead. "0 findings" on an unreachable api is
 // a claim about the hub, and it is the claim FR-122 separates from an empty one.
 func TestNeitherScreenCountsWhatItCouldNotRead(t *testing.T) {

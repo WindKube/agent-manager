@@ -18,19 +18,15 @@ import (
 // The audit log screen and its export.
 
 func (s *Server) audit(c *gin.Context) {
-	page, err := strconv.Atoi(c.Query("page"))
-	if err != nil || page < 1 {
-		page = 1
-	}
-
-	screen := view.Audit{Page: page, ExportAvailable: s.deps.Audit != nil}
+	query := auditQueryFromURL(c)
+	screen := view.Audit{Query: query, Page: query.Page, ExportAvailable: s.deps.Audit != nil}
 	if s.deps.Audit == nil {
 		screen.Unavailable = true
 		s.renderAudit(c, http.StatusBadGateway, screen)
 		return
 	}
 
-	entries, err := s.deps.Audit.Audit(session(c), page)
+	entries, err := s.deps.Audit.Audit(session(c), query.Page)
 	if status, ok := s.governanceFailure(c, err, &screen.GovernanceState, "audit log"); !ok {
 		// The export is offered only beside rows that could be read.
 		screen.ExportAvailable = false
@@ -42,7 +38,32 @@ func (s *Server) audit(c *gin.Context) {
 	for _, entry := range entries.Entries {
 		screen.Rows = append(screen.Rows, auditRow(entry))
 	}
+
+	if query.Selected != "" {
+		if row := findAuditRow(screen.Rows, query.Selected); row != nil {
+			screen.Selected = row
+		} else {
+			screen.Missing = true
+		}
+	}
 	s.renderAudit(c, http.StatusOK, screen)
+}
+
+func auditQueryFromURL(c *gin.Context) view.AuditQuery {
+	page, err := strconv.Atoi(c.Query("page"))
+	if err != nil {
+		page = 1
+	}
+	return view.AuditQuery{Page: page, Selected: c.Query("entry")}.Normalise()
+}
+
+func findAuditRow(rows []view.AuditRow, id string) *view.AuditRow {
+	for i := range rows {
+		if rows[i].ID == id {
+			return &rows[i]
+		}
+	}
+	return nil
 }
 
 func (s *Server) renderAudit(c *gin.Context, status int, screen view.Audit) {

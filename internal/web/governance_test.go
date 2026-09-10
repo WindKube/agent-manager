@@ -471,6 +471,66 @@ func TestTheAuditScreenNeverAttributesASystemRowToAPerson(t *testing.T) {
 	require.Contains(t, body, "am-pill-ok")
 }
 
+// TestEveryAuditRowIsAKeyboardReachableLinkToItsOwnDetail. A row of <td>s (or
+// <div>s) with a click handler and no accessible name is not reachable from a
+// keyboard and announces nothing to a screen reader; a real <a> is both by
+// construction.
+func TestEveryAuditRowIsAKeyboardReachableLinkToItsOwnDetail(t *testing.T) {
+	source := &governance{audit: []hub.AuditEntry{
+		{ID: "a1", OccurredAt: time.Now(), Actor: "an-operator", ActorKind: "identity", Kind: "approve", Text: "override granted", Source: "web"},
+	}}
+	body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/audit").Body.String()
+
+	require.Contains(t, body, `<a class="am-audit-row" href="/audit?entry=a1">`,
+		"the row is not a real, keyboard-focusable link to its own detail")
+}
+
+// TestClickingAnAuditRowOpensAPanelWithTheWholeUntruncatedMessage is the bug
+// report itself: the row's own am-audit-text cell clips this message with an
+// ellipsis, and nothing before this change rendered it in full anywhere on the
+// page. The panel must, and it must not be cut off inside it either.
+func TestClickingAnAuditRowOpensAPanelWithTheWholeUntruncatedMessage(t *testing.T) {
+	message := `failed to fetch community/skills@1.2.3 from git https://github.com/mattpocock/skills@v1.2.3 ` +
+		`(skills/engineering/code-review): archive member rejected: symlink (member "mattpocock-skills-835450e/AGENTS.md")`
+	source := &governance{audit: []hub.AuditEntry{
+		{ID: "a1", OccurredAt: time.Now(), Actor: "fetcher", ActorKind: "system", Kind: "fetch", Text: message},
+	}}
+	body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/audit?entry=a1").Body.String()
+
+	require.Contains(t, body, `class="am-audit-panel"`, "no detail panel was rendered for the selected row")
+	require.Contains(t, body, `class="am-audit-detail-message"`)
+	// The quote inside the message proves this is templ's own escaping and not
+	// a raw copy: an unescaped one would also make this a stored-XSS hole.
+	require.Contains(t, body, "archive member rejected: symlink (member &#34;mattpocock-skills-835450e/AGENTS.md&#34;)")
+	require.Contains(t, body, "https://github.com/mattpocock/skills@v1.2.3")
+	// The id the row itself never shows (001 FR-050's own row identity).
+	require.Contains(t, body, "a1")
+}
+
+// TestAnAuditEntryNotOnThePageIsNamedMissingRatherThanRenderingNothing. A
+// stale link or one for a row a page turn left behind must say so; a panel
+// that silently renders empty reads as a bug rather than an honest state.
+func TestAnAuditEntryNotOnThePageIsNamedMissingRatherThanRenderingNothing(t *testing.T) {
+	source := &governance{audit: []hub.AuditEntry{
+		{ID: "a1", OccurredAt: time.Now(), Actor: "an-operator", ActorKind: "identity", Kind: "approve", Text: "override granted"},
+	}}
+	body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/audit?entry=does-not-exist").Body.String()
+
+	require.Contains(t, body, `id="audit-entry-missing"`)
+}
+
+// TestTheAuditPanelSaysSoRatherThanLeavingAnEmptySourceCell extends the row's
+// own "not recorded" convention (SourceLabel) into the panel, where a bare dash
+// with no other cells around it reads as a rendering bug rather than a fact.
+func TestTheAuditPanelSaysSoRatherThanLeavingAnEmptySourceCell(t *testing.T) {
+	source := &governance{audit: []hub.AuditEntry{
+		{ID: "a1", OccurredAt: time.Now(), Actor: "an-operator", ActorKind: "identity", Kind: "approve", Text: "override granted"},
+	}}
+	body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/audit?entry=a1").Body.String()
+
+	require.Contains(t, body, "Not recorded")
+}
+
 // TestTheAuditExportStreamsThroughAndItsSentinelIsChecked is 001 FR-051 and the
 // hub's own warning about it: a streamed response cannot change its status once it
 // has started, so a truncated export arrives as a 200 whose last line is missing.

@@ -2285,4 +2285,74 @@
       transform: rotate(360deg);
     }
   }
+
+  /* Audit entry detail: over the table, not beside it, so the message column
+     keeps its width. */
+
+  .am-audit-row:hover {
+    background: var(--surface2);
+  }
+
+  .am-audit-row-on {
+    background: var(--sel);
+  }
+
+  /* Dimming only: pointer-events:none leaves the close link as the one way
+     out. The scrim colour is inline in the markup, as the modal's is, since a
+     translucent literal is not a pair contrast_test.go sweeps. */
+  .am-audit-panel-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    pointer-events: none;
+  }
+
+  .am-audit-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 41;
+    display: flex;
+    flex-direction: column;
+    width: min(440px, 100vw);
+    border-left: 1px solid var(--bd);
+    background: var(--surface);
+    box-shadow: -24px 0 60px rgba(0, 0, 0, 0.28);
+    overflow-y: auto;
+  }
+
+  .am-audit-panel-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--bd);
+  }
+
+  .am-audit-panel-title {
+    font-size: 15px;
+    font-weight: 500;
+  }
+
+  .am-audit-panel-close {
+    flex: none;
+    font-size: 16px;
+    color: var(--fg3);
+    line-height: 1;
+  }
+
+  .am-audit-panel-close:hover {
+    color: var(--fg);
+  }
+
+  /* am-audit-text clips to one line; this wraps. */
+  .am-audit-detail-message {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    line-height: 1.6;
+    color: var(--fg2);
+  }
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
@@ -36,6 +37,20 @@ var (
 // ErrImmutable is what tells a publisher why the hub refused.
 const uniqueVersionConstraint = "version_package_semver"
 
+const (
+	// MaxTagCount bounds a registration's own tags. High enough for real
+	// use, low enough that the catalog's tag facet stays a facet.
+	MaxTagCount = 20
+	// MaxTagLength bounds one tag. Every tag in internal/seed and
+	// internal/web/fixture is well under this.
+	MaxTagLength = 40
+)
+
+// tagRE is a tag's character set: what the catalog's tag facet and pill
+// already render as plain mono text, with no separator character a
+// comma-separated field could confuse for another tag.
+var tagRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]*$`)
+
 // Registration is one registration request, reduced to what the command
 // needs.
 type Registration struct {
@@ -57,9 +72,15 @@ type Registration struct {
 	Visibility models.PackageVisibility
 
 	// Keywords seed version.tags so the catalog can filter a version the
-	// fetcher hasn't finished yet; the fetcher rewrites them from the
-	// authoritative manifest.
+	// fetcher hasn't finished yet. Keywords is the archive's own manifest
+	// keywords (upload only); Tags is what the publisher typed on the
+	// form. Both are unioned into version.tags here, and unioned again
+	// with the fetched manifest's keywords at publish — never replaced,
+	// in either direction.
 	Keywords []string
+	// Tags is validated and deduplicated in normalise, matching
+	// fetcher.VersionTags's own rule rather than a second one.
+	Tags []string
 
 	ArchiveName string
 	Archive     []byte
@@ -135,13 +156,10 @@ func RegisterPackage(ctx context.Context, db bun.IDB, p auth.Principal, in Regis
 			// isn't fetched yet; digest stays null, which the schema's
 			// scanning-check permits.
 			Manifest: json.RawMessage(`{}`),
-			Tags:     in.Keywords,
+			Tags:     fetcher.VersionTags(append(in.Keywords, in.Tags...)),
 			DistTag:  models.DistTagNone,
 			Verdict:  models.VerdictScanning,
 			Visible:  false,
-		}
-		if version.Tags == nil {
-			version.Tags = []string{}
 		}
 		if _, insertErr := tx.NewInsert().Model(version).Exec(ctx); insertErr != nil {
 			if isUniqueViolation(insertErr, uniqueVersionConstraint) {
@@ -265,7 +283,42 @@ func (in Registration) normalise() (Registration, error) {
 	if !in.Visibility.Valid() {
 		return in, fmt.Errorf("%w: %q is not a visibility", ErrRegistration, in.Visibility)
 	}
+
+	tags, err := normaliseTags(in.Tags)
+	if err != nil {
+		return in, err
+	}
+	in.Tags = tags
+
 	return in, nil
+}
+
+// normaliseTags trims and drops empties before deduping, so "aws" and
+// " aws " are the same tag, and dedupes before counting, so typing the same
+// tag twice never refuses a registration that would otherwise pass. Unlike
+// Decision.Note, which truncates, an over-long or ill-formed tag is refused:
+// prose surviving a cut is still readable, but a truncated or stripped tag is
+// a silent lie about what was registered.
+func normaliseTags(raw []string) ([]string, error) {
+	trimmed := make([]string, 0, len(raw))
+	for _, tag := range raw {
+		if tag = strings.TrimSpace(tag); tag != "" {
+			trimmed = append(trimmed, tag)
+		}
+	}
+
+	tags := fetcher.VersionTags(trimmed)
+	if len(tags) > MaxTagCount {
+		return nil, fmt.Errorf("%w: at most %d tags are allowed, not %d", ErrRegistration, MaxTagCount, len(tags))
+	}
+	for _, tag := range tags {
+		if len(tag) > MaxTagLength || !tagRE.MatchString(tag) {
+			return nil, fmt.Errorf(
+				"%w: %q is not a valid tag: letters, digits and hyphens, at most %d characters",
+				ErrRegistration, tag, MaxTagLength)
+		}
+	}
+	return tags, nil
 }
 
 // deriveFromURL gives the import modal a default name and version only.

@@ -1,6 +1,8 @@
 package commands
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -53,6 +55,71 @@ func TestNormaliseRefusesAPublisherThatIsNotOneOrTwoNonEmptySegments(t *testing.
 		t.Run("rejects "+publisher, func(t *testing.T) {
 			_, err := validRegistration(publisher).normalise()
 			require.ErrorIs(t, err, ErrRegistration)
+		})
+	}
+}
+
+func TestNormaliseTrimsDedupesAndSortsTags(t *testing.T) {
+	in := validRegistration("community")
+	in.Tags = []string{" terraform ", "aws", "terraform", ""}
+
+	out, err := in.normalise()
+	require.NoError(t, err)
+	require.Equal(t, []string{"aws", "terraform"}, out.Tags)
+}
+
+func TestNormaliseAcceptsAnEmptyTagsFieldUnchanged(t *testing.T) {
+	out, err := validRegistration("community").normalise()
+	require.NoError(t, err)
+	require.Empty(t, out.Tags)
+}
+
+func TestNormaliseRefusesMoreThanMaxTagCountDistinctTags(t *testing.T) {
+	in := validRegistration("community")
+	tags := make([]string, MaxTagCount+1)
+	for i := range tags {
+		tags[i] = fmt.Sprintf("tag%d", i)
+	}
+	in.Tags = tags
+
+	_, err := in.normalise()
+	require.ErrorIs(t, err, ErrRegistration)
+	require.ErrorContains(t, err, fmt.Sprintf("at most %d tags", MaxTagCount))
+}
+
+// A repeated tag dedupes away before the count is checked, so it never trips
+// the refusal above.
+func TestNormaliseDoesNotCountADuplicateTagTwice(t *testing.T) {
+	in := validRegistration("community")
+	tags := make([]string, MaxTagCount+1)
+	for i := range tags {
+		tags[i] = "terraform"
+	}
+	in.Tags = tags
+
+	out, err := in.normalise()
+	require.NoError(t, err)
+	require.Equal(t, []string{"terraform"}, out.Tags)
+}
+
+func TestNormaliseRefusesATagOverMaxTagLength(t *testing.T) {
+	in := validRegistration("community")
+	in.Tags = []string{strings.Repeat("a", MaxTagLength+1)}
+
+	_, err := in.normalise()
+	require.ErrorIs(t, err, ErrRegistration)
+	require.ErrorContains(t, err, "not a valid tag")
+}
+
+func TestNormaliseRefusesATagWithACharacterTheFacetCannotRender(t *testing.T) {
+	for _, tag := range []string{"has space", "comma,d", "slash/ed", "quote\"d", "-leading-hyphen"} {
+		t.Run(tag, func(t *testing.T) {
+			in := validRegistration("community")
+			in.Tags = []string{tag}
+
+			_, err := in.normalise()
+			require.ErrorIs(t, err, ErrRegistration)
+			require.ErrorContains(t, err, "not a valid tag")
 		})
 	}
 }

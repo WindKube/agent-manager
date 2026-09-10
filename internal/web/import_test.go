@@ -77,7 +77,7 @@ func TestTheImportModalIsOnTheCatalogAndCostsNoRoundTrip(t *testing.T) {
 		// trip, with nothing else looking different.
 		for _, signal := range []string{
 			"_importOpen", "_importTab", "_importFile",
-			"_importURL", "_importRef", "_importSubdir", "_importPublisher", "_importVersion",
+			"_importURL", "_importRef", "_importSubdir", "_importPublisher", "_importVersion", "_importTags",
 		} {
 			require.Containsf(t, body, `&#34;`+signal+`&#34;`, "%s is missing from the initial signal state", signal)
 			require.NotContainsf(t, body, `&#34;`+strings.TrimPrefix(signal, "_")+`&#34;:`,
@@ -273,7 +273,7 @@ func TestAnAcceptedRegistrationClosesTheModalAndSaysSoOnTheScreen(t *testing.T) 
 	// last registration's fields is the same defect one press later.
 	for _, signal := range []string{
 		"_importFile", "_importURL", "_importRef", "_importSubdir",
-		"_importPublisher", "_importName", "_importVersion", "_importKind",
+		"_importPublisher", "_importName", "_importVersion", "_importKind", "_importTags",
 	} {
 		require.Containsf(t, body, `"`+signal+`":""`, "%s survived a registration", signal)
 	}
@@ -344,4 +344,37 @@ func TestTheFormAsksForANameAndAKindAndForwardsBoth(t *testing.T) {
 	})
 	require.Equal(t, "code-review", reg.got.Name)
 	require.Equal(t, "skill", reg.got.Kind)
+}
+
+// Both tabs get the field, and it forwards unparsed: splitting, deduping and
+// validating is the api's job, not this hop's.
+func TestTheFormAsksForTagsOnBothTabsAndForwardsThemUnparsed(t *testing.T) {
+	body := get(t, handler(t, fixture.New()), "/catalog").Body.String()
+
+	require.Contains(t, body, `id="import-tags"`)
+	require.Contains(t, body, `name="tags"`)
+	require.Contains(t, body, `placeholder="terraform, aws, guardrails"`)
+
+	reg := &registrar{}
+	postMultipart(t, registerHandler(t, reg), map[string]string{
+		"publisher": "example/platform",
+		"name":      "code-review",
+		"version":   "1.2.3",
+		"tags":      " terraform, aws ,,terraform",
+	})
+	require.Equal(t, " terraform, aws ,,terraform", reg.got.Tags,
+		"the web role forwards the raw field; the api is what splits, dedupes and validates it")
+}
+
+// Leaving the field empty is the common case, and it must keep working
+// exactly as it did before this field existed.
+func TestTheFormWorksWithNoTags(t *testing.T) {
+	reg := &registrar{}
+	rec := postMultipart(t, registerHandler(t, reg), map[string]string{
+		"publisher": "example/platform",
+		"name":      "release-notes",
+		"version":   "1.0.0",
+	})
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Empty(t, reg.got.Tags)
 }

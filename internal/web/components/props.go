@@ -204,6 +204,7 @@ func (c Catalog) Signals() string {
 		"_importName":      "",
 		"_importVersion":   "",
 		"_importKind":      "",
+		"_importTags":      "",
 		// Set by data-indicator on the submit control while its request is in
 		// flight. Declared here so the disabled expression has a value to read on
 		// first paint rather than on the plugin's own initialisation order.
@@ -379,6 +380,10 @@ func ImportKinds() []view.ImportOption {
 		{Value: "skill", Label: "Skill"},
 	}
 }
+
+// ImportTagsLimit is the tags field's maxlength, as a string for the
+// attribute. Mirrors view.MaxTagsFieldLength; the api still decides.
+func ImportTagsLimit() string { return strconv.Itoa(view.MaxTagsFieldLength) }
 
 // ImportResultClass tones the outcome banner. A refusal is --dan and an
 // acknowledgement is --warn, not --ok: a 202 means the fetch is queued, and

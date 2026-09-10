@@ -211,6 +211,44 @@ func TestASignedOutRegistrationIsWordedAsALoginAndNotAsARejectedArchive(t *testi
 		"nothing about the archive was judged, so nothing may say it was")
 }
 
+// The tags field follows the same rule as the rest of the modal's form:
+// omitted rather than sent blank, so the common case of no tags reaches the
+// api exactly as it did before this field existed.
+func TestRegisterOmitsTagsWhenEmptyAndSendsThemRawWhenSet(t *testing.T) {
+	var forms []map[string]string
+	client := clientAgainst(t, func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseMultipartForm(1<<20))
+		got := map[string]string{}
+		for name, values := range r.MultipartForm.Value {
+			got[name] = values[0]
+		}
+		forms = append(forms, got)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"packageId":"018f0000-0000-7000-8000-000000000000",
+		  "versionId":"018f0000-0000-7000-8000-000000000001",
+		  "publisher":"example/security","name":"pii-redactor","version":"1.4.2",
+		  "kind":"plugin","objectKey":"x","verdict":"scanning","visible":false}`))
+	})
+
+	_, err := client.Register(t.Context(), view.Registration{
+		Tab: view.ImportURL, URL: "https://example.invalid/repo.git", Publisher: "example/security",
+	})
+	require.NoError(t, err)
+
+	_, err = client.Register(t.Context(), view.Registration{
+		Tab: view.ImportURL, URL: "https://example.invalid/repo.git", Publisher: "example/security",
+		Tags: " terraform, aws ",
+	})
+	require.NoError(t, err)
+
+	require.Len(t, forms, 2)
+	_, present := forms[0]["tags"]
+	require.False(t, present, "an empty tags field must not be sent, the same as every other optional field")
+	require.Equal(t, " terraform, aws ", forms[1]["tags"],
+		"the raw field, unparsed: splitting, deduping and validating is the api's job")
+}
+
 func clientAgainst(t *testing.T, handler http.HandlerFunc, opts ...hub.Option) *hub.Client {
 	t.Helper()
 

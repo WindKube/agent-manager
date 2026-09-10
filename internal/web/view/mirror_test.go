@@ -38,3 +38,10 @@ func TestTheOverrideBoundsThisRoleStatesAreTheOnesTheApiApplies(t *testing.T) {
 	require.Equal(t, "30", view.DefaultOverrideDaysText(),
 		"the printed form of the default must be the default")
 }
+
+func TestTheTagsFieldThisRoleBoundsHoldsEveryTagTheApiAccepts(t *testing.T) {
+	require.Equal(t, commands.MaxTagCount*(commands.MaxTagLength+1), view.MaxTagsFieldLength,
+		"the modal has one comma-separated tags input, so its maxlength has to hold the "+
+			"longest registration the api would accept. A narrower mirror refuses what the "+
+			"api would have taken, at the keyboard, with no message")
+}

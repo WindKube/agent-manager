@@ -72,6 +72,7 @@ func (s *Server) importRegister(c *gin.Context) {
 		Kind:         c.PostForm("kind"),
 		Category:     c.PostForm("category"),
 		Visibility:   c.PostForm("visibility"),
+		Tags:         c.PostForm("tags"),
 	}
 	// Which tab was showing is not sent as a signal — every modal signal is
 	// underscore-prefixed and never leaves the browser — so it is inferred from
@@ -147,6 +148,7 @@ func closedImportSignals() map[string]any {
 		"_importName":      "",
 		"_importVersion":   "",
 		"_importKind":      "",
+		"_importTags":      "",
 	}
 }
 

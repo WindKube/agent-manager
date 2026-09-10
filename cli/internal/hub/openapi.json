@@ -5787,6 +5787,9 @@
                 "subdirectory": {
                   "contentType": "text/plain"
                 },
+                "tags": {
+                  "contentType": "text/plain"
+                },
                 "url": {
                   "contentType": "text/plain"
                 },
@@ -5861,6 +5864,13 @@
                     "description": "Path inside the tree holding the manifest.",
                     "examples": [
                       "plugins/platform-toolkit"
+                    ],
+                    "type": "string"
+                  },
+                  "tags": {
+                    "description": "Comma-separated tags. Added to whatever the manifest's own keywords contribute at publish — this does not replace them, and is not replaced by them.",
+                    "examples": [
+                      "terraform,aws,guardrails"
                     ],
                     "type": "string"
                   },

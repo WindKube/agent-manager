@@ -110,6 +110,32 @@ func TestRegisteringAnUploadReturns202AndThenRefusesTheSameVersionWith409(t *tes
 	require.Equal(t, 1, jobs)
 }
 
+// The registration writes the publisher's tags onto the row before the
+// fetcher has run at all — this is the seed publish later unions with the
+// manifest's keywords, not a value the fetcher invents from nothing.
+func TestRegistrationSeedsTheVersionsTagsBeforeAnyFetchRuns(t *testing.T) {
+	handler := liveHandler(t)
+
+	contentType, body := upload(t, nil, map[string]string{
+		"source": "git", "url": "https://github.com/example/tagged-plugin", "ref": "v1.0.0",
+		"publisher": "example/tagged", "name": "tagged-plugin",
+		"tags": " Terraform , aws, aws, ",
+	})
+	rec := postForm(t, handler, "/v1/packages", kw.token, contentType, body)
+	require.Equal(t, http.StatusAccepted, rec.Code, rec.Body.String())
+
+	var registered contract.PackageRegistered
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &registered))
+
+	var tags []string
+	require.NoError(t, pool.QueryRow(t.Context(),
+		`select tags from version where id = $1`, registered.VersionID).Scan(&tags))
+	require.Equal(t, []string{"aws", "terraform"}, tags,
+		"trimmed, deduplicated, sorted and case-folded: the catalog's tag facet groups on the "+
+			"stored string, so Terraform beside terraform would be two filters each hiding half "+
+			"the catalog")
+}
+
 // seedPublishedVersion writes a package and a committed version directly,
 // bypassing RegisterPackage and worker fetcher both, so a re-registration
 // attempt exercises FR-007's refusal against a version already sitting in

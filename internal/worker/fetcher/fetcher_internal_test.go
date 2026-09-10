@@ -172,8 +172,12 @@ func TestTheManifestKeywordsBecomeTheVersionsTagsExactlyOnce(t *testing.T) {
 	// denormalised, so a duplicate keyword would abort the publish transaction on
 	// a primary-key violation.
 	require.Equal(t, []string{"iac", "terraform"},
-		versionTags([]string{"terraform", "iac", "terraform", ""}))
-	require.Empty(t, versionTags(nil))
+		VersionTags([]string{"terraform", "iac", "terraform", ""}))
+	require.Empty(t, VersionTags(nil))
+
+	// The facet groups on the stored string, so `AWS` and `aws` have to be one
+	// tag rather than two filters that each hide half the catalog.
+	require.Equal(t, []string{"aws"}, VersionTags([]string{"AWS", "aws", "Aws"}))
 }
 
 func TestTheTagsColumnIsRenderedAsAPostgresTextArray(t *testing.T) {

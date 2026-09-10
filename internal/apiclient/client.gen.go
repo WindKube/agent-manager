@@ -3700,6 +3700,11 @@ type RegisterPackageMultipartBody struct {
 	// Examples: plugins/platform-toolkit
 	Subdirectory *string `json:"subdirectory,omitempty"`
 
+	// Tags Comma-separated tags. Added to whatever the manifest's own keywords contribute at publish — this does not replace them, and is not replaced by them.
+	//
+	// Examples: terraform,aws,guardrails
+	Tags *string `json:"tags,omitempty"`
+
 	// Url Repository or archive URL. Required unless source is upload.
 	//
 	// Examples: https://github.com/org/plugin

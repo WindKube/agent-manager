@@ -106,6 +106,7 @@ func writeRegistration(form *multipart.Writer, r view.Registration) error {
 		{"kind", r.Kind},
 		{"category", r.Category},
 		{"visibility", r.Visibility},
+		{"tags", r.Tags},
 	} {
 		if field.value == "" {
 			continue

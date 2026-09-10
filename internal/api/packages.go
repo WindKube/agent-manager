@@ -53,6 +53,8 @@ type registrationForm struct {
 	Category   string `form:"category" required:"false" doc:"A category name or slug from the admin-curated vocabulary (FR-049)." example:"Infrastructure"`
 	Visibility string `form:"visibility" required:"false" enum:"organisation,team,private" doc:"Who may see the package in the catalog." example:"organisation"`
 
+	Tags string `form:"tags" required:"false" doc:"Comma-separated tags. Added to whatever the manifest's own keywords contribute at publish — this does not replace them, and is not replaced by them." example:"terraform,aws,guardrails"`
+
 	Archive huma.FormFile `form:"archive" required:"false" contentType:"application/zip,application/gzip,application/x-gzip,application/x-tar,application/octet-stream" doc:"Required when source is upload, and refused otherwise. huma treats a form field as required unless told otherwise, which is what required:\"false\" is doing on every optional field here."`
 }
 
@@ -164,6 +166,10 @@ func registrationFrom(ctx context.Context, form *registrationForm) (commands.Reg
 		Kind:         models.PackageKind(strings.TrimSpace(form.Kind)),
 		Category:     strings.TrimSpace(form.Category),
 		Visibility:   models.PackageVisibility(strings.TrimSpace(form.Visibility)),
+		// Trimming, dropping empties, deduplicating and validating are all
+		// commands.Registration.normalise's job, same as every other field
+		// this function hands it unrefined.
+		Tags: strings.Split(form.Tags, ","),
 	}
 
 	switch kind {

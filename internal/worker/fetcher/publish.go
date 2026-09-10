@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/dialect/pgdialect"
 
 	"agent-manager/internal/blob"
 	"agent-manager/internal/domain/pkgspec"
@@ -30,13 +32,14 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 		// cannot: two deliveries can both pass that check, and only one may
 		// write.
 		var (
-			sortKey   string
-			committed bool
-			packageID uuid.UUID
+			sortKey        string
+			committed      bool
+			packageID      uuid.UUID
+			registeredTags []string
 		)
 		lockErr := tx.QueryRowContext(ctx,
-			`select semver_sort, digest is not null, package_id from version where id = ? for update`,
-			job.VersionID).Scan(&sortKey, &committed, &packageID)
+			`select semver_sort, digest is not null, package_id, tags from version where id = ? for update`,
+			job.VersionID).Scan(&sortKey, &committed, &packageID, pgdialect.Array(&registeredTags))
 		switch {
 		case errors.Is(lockErr, sql.ErrNoRows):
 			return fmt.Errorf("publish %s: no version row %s", job, job.VersionID)
@@ -106,7 +109,12 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 			}
 		}
 
-		tags := versionTags(pkg.Keywords)
+		// registeredTags is whatever the registration already wrote — a
+		// publisher's own tags, and an upload's manifest keywords seeded
+		// early so the catalog could filter it before the fetch finished.
+		// Unioned rather than replaced: a plain overwrite here would drop
+		// tags the api wrote and this transaction never re-derives.
+		tags := VersionTags(append(registeredTags, pkg.Keywords...))
 
 		// `and digest is null` is a compare-and-set: a lost lock fails the
 		// update rather than silently overwriting bytes that are supposed to
@@ -210,11 +218,17 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 	return published, latest, nil
 }
 
-// versionTags is the manifest's keywords as the version's tags, deduplicated
-// and ordered.
-func versionTags(keywords []string) []string {
+// VersionTags is the one rule for turning a bag of strings into what
+// `version.tags` and `version_tag` store, whether they came from a manifest's
+// keywords or from what a publisher typed. Exported so
+// commands.RegisterPackage normalises the same way instead of restating it.
+//
+// Case is folded because the tag facet groups on the stored string: `AWS`
+// beside `aws` would be two filters that each hide half the catalog.
+func VersionTags(keywords []string) []string {
 	out := make([]string, 0, len(keywords))
 	for _, tag := range keywords {
+		tag = strings.ToLower(tag)
 		if tag != "" && !slices.Contains(out, tag) {
 			out = append(out, tag)
 		}

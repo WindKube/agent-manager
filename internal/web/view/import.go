@@ -23,6 +23,12 @@ var ImportTabs = []struct {
 	{ImportURL, "Fetch from URL"},
 }
 
+// MaxTagsFieldLength bounds the modal's one tags input: commands.MaxTagCount
+// tags of commands.MaxTagLength characters, plus a separator each. A typist
+// is stopped here before submitting; the api's per-tag checks are still what
+// decide.
+const MaxTagsFieldLength = 20 * (40 + 1)
+
 // ImportVisibilities is the part of the package_visibility vocabulary the
 // modal may offer: currently one value of three. `team` and `private` are
 // omitted because `package` has no owner column to compare a reader to, so
@@ -142,6 +148,10 @@ type Registration struct {
 	Kind       string
 	Category   string
 	Visibility string
+
+	// Tags is one comma-separated field, forwarded to the api verbatim: it
+	// is the one that splits, dedupes and validates.
+	Tags string
 
 	Archive *Archive
 }

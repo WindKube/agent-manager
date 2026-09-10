@@ -358,23 +358,29 @@ func scannerSummary(from hub.ScannerSummary, now time.Time) view.ScannerSummary 
 
 func findingRow(from *hub.Finding, now time.Time) view.FindingRow {
 	return view.FindingRow{
-		ID:       from.ID,
-		RuleID:   from.RuleID,
-		Engine:   from.Engine,
-		Title:    from.Title,
-		Subject:  from.Subject,
-		Severity: view.Severity(from.Severity),
-		State:    view.FindingState(from.State),
-		Verdict:  view.Verdict(from.Verdict),
-		Raised:   view.Relative(from.RaisedAt, now),
+		ID:          from.ID,
+		RuleID:      from.RuleID,
+		Engine:      from.Engine,
+		Title:       from.Title,
+		Explanation: from.Detail,
+		Subject:     from.Subject,
+		Severity:    view.Severity(from.Severity),
+		State:       view.FindingState(from.State),
+		Verdict:     view.Verdict(from.Verdict),
+		Raised:      view.Relative(from.RaisedAt, now),
 	}
 }
 
 func findingDetail(from hub.FindingDetail, now time.Time) view.FindingDetail {
+	row := findingRow(&from.Finding, now)
+	// The detail fetch answers with its own Explanation rather than reusing
+	// the embedded Finding's, and this is why: the two come from different
+	// api calls (the list and the single-finding fetch), so the pane trusts
+	// the one that is actually about this finding.
+	row.Explanation = from.Explanation
 	out := view.FindingDetail{
-		FindingRow:  findingRow(&from.Finding, now),
-		Explanation: from.Explanation,
-		PackageID:   from.PackageID,
+		FindingRow: row,
+		PackageID:  from.PackageID,
 		Scan: view.ScanMeta{
 			PackVersion: from.Scan.PackVersion,
 			Started:     view.Timestamp(from.Scan.StartedAt),
@@ -403,6 +409,7 @@ func findingDetail(from hub.FindingDetail, now time.Time) view.FindingDetail {
 			ID:        check.ID,
 			Engine:    check.Engine,
 			Label:     check.Label,
+			Explain:   check.Explain,
 			Result:    view.CheckResult(check.Result),
 			WarnCount: check.WarnCount,
 		})

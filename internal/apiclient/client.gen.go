@@ -2173,6 +2173,11 @@ type FindingCheck struct {
 	// Examples: rulepack
 	Engine string `json:"engine"`
 
+	// Explain What this check looks for, in general, as the scan recorded it.
+	//
+	// Examples: Compares every host a script or an instruction file names against the version's declared network capability set, and flags one outside it.
+	Explain string `json:"explain"`
+
 	// Label The check's own label, as the scan recorded it. A screen that mapped check ids to labels itself would stop naming a check added after it shipped.
 	//
 	// Examples: Network allowlist
@@ -2331,6 +2336,9 @@ type FindingScanVerdict string
 
 // FindingSummary defines model for FindingSummary.
 type FindingSummary struct {
+	// Detail Why this was raised, in prose.
+	Detail *string `json:"detail,omitempty"`
+
 	// Engine The analyser that raised it. Two engines may use the same rule id, so a finding is identified by the pair.
 	//
 	// Examples: rulepack

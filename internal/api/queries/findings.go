@@ -181,6 +181,7 @@ select
   fnd.severity::text,
   fnd.state::text,
   fnd.title,
+  coalesce(fnd.detail, ''),
   pkg.namespace || '/' || pkg.name,
   ver.semver,
   ver.verdict::text,
@@ -212,7 +213,7 @@ limit ? offset ?`
 			line  sql.NullInt32
 		)
 		if err := rows.Scan(&entry.ID, &entry.RuleID, &entry.Engine, &entry.Severity, &entry.State, &entry.Title,
-			&entry.PackageID, &entry.Version, &entry.Verdict, &entry.RaisedAt,
+			&entry.Detail, &entry.PackageID, &entry.Version, &entry.Verdict, &entry.RaisedAt,
 			&entry.EvidencePath, &line); err != nil {
 			return contract.FindingsPage{}, fmt.Errorf("scan a findings row: %w", err)
 		}
@@ -331,7 +332,7 @@ func Finding(ctx context.Context, db bun.IDB, id uuid.UUID) (contract.FindingDet
 // the matrix renders alphabetically, not in registration order.
 func findingChecks(ctx context.Context, db bun.IDB, id uuid.UUID) ([]contract.FindingCheck, error) {
 	const query = `
-select schk.check_id, schk.engine, schk.label, schk.result::text, schk.warn_count
+select schk.check_id, schk.engine, schk.label, schk.explain, schk.result::text, schk.warn_count
 from scan_check as schk
 join finding as fnd on fnd.scan_id = schk.scan_id
 where fnd.id = ?
@@ -346,7 +347,8 @@ order by schk.engine, schk.created_at, schk.check_id`
 	checks := []contract.FindingCheck{}
 	for rows.Next() {
 		var check contract.FindingCheck
-		if err := rows.Scan(&check.CheckID, &check.Engine, &check.Label, &check.Result, &check.WarnCount); err != nil {
+		if err := rows.Scan(&check.CheckID, &check.Engine, &check.Label, &check.Explain,
+			&check.Result, &check.WarnCount); err != nil {
 			return nil, fmt.Errorf("scan a check row: %w", err)
 		}
 		checks = append(checks, check)

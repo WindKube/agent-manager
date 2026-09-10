@@ -29,6 +29,9 @@ type FindingSummary struct {
 	Severity string `json:"severity" enum:"low,medium,high" example:"high"`
 	State    string `json:"state" enum:"open,approved,rejected" example:"open"`
 	Title    string `json:"title" example:"Undeclared network egress"`
+	// Detail is the same prose FindingDetail carries, present here too so a
+	// reader can learn what a rule means from the list, before selecting it.
+	Detail string `json:"detail,omitempty" doc:"Why this was raised, in prose."`
 
 	PackageID string `json:"packageId" doc:"namespace/name of the package the subject version belongs to." example:"community/slack-digest"`
 	Version   string `json:"version" example:"0.5.1"`
@@ -87,6 +90,10 @@ type FindingCheck struct {
 	CheckID   string `json:"checkId" example:"network-allowlist"`
 	Engine    string `json:"engine" doc:"The analyser this row belongs to, so the matrix can be read as \"the rule pack passed, the second engine failed\" rather than as one undifferentiated list." example:"rulepack"`
 	Label     string `json:"label" doc:"The check's own label, as the scan recorded it. A screen that mapped check ids to labels itself would stop naming a check added after it shipped." example:"Network allowlist"`
+	// Explain is what this check looks for, in general — not this scan's
+	// result, which is Result and WarnCount, the way Label is not the row's
+	// own result either. Denormalised for the same reason Label is.
+	Explain   string `json:"explain" doc:"What this check looks for, in general, as the scan recorded it." example:"Compares every host a script or an instruction file names against the version's declared network capability set, and flags one outside it."`
 	Result    string `json:"result" enum:"pass,fail,warn" example:"fail"`
 	WarnCount int    `json:"warnCount" doc:"How many warnings this check raised. Zero unless the result is warn." example:"2"`
 }

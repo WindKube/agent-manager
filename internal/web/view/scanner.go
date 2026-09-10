@@ -192,7 +192,10 @@ type Check struct {
 	// block per analyser rather than as one undifferentiated list.
 	Engine string
 	Label  string
-	Result CheckResult
+	// Explain is what this check looks for, in general — not this scan's
+	// result, which is Result and WarnCount below.
+	Explain string
+	Result  CheckResult
 	// WarnCount is not a finding counter: the number alone reads as "2
 	// problems" when it can mean the opposite.
 	WarnCount int
@@ -261,6 +264,10 @@ type FindingRow struct {
 	Verdict  Verdict
 	// Raised is the relative phrase, rendered against the reader's clock.
 	Raised string
+	// Explanation is the rule's own prose, escaped like everything else, so
+	// a reader can learn what the rule id means on hover before selecting
+	// this row.
+	Explanation string
 }
 
 // ScanMeta is the scan that raised the finding.
@@ -290,9 +297,9 @@ type Override struct {
 
 // FindingDetail is the detail pane.
 type FindingDetail struct {
+	// Explanation is promoted from here: the rule pack's prose, bundle-adjacent,
+	// escaped like everything else, and the same field the list row hovers.
 	FindingRow
-	// Explanation is the rule pack's prose, bundle-adjacent, escaped like everything else.
-	Explanation string
 	// Primary is the finding's own denormalised location, the headline. Nil
 	// when the scan recorded none, a state the pane says out loud.
 	Primary *Evidence

@@ -38,6 +38,9 @@ func handler(t *testing.T, source web.CatalogSource) http.Handler {
 	if files, ok := source.(web.PackageFileSource); ok {
 		deps.Files = files
 	}
+	if scan, ok := source.(web.PackageScanSource); ok {
+		deps.PackageScan = scan
+	}
 	// Same shape for the two governance screens, and for the sidebar counts. The
 	// fixture answers all three reads and deliberately cannot answer a decision, so
 	// deps.Reviewer stays nil here and the screen renders what a hub with no

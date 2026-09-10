@@ -50,6 +50,7 @@ func (s *Server) packageDetail(c *gin.Context) {
 	if !detail.SignedOut && !detail.Missing {
 		s.loadProfileOptions(c, &detail)
 		s.loadFiles(c, &detail, namespace, name)
+		s.loadScan(c, &detail, namespace, name)
 	}
 
 	title := detail.Name

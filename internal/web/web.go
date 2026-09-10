@@ -62,6 +62,15 @@ type PackageFileSource interface {
 	PackageFile(ctx context.Context, namespace, name, path string) (view.FileDetail, error)
 }
 
+// PackageScanSource is the package detail screen's door to its security
+// section: the latest visible version's scan, findings and any reviewer
+// decision — the Scanner screen's own rows, scoped to one package. Kept
+// separate from PackageSource for the same reason PackageFileSource is: a
+// deployment can answer the rest of the page while this read is unavailable.
+type PackageScanSource interface {
+	PackageScan(ctx context.Context, namespace, name string) (hub.PackageScanDetail, error)
+}
+
 // Registrar is the import modal's door to the two registration operations,
 // separate from CatalogSource so a fixture need not claim to accept one too.
 type Registrar interface {
@@ -152,11 +161,12 @@ type OrganizationSource interface {
 // Deps is what the role is handed. Nil on any source renders that screen's
 // unavailable state rather than an empty one or a panic.
 type Deps struct {
-	Catalog   CatalogSource
-	Packages  PackageSource
-	Files     PackageFileSource
-	Registrar Registrar
-	Auth      AuthProvider
+	Catalog     CatalogSource
+	Packages    PackageSource
+	Files       PackageFileSource
+	PackageScan PackageScanSource
+	Registrar   Registrar
+	Auth        AuthProvider
 	// Viewers resolves who each request is acting as. Nil fails closed.
 	Viewers      ViewerSource
 	Sessions     SessionMinter

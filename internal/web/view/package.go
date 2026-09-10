@@ -46,6 +46,12 @@ type Package struct {
 	Versions     []PackageVersion
 	Dependents   []Dependent
 
+	// ScanDetail is the security section: the latest version's scan result,
+	// its findings and any reviewer decision, read independently of
+	// everything above (loadScan) so a deployment can answer the rest of the
+	// page while this read is unavailable.
+	ScanDetail PackageScan
+
 	// ProfileOptions is every profile this identity may read, for the
 	// add-to-profile control (US5). One this identity may not curate, or
 	// one that already holds this package, is still listed — never hidden

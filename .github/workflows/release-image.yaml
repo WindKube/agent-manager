@@ -57,3 +57,34 @@ jobs:
             COMMIT=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # The migrator, from the same Dockerfile and the same commit, tagged
+      # identically. That is the point of publishing it here rather than on its
+      # own schedule: the .sql files it carries and the binary the serving image
+      # runs come from one build, so `sha-<x>` of one always matches `sha-<x>` of
+      # the other and a deployment has one version to pin, not two.
+      - id: meta-migrate
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        with:
+          images: ghcr.io/${{ github.repository }}/migrate
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=long
+
+      # Shares this job's buildx cache with the build above, so the Go compile
+      # this depends on is already done.
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          target: migrate
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-migrate.outputs.tags }}
+          labels: ${{ steps.meta-migrate.outputs.labels }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            COMMIT=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

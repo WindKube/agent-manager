@@ -200,6 +200,73 @@ var ErrValidation = errors.New("invalid request")
 
 var ErrMappingNotFound = errors.New("no such mapping")
 
+// BootstrapActor is the audit actor for a mapping this deployment declared
+// rather than a person clicked, paired with models.ActorKindSystem.
+const BootstrapActor = "deployment"
+
+// bootstrapAuditSource is the audit row's `source`, where a person's row carries
+// `web` or `cli / <host>`.
+const bootstrapAuditSource = "config"
+
+// EnsureAdminGroup reconciles the deployment's declared admin group onto
+// catalog-admin, and reports whether it had to change anything.
+//
+// This is the way out of a rule that would otherwise have no exit: mapping a
+// group requires catalog-admin, and holding catalog-admin requires a mapping. A
+// fresh hub therefore has no administrator and no way to appoint one, and the
+// only remedy was an INSERT run by hand against the cluster — which meant the
+// deployment held a credential that could write any table, to set one row.
+//
+// It RECONCILES rather than seeds: the group named in the environment is
+// configuration, and a configured invariant that the UI can quietly edit away is
+// not an invariant. Re-pointing this group at a weaker role on the Organization
+// screen therefore lasts until the api restarts. That cuts both ways on purpose
+// — it is also what lets an operator who has locked every administrator out
+// recover by restarting a container rather than by opening psql.
+//
+// The audit row is written only when something actually changed, and is
+// attributed to the system: nobody clicked this. A restart that changes nothing
+// leaves no trace, so the Audit screen does not fill up with one row per deploy.
+func EnsureAdminGroup(ctx context.Context, db bun.IDB, groupName string) (bool, error) {
+	groupName = strings.TrimSpace(groupName)
+	if groupName == "" {
+		return false, nil
+	}
+
+	const role = models.OrgRoleCatalogAdmin
+	changed := false
+
+	err := db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		var current string
+		readErr := tx.QueryRowContext(ctx,
+			`select role::text from group_role_map where group_name = ?`, groupName).Scan(&current)
+		switch {
+		case readErr == nil && current == string(role):
+			// Already right. No write, and therefore no audit row.
+			return nil
+		case readErr != nil && !errors.Is(readErr, sql.ErrNoRows):
+			return fmt.Errorf("read the mapping for group %q: %w", groupName, readErr)
+		}
+
+		if _, txErr := tx.NewInsert().Model(&models.GroupRoleMap{GroupName: groupName, Role: role}).
+			On("conflict (group_name) do update").
+			Set("role = excluded.role").
+			Set("updated_at = now()").
+			Exec(ctx); txErr != nil {
+			return fmt.Errorf("map the bootstrap admin group %q to %s: %w", groupName, role, txErr)
+		}
+		changed = true
+
+		return writeAudit(ctx, tx, models.AuditKindRole, BootstrapActor, string(models.ActorKindSystem),
+			fmt.Sprintf("mapped group %q to role %s, as declared by this deployment", groupName, role),
+			bootstrapAuditSource)
+	})
+	if err != nil {
+		return false, err
+	}
+	return changed, nil
+}
+
 // CreateMapping upserts a group's role and writes one `role` audit row:
 // re-pointing an existing group at a new role is the same screen action
 // as adding one.

@@ -28,6 +28,38 @@ RUN CGO_ENABLED=0 go build -trimpath \
       -o /out/agent-manager ./cmd/agent-manager
 
 
+# The migrator, built with `--target migrate`. It is deliberately NOT the last
+# stage: a bare `docker build .` and compose.yaml's own `build:` must keep
+# producing the serving image, and BuildKit skips a stage nothing depends on, so
+# this and the atlas stage cost an ordinary build nothing.
+#
+# It exists because the serving image is distroless with one binary in it, so the
+# .sql files and atlas.sum are not in it and Atlas cannot track a revision it
+# cannot read. Without this image a deployment has to get the migrations from
+# somewhere else — which in practice meant a git clone at deploy time, pinned to a
+# commit by hand and free to disagree with the image it migrates for. Here the
+# files and the binary come from one build of one commit and cannot drift.
+#
+# Alpine rather than distroless: two programs have to run in order, and expressing
+# "then" needs a shell.
+FROM arigaio/atlas:1.3.2-community-alpine AS atlas
+
+FROM alpine:3.22 AS migrate
+
+# For a deployment whose DSN asks for TLS. The alpine base ships none.
+RUN apk add --no-cache ca-certificates \
+    && adduser --system --no-create-home --disabled-password migrate
+
+COPY --from=atlas /bin/atlas /usr/local/bin/atlas
+COPY --from=build /out/agent-manager /usr/local/bin/agent-manager
+COPY internal/store/migrations /migrations
+COPY deploy/migrate/migrate.sh /usr/local/bin/migrate
+
+USER migrate
+
+ENTRYPOINT ["/usr/local/bin/migrate"]
+
+
 FROM gcr.io/distroless/static-debian12:nonroot
 
 COPY --from=build /out/agent-manager /usr/local/bin/agent-manager

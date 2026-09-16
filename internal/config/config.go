@@ -45,6 +45,18 @@ type API struct {
 	// default (a default would be a shared secret every deployment knows);
 	// empty means the mint is refused.
 	SessionMintSecret string `env:"SESSION_MINT_SECRET"`
+	// BootstrapAdminGroup is the identity-provider group this deployment
+	// declares as catalog-admin, reconciled on every start of this role.
+	//
+	// It exists because a fresh hub has no way out of its own authorisation
+	// rule: mapping a group to a role requires catalog-admin (FR-101), and
+	// holding catalog-admin requires a mapping. Without this, the first person
+	// to sign in lands on the signed-in-no-role screen and the only route
+	// forward is an INSERT run by hand against the cluster.
+	//
+	// Empty means reconcile nothing, which is right for a hub whose mappings
+	// are already established.
+	BootstrapAdminGroup string `env:"BOOTSTRAP_ADMIN_GROUP"`
 }
 
 type Web struct {

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -77,6 +78,16 @@ func runAPI(ctx context.Context) error {
 			log.Error().Err(closeErr).Msg("close database handles")
 		}
 	}()
+
+	// Before anything serves. A deployment that names an admin group and cannot
+	// write it is broken in a way that only shows up later, as a hub nobody can
+	// administer, so this is fatal rather than a warning.
+	if changed, ensureErr := commands.EnsureAdminGroup(ctx, handle.DB(), cfg.BootstrapAdminGroup); ensureErr != nil {
+		return fmt.Errorf("reconcile the bootstrap admin group: %w", ensureErr)
+	} else if changed {
+		log.Info().Str("group", cfg.BootstrapAdminGroup).
+			Msg("bootstrap admin group reconciled to catalog-admin")
+	}
 
 	bucket, err := blob.Open(ctx, cfg.BlobURL)
 	if err != nil {

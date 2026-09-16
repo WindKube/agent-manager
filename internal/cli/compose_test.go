@@ -47,7 +47,7 @@ func TestTheInfrastructureComposeFileIsAWholeProjectAlone(t *testing.T) {
 	require.NoError(t, err, services)
 	require.ElementsMatch(t,
 		[]string{
-			"postgres", "minio", "minio-init", "dex", "glauth", "migrate-schema", "migrate-queue",
+			"postgres", "minio", "minio-init", "dex", "glauth", "migrate",
 			// Third-party, built by nothing here, and reads only the queue
 			// database — and unprofiled, so `up` on this file alone brings it.
 			"queue-ui",

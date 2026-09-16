@@ -17,9 +17,14 @@ import (
 // schema and River migrates its own with its own tool, so nothing in this
 // file may ever be pointed at AGENT_MANAGER_DATABASE_URL.
 
-// MigrateQueue applies River's own migrations to the queue database and returns
-// the versions it applied, newest last. It is idempotent: a second run applies
-// nothing.
+// MigrateQueue applies River's own migrations to the queue database in process
+// and returns the versions it applied, newest last. It is idempotent: a second
+// run applies nothing.
+//
+// Deployments do not come through here — the migration job runs River's own CLI,
+// which the image ships and which wraps this same rivermigrate call. This is the
+// in-process path: a test that needs a migrated queue should not have to build a
+// second binary to get one.
 func MigrateQueue(ctx context.Context, queueURL string, log *slog.Logger) ([]int, error) {
 	if queueURL == "" {
 		return nil, errors.New("queue database url is empty")

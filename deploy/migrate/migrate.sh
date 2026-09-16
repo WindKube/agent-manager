@@ -1,28 +1,28 @@
 #!/bin/sh
-# Every schema this hub owns, applied in order, in one container.
+# The deployment's migration job: both schemas, in order, in one container.
 #
-# Two migrators run here because there are two databases and only one of them is
-# ours to describe: Atlas owns the application schema, and River owns its queue's
-# and ships its own migrator, which is a subcommand of this project's binary. They
-# must not be merged — Atlas diffing against a River-managed database would
-# propose dropping every table it did not generate.
+# Two tools because there are two owners. Atlas wrote the .sql files under
+# /migrations and keeps atlas_schema_revisions; the queue's schema is River's
+# own and River's CLI is what applies it. Neither may see the other's tables,
+# which is also why they are two databases and two credentials.
 #
-# Order is not arbitrary. `migrate queue` is reached only if the application
-# schema applied cleanly, so a half-migrated deployment stops at the first
-# failure rather than leaving two databases at different versions.
-#
-# Reads two credentials, and they are different roles on purpose:
-#   AGENT_MANAGER_DATABASE_URL        am_migrate, which owns the application schema
-#   AGENT_MANAGER_RIVER_DATABASE_URL  am_queue, which owns the queue database
+# `set -e` is the whole failure policy: a queue migrated against an application
+# schema that did not apply is a deployment that fails at its first query
+# instead of here.
 set -eu
 
-: "${AGENT_MANAGER_DATABASE_URL:?set AGENT_MANAGER_DATABASE_URL to the am_migrate DSN}"
-: "${AGENT_MANAGER_RIVER_DATABASE_URL:?set AGENT_MANAGER_RIVER_DATABASE_URL to the am_queue DSN}"
+: "${AGENT_MANAGER_DATABASE_URL:?the application database url is required}"
+: "${AGENT_MANAGER_RIVER_DATABASE_URL:?the queue database url is required}"
+: "${AGENT_MANAGER_MIGRATIONS_DIR:=/migrations}"
 
 echo "migrate: applying the application schema"
-atlas migrate apply --dir "file:///migrations" --url "$AGENT_MANAGER_DATABASE_URL"
+atlas migrate apply \
+  --dir "file://${AGENT_MANAGER_MIGRATIONS_DIR}" \
+  --url "${AGENT_MANAGER_DATABASE_URL}"
 
 echo "migrate: applying the queue schema"
-agent-manager migrate queue
+river migrate-up \
+  --line main \
+  --database-url "${AGENT_MANAGER_RIVER_DATABASE_URL}"
 
 echo "migrate: done"

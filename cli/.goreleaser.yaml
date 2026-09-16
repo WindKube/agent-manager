@@ -1,0 +1,75 @@
+# amctl's release build. Run from this directory: the CLI is a second Go module
+# (see the note at the top of cli/go.mod), so goreleaser must not see the hub's.
+#
+# The per-platform CGO_ENABLED below is the whole point of this file, and it is
+# measured rather than assumed — plan.md R1: 99designs/keyring's keychain backend
+# is `darwin && cgo`, so a static darwin build loses the macOS keychain SILENTLY
+# and falls back to `pass`. Linux's backends are pure Go and measured
+# CGO-invariant, so those stay static.
+#
+# It always runs in snapshot mode, and the version comes from AMCTL_VERSION
+# rather than from the tag. That is forced, not a preference: this module is
+# `github.com/WindKube/agent-manager/cli`, so Go resolves it only from tags
+# shaped `cli/vX.Y.Z`, and goreleaser rejects that as non-semver ("invalid
+# semantic version"). So the workflow strips the prefix into AMCTL_VERSION,
+# goreleaser builds and archives, and `gh release create` publishes against the
+# real prefixed tag.
+version: 2
+
+project_name: amctl
+
+before:
+  hooks:
+    # The licence is the repo's, at the root, and goreleaser cannot glob above
+    # its own working directory. .bin/ is this module's gitignored build output,
+    # so a copy can land there without showing up as a dirty tree. Not dist/:
+    # goreleaser empties that itself, after these hooks have run.
+    - sh -c "mkdir -p .bin && cp ../LICENSE .bin/LICENSE"
+
+builds:
+  # Both darwin arches, linked against libSystem and Security.framework. Not
+  # static, so the runner's deployment target is the minimum macOS this supports.
+  - id: darwin
+    binary: amctl
+    main: .
+    goos: [darwin]
+    goarch: [arm64, amd64]
+    env:
+      - CGO_ENABLED=1
+    flags: [-trimpath]
+    ldflags: &ldflags
+      - -s -w
+      - -X github.com/WindKube/agent-manager/cli/internal/cmd.Version={{ .Version }}
+      - -X github.com/WindKube/agent-manager/cli/internal/cmd.Commit={{ .FullCommit }}
+      - -X github.com/WindKube/agent-manager/cli/internal/cmd.Date={{ .CommitDate }}
+
+  - id: linux
+    binary: amctl
+    main: .
+    goos: [linux]
+    goarch: [amd64, arm64]
+    env:
+      - CGO_ENABLED=0
+    flags: [-trimpath]
+    ldflags: *ldflags
+
+archives:
+  - ids: [darwin, linux]
+    formats: [tar.gz]
+    name_template: "amctl_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - src: .bin/LICENSE
+        dst: LICENSE
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ .Env.AMCTL_VERSION }}"
+
+changelog:
+  disable: true
+
+# Publishing is `gh release create`'s, for the tag-shape reason at the top.
+release:
+  disable: true

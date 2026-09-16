@@ -130,39 +130,25 @@ services:
       - ./deploy/local/glauth/glauth.cfg:/app/config/config.cfg:ro
 
   # ---------------------------------------------------------------------------
-  # Migrations. Two one-shots, chained, and nothing that serves starts until both
-  # have exited 0.
+  # Migrations. One one-shot, and nothing that serves starts until it has exited 0.
   #
-  # They are infrastructure rather than application because what they produce is
-  # the schema every role reads, and because the infrastructure file has to be
+  # It is infrastructure rather than application because what it produces is the
+  # schema every role reads, and because the infrastructure file has to be
   # startable to a usable state on its own — an empty database is not one.
-  # ---------------------------------------------------------------------------
-  migrate-schema:
-    image: arigaio/atlas:1.3.2-community-alpine
-    depends_on:
-      postgres:
-        condition: service_healthy
-    command:
-      - migrate
-      - apply
-      - --dir
-      - file:///migrations
-      - --url
-      - postgres://am_migrate:local-development-am-migrate@postgres:5432/agent_manager?sslmode=disable
-    volumes:
-      - ./internal/store/migrations:/migrations:ro
-
-  # The queue's migrator is this project's own binary, so this one service in an
-  # otherwise dependency-only file builds the application image.
   #
-  # It also spells out its image, log settings and queue URL literally, where
-  # every application role reaches for a YAML anchor. Anchors do not resolve
-  # across an `include:` boundary — each file's aliases are resolved within that
-  # file — and the six anchors live in compose.yaml because that is where their
-  # other twelve uses are (research R4). Repeating them here would mean two
-  # copies of a queue DSN free to drift apart; three literal lines with one
-  # consumer will not.
-  migrate-queue:
+  # The image's /usr/local/bin/migrate applies the application schema with atlas
+  # and then the queue's with River's CLI, both of which the image ships beside
+  # the binary. This is the same image and the same script a deployment runs; the
+  # only thing local about it is the credentials.
+  #
+  # It also spells out its image and URLs literally, where every application role
+  # reaches for a YAML anchor. Anchors do not resolve across an
+  # `include:` boundary — each file's aliases are resolved within that file — and
+  # the six anchors live in compose.yaml because that is where their other twelve
+  # uses are (research R4). Repeating them here would mean two copies of a DSN
+  # free to drift apart; a few literal lines with one consumer will not.
+  # ---------------------------------------------------------------------------
+  migrate:
     image: agent-manager:local
     build:
       context: .
@@ -170,14 +156,22 @@ services:
         VERSION: local
         COMMIT: compose
     depends_on:
-      migrate-schema:
-        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    # The script reads these two and nothing else; atlas and river do their own
+    # logging, so the observability variables every other service carries would
+    # be read by nobody here.
     environment:
-      AGENT_MANAGER_LOG_LEVEL: info
-      AGENT_MANAGER_LOG_FORMAT: console
+      AGENT_MANAGER_DATABASE_URL: >-
+        postgres://am_migrate:local-development-am-migrate@postgres:5432/agent_manager?sslmode=disable
       AGENT_MANAGER_RIVER_DATABASE_URL: >-
         postgres://am_queue:local-development-am-queue@postgres:5432/river?sslmode=disable
-    command: ["migrate", "queue"]
+    entrypoint: ["/usr/local/bin/migrate"]
+    # The image bakes the migrations, which is what keeps a deployment's schema
+    # and binary on one commit. Here the working tree wins instead, so a new .sql
+    # file applies without a rebuild.
+    volumes:
+      - ./internal/store/migrations:/migrations:ro
     healthcheck:
       disable: true
 
@@ -197,7 +191,7 @@ services:
   queue-ui:
     image: ghcr.io/riverqueue/riverui:0.19.0
     depends_on:
-      migrate-queue:
+      migrate:
         condition: service_completed_successfully
     environment:
       DATABASE_URL: >-

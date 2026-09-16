@@ -1,5 +1,13 @@
-# One image, four roles. The role is chosen at run time by subcommand
-# (constitution principle I), never by a separate build.
+# One image, every role. The role is chosen at run time by subcommand
+# (constitution principle I), never by a separate build — and that now includes
+# the migration job, which is why atlas, River's CLI, the .sql files and the
+# script that drives them are in here beside the binary. A deployment pulls one
+# tag and cannot end up with a binary and a schema from two different commits.
+#
+# The base is alpine rather than distroless because of that script: the migration
+# job runs the two tools directly, which needs a shell. What the serving roles
+# lose by it is a smaller attack surface, and what they keep is the thing that
+# mattered more — one image, one tag, one build.
 #
 # Generated output — templ's _templ.go and Tailwind's app.css — is committed, so
 # this build needs neither templ nor the Tailwind binary and therefore no Node.
@@ -27,47 +35,36 @@ RUN CGO_ENABLED=0 go build -trimpath \
         -X agent-manager/internal/cli.Date=${BUILD_DATE}" \
       -o /out/agent-manager ./cmd/agent-manager
 
+# River's own CLI, built from this module's tool directive, so its version is
+# github.com/riverqueue/river's version in go.mod and the two cannot drift: a CLI
+# that migrated the queue past what the library expects would be found out at the
+# first job insert rather than here.
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" \
+      -o /out/river github.com/riverqueue/river/cmd/river
 
-# The migrator, built with `--target migrate`. It is deliberately NOT the last
-# stage: a bare `docker build .` and compose.yaml's own `build:` must keep
-# producing the serving image, and BuildKit skips a stage nothing depends on, so
-# this and the atlas stage cost an ordinary build nothing.
-#
-# It exists because the serving image is distroless with one binary in it, so the
-# .sql files and atlas.sum are not in it and Atlas cannot track a revision it
-# cannot read. Without this image a deployment has to get the migrations from
-# somewhere else — which in practice meant a git clone at deploy time, pinned to a
-# commit by hand and free to disagree with the image it migrates for. Here the
-# files and the binary come from one build of one commit and cannot drift.
-#
-# Alpine rather than distroless: two programs have to run in order, and expressing
-# "then" needs a shell.
+
+# Atlas applies the versioned .sql files and keeps the revision ledger. Taken as
+# a binary rather than run as its own image, so the migration job is one
+# container running one script. The queue's other half, River's CLI, is built
+# above from this same module.
 FROM arigaio/atlas:1.3.2-community-alpine AS atlas
 
-FROM alpine:3.22 AS migrate
 
-# For a deployment whose DSN asks for TLS. The alpine base ships none.
+FROM alpine:3.22
+
 RUN apk add --no-cache ca-certificates \
-    && adduser --system --no-create-home --disabled-password migrate
+    && adduser --system --no-create-home --disabled-password agent-manager
 
-COPY --from=atlas /bin/atlas /usr/local/bin/atlas
 COPY --from=build /out/agent-manager /usr/local/bin/agent-manager
+COPY --from=build /out/river /usr/local/bin/river
+COPY --from=atlas /bin/atlas /usr/local/bin/atlas
 COPY internal/store/migrations /migrations
 COPY deploy/migrate/migrate.sh /usr/local/bin/migrate
 
-USER migrate
+USER agent-manager
 
-ENTRYPOINT ["/usr/local/bin/migrate"]
-
-
-FROM gcr.io/distroless/static-debian12:nonroot
-
-COPY --from=build /out/agent-manager /usr/local/bin/agent-manager
-
-USER nonroot:nonroot
-
-# The container has no shell, which is why `healthcheck` is a subcommand of the
-# binary rather than a curl invocation (FR-058).
+# `healthcheck` is a subcommand of the binary rather than a curl invocation
+# (FR-058), so the probe needs nothing in the image but the binary itself.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
   CMD ["/usr/local/bin/agent-manager", "healthcheck"]
 

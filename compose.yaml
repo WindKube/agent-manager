@@ -21,7 +21,7 @@ include:
 # to be declared here: an alias does not resolve across an `include:` boundary
 # (research R4). compose.infra.yaml's one application-image service therefore
 # writes its values out literally rather than importing these — see the note on
-# `migrate-queue` there.
+# `migrate` there.
 x-observability: &observability
   AGENT_MANAGER_LOG_LEVEL: info
   AGENT_MANAGER_LOG_FORMAT: console
@@ -100,7 +100,7 @@ services:
   api:
     <<: *app-image
     depends_on:
-      migrate-queue:
+      migrate:
         condition: service_completed_successfully
       minio-init:
         condition: service_completed_successfully
@@ -168,7 +168,7 @@ services:
   fetcher:
     <<: *app-image
     depends_on:
-      migrate-queue:
+      migrate:
         condition: service_completed_successfully
       minio-init:
         condition: service_completed_successfully
@@ -187,7 +187,7 @@ services:
   scanner:
     <<: *app-image
     depends_on:
-      migrate-queue:
+      migrate:
         condition: service_completed_successfully
       minio-init:
         condition: service_completed_successfully

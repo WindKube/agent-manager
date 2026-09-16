@@ -1,6 +1,3 @@
-# amctl, the client. Separate from `Release image` because it builds a different
-# artefact from a different Go module on a different runner, off the same `v*`
-# tags.
 name: Release amctl
 
 on:
@@ -17,38 +14,22 @@ concurrency:
 jobs:
   release:
     name: Build and publish
-    # macOS, and not as a preference: 99designs/keyring's keychain backend is
-    # `darwin && cgo`, a static darwin build loses it silently (plan.md R1), and
-    # darwin cannot be cgo-cross-compiled from linux at all. The linux artefacts
-    # are pure Go, so cross-compiling them from here costs nothing.
-    #
-    # T065 asks for a native runner per darwin arch. This is one arm64 runner
-    # building both, because goreleaser's split-and-merge across runners is a Pro
-    # feature and the Intel `macos-13` runner is on its way out. That makes
-    # darwin/amd64 a cross-ARCH cgo build, which plan.md R1 lists as unproven —
-    # the first run of this workflow is what settles it.
+    # darwin needs CGO_ENABLED=1; see cli/.goreleaser.yaml.
     runs-on: macos-latest
     permissions:
-      contents: write # add the archives to the tag's release; scoped to this job
+      contents: write # add the archives to the release
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          # goreleaser reads the tag and the commit behind it for the version stamp.
           fetch-depth: 0
           persist-credentials: false
 
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: cli/go.mod
-          # No module cache on a release. A cache is writable by any job that can
-          # run on a branch, and what this workflow produces is a binary other
-          # people download.
           cache: false
 
       - name: Unit tests, on darwin
-        # The one place they run on a Mac. plan.md R1's guard test only sees the
-        # lost-keychain regression when it runs on darwin, so a release that
-        # skipped this could ship the binary the guard exists to prevent.
         working-directory: cli
         run: go test ./...
 

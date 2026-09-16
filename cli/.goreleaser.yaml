@@ -1,29 +1,20 @@
-# amctl's release build. Run from this directory: the CLI is a second Go module
-# (see the note at the top of cli/go.mod), so goreleaser must not see the hub's.
+# Run from this directory: the CLI is a second Go module, so goreleaser must not
+# see the hub's. Driven by the repo's `vX.Y.Z` tags.
 #
-# The per-platform CGO_ENABLED below is the whole point of this file, and it is
-# measured rather than assumed — plan.md R1: 99designs/keyring's keychain backend
-# is `darwin && cgo`, so a static darwin build loses the macOS keychain SILENTLY
-# and falls back to `pass`. Linux's backends are pure Go and measured
-# CGO-invariant, so those stay static.
-#
-# Driven by the repo's own `vX.Y.Z` tags, the same ones that release the hub
-# image.
+# The per-platform CGO_ENABLED is measured, not preference (plan.md R1):
+# 99designs/keyring's keychain backend is `darwin && cgo`, so a static darwin
+# build loses the macOS keychain silently. Linux's backends are pure Go.
 version: 2
 
 project_name: amctl
 
 before:
   hooks:
-    # The licence is the repo's, at the root, and goreleaser cannot glob above
-    # its own working directory. .bin/ is this module's gitignored build output,
-    # so a copy can land there without showing up as a dirty tree. Not dist/:
-    # goreleaser empties that itself, after these hooks have run.
+    # goreleaser cannot glob above its working directory, and .bin/ is gitignored.
     - sh -c "mkdir -p .bin && cp ../LICENSE .bin/LICENSE"
 
 builds:
-  # Both darwin arches, linked against libSystem and Security.framework. Not
-  # static, so the runner's deployment target is the minimum macOS this supports.
+  # Not static: the runner's deployment target is the minimum macOS supported.
   - id: darwin
     binary: amctl
     main: .
@@ -64,8 +55,7 @@ changelog:
   sort: asc
 
 release:
-  # The hub image releases off the same tag, so this adds amctl to whatever
-  # release that tag already has rather than failing on a second create.
+  # The same tag may already have a release; append rather than fail.
   mode: append
   footer: |
 

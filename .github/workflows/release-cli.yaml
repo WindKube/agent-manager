@@ -14,11 +14,10 @@ concurrency:
 jobs:
   release:
     name: Build and publish
-    # macOS because darwin needs CGO_ENABLED=1 for the keychain backend and
-    # cannot be cgo-cross-compiled from linux. See cli/.goreleaser.yaml.
+    # darwin needs CGO_ENABLED=1; see cli/.goreleaser.yaml.
     runs-on: macos-latest
     permissions:
-      contents: write # add the archives to the tag's release
+      contents: write # add the archives to the release
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -30,8 +29,6 @@ jobs:
           go-version-file: cli/go.mod
           cache: false
 
-      # The one place the suite runs on a Mac, which is the only place plan.md
-      # R1's lost-keychain guard can fire.
       - name: Unit tests, on darwin
         working-directory: cli
         run: go test ./...

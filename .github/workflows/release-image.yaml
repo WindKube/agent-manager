@@ -2,9 +2,7 @@ name: Release image
 
 on:
   push:
-    branches: [main]
     tags: ["v*"]
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,8 +16,8 @@ jobs:
     name: Build ${{ matrix.platform }}
     runs-on: ${{ matrix.runner }}
     permissions:
-      contents: read # the checkout, nothing more
-      packages: write # push the by-digest image to ghcr.io
+      contents: read # the checkout
+      packages: write # push the image by digest
     strategy:
       fail-fast: false
       matrix:
@@ -41,7 +39,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Labels only — the tags belong to the manifest.
       - id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
@@ -80,8 +77,8 @@ jobs:
     needs: [build]
     runs-on: ubuntu-latest
     permissions:
-      contents: read # no checkout here, but the default is not inherited per job
-      packages: write # push the tagged manifest to ghcr.io
+      contents: read # nothing is checked out
+      packages: write # push the tagged manifest
     steps:
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
@@ -97,29 +94,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - id: meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,format=long
-
       - name: Create and push it
         working-directory: /tmp/digests
         env:
           IMAGE: ghcr.io/${{ github.repository }}
+          TAG: ${{ github.ref_name }}
         run: |
           set -eu
-          # shellcheck disable=SC2046
-          docker buildx imagetools create \
-            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "${DOCKER_METADATA_OUTPUT_JSON}") \
-            $(printf "${IMAGE}@sha256:%s " *)
+          for digest in *; do
+            set -- "$@" "${IMAGE}@sha256:${digest}"
+          done
+          docker buildx imagetools create -t "${IMAGE}:${TAG}" "$@"
 
       - name: Check both architectures are in it
         env:
           IMAGE: ghcr.io/${{ github.repository }}
-          VERSION: ${{ steps.meta.outputs.version }}
-        run: docker buildx imagetools inspect "${IMAGE}:${VERSION}"
+          TAG: ${{ github.ref_name }}
+        run: docker buildx imagetools inspect "${IMAGE}:${TAG}"

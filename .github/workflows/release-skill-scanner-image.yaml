@@ -1,0 +1,83 @@
+name: Release skill-scanner image
+
+# The second scan engine, published so a deployment does not have to build it.
+#
+# deploy/local/skill-scanner is a pinned pip install of a third-party package and
+# that tool's own entrypoint — no code this project writes — so nothing here is
+# tied to a commit of this repository the way the application image is. It
+# changes only when SKILL_SCANNER_VERSION in that Dockerfile is bumped, which is
+# why this is a manual dispatch rather than another job on every push to main:
+# rebuilding an unchanged engine on every merge would publish a stream of
+# identical images and make "which one is running" harder to answer, not easier.
+#
+# The `tag` you pass should be the engine version you just pinned, so the tag and
+# the ARG agree. Nothing enforces that, so the image also carries the version it
+# actually built as an OCI label — `docker inspect` settles any argument.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to publish, e.g. 2.1.0 (match SKILL_SCANNER_VERSION in the Dockerfile)"
+        required: true
+        type: string
+      latest:
+        description: "Also tag this build as `latest`"
+        required: false
+        default: false
+        type: boolean
+
+# Default for every job. The one job that needs to push raises its own.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-skill-scanner-image-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    name: Build and push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # zizmor: the checkout, nothing more
+      packages: write # push the image to ghcr.io; scoped to this job because nothing else writes a package
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # A package under this repository rather than a repository of its own, so
+      # it inherits this one's package settings and visibility.
+      - id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        with:
+          images: ghcr.io/${{ github.repository }}/skill-scanner
+          tags: |
+            type=raw,value=${{ inputs.tag }}
+            type=raw,value=latest,enable=${{ inputs.latest }}
+          labels: |
+            org.opencontainers.image.title=agent-manager skill-scanner
+            org.opencontainers.image.description=Second scan engine for agent-manager (cisco-ai-skill-scanner)
+            org.opencontainers.image.version=${{ inputs.tag }}
+
+      # Both platforms, matching the application image: the engine runs beside a
+      # scanner that may be on either.
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: ./deploy/local/skill-scanner
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

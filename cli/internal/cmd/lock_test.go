@@ -272,7 +272,16 @@ func TestALongRunningSyncKeepsItsLockBecauseTheHeartbeatKeepsBeating(t *testing.
 	holder.AcquiredAt = time.Now().Add(-1 * time.Hour).UTC()
 	body, err := json.Marshal(holder)
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(l.Path(), body, 0o600))
+	// Atomically, and not with os.WriteFile: that truncates, and the heartbeat
+	// is reading this file every few milliseconds. Landing in the gap between
+	// the truncate and the write, it reads an empty file, takes the lock for
+	// lost and stops beating for good — which fails this test perhaps one run
+	// in a hundred. tryCreate writes with O_EXCL and nothing rewrites the file
+	// afterwards, so a torn read is something only a test can produce; the way
+	// not to produce it is to replace the file rather than rewrite it.
+	tmp := l.Path() + ".backdated"
+	require.NoError(t, os.WriteFile(tmp, body, 0o600))
+	require.NoError(t, os.Rename(tmp, l.Path()))
 
 	// Wait well past staleAfter. The heartbeat must keep the mtime current.
 	time.Sleep(4 * o.staleAfter)

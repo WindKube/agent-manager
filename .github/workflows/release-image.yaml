@@ -7,6 +7,11 @@ on:
 permissions:
   contents: read
 
+# Spelled out, not ghcr.io/${{ github.repository }}: that carries the owner's
+# case and ghcr refuses anything but lowercase.
+env:
+  IMAGE: ghcr.io/windkube/agent-manager
+
 concurrency:
   group: release-image-${{ github.ref }}
   cancel-in-progress: false
@@ -42,7 +47,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ${{ env.IMAGE }}
 
       - id: build
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
@@ -53,7 +58,7 @@ jobs:
           build-args: |
             VERSION=${{ github.ref_name }}
             COMMIT=${{ github.sha }}
-          outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=${{ matrix.platform }}
           cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
 
@@ -97,7 +102,6 @@ jobs:
       - name: Create and push it
         working-directory: /tmp/digests
         env:
-          IMAGE: ghcr.io/${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: |
           set -eu
@@ -108,6 +112,5 @@ jobs:
 
       - name: Check both architectures are in it
         env:
-          IMAGE: ghcr.io/${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: docker buildx imagetools inspect "${IMAGE}:${TAG}"

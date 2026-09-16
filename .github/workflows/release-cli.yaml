@@ -1,20 +1,13 @@
-# amctl, the client. Separate from `Release image` because it releases a
-# different artefact from a different Go module on a different runner, and
-# because the two version independently: the hub is tagged `v*`, this is tagged
-# `cli/v*`, which is the shape Go needs to resolve
-# `github.com/WindKube/agent-manager/cli` at all.
+# amctl, the client. Separate from `Release image` because it builds a different
+# artefact from a different Go module on a different runner, off the same `v*`
+# tags.
 name: Release amctl
 
 on:
   push:
-    tags: ["cli/v*"]
+    tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      version:
-        description: Version to build, e.g. 0.1.0. Builds and uploads to the run; publishes nothing.
-        required: true
 
-# Default for every job. The one job that needs to publish raises its own.
 permissions:
   contents: read
 
@@ -37,11 +30,11 @@ jobs:
     # the first run of this workflow is what settles it.
     runs-on: macos-latest
     permissions:
-      contents: write # create the release and upload its archives; scoped to this job
+      contents: write # add the archives to the tag's release; scoped to this job
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          # goreleaser reads the commit and its date for the version stamp.
+          # goreleaser reads the tag and the commit behind it for the version stamp.
           fetch-depth: 0
           persist-credentials: false
 
@@ -49,27 +42,9 @@ jobs:
         with:
           go-version-file: cli/go.mod
           # No module cache on a release. A cache is writable by any job that can
-          # run on a branch, and what this workflow produces is a signed-for-by-tag
-          # binary other people install.
+          # run on a branch, and what this workflow produces is a binary other
+          # people download.
           cache: false
-
-      - name: Resolve the version
-        id: version
-        env:
-          REF_NAME: ${{ github.ref_name }}
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          set -eu
-          if [ -n "${INPUT_VERSION}" ]; then
-            version="${INPUT_VERSION#v}"
-          else
-            version="${REF_NAME#cli/v}"
-          fi
-          case "${version}" in
-            [0-9]*.[0-9]*.[0-9]*) ;;
-            *) echo "::error::'${version}' is not a version; tag as cli/vX.Y.Z" && exit 1 ;;
-          esac
-          printf 'version=%s\n' "${version}" >> "${GITHUB_OUTPUT}"
 
       - name: Unit tests, on darwin
         # The one place they run on a Mac. plan.md R1's guard test only sees the
@@ -78,64 +53,29 @@ jobs:
         working-directory: cli
         run: go test ./...
 
-      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          version: v2.18.1
+          args: release --clean
+          workdir: cli
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build only
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           version: v2.18.1
           args: release --snapshot --clean
           workdir: cli
-        env:
-          AMCTL_VERSION: ${{ steps.version.outputs.version }}
-
-      - name: Check what was built
-        working-directory: cli
-        run: |
-          set -eu
-          for archive in dist/*.tar.gz; do
-            echo "== ${archive}"
-            tar tzf "${archive}"
-          done
-          cat dist/checksums.txt
-
-      - name: Publish the release
-        if: startsWith(github.ref, 'refs/tags/cli/v')
-        working-directory: cli
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          set -eu
-          # --verify-tag, because the tag this release is named for has to be the
-          # one Go will resolve the module at. Notes are written here rather than
-          # generated: --generate-notes would list the hub's commits too, since
-          # the two share a history.
-          previous="$(git tag --list 'cli/v*' --sort=-version:refname | sed -n 2p)"
-          notes="Install with Go:
-
-              go install github.com/WindKube/agent-manager/cli@${TAG}
-
-          The darwin archives are not static: they link libSystem and
-          Security.framework, so that \`amctl login\` can use the macOS keychain.
-          The linux archives are static."
-          if [ -n "${previous}" ]; then
-            notes="${notes}
-
-          Changes in cli/ since ${previous}:
-
-          $(git log --pretty='format:- %s' "${previous}..${TAG}" -- cli/)"
-          fi
-
-          gh release create "${TAG}" \
-            --verify-tag \
-            --title "amctl ${VERSION}" \
-            --notes "${notes}" \
-            dist/*.tar.gz dist/checksums.txt
 
       - name: Upload the dry run's archives
-        if: ${{ !startsWith(github.ref, 'refs/tags/cli/v') }}
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: amctl-${{ steps.version.outputs.version }}
+          name: amctl-snapshot
           path: |
             cli/dist/*.tar.gz
             cli/dist/checksums.txt

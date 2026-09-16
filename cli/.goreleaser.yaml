@@ -7,13 +7,8 @@
 # and falls back to `pass`. Linux's backends are pure Go and measured
 # CGO-invariant, so those stay static.
 #
-# It always runs in snapshot mode, and the version comes from AMCTL_VERSION
-# rather than from the tag. That is forced, not a preference: this module is
-# `github.com/WindKube/agent-manager/cli`, so Go resolves it only from tags
-# shaped `cli/vX.Y.Z`, and goreleaser rejects that as non-semver ("invalid
-# semantic version"). So the workflow strips the prefix into AMCTL_VERSION,
-# goreleaser builds and archives, and `gh release create` publishes against the
-# real prefixed tag.
+# Driven by the repo's own `vX.Y.Z` tags, the same ones that release the hub
+# image.
 version: 2
 
 project_name: amctl
@@ -64,12 +59,18 @@ archives:
 checksum:
   name_template: checksums.txt
 
-snapshot:
-  version_template: "{{ .Env.AMCTL_VERSION }}"
-
 changelog:
-  disable: true
+  use: github
+  sort: asc
 
-# Publishing is `gh release create`'s, for the tag-shape reason at the top.
 release:
-  disable: true
+  # The hub image releases off the same tag, so this adds amctl to whatever
+  # release that tag already has rather than failing on a second create.
+  mode: append
+  footer: |
+
+    ### amctl {{ .Version }}
+
+    The darwin archives are not static: they link libSystem and
+    Security.framework, so that `amctl login` can use the macOS keychain. The
+    linux archives are static.

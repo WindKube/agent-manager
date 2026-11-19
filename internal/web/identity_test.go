@@ -430,7 +430,7 @@ func TestNoIdentityLiteralIsCompiledIntoTheWebRole(t *testing.T) {
 // tree rather than from a list so a file added later is scanned without anybody
 // remembering to add it here.
 //
-// Two exclusions, both deliberate. internal/web/fixture is the declared stand-in
+// Exclusions, all deliberate. internal/web/fixture and internal/web/fakeapi are the declared stand-ins
 // and holds the viewer variants the tests render with. `*_templ.go` is generated
 // from the `.templ` file beside it, which IS scanned: reading both would double
 // every finding and report the generated line number.
@@ -443,7 +443,7 @@ func webSourceFiles(t *testing.T) []string {
 			return err
 		}
 		if entry.IsDir() {
-			if entry.Name() == "fixture" || entry.Name() == "static" {
+			if entry.Name() == "fixture" || entry.Name() == "fakeapi" || entry.Name() == "static" {
 				return fs.SkipDir
 			}
 			return nil

@@ -246,11 +246,15 @@ func humanSize(bytes int64) string {
 		return ""
 	case bytes < 1024:
 		return strconv.FormatInt(bytes, 10) + " B"
-	case bytes < 1024*1024:
-		return strconv.FormatFloat(float64(bytes)/1024, 'f', 1, 64) + " KB"
-	default:
-		return strconv.FormatFloat(float64(bytes)/(1024*1024), 'f', 1, 64) + " MB"
 	}
+	size, unit := float64(bytes)/1024, "KB"
+	for _, next := range []string{"MB", "GB", "TB"} {
+		if size < 1024 {
+			break
+		}
+		size, unit = size/1024, next
+	}
+	return strconv.FormatFloat(size, 'f', 1, 64) + " " + unit
 }
 
 func derefInt(value *int64) int64 {

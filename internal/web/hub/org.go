@@ -117,6 +117,9 @@ func (c *Client) DeleteMapping(ctx context.Context, groupName string) error {
 	if err != nil {
 		return fmt.Errorf("remove mapping %q: %w", groupName, err)
 	}
+	if resp.StatusCode() == http.StatusNoContent {
+		return nil
+	}
 	return orgError(resp.HTTPResponse, resp.Body)
 }
 
@@ -168,6 +171,9 @@ func (c *Client) DeleteCategory(ctx context.Context, id string) error {
 	resp, err := c.api.DeleteCategoryWithResponse(ctx, parsed)
 	if err != nil {
 		return fmt.Errorf("delete category %s: %w", id, err)
+	}
+	if resp.StatusCode() == http.StatusNoContent {
+		return nil
 	}
 	return orgError(resp.HTTPResponse, resp.Body)
 }

@@ -3,6 +3,7 @@ package view
 import (
 	"net/url"
 	"slices"
+	"strconv"
 )
 
 // The Organization screen's view models.
@@ -29,6 +30,21 @@ type OrganizationPolicy struct {
 	CommunityNeedsReview  bool
 	RescanOnNewVersion    bool
 	AllowPersonalProfiles bool
+
+	PackagesWithoutExpectedSigner int
+}
+
+// UnsignableNote counts what the signature requirement excludes outright.
+func (p OrganizationPolicy) UnsignableNote() string {
+	switch p.PackagesWithoutExpectedSigner {
+	case 0:
+		return ""
+	case 1:
+		return "1 published package has no expected signer, so it resolves nothing while this is on."
+	default:
+		return strconv.Itoa(p.PackagesWithoutExpectedSigner) +
+			" published packages have no expected signer, so they resolve nothing while this is on."
+	}
 }
 
 // GroupRoleMapping is one row of the mapping table.

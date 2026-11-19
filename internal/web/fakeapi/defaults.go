@@ -3,6 +3,7 @@ package fakeapi
 import (
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -92,6 +93,47 @@ func (a *API) defaults(op string) http.HandlerFunc {
 			d.Details[packageKey(r)] = detail
 			JSON(w, http.StatusOK, detail)
 		}
+	case "setPackageSigner":
+		return func(w http.ResponseWriter, r *http.Request) {
+			var in apiclient.PackageSignerUpdate
+			if !decode(w, r, &in) {
+				return
+			}
+			detail, ok := d.Details[packageKey(r)]
+			if !ok {
+				Problem(w, http.StatusNotFound, "no such package")
+				return
+			}
+			if !detail.Signer.CanChange {
+				Problem(w, http.StatusForbidden, "only the owner or a catalog admin may change the expected signer")
+				return
+			}
+			issuer, identity := deref(in.Issuer), deref(in.Identity)
+			if (issuer == "") != (identity == "") {
+				Problem(w, http.StatusUnprocessableEntity, "give both an issuer and an identity, or neither")
+				return
+			}
+			if _, err := regexp.Compile(identity); err != nil {
+				Problem(w, http.StatusUnprocessableEntity, "the identity is not a valid regular expression")
+				return
+			}
+			detail.Signer.Issuer, detail.Signer.Identity = nil, nil
+			if issuer != "" {
+				detail.Signer.Issuer, detail.Signer.Identity = &issuer, &identity
+			}
+			versions := slices.Clone(detail.Versions)
+			for i := range versions {
+				switch versions[i].Signature.Status {
+				case apiclient.VersionSignatureStatusVerifiedMatching,
+					apiclient.VersionSignatureStatusVerifiedNoExpectedSigner,
+					apiclient.VersionSignatureStatusVerifiedUnexpectedSigner:
+					versions[i].Signature.Status = signatureStatus(versions[i].Signature, detail.Signer)
+				}
+			}
+			detail.Versions = versions
+			d.Details[packageKey(r)] = detail
+			JSON(w, http.StatusOK, detail)
+		}
 
 	case "listProfiles":
 		return func(w http.ResponseWriter, _ *http.Request) {
@@ -177,6 +219,8 @@ func (a *API) defaults(op string) http.HandlerFunc {
 				RequireSignedBundles:  in.RequireSignedBundles,
 				RescanOnNewVersion:    in.RescanOnNewVersion,
 				ScanGate:              apiclient.OrganizationPolicyScanGate(in.ScanGate),
+
+				PackagesWithoutExpectedSigner: d.Organization.Policy.PackagesWithoutExpectedSigner,
 			}
 			JSON(w, http.StatusOK, d.Organization.Policy)
 		}

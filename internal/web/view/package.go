@@ -57,6 +57,7 @@ type Package struct {
 	Source *Provenance
 	// Tracking is nil unless the package comes from git.
 	Tracking *Tracking
+	Signer   Signer
 
 	Components   []Component
 	Capabilities Capabilities
@@ -309,6 +310,8 @@ type PackageVersion struct {
 	SourceURL    string
 	SourceRef    string
 	SourceCommit string
+
+	Signature VersionSignature
 }
 
 // ShortCommit is the commit as a reader scans it.
@@ -317,6 +320,90 @@ func (v PackageVersion) ShortCommit() string { return shortCommit(v.SourceCommit
 // CommitHref links the commit on its forge, empty where the forge's commit
 // URL shape is not known.
 func (v PackageVersion) CommitHref() string { return commitHref(v.SourceURL, v.SourceCommit) }
+
+// SignerChangeDisabledReason is why the expected-signer control is disabled.
+const SignerChangeDisabledReason = "Only this package's owner or a catalog admin may change its expected signer."
+
+// Signer is the package's expected Sigstore signer: an exact OIDC issuer and
+// an identity pattern. Both are empty when none is configured.
+type Signer struct {
+	Issuer    string
+	Identity  string
+	CanChange bool
+}
+
+func (s Signer) Configured() bool { return s.Issuer != "" }
+
+// Summary is the line under the control.
+func (s Signer) Summary() string {
+	if !s.Configured() {
+		return "No expected signer: no version of this package counts as signed."
+	}
+	return "Expected signer: " + s.Identity + " via " + s.Issuer
+}
+
+// SignatureStatus mirrors the api's five values. Only SignatureMatching is a
+// trustworthy signature; the two other verified states prove the bytes were
+// signed by somebody, not by whoever should have signed them.
+type SignatureStatus string
+
+const (
+	SignatureUnsigned         SignatureStatus = "unsigned"
+	SignatureInvalid          SignatureStatus = "invalid"
+	SignatureNoExpectedSigner SignatureStatus = "verified-no-expected-signer"
+	SignatureUnexpectedSigner SignatureStatus = "verified-unexpected-signer"
+	SignatureMatching         SignatureStatus = "verified-matching"
+)
+
+type VersionSignature struct {
+	Status   SignatureStatus
+	Issuer   string
+	Identity string
+	Reason   string
+	Ref      string
+}
+
+func (s VersionSignature) Label() string {
+	switch s.Status {
+	case SignatureMatching:
+		return "Signed by expected signer"
+	case SignatureUnexpectedSigner:
+		return "Signed, unexpected signer"
+	case SignatureNoExpectedSigner:
+		return "Signed, no expected signer"
+	case SignatureInvalid:
+		return "Signature invalid"
+	default:
+		return "Unsigned"
+	}
+}
+
+func (s VersionSignature) Tone() string {
+	switch s.Status {
+	case SignatureMatching:
+		return "ok"
+	case SignatureUnexpectedSigner, SignatureInvalid:
+		return "dan"
+	default:
+		return "warn"
+	}
+}
+
+// Detail says who signed, or why the signature failed, empty for an unsigned
+// version.
+func (s VersionSignature) Detail() string {
+	switch s.Status {
+	case SignatureMatching, SignatureUnexpectedSigner, SignatureNoExpectedSigner:
+		return "signed by " + s.Identity + " via " + s.Issuer
+	case SignatureInvalid:
+		if s.Reason == "" {
+			return "the signature did not verify"
+		}
+		return "did not verify: " + s.Reason
+	default:
+		return ""
+	}
+}
 
 // TrackingChangeDisabledReason is why the track-upstream control is disabled.
 const TrackingChangeDisabledReason = "Only this package's owner or a catalog admin may change its upstream tracking."

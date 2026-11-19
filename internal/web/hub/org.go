@@ -61,6 +61,8 @@ func policyOf(body *apiclient.OrganizationPolicy) view.OrganizationPolicy {
 		CommunityNeedsReview:  body.CommunityNeedsReview,
 		RescanOnNewVersion:    body.RescanOnNewVersion,
 		AllowPersonalProfiles: body.AllowPersonalProfiles,
+
+		PackagesWithoutExpectedSigner: int(body.PackagesWithoutExpectedSigner),
 	}
 }
 

@@ -138,6 +138,7 @@ func (s *Server) register() {
 	// the role the api demands and sit behind a typed confirmation.
 	s.engine.POST("/packages/visibility", s.setPackageVisibility)
 	s.engine.POST("/packages/tracking", s.setPackageTracking)
+	s.engine.POST("/packages/signer", s.setPackageSigner)
 	s.engine.POST("/packages/:namespace/:name/delete", s.deletePackage)
 	s.engine.POST("/packages/:namespace/:name/versions/:version/delete", s.deleteVersion)
 

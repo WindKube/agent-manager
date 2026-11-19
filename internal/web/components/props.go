@@ -333,6 +333,11 @@ func ScanClass(scan view.Scan) string {
 	return "am-scan am-scan-" + scan.Tone()
 }
 
+// SignatureClass reuses the scan badge's three tones.
+func SignatureClass(signature view.VersionSignature) string {
+	return "am-scan am-scan-" + signature.Tone()
+}
+
 // VisibilityClass tones the visibility badge. Organisation carries no
 // modifier — it is the neutral, everyone-sees-it default, the same
 // unmodified look am-kind gives a skill.

@@ -34,6 +34,7 @@ var routes = map[string]string{
 	"deleteVersion":        "DELETE /v1/packages/{namespace}/{name}/versions/{version}",
 	"setPackageVisibility": "PUT /v1/packages/{namespace}/{name}/visibility",
 	"setPackageTracking":   "PUT /v1/packages/{namespace}/{name}/tracking",
+	"setPackageSigner":     "PUT /v1/packages/{namespace}/{name}/signer",
 
 	"listProfiles":       "GET /v1/profiles",
 	"createProfile":      "POST /v1/profiles",

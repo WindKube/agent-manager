@@ -183,6 +183,10 @@ func writeCatalog(
 			parent := seedID("package", spec.parent)
 			row.ParentPackageID = &parent
 		}
+		if spec.signer != "" {
+			row.ExpectedSignerIssuer = "https://token.actions.githubusercontent.com"
+			row.ExpectedSignerIdentity = spec.signer
+		}
 		packageRows = append(packageRows, row)
 	}
 	if err := insert("packages", &packageRows); err != nil {

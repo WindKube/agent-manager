@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"regexp"
 	"strings"
 	"time"
 
@@ -311,12 +312,15 @@ func packageDetail(p seedPackage, name string, now time.Time) apiclient.PackageD
 		if p.tracked {
 			detail.Tracking.TrackUpstream = true
 			detail.Tracking.LastCheckedAt = ptr(now.Add(-40 * time.Minute))
+			detail.Signer.Issuer = ptr(githubActionsIssuer)
+			detail.Signer.Identity = ptr(regexp.QuoteMeta(p.repo+"/.github/workflows/release.yaml@refs/tags/v") + ".*")
 		}
 	case p.archive != "":
 		detail.Source = &apiclient.PackageSource{Kind: apiclient.PackageSourceKindArchiveUrl, Url: ptr(p.archive)}
 	default:
 		detail.Source = &apiclient.PackageSource{Kind: apiclient.PackageSourceKindUpload}
 	}
+	detail.Signer.CanChange = true
 
 	for _, v := range versions {
 		key := "skills/" + namespace + "/" + name + "/" + v.version + "/bundle.tar.zst"
@@ -335,9 +339,50 @@ func packageDetail(p seedPackage, name string, now time.Time) apiclient.PackageD
 		case p.archive != "":
 			version.SourceUrl = ptr(p.archive)
 		}
+		version.Signature = seedSignature(p, v, detail.Signer)
 		detail.Versions = append(detail.Versions, version)
 	}
 	return detail
+}
+
+const githubActionsIssuer = "https://token.actions.githubusercontent.com"
+
+// seedSignature gives every source kind a different signature story: a git
+// package's releases are signed by its workflow, judged against whatever
+// expected signer it has; an archive's signature does not verify; an upload
+// carries none.
+func seedSignature(p seedPackage, v seedVersion, expected apiclient.PackageSigner) apiclient.VersionSignature {
+	switch {
+	case p.repo != "":
+		signature := apiclient.VersionSignature{
+			Issuer:   ptr(githubActionsIssuer),
+			Identity: ptr(p.repo + "/.github/workflows/release.yaml@refs/tags/v" + v.version),
+			Ref:      ptr(p.repo + "/releases/download/v" + v.version + "/bundle.tar.gz.sigstore.json"),
+		}
+		signature.Status = signatureStatus(signature, expected)
+		return signature
+	case p.archive != "":
+		return apiclient.VersionSignature{
+			Status: apiclient.VersionSignatureStatusInvalid,
+			Reason: ptr("the bundle's artifact digest does not match the downloaded archive"),
+			Ref:    ptr(p.archive + ".sigstore.json"),
+		}
+	default:
+		return apiclient.VersionSignature{Status: apiclient.VersionSignatureStatusUnsigned}
+	}
+}
+
+// signatureStatus is the api's read-time judgement for a signature that
+// verified: it only counts when its signer matches the expected one.
+func signatureStatus(observed apiclient.VersionSignature, expected apiclient.PackageSigner) apiclient.VersionSignatureStatus {
+	if expected.Issuer == nil {
+		return apiclient.VersionSignatureStatusVerifiedNoExpectedSigner
+	}
+	identity, err := regexp.Compile("^(?:" + deref(expected.Identity) + ")$")
+	if err == nil && deref(observed.Issuer) == *expected.Issuer && identity.MatchString(deref(observed.Identity)) {
+		return apiclient.VersionSignatureStatusVerifiedMatching
+	}
+	return apiclient.VersionSignatureStatusVerifiedUnexpectedSigner
 }
 
 func pluginManifest(name string, p seedPackage) string {

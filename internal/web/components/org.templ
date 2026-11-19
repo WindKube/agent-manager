@@ -132,9 +132,12 @@ templ orgPolicy(s view.Org) {
 					<span class="am-toggle-label">
 						Require signed bundles
 						<span class="am-toggle-note">
-							A version with no verifiable signature is excluded from every resolution,
-							whatever its verdict.
+							A version resolves only when its Sigstore signature verified and its signer
+							matches the package's expected signer, whatever its verdict.
 						</span>
+						if note := s.Data.Policy.UnsignableNote(); note != "" {
+							<span class="am-toggle-note" id="org-unsignable">{ note }</span>
+						}
 					</span>
 				</label>
 				<label class="am-toggle">

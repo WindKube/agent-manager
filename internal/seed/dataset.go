@@ -148,6 +148,9 @@ type packageSpec struct {
 	files      []fileSpec
 	flaw       *flawSpec
 	versions   []versionSpec
+	// signer is the expected Sigstore identity pattern, issued by GitHub
+	// Actions. Nothing here is signed, so it only shows the control set.
+	signer string
 }
 
 func (p packageSpec) id() string { return namespaceOf(p.publisher) + "/" + p.name }
@@ -158,6 +161,7 @@ var designPackages = []packageSpec{
 	{
 		publisher:   "example/platform",
 		name:        "platform-toolkit",
+		signer:      `https://github\.com/example/platform-toolkit/\.github/workflows/release\.yaml@refs/tags/v.*`,
 		kind:        models.PackageKindPlugin,
 		category:    "Infrastructure",
 		description: "Platform guardrails, ADR authoring and service scaffolding in one portable package.",

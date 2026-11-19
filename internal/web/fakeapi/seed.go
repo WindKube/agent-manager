@@ -25,6 +25,11 @@ func Seed() *Data {
 	seedGovernance(d, now)
 	seedProfiles(d, now)
 	d.Organization = seedOrganization()
+	for id := range d.Details {
+		if d.Details[id].Signer.Issuer == nil {
+			d.Organization.Policy.PackagesWithoutExpectedSigner++
+		}
+	}
 	d.Storage = seedStorage(now)
 	d.Runtime = seedRuntime(now)
 	return d

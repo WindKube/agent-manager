@@ -49,6 +49,7 @@ templ PackageScreen(p view.Package) {
 			if p.Tracking != nil {
 				@trackingControl(p.ID, *p.Tracking)
 			}
+			@signerControl(p.ID, p.Signer)
 			@addToProfile(p)
 			@packageDeleteControl(p)
 		}
@@ -147,6 +148,26 @@ templ trackingControl(id string, tracking view.Tracking) {
 			</form>
 		}
 		<span class="am-toggle-note" id="package-tracking-status">{ tracking.Status() }</span>
+	</div>
+}
+
+// signerControl is the package's expected Sigstore signer. A signature only
+// counts when its signer matches this, so the control states what it is set
+// to for everyone and lets only the owner or a catalog admin change it.
+templ signerControl(id string, signer view.Signer) {
+	<div class="am-vis-control" id="package-signer">
+		if !signer.CanChange {
+			<button type="button" class="am-btn" disabled aria-disabled="true" title={ view.SignerChangeDisabledReason }>Expected signer</button>
+			<span class="am-toggle-note">{ view.SignerChangeDisabledReason }</span>
+		} else {
+			<form method="post" action="/packages/signer" class="am-vis-form">
+				<input type="hidden" name="id" value={ id }/>
+				<input class="am-input" type="text" name="issuer" value={ signer.Issuer } maxlength="512" placeholder="https://token.actions.githubusercontent.com" aria-label="Expected issuer" title="The exact OIDC issuer the signing certificate must carry."/>
+				<input class="am-input" type="text" name="identity" value={ signer.Identity } maxlength="512" placeholder="https://github\.com/acme/skills/.*" aria-label="Expected identity pattern" title="A regular expression the certificate identity must match in full. Leave both fields empty to clear the expected signer."/>
+				<button type="submit" class="am-btn">Save signer</button>
+			</form>
+		}
+		<span class="am-toggle-note" id="package-signer-status">{ signer.Summary() }</span>
 	</div>
 }
 
@@ -396,10 +417,14 @@ templ VersionsPanel(p view.Package) {
 							<span class="am-vtag am-vtag-pin">{ version.PinLabel() }</span>
 						}
 						<span class={ ScanClass(version.Scan) }>{ version.Scan.Label() }</span>
+						<span class={ SignatureClass(version.Signature) } data-signature={ string(version.Signature.Status) }>{ version.Signature.Label() }</span>
 					</div>
 					<span class="am-ver-date">{ version.Date }</span>
 				</div>
 				<div class="am-mono am-ver-key">{ version.ObjectKey }</div>
+				if version.Signature.Detail() != "" {
+					<div class="am-mono am-ver-key">{ version.Signature.Detail() }</div>
+				}
 				if version.ShortCommit() != "" {
 					<div class="am-mono am-ver-key">
 						if version.CommitHref() != "" {

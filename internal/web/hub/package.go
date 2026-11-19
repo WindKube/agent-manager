@@ -57,6 +57,27 @@ func (c *Client) SetTracking(ctx context.Context, namespace, name string, track 
 	return packageDetail(resp.JSON200, c.now()), nil
 }
 
+// SetSigner calls PUT /v1/packages/{namespace}/{name}/signer. Both empty
+// clears the expected signer.
+func (c *Client) SetSigner(ctx context.Context, namespace, name, issuer, identity string) (view.Package, error) {
+	var body apiclient.PackageSignerUpdate
+	if issuer != "" {
+		body.Issuer = &issuer
+	}
+	if identity != "" {
+		body.Identity = &identity
+	}
+	resp, err := c.api.SetPackageSignerWithResponse(ctx, namespace, name, body)
+	if err != nil {
+		return view.Package{}, fmt.Errorf("set the expected signer of %s/%s: %w", namespace, name, err)
+	}
+	if resp.JSON200 == nil {
+		return view.Package{}, packageFailure(fmt.Sprintf("set the expected signer of %s/%s", namespace, name),
+			resp.HTTPResponse, resp.Body)
+	}
+	return packageDetail(resp.JSON200, c.now()), nil
+}
+
 // packageFailure mirrors hub/profiles.go's profileFailure: a 404 stays
 // view.ErrNotFound so an unreadable package answers the same as a missing
 // one, and a 403/422 the api understood becomes PackageRefusedError,
@@ -156,6 +177,11 @@ func packageDetail(body *apiclient.PackageDetail, now time.Time) view.Package {
 		Visibility:          string(body.Visibility),
 		Owner:               deref(body.Owner),
 		CanChangeVisibility: body.CanChangeVisibility,
+		Signer: view.Signer{
+			Issuer:    deref(body.Signer.Issuer),
+			Identity:  deref(body.Signer.Identity),
+			CanChange: body.Signer.CanChange,
+		},
 	}
 	if detail.Tags == nil {
 		detail.Tags = []string{}
@@ -220,6 +246,14 @@ func packageVersion(v *apiclient.PackageVersion, now time.Time) view.PackageVers
 		SourceURL:    deref(v.SourceUrl),
 		SourceRef:    deref(v.SourceRef),
 		SourceCommit: deref(v.SourceCommit),
+
+		Signature: view.VersionSignature{
+			Status:   view.SignatureStatus(v.Signature.Status),
+			Issuer:   deref(v.Signature.Issuer),
+			Identity: deref(v.Signature.Identity),
+			Reason:   deref(v.Signature.Reason),
+			Ref:      deref(v.Signature.Ref),
+		},
 	}
 }
 

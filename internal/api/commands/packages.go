@@ -433,13 +433,8 @@ func SetPackageTracking(ctx context.Context, db bun.IDB, p auth.Principal,
 			return fmt.Errorf("read package %s/%s: %w", namespace, name, err)
 		}
 
-		owns := pkg.OwnerIdentityID != nil && *pkg.OwnerIdentityID == p.IdentityID
-		if !owns && p.Role != models.OrgRoleCatalogAdmin {
-			owner := ""
-			if pkg.OwnerIdentityID != nil {
-				owner = pkg.OwnerIdentityID.String()
-			}
-			return &PackageNotPermittedError{Owner: owner, Change: "upstream tracking"}
+		if err := permitPackageChange(ctx, tx, p, pkg, "upstream tracking"); err != nil {
+			return err
 		}
 		if pkg.SourceKind != models.FetchSourceGit {
 			return fmt.Errorf("%w: %s/%s was not registered from git, so it has no upstream tags to track",
@@ -493,13 +488,8 @@ func SetPackageVisibility(ctx context.Context, db bun.IDB, p auth.Principal,
 			return fmt.Errorf("read package %s/%s: %w", namespace, name, err)
 		}
 
-		owns := pkg.OwnerIdentityID != nil && *pkg.OwnerIdentityID == p.IdentityID
-		if !owns && p.Role != models.OrgRoleCatalogAdmin {
-			owner := ""
-			if pkg.OwnerIdentityID != nil {
-				owner = pkg.OwnerIdentityID.String()
-			}
-			return &PackageNotPermittedError{Owner: owner}
+		if err := permitPackageChange(ctx, tx, p, pkg, ""); err != nil {
+			return err
 		}
 		if pkg.Visibility == visibility {
 			return nil
@@ -530,4 +520,27 @@ func SetPackageVisibility(ctx context.Context, db bun.IDB, p auth.Principal,
 		audit.Data = map[string]any{"visibility": string(visibility)}
 		return writeAudit(ctx, tx, audit)
 	})
+}
+
+// permitPackageChange lets the owner or a catalog-admin change pkg. Anyone
+// else who cannot read it gets not-found, so the refusal never confirms a
+// hidden package exists or names its owner.
+func permitPackageChange(ctx context.Context, tx bun.Tx, p auth.Principal, pkg *models.Package, change string) error {
+	if (pkg.OwnerIdentityID != nil && *pkg.OwnerIdentityID == p.IdentityID) || p.Role == models.OrgRoleCatalogAdmin {
+		return nil
+	}
+	readable, args := queries.PackageReadable("pkg", p)
+	ok, err := tx.NewSelect().Model((*models.Package)(nil)).
+		Where("pkg.id = ?", pkg.ID).Where(readable, args...).Exists(ctx)
+	if err != nil {
+		return fmt.Errorf("read package %s/%s: %w", pkg.Namespace, pkg.Name, err)
+	}
+	if !ok {
+		return queries.ErrNotFound
+	}
+	owner := ""
+	if pkg.OwnerIdentityID != nil {
+		owner = pkg.OwnerIdentityID.String()
+	}
+	return &PackageNotPermittedError{Owner: owner, Change: change}
 }

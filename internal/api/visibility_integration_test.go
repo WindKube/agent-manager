@@ -232,6 +232,10 @@ func TestChangingVisibilityIsGatedToTheOwnerOrACatalogAdminAndWritesOneAuditRow(
 	require.Equal(t, curator.claims.Email, who)
 	require.Contains(t, text, id)
 
+	hidden := send(t, an, http.MethodPut, path, `{"visibility":"organisation"}`, http.StatusNotFound)
+	require.NotContains(t, string(hidden), owner.String(), "a caller who cannot read the package learns nothing about it")
+	send(t, an, http.MethodPut, "/v1/packages/"+id+"/tracking", `{"trackUpstream":false}`, http.StatusNotFound)
+
 	// A catalog admin may act on a package it does not own.
 	back := sendJSON[contract.PackageDetail](t, kw, http.MethodPut, path,
 		`{"visibility":"organisation"}`, http.StatusOK)

@@ -176,6 +176,8 @@ services:
       <<: [*observability, *queue-url, *blob-write]
       AGENT_MANAGER_DATABASE_URL: >-
         postgres://am_fetcher:local-development-am-fetcher@postgres:5432/agent_manager?sslmode=disable
+      # Optional. Without it GitHub allows 60 API requests an hour, which upstream tracking exhausts quickly.
+      AGENT_MANAGER_GITHUB_TOKEN: ${GITHUB_TOKEN:-}
     command: ["worker", "run", "fetcher"]
     # A worker has no HTTP listener yet, so the image's HEALTHCHECK — which probes
     # the api's port — would mark it unhealthy forever. T109 adds the metrics and

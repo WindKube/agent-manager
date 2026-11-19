@@ -173,7 +173,7 @@ func TestGitSourceUsesTheTarballEndpointAndNeverAShell(t *testing.T) {
 	defer server.Close()
 
 	client := &rewriteClient{server: server}
-	source, err := fetch.NewGitSource(client)
+	source, err := fetch.NewGitSource(client, "")
 	require.NoError(t, err)
 	require.Equal(t, "git", source.Name())
 
@@ -269,7 +269,7 @@ func TestGitSourceResolvesARefToTheCommitItNamesNow(t *testing.T) {
 	defer server.Close()
 
 	client := &rewriteClient{server: server}
-	source, err := fetch.NewGitSource(client)
+	source, err := fetch.NewGitSource(client, "")
 	require.NoError(t, err)
 	resolve := func(ref string) (fetch.Pin, error) {
 		return source.Resolve(context.Background(), fetch.SourceRef{
@@ -403,7 +403,7 @@ func TestArchiveURLSourceFetchesThroughTheInjectedClient(t *testing.T) {
 
 func TestRegistryRoutesByKindAndByShape(t *testing.T) {
 	upload := fetch.NewUploadSource()
-	git, err := fetch.NewGitSource(&rewriteClient{})
+	git, err := fetch.NewGitSource(&rewriteClient{}, "")
 	require.NoError(t, err)
 	archive := fetch.NewArchiveURLSource(&rewriteClient{})
 
@@ -500,9 +500,15 @@ func TestProvenanceIsTheCanonicalSourceWithoutACredential(t *testing.T) {
 			want: fetch.Provenance{Kind: fetch.SourceGit, URL: "http://git.internal:8080/acme/skills", Ref: "main"},
 		},
 		{
-			name: "an archive keeps its url but not its userinfo",
-			ref:  fetch.SourceRef{Kind: fetch.SourceArchiveURL, URL: "https://u:hunter2@cdn.example.dev/a.zip?v=1"},
-			want: fetch.Provenance{Kind: fetch.SourceArchiveURL, URL: "https://cdn.example.dev/a.zip?v=1"},
+			name: "an archive keeps its url but not its userinfo, query or fragment",
+			ref:  fetch.SourceRef{Kind: fetch.SourceArchiveURL, URL: "https://u:hunter2@cdn.example.dev/a.zip?v=1#top"},
+			want: fetch.Provenance{Kind: fetch.SourceArchiveURL, URL: "https://cdn.example.dev/a.zip"},
+		},
+		{
+			name: "a presigned archive url loses its signature",
+			ref: fetch.SourceRef{Kind: fetch.SourceArchiveURL,
+				URL: "https://bucket.s3.amazonaws.com/a.zip?X-Amz-Signature=deadbeef&X-Amz-Credential=AKIA"},
+			want: fetch.Provenance{Kind: fetch.SourceArchiveURL, URL: "https://bucket.s3.amazonaws.com/a.zip"},
 		},
 		{
 			name: "an upload has no url",
@@ -513,5 +519,38 @@ func TestProvenanceIsTheCanonicalSourceWithoutACredential(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.want, fetch.ProvenanceOf(tc.ref))
 		})
+	}
+}
+
+func TestGitSourceAuthenticatesToTheGitHubAPIOnlyWhenGivenAToken(t *testing.T) {
+	tarball := forgeTarball(t, "example-platform-toolkit-9f1c2ab", map[string]string{"plugin.json": testPluginManifest})
+	for _, token := range []string{"", "ghp_test"} {
+		var auth []string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			auth = append(auth, r.Header.Get("Authorization"))
+			switch r.URL.Path {
+			case "/repos/example/platform-toolkit/git/ref/tags/v1.3.0":
+				_, _ = fmt.Fprintf(w, `{"ref":"refs/tags/v1.3.0","object":{"type":"commit","sha":%q}}`, testCommit)
+			default:
+				w.Header().Set("Content-Type", "application/gzip")
+				_, _ = w.Write(tarball)
+			}
+		}))
+		source, err := fetch.NewGitSource(&rewriteClient{server: server}, token)
+		require.NoError(t, err)
+		_, err = source.Fetch(context.Background(), fetch.SourceRef{
+			Kind: fetch.SourceGit, URL: "https://github.com/example/platform-toolkit", Ref: "v1.3.0",
+		})
+		server.Close()
+		require.NoError(t, err)
+
+		want := ""
+		if token != "" {
+			want = "Bearer " + token
+		}
+		require.Len(t, auth, 2)
+		for _, got := range auth {
+			require.Equal(t, want, got)
+		}
 	}
 }

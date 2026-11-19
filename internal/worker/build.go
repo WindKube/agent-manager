@@ -30,6 +30,7 @@ type Config struct {
 	BlobURL           string        `env:"BLOB_URL"`
 	FetchTimeout      time.Duration `env:"FETCH_TIMEOUT" envDefault:"60s"`
 	OutboundAllowlist []string      `env:"OUTBOUND_ALLOWLIST" envSeparator:","`
+	GitHubToken       string        `env:"GITHUB_TOKEN"`
 }
 
 // Built is a role's dependencies plus the handles that back them.
@@ -129,6 +130,7 @@ func Build(ctx context.Context, def Definition, cfg Config, log zerolog.Logger) 
 			return nil, fmt.Errorf("worker %s: build the outbound client: %w", def.Name, err)
 		}
 		built.Deps.Fetch = client
+		built.Deps.GitHubToken = cfg.GitHubToken
 	}
 
 	return built, nil

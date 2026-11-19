@@ -27,14 +27,17 @@ type GitSource struct {
 	// api is a request builder only: every request it builds is handed to
 	// s.client.Do instead of its own http.Client.
 	api *github.Client
+	// token is sent to the GitHub API only. Go drops Authorization on a redirect
+	// to another host, so it never reaches the tarball download host.
+	token string
 }
 
-func NewGitSource(client Client) (GitSource, error) {
+func NewGitSource(client Client, token string) (GitSource, error) {
 	api, err := github.NewClient()
 	if err != nil {
 		return GitSource{}, fmt.Errorf("build the github request builder: %w", err)
 	}
-	return GitSource{client: client, api: api}, nil
+	return GitSource{client: client, api: api, token: token}, nil
 }
 
 var _ Source = GitSource{}
@@ -113,6 +116,7 @@ func (s GitSource) Fetch(ctx context.Context, ref SourceRef) (Tree, error) {
 	if err != nil {
 		return Tree{}, fmt.Errorf("build tarball request for %s: %w", repo, err)
 	}
+	s.authorize(request)
 
 	resp, err := s.client.Do(ctx, request)
 	if err != nil {
@@ -203,6 +207,7 @@ func (s GitSource) resolve(ctx context.Context, api *github.Client, repo repourl
 	if err != nil {
 		return Pin{}, fmt.Errorf("build commit request for %s: %w", repo, err)
 	}
+	s.authorize(request)
 	request.Header.Set("Accept", "application/vnd.github.sha")
 	resp, err := s.client.Do(ctx, request)
 	if err != nil {
@@ -274,6 +279,7 @@ func (s GitSource) getJSON(ctx context.Context, api *github.Client, repo repourl
 	if err != nil {
 		return false, fmt.Errorf("build request for %s: %w", repo, err)
 	}
+	s.authorize(request)
 	resp, err := s.client.Do(ctx, request)
 	if err != nil {
 		return false, fmt.Errorf("resolve %s: %w", repo, err)
@@ -357,4 +363,10 @@ func hasManifestUnder(files *bundle.Bundle, root string) bool {
 		prefix = strings.Trim(root, "/") + "/"
 	}
 	return files.Has(prefix+pluginManifestName) || files.Has(prefix+skillManifestName)
+}
+
+func (s GitSource) authorize(request *http.Request) {
+	if s.token != "" {
+		request.Header.Set("Authorization", "Bearer "+s.token)
+	}
 }

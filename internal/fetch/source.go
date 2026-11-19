@@ -84,23 +84,27 @@ func ProvenanceOf(ref SourceRef) Provenance {
 		if repo, err := repourl.ParseWith(ref.URL, ref.Ref, ref.Subdirectory); err == nil {
 			out.URL, out.Ref, out.Subdirectory = repoURL(repo, ref.URL), repo.Ref, repo.Subdir
 		} else {
-			out.URL, out.Ref = withoutUserinfo(ref.URL), ref.Ref
+			out.URL, out.Ref = withoutSecrets(ref.URL), ref.Ref
 		}
 		if out.Ref == "" {
 			out.Ref = DefaultRef
 		}
 	case SourceArchiveURL:
-		out.URL = withoutUserinfo(ref.URL)
+		out.URL = withoutSecrets(ref.URL)
 	}
 	return out
 }
 
-func withoutUserinfo(raw string) string {
+func withoutSecrets(raw string) string {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
+		raw, _, _ = strings.Cut(raw, "?")
+		raw, _, _ = strings.Cut(raw, "#")
 		return credentialsInURL.ReplaceAllString(raw, "//")
 	}
 	parsed.User = nil
+	// A query is where presigned URLs carry their signature; it must not be stored or shown.
+	parsed.RawQuery, parsed.ForceQuery, parsed.Fragment, parsed.RawFragment = "", false, "", ""
 	return parsed.String()
 }
 

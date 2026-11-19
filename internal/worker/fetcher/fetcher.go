@@ -87,7 +87,7 @@ func New(deps worker.Deps) (*Worker, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fetcher: %w", err)
 	}
-	git, err := fetch.NewGitSource(deps.Fetch)
+	git, err := fetch.NewGitSource(deps.Fetch, deps.GitHubToken)
 	if err != nil {
 		return nil, fmt.Errorf("fetcher: %w", err)
 	}

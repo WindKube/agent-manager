@@ -67,5 +67,7 @@ type Deps struct {
 	BlobRead  blob.Reader
 	BlobWrite blob.Writer  // nil unless Needs.Blob == AccessReadWrite
 	Fetch     fetch.Client // nil unless Needs.Outbound
-	Log       zerolog.Logger
+	// GitHubToken authenticates GitHub API calls; empty means anonymous (60 requests an hour).
+	GitHubToken string
+	Log         zerolog.Logger
 }

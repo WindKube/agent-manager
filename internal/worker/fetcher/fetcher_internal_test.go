@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -15,6 +16,7 @@ import (
 	"agent-manager/internal/domain/pkgspec"
 	"agent-manager/internal/fetch"
 	"agent-manager/internal/outbox"
+	"agent-manager/internal/store/models"
 	"agent-manager/internal/worker"
 )
 
@@ -121,6 +123,12 @@ func TestEveryFetchFailureIsAFetchErrorAndNeverAFinding(t *testing.T) {
 			want: ReasonVersionMismatch,
 		},
 		{
+			name: "a tag that names a different commit from the one already recorded",
+			err: &TagMovedError{Repo: "https://github.com/acme/skills", Tag: "v1.2.0", Version: "acme/pdf@1.2.0",
+				From: strings.Repeat("a", 40), To: strings.Repeat("b", 40)},
+			want: ReasonTagMoved,
+		},
+		{
 			name:      "the hub's own storage failing, which is the fall-through",
 			err:       errors.New("write bundle.tar.zst: connection reset"),
 			want:      ReasonStore,
@@ -144,6 +152,16 @@ func TestEveryFetchFailureIsAFetchErrorAndNeverAFinding(t *testing.T) {
 			require.Equal(t, tc.retryable, fetchErr.Retryable())
 		})
 	}
+}
+
+func TestAMovedTagNamesBothCommitsShort(t *testing.T) {
+	err := &TagMovedError{Repo: "https://github.com/acme/skills", Tag: "v1.2.0", Version: "acme/pdf@1.2.0",
+		From: "abc1234" + strings.Repeat("0", 33), To: "def5678" + strings.Repeat("0", 33)}
+	require.Equal(t, "tag v1.2.0 of https://github.com/acme/skills moved from abc1234… to def5678…: "+
+		"acme/pdf@1.2.0 was stored from the first, and versions are immutable", err.Error())
+	outcome, ok := outcomeOf(ReasonTagMoved)
+	require.True(t, ok)
+	require.Equal(t, models.FetchOutcomeInvalidRef, outcome)
 }
 
 // The negative control for the table above: not everything that reaches classify

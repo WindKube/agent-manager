@@ -3,7 +3,9 @@ package fetcher
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 
 	"agent-manager/internal/blob"
@@ -80,6 +82,17 @@ func (w *Worker) run(ctx context.Context, job Job) (Result, error) {
 		ref.Archive = bytes.NewReader(job.Source.Archive)
 	}
 
+	if job.Source.Kind == fetch.SourceGit {
+		pin, err := w.git.Resolve(ctx, ref)
+		if err != nil {
+			return Result{}, classify(job.String(), err)
+		}
+		if err := w.refuseMovedTag(ctx, job, pin); err != nil {
+			return Result{}, classify(job.String(), err)
+		}
+		ref.Commit = pin.Commit
+	}
+
 	tree, err := w.sources.Fetch(ctx, ref)
 	if err != nil {
 		return Result{}, classify(job.String(), err)
@@ -131,7 +144,7 @@ func (w *Worker) run(ctx context.Context, job Job) (Result, error) {
 			hex.EncodeToString(commit.Bundle.Digest[:]), commit.Bundle.Size))
 	}
 
-	published, latest, err := w.publish(ctx, job, pkg, commit)
+	published, latest, err := w.publish(ctx, job, tree, pkg, commit)
 	if err != nil {
 		return Result{}, classify(job.String(), err)
 	}
@@ -147,4 +160,30 @@ func (w *Worker) run(ctx context.Context, job Job) (Result, error) {
 		}
 	}
 	return Result{Commit: commit, Package: pkg, Origin: tree.Origin, Latest: latest}, nil
+}
+
+// refuseMovedTag compares a resolved tag against every commit a version from
+// the same repository recorded for it: a tag names one commit per
+// repository, whichever package recorded it.
+func (w *Worker) refuseMovedTag(ctx context.Context, job Job, pin fetch.Pin) error {
+	if !pin.Tag {
+		return nil
+	}
+	var semver, namespace, name, recorded string
+	err := w.deps.DB.QueryRowContext(ctx,
+		`select ver.semver, pkg.namespace, pkg.name, ver.source_commit
+		   from version as ver join package as pkg on pkg.id = ver.package_id
+		  where ver.source_url = ? and ver.source_ref = ? and ver.source_commit <> ? and ver.id <> ?
+		  order by ver.created_at limit 1`,
+		pin.RepoURL, pin.Ref, pin.Commit, job.VersionID).Scan(&semver, &namespace, &name, &recorded)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return nil
+	case err != nil:
+		return fmt.Errorf("compare tag %s against the recorded commits: %w", pin.Ref, err)
+	}
+	return &TagMovedError{
+		Repo: pin.RepoURL, Tag: pin.Ref, Version: namespace + "/" + name + "@" + semver,
+		From: recorded, To: pin.Commit,
+	}
 }

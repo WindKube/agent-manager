@@ -76,10 +76,27 @@ func (s ArchiveURLSource) Fetch(ctx context.Context, ref SourceRef) (Tree, error
 	}
 
 	return Tree{
-		Files:  files,
-		Root:   packageRoot(files, "", ref.Subdirectory),
-		Origin: "archive " + redactURL(ref.URL) + subdirectorySuffix(ref.Subdirectory),
+		Files:     files,
+		Root:      packageRoot(files, "", ref.Subdirectory),
+		Origin:    "archive " + redactURL(ref.URL) + subdirectorySuffix(ref.Subdirectory),
+		SourceURL: servedFrom(resp, ref.URL),
 	}, nil
+}
+
+// servedFrom is the URL that answered after redirects, without userinfo,
+// query or fragment: a redirect target commonly carries an expiring
+// signature that is neither stable nor safe to keep.
+func servedFrom(resp *http.Response, requested string) string {
+	final, err := url.Parse(requested)
+	if resp.Request != nil && resp.Request.URL != nil {
+		final, err = resp.Request.URL, nil
+	}
+	if err != nil {
+		return ""
+	}
+	stripped := *final
+	stripped.User, stripped.RawQuery, stripped.ForceQuery, stripped.Fragment, stripped.RawFragment = nil, "", false, "", ""
+	return stripped.String()
 }
 
 // statusError maps a non-2xx answer onto the fetch-error taxonomy.

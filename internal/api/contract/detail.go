@@ -21,10 +21,12 @@ type PackageDetail struct {
 
 	Description string `json:"description,omitempty" example:"Platform guardrails, ADR authoring and service scaffolding."`
 
-	Origin  PackageOrigin `json:"origin"`
-	Version string        `json:"version" doc:"The latest visible version's semver — the one the panels below describe." example:"1.3.0"`
-	Verdict string        `json:"verdict" enum:"scanning,clean,flagged,rejected" example:"clean"`
-	Tags    []string      `json:"tags" doc:"The latest version's manifest keywords. Tags belong to the version, not the package."`
+	Origin PackageOrigin `json:"origin"`
+	// Source is absent on a package registered before sources were recorded.
+	Source  *PackageSource `json:"source,omitempty"`
+	Version string         `json:"version" doc:"The latest visible version's semver — the one the panels below describe." example:"1.3.0"`
+	Verdict string         `json:"verdict" enum:"scanning,clean,flagged,rejected" example:"clean"`
+	Tags    []string       `json:"tags" doc:"The latest version's manifest keywords. Tags belong to the version, not the package."`
 
 	ManifestObject string `json:"manifestObject" enum:"plugin.json,SKILL.md" example:"plugin.json"`
 	// Manifest is verbatim and unformatted: a Go map would reorder it.
@@ -49,6 +51,14 @@ type PackageOrigin struct {
 	// current latest would go stale silently.
 	ParentID   string `json:"parentId,omitempty" example:"example/platform-toolkit"`
 	ParentName string `json:"parentName,omitempty" example:"platform-toolkit"`
+}
+
+// PackageSource is where the package was last registered from.
+type PackageSource struct {
+	Kind         string `json:"kind" enum:"upload,git,archive-url" example:"git"`
+	URL          string `json:"url,omitempty" doc:"The canonical repository for git, the requested URL for an archive; absent for an upload." example:"https://github.com/acme/skills"`
+	Ref          string `json:"ref,omitempty" doc:"The git ref as requested: a tag, a branch or HEAD." example:"v1.2.0"`
+	Subdirectory string `json:"subdirectory,omitempty" example:"pdf"`
 }
 
 type PackageComponent struct {
@@ -85,6 +95,11 @@ type PackageVersion struct {
 	ObjectKey string    `json:"objectKey" example:"skills/example/platform-toolkit/1.3.0/bundle.tar.zst"`
 	Digest    string    `json:"digest,omitempty" pattern:"^sha256:[0-9a-f]{64}$" doc:"Empty while a registration is still being fetched: the digest is computed on write."`
 	SizeBytes int64     `json:"sizeBytes,omitempty"`
+	// SourceURL is where these bytes came from: the repository for git, the
+	// URL that answered after redirects (no query) for an archive.
+	SourceURL    string `json:"sourceUrl,omitempty" example:"https://github.com/acme/skills"`
+	SourceRef    string `json:"sourceRef,omitempty" doc:"The git ref as requested for this version." example:"v1.2.0"`
+	SourceCommit string `json:"sourceCommit,omitempty" pattern:"^[0-9a-f]{40}$" doc:"The git commit the bytes were downloaded at, resolved from sourceRef before the download." example:"3f9c2e1d8b7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e"`
 	// PinnedBy is scoped to profiles the caller may read: an unscoped count
 	// beside a scoped list would leak private profiles' existence.
 	PinnedBy int `json:"pinnedBy"`

@@ -2105,6 +2105,9 @@
           "publisher": {
             "$ref": "#/components/schemas/PackagePublisher"
           },
+          "source": {
+            "$ref": "#/components/schemas/PackageSource"
+          },
           "tags": {
             "description": "The latest version's manifest keywords. Tags belong to the version, not the package.",
             "items": {
@@ -2592,6 +2595,46 @@
         ],
         "type": "object"
       },
+      "PackageSource": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "upload",
+              "git",
+              "archive-url"
+            ],
+            "examples": [
+              "git"
+            ],
+            "type": "string"
+          },
+          "ref": {
+            "description": "The git ref as requested: a tag, a branch or HEAD.",
+            "examples": [
+              "v1.2.0"
+            ],
+            "type": "string"
+          },
+          "subdirectory": {
+            "examples": [
+              "pdf"
+            ],
+            "type": "string"
+          },
+          "url": {
+            "description": "The canonical repository for git, the requested URL for an archive; absent for an upload.",
+            "examples": [
+              "https://github.com/acme/skills"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
+      },
       "PackageVersion": {
         "additionalProperties": false,
         "properties": {
@@ -2628,6 +2671,27 @@
           "sizeBytes": {
             "format": "int64",
             "type": "integer"
+          },
+          "sourceCommit": {
+            "description": "The git commit the bytes were downloaded at, resolved from sourceRef before the download.",
+            "examples": [
+              "3f9c2e1d8b7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e"
+            ],
+            "pattern": "^[0-9a-f]{40}$",
+            "type": "string"
+          },
+          "sourceRef": {
+            "description": "The git ref as requested for this version.",
+            "examples": [
+              "v1.2.0"
+            ],
+            "type": "string"
+          },
+          "sourceUrl": {
+            "examples": [
+              "https://github.com/acme/skills"
+            ],
+            "type": "string"
           },
           "verdict": {
             "enum": [

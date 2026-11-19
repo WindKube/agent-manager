@@ -36,6 +36,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -160,27 +161,55 @@ func forgeTarball(t *testing.T, wrapper string, files map[string]string) []byte 
 	return buf.Bytes()
 }
 
-// forge serves the tarball endpoint go-github builds, and records the paths it
-// was asked for so a test can prove no other call was made.
+// forgeCommit is the commit every tag on a default forge names.
+const forgeCommit = "9e3f1c2a8b7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f"
+
+// forge serves the endpoints go-github builds — a tag lookup, a commit
+// lookup and the tarball by sha — and records the paths it was asked for so a
+// test can prove no other call was made.
 func forge(t *testing.T, files map[string]string) (base string, seen *[]string) {
+	return forgeAt(t, files, func(string) string { return forgeCommit })
+}
+
+// forgeAt is forge with the tag-to-commit mapping in the test's hands, so a
+// tag can be moved between two fetches.
+func forgeAt(t *testing.T, files map[string]string, tagCommit func(tag string) string) (base string, seen *[]string) {
 	t.Helper()
 
 	paths := new([]string)
+	var mu sync.Mutex
 	tarball := forgeTarball(t, "org-plugin-9e3f1c2", files)
 
-	// Any ref but v9.9.9, which stands in for "the remote does not have it" and is
-	// answered exactly as a forge answers a private repository — a 404 either way,
-	// which is why the fetcher reports the two together.
+	// Any tag but v9.9.9, which stands in for "the remote does not have it" and
+	// is answered exactly as a forge answers a private repository — a 404 on the
+	// tag and a 422 on the commit, which is why the fetcher reports the two
+	// together.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
 		*paths = append(*paths, r.URL.Path)
-		const prefix = "/api/v3/repos/org/plugin/tarball/"
+		mu.Unlock()
+		const prefix = "/api/v3/repos/org/plugin/"
+		rest, ok := strings.CutPrefix(r.URL.Path, prefix)
 		switch {
-		case r.URL.Path == prefix+"v9.9.9", !strings.HasPrefix(r.URL.Path, prefix):
+		case !ok:
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"message":"Not Found"}`))
-		default:
+		case strings.HasPrefix(rest, "git/ref/tags/"):
+			tag := strings.TrimPrefix(rest, "git/ref/tags/")
+			if tag == "v9.9.9" {
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(`{"message":"Not Found"}`))
+				return
+			}
+			_, _ = fmt.Fprintf(w, `{"ref":"refs/tags/%s","object":{"type":"commit","sha":%q}}`, tag, tagCommit(tag))
+		case strings.HasPrefix(rest, "commits/"):
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_, _ = w.Write([]byte(`{"message":"No commit found"}`))
+		case strings.HasPrefix(rest, "tarball/"):
 			w.Header().Set("Content-Type", "application/gzip")
 			_, _ = w.Write(tarball)
+		default:
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	t.Cleanup(server.Close)
@@ -363,10 +392,13 @@ func TestAGitRegistrationBecomesAStoredVisibleVersionWithAQueuedScan(t *testing.
 
 	require.NoError(t, h.worker.Fetch(ctx, job))
 
-	// One call, to the tarball endpoint, and no other. A `git clone` would not
-	// appear here at all — there is no git binary in the runtime image and no
-	// os/exec in this tree.
-	require.Equal(t, []string{"/api/v3/repos/org/plugin/tarball/v1.3.0"}, *seen)
+	// The tag resolved to its commit, then the tarball fetched BY THAT SHA, and
+	// nothing else. A `git clone` would not appear here at all — there is no git
+	// binary in the runtime image and no os/exec in this tree.
+	require.Equal(t, []string{
+		"/api/v3/repos/org/plugin/git/ref/tags/v1.3.0",
+		"/api/v3/repos/org/plugin/tarball/" + forgeCommit,
+	}, *seen)
 
 	after := readVersion(t, versionID)
 	require.Len(t, after.Digest, 32, "FR-007: a sha256 is recorded for every stored version")
@@ -419,6 +451,16 @@ func TestAGitRegistrationBecomesAStoredVisibleVersionWithAQueuedScan(t *testing.
 		`select count(*) from version_tag where version_id = $1`, versionID))
 	require.Equal(t, 1, countRows(t,
 		`select count(*) from signature where version_id = $1 and kind = 'none'`, versionID))
+
+	// Provenance: the package records where it comes from, the version the
+	// commit its bytes were downloaded at.
+	repoURL := base + "/org/plugin"
+	require.Equal(t, 1, countRows(t,
+		`select count(*) from version where id = $1 and source_url = $2 and source_ref = 'v1.3.0' and source_commit = $3`,
+		versionID, repoURL, forgeCommit))
+	require.Equal(t, 1, countRows(t,
+		`select count(*) from package where id = $1 and source_kind = 'git' and source_url = $2
+		   and source_ref = 'v1.3.0' and source_subdirectory is null`, job.PackageID, repoURL))
 
 	// The package's latest pointer moved, in the same transaction.
 	require.Equal(t, 1, countRows(t,
@@ -743,6 +785,97 @@ func TestAMissingRefIsAFetchErrorAndNotAManifestFailure(t *testing.T) {
 	err := h.worker.Fetch(ctx, job)
 	require.ErrorIs(t, err, fetcher.ErrFetch)
 	require.Equal(t, fetcher.ReasonRefNotFound, fetcher.ReasonOf(err))
+}
+
+// A tag names one commit. When it names another later, the fetch is refused
+// rather than storing different bytes under a ref that once meant something
+// else, and the refusal names both commits.
+func TestATagThatMovedIsRefusedAndAudited(t *testing.T) {
+	ctx := context.Background()
+	const moved = "1111111111111111111111111111111111111111"
+	var current atomic.Value
+	current.Store(forgeCommit)
+	base, seen := forgeAt(t, fixtureTree(), func(string) string { return current.Load().(string) })
+	h := newHarness(t, []string{loopbackOf(t, base)})
+
+	_, job := register(t, commands.Registration{
+		Source: fetch.SourceGit, URL: base + "/org/plugin", Ref: "v1.3.0",
+		Publisher: "tag-move/team", Name: "platform-toolkit",
+	})
+	require.NoError(t, h.worker.Fetch(ctx, job))
+
+	current.Store(moved)
+	*seen = nil
+	versionID, job := register(t, commands.Registration{
+		Source: fetch.SourceGit, URL: base + "/org/plugin", Ref: "v1.3.0",
+		Publisher: "tag-move/team", Name: "platform-toolkit", Version: "1.3.1",
+	})
+	err := h.worker.Fetch(ctx, job)
+	require.ErrorIs(t, err, fetcher.ErrFetch)
+	require.Equal(t, fetcher.ReasonTagMoved, fetcher.ReasonOf(err))
+	require.Contains(t, err.Error(), "tag v1.3.0 of "+base+"/org/plugin moved from 9e3f1c2… to 1111111…")
+
+	require.Equal(t, []string{"/api/v3/repos/org/plugin/git/ref/tags/v1.3.0"}, *seen,
+		"the refusal happens before the moved commit's bytes are downloaded")
+	require.Nil(t, readVersion(t, versionID).Digest)
+	require.Equal(t, 1, countRows(t,
+		`select count(*) from audit_event
+		  where actor = 'fetcher' and subject_id = 'tag-move/platform-toolkit@1.3.1'
+		    and data->>'action' = 'fetch-failed' and data->>'reason' = 'tag-moved'
+		    and data->>'sourceRef' = 'v1.3.0' and data->>'previousCommit' = $1 and data->>'commit' = $2
+		    and text like '%tag v1.3.0 %moved from 9e3f1c2… to 1111111…%'`, forgeCommit, moved))
+}
+
+// Every registration records where the package comes from. A new ref from the
+// same place is the ordinary course of releases; a different place is a
+// change of source and is audited.
+func TestARegistrationRecordsThePackageSourceAndAuditsAMove(t *testing.T) {
+	source := func(packageID string) (kind, sourceURL, ref, subdirectory string) {
+		require.NoError(t, pool.QueryRow(context.Background(),
+			`select source_kind::text, source_url, coalesce(source_ref, ''), coalesce(source_subdirectory, '')
+			   from package where id = $1`, packageID).Scan(&kind, &sourceURL, &ref, &subdirectory))
+		return kind, sourceURL, ref, subdirectory
+	}
+	movedRows := func() int {
+		return countRows(t, `select count(*) from audit_event
+		  where subject_kind = 'package' and subject_id = 'source-move/platform-toolkit'
+		    and data->>'action' = 'source-changed'`)
+	}
+
+	first, err := commands.RegisterPackage(context.Background(), db, principal(), commands.Registration{
+		Source: fetch.SourceGit, URL: "https://github.com/Acme/Skills/tree/v1.2.0/pdf",
+		Publisher: "source-move/team", Name: "platform-toolkit", Version: "1.2.0",
+	})
+	require.NoError(t, err)
+	kind, sourceURL, ref, subdirectory := source(first.PackageID)
+	require.Equal(t, []string{"git", "https://github.com/acme/skills", "v1.2.0", "pdf"},
+		[]string{kind, sourceURL, ref, subdirectory})
+	require.Equal(t, 1, countRows(t, `select count(*) from version where id = $1 and source_ref = 'v1.2.0'`, first.VersionID))
+	require.Zero(t, movedRows())
+
+	_, err = commands.RegisterPackage(context.Background(), db, principal(), commands.Registration{
+		Source: fetch.SourceGit, URL: "github.com/acme/skills", Ref: "v1.3.0", Subdirectory: "pdf",
+		Publisher: "source-move/team", Name: "platform-toolkit", Version: "1.3.0",
+	})
+	require.NoError(t, err)
+	_, _, ref, _ = source(first.PackageID)
+	require.Equal(t, "v1.3.0", ref)
+	require.Zero(t, movedRows(), "a new release from the same place is not a source change")
+
+	archive, err := commands.RegisterPackage(context.Background(), db, principal(), commands.Registration{
+		Source: fetch.SourceArchiveURL, URL: "https://cdn.example.dev/platform-toolkit-1.4.0.zip",
+		Publisher: "source-move/team", Name: "platform-toolkit", Version: "1.4.0",
+	})
+	require.NoError(t, err)
+	kind, sourceURL, _, subdirectory = source(first.PackageID)
+	require.Equal(t, []string{"archive-url", "https://cdn.example.dev/platform-toolkit-1.4.0.zip", ""},
+		[]string{kind, sourceURL, subdirectory})
+	require.Equal(t, 1, countRows(t, `select count(*) from version where id = $1 and source_ref is null`, archive.VersionID))
+	require.Equal(t, 1, movedRows())
+	require.Equal(t, 1, countRows(t, `select count(*) from audit_event
+	  where subject_id = 'source-move/platform-toolkit' and data->>'action' = 'source-changed'
+	    and data->>'previousSourceUrl' = 'https://github.com/acme/skills' and data->>'sourceKind' = 'archive-url'
+	    and text = 'changed the source of source-move/platform-toolkit from git https://github.com/acme/skills (pdf) to archive-url https://cdn.example.dev/platform-toolkit-1.4.0.zip'`))
 }
 
 // ---------------------------------------------------------------------------

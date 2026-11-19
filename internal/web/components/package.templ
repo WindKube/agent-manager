@@ -230,6 +230,9 @@ templ packageDescription(p view.Package) {
 			<p class="am-desc am-desc-none">The manifest carries no description.</p>
 		}
 		<div class="am-origin">{ p.Origin() }</div>
+		if p.Source != nil && p.Source.Lead() != "" {
+			@provenanceLine(*p.Source)
+		}
 		if len(p.Tags) > 0 {
 			<div class="am-tagrow">
 				for _, tag := range p.Tags {
@@ -238,6 +241,18 @@ templ packageDescription(p view.Package) {
 			</div>
 		}
 	</section>
+}
+
+templ provenanceLine(source view.Provenance) {
+	<div class="am-origin">
+		if source.CommitHref() != "" {
+			{ source.Lead() } (<a class="am-mono" href={ templ.SafeURL(source.CommitHref()) } rel="noopener noreferrer">{ source.ShortCommit() }</a>){ source.Tail() }
+		} else if source.ShortCommit() != "" {
+			{ source.Lead() } (<span class="am-mono">{ source.ShortCommit() }</span>){ source.Tail() }
+		} else {
+			{ source.Lead() }{ source.Tail() }
+		}
+	</div>
 }
 
 // packageContents is the plugin variant's tree and component list (FR-017).
@@ -359,6 +374,18 @@ templ VersionsPanel(p view.Package) {
 					<span class="am-ver-date">{ version.Date }</span>
 				</div>
 				<div class="am-mono am-ver-key">{ version.ObjectKey }</div>
+				if version.ShortCommit() != "" {
+					<div class="am-mono am-ver-key">
+						if version.CommitHref() != "" {
+							commit <a href={ templ.SafeURL(version.CommitHref()) } rel="noopener noreferrer">{ version.ShortCommit() }</a>
+						} else {
+							commit { version.ShortCommit() }
+						}
+						if version.SourceRef != "" {
+							· { version.SourceRef }
+						}
+					</div>
+				}
 				if version.Digest != "" {
 					<div class="am-mono am-ver-digest">{ version.Digest }</div>
 				} else {

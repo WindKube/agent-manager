@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"sort"
 	"strings"
 
 	"agent-manager/internal/bundle"
+	"agent-manager/internal/repourl"
 )
 
 // SourceKind names the three shapes a registration accepts.
@@ -28,6 +30,10 @@ type SourceRef struct {
 	URL          string
 	Ref          string
 	Subdirectory string
+
+	// Commit pins a git fetch to a SHA already resolved from Ref; empty
+	// means the source resolves Ref itself.
+	Commit string
 
 	// Archive and ArchiveName are set for the upload kind only. The reader is
 	// not size-bounded here: the extraction caps are internal/bundle's.
@@ -49,6 +55,53 @@ type Tree struct {
 
 	// Origin is human-readable provenance for the audit row.
 	Origin string
+
+	// SourceURL is where the bytes came from: the canonical repository for
+	// git, the URL that answered after redirects for an archive, empty for
+	// an upload.
+	SourceURL string
+
+	// Commit is the SHA a git tree was downloaded at.
+	Commit string
+}
+
+// Provenance is a registration's source as the package and version rows
+// record it.
+type Provenance struct {
+	Kind         SourceKind
+	URL          string
+	Ref          string
+	Subdirectory string
+}
+
+// ProvenanceOf derives the recorded source without touching the network: a
+// git URL becomes its canonical repository and an absent ref DefaultRef; any
+// URL loses its userinfo.
+func ProvenanceOf(ref SourceRef) Provenance {
+	out := Provenance{Kind: ref.Kind, Subdirectory: strings.Trim(ref.Subdirectory, "/")}
+	switch ref.Kind {
+	case SourceGit:
+		if repo, err := repourl.ParseWith(ref.URL, ref.Ref, ref.Subdirectory); err == nil {
+			out.URL, out.Ref, out.Subdirectory = repoURL(repo, ref.URL), repo.Ref, repo.Subdir
+		} else {
+			out.URL, out.Ref = withoutUserinfo(ref.URL), ref.Ref
+		}
+		if out.Ref == "" {
+			out.Ref = DefaultRef
+		}
+	case SourceArchiveURL:
+		out.URL = withoutUserinfo(ref.URL)
+	}
+	return out
+}
+
+func withoutUserinfo(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return credentialsInURL.ReplaceAllString(raw, "//")
+	}
+	parsed.User = nil
+	return parsed.String()
 }
 
 // Source turns a SourceRef into a Tree.

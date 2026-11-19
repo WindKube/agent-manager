@@ -62,6 +62,7 @@ type Worker struct {
 
 	deps      worker.Deps
 	sources   *fetch.Registry
+	git       fetch.GitSource
 	committer *blob.Committer
 	limits    bundle.Limits
 	validator *pkgspec.Validator
@@ -93,6 +94,7 @@ func New(deps worker.Deps) (*Worker, error) {
 
 	return &Worker{
 		deps: deps,
+		git:  git,
 		sources: fetch.NewRegistry(
 			fetch.NewUploadSource(),
 			git,

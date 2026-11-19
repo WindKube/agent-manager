@@ -153,6 +153,22 @@ func packageDetail(body *apiclient.PackageDetail, now time.Time) view.Package {
 	for i := range body.Versions {
 		detail.Versions = append(detail.Versions, packageVersion(&body.Versions[i], now))
 	}
+	if body.Source != nil {
+		detail.Source = &view.Provenance{
+			Kind:         string(body.Source.Kind),
+			URL:          deref(body.Source.Url),
+			Ref:          deref(body.Source.Ref),
+			Subdirectory: deref(body.Source.Subdirectory),
+		}
+		// The commit is the shown version's, and only when it came from the
+		// repository the package names now.
+		for i := range detail.Versions {
+			version := &detail.Versions[i]
+			if version.Version == detail.Version && version.SourceURL == detail.Source.URL {
+				detail.Source.Commit, detail.Source.CommitURL = version.SourceCommit, version.SourceURL
+			}
+		}
+	}
 	for _, dependent := range body.Dependents {
 		detail.Dependents = append(detail.Dependents, view.Dependent{
 			Slug: dependent.Slug, Name: dependent.Name, Mode: string(dependent.Mode),
@@ -172,6 +188,10 @@ func packageVersion(v *apiclient.PackageVersion, now time.Time) view.PackageVers
 		Digest:    deref(v.Digest),
 		Size:      humanSize(derefInt(v.SizeBytes)),
 		PinnedBy:  int(v.PinnedBy),
+
+		SourceURL:    deref(v.SourceUrl),
+		SourceRef:    deref(v.SourceRef),
+		SourceCommit: deref(v.SourceCommit),
 	}
 }
 

@@ -1119,6 +1119,27 @@ func (e PackageScanFindingState) Valid() bool {
 	}
 }
 
+// Defines values for PackageSourceKind.
+const (
+	PackageSourceKindArchiveUrl PackageSourceKind = "archive-url"
+	PackageSourceKindGit        PackageSourceKind = "git"
+	PackageSourceKindUpload     PackageSourceKind = "upload"
+)
+
+// Valid indicates whether the value is a known member of the PackageSourceKind enum.
+func (e PackageSourceKind) Valid() bool {
+	switch e {
+	case PackageSourceKindArchiveUrl:
+		return true
+	case PackageSourceKindGit:
+		return true
+	case PackageSourceKindUpload:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PackageVersionDistTag.
 const (
 	PackageVersionDistTagArchived PackageVersionDistTag = "archived"
@@ -3053,6 +3074,7 @@ type PackageDetail struct {
 	// Owner Examples: kwiatrzyk@example.com
 	Owner     *string          `json:"owner,omitempty"`
 	Publisher PackagePublisher `json:"publisher"`
+	Source    *PackageSource   `json:"source,omitempty"`
 
 	// Tags The latest version's manifest keywords. Tags belong to the version, not the package.
 	Tags []string `json:"tags"`
@@ -3289,6 +3311,28 @@ type PackageScanFindingSeverity string
 // PackageScanFindingState Examples: open
 type PackageScanFindingState string
 
+// PackageSource defines model for PackageSource.
+type PackageSource struct {
+	// Kind Examples: git
+	Kind PackageSourceKind `json:"kind"`
+
+	// Ref The git ref as requested: a tag, a branch or HEAD.
+	//
+	// Examples: v1.2.0
+	Ref *string `json:"ref,omitempty"`
+
+	// Subdirectory Examples: pdf
+	Subdirectory *string `json:"subdirectory,omitempty"`
+
+	// Url The canonical repository for git, the requested URL for an archive; absent for an upload.
+	//
+	// Examples: https://github.com/acme/skills
+	Url *string `json:"url,omitempty"`
+}
+
+// PackageSourceKind Examples: git
+type PackageSourceKind string
+
 // PackageVersion defines model for PackageVersion.
 type PackageVersion struct {
 	CreatedAt time.Time `json:"createdAt"`
@@ -3303,6 +3347,19 @@ type PackageVersion struct {
 	ObjectKey string `json:"objectKey"`
 	PinnedBy  int64  `json:"pinnedBy"`
 	SizeBytes *int64 `json:"sizeBytes,omitempty"`
+
+	// SourceCommit The git commit the bytes were downloaded at, resolved from sourceRef before the download.
+	//
+	// Examples: 3f9c2e1d8b7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e
+	SourceCommit *string `json:"sourceCommit,omitempty"`
+
+	// SourceRef The git ref as requested for this version.
+	//
+	// Examples: v1.2.0
+	SourceRef *string `json:"sourceRef,omitempty"`
+
+	// SourceUrl Examples: https://github.com/acme/skills
+	SourceUrl *string `json:"sourceUrl,omitempty"`
 
 	// Verdict Examples: clean
 	Verdict PackageVersionVerdict `json:"verdict"`

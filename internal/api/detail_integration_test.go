@@ -312,3 +312,42 @@ func TestThePluginVariantListsItsComponentsAndTheSkillVariantNamesItsParent(t *t
 		require.Empty(t, page.Origin.ParentName)
 	})
 }
+
+// Provenance is read off the package and each version as recorded; a package
+// registered before sources were recorded has none rather than an empty one.
+func TestTheDetailCarriesThePackageSourceAndEachVersionsCommit(t *testing.T) {
+	handler := liveHandler(t)
+	seedCatalog(t)
+	ctx := context.Background()
+
+	require.Nil(t, detail(t, handler, kw.token, "example/platform-toolkit").Source)
+
+	const commit = "3f9c2e1d8b7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e"
+	_, err := pool.Exec(ctx, `
+		with pkg as (
+		  update package set source_kind = 'git', source_url = 'https://github.com/acme/skills',
+		         source_ref = 'v1.3.0', source_subdirectory = 'pdf'
+		   where namespace = 'example' and name = 'platform-toolkit'
+		  returning latest_version_id)
+		update version set source_url = 'https://github.com/acme/skills', source_ref = 'v1.3.0', source_commit = $1
+		 where id = (select latest_version_id from pkg)`, commit)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, restoreErr := pool.Exec(context.Background(), `
+			with pkg as (
+			  update package set source_kind = null, source_url = null, source_ref = null, source_subdirectory = null
+			   where namespace = 'example' and name = 'platform-toolkit'
+			  returning latest_version_id)
+			update version set source_url = null, source_ref = null, source_commit = null
+			 where id = (select latest_version_id from pkg)`)
+		require.NoError(t, restoreErr)
+	})
+
+	page := detail(t, handler, kw.token, "example/platform-toolkit")
+	require.Equal(t, &contract.PackageSource{
+		Kind: "git", URL: "https://github.com/acme/skills", Ref: "v1.3.0", Subdirectory: "pdf",
+	}, page.Source)
+	require.Equal(t, commit, page.Versions[0].SourceCommit)
+	require.Equal(t, "v1.3.0", page.Versions[0].SourceRef)
+	require.Equal(t, "https://github.com/acme/skills", page.Versions[0].SourceURL)
+}

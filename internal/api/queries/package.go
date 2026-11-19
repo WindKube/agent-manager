@@ -51,7 +51,11 @@ select
   ver.tags,
   coalesce(parent.namespace || '/' || parent.name, ''),
   coalesce(parent.name, ''),
-  exists (select 1 from scan where scan.version_id = ver.id and scan.finished_at is not null)
+  exists (select 1 from scan where scan.version_id = ver.id and scan.finished_at is not null),
+  coalesce(pkg.source_kind::text, ''),
+  coalesce(pkg.source_url, ''),
+  coalesce(pkg.source_ref, ''),
+  coalesce(pkg.source_subdirectory, '')
 from package as pkg
 join publisher as pub on pub.id = pkg.publisher_id
 join version as ver on ver.id = pkg.latest_version_id and ver.visible
@@ -76,6 +80,7 @@ func Package(ctx context.Context, db bun.IDB, principal auth.Principal,
 		manifest    string
 		parentID    string
 		parent      string
+		source      contract.PackageSource
 	)
 	detail.Tags = []string{}
 
@@ -89,7 +94,8 @@ func Package(ctx context.Context, db bun.IDB, principal auth.Principal,
 		&detail.Publisher.Slug, &detail.Publisher.DisplayName, &detail.Publisher.Verified,
 		&detail.Category,
 		&versionID, &detail.Version, &detail.Verdict, &manifest, pgdialect.Array(&detail.Tags),
-		&parentID, &parent, &detail.Capabilities.Scanned)
+		&parentID, &parent, &detail.Capabilities.Scanned,
+		&source.Kind, &source.URL, &source.Ref, &source.Subdirectory)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return contract.PackageDetail{}, ErrNotFound
@@ -98,6 +104,9 @@ func Package(ctx context.Context, db bun.IDB, principal auth.Principal,
 	}
 	if detail.Tags == nil {
 		detail.Tags = []string{}
+	}
+	if source.Kind != "" {
+		detail.Source = &source
 	}
 	// Owner or catalog admin, mirroring the org.templ pattern: the control
 	// is offered to every reader of this page and disabled, with its
@@ -163,6 +172,9 @@ select
   ver.object_key,
   coalesce(ver.digest, ''::bytea),
   coalesce(ver.size_bytes, 0),
+  coalesce(ver.source_url, ''),
+  coalesce(ver.source_ref, ''),
+  coalesce(ver.source_commit, ''),
   (select count(*)
      from profile_entry as pin
      join profile as pinner on pinner.id = pin.profile_id
@@ -187,7 +199,8 @@ order by ver.semver_sort desc, ver.created_at desc`
 			digest  []byte
 		)
 		if err := rows.Scan(&version.Version, &version.DistTag, &version.Verdict, &version.CreatedAt,
-			&version.ObjectKey, &digest, &version.SizeBytes, &version.PinnedBy); err != nil {
+			&version.ObjectKey, &digest, &version.SizeBytes,
+			&version.SourceURL, &version.SourceRef, &version.SourceCommit, &version.PinnedBy); err != nil {
 			return nil, fmt.Errorf("scan a version row: %w", err)
 		}
 		if len(digest) > 0 {

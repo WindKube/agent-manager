@@ -51,8 +51,9 @@ import (
 
 // ---- the forge --------------------------------------------------------------
 
-// loopForge serves one repository's tarball endpoint, and 404s everything else so
-// a wrong ref reads as "the remote does not have it" rather than as the fixture.
+// loopForge serves one repository's tag lookup and tarball endpoint, and 404s
+// everything else so a wrong ref reads as "the remote does not have it" rather
+// than as the fixture.
 //
 // A local server rather than a real forge: the test has to be able to state the
 // exact bytes it later asserts a finding about, and a network dependency in a
@@ -62,17 +63,21 @@ import (
 func loopForge(t *testing.T, repo string, files map[string]string) string {
 	t.Helper()
 
-	prefix := "/api/v3/repos/org/" + repo + "/tarball/"
+	prefix := "/api/v3/repos/org/" + repo + "/"
 	tarball := loopTarball(t, repo+"-9e3f1c2", files)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, prefix) {
+		rest, ok := strings.CutPrefix(r.URL.Path, prefix)
+		switch {
+		case ok && strings.HasPrefix(rest, "git/ref/tags/"):
+			_, _ = w.Write([]byte(`{"object":{"type":"commit","sha":"9e3f1c2a8b7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f"}}`))
+		case ok && strings.HasPrefix(rest, "tarball/"):
+			w.Header().Set("Content-Type", "application/gzip")
+			_, _ = w.Write(tarball)
+		default:
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"message":"Not Found"}`))
-			return
 		}
-		w.Header().Set("Content-Type", "application/gzip")
-		_, _ = w.Write(tarball)
 	}))
 	t.Cleanup(server.Close)
 

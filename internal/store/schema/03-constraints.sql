@@ -255,3 +255,9 @@ create index "fetch_attempt_occurred_at_idx" on "fetch_attempt" ("occurred_at" d
 -- tsvector on `version` would put a package-level search on a per-version row and
 -- would spend the allowance without the measurement, so the index is deferred
 -- with catalog_entry rather than aimed at a column that does not exist.
+
+-- A recorded commit is a full lowercase sha: a short or mixed-case one would
+-- compare unequal to itself and hide a moved tag.
+alter table "version"
+  add constraint "version_source_commit_is_a_sha"
+  check ("source_commit" ~ '^[0-9a-f]{40}$');

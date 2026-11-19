@@ -129,9 +129,15 @@ func RegisterPackage(ctx context.Context, db bun.IDB, p auth.Principal, in Regis
 		if txErr != nil {
 			return txErr
 		}
-		pkg, txErr := upsertPackage(ctx, tx, publisherID, categoryID, p, in)
+		source := fetch.ProvenanceOf(fetch.SourceRef{
+			Kind: in.Source, URL: in.URL, Ref: in.Ref, Subdirectory: in.Subdirectory,
+		})
+		pkg, txErr := upsertPackage(ctx, tx, publisherID, categoryID, p, in, source)
 		if txErr != nil {
 			return txErr
+		}
+		if sourceErr := recordSource(ctx, tx, p, pkg, source); sourceErr != nil {
+			return sourceErr
 		}
 		out.PackageID = pkg.ID.String()
 		out.Kind = string(pkg.Kind)
@@ -162,6 +168,9 @@ func RegisterPackage(ctx context.Context, db bun.IDB, p auth.Principal, in Regis
 			DistTag:  models.DistTagNone,
 			Verdict:  models.VerdictScanning,
 			Visible:  false,
+		}
+		if source.Kind == fetch.SourceGit {
+			version.SourceRef = source.Ref
 		}
 		if _, insertErr := tx.NewInsert().Model(version).Exec(ctx); insertErr != nil {
 			if isUniqueViolation(insertErr, uniqueVersionConstraint) {
@@ -400,7 +409,7 @@ func resolveCategory(ctx context.Context, tx bun.IDB, nameOrSlug string) (*uuid.
 // is provisional for a URL source; the fetcher settles it once the
 // manifest is in hand. An existing package keeps its kind.
 func upsertPackage(ctx context.Context, tx bun.IDB, publisherID uuid.UUID, categoryID *uuid.UUID,
-	p auth.Principal, in Registration,
+	p auth.Principal, in Registration, source fetch.Provenance,
 ) (*models.Package, error) {
 	// Looked up by (namespace, name), matching the unique index — not by
 	// (publisher_id, name), which would miss a name owned by a sibling
@@ -434,6 +443,11 @@ func upsertPackage(ctx context.Context, tx bun.IDB, publisherID uuid.UUID, categ
 		Kind:        in.Kind,
 		CategoryID:  categoryID,
 		Visibility:  in.Visibility,
+
+		SourceKind:         models.FetchSourceKind(source.Kind),
+		SourceURL:          source.URL,
+		SourceRef:          source.Ref,
+		SourceSubdirectory: source.Subdirectory,
 	}
 	// The owner is the authenticated actor, never a value the request body
 	// could name — an identity registering a package it does not control
@@ -447,6 +461,61 @@ func upsertPackage(ctx context.Context, tx bun.IDB, publisherID uuid.UUID, categ
 		return nil, fmt.Errorf("create package %s: %w", in.Name, err)
 	}
 	return pkg, nil
+}
+
+// recordSource moves the package's recorded source to this registration's.
+// A new ref from the same place is the normal course of releases and is
+// carried by the registration's own audit row; a different kind, URL or
+// subdirectory is a change of where the package comes from and is audited.
+func recordSource(ctx context.Context, tx bun.IDB, p auth.Principal, pkg *models.Package, source fetch.Provenance) error {
+	kind := models.FetchSourceKind(source.Kind)
+	moved := pkg.SourceKind != kind || pkg.SourceURL != source.URL || pkg.SourceSubdirectory != source.Subdirectory
+	if !moved && pkg.SourceRef == source.Ref {
+		return nil
+	}
+
+	previousKind, previousURL := pkg.SourceKind, pkg.SourceURL
+	previous := describeProvenance(fetch.Provenance{
+		Kind: fetch.SourceKind(pkg.SourceKind), URL: pkg.SourceURL, Subdirectory: pkg.SourceSubdirectory,
+	})
+	pkg.SourceKind, pkg.SourceURL, pkg.SourceRef, pkg.SourceSubdirectory =
+		kind, source.URL, source.Ref, source.Subdirectory
+	if _, err := tx.NewUpdate().Model(pkg).
+		Column("source_kind", "source_url", "source_ref", "source_subdirectory").
+		Set("updated_at = now()").
+		WherePK().Exec(ctx); err != nil {
+		return fmt.Errorf("record the source of %s/%s: %w", pkg.Namespace, pkg.Name, err)
+	}
+	if !moved {
+		return nil
+	}
+
+	entry := identityAudit(p, models.AuditKindFetch, "source-changed",
+		fmt.Sprintf("changed the source of %s/%s from %s to %s", pkg.Namespace, pkg.Name,
+			previous, describeProvenance(fetch.Provenance{Kind: source.Kind, URL: source.URL, Subdirectory: source.Subdirectory})),
+		audit.Package(pkg.Namespace, pkg.Name))
+	entry.Data = map[string]any{
+		"sourceKind":         string(source.Kind),
+		"sourceUrl":          source.URL,
+		"sourceSubdirectory": source.Subdirectory,
+		"previousSourceKind": string(previousKind),
+		"previousSourceUrl":  previousURL,
+	}
+	return writeAudit(ctx, tx, entry)
+}
+
+func describeProvenance(source fetch.Provenance) string {
+	if source.Kind == "" {
+		return "no recorded source"
+	}
+	described := string(source.Kind)
+	if source.URL != "" {
+		described += " " + source.URL
+	}
+	if source.Subdirectory != "" {
+		described += " (" + source.Subdirectory + ")"
+	}
+	return described
 }
 
 // conflictMessage names the state that blocks a re-registration, since FR-007

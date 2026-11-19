@@ -3,6 +3,7 @@ package fetcher
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -57,8 +58,12 @@ func (w *Worker) auditFailure(ctx context.Context, job Job, reason Reason, cause
 		detail = firstLine(cause.Error())
 		text += " (" + detail + ")"
 	}
-	if err := writeFetchAudit(ctx, w.deps.DB, job, "fetch-failed", text,
-		map[string]any{"reason": string(reason)}); err != nil {
+	data := map[string]any{"reason": string(reason)}
+	var moved *TagMovedError
+	if errors.As(cause, &moved) {
+		data["sourceRef"], data["previousCommit"], data["commit"] = moved.Tag, moved.From, moved.To
+	}
+	if err := writeFetchAudit(ctx, w.deps.DB, job, "fetch-failed", text, data); err != nil {
 		return err
 	}
 	if outcome, ok := outcomeOf(reason); ok {
@@ -87,7 +92,7 @@ func outcomeOf(reason Reason) (models.FetchOutcome, bool) {
 	switch reason {
 	case ReasonRefused:
 		return models.FetchOutcomeBlocked, true
-	case ReasonRefNotFound:
+	case ReasonRefNotFound, ReasonTagMoved:
 		return models.FetchOutcomeInvalidRef, true
 	case ReasonCredentials, ReasonRemote:
 		return models.FetchOutcomeUnreachable, true

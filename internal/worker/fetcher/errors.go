@@ -62,6 +62,10 @@ const (
 	// version being registered.
 	ReasonVersionMismatch Reason = "manifest-version-mismatch"
 
+	// ReasonTagMoved is a tag naming a different commit from the one an
+	// earlier version recorded for it.
+	ReasonTagMoved Reason = "tag-moved"
+
 	// ReasonStore is object storage or the database refusing the write. It is the
 	// one reason here that is the hub's fault rather than the source's, which is
 	// why it is worth its own value.
@@ -133,6 +137,8 @@ func classify(subject string, err error) error {
 		reason = ReasonVersionMismatch
 	case errors.Is(err, errVersionMismatch):
 		reason = ReasonVersionMismatch
+	case errors.Is(err, errTagMoved):
+		reason = ReasonTagMoved
 	}
 	return &Error{Reason: reason, Subject: subject, cause: err}
 }
@@ -140,6 +146,31 @@ func classify(subject string, err error) error {
 // errVersionMismatch is raised when the manifest's own `version` names a
 // different release from the one being registered.
 var errVersionMismatch = errors.New("the manifest names a different version")
+
+var errTagMoved = errors.New("the tag moved")
+
+// TagMovedError is a git tag that names a different commit from the one a
+// version already recorded for it. Versions are immutable, so the fetch is
+// refused rather than storing the new commit's bytes under a tag that once
+// meant something else.
+type TagMovedError struct {
+	Repo, Tag, Version string
+	From, To           string
+}
+
+func (e *TagMovedError) Error() string {
+	return fmt.Sprintf("tag %s of %s moved from %s… to %s…: %s was stored from the first, and versions are immutable",
+		e.Tag, e.Repo, shortSHA(e.From), shortSHA(e.To), e.Version)
+}
+
+func (e *TagMovedError) Unwrap() error { return errTagMoved }
+
+func shortSHA(sha string) string {
+	if len(sha) > 7 {
+		return sha[:7]
+	}
+	return sha
+}
 
 // ReasonOf returns the reason behind err, or "" when err is not a fetch failure.
 func ReasonOf(err error) Reason {

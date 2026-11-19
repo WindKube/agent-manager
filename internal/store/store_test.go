@@ -18,6 +18,7 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 
@@ -267,6 +268,8 @@ func TestScannerMayWriteTheVerdictButNotTheBundleBytes(t *testing.T) {
 			{name: "size_bytes is not writable", stmt: `update version set size_bytes = 1 where id = $1`, args: []any{verID}},
 			{name: "manifest is not writable", stmt: `update version set manifest = '{}' where id = $1`, args: []any{verID}},
 			{name: "visible is not writable, because commit-last is not the scanner's call", stmt: `update version set visible = true where id = $1`, args: []any{verID}},
+			{name: "source_commit is not writable, because provenance is the fetcher's record", stmt: `update version set source_commit = repeat('0', 40) where id = $1`, args: []any{verID}},
+			{name: "source_url is not writable", stmt: `update version set source_url = 'https://attacker.example' where id = $1`, args: []any{verID}},
 			// A whole-row UPDATE that re-states digest with its current value still
 			// names the column, so it is refused. Worth pinning: this is the shape an
 			// ORM produces when it writes a model back rather than one field.
@@ -405,6 +408,19 @@ func TestVersionRejectsANonScanningVerdictWithoutADigest(t *testing.T) {
 		(id, package_id, semver, semver_sort, object_key, digest, manifest, dist_tag, verdict)
 		values ($1, $2, '4.0.0', $3, 'skills/ex/p/4.0.0/bundle.tar.zst', null, '{}', 'latest', 'scanning')`,
 		models.NewID(), pkgID, mustSemverSort(t, "4.0.0"))
+	require.NoError(t, err)
+}
+
+func TestVersionRejectsASourceCommitThatIsNotAFullLowercaseSha(t *testing.T) {
+	ctx := context.Background()
+	pkgID := seedPackage(t, ctx)
+	verID := seedVersion(t, ctx, pkgID, "7.0.0", bytes.Repeat([]byte{0x7a}, 32), "skills/ex/p/7.0.0/bundle.tar.zst")
+
+	for _, commit := range []string{"3f9c2e1", strings.Repeat("A", 40), strings.Repeat("0", 41)} {
+		_, err := pool.Exec(ctx, `update version set source_commit = $1 where id = $2`, commit, verID)
+		requirePgError(t, err, "23514", "version_source_commit_is_a_sha")
+	}
+	_, err := pool.Exec(ctx, `update version set source_commit = $1 where id = $2`, strings.Repeat("0", 40), verID)
 	require.NoError(t, err)
 }
 

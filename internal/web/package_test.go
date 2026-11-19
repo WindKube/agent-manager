@@ -133,3 +133,23 @@ func TestAForbiddenDeleteFromTheApiIsShownAsARefusal(t *testing.T) {
 	require.Equal(t, http.StatusSeeOther, rec.Code)
 	require.Contains(t, rec.Header().Get("Location"), "notice=refused")
 }
+
+// TestThePackagePageStatesWhereThePackageComesFrom is the provenance line:
+// repository, ref, the shown version's commit linked on its forge, and the
+// subdirectory.
+func TestThePackagePageStatesWhereThePackageComesFrom(t *testing.T) {
+	api, h := newServer(t)
+	detail := api.Data.Details["example/adr-writer"]
+	commit := *detail.Versions[0].SourceCommit
+	body := html.UnescapeString(get(t, h, "/packages/example/adr-writer").Body.String())
+
+	require.Contains(t, body, "from github.com/example/architecture-skills @ v3.1.0")
+	require.Contains(t, body, `href="https://github.com/example/architecture-skills/commit/`+commit+`"`)
+	require.Contains(t, body, ">"+commit[:7]+"</a>")
+	require.Contains(t, body, ", subdirectory adr-writer/")
+	require.Contains(t, body, `commit <a href="https://github.com/example/architecture-skills/commit/`+commit+`" rel="noopener noreferrer">`+commit[:7]+"</a> · v3.1.0")
+
+	body = html.UnescapeString(get(t, h, "/packages/community/release-toolkit").Body.String())
+	require.Contains(t, body, "from releases.octoflow.dev/release-toolkit-1.2.7.tar.gz")
+	require.NotContains(t, body, "/commit/")
+}

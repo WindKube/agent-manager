@@ -14,6 +14,7 @@ import (
 
 	"agent-manager/internal/blob"
 	"agent-manager/internal/domain/pkgspec"
+	"agent-manager/internal/fetch"
 	"agent-manager/internal/store/models"
 	"agent-manager/internal/worker/scanner"
 )
@@ -26,7 +27,7 @@ var errAlreadyPublished = errors.New("version already has committed bytes")
 // together or not at all, so a crash in the middle leaves orphaned objects
 // rather than a half-published version. It returns whether it published, and
 // whether this version took the package's `latest` dist tag.
-func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, commit blob.Commit) (published, latest bool, err error) {
+func (w *Worker) publish(ctx context.Context, job Job, tree fetch.Tree, pkg *pkgspec.Package, commit blob.Commit) (published, latest bool, err error) {
 	err = w.deps.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		// `for update` closes the window the pre-flight idempotency check
 		// cannot: two deliveries can both pass that check, and only one may
@@ -127,6 +128,8 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 			Set("tags = ?", pgTextArray(tags)).
 			Set("dist_tag = ?", distTag).
 			Set("visible = ?", true).
+			Set("source_url = ?", nullIfEmpty(tree.SourceURL)).
+			Set("source_commit = ?", nullIfEmpty(tree.Commit)).
 			Where("id = ? and digest is null", job.VersionID).
 			Exec(ctx)
 		if updateErr != nil {
@@ -302,4 +305,11 @@ func pgTextArray(values []string) string {
 		out = append(out, '"')
 	}
 	return string(append(out, '}'))
+}
+
+func nullIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }

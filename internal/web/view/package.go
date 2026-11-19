@@ -53,6 +53,9 @@ type Package struct {
 	ManifestObject string
 	Manifest       string
 
+	// Source is nil for a package registered before sources were recorded.
+	Source *Provenance
+
 	Components   []Component
 	Capabilities Capabilities
 	Versions     []PackageVersion
@@ -300,6 +303,70 @@ type PackageVersion struct {
 	// PinnedBy is how many profiles the viewer can see pin this exact
 	// version. Derived at query time, never stored.
 	PinnedBy int
+
+	SourceURL    string
+	SourceRef    string
+	SourceCommit string
+}
+
+// ShortCommit is the commit as a reader scans it.
+func (v PackageVersion) ShortCommit() string { return shortCommit(v.SourceCommit) }
+
+// CommitHref links the commit on its forge, empty where the forge's commit
+// URL shape is not known.
+func (v PackageVersion) CommitHref() string { return commitHref(v.SourceURL, v.SourceCommit) }
+
+// Provenance is where a package comes from, plus the commit the version on
+// screen was downloaded at.
+type Provenance struct {
+	Kind         string
+	URL          string
+	Ref          string
+	Subdirectory string
+	Commit       string
+	CommitURL    string
+}
+
+// Lead is the provenance line up to the commit:
+// "from github.com/acme/skills @ v1.2.0".
+func (s Provenance) Lead() string {
+	switch {
+	case s.Kind == "upload":
+		return "from an uploaded archive"
+	case s.URL == "":
+		return ""
+	}
+	lead := "from " + strings.TrimPrefix(s.URL, "https://")
+	if s.Ref != "" {
+		lead += " @ " + s.Ref
+	}
+	return lead
+}
+
+func (s Provenance) ShortCommit() string { return shortCommit(s.Commit) }
+
+func (s Provenance) CommitHref() string { return commitHref(s.CommitURL, s.Commit) }
+
+// Tail is what follows the commit: ", subdirectory pdf/".
+func (s Provenance) Tail() string {
+	if s.Subdirectory == "" {
+		return ""
+	}
+	return ", subdirectory " + strings.TrimSuffix(s.Subdirectory, "/") + "/"
+}
+
+func shortCommit(sha string) string {
+	if len(sha) > 7 {
+		return sha[:7]
+	}
+	return sha
+}
+
+func commitHref(repo, sha string) string {
+	if sha == "" || !strings.HasPrefix(repo, "https://github.com/") {
+		return ""
+	}
+	return repo + "/commit/" + sha
 }
 
 // Dependent is one profile using the package, and how it resolves it.

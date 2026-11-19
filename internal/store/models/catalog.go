@@ -60,8 +60,15 @@ type Package struct {
 	// ParentPackageID is set when a skill is distributed inside a plugin.
 	ParentPackageID *uuid.UUID `bun:"parent_package_id,type:uuid,nullzero"`
 	LatestVersionID *uuid.UUID `bun:"latest_version_id,type:uuid,nullzero"`
-	CreatedAt       time.Time  `bun:"created_at,type:timestamptz,notnull,default:now()"`
-	UpdatedAt       time.Time  `bun:"updated_at,type:timestamptz,notnull,default:now()"`
+	// The source the package was last registered from. SourceURL is the
+	// canonical repository for git, the requested URL for an archive, and
+	// null for an upload; SourceRef is the ref as requested.
+	SourceKind         FetchSourceKind `bun:"source_kind,type:fetch_source_kind,nullzero"`
+	SourceURL          string          `bun:"source_url,type:text,nullzero"`
+	SourceRef          string          `bun:"source_ref,type:text,nullzero"`
+	SourceSubdirectory string          `bun:"source_subdirectory,type:text,nullzero"`
+	CreatedAt          time.Time       `bun:"created_at,type:timestamptz,notnull,default:now()"`
+	UpdatedAt          time.Time       `bun:"updated_at,type:timestamptz,notnull,default:now()"`
 
 	Publisher *Publisher `bun:"rel:belongs-to,join:publisher_id=id"`
 	Category  *Category  `bun:"rel:belongs-to,join:category_id=id"`
@@ -87,8 +94,15 @@ type Version struct {
 	Verdict    Verdict         `bun:"verdict,type:verdict,notnull"`
 	// Visible is commit-last: flipped true only once bytes, digest and metadata
 	// have all landed.
-	Visible   bool      `bun:"visible,type:boolean,notnull,default:false"`
-	CreatedAt time.Time `bun:"created_at,type:timestamptz,notnull,default:now()"`
+	Visible bool `bun:"visible,type:boolean,notnull,default:false"`
+	// SourceURL is where this version's bytes came from: the canonical
+	// repository for git, the URL that answered after redirects (no userinfo
+	// or query) for an archive, null for an upload. SourceCommit is the git
+	// commit the tarball was downloaded at; SourceRef the ref as requested.
+	SourceURL    string    `bun:"source_url,type:text,nullzero"`
+	SourceRef    string    `bun:"source_ref,type:text,nullzero"`
+	SourceCommit string    `bun:"source_commit,type:text,nullzero"`
+	CreatedAt    time.Time `bun:"created_at,type:timestamptz,notnull,default:now()"`
 
 	Package      *Package      `bun:"rel:belongs-to,join:package_id=id"`
 	VersionTags  []*VersionTag `bun:"rel:has-many,join:id=version_id"`

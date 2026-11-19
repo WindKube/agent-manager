@@ -36,6 +36,10 @@ type seedPackage struct {
 	versions   []seedVersion
 	caps       apiclient.PackageCapabilities
 	dependents []apiclient.PackageDependent
+
+	// repo and subdir make a git-sourced package whose versions come from
+	// tags v<semver>; archive is an archive-url one. Neither is an upload.
+	repo, subdir, archive string
 }
 
 func capability(name apiclient.PackageCapabilityName, level apiclient.PackageCapabilityLevel, detail ...string) apiclient.PackageCapability {
@@ -84,6 +88,7 @@ func seedPackages() []seedPackage {
 		{
 			id: "example/platform-toolkit", publisher: "example/platform", category: "Infrastructure",
 			version: "1.3.0", age: 2 * day, kind: plugin, verdict: clean, uses: 42,
+			repo:        "https://github.com/example/platform-toolkit",
 			tags:        []string{"terraform", "aws", "guardrails", "scaffolding"},
 			description: "Platform guardrails, ADR authoring and service scaffolding in one portable package.",
 			components: []apiclient.PackageComponent{
@@ -121,6 +126,7 @@ func seedPackages() []seedPackage {
 		{
 			id: "community/release-toolkit", publisher: "community/octoflow", category: "Developer workflow",
 			version: "1.2.7", age: 6 * time.Hour, kind: plugin, verdict: scanning, uses: 6,
+			archive:     "https://releases.octoflow.dev/release-toolkit-1.2.7.tar.gz",
 			tags:        []string{"github", "changelog", "releases"},
 			description: "Drafts release notes and changelogs from merged pull requests.",
 			components: []apiclient.PackageComponent{
@@ -189,6 +195,7 @@ func seedPackages() []seedPackage {
 		{
 			id: "example/adr-writer", publisher: "example/architecture", category: "Documentation",
 			version: "3.1.0", age: 21 * day, kind: skill, verdict: clean, uses: 47,
+			repo: "https://github.com/example/architecture-skills", subdir: "adr-writer",
 			tags:        []string{"adr", "docs", "review"},
 			description: "Writes and supersedes architecture decision records in the house format.",
 			tools:       []string{"Read", "Write", "Grep"},
@@ -291,15 +298,38 @@ func packageDetail(p seedPackage, name string, now time.Time) apiclient.PackageD
 			verdict: apiclient.PackageVersionVerdict(p.verdict), age: p.age,
 		}}
 	}
+	switch {
+	case p.repo != "":
+		detail.Source = &apiclient.PackageSource{
+			Kind: apiclient.PackageSourceKindGit, Url: ptr(p.repo), Ref: ptr("v" + p.version),
+		}
+		if p.subdir != "" {
+			detail.Source.Subdirectory = ptr(p.subdir)
+		}
+	case p.archive != "":
+		detail.Source = &apiclient.PackageSource{Kind: apiclient.PackageSourceKindArchiveUrl, Url: ptr(p.archive)}
+	default:
+		detail.Source = &apiclient.PackageSource{Kind: apiclient.PackageSourceKindUpload}
+	}
+
 	for _, v := range versions {
 		key := "skills/" + namespace + "/" + name + "/" + v.version + "/bundle.tar.zst"
 		sum := sha256.Sum256([]byte(key))
-		detail.Versions = append(detail.Versions, apiclient.PackageVersion{
+		version := apiclient.PackageVersion{
 			Version: v.version, DistTag: v.distTag, Verdict: v.verdict,
 			CreatedAt: now.Add(-v.age), ObjectKey: key, PinnedBy: v.pinnedBy,
 			Digest:    ptr("sha256:" + hex.EncodeToString(sum[:])),
 			SizeBytes: ptr(int64(18842)),
-		})
+		}
+		switch {
+		case p.repo != "":
+			commit := sha256.Sum256([]byte("commit " + key))
+			version.SourceUrl, version.SourceRef = ptr(p.repo), ptr("v"+v.version)
+			version.SourceCommit = ptr(hex.EncodeToString(commit[:20]))
+		case p.archive != "":
+			version.SourceUrl = ptr(p.archive)
+		}
+		detail.Versions = append(detail.Versions, version)
 	}
 	return detail
 }

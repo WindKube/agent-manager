@@ -149,8 +149,8 @@ func (v *Verifier) Verify(ctx context.Context, raw []byte, digest [32]byte) (Res
 	}
 	outcome, err := verifier.Verify(&entity, verify.NewPolicy(
 		verify.WithArtifactDigest("sha256", digest[:]),
-		// The signer is checked against each package's expected signer at
-		// resolution; here any Fulcio identity that verifies is recorded.
+		// Any verifying Fulcio identity is recorded; signer.Evaluate binds it to
+		// the package's expected signer at every read (internal/domain/signer).
 		verify.WithoutIdentitiesUnsafe(),
 	))
 	if err != nil {

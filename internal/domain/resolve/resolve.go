@@ -25,6 +25,8 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
+
+	"agent-manager/internal/domain/signer"
 )
 
 type Gate string
@@ -128,15 +130,32 @@ func (o *Override) ActiveAt(t time.Time) bool {
 	return o != nil && (o.ExpiresAt == nil || o.ExpiresAt.After(t))
 }
 
-// Signature is registry-side signature provenance: where the Sigstore
-// bundle was found, and whether the fetcher verified it against the archive.
-// Only a verified signature counts as signed.
+// Signature is a version's Sigstore signature bound to its package's
+// expected signer at read time (signer.Evaluate). The fetcher verified the
+// bundle against the archive; whether that signer is the one the package
+// trusts is decided here, never cached. Verified is true only for
+// signer.StatusMatching: a bundle from someone else, or with no expected
+// signer to compare against, is not a pass.
 type Signature struct {
 	Ref      string
+	Status   signer.Status
+	Issuer   string
+	Identity string
 	Verified *bool
 }
 
-func (s *Signature) verified() bool { return s != nil && s.Verified != nil && *s.Verified }
+// NewSignature derives Verified from Status, so the two cannot disagree.
+func NewSignature(ref string, status signer.Status, issuer, identity string) *Signature {
+	matching := status == signer.StatusMatching
+	return &Signature{Ref: ref, Status: status, Issuer: issuer, Identity: identity, Verified: &matching}
+}
+
+func (s *Signature) status() signer.Status {
+	if s == nil || s.Status == "" {
+		return signer.StatusUnsigned
+	}
+	return s.Status
+}
 
 // Candidate is one version an entry may resolve to. Digest and ObjectKey
 // are opaque here, carried only so a caller building a lockfile entry
@@ -173,8 +192,10 @@ type Entry struct {
 
 type Input struct {
 	Gate Gate
-	// RequireSignatures: a version without a verified signature is not
-	// resolvable while it is set.
+	// RequireSignatures: while set, a version resolves only when its
+	// signature verified AND matches its package's expected signer. Every
+	// other case is ReasonUnsignedSignaturesRequired, with Skip.Detail
+	// saying which: unsigned, invalid, no expected signer, signer mismatch.
 	RequireSignatures bool
 	// At is passed rather than read off the clock so the resolver stays
 	// pure and re-resolving a published revision as of its own publication
@@ -292,7 +313,7 @@ func resolvePinned(in Input, entry Entry, out Resolution) Resolution {
 	verdict := dispositionOf(in, *pin)
 	if !verdict.eligible {
 		out.Note = noteSkipped(*pin, verdict.reason, ModePinned)
-		return skip(out, verdict.reason, pin.FlagDetail)
+		return skip(out, verdict.reason, verdict.detailFor(*pin))
 	}
 
 	out.Version = pin
@@ -349,7 +370,7 @@ func resolveFloating(in Input, entry Entry, out Resolution) (Resolution, error) 
 
 	// Nothing usable: the newest candidate's obstacle explains the entry.
 	out.Note = noteSkipped(newest, newestVerdict.reason, entry.Mode)
-	return skip(out, newestVerdict.reason, newest.FlagDetail), nil
+	return skip(out, newestVerdict.reason, newestVerdict.detailFor(newest)), nil
 }
 
 // disposition is what policy does to one candidate, decided in isolation.
@@ -358,7 +379,9 @@ type disposition struct {
 	// override is nil for every case but an active acceptance — including
 	// a candidate carrying a lapsed one, the point of evaluating it here.
 	override *Override
-	reason   Reason
+	// detail replaces the candidate's FlagDetail as Skip.Detail when set.
+	detail string
+	reason Reason
 }
 
 func dispositionOf(in Input, candidate Candidate) disposition {
@@ -371,8 +394,8 @@ func dispositionOf(in Input, candidate Candidate) disposition {
 	case VerdictClean, VerdictFlagged:
 	}
 
-	if in.RequireSignatures && !candidate.Signature.verified() {
-		return disposition{reason: ReasonUnsignedSignaturesRequired}
+	if in.RequireSignatures && candidate.Signature.status() != signer.StatusMatching {
+		return disposition{reason: ReasonUnsignedSignaturesRequired, detail: signatureProblem(candidate)}
 	}
 	if candidate.Verdict == VerdictClean {
 		return disposition{eligible: true}
@@ -400,6 +423,13 @@ func dispositionOf(in Input, candidate Candidate) disposition {
 	}
 	// Unreachable: Resolve rejects an invalid gate before any entry is walked.
 	return disposition{reason: ReasonFlaggedBlockedByGate}
+}
+
+func (d disposition) detailFor(candidate Candidate) string {
+	if d.detail != "" {
+		return d.detail
+	}
+	return candidate.FlagDetail
 }
 
 func outcomeOf(candidate Candidate, verdict disposition) Outcome {

@@ -27,6 +27,7 @@ type PackageDetail struct {
 	// Tracking is present for a package registered from git, the only kind
 	// with upstream tags to follow.
 	Tracking *PackageTracking `json:"tracking,omitempty"`
+	Signer   PackageSigner    `json:"signer"`
 	Version  string           `json:"version" doc:"The latest visible version's semver — the one the panels below describe." example:"1.3.0"`
 	Verdict  string           `json:"verdict" enum:"scanning,clean,flagged,rejected" example:"clean"`
 	Tags     []string         `json:"tags" doc:"The latest version's manifest keywords. Tags belong to the version, not the package."`
@@ -75,6 +76,25 @@ type PackageTracking struct {
 	CanChange bool `json:"canChange"`
 }
 
+// PackageSigner is who the package's versions must be signed by to resolve
+// while the organisation requires signatures.
+type PackageSigner struct {
+	Issuer    string `json:"issuer,omitempty" doc:"The exact OIDC issuer expected; absent when no signer is configured." example:"https://token.actions.githubusercontent.com"`
+	Identity  string `json:"identity,omitempty" doc:"The RE2 pattern the signer's identity must match in full." example:"https://github\\.com/acme/skills/\\.github/workflows/release\\.yaml@refs/tags/v.*"`
+	CanChange bool   `json:"canChange" doc:"The caller is the owner or a catalog admin."`
+}
+
+// VersionSignature is a version's Sigstore signature bound to its package's
+// expected signer as it reads now; only verified-matching is a pass.
+type VersionSignature struct {
+	Status   string     `json:"status" enum:"unsigned,invalid,verified-no-expected-signer,verified-unexpected-signer,verified-matching" doc:"verified-matching is the only trustworthy value: the bundle verified against the downloaded archive AND its signer matches the package's expected signer. verified-no-expected-signer and verified-unexpected-signer verified cryptographically but prove nothing about who should have signed." example:"verified-matching"`
+	Issuer   string     `json:"issuer,omitempty" doc:"The signing certificate's OIDC issuer, when the bundle verified." example:"https://token.actions.githubusercontent.com"`
+	Identity string     `json:"identity,omitempty" doc:"The signing certificate's identity, when the bundle verified. Publisher-controlled text." example:"https://github.com/acme/skills/.github/workflows/release.yaml@refs/tags/v1.2.0"`
+	Reason   string     `json:"reason,omitempty" doc:"Why the bundle did not verify, when it did not."`
+	Ref      string     `json:"ref,omitempty" doc:"Where the bundle was found." example:"https://github.com/acme/skills/releases/download/v1.2.0/skills.tar.gz.sigstore.json"`
+	SignedAt *time.Time `json:"signedAt,omitempty"`
+}
+
 type PackageComponent struct {
 	Kind string `json:"kind" enum:"skill,mcp,ext" example:"skill"`
 	Name string `json:"name" example:"terraform-module-review"`
@@ -116,7 +136,8 @@ type PackageVersion struct {
 	SourceCommit string `json:"sourceCommit,omitempty" pattern:"^[0-9a-f]{40}$" doc:"The git commit the bytes were downloaded at, resolved from sourceRef before the download." example:"3f9c2e1d8b7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e"`
 	// PinnedBy is scoped to profiles the caller may read: an unscoped count
 	// beside a scoped list would leak private profiles' existence.
-	PinnedBy int `json:"pinnedBy"`
+	PinnedBy  int              `json:"pinnedBy"`
+	Signature VersionSignature `json:"signature"`
 }
 
 // PackageDependent is scoped the same way /v1/profiles is: a caller can't

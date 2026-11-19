@@ -71,6 +71,13 @@ type PackageTrackingUpdate struct {
 	TagPattern    string `json:"tagPattern,omitempty" maxLength:"100" doc:"A glob a tag must match. Absent keeps the current pattern. A prerelease tag is registered only when the pattern itself contains a hyphen." example:"v*"`
 }
 
+// PackageSignerUpdate is the body of PUT
+// /v1/packages/{namespace}/{name}/signer. Both empty clears the signer.
+type PackageSignerUpdate struct {
+	Issuer   string `json:"issuer,omitempty" maxLength:"512" doc:"The exact OIDC issuer the signing certificate must carry." example:"https://token.actions.githubusercontent.com"`
+	Identity string `json:"identity,omitempty" maxLength:"512" doc:"An RE2 regular expression the certificate identity (its URI or email SAN) must match in full; it is anchored at both ends." example:"https://github\\.com/acme/skills/\\.github/workflows/release\\.yaml@refs/tags/v.*"`
+}
+
 // PackageRegistered is an acknowledgement, not a published version: bytes
 // are fetched by `worker fetcher`, so the version has no digest yet.
 type PackageRegistered struct {

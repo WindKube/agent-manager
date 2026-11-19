@@ -1789,3 +1789,20 @@ func TestOnlyTheFetcherRecordsAVerifiedSignatureAndOnlyWithItsSigner(t *testing.
 		require.Contains(t, identity, "release.yaml")
 	})
 }
+
+func TestAnExpectedSignerIsWholeAndBounded(t *testing.T) {
+	ctx := context.Background()
+	pkgID := seedPackage(t, ctx)
+
+	asRole(t, "am_api", func(ctx context.Context, conn *pgxpool.Conn) {
+		set := func(issuer, identity any) error {
+			_, err := conn.Exec(ctx, `update package set expected_signer_issuer = $1, expected_signer_identity = $2 where id = $3`,
+				issuer, identity, pkgID)
+			return err
+		}
+		requirePgError(t, set("https://issuer.example", nil), "23514", "package_expected_signer_is_whole")
+		requirePgError(t, set("https://issuer.example", strings.Repeat("a", 513)), "23514", "package_expected_signer_is_whole")
+		require.NoError(t, set("https://issuer.example", `release@example\.dev`))
+		require.NoError(t, set(nil, nil))
+	})
+}

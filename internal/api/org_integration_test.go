@@ -135,6 +135,80 @@ func TestRequireSignedBundlesExcludesAnUnsignedVersionFromTheNextResolution(t *t
 			"whatever its verdict")
 }
 
+// TestRequireSignedBundlesResolvesOnlyTheExpectedSigner is the binding half:
+// the signature row never changes below, only the package's expected signer,
+// and each read re-decides the version from it.
+func TestRequireSignedBundlesResolvesOnlyTheExpectedSigner(t *testing.T) {
+	before := currentPolicy(t)
+	t.Cleanup(func() { restorePolicy(t, before) })
+
+	const (
+		issuer   = "https://token.actions.githubusercontent.com"
+		identity = "https://github.com/gate/signed/.github/workflows/release.yaml@refs/tags/v1.0.0"
+	)
+	pkg := seedGatePackage(t, "signed-gate",
+		gateVersion{semver: "1.0.0", verdict: models.VerdictClean, latest: true})
+	verified := models.SignatureResultVerified
+	_, err := db.NewInsert().Model(&models.Signature{
+		VersionID: pkg.versions["1.0.0"], Kind: models.SignatureKindCosignBundle, Result: &verified,
+		Ref: "https://example.dev/signed.zip.sigstore.json", Bundle: []byte(`{}`), ArtifactDigest: bundleSHA,
+		SignerIssuer: issuer, SignerIdentity: identity,
+	}).Exec(t.Context())
+	require.NoError(t, err)
+
+	slug := "gate/signed-gate"
+	newGateProfile(t, slug, "Signed gate")
+	setEntries(t, curator, slug, fmt.Sprintf(`[{"id":%q,"mode":"latest"}]`, pkg.id), http.StatusOK)
+	send(t, kw, http.MethodPut, "/v1/organization/policy",
+		`{"scanGate":"warn-with-override","requireSignedBundles":true,"communityNeedsReview":false,`+
+			`"rescanOnNewVersion":false,"allowPersonalProfiles":false}`, http.StatusOK)
+
+	org := sendJSON[contract.Organization](t, kw, http.MethodGet, "/v1/organization", "", http.StatusOK)
+	require.Positive(t, org.Policy.PackagesWithoutExpectedSigner)
+
+	signerPath := "/v1/packages/" + pkg.id + "/signer"
+	skipDetail := func() string {
+		entry := entryByID(t, profileDetail(t, curator, slug), pkg.id)
+		if entry.Skip == nil {
+			return ""
+		}
+		require.Equal(t, "unsigned-and-signatures-required", entry.Skip.Reason)
+		return entry.Skip.Detail
+	}
+	versionStatus := func() string {
+		page := sendJSON[contract.PackageDetail](t, kw, http.MethodGet, "/v1/packages/"+pkg.id, "", http.StatusOK)
+		return page.Versions[0].Signature.Status
+	}
+
+	require.Contains(t, skipDetail(), "no expected signer configured")
+	require.Equal(t, "verified-no-expected-signer", versionStatus())
+
+	send(t, kw, http.MethodPut, signerPath,
+		fmt.Sprintf(`{"issuer":%q,"identity":%q}`, issuer, `https://github\.com/someone-else/.*`), http.StatusOK)
+	require.Contains(t, skipDetail(), "not its package's expected signer")
+	require.Equal(t, "verified-unexpected-signer", versionStatus())
+
+	page := sendJSON[contract.PackageDetail](t, kw, http.MethodPut, signerPath,
+		fmt.Sprintf(`{"issuer":%q,"identity":%q}`, issuer, `https://github\.com/gate/signed/\.github/workflows/release\.yaml@refs/tags/v.*`),
+		http.StatusOK)
+	require.Equal(t, issuer, page.Signer.Issuer)
+	require.True(t, page.Signer.CanChange)
+	require.Empty(t, skipDetail(), "the expected signer resolves")
+	require.Equal(t, "verified-matching", versionStatus())
+
+	var rows int
+	require.NoError(t, db.QueryRowContext(t.Context(), `select count(*) from audit_event
+	  where subject_kind = 'package' and subject_id = ? and data->>'action' = 'signer-changed'`, pkg.id).Scan(&rows))
+	require.Equal(t, 2, rows)
+
+	send(t, kw, http.MethodPut, signerPath, `{"issuer":"https://only-half.example"}`, http.StatusUnprocessableEntity)
+	send(t, kw, http.MethodPut, signerPath, fmt.Sprintf(`{"issuer":%q,"identity":"("}`, issuer), http.StatusUnprocessableEntity)
+	send(t, contractor, http.MethodPut, signerPath, `{}`, http.StatusForbidden)
+
+	sendJSON[contract.PackageDetail](t, kw, http.MethodPut, signerPath, `{}`, http.StatusOK)
+	require.Contains(t, skipDetail(), "no expected signer configured")
+}
+
 // TestAllowPersonalProfilesGatesPrivateVisibilityCreation covers the toggle
 // profile_gate_integration_test.go and the require-signed-bundles test above
 // do not: off refuses a private-visibility create outright, on lets the same

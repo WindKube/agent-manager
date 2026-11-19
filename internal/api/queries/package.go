@@ -16,6 +16,7 @@ import (
 
 	"agent-manager/internal/api/contract"
 	"agent-manager/internal/auth"
+	"agent-manager/internal/domain/signer"
 	"agent-manager/internal/store/models"
 )
 
@@ -59,7 +60,9 @@ select
   pkg.track_upstream,
   pkg.tag_pattern,
   pkg.last_checked_at,
-  coalesce(pkg.last_check_error, '')
+  coalesce(pkg.last_check_error, ''),
+  coalesce(pkg.expected_signer_issuer, ''),
+  coalesce(pkg.expected_signer_identity, '')
 from package as pkg
 join publisher as pub on pub.id = pkg.publisher_id
 join version as ver on ver.id = pkg.latest_version_id and ver.visible
@@ -101,7 +104,8 @@ func Package(ctx context.Context, db bun.IDB, principal auth.Principal,
 		&versionID, &detail.Version, &detail.Verdict, &manifest, pgdialect.Array(&detail.Tags),
 		&parentID, &parent, &detail.Capabilities.Scanned,
 		&source.Kind, &source.URL, &source.Ref, &source.Subdirectory,
-		&tracking.TrackUpstream, &tracking.TagPattern, &tracking.LastCheckedAt, &tracking.LastCheckError)
+		&tracking.TrackUpstream, &tracking.TagPattern, &tracking.LastCheckedAt, &tracking.LastCheckError,
+		&detail.Signer.Issuer, &detail.Signer.Identity)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return contract.PackageDetail{}, ErrNotFound
@@ -120,6 +124,8 @@ func Package(ctx context.Context, db bun.IDB, principal auth.Principal,
 	ownerID, _ := uuid.Parse(ownerIDText)
 	detail.CanChangeVisibility = (ownerID != uuid.Nil && ownerID == principal.IdentityID) ||
 		principal.Role == models.OrgRoleCatalogAdmin
+	detail.Signer.CanChange = detail.CanChangeVisibility
+	expected := signer.Expected{Issuer: detail.Signer.Issuer, Identity: detail.Signer.Identity}
 	if source.Kind == string(models.FetchSourceGit) {
 		tracking.CanChange = detail.CanChangeVisibility
 		detail.Tracking = &tracking
@@ -141,7 +147,7 @@ func Package(ctx context.Context, db bun.IDB, principal auth.Principal,
 	wait.Add(4)
 	go func() {
 		defer wait.Done()
-		detail.Versions, errs[0] = packageVersions(ctx, db, principal, packageID)
+		detail.Versions, errs[0] = packageVersions(ctx, db, principal, packageID, expected)
 	}()
 	go func() {
 		defer wait.Done()
@@ -169,7 +175,7 @@ func Package(ctx context.Context, db bun.IDB, principal auth.Principal,
 // beside the readable dependent-profiles list would leak private profiles
 // by arithmetic. Ordering is by `semver_sort` so 0.10.0 sorts above 0.9.0.
 func packageVersions(ctx context.Context, db bun.IDB, principal auth.Principal,
-	packageID string,
+	packageID string, expected signer.Expected,
 ) ([]contract.PackageVersion, error) {
 	readable, readableArgs := Readable("pinner", principal)
 
@@ -188,8 +194,15 @@ select
   (select count(*)
      from profile_entry as pin
      join profile as pinner on pinner.id = pin.profile_id
-    where pin.pinned_version_id = ver.id and ` + readable + `)
+    where pin.pinned_version_id = ver.id and ` + readable + `),
+  coalesce(sig.result::text, ''),
+  coalesce(sig.signer_issuer, ''),
+  coalesce(sig.signer_identity, ''),
+  coalesce(sig.reason, ''),
+  case when sig.kind = 'cosign-bundle' then coalesce(sig.ref, '') else '' end,
+  sig.signed_at
 from version as ver
+left join signature as sig on sig.version_id = ver.id
 where ver.package_id = ? and ver.visible
 order by ver.semver_sort desc, ver.created_at desc`
 
@@ -207,12 +220,18 @@ order by ver.semver_sort desc, ver.created_at desc`
 		var (
 			version contract.PackageVersion
 			digest  []byte
+			result  string
+			sig     = &version.Signature
 		)
 		if err := rows.Scan(&version.Version, &version.DistTag, &version.Verdict, &version.CreatedAt,
 			&version.ObjectKey, &digest, &version.SizeBytes,
-			&version.SourceURL, &version.SourceRef, &version.SourceCommit, &version.PinnedBy); err != nil {
+			&version.SourceURL, &version.SourceRef, &version.SourceCommit, &version.PinnedBy,
+			&result, &sig.Issuer, &sig.Identity, &sig.Reason, &sig.Ref, &sig.SignedAt); err != nil {
 			return nil, fmt.Errorf("scan a version row: %w", err)
 		}
+		sig.Status = string(signer.Evaluate(signer.Observed{
+			Result: result, Issuer: sig.Issuer, Identity: sig.Identity,
+		}, expected))
 		if len(digest) > 0 {
 			version.Digest = "sha256:" + hex.EncodeToString(digest)
 		}

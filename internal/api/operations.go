@@ -509,6 +509,34 @@ func (s *Server) registerPackages() {
 			"500": s.errorResponse("The request could not be completed."),
 		},
 	}, s.setPackageTracking)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "setPackageSigner",
+		Method:      http.MethodPut,
+		Path:        "/v1/packages/{namespace}/{name}/signer",
+		Tags:        []string{"packages"},
+		Summary:     "Set the signer a package's versions must be signed by",
+		Description: "Sets the exact OIDC issuer and the identity pattern (RE2, matched in full) a " +
+			"version's verified Sigstore signer must satisfy for the version to resolve while the " +
+			"organisation requires signed bundles. Both empty clears it. Takes effect at the next " +
+			"resolution; no signature is re-verified. One audit row of kind `policy`. Requires the " +
+			"package's recorded owner or a catalog admin. The response is the package as it now reads.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Changed. The body is the package as it now reads.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.PackageDetail{}, "PackageDetail")},
+				},
+			},
+			"400": s.errorResponse("The request body is missing or is not valid JSON."),
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"403": s.errorResponse("This identity may not change this package's expected signer."),
+			"404": s.errorResponse("No such package, or it is not readable by this identity."),
+			"415": s.errorResponse("The request body must be sent as application/json."),
+			"422": s.errorResponse("Only one of issuer and identity was given, one is too long, or the identity is not an RE2 pattern."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.setPackageSigner)
 }
 
 func (s *Server) registerProfiles() {

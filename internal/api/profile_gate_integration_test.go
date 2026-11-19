@@ -93,6 +93,9 @@ func seedGatePackage(t *testing.T, name string, versions ...gateVersion) gatePac
 			`delete from scan where version_id in (
 			   select v.id from version v join package p on p.id = v.package_id
 			   where p.publisher_id = ?)`,
+			`delete from signature where version_id in (
+			   select v.id from version v join package p on p.id = v.package_id
+			   where p.publisher_id = ?)`,
 			`delete from version where package_id in (select id from package where publisher_id = ?)`,
 			`delete from package where publisher_id = ?`,
 			`delete from publisher where id = ?`,

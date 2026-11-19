@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"agent-manager/internal/domain/resolve"
+	"agent-manager/internal/domain/signer"
 )
 
 // The gate rules, tested with no container. That is the whole reason the resolver
@@ -300,9 +301,8 @@ func TestARangeMatchingNothingExcludesTheEntry(t *testing.T) {
 }
 
 func TestRequiringSignedBundlesExcludesAVersionCarryingNoSignature(t *testing.T) {
-	verified := true
 	signed := older()
-	signed.Signature = &resolve.Signature{Ref: "sigstore:guard@1.0.0", Verified: &verified}
+	signed.Signature = resolve.NewSignature("sigstore:guard@1.0.0", signer.StatusMatching, "https://issuer.example", "release@guard.example")
 
 	resolveWith := func(candidates ...resolve.Candidate) resolve.Resolution {
 		result, err := resolve.Resolve(resolve.Input{
@@ -319,11 +319,64 @@ func TestRequiringSignedBundlesExcludesAVersionCarryingNoSignature(t *testing.T)
 	fell := resolveWith(signed, newest(resolve.VerdictClean, nil))
 	require.Equal(t, resolve.OutcomeDowngraded, fell.Outcome)
 	require.Equal(t, "1.0.0", fell.Version.Semver)
+	require.Contains(t, fell.Note, "carries no Sigstore signature")
+}
 
-	// With nothing signed, the entry is excluded under the frozen reason.
-	excluded := resolveWith(older(), newest(resolve.VerdictClean, nil))
-	require.Equal(t, resolve.OutcomeSkipped, excluded.Outcome)
-	require.Equal(t, resolve.ReasonUnsignedSignaturesRequired, excluded.Skip.Reason)
+func TestRequiringSignedBundlesAcceptsOnlyTheExpectedSigner(t *testing.T) {
+	const issuer, identity = "https://token.actions.githubusercontent.com", "https://github.com/x/y/.github/workflows/r.yaml@refs/tags/v2.0.0"
+	for _, tc := range []struct {
+		name       string
+		signature  *resolve.Signature
+		wantDetail string
+	}{
+		{"unsigned", nil, "carries no Sigstore signature"},
+		{"invalid", resolve.NewSignature("ref", signer.StatusInvalid, "", ""), "did not verify"},
+		{"no expected signer", resolve.NewSignature("ref", signer.StatusNoExpectedSigner, issuer, identity), "no expected signer configured"},
+		{"signer mismatch", resolve.NewSignature("ref", signer.StatusUnexpectedSigner, issuer, identity), "not its package's expected signer"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			candidate := newest(resolve.VerdictClean, nil)
+			candidate.Signature = tc.signature
+			for _, mode := range []resolve.Mode{resolve.ModeLatest, resolve.ModePinned} {
+				result, err := resolve.Resolve(resolve.Input{
+					Gate: resolve.GateWarnWithOverride, RequireSignatures: true, At: resolvedAt,
+					Entries: []resolve.Entry{{ID: "x/y", Mode: mode, PinnedID: candidate.ID, Candidates: []resolve.Candidate{candidate}}},
+				})
+				require.NoError(t, err)
+				got := result.Entries[0]
+				require.Equal(t, resolve.OutcomeSkipped, got.Outcome, mode)
+				require.Equal(t, resolve.ReasonUnsignedSignaturesRequired, got.Skip.Reason)
+				require.Contains(t, got.Skip.Detail, tc.wantDetail)
+				require.Contains(t, got.Note, tc.wantDetail)
+			}
+
+			// Off, a signature is informational only.
+			result, err := resolve.Resolve(resolve.Input{
+				Gate: resolve.GateWarnWithOverride, At: resolvedAt,
+				Entries: []resolve.Entry{{ID: "x/y", Mode: resolve.ModeLatest, Candidates: []resolve.Candidate{candidate}}},
+			})
+			require.NoError(t, err)
+			require.Equal(t, resolve.OutcomeResolved, result.Entries[0].Outcome)
+		})
+	}
+
+	t.Run("the expected signer resolves", func(t *testing.T) {
+		candidate := newest(resolve.VerdictClean, nil)
+		candidate.Signature = resolve.NewSignature("ref", signer.StatusMatching, issuer, identity)
+		require.True(t, *candidate.Signature.Verified)
+		result, err := resolve.Resolve(resolve.Input{
+			Gate: resolve.GateWarnWithOverride, RequireSignatures: true, At: resolvedAt,
+			Entries: []resolve.Entry{{ID: "x/y", Mode: resolve.ModeLatest, Candidates: []resolve.Candidate{candidate}}},
+		})
+		require.NoError(t, err)
+		require.Equal(t, resolve.OutcomeResolved, result.Entries[0].Outcome)
+	})
+
+	t.Run("only a match is marked verified", func(t *testing.T) {
+		for _, status := range signer.Statuses() {
+			require.Equal(t, status == signer.StatusMatching, *resolve.NewSignature("", status, "", "").Verified, status)
+		}
+	})
 }
 
 func TestResolveRefusesInputItCannotBeSureAbout(t *testing.T) {

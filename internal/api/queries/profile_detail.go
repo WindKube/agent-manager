@@ -16,6 +16,7 @@ import (
 	"agent-manager/internal/api/contract"
 	"agent-manager/internal/auth"
 	"agent-manager/internal/domain/resolve"
+	"agent-manager/internal/domain/signer"
 	"agent-manager/internal/store/models"
 )
 
@@ -321,7 +322,11 @@ select
   ver.digest,
   ver.object_key,
   case when sig.kind = 'cosign-bundle' then coalesce(sig.ref, '') else '' end,
-  coalesce(sig.result = 'verified', false),
+  coalesce(sig.result::text, ''),
+  coalesce(sig.signer_issuer, ''),
+  coalesce(sig.signer_identity, ''),
+  coalesce(pkg.expected_signer_issuer, ''),
+  coalesce(pkg.expected_signer_identity, ''),
   coalesce(flag.rule_id, ''),
   coalesce(flag.evidence_path, ''),
   exists (select 1 from finding as open_fnd
@@ -382,7 +387,8 @@ func profileCandidates(ctx context.Context, db bun.IDB, p auth.Principal,
 			candidate resolve.Candidate
 			digest    []byte
 			ref       string
-			verified  bool
+			observed  signer.Observed
+			expected  signer.Expected
 			ruleID    string
 			path      string
 			hasOpen   bool
@@ -391,14 +397,19 @@ func profileCandidates(ctx context.Context, db bun.IDB, p auth.Principal,
 			expires   sql.NullTime
 		)
 		if err := rows.Scan(&packageID, &candidate.ID, &candidate.Semver, &candidate.Verdict,
-			&candidate.Visible, &digest, &candidate.ObjectKey, &ref, &verified, &ruleID, &path,
+			&candidate.Visible, &digest, &candidate.ObjectKey, &ref,
+			&observed.Result, &observed.Issuer, &observed.Identity, &expected.Issuer, &expected.Identity,
+			&ruleID, &path,
 			&hasOpen, &reviewer, &note, &expires); err != nil {
 			return nil, fmt.Errorf("scan a candidate version: %w", err)
 		}
 
 		candidate.Digest = "sha256:" + hex.EncodeToString(digest)
+		// Bound to the package's expected signer as it is now, so changing
+		// it re-decides every version without touching the signature rows.
 		if ref != "" {
-			candidate.Signature = &resolve.Signature{Ref: ref, Verified: &verified}
+			candidate.Signature = resolve.NewSignature(ref, signer.Evaluate(observed, expected),
+				observed.Issuer, observed.Identity)
 		}
 		candidate.FlagDetail = flagDetail(ruleID, path)
 		// An acceptance permits nothing while any finding on the version

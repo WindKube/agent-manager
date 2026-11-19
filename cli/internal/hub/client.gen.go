@@ -586,7 +586,7 @@ type LockfileSignature struct {
 	// Ref Examples: sigstore:acme/code-review@2.4.1
 	Ref *string `json:"ref,omitempty"`
 
-	// Verified Whether the hub verified the Sigstore bundle against the archive it downloaded. False means a bundle was found and did not verify; never render it as a pass.
+	// Verified True only when the Sigstore bundle verified against the archive the hub downloaded AND its signer matches the package's expected signer. False covers a bundle that did not verify and one signed by anyone else, or with no expected signer configured; never render it as a pass.
 	Verified *bool `json:"verified,omitempty"`
 }
 

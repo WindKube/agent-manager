@@ -76,8 +76,9 @@ type Change struct {
 	// Verdict: clean or flagged, under an override or warn-with-override gate.
 	Verdict string
 
-	// Signature is absent when the source carried none; Verified is false
-	// until Sigstore ships - never render false as a pass or tick.
+	// Signature is absent when the source carried none; Verified is true only
+	// when the hub verified the bundle and its signer is the package's
+	// expected one - never render false as a pass or tick.
 	Signature *Signature
 
 	From *Installed // what the record claims is installed; nil exactly when Op is OpAdd

@@ -278,3 +278,11 @@ alter table "signature"
 alter table "signature"
   add constraint "signature_none_has_no_result"
   check ("kind" <> 'none' or "result" is null);
+
+-- An expected signer is an issuer and an identity pattern together, each
+-- bounded as internal/domain/signer bounds them.
+alter table "package"
+  add constraint "package_expected_signer_is_whole"
+  check (("expected_signer_issuer" is null) = ("expected_signer_identity" is null)
+         and coalesce(char_length("expected_signer_issuer"), 0) <= 512
+         and coalesce(char_length("expected_signer_identity"), 0) <= 512);

@@ -73,8 +73,13 @@ type Package struct {
 	TagPattern     string     `bun:"tag_pattern,type:text,notnull,default:'v*'"`
 	LastCheckedAt  *time.Time `bun:"last_checked_at,type:timestamptz,nullzero"`
 	LastCheckError string     `bun:"last_check_error,type:text,nullzero"`
-	CreatedAt      time.Time  `bun:"created_at,type:timestamptz,notnull,default:now()"`
-	UpdatedAt      time.Time  `bun:"updated_at,type:timestamptz,notnull,default:now()"`
+	// ExpectedSignerIssuer is the exact OIDC issuer and
+	// ExpectedSignerIdentity an RE2 pattern, matched whole, that a version's
+	// verified Sigstore signer must satisfy (internal/domain/signer).
+	ExpectedSignerIssuer   string    `bun:"expected_signer_issuer,type:text,nullzero"`
+	ExpectedSignerIdentity string    `bun:"expected_signer_identity,type:text,nullzero"`
+	CreatedAt              time.Time `bun:"created_at,type:timestamptz,notnull,default:now()"`
+	UpdatedAt              time.Time `bun:"updated_at,type:timestamptz,notnull,default:now()"`
 
 	Publisher *Publisher `bun:"rel:belongs-to,join:publisher_id=id"`
 	Category  *Category  `bun:"rel:belongs-to,join:category_id=id"`

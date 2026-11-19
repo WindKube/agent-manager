@@ -25,10 +25,12 @@ func Policy(ctx context.Context, db bun.IDB) (contract.OrganizationPolicy, error
 	var out contract.OrganizationPolicy
 	err := db.QueryRowContext(ctx,
 		`select scan_gate::text, require_signed_bundles, community_needs_review,
-		        rescan_on_new_version, allow_personal_profiles
+		        rescan_on_new_version, allow_personal_profiles,
+		        (select count(*) from package
+		          where latest_version_id is not null and expected_signer_issuer is null)
 		   from org_policy where id = ?`, models.OrgPolicySingletonID).
 		Scan(&out.ScanGate, &out.RequireSignedBundles, &out.CommunityNeedsReview,
-			&out.RescanOnNewVersion, &out.AllowPersonalProfiles)
+			&out.RescanOnNewVersion, &out.AllowPersonalProfiles, &out.PackagesWithoutExpectedSigner)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return contract.OrganizationPolicy{}, ErrNoPolicy

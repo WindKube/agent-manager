@@ -62,7 +62,7 @@ type LockfileOverride struct {
 // never be rendered as a pass.
 type LockfileSignature struct {
 	Ref      string `json:"ref,omitempty" example:"sigstore:acme/code-review@2.4.1"`
-	Verified *bool  `json:"verified,omitempty" doc:"Whether the hub verified the Sigstore bundle against the archive it downloaded. False means a bundle was found and did not verify; never render it as a pass."`
+	Verified *bool  `json:"verified,omitempty" doc:"True only when the Sigstore bundle verified against the archive the hub downloaded AND its signer matches the package's expected signer. False covers a bundle that did not verify and one signed by anyone else, or with no expected signer configured; never render it as a pass."`
 }
 
 type LockfileSkip struct {

@@ -16,6 +16,7 @@ import (
 	"agent-manager/internal/api/queries"
 	"agent-manager/internal/bundle"
 	"agent-manager/internal/domain/pkgspec"
+	"agent-manager/internal/domain/signer"
 	"agent-manager/internal/fetch"
 	"agent-manager/internal/logging"
 	"agent-manager/internal/signing"
@@ -185,6 +186,30 @@ func (s *Server) setPackageTracking(ctx context.Context, in *setPackageTrackingI
 
 	err := commands.SetPackageTracking(ctx, s.deps.DB, principal, in.Namespace, in.Name,
 		in.Body.TrackUpstream, in.Body.TagPattern)
+	if err != nil {
+		return nil, packageFailure(ctx, err)
+	}
+
+	detail, err := queries.Package(ctx, s.deps.DB, principal, in.Namespace, in.Name)
+	if err != nil {
+		return nil, packageFailure(ctx, err)
+	}
+	return &getPackageOutput{Body: detail}, nil
+}
+
+// ---- PUT /v1/packages/{namespace}/{name}/signer ------------------------------
+
+type setPackageSignerInput struct {
+	Namespace string `path:"namespace" doc:"The publishing namespace — the FIRST segment of the publisher slug." example:"example"`
+	Name      string `path:"name" doc:"The package name within that namespace." example:"platform-toolkit"`
+	Body      contract.PackageSignerUpdate
+}
+
+func (s *Server) setPackageSigner(ctx context.Context, in *setPackageSignerInput) (*getPackageOutput, error) {
+	principal, _ := PrincipalFrom(ctx)
+
+	err := commands.SetPackageSigner(ctx, s.deps.DB, principal, in.Namespace, in.Name,
+		signer.Expected{Issuer: in.Body.Issuer, Identity: in.Body.Identity})
 	if err != nil {
 		return nil, packageFailure(ctx, err)
 	}

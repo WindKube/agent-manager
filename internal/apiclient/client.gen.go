@@ -1250,19 +1250,19 @@ func (e PreviewComponentKind) Valid() bool {
 
 // Defines values for PreviewEntryMark.
 const (
-	Dropped PreviewEntryMark = "dropped"
-	Invalid PreviewEntryMark = "invalid"
-	Kept    PreviewEntryMark = "kept"
+	PreviewEntryMarkDropped PreviewEntryMark = "dropped"
+	PreviewEntryMarkInvalid PreviewEntryMark = "invalid"
+	PreviewEntryMarkKept    PreviewEntryMark = "kept"
 )
 
 // Valid indicates whether the value is a known member of the PreviewEntryMark enum.
 func (e PreviewEntryMark) Valid() bool {
 	switch e {
-	case Dropped:
+	case PreviewEntryMarkDropped:
 		return true
-	case Invalid:
+	case PreviewEntryMarkInvalid:
 		return true
-	case Kept:
+	case PreviewEntryMarkKept:
 		return true
 	default:
 		return false
@@ -1740,6 +1740,33 @@ func (e UpdatePolicyRequestScanGate) Valid() bool {
 	case UpdatePolicyRequestScanGateBlock:
 		return true
 	case UpdatePolicyRequestScanGateWarnWithOverride:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VersionSignatureStatus.
+const (
+	VersionSignatureStatusInvalid                  VersionSignatureStatus = "invalid"
+	VersionSignatureStatusUnsigned                 VersionSignatureStatus = "unsigned"
+	VersionSignatureStatusVerifiedMatching         VersionSignatureStatus = "verified-matching"
+	VersionSignatureStatusVerifiedNoExpectedSigner VersionSignatureStatus = "verified-no-expected-signer"
+	VersionSignatureStatusVerifiedUnexpectedSigner VersionSignatureStatus = "verified-unexpected-signer"
+)
+
+// Valid indicates whether the value is a known member of the VersionSignatureStatus enum.
+func (e VersionSignatureStatus) Valid() bool {
+	switch e {
+	case VersionSignatureStatusInvalid:
+		return true
+	case VersionSignatureStatusUnsigned:
+		return true
+	case VersionSignatureStatusVerifiedMatching:
+		return true
+	case VersionSignatureStatusVerifiedNoExpectedSigner:
+		return true
+	case VersionSignatureStatusVerifiedUnexpectedSigner:
 		return true
 	default:
 		return false
@@ -2867,7 +2894,7 @@ type LockfileSignature struct {
 	// Ref Examples: sigstore:acme/code-review@2.4.1
 	Ref *string `json:"ref,omitempty"`
 
-	// Verified Whether the hub verified the Sigstore bundle against the archive it downloaded. False means a bundle was found and did not verify; never render it as a pass.
+	// Verified True only when the Sigstore bundle verified against the archive the hub downloaded AND its signer matches the package's expected signer. False covers a bundle that did not verify and one signed by anyone else, or with no expected signer configured; never render it as a pass.
 	Verified *bool `json:"verified,omitempty"`
 }
 
@@ -2919,7 +2946,12 @@ type OrganizationPolicy struct {
 	// CommunityNeedsReview A version from a non-verified publisher is flagged for review rather than becoming immediately distributable.
 	CommunityNeedsReview bool `json:"communityNeedsReview"`
 
-	// RequireSignedBundles A version with no recorded signature reference is excluded from every resolution while this is set.
+	// PackagesWithoutExpectedSigner Packages with a published version and no expected signer: every one of them is excluded from resolution while requireSignedBundles is set.
+	//
+	// Examples: 3
+	PackagesWithoutExpectedSigner int64 `json:"packagesWithoutExpectedSigner"`
+
+	// RequireSignedBundles While set, a version resolves only if its Sigstore signature verified against the downloaded archive and its signer matches the package's expected signer. A package with no expected signer configured resolves nothing; packagesWithoutExpectedSigner counts them.
 	RequireSignedBundles bool `json:"requireSignedBundles"`
 
 	// RescanOnNewVersion Publishing a version rescans the package's other versions under the running rule pack.
@@ -3074,6 +3106,7 @@ type PackageDetail struct {
 	// Owner Examples: kwiatrzyk@example.com
 	Owner     *string          `json:"owner,omitempty"`
 	Publisher PackagePublisher `json:"publisher"`
+	Signer    PackageSigner    `json:"signer"`
 	Source    *PackageSource   `json:"source,omitempty"`
 
 	// Tags The latest version's manifest keywords. Tags belong to the version, not the package.
@@ -3312,6 +3345,35 @@ type PackageScanFindingSeverity string
 // PackageScanFindingState Examples: open
 type PackageScanFindingState string
 
+// PackageSigner defines model for PackageSigner.
+type PackageSigner struct {
+	// CanChange The caller is the owner or a catalog admin.
+	CanChange bool `json:"canChange"`
+
+	// Identity The RE2 pattern the signer's identity must match in full.
+	//
+	// Examples: https://github\.com/acme/skills/\.github/workflows/release\.yaml@refs/tags/v.*
+	Identity *string `json:"identity,omitempty"`
+
+	// Issuer The exact OIDC issuer expected; absent when no signer is configured.
+	//
+	// Examples: https://token.actions.githubusercontent.com
+	Issuer *string `json:"issuer,omitempty"`
+}
+
+// PackageSignerUpdate defines model for PackageSignerUpdate.
+type PackageSignerUpdate struct {
+	// Identity An RE2 regular expression the certificate identity (its URI or email SAN) must match in full; it is anchored at both ends.
+	//
+	// Examples: https://github\.com/acme/skills/\.github/workflows/release\.yaml@refs/tags/v.*
+	Identity *string `json:"identity,omitempty"`
+
+	// Issuer The exact OIDC issuer the signing certificate must carry.
+	//
+	// Examples: https://token.actions.githubusercontent.com
+	Issuer *string `json:"issuer,omitempty"`
+}
+
 // PackageSource defines model for PackageSource.
 type PackageSource struct {
 	// Kind Examples: git
@@ -3369,9 +3431,10 @@ type PackageVersion struct {
 	DistTag PackageVersionDistTag `json:"distTag"`
 
 	// ObjectKey Examples: skills/example/platform-toolkit/1.3.0/bundle.tar.zst
-	ObjectKey string `json:"objectKey"`
-	PinnedBy  int64  `json:"pinnedBy"`
-	SizeBytes *int64 `json:"sizeBytes,omitempty"`
+	ObjectKey string           `json:"objectKey"`
+	PinnedBy  int64            `json:"pinnedBy"`
+	Signature VersionSignature `json:"signature"`
+	SizeBytes *int64           `json:"sizeBytes,omitempty"`
 
 	// SourceCommit The git commit the bytes were downloaded at, resolved from sourceRef before the download.
 	//
@@ -4102,6 +4165,38 @@ type VersionDeleted struct {
 	PinnedByProfiles int64 `json:"pinnedByProfiles"`
 }
 
+// VersionSignature defines model for VersionSignature.
+type VersionSignature struct {
+	// Identity The signing certificate's identity, when the bundle verified. Publisher-controlled text.
+	//
+	// Examples: https://github.com/acme/skills/.github/workflows/release.yaml@refs/tags/v1.2.0
+	Identity *string `json:"identity,omitempty"`
+
+	// Issuer The signing certificate's OIDC issuer, when the bundle verified.
+	//
+	// Examples: https://token.actions.githubusercontent.com
+	Issuer *string `json:"issuer,omitempty"`
+
+	// Reason Why the bundle did not verify, when it did not.
+	Reason *string `json:"reason,omitempty"`
+
+	// Ref Where the bundle was found.
+	//
+	// Examples: https://github.com/acme/skills/releases/download/v1.2.0/skills.tar.gz.sigstore.json
+	Ref      *string    `json:"ref,omitempty"`
+	SignedAt *time.Time `json:"signedAt,omitempty"`
+
+	// Status verified-matching is the only trustworthy value: the bundle verified against the downloaded archive AND its signer matches the package's expected signer. verified-no-expected-signer and verified-unexpected-signer verified cryptographically but prove nothing about who should have signed.
+	//
+	// Examples: verified-matching
+	Status VersionSignatureStatus `json:"status"`
+}
+
+// VersionSignatureStatus verified-matching is the only trustworthy value: the bundle verified against the downloaded archive AND its signer matches the package's expected signer. verified-no-expected-signer and verified-unexpected-signer verified cryptographically but prove nothing about who should have signed.
+//
+// Examples: verified-matching
+type VersionSignatureStatus string
+
 // Viewer defines model for Viewer.
 type Viewer struct {
 	// DisplayName The name a screen shows. Derived by the hub from whichever of name, preferred_username or email the provider populated.
@@ -4347,6 +4442,9 @@ type RegisterPackageMultipartRequestBody RegisterPackageMultipartBody
 
 // PreviewPackageMultipartRequestBody defines body for PreviewPackage for multipart/form-data ContentType.
 type PreviewPackageMultipartRequestBody PreviewPackageMultipartBody
+
+// SetPackageSignerJSONRequestBody defines body for SetPackageSigner for application/json ContentType.
+type SetPackageSignerJSONRequestBody = PackageSignerUpdate
 
 // SetPackageTrackingJSONRequestBody defines body for SetPackageTracking for application/json ContentType.
 type SetPackageTrackingJSONRequestBody = PackageTrackingUpdate
@@ -4767,6 +4865,24 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /v1/packages/{namespace}/{name}/scan (the `GetPackageScan` operationId).
 	GetPackageScan(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetPackageSignerWithBody Set the signer a package's versions must be signed by
+	//
+	// Sets the exact OIDC issuer and the identity pattern (RE2, matched in full) a version's verified Sigstore signer must satisfy for the version to resolve while the organisation requires signed bundles. Both empty clears it. Takes effect at the next resolution; no signature is re-verified. One audit row of kind `policy`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /v1/packages/{namespace}/{name}/signer (the `SetPackageSigner` operationId).
+	SetPackageSignerWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetPackageSigner Set the signer a package's versions must be signed by
+	//
+	// Sets the exact OIDC issuer and the identity pattern (RE2, matched in full) a version's verified Sigstore signer must satisfy for the version to resolve while the organisation requires signed bundles. Both empty clears it. Takes effect at the next resolution; no signature is re-verified. One audit row of kind `policy`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /v1/packages/{namespace}/{name}/signer (the `SetPackageSigner` operationId).
+	SetPackageSigner(ctx context.Context, namespace string, name string, body SetPackageSignerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SetPackageTrackingWithBody Track a git package's upstream tags
 	//
@@ -5725,6 +5841,44 @@ func (c *Client) GetPackageFile(ctx context.Context, namespace string, name stri
 // Corresponds with GET /v1/packages/{namespace}/{name}/scan (the `GetPackageScan` operationId).
 func (c *Client) GetPackageScan(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetPackageScanRequest(c.Server, namespace, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetPackageSignerWithBody Set the signer a package's versions must be signed by
+//
+// Sets the exact OIDC issuer and the identity pattern (RE2, matched in full) a version's verified Sigstore signer must satisfy for the version to resolve while the organisation requires signed bundles. Both empty clears it. Takes effect at the next resolution; no signature is re-verified. One audit row of kind `policy`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /v1/packages/{namespace}/{name}/signer (the `SetPackageSigner` operationId).
+func (c *Client) SetPackageSignerWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetPackageSignerRequestWithBody(c.Server, namespace, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetPackageSigner Set the signer a package's versions must be signed by
+//
+// Sets the exact OIDC issuer and the identity pattern (RE2, matched in full) a version's verified Sigstore signer must satisfy for the version to resolve while the organisation requires signed bundles. Both empty clears it. Takes effect at the next resolution; no signature is re-verified. One audit row of kind `policy`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /v1/packages/{namespace}/{name}/signer (the `SetPackageSigner` operationId).
+func (c *Client) SetPackageSigner(ctx context.Context, namespace string, name string, body SetPackageSignerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetPackageSignerRequest(c.Server, namespace, name, body)
 	if err != nil {
 		return nil, err
 	}
@@ -7739,6 +7893,60 @@ func NewGetPackageScanRequest(server string, namespace string, name string) (*ht
 	return req, nil
 }
 
+// NewSetPackageSignerRequest calls the generic SetPackageSigner builder with application/json body
+func NewSetPackageSignerRequest(server string, namespace string, name string, body SetPackageSignerJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetPackageSignerRequestWithBody(server, namespace, name, "application/json", bodyReader)
+}
+
+// NewSetPackageSignerRequestWithBody constructs an http.Request for the SetPackageSigner method, with any body, and a specified content type
+func NewSetPackageSignerRequestWithBody(server string, namespace string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/packages/%s/%s/signer", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewSetPackageTrackingRequest calls the generic SetPackageTracking builder with application/json body
 func NewSetPackageTrackingRequest(server string, namespace string, name string, body SetPackageTrackingJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -8951,6 +9159,24 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /v1/packages/{namespace}/{name}/scan (the `GetPackageScan` operationId).
 	GetPackageScanWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*GetPackageScanResponse, error)
+
+	// SetPackageSignerWithBodyWithResponse Set the signer a package's versions must be signed by
+	//
+	// Sets the exact OIDC issuer and the identity pattern (RE2, matched in full) a version's verified Sigstore signer must satisfy for the version to resolve while the organisation requires signed bundles. Both empty clears it. Takes effect at the next resolution; no signature is re-verified. One audit row of kind `policy`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/packages/{namespace}/{name}/signer (the `SetPackageSigner` operationId).
+	SetPackageSignerWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetPackageSignerResponse, error)
+
+	// SetPackageSignerWithResponse Set the signer a package's versions must be signed by
+	//
+	// Sets the exact OIDC issuer and the identity pattern (RE2, matched in full) a version's verified Sigstore signer must satisfy for the version to resolve while the organisation requires signed bundles. Both empty clears it. Takes effect at the next resolution; no signature is re-verified. One audit row of kind `policy`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/packages/{namespace}/{name}/signer (the `SetPackageSigner` operationId).
+	SetPackageSignerWithResponse(ctx context.Context, namespace string, name string, body SetPackageSignerJSONRequestBody, reqEditors ...RequestEditorFn) (*SetPackageSignerResponse, error)
 
 	// SetPackageTrackingWithBodyWithResponse Track a git package's upstream tags
 	//
@@ -11411,6 +11637,96 @@ func (r GetPackageScanResponse) ContentType() string {
 	return ""
 }
 
+type SetPackageSignerResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PackageDetail
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetPackageSignerResponse) GetJSON200() *PackageDetail {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r SetPackageSignerResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r SetPackageSignerResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r SetPackageSignerResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r SetPackageSignerResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r SetPackageSignerResponse) GetApplicationproblemJSON415() *Error {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r SetPackageSignerResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r SetPackageSignerResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r SetPackageSignerResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetPackageSignerResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetPackageSignerResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetPackageSignerResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type SetPackageTrackingResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -13515,6 +13831,36 @@ func (c *ClientWithResponses) GetPackageScanWithResponse(ctx context.Context, na
 		return nil, err
 	}
 	return ParseGetPackageScanResponse(rsp)
+}
+
+// SetPackageSignerWithBodyWithResponse Set the signer a package's versions must be signed by
+//
+// Sets the exact OIDC issuer and the identity pattern (RE2, matched in full) a version's verified Sigstore signer must satisfy for the version to resolve while the organisation requires signed bundles. Both empty clears it. Takes effect at the next resolution; no signature is re-verified. One audit row of kind `policy`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/packages/{namespace}/{name}/signer (the `SetPackageSigner` operationId).
+func (c *ClientWithResponses) SetPackageSignerWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetPackageSignerResponse, error) {
+	rsp, err := c.SetPackageSignerWithBody(ctx, namespace, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetPackageSignerResponse(rsp)
+}
+
+// SetPackageSignerWithResponse Set the signer a package's versions must be signed by
+//
+// Sets the exact OIDC issuer and the identity pattern (RE2, matched in full) a version's verified Sigstore signer must satisfy for the version to resolve while the organisation requires signed bundles. Both empty clears it. Takes effect at the next resolution; no signature is re-verified. One audit row of kind `policy`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/packages/{namespace}/{name}/signer (the `SetPackageSigner` operationId).
+func (c *ClientWithResponses) SetPackageSignerWithResponse(ctx context.Context, namespace string, name string, body SetPackageSignerJSONRequestBody, reqEditors ...RequestEditorFn) (*SetPackageSignerResponse, error) {
+	rsp, err := c.SetPackageSigner(ctx, namespace, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetPackageSignerResponse(rsp)
 }
 
 // SetPackageTrackingWithBodyWithResponse Track a git package's upstream tags
@@ -15701,6 +16047,81 @@ func ParseGetPackageScanResponse(rsp *http.Response) (*GetPackageScanResponse, e
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetPackageSignerResponse parses an HTTP response from a SetPackageSignerWithResponse call
+func ParseSetPackageSignerResponse(rsp *http.Response) (*SetPackageSignerResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetPackageSignerResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PackageDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

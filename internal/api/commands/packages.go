@@ -17,6 +17,7 @@ import (
 	"agent-manager/internal/auth"
 	"agent-manager/internal/blob"
 	"agent-manager/internal/domain/pkgspec"
+	"agent-manager/internal/domain/signer"
 	"agent-manager/internal/fetch"
 	"agent-manager/internal/repourl"
 	"agent-manager/internal/store/audit"
@@ -417,6 +418,70 @@ func (e *PackageNotPermittedError) Error() string {
 	}
 	return "this identity may not change this package's " + change + ": that needs the owner or a " +
 		"catalog admin, and " + who
+}
+
+// SetPackageSigner sets or, with both fields empty, clears the signer a
+// package's versions must be signed by to resolve while the org requires
+// signatures. Gated like SetPackageVisibility; no version is re-verified,
+// since the binding is evaluated at every resolution.
+func SetPackageSigner(ctx context.Context, db bun.IDB, p auth.Principal,
+	namespace, name string, want signer.Expected,
+) error {
+	want, err := signer.Normalise(want)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrRegistration, err)
+	}
+
+	return db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		pkg := new(models.Package)
+		if err := tx.NewSelect().Model(pkg).
+			Where("namespace = ? and name = ?", namespace, name).
+			For("update").Limit(1).Scan(ctx); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return queries.ErrNotFound
+			}
+			return fmt.Errorf("read package %s/%s: %w", namespace, name, err)
+		}
+
+		owns := pkg.OwnerIdentityID != nil && *pkg.OwnerIdentityID == p.IdentityID
+		if !owns && p.Role != models.OrgRoleCatalogAdmin {
+			owner := ""
+			if pkg.OwnerIdentityID != nil {
+				owner = pkg.OwnerIdentityID.String()
+			}
+			return &PackageNotPermittedError{Owner: owner, Change: "expected signer"}
+		}
+		if pkg.ExpectedSignerIssuer == want.Issuer && pkg.ExpectedSignerIdentity == want.Identity {
+			return nil
+		}
+
+		if _, err := tx.NewUpdate().Model((*models.Package)(nil)).
+			Set("expected_signer_issuer = ?", nullIfBlank(want.Issuer)).
+			Set("expected_signer_identity = ?", nullIfBlank(want.Identity)).
+			Set("updated_at = now()").
+			Where("id = ?", pkg.ID).Exec(ctx); err != nil {
+			return fmt.Errorf("set the expected signer of %s/%s: %w", namespace, name, err)
+		}
+
+		text := fmt.Sprintf("cleared the expected signer of %s/%s", namespace, name)
+		if want.Configured() {
+			text = fmt.Sprintf("expect %s/%s to be signed by an identity matching %s issued by %s",
+				namespace, name, want.Identity, want.Issuer)
+		}
+		entry := identityAudit(p, models.AuditKindPolicy, "signer-changed", text, audit.Package(namespace, name))
+		entry.Data = map[string]any{
+			"issuer": want.Issuer, "identity": want.Identity,
+			"previousIssuer": pkg.ExpectedSignerIssuer, "previousIdentity": pkg.ExpectedSignerIdentity,
+		}
+		return writeAudit(ctx, tx, entry)
+	})
+}
+
+func nullIfBlank(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 // SetPackageTracking opts a git package in or out of the upstream check,

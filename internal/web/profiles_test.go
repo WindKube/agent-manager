@@ -1,19 +1,17 @@
 package web_test
 
 import (
-	"context"
 	"html"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
-	"agent-manager/internal/web"
-	"agent-manager/internal/web/fixture"
-	"agent-manager/internal/web/hub"
+	"agent-manager/internal/apiclient"
+	"agent-manager/internal/web/fakeapi"
 	"agent-manager/internal/web/view"
 )
 
@@ -25,159 +23,86 @@ import (
 // absent or disabled, and the three states that are not a list of profiles are
 // three screens.
 
-// profiles is a ProfileSource and ProfileCurator in one, so a test can state
-// exactly what the api answers and assert what a write actually sent. It does
-// NOT implement web.Registrar or web.ScannerSource, so a test built on it never
-// exercises a screen this file is not about.
-type profiles struct {
-	rows   []view.ProfileRow
-	detail view.Profile
-	err    error
+const profileSlug = "platform-engineer"
 
-	entrySets  [][]hub.EntrySetting
-	shares     [][]hub.Share
-	targetSets [][]string
-	published  []string
-	removed    [][2]string // {slug, id}
-	deleted    []string
-	writeErr   error
+var profileHref = "/profiles/" + profileSlug
 
-	// revisions and revisionErr back Revision, the "Show diff" panel's read.
-	// revisionErr, when set, is returned for every revision number so a test
-	// can drive PredecessorUnavailable by giving revision N but not N-1.
-	revisions   map[int]view.LockfileSnapshot
-	revisionErr error
+// profileServer is a server whose api answers profileSlug with detail.
+func profileServer(t *testing.T, detail apiclient.ProfileDetail) (*fakeapi.API, http.Handler) {
+	t.Helper()
+	api, h := newServer(t)
+	api.Data.ProfileDetails[profileSlug] = detail
+	return api, h
 }
 
-func (p *profiles) Profiles(context.Context) ([]view.ProfileRow, error) {
-	if p.err != nil {
-		return nil, p.err
+// keepPackages narrows the catalog the api answers to ids, for the "Add
+// package" tests: they need to state exactly which rows the catalog holds.
+func keepPackages(api *fakeapi.API, ids ...string) {
+	api.Data.Packages = slices.DeleteFunc(api.Data.Packages, func(p apiclient.CatalogPackage) bool {
+		return !slices.Contains(ids, p.Id)
+	})
+}
+
+// sentEntries is the one whole entry set the web role resent.
+func sentEntries(t *testing.T, api *fakeapi.API) []apiclient.ProfileEntrySetting {
+	t.Helper()
+	calls := api.Calls("setProfileEntries")
+	require.Len(t, calls, 1)
+	var body apiclient.ProfileEntries
+	calls[0].Decode(t, &body)
+	return body.Entries
+}
+
+func baseProfileDetail() apiclient.ProfileDetail {
+	return apiclient.ProfileDetail{
+		Slug: profileSlug, Name: "Platform Engineer",
+		Visibility:    apiclient.ProfileDetailVisibilityOrganisation,
+		DefaultPolicy: apiclient.ProfileDetailDefaultPolicyFloatingLatest,
+		Gate:          apiclient.ProfileDetailGateWarnWithOverride,
+		HeadRevision:  3,
+		Role:          new(apiclient.ProfileDetailRoleOwner),
+		Permissions:   apiclient.ProfilePermissions{Curate: true, Share: true, Publish: true, Delete: true},
+		Entries: []apiclient.ProfileEntry{{
+			Id: "community/postgres-migration-guard", Name: "Postgres Migration Guard",
+			Kind: apiclient.ProfileEntryKindSkill, Mode: apiclient.ProfileEntryModeLatest,
+			LatestVersion: new("0.8.3"), LatestVerdict: new(apiclient.ProfileEntryLatestVerdictFlagged),
+			Version: new("0.8.3"), Verdict: new(apiclient.ProfileEntryVerdictFlagged), Outcome: apiclient.Warned,
+			Note: new("Flagged (SH-INJ-011 in SKILL.md); warn-with-override includes it with a warning."),
+		}},
 	}
-	return p.rows, nil
 }
 
-func (p *profiles) Profile(_ context.Context, slug string) (view.Profile, error) {
-	if p.err != nil {
-		return view.Profile{}, p.err
+func skillEntry(id, name string) apiclient.ProfileEntry {
+	return apiclient.ProfileEntry{
+		Id: id, Name: name, Kind: apiclient.ProfileEntryKindSkill,
+		Mode: apiclient.ProfileEntryModeLatest, Outcome: apiclient.Resolved,
 	}
-	if p.detail.Slug != slug {
-		return view.Profile{}, view.ErrNotFound
+}
+
+func lockfile(revision int64, gate apiclient.LockfileGate, policy apiclient.LockfileDefaultPolicy,
+	targets []apiclient.LockfileTargets, entries ...apiclient.LockfileEntry) apiclient.Lockfile {
+	return apiclient.Lockfile{
+		Revision: revision, Gate: gate, DefaultPolicy: &policy, Targets: targets,
+		Entries: entries, Skipped: []apiclient.LockfileSkip{},
 	}
-	return p.detail, nil
 }
 
-func (p *profiles) Revision(_ context.Context, _ string, revision int) (view.LockfileSnapshot, error) {
-	if p.revisionErr != nil {
-		return view.LockfileSnapshot{}, p.revisionErr
-	}
-	lockfile, ok := p.revisions[revision]
-	if !ok {
-		return view.LockfileSnapshot{}, view.ErrNotFound
-	}
-	return lockfile, nil
-}
-
-func (p *profiles) CreateProfile(context.Context, hub.ProfileCreation) (view.ProfileRow, error) {
-	return view.ProfileRow{}, p.writeErr
-}
-
-func (p *profiles) SetProfileEntries(_ context.Context, _ string, entries []hub.EntrySetting) (view.Profile, error) {
-	p.entrySets = append(p.entrySets, entries)
-	return p.detail, p.writeErr
-}
-
-func (p *profiles) SetProfileSharing(_ context.Context, _ string, members []hub.Share) (view.Profile, error) {
-	p.shares = append(p.shares, members)
-	return p.detail, p.writeErr
-}
-
-func (p *profiles) SetProfileTargets(_ context.Context, _ string, targets []string) (view.Profile, error) {
-	p.targetSets = append(p.targetSets, targets)
-	return p.detail, p.writeErr
-}
-
-func (p *profiles) PublishRevision(_ context.Context, slug, _ string) error {
-	p.published = append(p.published, slug)
-	return p.writeErr
-}
-
-func (p *profiles) RemoveProfileEntry(_ context.Context, slug, id string) (view.Profile, error) {
-	p.removed = append(p.removed, [2]string{slug, id})
-	return p.detail, p.writeErr
-}
-
-func (p *profiles) DeleteProfile(_ context.Context, slug string) error {
-	p.deleted = append(p.deleted, slug)
-	return p.writeErr
-}
-
-// profHandler wires one profiles source behind a viewer. curator is separate so a
-// test can render the screens with the write path absent, which is the state a
-// hub with no curator wired is in.
-func profHandler(source *profiles, viewers web.ViewerSource, curator web.ProfileCurator) http.Handler {
-	deps := web.Deps{Profiles: source, Viewers: viewers, Log: zerolog.Nop()}
-	if curator != nil {
-		deps.Curator = curator
-	}
-	return web.New(deps, web.Options{}).Handler()
-}
-
-// catalogStub is a fixed catalog page, for the "Add package" tests: they need
-// to state exactly which rows the catalog answers rather than run against the
-// design's ten.
-type catalogStub struct {
-	rows []view.Row
-	err  error
-}
-
-func (c catalogStub) Catalog(_ context.Context, _ view.CatalogQuery) (view.CatalogPage, error) {
-	if c.err != nil {
-		return view.CatalogPage{}, c.err
-	}
-	return view.CatalogPage{Rows: c.rows, Total: len(c.rows), Page: 1, PageSize: view.DefaultPageSize}, nil
-}
-
-// profHandlerWithCatalog is profHandler plus a catalog source, for the "Add
-// package" control: it is the one piece of the profile screen that reads
-// somewhere other than web.ProfileSource.
-func profHandlerWithCatalog(source *profiles, curator web.ProfileCurator, catalog web.CatalogSource) http.Handler {
-	deps := web.Deps{
-		Profiles: source, Catalog: catalog, Viewers: fixture.SignedInViewers(), Log: zerolog.Nop(),
-	}
-	if curator != nil {
-		deps.Curator = curator
-	}
-	return web.New(deps, web.Options{}).Handler()
-}
-
-func baseProfileDetail() view.Profile {
-	return view.Profile{
-		Slug: "example/platform-engineer", Name: "Platform Engineer",
-		Visibility: "organisation", DefaultPolicy: "floating-latest", Gate: "warn-with-override",
-		HeadRevision: 3, Role: "owner",
-		Permissions: view.ProfilePermissions{Curate: true, Share: true, Publish: true, Delete: true},
-		Entries: []view.ProfileEntryRow{
-			{
-				ID: "community/postgres-migration-guard", Name: "Postgres Migration Guard", Kind: "skill",
-				Mode: "latest", LatestVersion: "0.8.3", LatestVerdict: "flagged",
-				Version: "0.8.3", Verdict: "flagged", Outcome: "warned",
-				Note: "Flagged (SH-INJ-011 in SKILL.md); warn-with-override includes it with a warning.",
-			},
-		},
-	}
+func lockEntry(id, version string, resolution apiclient.LockfileEntryResolution) apiclient.LockfileEntry {
+	return apiclient.LockfileEntry{Id: id, Version: version, Resolution: resolution}
 }
 
 // TestProfilesListShowsExactlyTheReadableSet asserts the list shows exactly
 // the readable set, and no others.
 func TestProfilesListShowsExactlyTheReadableSet(t *testing.T) {
-	source := &profiles{rows: []view.ProfileRow{
-		{Slug: "example/platform-engineer", Name: "Platform Engineer", Visibility: "organisation", PackageCount: 4, HeadRevision: 14},
-		{Slug: "example/sre-oncall", Name: "SRE On-call", Visibility: "shared", PackageCount: 0, HeadRevision: 0},
-	}}
-	body := get(t, profHandler(source, fixture.SignedInViewers(), nil), "/profiles").Body.String()
+	api, h := newServer(t)
+	api.Data.Profiles = []apiclient.Profile{
+		{Slug: "platform-engineer", Name: "Platform Engineer", Visibility: new(apiclient.ProfileVisibilityOrganisation), PackageCount: 4, HeadRevision: 14},
+		{Slug: "sre-oncall", Name: "SRE On-call", Visibility: new(apiclient.ProfileVisibilityShared)},
+	}
+	body := get(t, h, "/profiles").Body.String()
 
 	require.Contains(t, body, "Platform Engineer")
-	require.Contains(t, body, "example/platform-engineer")
+	require.Contains(t, body, "platform-engineer")
 	require.Contains(t, body, "r14")
 	require.Contains(t, body, "SRE On-call")
 	require.Contains(t, body, "unpublished")
@@ -185,7 +110,9 @@ func TestProfilesListShowsExactlyTheReadableSet(t *testing.T) {
 }
 
 func TestProfilesListEmptyStateNamesWhatWouldAppear(t *testing.T) {
-	body := get(t, profHandler(&profiles{}, fixture.SignedInViewers(), nil), "/profiles").Body.String()
+	api, h := newServer(t)
+	api.Data.Profiles = nil
+	body := get(t, h, "/profiles").Body.String()
 	require.Contains(t, body, `id="profiles-empty"`)
 }
 
@@ -194,17 +121,22 @@ func TestProfilesListEmptyStateNamesWhatWouldAppear(t *testing.T) {
 func TestProfilesThreeEmptyStatesAreDistinguishable(t *testing.T) {
 	for _, state := range []struct {
 		name   string
-		source *profiles
+		answer int
 		id     string
 		status int
 	}{
-		{name: "genuinely empty", source: &profiles{}, id: `id="profiles-empty"`, status: http.StatusOK},
-		{name: "no usable session", source: &profiles{err: view.ErrSignedOut}, id: `id="profiles-signed-out"`, status: http.StatusOK},
-		{name: "refused by role", source: &profiles{err: hub.ErrForbidden}, id: `id="profiles-refused"`, status: http.StatusForbidden},
-		{name: "api unreachable", source: &profiles{err: errBoom}, id: `id="profiles-unavailable"`, status: http.StatusBadGateway},
+		{name: "genuinely empty", id: `id="profiles-empty"`, status: http.StatusOK},
+		{name: "no usable session", answer: http.StatusUnauthorized, id: `id="profiles-signed-out"`, status: http.StatusOK},
+		{name: "refused by role", answer: http.StatusForbidden, id: `id="profiles-refused"`, status: http.StatusForbidden},
+		{name: "api unreachable", answer: http.StatusServiceUnavailable, id: `id="profiles-unavailable"`, status: http.StatusBadGateway},
 	} {
 		t.Run(state.name, func(t *testing.T) {
-			rec := get(t, profHandler(state.source, fixture.SignedInViewers(), nil), "/profiles")
+			api, h := newServer(t)
+			api.Data.Profiles = nil
+			if state.answer != 0 {
+				api.Fail("listProfiles", state.answer)
+			}
+			rec := get(t, h, "/profiles")
 			require.Equal(t, state.status, rec.Code)
 			body := rec.Body.String()
 			require.Contains(t, body, state.id)
@@ -217,21 +149,13 @@ func TestProfilesThreeEmptyStatesAreDistinguishable(t *testing.T) {
 			}
 		})
 	}
-
-	t.Run("no source wired at all", func(t *testing.T) {
-		h := web.New(web.Deps{Viewers: fixture.SignedInViewers(), Log: zerolog.Nop()}, web.Options{}).Handler()
-		rec := get(t, h, "/profiles")
-		require.Equal(t, http.StatusBadGateway, rec.Code)
-		require.Contains(t, rec.Body.String(), `id="profiles-unavailable"`)
-	})
 }
 
 // TestProfileDetailRendersThePolicyNoteVerbatim asserts the screen never
 // recomputes the gate's effect — it renders what the api already decided.
 func TestProfileDetailRendersThePolicyNoteVerbatim(t *testing.T) {
-	detail := baseProfileDetail()
-	source := &profiles{detail: detail}
-	body := get(t, profHandler(source, fixture.SignedInViewers(), nil), "/profiles/example/platform-engineer").Body.String()
+	_, h := profileServer(t, baseProfileDetail())
+	body := get(t, h, profileHref).Body.String()
 
 	require.Contains(t, body, "Flagged (SH-INJ-011 in SKILL.md); warn-with-override includes it with a warning.")
 	require.Contains(t, body, "Postgres Migration Guard")
@@ -242,15 +166,15 @@ func TestProfileDetailRendersThePolicyNoteVerbatim(t *testing.T) {
 // excluded package is reported with its reason rather than silently dropped.
 func TestProfileDetailReportsASkippedEntryRatherThanOmittingIt(t *testing.T) {
 	detail := baseProfileDetail()
-	detail.Entries = append(detail.Entries, view.ProfileEntryRow{
-		ID: "community/release-notes", Name: "Release Notes", Kind: "skill",
-		Mode: "pinned", PinnedVersion: "1.2.7", Outcome: "skipped",
-		Skip: &view.ProfileSkip{
-			Reason: "flagged-awaiting-approval", Detail: "Awaiting approval from a scanner reviewer.",
+	detail.Entries = append(detail.Entries, apiclient.ProfileEntry{
+		Id: "community/release-notes", Name: "Release Notes", Kind: apiclient.ProfileEntryKindSkill,
+		Mode: apiclient.ProfileEntryModePinned, PinnedVersion: new("1.2.7"), Outcome: apiclient.Skipped,
+		Skip: &apiclient.LockfileSkip{
+			Reason: apiclient.FlaggedAwaitingApproval, Detail: new("Awaiting approval from a scanner reviewer."),
 		},
 	})
-	body := get(t, profHandler(&profiles{detail: detail}, fixture.SignedInViewers(), nil),
-		"/profiles/example/platform-engineer").Body.String()
+	_, h := profileServer(t, detail)
+	body := get(t, h, profileHref).Body.String()
 
 	require.Contains(t, body, "Release Notes")
 	require.Contains(t, body, "awaiting reviewer approval")
@@ -260,8 +184,8 @@ func TestProfileDetailReportsASkippedEntryRatherThanOmittingIt(t *testing.T) {
 // TestProfileDetailUnreadableAnswersAsMissing asserts an unreadable profile
 // and a nonexistent one read alike.
 func TestProfileDetailUnreadableAnswersAsMissing(t *testing.T) {
-	source := &profiles{detail: baseProfileDetail()}
-	rec := get(t, profHandler(source, fixture.SignedInViewers(), nil), "/profiles/no-such-profile")
+	_, h := profileServer(t, baseProfileDetail())
+	rec := get(t, h, "/profiles/no-such-profile")
 	require.Equal(t, http.StatusNotFound, rec.Code)
 	require.Contains(t, rec.Body.String(), `id="profile-missing"`)
 }
@@ -271,26 +195,21 @@ func TestProfileDetailUnreadableAnswersAsMissing(t *testing.T) {
 // hub.SetProfileEntries's whole-set contract.
 func TestProfileEntryPinRoundTrips(t *testing.T) {
 	detail := baseProfileDetail()
-	detail.Entries = append(detail.Entries, view.ProfileEntryRow{
-		ID: "example/adr-writer", Name: "ADR Writer", Kind: "skill", Mode: "latest",
-		LatestVersion: "3.0.2", Version: "3.0.2", Verdict: "clean", Outcome: "resolved",
-	})
-	source := &profiles{detail: detail}
-	h := profHandler(source, fixture.SignedInViewers(), source)
+	detail.Entries = append(detail.Entries, skillEntry("example/adr-writer", "ADR Writer"))
+	api, h := profileServer(t, detail)
 
 	rec := post(t, h, "/profiles/entries/pin", url.Values{
-		"slug": {"example/platform-engineer"}, "id": {"example/adr-writer"}, "version": {"3.0.2"},
+		"slug": {profileSlug}, "id": {"example/adr-writer"}, "version": {"3.0.2"},
 	})
 	require.Equal(t, http.StatusSeeOther, rec.Code)
-	require.Equal(t, "/profiles/example/platform-engineer?notice=entry-updated", rec.Header().Get("Location"))
+	require.Equal(t, profileHref+"?notice=entry-updated", rec.Header().Get("Location"))
 
-	require.Len(t, source.entrySets, 1)
-	sent := source.entrySets[0]
+	sent := sentEntries(t, api)
 	require.Len(t, sent, 2, "the untouched entry must still be in the resent set")
 
-	var pinned, untouched *hub.EntrySetting
+	var pinned, untouched *apiclient.ProfileEntrySetting
 	for i := range sent {
-		switch sent[i].ID {
+		switch sent[i].Id {
 		case "example/adr-writer":
 			pinned = &sent[i]
 		case "community/postgres-migration-guard":
@@ -298,83 +217,80 @@ func TestProfileEntryPinRoundTrips(t *testing.T) {
 		}
 	}
 	require.NotNil(t, pinned, "the targeted entry was not resent")
-	require.Equal(t, "pinned", pinned.Mode)
-	require.Equal(t, "3.0.2", pinned.Version)
+	require.Equal(t, apiclient.ProfileEntrySettingModePinned, pinned.Mode)
+	require.Equal(t, "3.0.2", *pinned.Version)
 
 	require.NotNil(t, untouched, "the untouched entry was dropped from the resend")
-	require.Equal(t, "latest", untouched.Mode, "an entry nobody asked to change must keep its own setting")
+	require.Equal(t, apiclient.ProfileEntrySettingModeLatest, untouched.Mode, "an entry nobody asked to change must keep its own setting")
 }
 
 func TestProfileEntryFloatRoundTrips(t *testing.T) {
 	detail := baseProfileDetail()
-	detail.Entries[0].Mode = "pinned"
-	detail.Entries[0].PinnedVersion = "0.7.0"
-	source := &profiles{detail: detail}
-	h := profHandler(source, fixture.SignedInViewers(), source)
+	detail.Entries[0].Mode = apiclient.ProfileEntryModePinned
+	detail.Entries[0].PinnedVersion = new("0.7.0")
+	api, h := profileServer(t, detail)
 
 	post(t, h, "/profiles/entries/latest", url.Values{
-		"slug": {"example/platform-engineer"}, "id": {"community/postgres-migration-guard"},
+		"slug": {profileSlug}, "id": {"community/postgres-migration-guard"},
 	})
 
-	require.Len(t, source.entrySets, 1)
-	require.Equal(t, "latest", source.entrySets[0][0].Mode)
-	require.Empty(t, source.entrySets[0][0].Version)
+	sent := sentEntries(t, api)
+	require.Equal(t, apiclient.ProfileEntrySettingModeLatest, sent[0].Mode)
+	require.Nil(t, sent[0].Version)
 }
 
 // TestProfileEntryRemoveRoundTrips asserts a remove posts through the
 // dedicated RemoveProfileEntry command, not through SetProfileEntries's
 // whole-set contract (which refuses a body that omits a held entry).
 func TestProfileEntryRemoveRoundTrips(t *testing.T) {
-	source := &profiles{detail: baseProfileDetail()}
-	h := profHandler(source, fixture.SignedInViewers(), source)
+	api, h := profileServer(t, baseProfileDetail())
 
 	rec := post(t, h, "/profiles/entries/remove", url.Values{
-		"slug": {"example/platform-engineer"}, "id": {"community/postgres-migration-guard"},
+		"slug": {profileSlug}, "id": {"community/postgres-migration-guard"},
 	})
 	require.Equal(t, http.StatusSeeOther, rec.Code)
-	require.Equal(t, "/profiles/example/platform-engineer?notice=entry-removed", rec.Header().Get("Location"))
+	require.Equal(t, profileHref+"?notice=entry-removed", rec.Header().Get("Location"))
 
-	require.Len(t, source.removed, 1)
-	require.Equal(t, [2]string{"example/platform-engineer", "community/postgres-migration-guard"}, source.removed[0])
-	require.Empty(t, source.entrySets, "remove must not go through SetProfileEntries's whole-set contract")
+	removed := api.Calls("removeProfileEntry")
+	require.Len(t, removed, 1)
+	require.Equal(t, "/v1/profiles/"+profileSlug+"/entries/remove", removed[0].Path)
+	var body apiclient.ProfileEntryRemoval
+	removed[0].Decode(t, &body)
+	require.Equal(t, "community/postgres-migration-guard", body.Id)
+	require.Empty(t, api.Calls("setProfileEntries"), "remove must not go through SetProfileEntries's whole-set contract")
 }
 
-// TestProfileEntryRemoveWithNoIDRefusesWithoutCallingTheCurator asserts a
+// TestProfileEntryRemoveWithNoIDRefusesWithoutCallingTheApi asserts a
 // blank id is caught in the handler, not sent on to the api.
-func TestProfileEntryRemoveWithNoIDRefusesWithoutCallingTheCurator(t *testing.T) {
-	source := &profiles{detail: baseProfileDetail()}
-	h := profHandler(source, fixture.SignedInViewers(), source)
+func TestProfileEntryRemoveWithNoIDRefusesWithoutCallingTheApi(t *testing.T) {
+	api, h := profileServer(t, baseProfileDetail())
 
-	rec := post(t, h, "/profiles/entries/remove", url.Values{"slug": {"example/platform-engineer"}})
+	rec := post(t, h, "/profiles/entries/remove", url.Values{"slug": {profileSlug}})
 	require.Equal(t, http.StatusSeeOther, rec.Code)
 	require.Contains(t, rec.Header().Get("Location"), "entry-missing")
-	require.Empty(t, source.removed)
+	require.Empty(t, api.Calls("removeProfileEntry"))
 }
 
 // TestProfileDetailOffersOnlyPackagesNotAlreadyHeld asserts each kind's Add
 // control lists a catalog row of that kind exactly once it is not already an
 // entry, never lists one that already is, and never lists the other kind.
 func TestProfileDetailOffersOnlyPackagesNotAlreadyHeld(t *testing.T) {
-	source := &profiles{detail: baseProfileDetail()}
-	catalog := catalogStub{rows: []view.Row{
-		{ID: "community/postgres-migration-guard", Name: "Postgres Migration Guard", Kind: view.KindSkill},
-		{ID: "example/adr-writer", Name: "ADR Writer", Kind: view.KindSkill},
-		{ID: "example/platform-toolkit", Name: "Platform Toolkit", Kind: view.KindPlugin},
-	}}
-	body := get(t, profHandlerWithCatalog(source, source, catalog), "/profiles/example/platform-engineer").Body.String()
+	api, h := profileServer(t, baseProfileDetail())
+	keepPackages(api, "community/postgres-migration-guard", "example/adr-writer", "example/platform-toolkit")
+	body := get(t, h, profileHref).Body.String()
 
 	require.Contains(t, body, `id="add-skill-id"`)
 	require.Contains(t, body, `id="add-plugin-id"`)
 
 	skillOptions := addOptions(t, body, "add-skill-id")
-	require.Contains(t, skillOptions, "ADR Writer")
+	require.Contains(t, skillOptions, "Adr Writer")
 	require.NotContains(t, skillOptions, "Postgres Migration Guard",
 		"an entry the profile already holds must not also be offered as an addition")
 	require.NotContains(t, skillOptions, "Platform Toolkit", "a plugin must not be offered in the skill select")
 
 	pluginOptions := addOptions(t, body, "add-plugin-id")
 	require.Contains(t, pluginOptions, "Platform Toolkit")
-	require.NotContains(t, pluginOptions, "ADR Writer", "a skill must not be offered in the plugin select")
+	require.NotContains(t, pluginOptions, "Adr Writer", "a skill must not be offered in the plugin select")
 }
 
 // addOptions returns just one Add control's <select> markup, so a test can
@@ -395,18 +311,18 @@ func addOptions(t *testing.T, body, selectID string) string {
 func TestProfileDetailAddControlIsAbsentWithoutCatalogOrRole(t *testing.T) {
 	t.Run("no curate permission", func(t *testing.T) {
 		detail := baseProfileDetail()
-		detail.Permissions = view.ProfilePermissions{}
-		source := &profiles{detail: detail}
-		catalog := catalogStub{rows: []view.Row{{ID: "example/adr-writer", Name: "ADR Writer", Kind: view.KindSkill}}}
-		body := get(t, profHandlerWithCatalog(source, nil, catalog), "/profiles/example/platform-engineer").Body.String()
+		detail.Permissions = apiclient.ProfilePermissions{}
+		api, h := profileServer(t, detail)
+		keepPackages(api, "example/adr-writer")
+		body := get(t, h, profileHref).Body.String()
 		require.NotContains(t, body, `id="add-skill-id"`)
 		require.NotContains(t, body, `id="add-plugin-id"`)
 	})
 
 	t.Run("catalog unreachable", func(t *testing.T) {
-		source := &profiles{detail: baseProfileDetail()}
-		catalog := catalogStub{err: errBoom}
-		body := get(t, profHandlerWithCatalog(source, source, catalog), "/profiles/example/platform-engineer").Body.String()
+		api, h := profileServer(t, baseProfileDetail())
+		api.Fail("listPackages", http.StatusServiceUnavailable)
+		body := get(t, h, profileHref).Body.String()
 		require.NotContains(t, body, `id="add-skill-id"`)
 		require.NotContains(t, body, `id="add-plugin-id"`)
 		require.Contains(t, body, `id="profile-add-skill-empty"`)
@@ -418,22 +334,20 @@ func TestProfileDetailAddControlIsAbsentWithoutCatalogOrRole(t *testing.T) {
 // created in the UI could never receive a package, because nothing posted to
 // PUT /v1/profiles/{slug}/entries with an id the profile did not already hold.
 func TestProfileEntryAddAppendsANewEntryFloatingLatest(t *testing.T) {
-	source := &profiles{detail: baseProfileDetail()}
-	h := profHandler(source, fixture.SignedInViewers(), source)
+	api, h := profileServer(t, baseProfileDetail())
 
 	rec := post(t, h, "/profiles/entries/add", url.Values{
-		"slug": {"example/platform-engineer"}, "id": {"example/adr-writer"},
+		"slug": {profileSlug}, "id": {"example/adr-writer"},
 	})
 	require.Equal(t, http.StatusSeeOther, rec.Code)
-	require.Equal(t, "/profiles/example/platform-engineer?notice=entry-added", rec.Header().Get("Location"))
+	require.Equal(t, profileHref+"?notice=entry-added", rec.Header().Get("Location"))
 
-	require.Len(t, source.entrySets, 1)
-	sent := source.entrySets[0]
+	sent := sentEntries(t, api)
 	require.Len(t, sent, 2, "the existing entry must still be in the resent set")
 
-	var added, untouched *hub.EntrySetting
+	var added, untouched *apiclient.ProfileEntrySetting
 	for i := range sent {
-		switch sent[i].ID {
+		switch sent[i].Id {
 		case "example/adr-writer":
 			added = &sent[i]
 		case "community/postgres-migration-guard":
@@ -441,8 +355,8 @@ func TestProfileEntryAddAppendsANewEntryFloatingLatest(t *testing.T) {
 		}
 	}
 	require.NotNil(t, added, "the new package was not sent")
-	require.Equal(t, "latest", added.Mode)
-	require.Empty(t, added.Version)
+	require.Equal(t, apiclient.ProfileEntrySettingModeLatest, added.Mode)
+	require.Nil(t, added.Version)
 	require.NotNil(t, untouched, "the existing entry was dropped from the resend")
 }
 
@@ -450,18 +364,17 @@ func TestProfileEntryAddAppendsANewEntryFloatingLatest(t *testing.T) {
 // defensive case: the select only ever offers ids the profile lacks, but a
 // stale page or a race could still submit one it already holds.
 func TestProfileEntryAddOfAnIDAlreadyHeldFloatsRatherThanDuplicating(t *testing.T) {
-	source := &profiles{detail: baseProfileDetail()}
-	h := profHandler(source, fixture.SignedInViewers(), source)
+	api, h := profileServer(t, baseProfileDetail())
 
 	rec := post(t, h, "/profiles/entries/add", url.Values{
-		"slug": {"example/platform-engineer"}, "id": {"community/postgres-migration-guard"},
+		"slug": {profileSlug}, "id": {"community/postgres-migration-guard"},
 	})
 	require.Equal(t, http.StatusSeeOther, rec.Code)
-	require.Equal(t, "/profiles/example/platform-engineer?notice=entry-updated", rec.Header().Get("Location"))
+	require.Equal(t, profileHref+"?notice=entry-updated", rec.Header().Get("Location"))
 
-	require.Len(t, source.entrySets, 1)
-	require.Len(t, source.entrySets[0], 1, "the id must not be duplicated in the resent set")
-	require.Equal(t, "latest", source.entrySets[0][0].Mode)
+	sent := sentEntries(t, api)
+	require.Len(t, sent, 1, "the id must not be duplicated in the resent set")
+	require.Equal(t, apiclient.ProfileEntrySettingModeLatest, sent[0].Mode)
 }
 
 // TestProfileWritesAreGatedByRole asserts a role that may not curate, share
@@ -470,11 +383,10 @@ func TestProfileEntryAddOfAnIDAlreadyHeldFloatsRatherThanDuplicating(t *testing.
 // and records nothing.
 func TestProfileWritesAreGatedByRole(t *testing.T) {
 	detail := baseProfileDetail()
-	detail.Permissions = view.ProfilePermissions{}
-	source := &profiles{detail: detail}
-	h := profHandler(source, fixture.SignedInViewers(), source)
+	detail.Permissions = apiclient.ProfilePermissions{}
+	api, h := profileServer(t, detail)
 
-	body := html.UnescapeString(get(t, h, "/profiles/example/platform-engineer").Body.String())
+	body := html.UnescapeString(get(t, h, profileHref).Body.String())
 
 	require.Contains(t, body, "Save targets", "the control must still be rendered, only disabled")
 	require.Contains(t, body, `id="profile-targets-not-permitted"`)
@@ -493,56 +405,46 @@ func TestProfileWritesAreGatedByRole(t *testing.T) {
 	require.Contains(t, body, `<fieldset class="am-fieldset-plain" disabled aria-disabled="true"`)
 
 	rec := post(t, h, "/profiles/entries/pin", url.Values{
-		"slug": {"example/platform-engineer"}, "id": {"community/postgres-migration-guard"}, "version": {"0.8.3"},
+		"slug": {profileSlug}, "id": {"community/postgres-migration-guard"}, "version": {"0.8.3"},
 	})
 	require.Equal(t, http.StatusSeeOther, rec.Code)
 	require.Contains(t, rec.Header().Get("Location"), "entry-updated",
-		"the api is what enforces the role here (the fixture always answers), so this "+
+		"the api is what enforces the role here (the fake always answers), so this "+
 			"exercises the screen's gating copy rather than a second enforcement")
 
-	require.Empty(t, source.published, "publish must never be invoked for a role that may not")
+	require.Empty(t, api.Calls("publishRevision"), "publish must never be invoked for a role that may not")
 }
 
 // TestProfilePublishRedirectsWithoutResubmission is post-redirect-get: a browser
 // reload after a publish must not publish a second revision.
 func TestProfilePublishRedirectsWithoutResubmission(t *testing.T) {
-	source := &profiles{detail: baseProfileDetail()}
-	h := profHandler(source, fixture.SignedInViewers(), source)
+	api, h := profileServer(t, baseProfileDetail())
 
 	rec := post(t, h, "/profiles/revisions", url.Values{
-		"slug": {"example/platform-engineer"}, "note": {"pinned the migration guard"},
+		"slug": {profileSlug}, "note": {"pinned the migration guard"},
 	})
 	require.Equal(t, http.StatusSeeOther, rec.Code)
-	require.Equal(t, "/profiles/example/platform-engineer?notice=published", rec.Header().Get("Location"))
-	require.Equal(t, []string{"example/platform-engineer"}, source.published)
+	require.Equal(t, profileHref+"?notice=published", rec.Header().Get("Location"))
+	published := api.Calls("publishRevision")
+	require.Len(t, published, 1)
+	require.Equal(t, "/v1/profiles/"+profileSlug+"/revisions", published[0].Path)
 
 	notice := get(t, h, rec.Header().Get("Location")).Body.String()
 	require.Contains(t, notice, "Revision published")
-}
-
-// TestProfileWriteWithNoCuratorWiredRefusesRatherThanPanics is the state a
-// screen test that wired only a read source is in, and the state a hub with a
-// misconfigured deployment is in.
-func TestProfileWriteWithNoCuratorWiredRefusesRatherThanPanics(t *testing.T) {
-	source := &profiles{detail: baseProfileDetail()}
-	h := profHandler(source, fixture.SignedInViewers(), nil)
-
-	rec := post(t, h, "/profiles/revisions", url.Values{"slug": {"example/platform-engineer"}})
-	require.Equal(t, http.StatusSeeOther, rec.Code)
-	require.Contains(t, rec.Header().Get("Location"), "unavailable")
 }
 
 // TestDeleteProfileRedirectsToTheListNotTheProfilesOwnPage asserts deletion
 // is the one write that cannot redirect back to the profile's own page —
 // there is no such page any more once it succeeds.
 func TestDeleteProfileRedirectsToTheListNotTheProfilesOwnPage(t *testing.T) {
-	source := &profiles{detail: baseProfileDetail()}
-	h := profHandler(source, fixture.SignedInViewers(), source)
+	api, h := profileServer(t, baseProfileDetail())
 
-	rec := post(t, h, "/profiles/delete", url.Values{"slug": {"example/platform-engineer"}})
+	rec := post(t, h, "/profiles/delete", url.Values{"slug": {profileSlug}})
 	require.Equal(t, http.StatusSeeOther, rec.Code)
 	require.Equal(t, "/profiles?notice=deleted", rec.Header().Get("Location"))
-	require.Equal(t, []string{"example/platform-engineer"}, source.deleted)
+	deleted := api.Calls("deleteProfile")
+	require.Len(t, deleted, 1)
+	require.Equal(t, "/v1/profiles/"+profileSlug, deleted[0].Path)
 }
 
 // TestDeleteProfileWithPublishedRevisionsIsRefusedInline asserts the api's
@@ -551,27 +453,14 @@ func TestDeleteProfileRedirectsToTheListNotTheProfilesOwnPage(t *testing.T) {
 // other ProfileRefusedError, rather than as a redirect a stale link could
 // replay.
 func TestDeleteProfileWithPublishedRevisionsIsRefusedInline(t *testing.T) {
-	detail := baseProfileDetail()
-	source := &profiles{detail: detail, writeErr: &hub.ProfileRefusedError{
-		Detail: "example/platform-engineer has published revisions that a client may already have synced",
-	}}
-	h := profHandler(source, fixture.SignedInViewers(), source)
+	api, h := profileServer(t, baseProfileDetail())
+	api.Fail("deleteProfile", http.StatusConflict,
+		profileSlug+" has published revisions that a client may already have synced")
 
-	rec := post(t, h, "/profiles/delete", url.Values{"slug": {"example/platform-engineer"}})
+	rec := post(t, h, "/profiles/delete", url.Values{"slug": {profileSlug}})
 	require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 	require.Contains(t, rec.Body.String(), "published revisions that a client may already have synced")
-	require.Equal(t, []string{"example/platform-engineer"}, source.deleted, "the api, not the web layer, is what refused this")
-}
-
-// TestDeleteProfileWithNoCuratorWiredRefusesRatherThanPanics mirrors
-// TestProfileWriteWithNoCuratorWiredRefusesRatherThanPanics for the delete route.
-func TestDeleteProfileWithNoCuratorWiredRefusesRatherThanPanics(t *testing.T) {
-	source := &profiles{detail: baseProfileDetail()}
-	h := profHandler(source, fixture.SignedInViewers(), nil)
-
-	rec := post(t, h, "/profiles/delete", url.Values{"slug": {"example/platform-engineer"}})
-	require.Equal(t, http.StatusSeeOther, rec.Code)
-	require.Contains(t, rec.Header().Get("Location"), "unavailable")
+	require.Len(t, api.Calls("deleteProfile"), 1, "the api, not the web layer, is what refused this")
 }
 
 // TestDeleteProfileControlGatedByCanDelete asserts the delete control follows
@@ -582,8 +471,8 @@ func TestDeleteProfileControlGatedByCanDelete(t *testing.T) {
 	t.Run("not owner", func(t *testing.T) {
 		detail := baseProfileDetail()
 		detail.Permissions.Delete = false
-		body := get(t, profHandler(&profiles{detail: detail}, fixture.SignedInViewers(), nil),
-			"/profiles/example/platform-engineer").Body.String()
+		_, h := profileServer(t, detail)
+		body := get(t, h, profileHref).Body.String()
 		require.Contains(t, body, html.EscapeString(view.ProfileDeleteRoleReason))
 		require.NotContains(t, body, `data-on:click="$_deleteProfileOpen = true"`)
 	})
@@ -591,16 +480,16 @@ func TestDeleteProfileControlGatedByCanDelete(t *testing.T) {
 	t.Run("has published revisions", func(t *testing.T) {
 		detail := baseProfileDetail()
 		detail.HeadRevision = 3
-		body := get(t, profHandler(&profiles{detail: detail}, fixture.SignedInViewers(), nil),
-			"/profiles/example/platform-engineer").Body.String()
+		_, h := profileServer(t, detail)
+		body := get(t, h, profileHref).Body.String()
 		require.Contains(t, body, html.EscapeString(view.ProfileDeleteHasRevisionsReason))
 	})
 
 	t.Run("owner with no published revisions", func(t *testing.T) {
 		detail := baseProfileDetail()
 		detail.HeadRevision = 0
-		body := get(t, profHandler(&profiles{detail: detail}, fixture.SignedInViewers(), nil),
-			"/profiles/example/platform-engineer").Body.String()
+		_, h := profileServer(t, detail)
+		body := get(t, h, profileHref).Body.String()
 		require.Contains(t, body, `data-on:click="$_deleteProfileOpen = true"`)
 	})
 }
@@ -613,11 +502,14 @@ func TestProfileEntryDataIsEscapedWhereverItIsRendered(t *testing.T) {
 
 	detail := baseProfileDetail()
 	detail.Entries[0].Name = "Guard " + payload
-	detail.Entries[0].Note = "Note " + payload
-	detail.Members = []view.ProfileMemberRow{{Kind: "user", Ref: "x", Role: "owner", DisplayName: "Owner " + payload}}
+	detail.Entries[0].Note = new("Note " + payload)
+	detail.Members = []apiclient.ProfileMember{{
+		Kind: apiclient.ProfileMemberKindUser, Ref: "x", Role: apiclient.ProfileMemberRoleOwner,
+		DisplayName: new("Owner " + payload),
+	}}
 
-	body := get(t, profHandler(&profiles{detail: detail}, fixture.SignedInViewers(), nil),
-		"/profiles/example/platform-engineer").Body.String()
+	_, h := profileServer(t, detail)
+	body := get(t, h, profileHref).Body.String()
 
 	require.NotContains(t, body, payload, "attacker-supplied markup rendered unescaped")
 	require.Contains(t, body, "&lt;img src=x onerror=", "the value was not rendered at all, "+
@@ -628,12 +520,11 @@ func TestProfileEntryDataIsEscapedWhereverItIsRendered(t *testing.T) {
 // into a Skills section and a Plugins section, each listing only its own kind.
 func TestProfileEntriesAreSplitIntoSkillsAndPlugins(t *testing.T) {
 	detail := baseProfileDetail()
-	detail.Entries = []view.ProfileEntryRow{
-		{ID: "example/adr-writer", Name: "ADR Writer", Kind: "skill", Mode: "latest", Outcome: "resolved"},
-		{ID: "example/platform-toolkit", Name: "Platform Toolkit", Kind: "plugin", Mode: "latest", Outcome: "resolved"},
-	}
-	source := &profiles{detail: detail}
-	body := get(t, profHandler(source, fixture.SignedInViewers(), nil), "/profiles/example/platform-engineer").Body.String()
+	plugin := skillEntry("example/platform-toolkit", "Platform Toolkit")
+	plugin.Kind = apiclient.ProfileEntryKindPlugin
+	detail.Entries = []apiclient.ProfileEntry{skillEntry("example/adr-writer", "ADR Writer"), plugin}
+	_, h := profileServer(t, detail)
+	body := get(t, h, profileHref).Body.String()
 
 	skillsAt := strings.Index(body, `class="am-entry-kind-head">Skills`)
 	pluginsAt := strings.Index(body, `class="am-entry-kind-head">Plugins`)
@@ -652,8 +543,8 @@ func TestProfileEntriesAreSplitIntoSkillsAndPlugins(t *testing.T) {
 // rather than omitting the section — "this profile holds no plugins" is a
 // fact worth reading.
 func TestProfileEntriesEmptyKindSectionStillNamesItself(t *testing.T) {
-	source := &profiles{detail: baseProfileDetail()} // one skill, no plugin
-	body := get(t, profHandler(source, fixture.SignedInViewers(), nil), "/profiles/example/platform-engineer").Body.String()
+	_, h := profileServer(t, baseProfileDetail()) // one skill, no plugin
+	body := get(t, h, profileHref).Body.String()
 
 	require.Contains(t, body, `id="profile-entries-empty-plugin"`)
 	require.Contains(t, body, "This profile holds no plugins yet.")
@@ -667,13 +558,9 @@ func TestProfileEntriesEmptyKindSectionStillNamesItself(t *testing.T) {
 // are), and both backdrops are hidden before datastar has a chance to run,
 // exactly like the import modal.
 func TestAddEntryFormsAreBehindTwoSeparateToggleButtons(t *testing.T) {
-	source := &profiles{detail: baseProfileDetail()}
-	catalog := catalogStub{rows: []view.Row{
-		{ID: "example/adr-writer", Name: "ADR Writer", Kind: view.KindSkill},
-		{ID: "example/platform-toolkit", Name: "Platform Toolkit", Kind: view.KindPlugin},
-	}}
-	body := html.UnescapeString(
-		get(t, profHandlerWithCatalog(source, source, catalog), "/profiles/example/platform-engineer").Body.String())
+	api, h := profileServer(t, baseProfileDetail())
+	keepPackages(api, "example/adr-writer", "example/platform-toolkit")
+	body := html.UnescapeString(get(t, h, profileHref).Body.String())
 
 	require.Contains(t, body, `data-on:click="$_addSkillOpen = !$_addSkillOpen"`)
 	require.Contains(t, body, `data-style:display="$_addSkillOpen ? 'flex' : 'none'"`)
@@ -701,9 +588,9 @@ func TestAddEntryFormsAreBehindTwoSeparateToggleButtons(t *testing.T) {
 // request: no post-hoc "Pin to 0.83" button — the curator picks floating
 // latest or an exact version at the moment of adding.
 func TestAddEntryFormOffersVersionModeAtAddTime(t *testing.T) {
-	source := &profiles{detail: baseProfileDetail()}
-	catalog := catalogStub{rows: []view.Row{{ID: "example/adr-writer", Name: "ADR Writer", Kind: view.KindSkill}}}
-	body := get(t, profHandlerWithCatalog(source, source, catalog), "/profiles/example/platform-engineer").Body.String()
+	api, h := profileServer(t, baseProfileDetail())
+	keepPackages(api, "example/adr-writer")
+	body := get(t, h, profileHref).Body.String()
 
 	require.Contains(t, body, `name="mode"`)
 	require.Contains(t, body, `value="latest"`)
@@ -718,10 +605,13 @@ func TestAddEntryFormOffersVersionModeAtAddTime(t *testing.T) {
 // text beneath it — rather than a control that silently disappears.
 func TestDisabledProfileControlsAreShownGreyedOutNotHidden(t *testing.T) {
 	detail := baseProfileDetail()
-	detail.Permissions = view.ProfilePermissions{}
-	detail.Targets = []view.ProfileTargetRow{{Target: "claude-code", Enabled: true}, {Target: "codex", Enabled: false}}
-	source := &profiles{detail: detail}
-	body := html.UnescapeString(get(t, profHandler(source, fixture.SignedInViewers(), nil), "/profiles/example/platform-engineer").Body.String())
+	detail.Permissions = apiclient.ProfilePermissions{}
+	detail.Targets = []apiclient.ProfileTarget{
+		{Target: apiclient.ProfileTargetTargetClaudeCode, Enabled: true},
+		{Target: apiclient.ProfileTargetTargetCodex, Enabled: false},
+	}
+	_, h := profileServer(t, detail)
+	body := html.UnescapeString(get(t, h, profileHref).Body.String())
 
 	require.Contains(t, body,
 		`<button type="button" class="am-btn" disabled aria-disabled="true" title="`+view.CurateDisabledReason+`">Add skill</button>`)
@@ -760,12 +650,12 @@ func TestDisabledProfileControlsAreShownGreyedOutNotHidden(t *testing.T) {
 // hints one could appear except the per-revision "Show diff" link.
 func TestProfileRevisionDiffIsAbsentWithoutAQuery(t *testing.T) {
 	detail := baseProfileDetail()
-	detail.Revisions = []view.ProfileRevisionRow{{Revision: 5}, {Revision: 4}}
-	source := &profiles{detail: detail}
-	body := get(t, profHandler(source, fixture.SignedInViewers(), nil), "/profiles/example/platform-engineer").Body.String()
+	detail.Revisions = []apiclient.ProfileRevision{{Revision: 5}, {Revision: 4}}
+	_, h := profileServer(t, detail)
+	body := get(t, h, profileHref).Body.String()
 
 	require.NotContains(t, body, `id="profile-diff-panel"`)
-	require.Contains(t, body, view.RevisionDiffHref("example/platform-engineer", 5))
+	require.Contains(t, body, view.RevisionDiffHref(profileSlug, 5))
 }
 
 // TestProfileRevisionDiffReportsAddedRemovedChangedAndGovernance covers the
@@ -775,31 +665,21 @@ func TestProfileRevisionDiffIsAbsentWithoutAQuery(t *testing.T) {
 func TestProfileRevisionDiffReportsAddedRemovedChangedAndGovernance(t *testing.T) {
 	detail := baseProfileDetail()
 	detail.HeadRevision = 5
-	detail.Revisions = []view.ProfileRevisionRow{{Revision: 5}, {Revision: 4}}
-	source := &profiles{
-		detail: detail,
-		revisions: map[int]view.LockfileSnapshot{
-			4: {
-				Revision: 4, Gate: "warn-with-override", DefaultPolicy: "floating-latest",
-				Targets: []string{"claude-code"},
-				Entries: []view.LockfileEntrySnapshot{
-					{ID: "example/adr-writer", Version: "3.0.1", Resolution: "latest"},
-					{ID: "community/postgres-migration-guard", Version: "0.8.2", Resolution: "latest"},
-				},
-				Skipped: []view.LockfileSkipSnapshot{{ID: "community/release-notes", Reason: "flagged-awaiting-approval"}},
-			},
-			5: {
-				Revision: 5, Gate: "block", DefaultPolicy: "pinned",
-				Targets: []string{"claude-code", "codex"},
-				Entries: []view.LockfileEntrySnapshot{
-					{ID: "example/adr-writer", Version: "3.0.2", Resolution: "pinned"},
-					{ID: "example/security-review-kit", Version: "1.0.0", Resolution: "latest"},
-				},
-			},
-		},
+	detail.Revisions = []apiclient.ProfileRevision{{Revision: 5}, {Revision: 4}}
+	api, h := profileServer(t, detail)
+	older := lockfile(4, apiclient.LockfileGateWarnWithOverride, apiclient.LockfileDefaultPolicyFloatingLatest,
+		[]apiclient.LockfileTargets{apiclient.LockfileTargetsClaudeCode},
+		lockEntry("example/adr-writer", "3.0.1", apiclient.LockfileEntryResolutionLatest),
+		lockEntry("community/postgres-migration-guard", "0.8.2", apiclient.LockfileEntryResolutionLatest))
+	older.Skipped = []apiclient.LockfileSkip{{Id: "community/release-notes", Reason: apiclient.FlaggedAwaitingApproval}}
+	api.Data.Revisions[profileSlug] = map[int64]apiclient.Lockfile{
+		4: older,
+		5: lockfile(5, apiclient.LockfileGateBlock, apiclient.LockfileDefaultPolicyPinned,
+			[]apiclient.LockfileTargets{apiclient.LockfileTargetsClaudeCode, apiclient.LockfileTargetsCodex},
+			lockEntry("example/adr-writer", "3.0.2", apiclient.LockfileEntryResolutionPinned),
+			lockEntry("example/security-review-kit", "1.0.0", apiclient.LockfileEntryResolutionLatest)),
 	}
-	body := get(t, profHandler(source, fixture.SignedInViewers(), nil),
-		view.RevisionDiffHref("example/platform-engineer", 5)).Body.String()
+	body := get(t, h, view.RevisionDiffHref(profileSlug, 5)).Body.String()
 
 	require.Contains(t, body, `id="profile-diff-panel"`)
 
@@ -835,19 +715,13 @@ func TestProfileRevisionDiffReportsAddedRemovedChangedAndGovernance(t *testing.T
 // rather than an empty diff or an error.
 func TestProfileRevisionDiffFirstRevisionShowsWhatItIntroduced(t *testing.T) {
 	detail := baseProfileDetail()
-	detail.Revisions = []view.ProfileRevisionRow{{Revision: 1}}
-	source := &profiles{
-		detail: detail,
-		revisions: map[int]view.LockfileSnapshot{
-			1: {
-				Revision: 1, Gate: "warn-with-override", DefaultPolicy: "floating-latest",
-				Entries: []view.LockfileEntrySnapshot{{ID: "example/adr-writer", Version: "3.0.0", Resolution: "latest"}},
-				Skipped: []view.LockfileSkipSnapshot{{ID: "community/release-notes", Reason: "flagged-awaiting-approval"}},
-			},
-		},
-	}
-	body := get(t, profHandler(source, fixture.SignedInViewers(), nil),
-		view.RevisionDiffHref("example/platform-engineer", 1)).Body.String()
+	detail.Revisions = []apiclient.ProfileRevision{{Revision: 1}}
+	api, h := profileServer(t, detail)
+	first := lockfile(1, apiclient.LockfileGateWarnWithOverride, apiclient.LockfileDefaultPolicyFloatingLatest, nil,
+		lockEntry("example/adr-writer", "3.0.0", apiclient.LockfileEntryResolutionLatest))
+	first.Skipped = []apiclient.LockfileSkip{{Id: "community/release-notes", Reason: apiclient.FlaggedAwaitingApproval}}
+	api.Data.Revisions[profileSlug] = map[int64]apiclient.Lockfile{1: first}
+	body := get(t, h, view.RevisionDiffHref(profileSlug, 1)).Body.String()
 
 	require.Contains(t, body, "Revision 1 has no predecessor")
 	require.Contains(t, body, "example/adr-writer")
@@ -861,10 +735,8 @@ func TestProfileRevisionDiffFirstRevisionShowsWhatItIntroduced(t *testing.T) {
 // than as an empty diff — the same answer a nonexistent one and an
 // unreadable one give.
 func TestProfileRevisionDiffMissingRevisionSaysSoPlainly(t *testing.T) {
-	detail := baseProfileDetail()
-	source := &profiles{detail: detail, revisions: map[int]view.LockfileSnapshot{}}
-	rec := get(t, profHandler(source, fixture.SignedInViewers(), nil),
-		view.RevisionDiffHref("example/platform-engineer", 99))
+	_, h := profileServer(t, baseProfileDetail())
+	rec := get(t, h, view.RevisionDiffHref(profileSlug, 99))
 
 	require.Equal(t, http.StatusOK, rec.Code, "the rest of the profile still reads fine")
 	require.Contains(t, rec.Body.String(), `id="profile-diff-missing"`)
@@ -876,14 +748,12 @@ func TestProfileRevisionDiffMissingRevisionSaysSoPlainly(t *testing.T) {
 func TestProfileRevisionDiffPredecessorUnavailableSaysSoRatherThanEmptyDiff(t *testing.T) {
 	detail := baseProfileDetail()
 	detail.HeadRevision = 5
-	source := &profiles{
-		detail: detail,
-		revisions: map[int]view.LockfileSnapshot{
-			5: {Revision: 5, Entries: []view.LockfileEntrySnapshot{{ID: "example/adr-writer", Version: "3.0.2", Resolution: "pinned"}}},
-		},
+	api, h := profileServer(t, detail)
+	api.Data.Revisions[profileSlug] = map[int64]apiclient.Lockfile{
+		5: lockfile(5, apiclient.LockfileGateWarnWithOverride, apiclient.LockfileDefaultPolicyFloatingLatest, nil,
+			lockEntry("example/adr-writer", "3.0.2", apiclient.LockfileEntryResolutionPinned)),
 	}
-	body := get(t, profHandler(source, fixture.SignedInViewers(), nil),
-		view.RevisionDiffHref("example/platform-engineer", 5)).Body.String()
+	body := get(t, h, view.RevisionDiffHref(profileSlug, 5)).Body.String()
 
 	require.Contains(t, body, `id="profile-diff-predecessor-unavailable"`)
 	require.NotContains(t, body, `id="profile-diff-missing"`)
@@ -892,13 +762,9 @@ func TestProfileRevisionDiffPredecessorUnavailableSaysSoRatherThanEmptyDiff(t *t
 // TestProfileScreensRenderInBothThemes asserts both screens render correctly
 // in both themes.
 func TestProfileScreensRenderInBothThemes(t *testing.T) {
-	source := &profiles{
-		rows:   []view.ProfileRow{{Slug: "example/platform-engineer", Name: "Platform Engineer"}},
-		detail: baseProfileDetail(),
-	}
-	h := profHandler(source, fixture.SignedInViewers(), nil)
+	_, h := profileServer(t, baseProfileDetail())
 
-	for _, path := range []string{"/profiles", "/profiles/example/platform-engineer"} {
+	for _, path := range []string{"/profiles", profileHref} {
 		require.Contains(t, get(t, h, path+"?theme=dark").Body.String(), `data-sm-theme="dark"`)
 		require.Contains(t, get(t, h, path+"?theme=light").Body.String(), `data-sm-theme="light"`)
 	}

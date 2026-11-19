@@ -11,17 +11,17 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	"agent-manager/internal/apiclient"
 	"agent-manager/internal/web"
-	"agent-manager/internal/web/fixture"
+	"agent-manager/internal/web/fakeapi"
 	"agent-manager/internal/web/view"
 )
 
 // riverHandler is the web role with a dashboard configured at upstream, or
-// with none when upstream is empty.
-func riverHandler(t *testing.T, upstream string, viewers web.ViewerSource) http.Handler {
+// with none when upstream is empty. viewer, when set, reshapes who is looking.
+func riverHandler(t *testing.T, upstream string, viewer func(*fakeapi.Data)) http.Handler {
 	t.Helper()
 
 	opts := web.Options{}
@@ -30,10 +30,14 @@ func riverHandler(t *testing.T, upstream string, viewers web.ViewerSource) http.
 		require.NoError(t, err)
 		opts.RiverUI = &url.URL{Scheme: parsed.Scheme, Host: parsed.Host}
 	}
-	return web.New(web.Deps{
-		Catalog: fixture.New(), Viewers: viewers, Log: zerolog.Nop(),
-	}, opts).Handler()
+	api, h := newServerWith(t, opts)
+	if viewer != nil {
+		viewer(api.Data)
+	}
+	return h
 }
+
+func readOnly(d *fakeapi.Data) { d.As(apiclient.ViewerRoleReadOnly) }
 
 // riverUpstream stands in for the dashboard, recording what reached it.
 //
@@ -81,7 +85,7 @@ func newRiverUpstream(t *testing.T) *riverUpstream {
 // renders a box that loads nothing.
 func TestRiverScreenEmbedsTheDashboardOnThisHubsOwnOrigin(t *testing.T) {
 	up := newRiverUpstream(t)
-	body := get(t, riverHandler(t, up.URL, fixture.SignedInViewers()), "/river").Body.String()
+	body := get(t, riverHandler(t, up.URL, nil), "/river").Body.String()
 
 	require.Contains(t, body, `id="river-frame"`)
 	require.Contains(t, body, `src="`+view.RiverEmbedPrefix+`/"`)
@@ -95,7 +99,7 @@ func TestRiverScreenEmbedsTheDashboardOnThisHubsOwnOrigin(t *testing.T) {
 // different facts and a reader can act on only one of them.
 func TestRiverNavEntryIsShownDisabledWithItsReasonRatherThanDropped(t *testing.T) {
 	t.Run("no dashboard configured", func(t *testing.T) {
-		body := get(t, riverHandler(t, "", fixture.SignedInViewers()), "/catalog").Body.String()
+		body := get(t, riverHandler(t, "", nil), "/catalog").Body.String()
 
 		require.Contains(t, body, "River Dashboard", "the entry stays in the sidebar")
 		require.Contains(t, body, "am-nav-item-gated")
@@ -107,7 +111,7 @@ func TestRiverNavEntryIsShownDisabledWithItsReasonRatherThanDropped(t *testing.T
 
 	t.Run("a role that may not read the queue", func(t *testing.T) {
 		up := newRiverUpstream(t)
-		body := get(t, riverHandler(t, up.URL, readOnlyViewers()), "/catalog").Body.String()
+		body := get(t, riverHandler(t, up.URL, readOnly), "/catalog").Body.String()
 
 		require.Contains(t, body, "River Dashboard")
 		require.Contains(t, body, "am-nav-item-gated")
@@ -118,7 +122,7 @@ func TestRiverNavEntryIsShownDisabledWithItsReasonRatherThanDropped(t *testing.T
 
 	t.Run("configured and permitted", func(t *testing.T) {
 		up := newRiverUpstream(t)
-		body := get(t, riverHandler(t, up.URL, fixture.SignedInViewers()), "/catalog").Body.String()
+		body := get(t, riverHandler(t, up.URL, nil), "/catalog").Body.String()
 
 		require.Contains(t, body, `href="/river"`)
 		require.NotContains(t, body, "am-nav-item-gated")
@@ -133,10 +137,10 @@ func TestRiverNavEntryIsShownDisabledWithItsReasonRatherThanDropped(t *testing.T
 // through httptest.NewRequest panics inside gin rather than proxying anything.
 // A real server has a real context and a real writer, which is also the only
 // arrangement that proves the bytes come back at all.
-func hubServer(t *testing.T, upstream string, viewers web.ViewerSource) string {
+func hubServer(t *testing.T, upstream string, viewer func(*fakeapi.Data)) string {
 	t.Helper()
 
-	srv := httptest.NewServer(riverHandler(t, upstream, viewers))
+	srv := httptest.NewServer(riverHandler(t, upstream, viewer))
 	t.Cleanup(srv.Close)
 	return srv.URL
 }
@@ -174,7 +178,7 @@ func hubRequest(t *testing.T, method, target string, body io.Reader) hubResponse
 // role, and the dashboard's own address never has to be reachable from it.
 func TestRiverEmbedProxiesTheRequestThroughWithItsPathIntact(t *testing.T) {
 	up := newRiverUpstream(t)
-	hub := hubServer(t, up.URL, fixture.SignedInViewers())
+	hub := hubServer(t, up.URL, nil)
 
 	res := hubRequest(t, http.MethodGet, hub+view.RiverEmbedPrefix+"/api/states", http.NoBody)
 
@@ -189,7 +193,7 @@ func TestRiverEmbedProxiesTheRequestThroughWithItsPathIntact(t *testing.T) {
 // it and is a third-party process, so it must not see one.
 func TestRiverEmbedForwardsNoSessionCookieUpstream(t *testing.T) {
 	up := newRiverUpstream(t)
-	hub := hubServer(t, up.URL, fixture.SignedInViewers())
+	hub := hubServer(t, up.URL, nil)
 
 	hubRequest(t, http.MethodGet, hub+view.RiverEmbedPrefix+"/api/states", http.NoBody)
 
@@ -201,7 +205,7 @@ func TestRiverEmbedForwardsNoSessionCookieUpstream(t *testing.T) {
 // cookie lives.
 func TestRiverEmbedDropsUpstreamSetCookie(t *testing.T) {
 	up := newRiverUpstream(t)
-	hub := hubServer(t, up.URL, fixture.SignedInViewers())
+	hub := hubServer(t, up.URL, nil)
 
 	res := hubRequest(t, http.MethodGet, hub+view.RiverEmbedPrefix+"/api/states", http.NoBody)
 
@@ -215,7 +219,7 @@ func TestRiverEmbedDropsUpstreamSetCookie(t *testing.T) {
 // write, and the refusal happens here rather than upstream.
 func TestRiverEmbedRefusesEveryVerbThatCouldChangeTheQueue(t *testing.T) {
 	up := newRiverUpstream(t)
-	hub := hubServer(t, up.URL, fixture.SignedInViewers())
+	hub := hubServer(t, up.URL, nil)
 
 	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
 		t.Run(method, func(t *testing.T) {
@@ -231,7 +235,7 @@ func TestRiverEmbedRefusesEveryVerbThatCouldChangeTheQueue(t *testing.T) {
 // The api is not in the proxy's path, so this check is the only one there is.
 func TestRiverEmbedRefusesARoleThatMayNotReadTheQueue(t *testing.T) {
 	up := newRiverUpstream(t)
-	hub := hubServer(t, up.URL, readOnlyViewers())
+	hub := hubServer(t, up.URL, readOnly)
 
 	res := hubRequest(t, http.MethodGet, hub+view.RiverEmbedPrefix+"/api/states", http.NoBody)
 
@@ -242,7 +246,7 @@ func TestRiverEmbedRefusesARoleThatMayNotReadTheQueue(t *testing.T) {
 // A hub with no dashboard has no such path, rather than a path that answers
 // with an error naming a service the operator never deployed.
 func TestRiverEmbedIsNotFoundWhenNoDashboardIsConfigured(t *testing.T) {
-	hub := hubServer(t, "", fixture.SignedInViewers())
+	hub := hubServer(t, "", nil)
 
 	res := hubRequest(t, http.MethodGet, hub+view.RiverEmbedPrefix+"/api/states", http.NoBody)
 
@@ -255,7 +259,7 @@ func TestRiverEmbedAnswersBadGatewayWhenTheDashboardIsUnreachable(t *testing.T) 
 	up := newRiverUpstream(t)
 	upstream := up.URL
 	up.Close()
-	hub := hubServer(t, upstream, fixture.SignedInViewers())
+	hub := hubServer(t, upstream, nil)
 
 	res := hubRequest(t, http.MethodGet, hub+view.RiverEmbedPrefix+"/api/states", http.NoBody)
 
@@ -269,7 +273,7 @@ func TestRiverScreenExplainsItselfInsteadOfRenderingAnEmptyFrame(t *testing.T) {
 	up := newRiverUpstream(t)
 
 	t.Run("a role that may not read the queue", func(t *testing.T) {
-		body := get(t, riverHandler(t, up.URL, readOnlyViewers()), "/river").Body.String()
+		body := get(t, riverHandler(t, up.URL, readOnly), "/river").Body.String()
 
 		require.Contains(t, body, `id="river-gate"`)
 		require.Contains(t, body, "may not read the queue")
@@ -277,7 +281,7 @@ func TestRiverScreenExplainsItselfInsteadOfRenderingAnEmptyFrame(t *testing.T) {
 	})
 
 	t.Run("no dashboard configured", func(t *testing.T) {
-		body := get(t, riverHandler(t, "", fixture.SignedInViewers()), "/river").Body.String()
+		body := get(t, riverHandler(t, "", nil), "/river").Body.String()
 
 		require.Contains(t, body, `id="river-gate"`)
 		require.Contains(t, body, "AGENT_MANAGER_RIVER_UI_URL")
@@ -289,7 +293,7 @@ func TestRiverScreenExplainsItselfInsteadOfRenderingAnEmptyFrame(t *testing.T) {
 // sign-in screen, and the dashboard's bytes are never reached at all.
 func TestRiverIsBehindTheSameGuardAsEveryOtherScreen(t *testing.T) {
 	up := newRiverUpstream(t)
-	hub := hubServer(t, up.URL, fixture.SignedOutViewers())
+	hub := hubServer(t, up.URL, (*fakeapi.Data).SignedOut)
 
 	for _, path := range []string{"/river", view.RiverEmbedPrefix + "/api/states"} {
 		res := hubRequest(t, http.MethodGet, hub+path, http.NoBody)

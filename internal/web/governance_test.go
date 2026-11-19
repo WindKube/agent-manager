@@ -2,23 +2,21 @@ package web_test
 
 import (
 	"bytes"
-	"context"
-	"io"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	"agent-manager/internal/apiclient"
 	"agent-manager/internal/web"
-	"agent-manager/internal/web/fixture"
+	"agent-manager/internal/web/fakeapi"
 	"agent-manager/internal/web/hub"
-	"agent-manager/internal/web/view"
 )
 
 // T071-T075: the two governance screens.
@@ -33,128 +31,48 @@ import (
 //   - An action this viewer may not take is not offered (FR-126), and a post that
 //     arrives anyway records nothing.
 
-// governance is a ScannerSource, AuditSource, BadgeSource and Reviewer in one, so
-// a test can state exactly what the api answers and then assert what reached the
-// api. Every field is a knob some test turns; the zero value answers empties.
-type governance struct {
-	summary  view.ScannerSummary
-	findings []view.FindingRow
-	detail   view.FindingDetail
-	audit    []view.AuditRow
-	badges   view.Badges
-	export   string
-	storage  view.Storage
-	runtime  view.Runtime
-	err      error
-
-	// accepted and rejected record what the reviewer was actually asked to do,
-	// which is the only way to assert that a refusal refused BEFORE the call.
-	accepted []acceptCall
-	rejected []string
-	decideBy error
-}
-
-type acceptCall struct {
-	id, note string
-	days     int
-}
-
-func (g *governance) Catalog(context.Context, view.CatalogQuery) (view.CatalogPage, error) {
-	return view.CatalogPage{Query: view.CatalogQuery{}.Normalise(), Page: 1, PageSize: view.DefaultPageSize}, nil
-}
-
-func (g *governance) ScannerSummary(context.Context, int) (view.ScannerSummary, error) {
-	return g.summary, g.err
-}
-
-func (g *governance) Findings(context.Context, hub.FindingQuery) (view.FindingsPage, error) {
-	if g.err != nil {
-		return view.FindingsPage{}, g.err
-	}
-	return view.FindingsPage{Rows: g.findings, Total: len(g.findings), Page: 1, PageSize: 20}, nil
-}
-
-func (g *governance) Finding(_ context.Context, id string) (view.FindingDetail, error) {
-	if g.err != nil {
-		return view.FindingDetail{}, g.err
-	}
-	if g.detail.ID != id {
-		return view.FindingDetail{}, view.ErrNotFound
-	}
-	return g.detail, nil
-}
-
-func (g *governance) AcceptFinding(_ context.Context, id, note string, days int) error {
-	g.accepted = append(g.accepted, acceptCall{id: id, note: note, days: days})
-	return g.decideBy
-}
-
-func (g *governance) RejectFinding(_ context.Context, id, _ string) error {
-	g.rejected = append(g.rejected, id)
-	return g.decideBy
-}
-
-func (g *governance) Audit(_ context.Context, page int) (view.AuditPage, error) {
-	if g.err != nil {
-		return view.AuditPage{}, g.err
-	}
-	return view.AuditPage{Rows: g.audit, Total: len(g.audit), Page: page, PageSize: 50}, nil
-}
-
-func (g *governance) AuditExport(context.Context) (io.ReadCloser, string, error) {
-	if g.err != nil {
-		return nil, "", g.err
-	}
-	return io.NopCloser(strings.NewReader(g.export)), "application/x-ndjson", nil
-}
-
-func (g *governance) Badges(context.Context) (view.Badges, error) { return g.badges, g.err }
-
-func (g *governance) Storage(context.Context) (view.Storage, error) {
-	if g.err != nil {
-		return view.Storage{}, g.err
-	}
-	return g.storage, nil
-}
-
-func (g *governance) Runtime(context.Context) (view.Runtime, error) {
-	if g.err != nil {
-		return view.Runtime{}, g.err
-	}
-	return g.runtime, nil
-}
-
-// govHandler wires one governance source behind a viewer. reviewer is separate so
-// a test can render the screen with the decision path absent, which is the state a
-// hub with no reviewer wired is in.
-func govHandler(source *governance, viewers web.ViewerSource, reviewer web.Reviewer) http.Handler {
-	return web.New(web.Deps{
-		Catalog: source, Scanner: source, Audit: source, Badges: source, Storage: source,
-		Runtime:  source,
-		Reviewer: reviewer, Viewers: viewers, Log: zerolog.Nop(),
-	}, web.Options{}).Handler()
-}
-
-func post(t *testing.T, h http.Handler, target string, form url.Values) *httptest.ResponseRecorder {
-	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, target, strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: "am_session", Value: "screen-test-session"})
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	return rec
-}
-
 const govFindingID = "6f1c0a4e-9f4b-4f2a-9c1d-2f9b6a7e4d11"
 
-func govFinding() view.FindingRow {
-	return view.FindingRow{
-		ID: govFindingID, RuleID: "SH-NET-002", Severity: "high", State: "open",
-		Title:   "Script contacts a host the package does not declare",
-		Subject: "community/slack-digest@0.5.1", PackageID: "community/slack-digest",
-		Verdict: "flagged", Raised: view.Relative(time.Now().Add(-time.Hour), time.Now()),
+func govFinding() apiclient.FindingSummary {
+	return apiclient.FindingSummary{
+		Id: uuid.MustParse(govFindingID), RuleId: "SH-NET-002",
+		Severity: apiclient.FindingSummarySeverityHigh, State: apiclient.FindingSummaryStateOpen,
+		Title:     "Script contacts a host the package does not declare",
+		PackageId: "community/slack-digest", Version: "0.5.1",
+		Verdict: apiclient.FindingSummaryVerdictFlagged, RaisedAt: time.Now().Add(-time.Hour),
 	}
 }
+
+// govDetail is the bare detail of a summary: no checks, no evidence, no override.
+func govDetail(f apiclient.FindingSummary) apiclient.FindingDetail {
+	return apiclient.FindingDetail{
+		Id: f.Id, RuleId: f.RuleId, Detail: f.Detail, Title: f.Title,
+		Severity: apiclient.FindingDetailSeverity(f.Severity), State: apiclient.FindingDetailState(f.State),
+		Verdict:   apiclient.FindingDetailVerdict(f.Verdict),
+		PackageId: f.PackageId, Version: f.Version, RaisedAt: f.RaisedAt,
+	}
+}
+
+// oneFinding makes the api answer exactly one finding, with the given detail.
+func oneFinding(api *fakeapi.API, f apiclient.FindingSummary, detail apiclient.FindingDetail) {
+	api.Data.Findings = []apiclient.FindingSummary{f}
+	api.Data.FindingDetails = map[string]apiclient.FindingDetail{f.Id.String(): detail}
+}
+
+const auditID = "a0000000-0000-4000-8000-0000000000a1"
+
+func auditEntry(actor string, kind apiclient.AuditEntryKind, text, source string) apiclient.AuditEntry {
+	entry := apiclient.AuditEntry{
+		Id: uuid.MustParse(auditID), OccurredAt: time.Now(), Actor: actor,
+		ActorKind: apiclient.Identity, Kind: kind, Text: text,
+	}
+	if source != "" {
+		entry.Source = &source
+	}
+	return entry
+}
+
+func ptrTo[T any](v T) *T { return &v }
 
 // TestTheCheckMatrixShowsEveryCheckThatRanAndNotOnlyTheFailures is 001 FR-025.
 //
@@ -163,19 +81,16 @@ func govFinding() view.FindingRow {
 // listing one failed check is indistinguishable from a pane where that was the
 // only check that ran.
 func TestTheCheckMatrixShowsEveryCheckThatRanAndNotOnlyTheFailures(t *testing.T) {
-	source := &governance{
-		findings: []view.FindingRow{govFinding()},
-		detail: view.FindingDetail{
-			FindingRow: govFinding(),
-			Checks: []view.Check{
-				{ID: "manifest-schema", Label: "Manifest schema", Result: "pass"},
-				{ID: "network-allowlist", Label: "Network allowlist", Result: "fail"},
-				{ID: "shell-audit", Label: "Shell command audit", Result: "warn", WarnCount: 2},
-				{ID: "secret-exfiltration", Label: "Secret exfiltration", Result: "pass"},
-			},
-		},
+	api, h := newServer(t)
+	detail := govDetail(govFinding())
+	detail.Checks = []apiclient.FindingCheck{
+		{CheckId: "manifest-schema", Label: "Manifest schema", Result: apiclient.Pass},
+		{CheckId: "network-allowlist", Label: "Network allowlist", Result: apiclient.Fail},
+		{CheckId: "shell-audit", Label: "Shell command audit", Result: apiclient.Warn, WarnCount: 2},
+		{CheckId: "secret-exfiltration", Label: "Secret exfiltration", Result: apiclient.Pass},
 	}
-	body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/scanner").Body.String()
+	oneFinding(api, govFinding(), detail)
+	body := get(t, h, "/scanner").Body.String()
 
 	for _, label := range []string{"Manifest schema", "Network allowlist", "Shell command audit", "Secret exfiltration"} {
 		require.Containsf(t, body, label, "the matrix dropped %q, so a check that ran is invisible", label)
@@ -196,24 +111,17 @@ func TestTheCheckMatrixShowsEveryCheckThatRanAndNotOnlyTheFailures(t *testing.T)
 // words through aria-describedby, which a screen reader announces whether or
 // not anything was ever hovered.
 func TestACheckAndARuleIdExplainThemselvesOnHoverAndWithoutOne(t *testing.T) {
+	api, h := newServer(t)
 	finding := govFinding()
-	finding.Explanation = "Why SH-NET-002 fires, for the list row."
-	pane := finding
-	pane.Explanation = "Why SH-NET-002 fires, for the pane."
-
-	source := &governance{
-		findings: []view.FindingRow{finding},
-		detail: view.FindingDetail{
-			FindingRow: pane,
-			Checks: []view.Check{
-				{
-					ID: "network-allowlist", Label: "Network allowlist",
-					Explain: "What the network allowlist check looks for.", Result: "fail",
-				},
-			},
-		},
-	}
-	body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/scanner").Body.String()
+	finding.Detail = ptrTo("Why SH-NET-002 fires, for the list row.")
+	pane := govDetail(finding)
+	pane.Detail = ptrTo("Why SH-NET-002 fires, for the pane.")
+	pane.Checks = []apiclient.FindingCheck{{
+		CheckId: "network-allowlist", Label: "Network allowlist",
+		Explain: "What the network allowlist check looks for.", Result: apiclient.Fail,
+	}}
+	oneFinding(api, finding, pane)
+	body := get(t, h, "/scanner").Body.String()
 
 	// The list row's rule id: a mouse tooltip and the screen-reader pair.
 	require.Contains(t, body, `title="Why SH-NET-002 fires, for the list row."`)
@@ -240,30 +148,26 @@ func TestACheckAndARuleIdExplainThemselvesOnHoverAndWithoutOne(t *testing.T) {
 func TestScanEvidenceIsEscapedWhereverItIsRendered(t *testing.T) {
 	const payload = `<img src=x onerror="alert(1)">`
 
+	api, h := newServer(t)
 	hostile := govFinding()
 	hostile.Title = "Title " + payload
-	hostile.Subject = "community/x@1.0.0 " + payload
-	pane := hostile
-	pane.Explanation = "Detail " + payload
-	pane.Primary = &view.Evidence{Path: "scripts/" + payload + ".sh", Line: 41, Quote: payload}
-
-	source := &governance{
-		findings: []view.FindingRow{hostile},
-		detail: view.FindingDetail{
-			FindingRow: pane,
-			Supporting: []view.Evidence{{Path: "second/" + payload, Quote: "supporting " + payload}},
-			Checks:     []view.Check{{ID: "shell-audit", Label: "Label " + payload, Result: "fail"}},
-			Scan:       view.ScanMeta{PackVersion: "2026.08.31+" + payload},
-			Override: &view.Override{
-				Reviewer: "reviewer " + payload, Note: "note " + payload, Decided: view.Timestamp(time.Now()),
-			},
-		},
-		audit: []view.AuditRow{{
-			ID: "a1", At: view.Timestamp(time.Now()), Actor: "actor " + payload,
-			Kind: "scan", Text: "text " + payload, Source: "src " + payload,
-		}},
+	hostile.PackageId = "community/x"
+	hostile.Version = "1.0.0 " + payload
+	pane := govDetail(hostile)
+	pane.Detail = ptrTo("Detail " + payload)
+	pane.Evidence = []apiclient.FindingEvidence{
+		{Path: "scripts/" + payload + ".sh", Line: ptrTo(int64(41)), Quote: ptrTo(payload), Role: apiclient.Primary},
+		{Path: "second/" + payload, Quote: ptrTo("supporting " + payload), Role: apiclient.Supporting},
 	}
-	h := govHandler(source, fixture.SignedInViewers(), nil)
+	pane.Checks = []apiclient.FindingCheck{{CheckId: "shell-audit", Label: "Label " + payload, Result: apiclient.Fail}}
+	pane.Scan = apiclient.FindingScan{PackVersion: "2026.08.31+" + payload}
+	pane.Override = &apiclient.FindingOverride{
+		Reviewer: "reviewer " + payload, Note: ptrTo("note " + payload), DecidedAt: time.Now(),
+	}
+	oneFinding(api, hostile, pane)
+	api.Data.Audit = []apiclient.AuditEntry{
+		auditEntry("actor "+payload, apiclient.AuditEntryKindScan, "text "+payload, "src "+payload),
+	}
 
 	for _, target := range []string{"/scanner", "/audit"} {
 		body := get(t, h, target).Body.String()
@@ -279,42 +183,26 @@ func TestScanEvidenceIsEscapedWhereverItIsRendered(t *testing.T) {
 func TestTheScannerTellsItsFourEmptyStatesApart(t *testing.T) {
 	for _, state := range []struct {
 		name   string
-		source *governance
-		view   web.ViewerSource
+		failAs int
 		id     string
 		status int
 	}{
+		{name: "genuinely empty", id: `id="scanner-empty"`, status: http.StatusOK},
+		{name: "refused by role", failAs: http.StatusForbidden, id: `id="scanner-refused"`, status: http.StatusForbidden},
 		{
-			name:   "genuinely empty",
-			source: &governance{},
-			view:   fixture.SignedInViewers(),
-			id:     `id="scanner-empty"`,
-			status: http.StatusOK,
+			name: "the api did not answer", failAs: http.StatusServiceUnavailable,
+			id: `id="scanner-unavailable"`, status: http.StatusBadGateway,
 		},
-		{
-			name:   "refused by role",
-			source: &governance{err: hub.ErrForbidden},
-			view:   fixture.SignedInViewers(),
-			id:     `id="scanner-refused"`,
-			status: http.StatusForbidden,
-		},
-		{
-			name:   "the api did not answer",
-			source: &governance{err: errBoom},
-			view:   fixture.SignedInViewers(),
-			id:     `id="scanner-unavailable"`,
-			status: http.StatusBadGateway,
-		},
-		{
-			name:   "no usable session",
-			source: &governance{err: view.ErrSignedOut},
-			view:   fixture.SignedInViewers(),
-			id:     `id="scanner-signed-out"`,
-			status: http.StatusOK,
-		},
+		{name: "no usable session", failAs: http.StatusUnauthorized, id: `id="scanner-signed-out"`, status: http.StatusOK},
 	} {
 		t.Run(state.name, func(t *testing.T) {
-			rec := get(t, govHandler(state.source, state.view, nil), "/scanner")
+			api, h := newServer(t)
+			api.Data.Findings = nil
+			api.Data.ScannerSummary = apiclient.ScannerSummary{}
+			if state.failAs != 0 {
+				api.Fail("scannerSummary", state.failAs)
+			}
+			rec := get(t, h, "/scanner")
 			require.Equal(t, state.status, rec.Code)
 			body := rec.Body.String()
 			require.Contains(t, body, state.id)
@@ -333,23 +221,31 @@ func TestTheScannerTellsItsFourEmptyStatesApart(t *testing.T) {
 // FR-122: an empty state that only says "nothing here" tells a reader nothing they
 // did not already know.
 func TestTheEmptyScannerSaysWhatWouldBeThereAndHowToGetIt(t *testing.T) {
-	body := get(t, govHandler(&governance{}, fixture.SignedInViewers(), nil), "/scanner").Body.String()
+	api, h := newServer(t)
+	api.Data.Findings = nil
+	api.Data.ScannerSummary = apiclient.ScannerSummary{}
+	api.Data.Audit = nil
+	body := get(t, h, "/scanner").Body.String()
 	require.Contains(t, body, "register a package")
 	require.Contains(t, body, "rule pack")
 
-	audit := get(t, govHandler(&governance{}, fixture.SignedInViewers(), nil), "/audit").Body.String()
+	audit := get(t, h, "/audit").Body.String()
 	require.Contains(t, audit, `id="audit-empty"`)
 	require.Contains(t, audit, "state-changing action")
 }
 
 // TestAnActionAViewerMayNotTakeIsDisabledWithItsReason is FR-126.
 func TestAnActionAViewerMayNotTakeIsDisabledWithItsReason(t *testing.T) {
-	source := func() *governance {
-		return &governance{findings: []view.FindingRow{govFinding()}, detail: view.FindingDetail{FindingRow: govFinding()}}
+	server := func(t *testing.T) (*fakeapi.API, http.Handler) {
+		api, h := newServer(t)
+		oneFinding(api, govFinding(), govDetail(govFinding()))
+		return api, h
 	}
 
 	t.Run("a role that cannot decide gets the controls disabled and told why", func(t *testing.T) {
-		body := get(t, govHandler(source(), readOnlyViewers(), &governance{}), "/scanner").Body.String()
+		api, h := server(t)
+		api.Data.As(apiclient.ViewerRoleReadOnly)
+		body := get(t, h, "/scanner").Body.String()
 
 		require.Contains(t, body, `id="review-not-permitted"`)
 		require.Contains(t, body, "scanner reviewer")
@@ -359,18 +255,13 @@ func TestAnActionAViewerMayNotTakeIsDisabledWithItsReason(t *testing.T) {
 	})
 
 	t.Run("a reviewer gets the real controls", func(t *testing.T) {
-		body := get(t, govHandler(source(), fixture.SignedInViewers(), &governance{}), "/scanner").Body.String()
+		_, h := server(t)
+		body := get(t, h, "/scanner").Body.String()
 
 		require.Contains(t, body, `class="am-review"`)
 		require.Contains(t, body, "/scanner/findings/"+govFindingID+"/accept")
 		require.Contains(t, body, "/scanner/findings/"+govFindingID+"/reject")
 		require.NotContains(t, body, `id="review-not-permitted"`)
-	})
-
-	t.Run("a hub with no reviewer wired offers nothing rather than something that fails", func(t *testing.T) {
-		body := get(t, govHandler(source(), fixture.SignedInViewers(), nil), "/scanner").Body.String()
-		require.Contains(t, body, `id="review-not-permitted"`)
-		require.NotContains(t, body, `class="am-review"`)
 	})
 }
 
@@ -378,57 +269,67 @@ func TestAnActionAViewerMayNotTakeIsDisabledWithItsReason(t *testing.T) {
 // FR-126: disabling a control is presentation, and a post arrives anyway from an
 // old page or a second tab.
 func TestADecisionFromAnIdentityWithoutTheRoleReachesNoApi(t *testing.T) {
-	reviewer := &governance{}
-	h := govHandler(&governance{}, readOnlyViewers(), reviewer)
+	api, h := newServer(t)
+	api.Data.As(apiclient.ViewerRoleReadOnly)
 
 	rec := post(t, h, "/scanner/findings/"+govFindingID+"/accept", url.Values{"note": {"looks fine"}})
 
 	require.Equal(t, http.StatusSeeOther, rec.Code)
 	require.Contains(t, rec.Header().Get("Location"), "decided=refused")
-	require.Empty(t, reviewer.accepted, "the api was asked to record a decision this role may not take")
-	require.Empty(t, reviewer.rejected)
+	require.Empty(t, api.Calls("acceptFinding"), "the api was asked to record a decision this role may not take")
+	require.Empty(t, api.Calls("rejectFinding"))
 }
 
 // TestAnApproveWithNoNoteNeverReachesTheApi mirrors the api's own validation. It
 // is a mirror and not the authority — the api still refuses a blank note — but a
 // round trip spent learning what this side already knows is a round trip wasted.
 func TestAnApproveWithNoNoteNeverReachesTheApi(t *testing.T) {
-	reviewer := &governance{}
-	h := govHandler(&governance{}, fixture.SignedInViewers(), reviewer)
+	api, h := newServer(t)
 
 	rec := post(t, h, "/scanner/findings/"+govFindingID+"/accept", url.Values{"note": {"   "}})
 
 	require.Equal(t, http.StatusSeeOther, rec.Code)
 	require.Contains(t, rec.Header().Get("Location"), "decided=note-required")
-	require.Empty(t, reviewer.accepted)
+	require.Empty(t, api.Calls("acceptFinding"))
 
 	t.Run("but a rejection may carry none", func(t *testing.T) {
 		rejected := post(t, h, "/scanner/findings/"+govFindingID+"/reject", url.Values{})
 		require.Equal(t, http.StatusSeeOther, rejected.Code)
-		require.Equal(t, []string{govFindingID}, reviewer.rejected)
+		calls := api.Calls("rejectFinding")
+		require.Len(t, calls, 1)
+		require.Equal(t, "/v1/findings/"+govFindingID+"/reject", calls[0].Path)
 	})
 }
 
 // TestAnAcceptSendsNoExpiryUnlessTheReviewerStatedOne. A lifetime this role
 // invented would be a policy decision taken by a form field nobody filled in.
 func TestAnAcceptSendsNoExpiryUnlessTheReviewerStatedOne(t *testing.T) {
-	reviewer := &governance{}
-	h := govHandler(&governance{}, fixture.SignedInViewers(), reviewer)
+	api, h := newServer(t)
+	accepted := func() []apiclient.FindingApproval {
+		var out []apiclient.FindingApproval
+		for _, call := range api.Calls("acceptFinding") {
+			require.Equal(t, "/v1/findings/"+govFindingID+"/accept", call.Path)
+			var body apiclient.FindingApproval
+			call.Decode(t, &body)
+			out = append(out, body)
+		}
+		return out
+	}
 
 	post(t, h, "/scanner/findings/"+govFindingID+"/accept", url.Values{"note": {"accepted"}})
-	require.Equal(t, []acceptCall{{id: govFindingID, note: "accepted", days: 0}}, reviewer.accepted)
+	require.Equal(t, []apiclient.FindingApproval{{Note: "accepted"}}, accepted())
 
-	reviewer.accepted = nil
 	post(t, h, "/scanner/findings/"+govFindingID+"/accept",
 		url.Values{"note": {"accepted"}, "expires": {"30"}})
-	require.Equal(t, []acceptCall{{id: govFindingID, note: "accepted", days: 30}}, reviewer.accepted)
+	require.Equal(t, []apiclient.FindingApproval{
+		{Note: "accepted"}, {Note: "accepted", ExpiresInDays: ptrTo(int64(30))},
+	}, accepted())
 
 	t.Run("an expiry outside the api's range is refused here rather than there", func(t *testing.T) {
-		reviewer.accepted = nil
 		rec := post(t, h, "/scanner/findings/"+govFindingID+"/accept",
 			url.Values{"note": {"accepted"}, "expires": {"9999"}})
 		require.Contains(t, rec.Header().Get("Location"), "decided=bad-expiry")
-		require.Empty(t, reviewer.accepted)
+		require.Len(t, accepted(), 2)
 	})
 }
 
@@ -436,21 +337,16 @@ func TestAnAcceptSendsNoExpiryUnlessTheReviewerStatedOne(t *testing.T) {
 // with a name against it; the version stays flagged, and a screen that said
 // otherwise would be the dishonest surface this feature exists to delete.
 func TestApprovingNeverClaimsTheVersionBecameClean(t *testing.T) {
+	api, h := newServer(t)
 	approved := govFinding()
-	approved.State = "approved"
-	approved.Verdict = "flagged"
-
-	source := &governance{
-		findings: []view.FindingRow{approved},
-		detail: view.FindingDetail{
-			FindingRow: approved,
-			Override: &view.Override{
-				Reviewer: "a-reviewer", Note: "accepted for one quarter", Decided: view.Timestamp(time.Now()),
-			},
-		},
+	approved.State = apiclient.FindingSummaryStateApproved
+	approved.Verdict = apiclient.FindingSummaryVerdictFlagged
+	detail := govDetail(approved)
+	detail.Override = &apiclient.FindingOverride{
+		Reviewer: "a-reviewer", Note: ptrTo("accepted for one quarter"), DecidedAt: time.Now(),
 	}
-	body := get(t, govHandler(source, fixture.SignedInViewers(), &governance{}),
-		"/scanner?finding="+govFindingID+"&decided=approved").Body.String()
+	oneFinding(api, approved, detail)
+	body := get(t, h, "/scanner?finding="+govFindingID+"&decided=approved").Body.String()
 
 	require.Contains(t, body, "Flagged", "the version's verdict is gone from the screen")
 	require.Contains(t, body, "not a new verdict")
@@ -462,11 +358,9 @@ func TestApprovingNeverClaimsTheVersionBecameClean(t *testing.T) {
 // seeded findings are all in this state, and an empty panel there reads as a
 // rendering fault rather than as a fact about the scan.
 func TestAFindingWithNoRecordedEvidenceSaysSoRatherThanRenderingAnEmptyPanel(t *testing.T) {
-	source := &governance{
-		findings: []view.FindingRow{govFinding()},
-		detail:   view.FindingDetail{FindingRow: govFinding()},
-	}
-	body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/scanner").Body.String()
+	api, h := newServer(t)
+	oneFinding(api, govFinding(), govDetail(govFinding()))
+	body := get(t, h, "/scanner").Body.String()
 
 	require.Contains(t, body, `id="finding-no-evidence"`)
 	require.Contains(t, body, `id="finding-no-checks"`)
@@ -476,16 +370,14 @@ func TestAFindingWithNoRecordedEvidenceSaysSoRatherThanRenderingAnEmptyPanel(t *
 // evidence by role and the hub promises nothing about position, so an index-based
 // reader would promote a supporting location to the headline the day that changes.
 func TestThePrimaryEvidenceIsFoundByItsRoleAndNotByItsPosition(t *testing.T) {
-	pane := govFinding()
-	pane.Primary = &view.Evidence{Path: "headline.sh", Line: 41, Quote: "first"}
-	source := &governance{
-		findings: []view.FindingRow{govFinding()},
-		detail: view.FindingDetail{
-			FindingRow: pane,
-			Supporting: []view.Evidence{{Path: "supporting.sh", Line: 9, Quote: "second"}},
-		},
+	api, h := newServer(t)
+	pane := govDetail(govFinding())
+	pane.Evidence = []apiclient.FindingEvidence{
+		{Path: "supporting.sh", Line: ptrTo(int64(9)), Quote: ptrTo("second"), Role: apiclient.Supporting},
+		{Path: "headline.sh", Line: ptrTo(int64(41)), Quote: ptrTo("first"), Role: apiclient.Primary},
 	}
-	body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/scanner").Body.String()
+	oneFinding(api, govFinding(), pane)
+	body := get(t, h, "/scanner").Body.String()
 
 	headline := strings.Index(body, "headline.sh:41")
 	supporting := strings.Index(body, "supporting.sh:9")
@@ -498,8 +390,9 @@ func TestThePrimaryEvidenceIsFoundByItsRoleAndNotByItsPosition(t *testing.T) {
 // TestAFindingIdThatNamesNothingIsItsOwnState, and it is the pane's state rather
 // than the screen's: the list beside it read perfectly well.
 func TestAFindingIdThatNamesNothingIsItsOwnState(t *testing.T) {
-	source := &governance{findings: []view.FindingRow{govFinding()}}
-	rec := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/scanner?finding=not-a-uuid")
+	api, h := newServer(t)
+	oneFinding(api, govFinding(), govDetail(govFinding()))
+	rec := get(t, h, "/scanner?finding=not-a-uuid")
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
 	body := rec.Body.String()
@@ -511,11 +404,13 @@ func TestAFindingIdThatNamesNothingIsItsOwnState(t *testing.T) {
 // are actors; a screen that let them read as usernames would put a machine's
 // action against somebody with that name.
 func TestTheAuditScreenNeverAttributesASystemRowToAPerson(t *testing.T) {
-	source := &governance{audit: []view.AuditRow{
-		{ID: "a1", At: view.Timestamp(time.Now()), Actor: "scanner", System: true, Kind: "scan", Text: "flagged x@1", Source: "system"},
-		{ID: "a2", At: view.Timestamp(time.Now()), Actor: "an-operator", Kind: "approve", Text: "override granted", Source: "web"},
-	}}
-	body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/audit").Body.String()
+	api, h := newServer(t)
+	system := auditEntry("scanner", apiclient.AuditEntryKindScan, "flagged x@1", "system")
+	system.ActorKind = apiclient.System
+	person := auditEntry("an-operator", apiclient.AuditEntryKindApprove, "override granted", "web")
+	person.Id = uuid.MustParse("a0000000-0000-4000-8000-0000000000a2")
+	api.Data.Audit = []apiclient.AuditEntry{system, person}
+	body := get(t, h, "/audit").Body.String()
 
 	require.Equal(t, 1, strings.Count(body, `class="am-audit-actor-kind"`),
 		"exactly one of these two rows has a machine behind it")
@@ -528,12 +423,11 @@ func TestTheAuditScreenNeverAttributesASystemRowToAPerson(t *testing.T) {
 // keyboard and announces nothing to a screen reader; a real <a> is both by
 // construction.
 func TestEveryAuditRowIsAKeyboardReachableLinkToItsOwnDetail(t *testing.T) {
-	source := &governance{audit: []view.AuditRow{
-		{ID: "a1", At: view.Timestamp(time.Now()), Actor: "an-operator", Kind: "approve", Text: "override granted", Source: "web"},
-	}}
-	body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/audit").Body.String()
+	api, h := newServer(t)
+	api.Data.Audit = []apiclient.AuditEntry{auditEntry("an-operator", apiclient.AuditEntryKindApprove, "override granted", "web")}
+	body := get(t, h, "/audit").Body.String()
 
-	require.Contains(t, body, `<a class="am-audit-row" href="/audit?entry=a1">`,
+	require.Contains(t, body, `<a class="am-audit-row" href="/audit?entry=`+auditID+`">`,
 		"the row is not a real, keyboard-focusable link to its own detail")
 }
 
@@ -544,10 +438,11 @@ func TestEveryAuditRowIsAKeyboardReachableLinkToItsOwnDetail(t *testing.T) {
 func TestClickingAnAuditRowOpensAPanelWithTheWholeUntruncatedMessage(t *testing.T) {
 	message := `failed to fetch community/skills@1.2.3 from git https://github.com/mattpocock/skills@v1.2.3 ` +
 		`(skills/engineering/code-review): archive member rejected: symlink (member "mattpocock-skills-835450e/AGENTS.md")`
-	source := &governance{audit: []view.AuditRow{
-		{ID: "a1", At: view.Timestamp(time.Now()), Actor: "fetcher", System: true, Kind: "fetch", Text: message},
-	}}
-	body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/audit?entry=a1").Body.String()
+	api, h := newServer(t)
+	entry := auditEntry("fetcher", apiclient.AuditEntryKindFetch, message, "")
+	entry.ActorKind = apiclient.System
+	api.Data.Audit = []apiclient.AuditEntry{entry}
+	body := get(t, h, "/audit?entry="+auditID).Body.String()
 
 	require.Contains(t, body, `class="am-audit-panel"`, "no detail panel was rendered for the selected row")
 	require.Contains(t, body, `class="am-audit-detail-message"`)
@@ -556,17 +451,16 @@ func TestClickingAnAuditRowOpensAPanelWithTheWholeUntruncatedMessage(t *testing.
 	require.Contains(t, body, "archive member rejected: symlink (member &#34;mattpocock-skills-835450e/AGENTS.md&#34;)")
 	require.Contains(t, body, "https://github.com/mattpocock/skills@v1.2.3")
 	// The id the row itself never shows (001 FR-050's own row identity).
-	require.Contains(t, body, "a1")
+	require.Contains(t, body, auditID)
 }
 
 // TestAnAuditEntryNotOnThePageIsNamedMissingRatherThanRenderingNothing. A
 // stale link or one for a row a page turn left behind must say so; a panel
 // that silently renders empty reads as a bug rather than an honest state.
 func TestAnAuditEntryNotOnThePageIsNamedMissingRatherThanRenderingNothing(t *testing.T) {
-	source := &governance{audit: []view.AuditRow{
-		{ID: "a1", At: view.Timestamp(time.Now()), Actor: "an-operator", Kind: "approve", Text: "override granted"},
-	}}
-	body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/audit?entry=does-not-exist").Body.String()
+	api, h := newServer(t)
+	api.Data.Audit = []apiclient.AuditEntry{auditEntry("an-operator", apiclient.AuditEntryKindApprove, "override granted", "")}
+	body := get(t, h, "/audit?entry=does-not-exist").Body.String()
 
 	require.Contains(t, body, `id="audit-entry-missing"`)
 }
@@ -575,10 +469,9 @@ func TestAnAuditEntryNotOnThePageIsNamedMissingRatherThanRenderingNothing(t *tes
 // own "not recorded" convention (SourceLabel) into the panel, where a bare dash
 // with no other cells around it reads as a rendering bug rather than a fact.
 func TestTheAuditPanelSaysSoRatherThanLeavingAnEmptySourceCell(t *testing.T) {
-	source := &governance{audit: []view.AuditRow{
-		{ID: "a1", At: view.Timestamp(time.Now()), Actor: "an-operator", Kind: "approve", Text: "override granted"},
-	}}
-	body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/audit?entry=a1").Body.String()
+	api, h := newServer(t)
+	api.Data.Audit = []apiclient.AuditEntry{auditEntry("an-operator", apiclient.AuditEntryKindApprove, "override granted", "")}
+	body := get(t, h, "/audit?entry="+auditID).Body.String()
 
 	require.Contains(t, body, "Not recorded")
 }
@@ -590,11 +483,7 @@ func TestTheAuditExportStreamsThroughAndItsSentinelIsChecked(t *testing.T) {
 	complete := "{\"id\":\"a1\"}\n{\"complete\":true,\"rows\":1}\n"
 
 	t.Run("a complete export is passed through byte for byte", func(t *testing.T) {
-		var logged bytes.Buffer
-		h := web.New(web.Deps{
-			Catalog: &governance{}, Audit: &governance{export: complete},
-			Viewers: fixture.SignedInViewers(), Log: zerolog.New(&logged),
-		}, web.Options{}).Handler()
+		h, logged := exportServer(t, complete)
 
 		rec := get(t, h, "/audit/export")
 
@@ -608,11 +497,7 @@ func TestTheAuditExportStreamsThroughAndItsSentinelIsChecked(t *testing.T) {
 	})
 
 	t.Run("a truncated export is still sent, and is reported as truncated", func(t *testing.T) {
-		var logged bytes.Buffer
-		h := web.New(web.Deps{
-			Catalog: &governance{}, Audit: &governance{export: "{\"id\":\"a1\"}\n"},
-			Viewers: fixture.SignedInViewers(), Log: zerolog.New(&logged),
-		}, web.Options{}).Handler()
+		h, logged := exportServer(t, "{\"id\":\"a1\"}\n")
 
 		rec := get(t, h, "/audit/export")
 
@@ -623,12 +508,7 @@ func TestTheAuditExportStreamsThroughAndItsSentinelIsChecked(t *testing.T) {
 	})
 
 	t.Run("a row quoting the sentinel's own bytes is not mistaken for it", func(t *testing.T) {
-		var logged bytes.Buffer
-		h := web.New(web.Deps{
-			Catalog: &governance{},
-			Audit:   &governance{export: "{\"id\":\"a1\",\"text\":\"{\\\"complete\\\":true}\"}\n"},
-			Viewers: fixture.SignedInViewers(), Log: zerolog.New(&logged),
-		}, web.Options{}).Handler()
+		h, logged := exportServer(t, "{\"id\":\"a1\",\"text\":\"{\\\"complete\\\":true}\"}\n")
 
 		get(t, h, "/audit/export")
 		require.Contains(t, logged.String(), "completeness sentinel",
@@ -636,13 +516,26 @@ func TestTheAuditExportStreamsThroughAndItsSentinelIsChecked(t *testing.T) {
 	})
 }
 
+// exportServer is newServer with its log captured, since a truncated export
+// can only be reported there.
+func exportServer(t *testing.T, export string) (http.Handler, *bytes.Buffer) {
+	t.Helper()
+	api := fakeapi.New(t)
+	api.Data.AuditExport = export
+	client, err := hub.New(api.URL)
+	require.NoError(t, err)
+	var logged bytes.Buffer
+	return web.New(web.Deps{Hub: client, Log: zerolog.New(&logged)}, web.Options{}).Handler(), &logged
+}
+
 // TestTheSidebarCountsAreTheApisAndAreAbsentRatherThanZero is FR-121 and research
 // R5. The values this replaced were 10 / 4 / 4, compiled in, the same for every
 // viewer of every deployment.
 func TestTheSidebarCountsAreTheApisAndAreAbsentRatherThanZero(t *testing.T) {
 	t.Run("the counts on the page are the ones the api answered", func(t *testing.T) {
-		source := &governance{badges: view.Badges{Packages: 7, Profiles: 3, OpenFindings: 11}}
-		body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/catalog").Body.String()
+		api, h := newServer(t)
+		api.Data.Badges = apiclient.Badges{Packages: 7, Profiles: 3, OpenFindings: 11}
+		body := get(t, h, "/catalog").Body.String()
 
 		require.Contains(t, body, `<span class="am-nav-badge">7</span>`)
 		require.Contains(t, body, `<span class="am-nav-badge">3</span>`)
@@ -654,8 +547,9 @@ func TestTheSidebarCountsAreTheApisAndAreAbsentRatherThanZero(t *testing.T) {
 	})
 
 	t.Run("nothing to count renders no badge, not a zero", func(t *testing.T) {
-		source := &governance{badges: view.Badges{Packages: 2}}
-		body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/catalog").Body.String()
+		api, h := newServer(t)
+		api.Data.Badges = apiclient.Badges{Packages: 2}
+		body := get(t, h, "/catalog").Body.String()
 
 		require.Contains(t, body, `<span class="am-nav-badge">2</span>`)
 		require.NotContains(t, body, `>0</span>`, "a zero count was rendered as a badge")
@@ -664,8 +558,9 @@ func TestTheSidebarCountsAreTheApisAndAreAbsentRatherThanZero(t *testing.T) {
 	t.Run("counts that could not be read render no badges at all", func(t *testing.T) {
 		// Not three zeroes. "0 packages" beside a catalog full of them is the same
 		// class of claim as the compiled-in values these replaced.
-		source := &governance{err: errBoom}
-		body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/catalog").Body.String()
+		api, h := newServer(t)
+		api.Fail("getBadges", http.StatusServiceUnavailable)
+		body := get(t, h, "/catalog").Body.String()
 		require.NotContains(t, body, "am-nav-badge")
 	})
 }
@@ -673,12 +568,7 @@ func TestTheSidebarCountsAreTheApisAndAreAbsentRatherThanZero(t *testing.T) {
 // TestNoRouteFromTheSidebarSaysItIsUnfinished is FR-120 for the two screens this
 // layer takes off the placeholder list.
 func TestNoRouteFromTheSidebarSaysItIsUnfinished(t *testing.T) {
-	source := &governance{
-		findings: []view.FindingRow{govFinding()},
-		detail:   view.FindingDetail{FindingRow: govFinding()},
-		audit:    []view.AuditRow{{ID: "a1", At: view.Timestamp(time.Now()), Actor: "scanner", System: true, Kind: "scan", Text: "flagged x@1"}},
-	}
-	h := govHandler(source, fixture.SignedInViewers(), &governance{})
+	_, h := newServer(t)
 
 	for _, target := range []string{"/scanner", "/audit"} {
 		rec := get(t, h, target)
@@ -692,27 +582,11 @@ func TestNoRouteFromTheSidebarSaysItIsUnfinished(t *testing.T) {
 // TestFilteringAndPagingKeepTheRestOfTheScreensState. A filter that dropped the
 // page or a page turn that dropped the filter is how a reviewer loses their place.
 func TestFilteringAndPagingKeepTheRestOfTheScreensState(t *testing.T) {
-	source := &governance{findings: []view.FindingRow{govFinding()}, detail: view.FindingDetail{FindingRow: govFinding()}}
-	body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/scanner?state=open").Body.String()
+	api, h := newServer(t)
+	oneFinding(api, govFinding(), govDetail(govFinding()))
+	body := get(t, h, "/scanner?state=open").Body.String()
 
 	require.Contains(t, body, `href="/scanner?finding=`+govFindingID+`&amp;state=open"`,
 		"selecting a finding dropped the filter")
 	require.Contains(t, body, `<a class="am-chip am-chip-on" href="/scanner?state=open"`)
-}
-
-var errBoom = errorString("the api is not answering")
-
-type errorString string
-
-func (e errorString) Error() string { return string(e) }
-
-// readOnlyViewers is somebody signed in, holding a role, whose role cannot decide
-// a finding. It is a viewer of its own rather than the shared fixture with a field
-// blanked, because "holds a role that cannot do this" and "holds no role" are two
-// different screens.
-func readOnlyViewers() web.ViewerSource {
-	return fixture.Viewers{V: hub.Viewer{
-		Subject: "read-only-subject", DisplayName: "readonly", Email: "readonly@fixture.invalid",
-		Role: "read-only", HasRole: true, Groups: []string{"eng-all"},
-	}}
 }

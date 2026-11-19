@@ -35,13 +35,7 @@ func (s *Server) cli(c *gin.Context) {
 		return
 	}
 
-	if s.deps.Device == nil {
-		screen.Unavailable = true
-		s.renderCLI(c, http.StatusBadGateway, screen)
-		return
-	}
-
-	pending, err := s.deps.Device.LookupDeviceCode(session(c), code)
+	pending, err := s.deps.Hub.LookupDeviceCode(session(c), code)
 	switch {
 	case err == nil:
 		now := time.Now().UTC()
@@ -78,12 +72,7 @@ func (s *Server) renderCLI(c *gin.Context, status int, screen view.CLI) {
 func (s *Server) confirmDeviceCode(c *gin.Context) {
 	code := strings.TrimSpace(c.PostForm("user_code"))
 
-	if s.deps.Device == nil {
-		s.backToCLI(c, "unavailable", "")
-		return
-	}
-
-	host, err := s.deps.Device.ApproveDeviceCode(session(c), code)
+	host, err := s.deps.Hub.ApproveDeviceCode(session(c), code)
 	switch {
 	case err == nil:
 		s.backToCLI(c, "approved", host)

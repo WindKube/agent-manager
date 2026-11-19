@@ -168,7 +168,6 @@ const (
 	OrgNoticeInvalid         OrgNotice = "invalid"
 	OrgNoticeConflict        OrgNotice = "conflict"
 	OrgNoticeFailed          OrgNotice = "failed"
-	OrgNoticeUnavailable     OrgNotice = "unavailable"
 )
 
 // OrgNoticeFrom maps a save outcome onto the notice banner. detail is the api's
@@ -209,8 +208,6 @@ func OrgNoticeFrom(raw, detail string) *Notice {
 		return &Notice{Tone: "warn", Text: text}
 	case OrgNoticeFailed:
 		return &Notice{Tone: "dan", Text: "The hub refused that change and saved nothing."}
-	case OrgNoticeUnavailable:
-		return &Notice{Tone: "dan", Text: "The hub's api could not be reached, so nothing was saved."}
 	default:
 		return nil
 	}

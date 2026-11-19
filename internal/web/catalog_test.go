@@ -5,8 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	"agent-manager/internal/web/fixture"
 )
 
 // The header's refresh control (owner request: "this rotating circle") must
@@ -16,7 +14,8 @@ import (
 // fetch tracker.
 
 func TestCatalogRefreshButtonFiresTheSameRoundTripAsTheFilters(t *testing.T) {
-	body := get(t, handler(t, fixture.New()), "/catalog").Body.String()
+	_, h := newServer(t)
+	body := get(t, h, "/catalog").Body.String()
 
 	const debouncedSite = `data-on-signal-patch__debounce.150ms="@get('/catalog/results')"`
 	require.Contains(t, body, debouncedSite, "the debounced filter round trip must still be present")
@@ -28,7 +27,8 @@ func TestCatalogRefreshButtonFiresTheSameRoundTripAsTheFilters(t *testing.T) {
 }
 
 func TestCatalogRefreshButtonIsANamedButtonBeforeTheHeaderActions(t *testing.T) {
-	body := get(t, handler(t, fixture.New()), "/catalog").Body.String()
+	_, h := newServer(t)
+	body := get(t, h, "/catalog").Body.String()
 
 	const refreshSite = `data-on:click="@get('/catalog/results')"`
 	at := strings.Index(body, refreshSite)
@@ -47,7 +47,8 @@ func TestCatalogRefreshButtonIsANamedButtonBeforeTheHeaderActions(t *testing.T) 
 }
 
 func TestCatalogRefreshButtonShowsItIsWorkingViaDatastarsOwnIndicator(t *testing.T) {
-	body := get(t, handler(t, fixture.New()), "/catalog").Body.String()
+	_, h := newServer(t)
+	body := get(t, h, "/catalog").Body.String()
 
 	// data-indicator is the plugin datastar ships for exactly this: it flips a
 	// signal true for the duration of a request the same element fires. Anything

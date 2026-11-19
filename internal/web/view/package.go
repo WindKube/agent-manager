@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// ErrNotFound is a PackageSource reporting that there is no such package, or
+// ErrNotFound is the api reporting that there is no such package, or
 // that this identity may not read it. One error for both, mirroring the
 // api's single 404: distinguishing them would confirm the existence of
 // packages a caller is not allowed to see.

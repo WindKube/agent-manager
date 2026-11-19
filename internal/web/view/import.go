@@ -3,7 +3,7 @@ package view
 import "io"
 
 // The registration modal's view model: a plain value with no behaviour.
-// Everything here arrives from whatever implements web.CatalogSource.
+// Everything here arrives from the hub client.
 
 // ImportTab is which half of the modal is showing: an upload, or a URL
 // routed to the git or archive source by its shape.

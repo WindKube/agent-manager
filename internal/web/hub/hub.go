@@ -61,7 +61,7 @@ func New(baseURL string, opts ...Option) (*Client, error) {
 	return client, nil
 }
 
-// Catalog implements web.CatalogSource against GET /v1/packages.
+// Catalog calls GET /v1/packages.
 func (c *Client) Catalog(ctx context.Context, q view.CatalogQuery) (view.CatalogPage, error) {
 	q = q.Normalise()
 

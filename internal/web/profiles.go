@@ -32,13 +32,7 @@ func (s *Server) profiles(c *gin.Context) {
 		Notice:    profileNotice(c.Query("notice")),
 	}
 
-	if s.deps.Profiles == nil {
-		screen.Unavailable = true
-		s.renderProfiles(c, http.StatusBadGateway, screen)
-		return
-	}
-
-	rows, err := s.deps.Profiles.Profiles(session(c))
+	rows, err := s.deps.Hub.Profiles(session(c))
 	if status, ok := s.governanceFailure(c, err, &screen.GovernanceState, "profiles"); !ok {
 		s.renderProfiles(c, status, screen)
 		return
@@ -52,11 +46,6 @@ func (s *Server) renderProfiles(c *gin.Context, status int, screen view.Profiles
 }
 
 func (s *Server) createProfile(c *gin.Context) {
-	if s.deps.Profiles == nil || s.deps.Curator == nil {
-		s.backToProfiles(c, profileUnavailable)
-		return
-	}
-
 	creation := hub.ProfileCreation{
 		Slug:          strings.TrimSpace(c.PostForm("slug")),
 		Name:          strings.TrimSpace(c.PostForm("name")),
@@ -67,7 +56,7 @@ func (s *Server) createProfile(c *gin.Context) {
 		ForkOf:        strings.TrimSpace(c.PostForm("forkOf")),
 	}
 
-	created, err := s.deps.Curator.CreateProfile(session(c), creation)
+	created, err := s.deps.Hub.CreateProfile(session(c), creation)
 	switch {
 	case err == nil:
 		s.redirectProfiles(c, "/profiles/"+created.Slug, profileCreated)
@@ -95,10 +84,8 @@ func (s *Server) renderCreateProfileFailure(c *gin.Context, err error) {
 		screen.CreateRefused = "The hub could not create this profile. Its api may be unreachable."
 	}
 
-	if s.deps.Profiles != nil {
-		if rows, readErr := s.deps.Profiles.Profiles(session(c)); readErr == nil {
-			screen.Rows = rows
-		}
+	if rows, readErr := s.deps.Hub.Profiles(session(c)); readErr == nil {
+		screen.Rows = rows
 	}
 	s.renderProfiles(c, http.StatusUnprocessableEntity, screen)
 }
@@ -107,13 +94,7 @@ func (s *Server) profileDetail(c *gin.Context) {
 	slug := profileSlug(c)
 	screen := view.Profile{Notice: profileNotice(c.Query("notice"))}
 
-	if s.deps.Profiles == nil {
-		screen.Unavailable = true
-		s.renderProfile(c, http.StatusBadGateway, screen)
-		return
-	}
-
-	detail, err := s.deps.Profiles.Profile(session(c), slug)
+	detail, err := s.deps.Hub.Profile(session(c), slug)
 	if errors.Is(err, view.ErrNotFound) {
 		// An unreadable profile answers exactly as a missing one, so this is the
 		// screen and not one of the three GovernanceState reasons.
@@ -128,7 +109,7 @@ func (s *Server) profileDetail(c *gin.Context) {
 
 	screen = detail
 	screen.Notice = profileNotice(c.Query("notice"))
-	if screen.Permissions.Curate && s.deps.Catalog != nil {
+	if screen.Permissions.Curate {
 		screen.AddOptions = s.availablePackages(session(c), detail.Entries)
 	}
 	if raw := c.Query("revision"); raw != "" {
@@ -150,7 +131,7 @@ func (s *Server) revisionDiff(ctx context.Context, slug, raw string) *view.Revis
 		return &view.RevisionDiffPanel{Missing: true}
 	}
 
-	newer, err := s.deps.Profiles.Revision(ctx, slug, revision)
+	newer, err := s.deps.Hub.Revision(ctx, slug, revision)
 	if err != nil {
 		return &view.RevisionDiffPanel{Revision: revision, Missing: true}
 	}
@@ -159,7 +140,7 @@ func (s *Server) revisionDiff(ctx context.Context, slug, raw string) *view.Revis
 		return &view.RevisionDiffPanel{Revision: revision, Diff: view.DiffRevisions(newer, nil)}
 	}
 
-	older, err := s.deps.Profiles.Revision(ctx, slug, revision-1)
+	older, err := s.deps.Hub.Revision(ctx, slug, revision-1)
 	if err != nil {
 		// Revision itself read fine; its predecessor did not. Never render
 		// that as an empty diff.
@@ -188,7 +169,7 @@ func (s *Server) availablePackages(ctx context.Context, held []view.ProfileEntry
 	q := view.CatalogQuery{Sort: view.SortName, Dir: view.DirAsc}
 	for page := 1; page <= maxAddOptionPages; page++ {
 		q.Page = page
-		result, err := s.deps.Catalog.Catalog(ctx, q)
+		result, err := s.deps.Hub.Catalog(ctx, q)
 		if err != nil {
 			return nil
 		}
@@ -237,17 +218,13 @@ func (s *Server) addEntry(c *gin.Context) {
 	mode := c.DefaultPostForm("mode", "latest")
 	version := c.PostForm("version")
 
-	if s.deps.Profiles == nil || s.deps.Curator == nil {
-		s.backToProfile(c, slug, profileUnavailable)
-		return
-	}
 	if id == "" {
 		s.backToProfile(c, slug, profileEntryMissing)
 		return
 	}
 
 	ctx := session(c)
-	detail, err := s.deps.Profiles.Profile(ctx, slug)
+	detail, err := s.deps.Hub.Profile(ctx, slug)
 	if err != nil {
 		s.profileWriteFailed(c, slug, err)
 		return
@@ -274,7 +251,7 @@ func (s *Server) addEntry(c *gin.Context) {
 		outcome = profileEntryUpdated
 	}
 
-	if _, err := s.deps.Curator.SetProfileEntries(ctx, slug, settings); err != nil {
+	if _, err := s.deps.Hub.SetProfileEntries(ctx, slug, settings); err != nil {
 		s.profileWriteFailed(c, slug, err)
 		return
 	}
@@ -288,16 +265,12 @@ func (s *Server) removeEntry(c *gin.Context) {
 	slug := profileSlugForm(c)
 	id := strings.TrimSpace(c.PostForm("id"))
 
-	if s.deps.Curator == nil {
-		s.backToProfile(c, slug, profileUnavailable)
-		return
-	}
 	if id == "" {
 		s.backToProfile(c, slug, profileEntryMissing)
 		return
 	}
 
-	if _, err := s.deps.Curator.RemoveProfileEntry(session(c), slug, id); err != nil {
+	if _, err := s.deps.Hub.RemoveProfileEntry(session(c), slug, id); err != nil {
 		s.profileWriteFailed(c, slug, err)
 		return
 	}
@@ -315,13 +288,8 @@ func (s *Server) setEntryMode(c *gin.Context, mode string) {
 	slug := profileSlugForm(c)
 	id := c.PostForm("id")
 
-	if s.deps.Profiles == nil || s.deps.Curator == nil {
-		s.backToProfile(c, slug, profileUnavailable)
-		return
-	}
-
 	ctx := session(c)
-	detail, err := s.deps.Profiles.Profile(ctx, slug)
+	detail, err := s.deps.Hub.Profile(ctx, slug)
 	if err != nil {
 		s.profileWriteFailed(c, slug, err)
 		return
@@ -348,7 +316,7 @@ func (s *Server) setEntryMode(c *gin.Context, mode string) {
 		return
 	}
 
-	if _, err := s.deps.Curator.SetProfileEntries(ctx, slug, settings); err != nil {
+	if _, err := s.deps.Hub.SetProfileEntries(ctx, slug, settings); err != nil {
 		s.profileWriteFailed(c, slug, err)
 		return
 	}
@@ -368,18 +336,13 @@ func entrySettingFor(entry *view.ProfileEntryRow) hub.EntrySetting {
 
 func (s *Server) shareProfile(c *gin.Context) {
 	slug := profileSlugForm(c)
-	if s.deps.Curator == nil {
-		s.backToProfile(c, slug, profileUnavailable)
-		return
-	}
-
 	share := hub.Share{
 		Kind: c.PostForm("kind"),
 		Ref:  strings.TrimSpace(c.PostForm("ref")),
 		Role: c.PostForm("role"),
 	}
 
-	if _, err := s.deps.Curator.SetProfileSharing(session(c), slug, []hub.Share{share}); err != nil {
+	if _, err := s.deps.Hub.SetProfileSharing(session(c), slug, []hub.Share{share}); err != nil {
 		s.profileWriteFailed(c, slug, err)
 		return
 	}
@@ -388,13 +351,8 @@ func (s *Server) shareProfile(c *gin.Context) {
 
 func (s *Server) setTargets(c *gin.Context) {
 	slug := profileSlugForm(c)
-	if s.deps.Curator == nil {
-		s.backToProfile(c, slug, profileUnavailable)
-		return
-	}
-
 	targets := c.PostFormArray("targets")
-	if _, err := s.deps.Curator.SetProfileTargets(session(c), slug, targets); err != nil {
+	if _, err := s.deps.Hub.SetProfileTargets(session(c), slug, targets); err != nil {
 		s.profileWriteFailed(c, slug, err)
 		return
 	}
@@ -403,13 +361,8 @@ func (s *Server) setTargets(c *gin.Context) {
 
 func (s *Server) publishRevision(c *gin.Context) {
 	slug := profileSlugForm(c)
-	if s.deps.Curator == nil {
-		s.backToProfile(c, slug, profileUnavailable)
-		return
-	}
-
 	note := strings.TrimSpace(c.PostForm("note"))
-	if err := s.deps.Curator.PublishRevision(session(c), slug, note); err != nil {
+	if err := s.deps.Hub.PublishRevision(session(c), slug, note); err != nil {
 		s.profileWriteFailed(c, slug, err)
 		return
 	}
@@ -421,12 +374,7 @@ func (s *Server) publishRevision(c *gin.Context) {
 // page — there is no such page any more.
 func (s *Server) deleteProfile(c *gin.Context) {
 	slug := profileSlugForm(c)
-	if s.deps.Curator == nil {
-		s.backToProfile(c, slug, profileUnavailable)
-		return
-	}
-
-	if err := s.deps.Curator.DeleteProfile(session(c), slug); err != nil {
+	if err := s.deps.Hub.DeleteProfile(session(c), slug); err != nil {
 		s.profileWriteFailed(c, slug, err)
 		return
 	}
@@ -457,11 +405,9 @@ func (s *Server) profileWriteFailed(c *gin.Context, slug string, err error) {
 
 func (s *Server) renderProfileRefusal(c *gin.Context, slug, detail string) {
 	screen := view.Profile{GovernanceState: view.GovernanceState{Unavailable: true}, Refusal: detail}
-	if s.deps.Profiles != nil {
-		if fresh, err := s.deps.Profiles.Profile(session(c), slug); err == nil {
-			screen = fresh
-			screen.Refusal = detail
-		}
+	if fresh, err := s.deps.Hub.Profile(session(c), slug); err == nil {
+		screen = fresh
+		screen.Refusal = detail
 	}
 	s.renderProfile(c, http.StatusUnprocessableEntity, screen)
 }
@@ -482,7 +428,6 @@ const (
 	profileDeleted      profileOutcome = "deleted"
 	profileRefusedRole  profileOutcome = "refused-role"
 	profileMissing      profileOutcome = "missing"
-	profileUnavailable  profileOutcome = "unavailable"
 	profileFailed       profileOutcome = "failed"
 )
 
@@ -518,9 +463,6 @@ func profileNotice(raw string) *view.Notice {
 	case profileMissing:
 		return &view.Notice{Tone: "dan", Text: "No such profile, or it is not readable by your " +
 			"identity."}
-	case profileUnavailable:
-		return &view.Notice{Tone: "dan", Text: "The hub's api could not be reached, so nothing " +
-			"was recorded."}
 	case profileFailed:
 		return &view.Notice{Tone: "dan", Text: "The hub refused that change and recorded " +
 			"nothing. Reload — this screen may be stale."}

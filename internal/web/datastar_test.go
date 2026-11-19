@@ -8,8 +8,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	"agent-manager/internal/web/fixture"
 )
 
 // A datastar attribute is <plugin>:<key>, and an attribute naming a plugin that
@@ -43,7 +41,7 @@ var (
 func TestEveryDatastarAttributeNamesARegisteredPlugin(t *testing.T) {
 	plugins := registeredPlugins(t)
 
-	handler := handler(t, fixture.New())
+	_, handler := newServer(t)
 	for _, path := range []string{"/catalog", "/scanner", "/profiles", "/storage", "/org", "/cli", "/audit", "/runtime"} {
 		t.Run(path, func(t *testing.T) {
 			body := get(t, handler, path).Body.String()

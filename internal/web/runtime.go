@@ -10,12 +10,7 @@ import (
 )
 
 func (s *Server) runtime(c *gin.Context) {
-	if s.deps.Runtime == nil {
-		s.renderRuntime(c, http.StatusBadGateway, view.Runtime{GovernanceState: view.GovernanceState{Unavailable: true}})
-		return
-	}
-
-	screen, err := s.deps.Runtime.Runtime(session(c))
+	screen, err := s.deps.Hub.Runtime(session(c))
 	if status, ok := s.governanceFailure(c, err, &screen.GovernanceState, "runtime report"); !ok {
 		s.renderRuntime(c, status, screen)
 		return

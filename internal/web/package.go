@@ -21,16 +21,8 @@ const maxPackageNoticeDetailLength = 300
 // nothing on it filters, sorts or pages, so there is nothing for datastar to do
 // and no round trip to debounce.
 func (s *Server) packageDetail(c *gin.Context) {
-	if s.deps.Packages == nil {
-		// A deployment always has one. A screen test that wired only the catalog
-		// gets a 404 rather than a nil dereference, which is a failure that names
-		// itself.
-		s.notFound(c)
-		return
-	}
-
 	namespace, name := c.Param("namespace"), c.Param("name")
-	detail, err := s.deps.Packages.Package(session(c), namespace, name)
+	detail, err := s.deps.Hub.Package(session(c), namespace, name)
 
 	status := http.StatusOK
 	switch {
@@ -131,12 +123,7 @@ func (s *Server) deleteVersion(c *gin.Context) {
 	if !s.packageAccessGuard(c, namespace, name) {
 		return
 	}
-	if s.deps.PackageCurator == nil {
-		s.backToPackage(c, namespace, name, view.PackageNoticeFailed,
-			"this hub is not configured to delete from the catalog", "")
-		return
-	}
-	if _, err := s.deps.PackageCurator.DeleteVersion(session(c), namespace, name, version); err != nil {
+	if _, err := s.deps.Hub.DeleteVersion(session(c), namespace, name, version); err != nil {
 		s.packageDeleteFailed(c, namespace, name, err)
 		return
 	}
@@ -149,12 +136,7 @@ func (s *Server) deletePackage(c *gin.Context) {
 	if !s.packageAccessGuard(c, namespace, name) {
 		return
 	}
-	if s.deps.PackageCurator == nil {
-		s.backToPackage(c, namespace, name, view.PackageNoticeFailed,
-			"this hub is not configured to delete from the catalog", "")
-		return
-	}
-	if _, err := s.deps.PackageCurator.DeletePackage(session(c), namespace, name); err != nil {
+	if _, err := s.deps.Hub.DeletePackage(session(c), namespace, name); err != nil {
 		s.packageDeleteFailed(c, namespace, name, err)
 		return
 	}
@@ -184,11 +166,7 @@ func (s *Server) packageDeleteFailed(c *gin.Context, namespace, name string, err
 // cross-referencing Dependents rather than reading each profile's entries
 // again.
 func (s *Server) loadProfileOptions(c *gin.Context, detail *view.Package) {
-	if s.deps.Profiles == nil {
-		return
-	}
-
-	rows, err := s.deps.Profiles.Profiles(session(c))
+	rows, err := s.deps.Hub.Profiles(session(c))
 	if err != nil {
 		logFrom(c).Error().Err(err).Msg("load profiles for the add-to-profile control")
 		detail.ProfilesUnavailable = true
@@ -211,11 +189,7 @@ func (s *Server) loadProfileOptions(c *gin.Context, detail *view.Package) {
 // that the list does not contain answers FileMissing rather than a raw 404
 // bubbling up as a page-load failure.
 func (s *Server) loadFiles(c *gin.Context, detail *view.Package, namespace, name string) {
-	if s.deps.Files == nil {
-		return
-	}
-
-	list, err := s.deps.Files.PackageFiles(session(c), namespace, name)
+	list, err := s.deps.Hub.PackageFiles(session(c), namespace, name)
 	switch {
 	case errors.Is(err, hub.ErrForbidden):
 		detail.FilesRejected = true
@@ -238,7 +212,7 @@ func (s *Server) loadFiles(c *gin.Context, detail *view.Package, namespace, name
 	}
 	detail.SelectedFilePath = path
 
-	content, err := s.deps.Files.PackageFile(session(c), namespace, name, path)
+	content, err := s.deps.Hub.PackageFile(session(c), namespace, name, path)
 	switch {
 	case errors.Is(err, view.ErrNotFound):
 		detail.FileMissing = true
@@ -272,12 +246,7 @@ func (s *Server) setPackageVisibility(c *gin.Context) {
 		return
 	}
 
-	if s.deps.PackageCurator == nil {
-		s.backToPackageAfterVisibility(c, namespace, name, packageVisibilityUnavailable)
-		return
-	}
-
-	if _, err := s.deps.PackageCurator.SetVisibility(session(c), namespace, name, visibility); err != nil {
+	if _, err := s.deps.Hub.SetVisibility(session(c), namespace, name, visibility); err != nil {
 		s.packageVisibilityWriteFailed(c, namespace, name, err)
 		return
 	}
@@ -309,11 +278,10 @@ func (s *Server) packageVisibilityWriteFailed(c *gin.Context, namespace, name st
 type packageOutcome string
 
 const (
-	packageVisibilityChanged     packageOutcome = "visibility-changed"
-	packageVisibilityRefused     packageOutcome = "visibility-refused"
-	packageVisibilityMissing     packageOutcome = "visibility-missing"
-	packageVisibilityUnavailable packageOutcome = "visibility-unavailable"
-	packageVisibilityFailed      packageOutcome = "visibility-failed"
+	packageVisibilityChanged packageOutcome = "visibility-changed"
+	packageVisibilityRefused packageOutcome = "visibility-refused"
+	packageVisibilityMissing packageOutcome = "visibility-missing"
+	packageVisibilityFailed  packageOutcome = "visibility-failed"
 )
 
 func packageNotice(raw string) *view.Notice {
@@ -327,9 +295,6 @@ func packageNotice(raw string) *view.Notice {
 	case packageVisibilityMissing:
 		return &view.Notice{Tone: "dan", Text: "No such package, or it is not readable by your " +
 			"identity."}
-	case packageVisibilityUnavailable:
-		return &view.Notice{Tone: "dan", Text: "The hub's api could not be reached, so nothing " +
-			"was recorded."}
 	case packageVisibilityFailed:
 		return &view.Notice{Tone: "dan", Text: "The hub refused that change and recorded " +
 			"nothing. Reload — this screen may be stale."}

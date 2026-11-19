@@ -19,14 +19,8 @@ import (
 
 func (s *Server) audit(c *gin.Context) {
 	query := auditQueryFromURL(c)
-	screen := view.Audit{Query: query, Page: query.Page, ExportAvailable: s.deps.Audit != nil}
-	if s.deps.Audit == nil {
-		screen.Unavailable = true
-		s.renderAudit(c, http.StatusBadGateway, screen)
-		return
-	}
-
-	entries, err := s.deps.Audit.Audit(session(c), query.Page)
+	screen := view.Audit{Query: query, Page: query.Page, ExportAvailable: true}
+	entries, err := s.deps.Hub.Audit(session(c), query.Page)
 	if status, ok := s.governanceFailure(c, err, &screen.GovernanceState, "audit log"); !ok {
 		// The export is offered only beside rows that could be read.
 		screen.ExportAvailable = false
@@ -82,12 +76,7 @@ const exportFilename = "audit-log.ndjson"
 // read the body into memory first: the audit table is the one designed to
 // grow without bound, and an io.ReadAll here would undo the api's own streaming.
 func (s *Server) auditExport(c *gin.Context) {
-	if s.deps.Audit == nil {
-		c.Status(http.StatusBadGateway)
-		return
-	}
-
-	body, mediaType, err := s.deps.Audit.AuditExport(session(c))
+	body, mediaType, err := s.deps.Hub.AuditExport(session(c))
 	switch {
 	case errors.Is(err, view.ErrSignedOut):
 		s.toSignIn(c)

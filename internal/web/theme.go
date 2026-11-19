@@ -129,13 +129,13 @@ func (s *Server) navGate(c *gin.Context) map[string]string {
 // as the compiled-in counts these replaced.
 func (s *Server) badges(c *gin.Context) *view.Badges {
 	viewer := viewerFor(c)
-	if s.deps.Badges == nil || viewer == nil || !viewer.HasRole {
+	if viewer == nil || !viewer.HasRole {
 		// A viewer with no role may see nothing, so this is not a courtesy:
 		// the counts are scoped to what the caller may see.
 		return nil
 	}
 
-	counts, err := s.deps.Badges.Badges(session(c))
+	counts, err := s.deps.Hub.Badges(session(c))
 	if err != nil {
 		logFrom(c).Debug().Err(err).Msg("read the sidebar counts")
 		return nil

@@ -40,19 +40,6 @@ type AuthProvider interface {
 	VerifyIDToken(ctx context.Context, idToken string) error
 }
 
-// ViewerSource resolves who a request is acting as. Called on EVERY protected
-// request and never cached, since the api re-joins the group-to-role map per request.
-type ViewerSource interface {
-	Viewer(ctx context.Context) (hub.Viewer, error)
-}
-
-// SessionMinter is the api's two session operations: opening one for a
-// verified ID token, and expiring it server-side.
-type SessionMinter interface {
-	MintSession(ctx context.Context, idToken string) (hub.Session, error)
-	SignOut(ctx context.Context) error
-}
-
 // ---- the identity provider ----------------------------------------------------
 
 // Discovery is the provider's metadata: its published endpoints, and the
@@ -512,12 +499,7 @@ func (s *Server) callback(c *gin.Context) {
 		return
 	}
 
-	if s.deps.Sessions == nil {
-		logFrom(c).Error().Msg("no session mint is wired, so sign-in cannot complete")
-		s.renderSignIn(c, view.SignIn{Return: target, Notice: noticeHubFailed, Tone: "dan"})
-		return
-	}
-	minted, err := s.deps.Sessions.MintSession(ctx, idToken)
+	minted, err := s.deps.Hub.MintSession(ctx, idToken)
 	if err != nil {
 		// `refused` is for the operator only: both cases render the same screen.
 		logFrom(c).Error().Err(err).Bool("refused", errors.Is(err, hub.ErrMintRefused)).
@@ -535,15 +517,13 @@ func (s *Server) callback(c *gin.Context) {
 // logout expires the session server-side and then clears the cookie. POST
 // only: a sign-out on GET is triggerable by any image tag on any page.
 func (s *Server) logout(c *gin.Context) {
-	if s.deps.Sessions != nil {
-		switch err := s.deps.Sessions.SignOut(session(c)); {
-		case err == nil:
-		case errors.Is(err, view.ErrSignedOut):
-			// Already gone, which is the state asked for.
-		default:
-			// The row may still be live and valid to whoever else holds it.
-			logFrom(c).Error().Err(err).Msg("expire the session server-side")
-		}
+	switch err := s.deps.Hub.SignOut(session(c)); {
+	case err == nil:
+	case errors.Is(err, view.ErrSignedOut):
+		// Already gone, which is the state asked for.
+	default:
+		// The row may still be live and valid to whoever else holds it.
+		logFrom(c).Error().Err(err).Msg("expire the session server-side")
 	}
 
 	s.clearSession(c)
@@ -620,8 +600,7 @@ func unauthenticatedPath(raw string) bool {
 }
 
 // guard resolves a session on every protected route, or sends the person to
-// sign in. It FAILS CLOSED, including on a missing ViewerSource: reading a
-// nil source as "let everyone through" is one wiring mistake from no sign-in at all.
+// sign in. It FAILS CLOSED: an api it cannot reach lets nobody through.
 func (s *Server) guard() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if unauthenticatedPath(c.Request.URL.Path) {
@@ -630,14 +609,14 @@ func (s *Server) guard() gin.HandlerFunc {
 		}
 
 		token, err := c.Cookie(sessionCookie)
-		if err != nil || token == "" || s.deps.Viewers == nil {
+		if err != nil || token == "" {
 			s.toSignIn(c)
 			return
 		}
 
 		// Every request, no cache: a cached viewer would make a mapping
 		// change take an hour to land.
-		viewer, err := s.deps.Viewers.Viewer(session(c))
+		viewer, err := s.deps.Hub.Viewer(session(c))
 		switch {
 		case errors.Is(err, view.ErrSignedOut):
 			logFrom(c).Debug().Msg("request with no usable session")

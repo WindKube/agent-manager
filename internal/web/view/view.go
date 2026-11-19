@@ -1,7 +1,7 @@
 // Package view holds the web role's view models: the contract between a
 // data source and the templ components. The web role never sees a store
-// row — a CatalogPage is assembled by whatever implements
-// web.CatalogSource, and the components render nothing else.
+// row — a CatalogPage is assembled by the hub client, and the components
+// render nothing else.
 package view
 
 import (
@@ -356,7 +356,7 @@ func plural(n int, unit string) string {
 	return strconv.Itoa(n) + " " + unit + "s"
 }
 
-// ErrSignedOut is a CatalogSource reporting that the caller has no usable
+// ErrSignedOut is the api reporting that the caller has no usable
 // session, a state to render rather than a failure to log.
 var ErrSignedOut = errors.New("no usable session")
 

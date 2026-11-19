@@ -24,12 +24,12 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
-	"agent-manager/internal/web/fixture"
+	"agent-manager/internal/apiclient"
+	"agent-manager/internal/web/fakeapi"
 	"agent-manager/internal/web/hub"
-	"agent-manager/internal/web/view"
 )
 
-// ---- the two stand-ins --------------------------------------------------------
+// ---- the stand-in -------------------------------------------------------------
 
 // recordingProvider is an AuthProvider that remembers what was asked of it.
 //
@@ -67,56 +67,35 @@ func (p *recordingProvider) VerifyIDToken(_ context.Context, idToken string) err
 	return nil
 }
 
-// recordingMinter is the api's session mint, counted. It hands back a token that
-// is not a session token anywhere, because nothing in this file may care what one
-// looks like — the api is what recognises them.
-type recordingMinter struct {
-	minted     []string
-	signedOut  []string
-	signOutErr error
-}
-
-func (m *recordingMinter) MintSession(_ context.Context, idToken string) (hub.Session, error) {
-	m.minted = append(m.minted, idToken)
-	return hub.Session{
-		Token:     "minted-for-" + idToken,
-		ExpiresAt: time.Now().Add(8 * time.Hour),
-		ExpiresIn: 8 * time.Hour,
-	}, nil
-}
-
-func (m *recordingMinter) SignOut(ctx context.Context) error {
-	m.signedOut = append(m.signedOut, view.TokenFrom(ctx))
-	return m.signOutErr
-}
-
 // ---- the harness --------------------------------------------------------------
 
 type signInHarness struct {
 	server   *Server
 	handler  http.Handler
 	provider *recordingProvider
-	minter   *recordingMinter
+	api      *fakeapi.API
+}
+
+func fakeHub(t *testing.T) (*fakeapi.API, *hub.Client) {
+	t.Helper()
+	api := fakeapi.New(t)
+	client, err := hub.New(api.URL, hub.WithSessionMintSecret("a-mint-secret"))
+	require.NoError(t, err)
+	return api, client
 }
 
 func newSignInHarness(t *testing.T) signInHarness {
 	t.Helper()
 
 	provider := &recordingProvider{idToken: "an.id.token"}
-	minter := &recordingMinter{}
-	server := New(Deps{
-		Catalog:  fixture.New(),
-		Auth:     provider,
-		Viewers:  fixture.SignedInViewers(),
-		Sessions: minter,
-		Log:      zerolog.Nop(),
-	}, Options{
+	api, client := fakeHub(t)
+	server := New(Deps{Hub: client, Auth: provider, Log: zerolog.Nop()}, Options{
 		// Fixed, so the test can seal a cookie this server will accept the
 		// signature of and refuse for its age alone.
 		OIDCCookieKey: []byte("a-known-key-for-the-round-trip-cookie"),
 	})
 
-	return signInHarness{server: server, handler: server.Handler(), provider: provider, minter: minter}
+	return signInHarness{server: server, handler: server.Handler(), provider: provider, api: api}
 }
 
 // begin runs the outward leg and returns the round trip the browser is now
@@ -320,7 +299,7 @@ func TestNoBrokenRoundTripReachesTheExchangeOrIssuesASession(t *testing.T) {
 
 			require.Empty(t, h.provider.exchanges, "a code was exchanged for a round trip that did not verify")
 			require.Empty(t, h.provider.verified)
-			require.Empty(t, h.minter.minted, "a session was minted for a round trip that did not verify")
+			require.Empty(t, h.api.Calls("createSession"), "a session was minted for a round trip that did not verify")
 			require.Empty(t, cookieNamed(t, rec, sessionCookie), "a session cookie was issued")
 		})
 	}
@@ -355,18 +334,17 @@ func TestProviderRefusalDetailIsEscapedOnTheSignInScreen(t *testing.T) {
 // before it clears the cookie — a role that cleared the cookie without calling
 // out would leave the row live for anyone else still holding it.
 func TestSignOutExpiresTheSessionServerSideAndClearsTheCookie(t *testing.T) {
-	minter := &recordingMinter{}
-	h := New(Deps{
-		Catalog: fixture.New(), Viewers: fixture.SignedInViewers(), Sessions: minter, Log: zerolog.Nop(),
-	}, Options{}).Handler()
+	api, client := fakeHub(t)
+	h := New(Deps{Hub: client, Log: zerolog.Nop()}, Options{}).Handler()
 
 	req := httptest.NewRequest(http.MethodPost, "/auth/logout", http.NoBody)
 	req.AddCookie(&http.Cookie{Name: sessionCookie, Value: "the-browsers-own-session-token"})
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
-	require.Equal(t, []string{"the-browsers-own-session-token"}, minter.signedOut,
-		"the api must be told to expire this browser's own session")
+	signedOut := api.Calls("deleteSession")
+	require.Len(t, signedOut, 1, "the api must be told to expire this browser's own session")
+	require.Equal(t, "Bearer the-browsers-own-session-token", signedOut[0].Header.Get("Authorization"))
 	require.Equal(t, http.StatusSeeOther, rec.Code)
 	require.Equal(t, "/auth/signin", rec.Header().Get("Location"))
 
@@ -399,7 +377,12 @@ func TestTheRoundTripIsSingleUseBecauseTheCookieIsGoneAfterIt(t *testing.T) {
 	require.Len(t, h.provider.exchanges, 1)
 	require.Equal(t, round.Verifier, h.provider.exchanges[0].Verifier,
 		"the PKCE verifier came out of the cookie rather than off the wire")
-	require.Len(t, h.minter.minted, 1)
+	minted := h.api.Calls("createSession")
+	require.Len(t, minted, 1)
+	var body apiclient.CreateSessionJSONRequestBody
+	minted[0].Decode(t, &body)
+	require.Equal(t, "an.id.token", body.IdToken, "the raw ID token is what the api is asked to mint for")
+	require.Equal(t, h.api.Data.Session.Token, cookieNamed(t, first, sessionCookie))
 
 	// What the browser holds now: the cookie was deleted by that response.
 	deleted := false
@@ -414,7 +397,7 @@ func TestTheRoundTripIsSingleUseBecauseTheCookieIsGoneAfterIt(t *testing.T) {
 	require.Equal(t, http.StatusOK, second.Code)
 	require.Contains(t, second.Body.String(), noticeStaleRound)
 	require.Len(t, h.provider.exchanges, 1, "the replayed callback reached the exchange")
-	require.Len(t, h.minter.minted, 1, "the replayed callback minted a second session")
+	require.Len(t, h.api.Calls("createSession"), 1, "the replayed callback minted a second session")
 }
 
 // TestTheOutwardLegSendsAFreshStateAndAChallengeItKeepsNoSecretFor guards the
@@ -438,4 +421,19 @@ func TestTheOutwardLegSendsAFreshStateAndAChallengeItKeepsNoSecretFor(t *testing
 		require.NotContains(t, []string{first.Verifier, second.Verifier}, challenge,
 			"attempt %d sent the verifier itself as the challenge, so the redirect URI carries the secret", i)
 	}
+}
+
+// A mint the api refuses renders the sign-in screen with no session cookie,
+// never a half-signed-in browser.
+func TestARefusedMintIssuesNoSession(t *testing.T) {
+	h := newSignInHarness(t)
+	h.api.Fail("createSession", http.StatusUnauthorized)
+	sealed, round := h.begin(t, "%2Fscanner")
+
+	rec := h.complete(t, sealed, map[string]string{"state": round.State, "code": "the-code"})
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "The hub could not complete sign-in.")
+	require.Empty(t, cookieNamed(t, rec, sessionCookie))
+	require.Len(t, h.api.Calls("createSession"), 1)
 }

@@ -25,7 +25,7 @@ type PackageRefusedError struct{ Detail string }
 
 func (e *PackageRefusedError) Error() string { return e.Detail }
 
-// SetVisibility implements web.PackageCurator against
+// SetVisibility calls
 // PUT /v1/packages/{namespace}/{name}/visibility.
 func (c *Client) SetVisibility(ctx context.Context, namespace, name, visibility string) (view.Package, error) {
 	resp, err := c.api.SetPackageVisibilityWithResponse(ctx, namespace, name,
@@ -56,7 +56,7 @@ func packageFailure(what string, resp *http.Response, body []byte) error {
 	return fmt.Errorf("%s: %w", what, statusError(resp, body))
 }
 
-// Package implements web.PackageSource against GET /v1/packages/{namespace}/{name}.
+// Package calls GET /v1/packages/{namespace}/{name}.
 // A 404 becomes view.ErrNotFound rather than an error to log: a missing
 // package and an unreadable one are the same answer by design.
 func (c *Client) Package(ctx context.Context, namespace, name string) (view.Package, error) {
@@ -74,7 +74,7 @@ func (c *Client) Package(ctx context.Context, namespace, name string) (view.Pack
 	return packageDetail(resp.JSON200, c.now()), nil
 }
 
-// DeleteVersion implements web.PackageCurator against
+// DeleteVersion calls
 // DELETE /v1/packages/{namespace}/{name}/versions/{version}.
 func (c *Client) DeleteVersion(ctx context.Context, namespace, name, version string) (view.VersionDeleted, error) {
 	resp, err := c.api.DeleteVersionWithResponse(ctx, namespace, name, version)
@@ -87,7 +87,7 @@ func (c *Client) DeleteVersion(ctx context.Context, namespace, name, version str
 	return view.VersionDeleted{PinnedByProfiles: int(resp.JSON200.PinnedByProfiles)}, nil
 }
 
-// DeletePackage implements web.PackageCurator against
+// DeletePackage calls
 // DELETE /v1/packages/{namespace}/{name}.
 func (c *Client) DeletePackage(ctx context.Context, namespace, name string) (view.PackageDeleted, error) {
 	resp, err := c.api.DeletePackageWithResponse(ctx, namespace, name)

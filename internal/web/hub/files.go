@@ -21,7 +21,7 @@ var ErrFileTooLarge = errors.New("this file is larger than this hub renders")
 // PackageFiles but never rendered.
 var ErrFileNotRenderable = errors.New("this file is binary and is not rendered")
 
-// PackageFiles implements web.PackageFileSource against
+// PackageFiles calls
 // GET /v1/packages/{namespace}/{name}/files. A 403 is ErrForbidden: the
 // version exists but FR-029 refuses to serve it, which the panel must say
 // plainly rather than as an empty file list.
@@ -45,7 +45,7 @@ func (c *Client) PackageFiles(ctx context.Context, namespace, name string) (view
 	return out, nil
 }
 
-// PackageFile implements web.PackageFileSource against
+// PackageFile calls
 // GET /v1/packages/{namespace}/{name}/files/content. path is forwarded
 // as-is: the api resolves it against the archive's own member list, and
 // this hop builds no path from it either.

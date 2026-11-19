@@ -17,7 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"agent-manager/internal/web/components"
-	"agent-manager/internal/web/fixture"
 	"agent-manager/internal/web/view"
 )
 
@@ -48,11 +47,37 @@ import (
 //     name behind a branch this file does not reach is invisible to them and is
 //     still compiled in, so the source is scanned too.
 //
-// internal/web/fixture is excluded from (3) by name, and that exclusion is the
-// point rather than a convenience: SC-106 makes a display name in the product a
-// defect and the same display name in a test's input a fixture. The exclusion is
-// what gives the fixture package its meaning, and it is why the two viewer
-// variants live there and nowhere else.
+// Test files and internal/web/fakeapi are excluded from (3), and that exclusion is
+// the point rather than a convenience: SC-106 makes a display name in the product
+// a defect and the same display name in a test's input a fixture. It is why the
+// viewer variants below live in a test file and nowhere else.
+
+// The viewer variants a test renders with. The names and addresses are
+// deliberately nobody's: `.invalid` cannot resolve (RFC 2606).
+
+func signedInViewer() *view.Viewer {
+	return &view.Viewer{
+		SignedIn:    true,
+		DisplayName: "Ada Fixture",
+		Email:       "ada@fixture.invalid",
+		Role:        "catalog-admin",
+		HasRole:     true,
+		Groups:      []string{"eng-platform", "eng-all"},
+	}
+}
+
+// unmappedViewer is signed in and holds no role: FR-117's state, which is
+// neither signed out nor an empty hub.
+func unmappedViewer() *view.Viewer {
+	return &view.Viewer{
+		SignedIn:    true,
+		DisplayName: "Bo Fixture",
+		Email:       "bo@fixture.invalid",
+		Groups:      []string{"contractors-eu"},
+	}
+}
+
+func signedOutViewer() *view.Viewer { return nil }
 
 // The two shapes. Neither is clever, and both are checked against known values
 // below so a regexp edit cannot quietly stop matching anything.
@@ -227,7 +252,7 @@ func sweep() []sweptScreen {
 func TestNoScreenRendersAnIdentityWhenNoSessionResolvedOne(t *testing.T) {
 	for _, screen := range sweep() {
 		t.Run(screen.name, func(t *testing.T) {
-			body := screen.render(t, fixture.SignedOutViewer())
+			body := screen.render(t, signedOutViewer())
 
 			for _, class := range identityClasses {
 				require.NotContainsf(t, body, class,
@@ -430,8 +455,8 @@ func TestNoIdentityLiteralIsCompiledIntoTheWebRole(t *testing.T) {
 // tree rather than from a list so a file added later is scanned without anybody
 // remembering to add it here.
 //
-// Exclusions, all deliberate. internal/web/fixture and internal/web/fakeapi are the declared stand-ins
-// and holds the viewer variants the tests render with. `*_templ.go` is generated
+// Exclusions, all deliberate. internal/web/fakeapi is the declared stand-in for
+// the api and holds the viewer the tests are signed in as. `*_templ.go` is generated
 // from the `.templ` file beside it, which IS scanned: reading both would double
 // every finding and report the generated line number.
 func webSourceFiles(t *testing.T) []string {
@@ -443,7 +468,7 @@ func webSourceFiles(t *testing.T) []string {
 			return err
 		}
 		if entry.IsDir() {
-			if entry.Name() == "fixture" || entry.Name() == "fakeapi" || entry.Name() == "static" {
+			if entry.Name() == "fakeapi" || entry.Name() == "static" {
 				return fs.SkipDir
 			}
 			return nil

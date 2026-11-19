@@ -135,29 +135,9 @@ func runWeb(ctx context.Context) error {
 	}
 
 	server := web.New(web.Deps{
-		Catalog:        client,
-		Packages:       client,
-		PackageCurator: client,
-		Files:          client,
-		Registrar:      client,
-		Auth:           authProvider,
-		// Same client, different fields: resolving the viewer and minting
-		// a session are different claims.
-		Viewers:  client,
-		Sessions: client,
-		// The two governance screens: four different claims over one client.
-		Scanner:  client,
-		Reviewer: client,
-		Audit:    client,
-		Badges:   client,
-		// The profile screens: reading and curating are different claims.
-		Profiles:     client,
-		Curator:      client,
-		Device:       client,
-		Storage:      client,
-		Organization: client,
-		Runtime:      client,
-		Log:          log,
+		Hub:  client,
+		Auth: authProvider,
+		Log:  log,
 	}, web.Options{
 		Addr: cfg.Addr,
 		// Read once for the Secure flag on both cookies, so a proxy that

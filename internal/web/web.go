@@ -3,14 +3,13 @@
 //
 // This role holds no datastore credential: config.Web has no DatabaseURL or
 // BlobURL field, and internal/archcheck fails the build if internal/web imports
-// a store, blob client or database driver. Data arrives through a CatalogSource.
+// a store, blob client or database driver. Data arrives through the hub client.
 package web
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -42,159 +41,12 @@ const CorrelationHeader = "X-Correlation-ID"
 // rather than sanitised.
 var correlationIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 
-// CatalogSource is the web role's door to catalog data. A source reporting
-// view.ErrSignedOut is stating a fact about the caller, not failing.
-type CatalogSource interface {
-	Catalog(ctx context.Context, q view.CatalogQuery) (view.CatalogPage, error)
-}
-
-// PackageSource is the detail screen's door to one package.
-type PackageSource interface {
-	Package(ctx context.Context, namespace, name string) (view.Package, error)
-}
-
-// PackageCurator is every write the package detail screen offers: changing
-// visibility (FR-126), and the two destructive withdrawals — one version, or
-// the whole package, out of the catalog. Kept apart from PackageSource for
-// the same reason Reviewer sits apart from ScannerSource: each writes an
-// audit row a fixture must not fake.
-type PackageCurator interface {
-	SetVisibility(ctx context.Context, namespace, name, visibility string) (view.Package, error)
-	DeleteVersion(ctx context.Context, namespace, name, version string) (view.VersionDeleted, error)
-	DeletePackage(ctx context.Context, namespace, name string) (view.PackageDeleted, error)
-}
-
-// PackageFileSource is the files panel's door to the api (US3/US5: read a
-// skill's files before using it), kept separate from PackageSource since a
-// deployment can answer a package's detail while its bundle reader is
-// unavailable, and the two reads must fail on their own terms.
-type PackageFileSource interface {
-	PackageFiles(ctx context.Context, namespace, name string) (view.FileList, error)
-	PackageFile(ctx context.Context, namespace, name, path string) (view.FileDetail, error)
-}
-
-// PackageScanSource is the package detail screen's door to its security
-// section: the latest visible version's scan, findings and any reviewer
-// decision — the Scanner screen's own rows, scoped to one package. Kept
-// separate from PackageSource for the same reason PackageFileSource is: a
-// deployment can answer the rest of the page while this read is unavailable.
-type PackageScanSource interface {
-	PackageScan(ctx context.Context, namespace, name string) (view.PackageScan, error)
-}
-
-// Registrar is the import modal's door to the two registration operations,
-// separate from CatalogSource so a fixture need not claim to accept one too.
-type Registrar interface {
-	Preview(ctx context.Context, archive view.Archive) (view.ImportPreview, error)
-	Register(ctx context.Context, registration view.Registration) (view.ImportResult, error)
-}
-
-// ScannerSource is the Scanner screen's three reads. It excludes the accept
-// and reject decision, which lives on Reviewer.
-type ScannerSource interface {
-	ScannerSummary(ctx context.Context, days int) (view.ScannerSummary, error)
-	Findings(ctx context.Context, q hub.FindingQuery) (view.FindingsPage, error)
-	Finding(ctx context.Context, id string) (view.FindingDetail, error)
-}
-
-// Reviewer is the two decisions a scanner reviewer can take, separate from
-// ScannerSource because it writes an audit row a fixture must not fake.
-type Reviewer interface {
-	AcceptFinding(ctx context.Context, id, note string, days int) error
-	RejectFinding(ctx context.Context, id, note string) error
-}
-
-// AuditSource is the audit screen and its export. AuditExport hands back a
-// LIVE body the caller owns the Close of, since the audit table grows without bound.
-type AuditSource interface {
-	Audit(ctx context.Context, page int) (view.AuditPage, error)
-	AuditExport(ctx context.Context) (io.ReadCloser, string, error)
-}
-
-// ProfileSource is the Profiles screens' reads, kept separate from
-// ProfileCurator's writes as ScannerSource is from Reviewer.
-type ProfileSource interface {
-	Profiles(ctx context.Context) ([]view.ProfileRow, error)
-	Profile(ctx context.Context, slug string) (view.Profile, error)
-	// Revision is the "Show diff" panel's read: one published revision's
-	// resolved lockfile, by number.
-	Revision(ctx context.Context, slug string, revision int) (view.LockfileSnapshot, error)
-}
-
-// ProfileCurator is every write the profile screens offer: create, curate,
-// share, target and publish. One interface, not five, since each is gated by
-// the same profile's ProfilePermissions.
-type ProfileCurator interface {
-	CreateProfile(ctx context.Context, creation hub.ProfileCreation) (view.ProfileRow, error)
-	SetProfileEntries(ctx context.Context, slug string, entries []hub.EntrySetting) (view.Profile, error)
-	RemoveProfileEntry(ctx context.Context, slug, id string) (view.Profile, error)
-	SetProfileSharing(ctx context.Context, slug string, members []hub.Share) (view.Profile, error)
-	SetProfileTargets(ctx context.Context, slug string, targets []string) (view.Profile, error)
-	PublishRevision(ctx context.Context, slug, note string) error
-	DeleteProfile(ctx context.Context, slug string) error
-}
-
-// DeviceSource is the Connect-the-CLI screen's door to the api: looking a
-// pending authorisation up and confirming it.
-type DeviceSource interface {
-	LookupDeviceCode(ctx context.Context, userCode string) (view.PendingDeviceAuthorization, error)
-	ApproveDeviceCode(ctx context.Context, userCode string) (string, error)
-}
-
-// BadgeSource is the sidebar's three counts, read once per full page render.
-// Nil means a shell with no badges, not three zeroes.
-type BadgeSource interface {
-	Badges(ctx context.Context) (view.Badges, error)
-}
-
-// StorageSource is the Storage screen's one read.
-type StorageSource interface {
-	Storage(ctx context.Context) (view.Storage, error)
-}
-
-// RuntimeSource is the Runtime screen's one read: job counts, runner errors
-// and the run-history chart, all from one api call.
-type RuntimeSource interface {
-	Runtime(ctx context.Context) (view.Runtime, error)
-}
-
-// OrganizationSource is the Organization screen's door to the api. Reads and
-// writes share one interface since every mutation needs the same role.
-type OrganizationSource interface {
-	Organization(ctx context.Context) (view.Organization, error)
-	TestIdentityConnection(ctx context.Context) (view.IdentityConnectionTest, error)
-	UpdatePolicy(ctx context.Context, in view.OrganizationPolicy) (view.OrganizationPolicy, error)
-	CreateMapping(ctx context.Context, groupName, role string) (view.GroupRoleMapping, error)
-	DeleteMapping(ctx context.Context, groupName string) error
-	CreateCategory(ctx context.Context, name string) (view.OrganizationCategory, error)
-	UpdateCategory(ctx context.Context, id, name string) (view.OrganizationCategory, error)
-	DeleteCategory(ctx context.Context, id string) error
-}
-
-// Deps is what the role is handed. Nil on any source renders that screen's
-// unavailable state rather than an empty one or a panic.
+// Deps is what the role is handed. Hub is required. Auth is nil when the
+// identity provider failed to configure at boot.
 type Deps struct {
-	Catalog        CatalogSource
-	Packages       PackageSource
-	PackageCurator PackageCurator
-	Files          PackageFileSource
-	PackageScan    PackageScanSource
-	Registrar      Registrar
-	Auth           AuthProvider
-	// Viewers resolves who each request is acting as. Nil fails closed.
-	Viewers      ViewerSource
-	Sessions     SessionMinter
-	Scanner      ScannerSource
-	Reviewer     Reviewer
-	Audit        AuditSource
-	Badges       BadgeSource
-	Device       DeviceSource
-	Profiles     ProfileSource
-	Curator      ProfileCurator
-	Storage      StorageSource
-	Organization OrganizationSource
-	Runtime      RuntimeSource
-	Log          zerolog.Logger
+	Hub  *hub.Client
+	Auth AuthProvider
+	Log  zerolog.Logger
 }
 
 // Options is the run-time configuration of the surface itself.
@@ -240,6 +92,9 @@ type Server struct {
 
 // New assembles the router. It performs no I/O.
 func New(deps Deps, opts Options) *Server {
+	if deps.Hub == nil {
+		panic("web.New: Deps.Hub is required")
+	}
 	if opts.Addr == "" {
 		opts.Addr = ":8080"
 	}

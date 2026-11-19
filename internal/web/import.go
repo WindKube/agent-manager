@@ -41,7 +41,7 @@ func (s *Server) importPreview(c *gin.Context) {
 	}
 	defer func() { _ = file.Close() }()
 
-	preview, err := s.deps.Registrar.Preview(session(c), view.Archive{
+	preview, err := s.deps.Hub.Preview(session(c), view.Archive{
 		Filename: header.Filename,
 		Size:     header.Size,
 		Content:  file,
@@ -86,7 +86,7 @@ func (s *Server) importRegister(c *gin.Context) {
 	} else {
 		registration.Tab = view.ImportURL
 	}
-	result, err := s.deps.Registrar.Register(session(c), registration)
+	result, err := s.deps.Hub.Register(session(c), registration)
 	if err != nil {
 		logFrom(c).Error().Err(err).Msg("register package")
 		s.patchImportProblem(c, "the hub could not be reached")
@@ -152,16 +152,8 @@ func closedImportSignals() map[string]any {
 	}
 }
 
-// parseImportForm parses the multipart body under a cap and refuses when the role has
-// no registrar. Nil is a real state — the screen tests run against the fixture,
-// which cannot register — so it is answered with the same banner a refusal uses
-// rather than with a panic.
+// parseImportForm parses the multipart body under a cap.
 func (s *Server) parseImportForm(c *gin.Context) bool {
-	if s.deps.Registrar == nil {
-		s.patchImportProblem(c, "this hub is not configured to accept registrations")
-		return false
-	}
-
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxImportBytes)
 	if err := c.Request.ParseMultipartForm(multipartMemory); err != nil {
 		logFrom(c).Warn().Err(err).Msg("parse the registration form")

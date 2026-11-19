@@ -43,7 +43,7 @@ const (
 	// use, low enough that the catalog's tag facet stays a facet.
 	MaxTagCount = 20
 	// MaxTagLength bounds one tag. Every tag in internal/seed and
-	// internal/web/fixture is well under this.
+	// internal/web/fakeapi is well under this.
 	MaxTagLength = 40
 )
 

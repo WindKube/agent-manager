@@ -31,14 +31,8 @@ func (s *Server) org(c *gin.Context) {
 		Notice: view.OrgNoticeFrom(c.Query("saved"), orgDetailFromURL(c)),
 	}
 
-	if s.deps.Organization == nil {
-		screen.Unavailable = true
-		s.renderOrg(c, http.StatusBadGateway, screen)
-		return
-	}
-
 	ctx := session(c)
-	data, err := s.deps.Organization.Organization(ctx)
+	data, err := s.deps.Hub.Organization(ctx)
 	if status, ok := s.governanceFailure(c, err, &screen.GovernanceState, "organization"); !ok {
 		s.renderOrg(c, status, screen)
 		return
@@ -46,7 +40,7 @@ func (s *Server) org(c *gin.Context) {
 	screen.Data = data
 
 	if c.Query("tested") == "1" && screen.Access.Allowed {
-		result, testErr := s.deps.Organization.TestIdentityConnection(ctx)
+		result, testErr := s.deps.Hub.TestIdentityConnection(ctx)
 		switch {
 		case testErr == nil:
 			screen.Connected = &result
@@ -124,10 +118,6 @@ func (s *Server) savePolicy(c *gin.Context) {
 	if !s.orgAccessGuard(c) {
 		return
 	}
-	if s.deps.Organization == nil {
-		s.backToOrg(c, view.OrgNoticeUnavailable, "")
-		return
-	}
 
 	policy := view.OrganizationPolicy{
 		ScanGate:              c.PostForm("scanGate"),
@@ -136,7 +126,7 @@ func (s *Server) savePolicy(c *gin.Context) {
 		RescanOnNewVersion:    c.PostForm("rescanOnNewVersion") != "",
 		AllowPersonalProfiles: c.PostForm("allowPersonalProfiles") != "",
 	}
-	if _, err := s.deps.Organization.UpdatePolicy(session(c), policy); err != nil {
+	if _, err := s.deps.Hub.UpdatePolicy(session(c), policy); err != nil {
 		s.orgSaveFailed(c, err)
 		return
 	}
@@ -147,14 +137,10 @@ func (s *Server) createMapping(c *gin.Context) {
 	if !s.orgAccessGuard(c) {
 		return
 	}
-	if s.deps.Organization == nil {
-		s.backToOrg(c, view.OrgNoticeUnavailable, "")
-		return
-	}
 
 	groupName := strings.TrimSpace(c.PostForm("groupName"))
 	role := c.PostForm("role")
-	if _, err := s.deps.Organization.CreateMapping(session(c), groupName, role); err != nil {
+	if _, err := s.deps.Hub.CreateMapping(session(c), groupName, role); err != nil {
 		s.orgSaveFailed(c, err)
 		return
 	}
@@ -165,13 +151,9 @@ func (s *Server) deleteMapping(c *gin.Context) {
 	if !s.orgAccessGuard(c) {
 		return
 	}
-	if s.deps.Organization == nil {
-		s.backToOrg(c, view.OrgNoticeUnavailable, "")
-		return
-	}
 
 	groupName := c.Param("id")
-	if err := s.deps.Organization.DeleteMapping(session(c), groupName); err != nil {
+	if err := s.deps.Hub.DeleteMapping(session(c), groupName); err != nil {
 		s.orgSaveFailed(c, err)
 		return
 	}
@@ -182,13 +164,9 @@ func (s *Server) createCategory(c *gin.Context) {
 	if !s.orgAccessGuard(c) {
 		return
 	}
-	if s.deps.Organization == nil {
-		s.backToOrg(c, view.OrgNoticeUnavailable, "")
-		return
-	}
 
 	name := strings.TrimSpace(c.PostForm("name"))
-	if _, err := s.deps.Organization.CreateCategory(session(c), name); err != nil {
+	if _, err := s.deps.Hub.CreateCategory(session(c), name); err != nil {
 		s.orgSaveFailed(c, err)
 		return
 	}
@@ -199,14 +177,10 @@ func (s *Server) renameCategory(c *gin.Context) {
 	if !s.orgAccessGuard(c) {
 		return
 	}
-	if s.deps.Organization == nil {
-		s.backToOrg(c, view.OrgNoticeUnavailable, "")
-		return
-	}
 
 	id := c.Param("id")
 	name := strings.TrimSpace(c.PostForm("name"))
-	if _, err := s.deps.Organization.UpdateCategory(session(c), id, name); err != nil {
+	if _, err := s.deps.Hub.UpdateCategory(session(c), id, name); err != nil {
 		s.orgSaveFailed(c, err)
 		return
 	}
@@ -217,13 +191,9 @@ func (s *Server) deleteCategory(c *gin.Context) {
 	if !s.orgAccessGuard(c) {
 		return
 	}
-	if s.deps.Organization == nil {
-		s.backToOrg(c, view.OrgNoticeUnavailable, "")
-		return
-	}
 
 	id := c.Param("id")
-	if err := s.deps.Organization.DeleteCategory(session(c), id); err != nil {
+	if err := s.deps.Hub.DeleteCategory(session(c), id); err != nil {
 		s.orgSaveFailed(c, err)
 		return
 	}

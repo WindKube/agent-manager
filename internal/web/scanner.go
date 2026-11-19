@@ -27,28 +27,20 @@ func (s *Server) scanner(c *gin.Context) {
 	query := scannerQueryFromURL(c)
 	screen := view.Scanner{
 		Query:  query,
-		Review: s.reviewFor(c),
+		Review: view.ReviewFor(viewerFor(c)),
 		Notice: decisionNotice(c.Query("decided")),
-	}
-
-	if s.deps.Scanner == nil {
-		// A screen test that did not wire one gets the unavailable state
-		// rather than a nil dereference.
-		screen.Unavailable = true
-		s.renderScanner(c, http.StatusBadGateway, screen)
-		return
 	}
 
 	ctx := session(c)
 
-	summary, err := s.deps.Scanner.ScannerSummary(ctx, scannerWindow)
+	summary, err := s.deps.Hub.ScannerSummary(ctx, scannerWindow)
 	if status, ok := s.governanceFailure(c, err, &screen.GovernanceState, "scanner summary"); !ok {
 		s.renderScanner(c, status, screen)
 		return
 	}
 	screen.Summary = summary
 
-	page, err := s.deps.Scanner.Findings(ctx, hub.FindingQuery{State: query.APIState(), Page: query.Page})
+	page, err := s.deps.Hub.Findings(ctx, hub.FindingQuery{State: query.APIState(), Page: query.Page})
 	if status, ok := s.governanceFailure(c, err, &screen.GovernanceState, "findings"); !ok {
 		s.renderScanner(c, status, screen)
 		return
@@ -67,7 +59,7 @@ func (s *Server) scanner(c *gin.Context) {
 		return
 	}
 
-	detail, err := s.deps.Scanner.Finding(ctx, selected)
+	detail, err := s.deps.Hub.Finding(ctx, selected)
 	switch {
 	case errors.Is(err, view.ErrNotFound):
 		// A finding id that names nothing readable. The list beside it still
@@ -84,20 +76,6 @@ func (s *Server) scanner(c *gin.Context) {
 
 	screen.Selected = &detail
 	s.renderScanner(c, http.StatusOK, screen)
-}
-
-// reviewFor asks both halves: may this identity decide, and can this process
-// record a decision at all. The second matters because a control offered
-// against a nil reviewer is offered and then refused. The role reason wins
-// when both apply — it is the one the reader can do something about.
-func (s *Server) reviewFor(c *gin.Context) view.Review {
-	review := view.ReviewFor(viewerFor(c))
-	if review.Allowed && s.deps.Reviewer == nil {
-		return view.Review{Reason: "This hub cannot record a decision: no reviewing api is " +
-			"wired into this web role, so nothing here can be approved or rejected. That is a " +
-			"deployment fault rather than a permission."}
-	}
-	return review
 }
 
 func (s *Server) renderScanner(c *gin.Context, status int, screen view.Scanner) {
@@ -161,7 +139,6 @@ const (
 	decisionBadExpiry    decisionOutcome = "bad-expiry"
 	decisionRefused      decisionOutcome = "refused"
 	decisionFailed       decisionOutcome = "failed"
-	decisionUnavailable  decisionOutcome = "unavailable"
 )
 
 func decisionNotice(raw string) *view.Notice {
@@ -193,9 +170,6 @@ func decisionNotice(raw string) *view.Notice {
 		return &view.Notice{Tone: "dan", Text: "The hub refused that decision and recorded " +
 			"nothing. The likeliest cause is a screen that has gone stale — this finding may " +
 			"already have been decided. Reload before deciding again."}
-	case decisionUnavailable:
-		return &view.Notice{Tone: "dan", Text: "The hub's api could not be reached, so nothing " +
-			"was recorded. Nothing about this finding has changed."}
 	default:
 		return nil
 	}
@@ -217,13 +191,6 @@ func (s *Server) decideFinding(c *gin.Context, accept bool) {
 	if review := view.ReviewFor(viewerFor(c)); !review.Allowed {
 		logFrom(c).Warn().Bool("accept", accept).Msg("finding decision from an identity without the role")
 		s.backToScanner(c, back, decisionRefused)
-		return
-	}
-
-	if s.deps.Reviewer == nil {
-		// The screen already disabled both controls; this is the post that
-		// arrived anyway.
-		s.backToScanner(c, back, decisionUnavailable)
 		return
 	}
 
@@ -249,9 +216,9 @@ func (s *Server) decideFinding(c *gin.Context, accept bool) {
 	if accept {
 		// days of 0 sends no expiry, and the api applies its own default —
 		// never an override that lapses never, which nothing here can record.
-		err = s.deps.Reviewer.AcceptFinding(session(c), id, note, days)
+		err = s.deps.Hub.AcceptFinding(session(c), id, note, days)
 	} else {
-		err = s.deps.Reviewer.RejectFinding(session(c), id, note)
+		err = s.deps.Hub.RejectFinding(session(c), id, note)
 	}
 
 	switch {

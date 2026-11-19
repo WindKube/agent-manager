@@ -43,10 +43,7 @@ func TestPublishingThroughTheWebScreenMatchesWhatTheWireContractServes(t *testin
 	client, err := hub.New(apiServer.URL)
 	require.NoError(t, err)
 
-	webHandler := web.New(web.Deps{
-		Catalog: client, Packages: client, Viewers: client, Sessions: client,
-		Profiles: client, Curator: client, Log: zerolog.Nop(),
-	}, web.Options{}).Handler()
+	webHandler := web.New(web.Deps{Hub: client, Log: zerolog.Nop()}, web.Options{}).Handler()
 
 	const slug = "e2e-web-cli"
 	postFormAsBrowser(t, webHandler, "/profiles", url.Values{

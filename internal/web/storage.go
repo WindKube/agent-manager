@@ -10,12 +10,7 @@ import (
 )
 
 func (s *Server) storage(c *gin.Context) {
-	if s.deps.Storage == nil {
-		s.renderStorage(c, http.StatusBadGateway, view.Storage{GovernanceState: view.GovernanceState{Unavailable: true}})
-		return
-	}
-
-	screen, err := s.deps.Storage.Storage(session(c))
+	screen, err := s.deps.Hub.Storage(session(c))
 	if status, ok := s.governanceFailure(c, err, &screen.GovernanceState, "storage report"); !ok {
 		s.renderStorage(c, status, screen)
 		return

@@ -2,72 +2,40 @@ package web_test
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/a-h/templ"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	"agent-manager/internal/apiclient"
 	"agent-manager/internal/web"
 	"agent-manager/internal/web/components"
-	"agent-manager/internal/web/fixture"
+	"agent-manager/internal/web/fakeapi"
+	"agent-manager/internal/web/hub"
 	"agent-manager/internal/web/view"
 )
 
-func handler(t *testing.T, source web.CatalogSource) http.Handler {
+// newServer is the web role in front of a fresh fakeapi, signed in as the
+// seed's catalog admin. A test reshapes what the api answers through api.Data,
+// api.Fail and api.Handle.
+func newServer(t *testing.T) (*fakeapi.API, http.Handler) {
 	t.Helper()
+	return newServerWith(t, web.Options{})
+}
 
-	// A screen test must say who is looking, because Deps.Viewers fails closed when
-	// nil and the guard would send every route here to the sign-in screen. The
-	// signed-out and no-role variants are exercised by the tests that are about
-	// those states, with their own source.
-	deps := web.Deps{Catalog: source, Viewers: fixture.SignedInViewers(), Log: zerolog.Nop()}
-	// A source that can also answer for one package backs the detail screen. The
-	// hostile source below deliberately cannot, which is what makes /packages/...
-	// a 404 rather than a nil dereference in the escaping test.
-	if packages, ok := source.(web.PackageSource); ok {
-		deps.Packages = packages
-	}
-	if files, ok := source.(web.PackageFileSource); ok {
-		deps.Files = files
-	}
-	if scan, ok := source.(web.PackageScanSource); ok {
-		deps.PackageScan = scan
-	}
-	// Same shape for the two governance screens, and for the sidebar counts. The
-	// fixture answers all three reads and deliberately cannot answer a decision, so
-	// deps.Reviewer stays nil here and the screen renders what a hub with no
-	// reviewer wired renders.
-	if scanner, ok := source.(web.ScannerSource); ok {
-		deps.Scanner = scanner
-	}
-	if audit, ok := source.(web.AuditSource); ok {
-		deps.Audit = audit
-	}
-	if badges, ok := source.(web.BadgeSource); ok {
-		deps.Badges = badges
-	}
-	// The profile screens' read side, same shape again: the fixture answers both
-	// reads and cannot curate, so deps.Curator stays nil here.
-	if profiles, ok := source.(web.ProfileSource); ok {
-		deps.Profiles = profiles
-	}
-	if storage, ok := source.(web.StorageSource); ok {
-		deps.Storage = storage
-	}
-	if org, ok := source.(web.OrganizationSource); ok {
-		deps.Organization = org
-	}
-	if runtime, ok := source.(web.RuntimeSource); ok {
-		deps.Runtime = runtime
-	}
-	return web.New(deps, web.Options{}).Handler()
+func newServerWith(t *testing.T, opts web.Options) (*fakeapi.API, http.Handler) {
+	t.Helper()
+	api := fakeapi.New(t)
+	client, err := hub.New(api.URL)
+	require.NoError(t, err)
+	return api, web.New(web.Deps{Hub: client, Log: zerolog.Nop()}, opts).Handler()
 }
 
 // get is an ordinary request from somebody who is signed in.
@@ -75,8 +43,7 @@ func handler(t *testing.T, source web.CatalogSource) http.Handler {
 // It carries a session cookie because the guard reads one BEFORE it asks the
 // viewer source who this is — no cookie is not "a viewer to resolve", it is a
 // visitor with nothing to resolve, and the guard redirects without calling the
-// api. The value is opaque here: the api is what would recognise it, and the
-// fixture source answers the same viewer whatever it is handed.
+// api. The value is opaque here: the fake api accepts any bearer token.
 func get(t *testing.T, h http.Handler, target string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, target, http.NoBody)
@@ -95,8 +62,18 @@ func getSignedOut(t *testing.T, h http.Handler, target string) *httptest.Respons
 	return rec
 }
 
+func post(t *testing.T, h http.Handler, target string, form url.Values) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, target, strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "am_session", Value: "screen-test-session"})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
 func TestShell(t *testing.T) {
-	h := handler(t, fixture.New())
+	_, h := newServer(t)
 
 	t.Run("the catalog renders every sidebar group and badge", func(t *testing.T) {
 		body := get(t, h, "/catalog").Body.String()
@@ -125,23 +102,22 @@ func TestShell(t *testing.T) {
 	// vary that way, and neither could one the router substituted when a source
 	// answered something it did not like.
 	t.Run("the chip on a routed page is the viewer that request resolved", func(t *testing.T) {
-		ada, bo := fixture.SignedInViewer(), fixture.UnmappedViewer()
+		ada, bo := signedInViewer(), unmappedViewer()
 
 		for _, who := range []struct {
-			viewers web.ViewerSource
-			mine    *view.Viewer
-			theirs  *view.Viewer
+			unmapped bool
+			mine     *view.Viewer
+			theirs   *view.Viewer
 		}{
-			{fixture.SignedInViewers(), ada, bo},
+			{false, ada, bo},
 			// Signed in holding no role still resolves an identity, and the FR-117
 			// screen the guard renders instead of the catalog carries the same chip.
-			{fixture.UnmappedViewers(), bo, ada},
+			{true, bo, ada},
 		} {
-			own := web.New(web.Deps{
-				Catalog: fixture.New(),
-				Viewers: who.viewers,
-				Log:     zerolog.Nop(),
-			}, web.Options{}).Handler()
+			api, own := newServer(t)
+			if who.unmapped {
+				api.Data.Unmapped()
+			}
 			body := get(t, own, "/catalog").Body.String()
 
 			require.Contains(t, body, `<div class="am-avatar">`+who.mine.Initials()+`</div>`)
@@ -156,11 +132,8 @@ func TestShell(t *testing.T) {
 	// screen is reached at all. A chip with empty fields would be the compiled-in
 	// chip with its literals deleted.
 	t.Run("a request that resolved nobody reaches no shell at all", func(t *testing.T) {
-		signedOut := web.New(web.Deps{
-			Catalog: fixture.New(),
-			Viewers: fixture.SignedOutViewers(),
-			Log:     zerolog.Nop(),
-		}, web.Options{}).Handler()
+		api, signedOut := newServer(t)
+		api.Data.SignedOut()
 
 		body := getSignedOut(t, signedOut, "/catalog").Body.String()
 		for _, forbidden := range []string{"am-avatar", "am-viewer-name", "am-viewer-role", "am-signout", "am-sidebar"} {
@@ -201,7 +174,7 @@ func TestShell(t *testing.T) {
 }
 
 func TestTheme(t *testing.T) {
-	h := handler(t, fixture.New())
+	_, h := newServer(t)
 
 	t.Run("light is the default when nothing is stored", func(t *testing.T) {
 		require.Contains(t, get(t, h, "/catalog").Body.String(), `data-sm-theme="light"`)
@@ -261,37 +234,29 @@ func postTheme(t *testing.T, h http.Handler, form url.Values) *httptest.Response
 	return rec
 }
 
-// hostileSource stands in for a package whose manifest was written by an
-// attacker. FR-055 is absolute: nothing from a manifest may reach the page as
-// markup.
-type hostileSource struct{}
-
-func (hostileSource) Catalog(_ context.Context, q view.CatalogQuery) (view.CatalogPage, error) {
-	row := view.Row{
-		Key:       `../../etc/passwd`,
-		ID:        `evil/<script>alert('id')</script>`,
-		Name:      `<script>alert('name')</script>`,
-		Publisher: `evil/"onmouseover="alert(1)`,
-		Category:  `<img src=x onerror=alert('cat')>`,
-		Version:   `1.0.0"><script>alert('ver')</script>`,
-		Updated:   `<b>now</b>`,
-		Kind:      view.KindPlugin,
-		Scan:      view.ScanFlagged,
-		Tags:      []string{`"><script>alert('tag')</script>`},
-	}
-	return view.CatalogPage{
-		Query:      q.Normalise(),
-		Rows:       []view.Row{row},
-		Total:      1,
-		Page:       1,
-		PageSize:   view.DefaultPageSize,
-		Categories: []view.FacetOption{{Label: row.Category, Count: 1}},
-		Tags:       []view.FacetOption{{Label: row.Tags[0], Count: 1}},
-	}, nil
+// hostileCatalog makes the api answer one package whose manifest was written
+// by an attacker. FR-055 is absolute: nothing from a manifest may reach the
+// page as markup.
+func hostileCatalog(api *fakeapi.API) {
+	category := `<img src=x onerror=alert('cat')>`
+	api.Data.Categories = []string{category}
+	api.Data.Packages = []apiclient.CatalogPackage{{
+		Id:         `evil/<script>alert('id')</script>`,
+		Name:       `<script>alert('name')</script>`,
+		Publisher:  `evil/"onmouseover="alert(1)`,
+		Category:   &category,
+		Version:    `1.0.0"><script>alert('ver')</script>`,
+		UpdatedAt:  time.Now(),
+		Kind:       apiclient.CatalogPackageKindPlugin,
+		Verdict:    apiclient.CatalogPackageVerdictFlagged,
+		Visibility: apiclient.CatalogPackageVisibilityOrganisation,
+		Tags:       []string{`"><script>alert('tag')</script>`},
+	}}
 }
 
 func TestPackageDerivedContentIsEscaped(t *testing.T) {
-	h := handler(t, hostileSource{})
+	api, h := newServer(t)
+	hostileCatalog(api)
 
 	bodies := map[string]string{
 		"catalog screen":  get(t, h, "/catalog").Body.String(),
@@ -343,7 +308,7 @@ func TestPackageDerivedContentIsEscaped(t *testing.T) {
 }
 
 func TestDatastarEndpoints(t *testing.T) {
-	h := handler(t, fixture.New())
+	_, h := newServer(t)
 
 	t.Run("the results endpoint patches the table, the count and nothing else by default", func(t *testing.T) {
 		body := get(t, h, "/catalog/results").Body.String()
@@ -384,7 +349,7 @@ func TestDatastarEndpoints(t *testing.T) {
 }
 
 func TestStatic(t *testing.T) {
-	h := handler(t, fixture.New())
+	_, h := newServer(t)
 
 	t.Run("the vendored assets are served from this origin with a far-future cache", func(t *testing.T) {
 		for _, path := range []string{
@@ -417,7 +382,8 @@ func TestStatic(t *testing.T) {
 // rows. What can regress silently is the markup those numbers depend on, and that
 // is what this asserts.
 func TestR7Budget(t *testing.T) {
-	body := get(t, handler(t, fixture.New()), "/catalog").Body.String()
+	_, h := newServer(t)
+	body := get(t, h, "/catalog").Body.String()
 
 	t.Run("both facet filter boxes bind to a signal datastar never sends", func(t *testing.T) {
 		// datastar excludes signals whose name begins with an underscore from every
@@ -433,7 +399,7 @@ func TestR7Budget(t *testing.T) {
 		// The label is read from the DOM rather than interpolated into the
 		// expression: a manifest keyword can be escaped into an attribute, but not
 		// into a JavaScript string literal.
-		payload := get(t, handler(t, fixture.New()), "/catalog/facet/tag").Body.String()
+		payload := get(t, h, "/catalog/facet/tag").Body.String()
 		require.Contains(t, payload, `data-show="amFuzzy($_tagQuery, el.dataset.label)"`)
 		require.Contains(t, payload, `data-on:click="$tags = amToggle($tags, el.dataset.label); $page = 1"`)
 	})
@@ -472,62 +438,66 @@ func TestFuzzyIsWhatTheMenuUses(t *testing.T) {
 }
 
 func TestReadBodyDoesNotLeak(t *testing.T) {
-	h := handler(t, fixture.New())
+	_, h := newServer(t)
 	rec := get(t, h, "/catalog")
 	_, err := io.Copy(io.Discard, rec.Body)
 	require.NoError(t, err)
 }
 
-// hostileDetail is a package whose manifest, components and dependent profiles
-// were all written by an attacker. It is a separate source from hostileSource
-// because that one deliberately implements only CatalogSource — which is what
-// makes /packages/... a 404 there — and the detail screen renders strings the
-// catalog row never carries: the manifest body, the component tree, the
-// capability targets and the dependent profiles' slugs.
-type hostileDetail struct{ hostileSource }
-
-func (hostileDetail) Package(_ context.Context, namespace, name string) (view.Package, error) {
-	return view.Package{
-		ID:             namespace + "/" + name,
+// hostileDetail makes the api answer evil/thing with a manifest, components
+// and dependent profiles all written by an attacker: the strings the detail
+// screen renders and the catalog row never carries.
+func hostileDetail(api *fakeapi.API) {
+	category := `<img src=x onerror=alert('cat')>`
+	description := `<script>alert('desc')</script>`
+	spec := `1.0.0"><script>alert('spec')</script>`
+	note := `<b>note</b>`
+	digest := `sha256:<script>alert('digest')</script>`
+	pin := `1.0.0"><script>alert('pin')</script>`
+	api.Data.Details["evil/thing"] = apiclient.PackageDetail{
+		Id:             "evil/thing",
 		Name:           `<script>alert('detailname')</script>`,
-		Kind:           view.KindPlugin,
-		Publisher:      `evil/"onmouseover="alert('pub')`,
-		Category:       `<img src=x onerror=alert('cat')>`,
-		Description:    `<script>alert('desc')</script>`,
+		Kind:           apiclient.PackageDetailKindPlugin,
+		Publisher:      apiclient.PackagePublisher{Slug: `evil/"onmouseover="alert('pub')`},
+		Category:       &category,
+		Description:    &description,
 		Version:        `1.0.0"><script>alert('ver')</script>`,
-		SpecVersion:    `1.0.0"><script>alert('spec')</script>`,
-		ManifestObject: `plugin.json"><script>alert('object')</script>`,
+		Origin:         apiclient.PackageOrigin{SpecVersion: &spec},
+		ManifestObject: apiclient.PackageDetailManifestObject(`plugin.json"><script>alert('object')</script>`),
 		Manifest:       `{"name":"<script>alert('manifest')</script>"}`,
 		Tags:           []string{`"><script>alert('tag')</script>`},
-		Components: []view.Component{{
-			Kind: "skill",
+		Components: []apiclient.PackageComponent{{
+			Kind: apiclient.PackageComponentKindSkill,
 			Name: `<script>alert('component')</script>`,
 			Path: `skills/<script>alert('path')</script>`,
-			Note: `<b>note</b>`,
+			Note: &note,
 		}},
-		Capabilities: view.Capabilities{
+		Capabilities: apiclient.PackageCapabilities{
 			Scanned: true,
-			Rows: []view.CapabilityRow{{
-				Name:     `<script>alert('cap')</script>`,
-				Inferred: view.CapabilityFacet{Present: true, Level: "review", Detail: []string{`<script>alert('target')</script>`}},
+			Inferred: []apiclient.PackageCapability{{
+				Name:   apiclient.PackageCapabilityName(`<script>alert('cap')</script>`),
+				Level:  apiclient.PackageCapabilityLevelReview,
+				Detail: []string{`<script>alert('target')</script>`},
 			}},
 		},
-		Versions: []view.PackageVersion{{
+		Versions: []apiclient.PackageVersion{{
 			Version:   `1.0.0"><script>alert('vrow')</script>`,
 			ObjectKey: `skills/<script>alert('key')</script>/bundle.tar.zst`,
-			Digest:    `sha256:<script>alert('digest')</script>`,
+			Digest:    &digest,
 		}},
-		Dependents: []view.Dependent{{
-			Slug: `../../etc/passwd`,
-			Name: `<script>alert('profile')</script>`,
-			Mode: "pinned",
-			Pin:  `1.0.0"><script>alert('pin')</script>`,
+		Dependents: []apiclient.PackageDependent{{
+			Slug:    `../../etc/passwd`,
+			Name:    `<script>alert('profile')</script>`,
+			Mode:    apiclient.PackageDependentModePinned,
+			Version: &pin,
 		}},
-	}, nil
+	}
 }
 
 func TestDetailDerivedContentIsEscaped(t *testing.T) {
-	body := get(t, handler(t, hostileDetail{}), "/packages/evil/thing").Body.String()
+	api, h := newServer(t)
+	hostileDetail(api)
+	body := get(t, h, "/packages/evil/thing").Body.String()
 
 	// Each payload is asserted BOTH ways: the raw bytes are absent AND the escaped
 	// bytes are present. The second half is not decoration. A NotContains alone
@@ -562,26 +532,28 @@ func TestDetailDerivedContentIsEscaped(t *testing.T) {
 	require.NotContains(t, body, `href="/profiles/../`)
 }
 
-// T062, the rendering half. Driven off the fixture's own id list rather than a
-// list written here, so a package added to the fixtures cannot skip this by
+// T062, the rendering half. Driven off the seed's own package list rather than
+// a list written here, so a package added to the seed cannot skip this by
 // omission — and it asserts the STRUCTURAL difference between the variants,
 // which is the one thing a per-package screenshot would not catch.
 func TestBothVariantsRenderForEverySeededPackage(t *testing.T) {
-	source := fixture.New()
-	h := handler(t, source)
+	api, h := newServer(t)
+	client, err := hub.New(api.URL)
+	require.NoError(t, err)
+	ctx := view.WithToken(t.Context(), "screen-test-session")
 
-	ids := source.IDs()
-	require.Len(t, ids, 10, "the design seeds ten packages")
+	require.Len(t, api.Data.Packages, 10, "the design seeds ten packages")
 
 	var plugins, skills int
-	for _, id := range ids {
+	for _, row := range api.Data.Packages {
+		id := row.Id
 		t.Run(id, func(t *testing.T) {
 			rec := get(t, h, "/packages/"+id)
 			require.Equal(t, http.StatusOK, rec.Code)
 			body := rec.Body.String()
 
 			namespace, name, _ := strings.Cut(id, "/")
-			detail, err := source.Package(t.Context(), namespace, name)
+			detail, err := client.Package(ctx, namespace, name)
 			require.NoError(t, err)
 
 			require.Contains(t, body, "am-detail")
@@ -616,70 +588,19 @@ func TestBothVariantsRenderForEverySeededPackage(t *testing.T) {
 		})
 	}
 
-	require.Positive(t, plugins, "the fixtures must contain a plugin")
+	require.Positive(t, plugins, "the seed must contain a plugin")
 	require.Positive(t, skills, "and a standalone skill, or this test proves one variant")
 }
 
 // ---- add to profile (US5) -----------------------------------------------------
 
-// noProfiles is a viewer with a working profiles read that simply answers
-// none — distinct from profilesUnavailable below, whose read fails outright.
-// The two must render different sentences, or a person cannot tell "you have
-// nothing to add to" from "this could not be checked". It forwards Catalog
-// and Package by hand rather than embedding *fixture.Catalog: that type's
-// name collides with its own Catalog method under promotion.
-type noProfiles struct{ base *fixture.Catalog }
-
-func (s noProfiles) Catalog(ctx context.Context, q view.CatalogQuery) (view.CatalogPage, error) {
-	return s.base.Catalog(ctx, q)
-}
-
-func (s noProfiles) Package(ctx context.Context, namespace, name string) (view.Package, error) {
-	return s.base.Package(ctx, namespace, name)
-}
-
-func (noProfiles) Profiles(context.Context) ([]view.ProfileRow, error) { return nil, nil }
-
-func (noProfiles) Profile(_ context.Context, slug string) (view.Profile, error) {
-	return view.Profile{}, view.ErrNotFound
-}
-
-// Revision is unread by this screen, but a stub that omits it stops satisfying
-// web.ProfileSource — and a stub that fails that assertion in handler() leaves
-// deps.Profiles nil, which renders as "you have no profiles" and would make
-// the tests below pass without exercising anything.
-func (noProfiles) Revision(context.Context, string, int) (view.LockfileSnapshot, error) {
-	return view.LockfileSnapshot{}, view.ErrNotFound
-}
-
-type profilesUnavailable struct{ base *fixture.Catalog }
-
-func (s profilesUnavailable) Catalog(ctx context.Context, q view.CatalogQuery) (view.CatalogPage, error) {
-	return s.base.Catalog(ctx, q)
-}
-
-func (s profilesUnavailable) Package(ctx context.Context, namespace, name string) (view.Package, error) {
-	return s.base.Package(ctx, namespace, name)
-}
-
-func (profilesUnavailable) Profiles(context.Context) ([]view.ProfileRow, error) {
-	return nil, errors.New("the profiles api is down")
-}
-
-func (profilesUnavailable) Profile(_ context.Context, slug string) (view.Profile, error) {
-	return view.Profile{}, view.ErrNotFound
-}
-
-func (profilesUnavailable) Revision(context.Context, string, int) (view.LockfileSnapshot, error) {
-	return view.LockfileSnapshot{}, view.ErrNotFound
-}
-
 // A profile that already holds the package is told so, not offered as new —
-// and the fixture's platform-toolkit is exactly that for platform-engineer
-// (fixture/package.go's dependents), while sre-oncall does not hold it and
-// may not curate it either (fixture/profiles.go's CanCurate).
+// and the seed's platform-toolkit is exactly that for platform-engineer
+// (its dependents), while sre-oncall does not hold it and may not curate it
+// either (its CanCurate).
 func TestAddToProfileTellsAHeldProfileApartFromACuratableOne(t *testing.T) {
-	body := get(t, handler(t, fixture.New()), "/packages/example/platform-toolkit").Body.String()
+	_, h := newServer(t)
+	body := get(t, h, "/packages/example/platform-toolkit").Body.String()
 
 	require.Contains(t, body, `id="add-to-profile"`)
 	require.Contains(t, body, "Add to profile")
@@ -708,7 +629,8 @@ func TestAddToProfileTellsAHeldProfileApartFromACuratableOne(t *testing.T) {
 // The same package, held by nobody: the curatable profile gets a real
 // plain-post form, signal-free, naming the exact package it would add.
 func TestAddToProfileOffersAPlainFormToACuratableProfile(t *testing.T) {
-	body := get(t, handler(t, fixture.New()), "/packages/community/postgres-migration-guard").Body.String()
+	_, h := newServer(t)
+	body := get(t, h, "/packages/community/postgres-migration-guard").Body.String()
 
 	require.Contains(t, body, `<form method="post" action="/profiles/entries/add">`+
 		`<input type="hidden" name="slug" value="platform-engineer"> `+
@@ -716,8 +638,13 @@ func TestAddToProfileOffersAPlainFormToACuratableProfile(t *testing.T) {
 		`<button type="submit" class="am-btn">Add</button></form>`)
 }
 
+// A working profiles read that answers none and one that fails must render
+// different sentences, or a person cannot tell "you have nothing to add to"
+// from "this could not be checked".
 func TestAddToProfileWithNoProfilesPointsAtProfiles(t *testing.T) {
-	body := get(t, handler(t, noProfiles{base: fixture.New()}), "/packages/example/platform-toolkit").Body.String()
+	api, h := newServer(t)
+	api.Data.Profiles = nil
+	body := get(t, h, "/packages/example/platform-toolkit").Body.String()
 
 	require.Contains(t, body, "You have no profiles yet")
 	require.Contains(t, body, `href="/profiles"`)
@@ -725,7 +652,9 @@ func TestAddToProfileWithNoProfilesPointsAtProfiles(t *testing.T) {
 }
 
 func TestAddToProfileWhenTheReadFailsSaysSoRatherThanClaimingThereAreNone(t *testing.T) {
-	body := get(t, handler(t, profilesUnavailable{base: fixture.New()}), "/packages/example/platform-toolkit").Body.String()
+	api, h := newServer(t)
+	api.Fail("listProfiles", http.StatusServiceUnavailable)
+	body := get(t, h, "/packages/example/platform-toolkit").Body.String()
 
 	require.Contains(t, body, "could not be read")
 	require.NotContains(t, body, "You have no profiles yet")
@@ -733,12 +662,13 @@ func TestAddToProfileWhenTheReadFailsSaysSoRatherThanClaimingThereAreNone(t *tes
 
 // ---- package files (US3/US5: read a skill's files before using it) -----------
 
-// The fixture opens example/adr-writer on SKILL.md by default (fixture/files.go),
+// The seed opens example/adr-writer on SKILL.md by default,
 // the same file listPackageFiles names as the default when a bundle has one at
 // its root — but the panel itself must stay CLOSED until a reader picks one:
 // listing files is not the same as opening one.
 func TestFilesPanelListsFilesButStaysClosedUntilOneIsChosen(t *testing.T) {
-	body := get(t, handler(t, fixture.New()), "/packages/example/adr-writer").Body.String()
+	_, h := newServer(t)
+	body := get(t, h, "/packages/example/adr-writer").Body.String()
 
 	require.Contains(t, body, `id="files-panel"`)
 	require.Contains(t, body, `am-file-path">SKILL.md<`)
@@ -755,8 +685,8 @@ func TestFilesPanelListsFilesButStaysClosedUntilOneIsChosen(t *testing.T) {
 // heading arrives as real markup, not escaped text, which is what proves the
 // markdown pipeline ran rather than the file being dumped as-is.
 func TestFilesPanelSelectsTheFileTheQueryNames(t *testing.T) {
-	body := get(t, handler(t, fixture.New()),
-		"/packages/example/adr-writer?file=references%2Ftemplate.md").Body.String()
+	_, h := newServer(t)
+	body := get(t, h, "/packages/example/adr-writer?file=references%2Ftemplate.md").Body.String()
 
 	require.Contains(t, body, "<h1 class=\"am-md-h\">Template")
 	// "/adr new" is SKILL.md's own content and nowhere else on the page (the
@@ -772,7 +702,7 @@ func TestFilesPanelSelectsTheFileTheQueryNames(t *testing.T) {
 // version of that bug — a stale default reasserting itself is invisible if the
 // test only ever asks for a file the panel was never open on.
 func TestFilesPanelCloseLinkActuallyClosesRatherThanReopeningTheDefault(t *testing.T) {
-	h := handler(t, fixture.New())
+	_, h := newServer(t)
 
 	opened := get(t, h, "/packages/example/adr-writer?file=SKILL.md").Body.String()
 	require.Contains(t, opened, `aria-label="File content"`)
@@ -784,17 +714,19 @@ func TestFilesPanelCloseLinkActuallyClosesRatherThanReopeningTheDefault(t *testi
 }
 
 func TestFilesPanelNamesAStalePathAsMissingRatherThanAsAnEmptyPanel(t *testing.T) {
-	body := get(t, handler(t, fixture.New()),
-		"/packages/example/adr-writer?file=no-such-file.md").Body.String()
+	_, h := newServer(t)
+	body := get(t, h, "/packages/example/adr-writer?file=no-such-file.md").Body.String()
 
 	require.Contains(t, body, `id="file-missing"`)
 }
 
-// A package the fixture records no files for still renders the panel, honestly
+// A package the api lists no files for still renders the panel, honestly
 // empty — never silently absent, which would read as "this screen forgot files
 // exist" rather than "this bundle has none".
-func TestFilesPanelIsHonestlyEmptyForAPackageTheFixtureHasNoFilesFor(t *testing.T) {
-	body := get(t, handler(t, fixture.New()), "/packages/community/release-toolkit").Body.String()
+func TestFilesPanelIsHonestlyEmptyForAPackageWithNoFiles(t *testing.T) {
+	api, h := newServer(t)
+	api.Data.Files["community/release-toolkit"] = apiclient.PackageFileList{Files: []apiclient.PackageFile{}}
+	body := get(t, h, "/packages/community/release-toolkit").Body.String()
 
 	require.Contains(t, body, `id="files-empty"`)
 }
@@ -825,7 +757,7 @@ func TestTheShellRendersTheResolvedViewerAndNothingWhenThereIsNone(t *testing.T)
 	screen := components.Placeholder("Catalog", "Everything registered in this hub.")
 
 	t.Run("a resolved viewer reaches the chip, initials included", func(t *testing.T) {
-		viewer := fixture.SignedInViewer()
+		viewer := signedInViewer()
 		body := shellBody(t, viewer, screen)
 
 		require.Contains(t, body, viewer.DisplayName)
@@ -835,12 +767,12 @@ func TestTheShellRendersTheResolvedViewerAndNothingWhenThereIsNone(t *testing.T)
 	})
 
 	t.Run("a viewer holding no role is labelled as holding none rather than left blank", func(t *testing.T) {
-		body := shellBody(t, fixture.UnmappedViewer(), screen)
+		body := shellBody(t, unmappedViewer(), screen)
 		require.Contains(t, body, `<div class="am-viewer-role">No role</div>`)
 	})
 
 	t.Run("signed out renders no chip at all — no placeholder, no initials, no Guest", func(t *testing.T) {
-		body := shellBody(t, fixture.SignedOutViewer(), screen)
+		body := shellBody(t, signedOutViewer(), screen)
 
 		for _, forbidden := range []string{"am-avatar", "am-viewer-id", "am-viewer-name", "am-viewer-role"} {
 			require.NotContainsf(t, body, forbidden, "the signed-out shell rendered %q", forbidden)
@@ -851,12 +783,12 @@ func TestTheShellRendersTheResolvedViewerAndNothingWhenThereIsNone(t *testing.T)
 	})
 
 	t.Run("sign-out is offered to a viewer and is a POST form rather than a link", func(t *testing.T) {
-		signedIn := shellBody(t, fixture.SignedInViewer(), screen)
+		signedIn := shellBody(t, signedInViewer(), screen)
 		require.Contains(t, signedIn, `<form method="post" action="/auth/logout">`)
 		require.NotContains(t, signedIn, `href="/auth/logout"`,
 			"a GET sign-out is triggerable by any image tag on any page")
 
-		require.NotContains(t, shellBody(t, fixture.SignedOutViewer(), screen), "/auth/logout",
+		require.NotContains(t, shellBody(t, signedOutViewer(), screen), "/auth/logout",
 			"there is nothing to sign out of")
 	})
 }
@@ -954,7 +886,7 @@ func TestLocalCredentialsAppearOnlyBehindTheExplicitFlag(t *testing.T) {
 // mistakable for a hub with nothing in it, because the two ask their reader for
 // completely different things.
 func TestTheNoRoleStateSaysSoRatherThanRenderingAnEmptyHub(t *testing.T) {
-	viewer := fixture.UnmappedViewer()
+	viewer := unmappedViewer()
 	body := shellBody(t, viewer, components.NoRoleScreen(view.NoRole{Viewer: *viewer, Groups: viewer.Groups}))
 
 	require.Contains(t, body, `id="no-mapped-role"`)

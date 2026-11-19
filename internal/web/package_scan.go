@@ -18,11 +18,7 @@ import (
 // the page while this one read is unavailable, and the two must fail on
 // their own terms.
 func (s *Server) loadScan(c *gin.Context, detail *view.Package, namespace, name string) {
-	if s.deps.PackageScan == nil {
-		return
-	}
-
-	scan, err := s.deps.PackageScan.PackageScan(session(c), namespace, name)
+	scan, err := s.deps.Hub.PackageScan(session(c), namespace, name)
 	switch {
 	case err == nil:
 		detail.ScanDetail = scan

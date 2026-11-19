@@ -150,9 +150,8 @@ type Audit struct {
 	// empty is a claim that nothing has ever happened in this hub.
 	GovernanceState
 
-	// ExportAvailable is whether the screen may offer the download at all. False is
-	// a hub with no audit source wired, which is a deployment fault rather than a
-	// permission, and the action is then absent rather than offered and broken.
+	// ExportAvailable is whether the screen may offer the download at all: only
+	// beside rows that could be read, rather than offered and broken.
 	ExportAvailable bool
 }
 

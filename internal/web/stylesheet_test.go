@@ -8,8 +8,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	"agent-manager/internal/web/fixture"
 )
 
 // A class name in the markup with no rule behind it costs nothing at build time
@@ -86,7 +84,7 @@ func definedClasses(t *testing.T) map[string]bool {
 // identity provider and policy cards on Organisation, and both cards on Connect
 // the CLI.
 func TestCardsWhoseContentNeedsAGutterHaveOne(t *testing.T) {
-	handler := handler(t, fixture.New())
+	_, handler := newServer(t)
 
 	for path, cards := range map[string]int{
 		"/storage": 2,
@@ -112,7 +110,7 @@ func TestCardsWhoseContentNeedsAGutterHaveOne(t *testing.T) {
 // list screen. /profiles/<slug> and /packages/<id> are here for exactly that.
 func TestEveryScreenSitsInsideThePageGutter(t *testing.T) {
 	gutter := gutterClasses(t)
-	handler := handler(t, fixture.New())
+	_, handler := newServer(t)
 
 	for _, path := range []string{
 		"/catalog", "/scanner", "/profiles", "/storage", "/org", "/cli", "/audit", "/runtime",
@@ -147,13 +145,14 @@ func TestEveryScreenSitsInsideThePageGutter(t *testing.T) {
 // nested inside am-screen-body rather than merely that am-screen-body exists
 // somewhere on the page.
 func TestProfileDetailDescriptionSitsInsideTheGutter(t *testing.T) {
-	body := get(t, handler(t, fixture.New()), "/profiles/platform-engineer").Body.String()
+	_, h := newServer(t)
+	body := get(t, h, "/profiles/platform-engineer").Body.String()
 
 	wrapper := strings.Index(body, `class="am-screen-body"`)
 	require.GreaterOrEqualf(t, wrapper, 0, "the profile detail screen has no am-screen-body wrapper")
 
 	description := strings.Index(body, `class="am-section"`)
-	require.Greaterf(t, description, -1, "the description section is missing from the fixture profile")
+	require.Greaterf(t, description, -1, "the description section is missing from the seeded profile")
 	require.Greaterf(t, description, wrapper,
 		"the description sits outside am-screen-body, so it renders edge to edge against the window")
 }

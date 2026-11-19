@@ -4,17 +4,15 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	"agent-manager/internal/apiclient"
 	"agent-manager/internal/web"
 	"agent-manager/internal/web/components"
-	"agent-manager/internal/web/fixture"
-	"agent-manager/internal/web/view"
 )
 
 // TestEverySidebarEntryIsARealScreen walks every entry of components.Nav, in both
-// themes, with a signed-in fixture viewer, and fails on the three ways a screen
+// themes, signed in, and fails on the three ways a screen
 // can look finished while lying: placeholder copy, an identity nobody resolved,
 // or a badge that is not a number the badge source actually answered.
 //
@@ -24,21 +22,9 @@ import (
 // whoever remembers to add a new entry to it.
 func TestEverySidebarEntryIsARealScreen(t *testing.T) {
 	// Non-zero counts, so a badge that renders "10" or "4" here is provably the
-	// number this source answered rather than the design's compiled-in figures.
-	source := &governance{badges: view.Badges{Packages: 7, Profiles: 3, OpenFindings: 2}}
-	h := web.New(web.Deps{
-		Catalog:      fixture.New(),
-		Scanner:      source,
-		Audit:        source,
-		Badges:       source,
-		Storage:      source,
-		Runtime:      source,
-		Profiles:     &profiles{},
-		Organization: &organization{},
-		Device:       &device{},
-		Viewers:      fixture.SignedInViewers(),
-		Log:          zerolog.Nop(),
-	}, web.Options{HubURL: "http://localhost:8082"}).Handler()
+	// number the api answered rather than the design's compiled-in figures.
+	api, h := newServerWith(t, web.Options{HubURL: "http://localhost:8082"})
+	api.Data.Badges = apiclient.Badges{Packages: 7, Profiles: 3, OpenFindings: 2}
 
 	// The literal `placeholder=` HTML attribute (a search box's hint text) is not
 	// this: the pattern below requires the word to stand on its own, the way

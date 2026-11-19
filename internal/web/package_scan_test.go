@@ -1,15 +1,16 @@
 package web_test
 
 import (
-	"context"
-	"errors"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"agent-manager/internal/web/view"
+	"agent-manager/internal/apiclient"
+	"agent-manager/internal/web/fakeapi"
 )
 
 // The package detail screen's security section: a collapsible panel showing
@@ -19,44 +20,38 @@ import (
 // itself, its default-collapsed toggle and its four states — not a repeat of
 // scanner escaping or check-matrix coverage.
 
-// packageScanFixture answers PackageSource with one fixed package and
-// PackageScanSource with whatever a test sets, so the panel renders in
-// isolation from the rest of the detail screen's reads.
-type packageScanFixture struct {
-	pkg  view.Package
-	scan view.PackageScan
-	err  error
+const scanPackage = "example/adr-writer"
+
+// scanServer is a server whose api answers scanPackage's scan with scan.
+func scanServer(t *testing.T, scan apiclient.PackageScan) http.Handler {
+	t.Helper()
+	api, h := newServer(t)
+	api.Data.Scans[scanPackage] = scan
+	return h
 }
 
-// Catalog is never exercised by these tests; it exists only because handler()
-// requires a web.CatalogSource to route anything at all.
-func (packageScanFixture) Catalog(_ context.Context, _ view.CatalogQuery) (view.CatalogPage, error) {
-	return view.CatalogPage{}, nil
+func flaggedScan(verdict apiclient.FindingScanVerdict, findings ...apiclient.PackageScanFinding) apiclient.PackageScan {
+	return apiclient.PackageScan{
+		Scanned:  true,
+		Version:  "1.0.0",
+		Scan:     apiclient.FindingScan{PackVersion: "1.0.0+abc", StartedAt: time.Now(), Verdict: verdict},
+		Checks:   []apiclient.FindingCheck{},
+		Findings: findings,
+	}
 }
 
-func (s packageScanFixture) Package(_ context.Context, _, _ string) (view.Package, error) {
-	return s.pkg, nil
-}
-
-func (s packageScanFixture) PackageScan(_ context.Context, _, _ string) (view.PackageScan, error) {
-	return s.scan, s.err
-}
-
-func testPackage() view.Package {
-	return view.Package{ID: "example/thing", Name: "thing", Kind: view.KindSkill}
+func scanFinding(ruleID, title string, severity apiclient.PackageScanFindingSeverity, state apiclient.PackageScanFindingState) apiclient.PackageScanFinding {
+	return apiclient.PackageScanFinding{
+		Id: uuid.New(), RuleId: ruleID, Title: title, Severity: severity, State: state,
+		RaisedAt: time.Now(), Evidence: []apiclient.FindingEvidence{},
+	}
 }
 
 func TestPackageScanPanelIsCollapsedByDefaultAndCostsNoRoundTrip(t *testing.T) {
-	source := packageScanFixture{pkg: testPackage(), scan: view.PackageScan{
-		Scanned: true,
-		Verdict: "flagged",
-		Scan:    view.ScanMeta{PackVersion: "1.0.0+abc", Started: view.Timestamp(time.Now()), Verdict: "flagged"},
-		Findings: []view.FindingDetail{{
-			FindingRow: view.FindingRow{ID: "f1", RuleID: "SH-NET-002", Severity: "high", State: "open",
-				Title: "Undeclared network egress"},
-		}},
-	}}
-	body := get(t, handler(t, source), "/packages/example/thing").Body.String()
+	h := scanServer(t, flaggedScan(apiclient.FindingScanVerdictFlagged,
+		scanFinding("SH-NET-002", "Undeclared network egress",
+			apiclient.PackageScanFindingSeverityHigh, apiclient.PackageScanFindingStateOpen)))
+	body := get(t, h, "/packages/"+scanPackage).Body.String()
 
 	// Collapsed before the script runs: the same inline display:none idiom
 	// the catalog's own overlays use (import.templ, catalog.templ), not a
@@ -81,20 +76,14 @@ func TestPackageScanPanelIsCollapsedByDefaultAndCostsNoRoundTrip(t *testing.T) {
 
 func TestPackageScanShowsTheApprovalAndTheReviewersComment(t *testing.T) {
 	expires := time.Now().Add(48 * time.Hour)
-	source := packageScanFixture{pkg: testPackage(), scan: view.PackageScan{
-		Scanned: true,
-		Verdict: "flagged",
-		Scan:    view.ScanMeta{PackVersion: "1.0.0+abc", Started: view.Timestamp(time.Now()), Verdict: "flagged"},
-		Findings: []view.FindingDetail{{
-			FindingRow: view.FindingRow{ID: "f1", RuleID: "SH-FS-007", Severity: "low", State: "approved",
-				Title: "Filesystem write outside declared scope"},
-			Override: &view.Override{
-				Reviewer: "reviewer@example.com", Note: "Scoped to the cache directory only.",
-				Expires: view.Until(expires, time.Now()), Decided: view.Timestamp(time.Now()),
-			},
-		}},
-	}}
-	body := get(t, handler(t, source), "/packages/example/thing").Body.String()
+	note := "Scoped to the cache directory only."
+	finding := scanFinding("SH-FS-007", "Filesystem write outside declared scope",
+		apiclient.PackageScanFindingSeverityLow, apiclient.PackageScanFindingStateApproved)
+	finding.Override = &apiclient.FindingOverride{
+		Reviewer: "reviewer@example.com", Note: &note, ExpiresAt: &expires, DecidedAt: time.Now(),
+	}
+	h := scanServer(t, flaggedScan(apiclient.FindingScanVerdictFlagged, finding))
+	body := get(t, h, "/packages/"+scanPackage).Body.String()
 
 	require.Contains(t, body, "reviewer@example.com", "the reviewer is missing from the panel")
 	require.Contains(t, body, "Scoped to the cache directory only.", "the reviewer's comment is missing")
@@ -102,16 +91,10 @@ func TestPackageScanShowsTheApprovalAndTheReviewersComment(t *testing.T) {
 }
 
 func TestPackageScanTellsARejectedFindingApartFromAnAcceptedOne(t *testing.T) {
-	source := packageScanFixture{pkg: testPackage(), scan: view.PackageScan{
-		Scanned: true,
-		Verdict: "rejected",
-		Scan:    view.ScanMeta{PackVersion: "1.0.0+abc", Started: view.Timestamp(time.Now()), Verdict: "rejected"},
-		Findings: []view.FindingDetail{{
-			FindingRow: view.FindingRow{ID: "f1", RuleID: "SH-INJ-011", Severity: "high", State: "rejected",
-				Title: "Prompt injection pattern"},
-		}},
-	}}
-	body := get(t, handler(t, source), "/packages/example/thing").Body.String()
+	h := scanServer(t, flaggedScan(apiclient.FindingScanVerdictRejected,
+		scanFinding("SH-INJ-011", "Prompt injection pattern",
+			apiclient.PackageScanFindingSeverityHigh, apiclient.PackageScanFindingStateRejected)))
+	body := get(t, h, "/packages/"+scanPackage).Body.String()
 
 	require.Contains(t, body, `id="scan-finding-rejected"`)
 	require.NotContains(t, body, `id="finding-override"`,
@@ -120,19 +103,27 @@ func TestPackageScanTellsARejectedFindingApartFromAnAcceptedOne(t *testing.T) {
 
 func TestPackageScanTellsItsFourStatesApart(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		source packageScanFixture
-		want   string
+		name  string
+		setup func(api *fakeapi.API)
+		want  string
 	}{
-		{"never scanned", packageScanFixture{pkg: testPackage()}, "scan-unscanned"},
-		{"scanned clean, no findings", packageScanFixture{pkg: testPackage(),
-			scan: view.PackageScan{Scanned: true, Verdict: "clean", Scan: view.ScanMeta{Verdict: "clean"}}}, "scan-no-findings"},
-		{"rejected version", packageScanFixture{pkg: testPackage(),
-			scan: view.PackageScan{Rejected: true}}, "scan-rejected"},
-		{"read failed", packageScanFixture{pkg: testPackage(), err: errors.New("boom")}, "scan-unavailable"},
+		{"never scanned", func(api *fakeapi.API) {
+			api.Data.Scans[scanPackage] = apiclient.PackageScan{Version: "1.0.0"}
+		}, "scan-unscanned"},
+		{"scanned clean, no findings", func(api *fakeapi.API) {
+			api.Data.Scans[scanPackage] = flaggedScan(apiclient.FindingScanVerdictClean)
+		}, "scan-no-findings"},
+		{"rejected version", func(api *fakeapi.API) {
+			api.Fail("getPackageScan", http.StatusForbidden)
+		}, "scan-rejected"},
+		{"read failed", func(api *fakeapi.API) {
+			api.Fail("getPackageScan", http.StatusServiceUnavailable)
+		}, "scan-unavailable"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			body := get(t, handler(t, tc.source), "/packages/example/thing").Body.String()
+			api, h := newServer(t)
+			tc.setup(api)
+			body := get(t, h, "/packages/"+scanPackage).Body.String()
 			require.Contains(t, body, `id="`+tc.want+`"`)
 
 			for _, other := range []string{"scan-unscanned", "scan-no-findings", "scan-rejected", "scan-unavailable"} {
@@ -151,19 +142,19 @@ func TestPackageScanTellsItsFourStatesApart(t *testing.T) {
 func TestPackageScanIsEscapedWhereverItIsRendered(t *testing.T) {
 	const payload = `<img src=x onerror="alert(1)">`
 
-	source := packageScanFixture{pkg: testPackage(), scan: view.PackageScan{
-		Scanned: true,
-		Verdict: "flagged",
-		Scan:    view.ScanMeta{PackVersion: "1.0.0+" + payload, Started: view.Timestamp(time.Now()), Verdict: "flagged"},
-		Checks:  []view.Check{{ID: "shell-audit", Label: "Label " + payload, Result: "fail"}},
-		Findings: []view.FindingDetail{{
-			FindingRow: view.FindingRow{ID: "f1", RuleID: "SH-NET-002", Severity: "high", State: "open",
-				Title: "Title " + payload, Explanation: "Detail " + payload,
-				Primary: &view.Evidence{Path: "scripts/" + payload + ".sh", Line: 41, Quote: payload}},
-			Override: &view.Override{Reviewer: "reviewer " + payload, Note: "note " + payload, Decided: view.Timestamp(time.Now())},
-		}},
+	detail, quote, note := "Detail "+payload, payload, "note "+payload
+	line := int64(41)
+	finding := scanFinding("SH-NET-002", "Title "+payload,
+		apiclient.PackageScanFindingSeverityHigh, apiclient.PackageScanFindingStateOpen)
+	finding.Detail = &detail
+	finding.Evidence = []apiclient.FindingEvidence{{
+		Path: "scripts/" + payload + ".sh", Line: &line, Quote: &quote, Role: apiclient.Primary,
 	}}
-	body := get(t, handler(t, source), "/packages/example/thing").Body.String()
+	finding.Override = &apiclient.FindingOverride{Reviewer: "reviewer " + payload, Note: &note, DecidedAt: time.Now()}
+	scan := flaggedScan(apiclient.FindingScanVerdictFlagged, finding)
+	scan.Scan.PackVersion = "1.0.0+" + payload
+	scan.Checks = []apiclient.FindingCheck{{CheckId: "shell-audit", Label: "Label " + payload, Result: apiclient.Fail}}
+	body := get(t, scanServer(t, scan), "/packages/"+scanPackage).Body.String()
 
 	require.NotContains(t, body, payload, "the package screen rendered attacker-supplied markup unescaped")
 	require.Truef(t, strings.Contains(body, "&lt;img src=x onerror="),

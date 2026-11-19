@@ -481,6 +481,34 @@ func (s *Server) registerPackages() {
 			"500": s.errorResponse("The request could not be completed."),
 		},
 	}, s.setPackageVisibility)
+
+	huma.Register(s.api, huma.Operation{
+		OperationID: "setPackageTracking",
+		Method:      http.MethodPut,
+		Path:        "/v1/packages/{namespace}/{name}/tracking",
+		Tags:        []string{"packages"},
+		Summary:     "Track a git package's upstream tags",
+		Description: "Opts a package registered from git in or out of the fetcher's periodic upstream " +
+			"check, which registers each new tag matching the pattern exactly as a registration " +
+			"would: version, fetch job and audit row, then the ordinary fetch, scan and gate. " +
+			"One audit row of kind `fetch`. Requires the package's recorded owner or a catalog " +
+			"admin. The response is the package as it now reads.",
+		Responses: map[string]*huma.Response{
+			"200": {
+				Description: "Changed. The body is the package as it now reads.",
+				Content: map[string]*huma.MediaType{
+					"application/json": {Schema: s.schemaOf(contract.PackageDetail{}, "PackageDetail")},
+				},
+			},
+			"400": s.errorResponse("The request body is missing or is not valid JSON."),
+			"401": s.errorResponse("Missing, expired or invalid token."),
+			"403": s.errorResponse("This identity may not change this package's upstream tracking."),
+			"404": s.errorResponse("No such package, or it is not readable by this identity."),
+			"415": s.errorResponse("The request body must be sent as application/json."),
+			"422": s.errorResponse("The pattern is not a glob, or the package was not registered from git."),
+			"500": s.errorResponse("The request could not be completed."),
+		},
+	}, s.setPackageTracking)
 }
 
 func (s *Server) registerProfiles() {

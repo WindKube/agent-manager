@@ -16,11 +16,12 @@ import (
 
 // Definition is the complete description of a background role.
 type Definition struct {
-	Name     string              // matches `agent-manager worker run <name>`
-	Queues   map[string]int      // queue name -> max concurrent
-	Needs    Needs               // what the bootstrap is permitted to construct
-	Periodic []river.PeriodicJob // cron-ish jobs this role owns
+	Name     string         // matches `agent-manager worker run <name>`
+	Queues   map[string]int // queue name -> max concurrent
+	Needs    Needs          // what the bootstrap is permitted to construct
 	Register func(Deps, *river.Workers) error
+	// Periodic builds the jobs this role schedules, from the role's config.
+	Periodic func(Config) ([]*river.PeriodicJob, error)
 }
 
 // Access is how much of a datastore a role may be handed.

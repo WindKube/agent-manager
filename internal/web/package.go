@@ -253,6 +253,37 @@ func (s *Server) setPackageVisibility(c *gin.Context) {
 	s.backToPackageAfterVisibility(c, namespace, name, packageVisibilityChanged)
 }
 
+// setPackageTracking is the track-upstream control's write, post-redirect-get
+// like the visibility change.
+func (s *Server) setPackageTracking(c *gin.Context) {
+	namespace, name, ok := view.SplitPackageID(strings.TrimSpace(c.PostForm("id")))
+	if !ok {
+		c.Redirect(http.StatusSeeOther, "/catalog")
+		return
+	}
+
+	track := c.PostForm("track") == "on"
+	pattern := strings.TrimSpace(c.PostForm("pattern"))
+	if _, err := s.deps.Hub.SetTracking(session(c), namespace, name, track, pattern); err != nil {
+		switch {
+		case errors.Is(err, view.ErrSignedOut):
+			s.toSignIn(c)
+		case errors.Is(err, view.ErrNotFound):
+			s.backToPackageAfterVisibility(c, namespace, name, packageVisibilityMissing)
+		default:
+			var refused *hub.PackageRefusedError
+			if errors.As(err, &refused) {
+				s.backToPackageAfterVisibility(c, namespace, name, packageTrackingRefused)
+				return
+			}
+			logFrom(c).Error().Err(err).Msg("set package tracking")
+			s.backToPackageAfterVisibility(c, namespace, name, packageVisibilityFailed)
+		}
+		return
+	}
+	s.backToPackageAfterVisibility(c, namespace, name, packageTrackingChanged)
+}
+
 // packageVisibilityWriteFailed maps the write's error onto a redirect,
 // mirroring profileWriteFailed: a refusal the api understood
 // (hub.PackageRefusedError) still redirects, since — unlike a profile
@@ -282,6 +313,8 @@ const (
 	packageVisibilityRefused packageOutcome = "visibility-refused"
 	packageVisibilityMissing packageOutcome = "visibility-missing"
 	packageVisibilityFailed  packageOutcome = "visibility-failed"
+	packageTrackingChanged   packageOutcome = "tracking-changed"
+	packageTrackingRefused   packageOutcome = "tracking-refused"
 )
 
 func packageNotice(raw string) *view.Notice {
@@ -292,6 +325,12 @@ func packageNotice(raw string) *view.Notice {
 		return &view.Notice{Tone: "dan", Text: "The hub refused that change: only this package's " +
 			"owner or a catalog admin may change its visibility, or it has no recorded owner to " +
 			"narrow it safely."}
+	case packageTrackingChanged:
+		return &view.Notice{Tone: "ok", Text: "Upstream tracking saved."}
+	case packageTrackingRefused:
+		return &view.Notice{Tone: "dan", Text: "The hub refused that change: the tag pattern must be " +
+			"a glob such as v*, and only this package's owner or a catalog admin may change its " +
+			"upstream tracking."}
 	case packageVisibilityMissing:
 		return &view.Notice{Tone: "dan", Text: "No such package, or it is not readable by your " +
 			"identity."}

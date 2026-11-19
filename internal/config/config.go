@@ -97,6 +97,21 @@ type Fetcher struct {
 	OutboundAllowlist []string `env:"OUTBOUND_ALLOWLIST" envSeparator:","`
 	MaxUploadBytes    int64    `env:"MAX_UPLOAD_BYTES" envDefault:"26214400"`
 	GitHubToken       string   `env:"GITHUB_TOKEN"`
+	// UpstreamInterval is how often tracked git packages are checked for new
+	// tags; see CheckUpstreamInterval for its floor.
+	UpstreamInterval time.Duration `env:"UPSTREAM_INTERVAL" envDefault:"1h"`
+}
+
+// MinUpstreamInterval keeps the upstream check from hammering a forge's
+// rate limit.
+const MinUpstreamInterval = 5 * time.Minute
+
+// CheckUpstreamInterval refuses an interval below MinUpstreamInterval.
+func CheckUpstreamInterval(d time.Duration) error {
+	if d < MinUpstreamInterval {
+		return fmt.Errorf("%sUPSTREAM_INTERVAL is %s; it must be at least %s", EnvPrefix, d, MinUpstreamInterval)
+	}
+	return nil
 }
 
 type Scanner struct {

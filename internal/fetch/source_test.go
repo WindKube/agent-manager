@@ -580,3 +580,40 @@ func TestGitSourceNeverSendsTheTokenToAnotherHost(t *testing.T) {
 		require.Empty(t, got)
 	}
 }
+
+func TestGitSourceListsEveryPageOfTags(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/example/kit/tags":
+			require.Equal(t, "100", r.URL.Query().Get("per_page"))
+			count := 100
+			if r.URL.Query().Get("page") == "2" {
+				count = 3
+			}
+			entries := make([]string, 0, count)
+			for i := range count {
+				entries = append(entries, fmt.Sprintf(`{"name":"v1.%s.%d","commit":{"sha":%q}}`,
+					r.URL.Query().Get("page"), i, strings.ToUpper(testCommit)))
+			}
+			_, _ = w.Write([]byte("[" + strings.Join(entries, ",") + "]"))
+		case "/repos/example/gone/tags":
+			w.WriteHeader(http.StatusNotFound)
+		default:
+			w.WriteHeader(http.StatusBadRequest)
+		}
+	}))
+	defer server.Close()
+
+	client := &rewriteClient{server: server}
+	source, err := fetch.NewGitSource(client, "")
+	require.NoError(t, err)
+
+	tags, err := source.Tags(context.Background(), fetch.SourceRef{Kind: fetch.SourceGit, URL: "https://github.com/example/kit"})
+	require.NoError(t, err)
+	require.Len(t, tags, 103)
+	require.Equal(t, fetch.Tag{Name: "v1.2.2", Commit: testCommit}, tags[102])
+	require.Len(t, client.seen, 2, "a short page is the last one")
+
+	_, err = source.Tags(context.Background(), fetch.SourceRef{Kind: fetch.SourceGit, URL: "https://github.com/example/gone"})
+	require.ErrorIs(t, err, fetch.ErrRefNotFound)
+}

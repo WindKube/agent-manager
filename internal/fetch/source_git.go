@@ -269,6 +269,51 @@ func (s GitSource) peel(ctx context.Context, api *github.Client, repo repourl.Re
 	return "", fmt.Errorf("%w: %s tag nests more than %d annotated tags", ErrRemote, repo, maxTagDepth)
 }
 
+// Tag is one tag a repository has and the commit it names now.
+type Tag struct {
+	Name   string
+	Commit string
+}
+
+const (
+	tagsPerPage = 100
+	// maxTagPages bounds one listing at a thousand tags.
+	maxTagPages = 10
+)
+
+// Tags lists the repository's tags, in the forge's order.
+func (s GitSource) Tags(ctx context.Context, ref SourceRef) ([]Tag, error) {
+	repo, api, err := s.target(ref)
+	if err != nil {
+		return nil, err
+	}
+	var tags []Tag
+	for page := 1; page <= maxTagPages; page++ {
+		var batch []struct {
+			Name   string `json:"name"`
+			Commit struct {
+				SHA string `json:"sha"`
+			} `json:"commit"`
+		}
+		found, listErr := s.getJSON(ctx, api, repo,
+			fmt.Sprintf("repos/%s/%s/tags?per_page=%d&page=%d", repo.Owner, repo.Repo, tagsPerPage, page), &batch)
+		if listErr != nil {
+			return nil, listErr
+		}
+		if !found {
+			return nil, fmt.Errorf("%w: %s (a private repository the hub holds no credential for answers the same way)",
+				ErrRefNotFound, repo)
+		}
+		for _, tag := range batch {
+			tags = append(tags, Tag{Name: tag.Name, Commit: strings.ToLower(tag.Commit.SHA)})
+		}
+		if len(batch) < tagsPerPage {
+			break
+		}
+	}
+	return tags, nil
+}
+
 // maxAPIBody bounds a JSON answer from the forge's API.
 const maxAPIBody = 1 << 20
 

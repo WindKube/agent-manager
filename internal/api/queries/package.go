@@ -55,7 +55,11 @@ select
   coalesce(pkg.source_kind::text, ''),
   coalesce(pkg.source_url, ''),
   coalesce(pkg.source_ref, ''),
-  coalesce(pkg.source_subdirectory, '')
+  coalesce(pkg.source_subdirectory, ''),
+  pkg.track_upstream,
+  pkg.tag_pattern,
+  pkg.last_checked_at,
+  coalesce(pkg.last_check_error, '')
 from package as pkg
 join publisher as pub on pub.id = pkg.publisher_id
 join version as ver on ver.id = pkg.latest_version_id and ver.visible
@@ -81,6 +85,7 @@ func Package(ctx context.Context, db bun.IDB, principal auth.Principal,
 		parentID    string
 		parent      string
 		source      contract.PackageSource
+		tracking    contract.PackageTracking
 	)
 	detail.Tags = []string{}
 
@@ -95,7 +100,8 @@ func Package(ctx context.Context, db bun.IDB, principal auth.Principal,
 		&detail.Category,
 		&versionID, &detail.Version, &detail.Verdict, &manifest, pgdialect.Array(&detail.Tags),
 		&parentID, &parent, &detail.Capabilities.Scanned,
-		&source.Kind, &source.URL, &source.Ref, &source.Subdirectory)
+		&source.Kind, &source.URL, &source.Ref, &source.Subdirectory,
+		&tracking.TrackUpstream, &tracking.TagPattern, &tracking.LastCheckedAt, &tracking.LastCheckError)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return contract.PackageDetail{}, ErrNotFound
@@ -114,6 +120,10 @@ func Package(ctx context.Context, db bun.IDB, principal auth.Principal,
 	ownerID, _ := uuid.Parse(ownerIDText)
 	detail.CanChangeVisibility = (ownerID != uuid.Nil && ownerID == principal.IdentityID) ||
 		principal.Role == models.OrgRoleCatalogAdmin
+	if source.Kind == string(models.FetchSourceGit) {
+		tracking.CanChange = detail.CanChangeVisibility
+		detail.Tracking = &tracking
+	}
 
 	detail.Manifest = manifest
 	detail.ManifestObject = manifestObject(detail.Kind)

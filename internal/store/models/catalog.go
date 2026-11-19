@@ -67,8 +67,14 @@ type Package struct {
 	SourceURL          string          `bun:"source_url,type:text,nullzero"`
 	SourceRef          string          `bun:"source_ref,type:text,nullzero"`
 	SourceSubdirectory string          `bun:"source_subdirectory,type:text,nullzero"`
-	CreatedAt          time.Time       `bun:"created_at,type:timestamptz,notnull,default:now()"`
-	UpdatedAt          time.Time       `bun:"updated_at,type:timestamptz,notnull,default:now()"`
+	// TrackUpstream opts a git package into the periodic upstream check, which
+	// registers new tags matching TagPattern (a path.Match glob).
+	TrackUpstream  bool       `bun:"track_upstream,type:boolean,notnull,default:false"`
+	TagPattern     string     `bun:"tag_pattern,type:text,notnull,default:'v*'"`
+	LastCheckedAt  *time.Time `bun:"last_checked_at,type:timestamptz,nullzero"`
+	LastCheckError string     `bun:"last_check_error,type:text,nullzero"`
+	CreatedAt      time.Time  `bun:"created_at,type:timestamptz,notnull,default:now()"`
+	UpdatedAt      time.Time  `bun:"updated_at,type:timestamptz,notnull,default:now()"`
 
 	Publisher *Publisher `bun:"rel:belongs-to,join:publisher_id=id"`
 	Category  *Category  `bun:"rel:belongs-to,join:category_id=id"`

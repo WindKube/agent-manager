@@ -45,6 +45,7 @@ func Definition() worker.Definition {
 			Outbound: true,
 		},
 		Register: register,
+		Periodic: periodic,
 	}
 }
 
@@ -53,7 +54,14 @@ func register(deps worker.Deps, workers *river.Workers) error {
 	if err != nil {
 		return err
 	}
-	return river.AddWorkerSafely(workers, handler)
+	if addErr := river.AddWorkerSafely(workers, handler); addErr != nil {
+		return addErr
+	}
+	upstream, err := NewUpstream(deps)
+	if err != nil {
+		return err
+	}
+	return river.AddWorkerSafely(workers, upstream)
 }
 
 // Worker works one `fetch` job.

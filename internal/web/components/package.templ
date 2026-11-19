@@ -46,6 +46,9 @@ templ PackageScreen(p view.Package) {
 				<div class={ NoticeClass(*p.Notice) } id="package-notice">{ p.Notice.Text }</div>
 			}
 			@visibilityControl(p)
+			if p.Tracking != nil {
+				@trackingControl(p.ID, *p.Tracking)
+			}
 			@addToProfile(p)
 			@packageDeleteControl(p)
 		}
@@ -121,6 +124,29 @@ templ visibilityControl(p view.Package) {
 				}
 			}
 		}
+	</div>
+}
+
+// trackingControl is the upstream check's switch, offered only for a package
+// registered from git and disabled with its reason for anyone who may not
+// change it.
+templ trackingControl(id string, tracking view.Tracking) {
+	<div class="am-vis-control" id="package-tracking">
+		if !tracking.CanChange {
+			<button type="button" class="am-btn" disabled aria-disabled="true" title={ view.TrackingChangeDisabledReason }>Track upstream</button>
+			<span class="am-toggle-note">{ view.TrackingChangeDisabledReason }</span>
+		} else {
+			<form method="post" action="/packages/tracking" class="am-vis-form">
+				<input type="hidden" name="id" value={ id }/>
+				<label class="am-toggle-note">
+					<input type="checkbox" name="track" value="on" checked?={ tracking.On }/>
+					Track upstream
+				</label>
+				<input class="am-input" type="text" name="pattern" value={ tracking.Pattern } maxlength="100" aria-label="Tag pattern" title="Tags matching this glob are registered as they appear; a prerelease only when the pattern contains a hyphen."/>
+				<button type="submit" class="am-btn">Save</button>
+			</form>
+		}
+		<span class="am-toggle-note" id="package-tracking-status">{ tracking.Status() }</span>
 	</div>
 }
 

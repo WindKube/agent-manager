@@ -40,6 +40,23 @@ func (c *Client) SetVisibility(ctx context.Context, namespace, name, visibility 
 	return packageDetail(resp.JSON200, c.now()), nil
 }
 
+// SetTracking calls PUT /v1/packages/{namespace}/{name}/tracking.
+func (c *Client) SetTracking(ctx context.Context, namespace, name string, track bool, pattern string) (view.Package, error) {
+	body := apiclient.PackageTrackingUpdate{TrackUpstream: track}
+	if pattern != "" {
+		body.TagPattern = &pattern
+	}
+	resp, err := c.api.SetPackageTrackingWithResponse(ctx, namespace, name, body)
+	if err != nil {
+		return view.Package{}, fmt.Errorf("set the upstream tracking of %s/%s: %w", namespace, name, err)
+	}
+	if resp.JSON200 == nil {
+		return view.Package{}, packageFailure(fmt.Sprintf("set the upstream tracking of %s/%s", namespace, name),
+			resp.HTTPResponse, resp.Body)
+	}
+	return packageDetail(resp.JSON200, c.now()), nil
+}
+
 // packageFailure mirrors hub/profiles.go's profileFailure: a 404 stays
 // view.ErrNotFound so an unreadable package answers the same as a missing
 // one, and a 403/422 the api understood becomes PackageRefusedError,
@@ -159,6 +176,17 @@ func packageDetail(body *apiclient.PackageDetail, now time.Time) view.Package {
 			URL:          deref(body.Source.Url),
 			Ref:          deref(body.Source.Ref),
 			Subdirectory: deref(body.Source.Subdirectory),
+		}
+		if body.Tracking != nil {
+			detail.Tracking = &view.Tracking{
+				On:        body.Tracking.TrackUpstream,
+				Pattern:   body.Tracking.TagPattern,
+				LastError: deref(body.Tracking.LastCheckError),
+				CanChange: body.Tracking.CanChange,
+			}
+			if body.Tracking.LastCheckedAt != nil {
+				detail.Tracking.LastChecked = view.Relative(*body.Tracking.LastCheckedAt, now)
+			}
 		}
 		// The commit is the shown version's, and only when it came from the
 		// repository the package names now.

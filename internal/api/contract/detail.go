@@ -23,10 +23,13 @@ type PackageDetail struct {
 
 	Origin PackageOrigin `json:"origin"`
 	// Source is absent on a package registered before sources were recorded.
-	Source  *PackageSource `json:"source,omitempty"`
-	Version string         `json:"version" doc:"The latest visible version's semver — the one the panels below describe." example:"1.3.0"`
-	Verdict string         `json:"verdict" enum:"scanning,clean,flagged,rejected" example:"clean"`
-	Tags    []string       `json:"tags" doc:"The latest version's manifest keywords. Tags belong to the version, not the package."`
+	Source *PackageSource `json:"source,omitempty"`
+	// Tracking is present for a package registered from git, the only kind
+	// with upstream tags to follow.
+	Tracking *PackageTracking `json:"tracking,omitempty"`
+	Version  string           `json:"version" doc:"The latest visible version's semver — the one the panels below describe." example:"1.3.0"`
+	Verdict  string           `json:"verdict" enum:"scanning,clean,flagged,rejected" example:"clean"`
+	Tags     []string         `json:"tags" doc:"The latest version's manifest keywords. Tags belong to the version, not the package."`
 
 	ManifestObject string `json:"manifestObject" enum:"plugin.json,SKILL.md" example:"plugin.json"`
 	// Manifest is verbatim and unformatted: a Go map would reorder it.
@@ -59,6 +62,17 @@ type PackageSource struct {
 	URL          string `json:"url,omitempty" doc:"The canonical repository for git, the requested URL for an archive; absent for an upload." example:"https://github.com/acme/skills"`
 	Ref          string `json:"ref,omitempty" doc:"The git ref as requested: a tag, a branch or HEAD." example:"v1.2.0"`
 	Subdirectory string `json:"subdirectory,omitempty" example:"pdf"`
+}
+
+// PackageTracking is the package's upstream check.
+type PackageTracking struct {
+	TrackUpstream  bool       `json:"trackUpstream"`
+	TagPattern     string     `json:"tagPattern" example:"v*"`
+	LastCheckedAt  *time.Time `json:"lastCheckedAt,omitempty"`
+	LastCheckError string     `json:"lastCheckError,omitempty" doc:"Why the last check could not list the upstream tags; absent when it could."`
+	// CanChange is the same owner-or-catalog-admin gate as
+	// canChangeVisibility.
+	CanChange bool `json:"canChange"`
 }
 
 type PackageComponent struct {

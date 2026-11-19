@@ -153,3 +153,38 @@ func TestThePackagePageStatesWhereThePackageComesFrom(t *testing.T) {
 	require.Contains(t, body, "from releases.octoflow.dev/release-toolkit-1.2.7.tar.gz")
 	require.NotContains(t, body, "/commit/")
 }
+
+// TestTheTrackUpstreamControlIsOfferedForAGitPackageOnly: a git package shows
+// the control and when the check last ran; an archive package has no
+// upstream tags and no control.
+func TestTheTrackUpstreamControlIsOfferedForAGitPackageOnly(t *testing.T) {
+	_, h := newServer(t)
+	body := html.UnescapeString(get(t, h, "/packages/example/platform-toolkit").Body.String())
+	require.Contains(t, body, `id="package-tracking"`)
+	require.Contains(t, body, `action="/packages/tracking"`)
+	require.Contains(t, body, `name="track" value="on" checked`)
+	require.Contains(t, body, `name="pattern" value="v*"`)
+	require.Contains(t, body, "last checked 40 minutes ago")
+
+	body = get(t, h, "/packages/community/release-toolkit").Body.String()
+	require.NotContains(t, body, `id="package-tracking"`)
+}
+
+func TestSavingUpstreamTrackingReachesTheApiAndRedirectsWithANotice(t *testing.T) {
+	api, h := newServer(t)
+
+	rec := post(t, h, "/packages/tracking", url.Values{
+		"id": {"example/adr-writer"}, "track": {"on"}, "pattern": {"release-*"},
+	})
+	require.Equal(t, http.StatusSeeOther, rec.Code)
+	require.Contains(t, rec.Header().Get("Location"), "notice=tracking-changed")
+
+	calls := api.Calls("setPackageTracking")
+	require.Len(t, calls, 1)
+	require.Equal(t, "/v1/packages/example/adr-writer/tracking", calls[0].Path)
+	require.JSONEq(t, `{"trackUpstream":true,"tagPattern":"release-*"}`, string(calls[0].Body))
+
+	body := html.UnescapeString(get(t, h, "/packages/example/adr-writer?notice=tracking-changed").Body.String())
+	require.Contains(t, body, "Upstream tracking saved.")
+	require.Contains(t, body, `name="pattern" value="release-*"`)
+}

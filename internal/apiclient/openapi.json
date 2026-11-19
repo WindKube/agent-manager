@@ -2115,6 +2115,9 @@
             },
             "type": "array"
           },
+          "tracking": {
+            "$ref": "#/components/schemas/PackageTracking"
+          },
           "verdict": {
             "enum": [
               "scanning",
@@ -2632,6 +2635,58 @@
         },
         "required": [
           "kind"
+        ],
+        "type": "object"
+      },
+      "PackageTracking": {
+        "additionalProperties": false,
+        "properties": {
+          "canChange": {
+            "type": "boolean"
+          },
+          "lastCheckError": {
+            "description": "Why the last check could not list the upstream tags; absent when it could.",
+            "type": "string"
+          },
+          "lastCheckedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "tagPattern": {
+            "examples": [
+              "v*"
+            ],
+            "type": "string"
+          },
+          "trackUpstream": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "trackUpstream",
+          "tagPattern",
+          "canChange"
+        ],
+        "type": "object"
+      },
+      "PackageTrackingUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "tagPattern": {
+            "description": "A glob a tag must match. Absent keeps the current pattern. A prerelease tag is registered only when the pattern itself contains a hyphen.",
+            "examples": [
+              "v*"
+            ],
+            "maxLength": 100,
+            "type": "string"
+          },
+          "trackUpstream": {
+            "description": "Register new upstream tags matching tagPattern as they appear.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "trackUpstream"
         ],
         "type": "object"
       },
@@ -7079,6 +7134,136 @@
         "summary": "The latest visible version's scan result, to show beside the package",
         "tags": [
           "catalog"
+        ]
+      }
+    },
+    "/v1/packages/{namespace}/{name}/tracking": {
+      "put": {
+        "description": "Opts a package registered from git in or out of the fetcher's periodic upstream check, which registers each new tag matching the pattern exactly as a registration would: version, fetch job and audit row, then the ordinary fetch, scan and gate. One audit row of kind `fetch`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.",
+        "operationId": "setPackageTracking",
+        "parameters": [
+          {
+            "description": "The publishing namespace — the FIRST segment of the publisher slug.",
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "description": "The publishing namespace — the FIRST segment of the publisher slug.",
+              "examples": [
+                "example"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "The package name within that namespace.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "The package name within that namespace.",
+              "examples": [
+                "platform-toolkit"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PackageTrackingUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageDetail"
+                }
+              }
+            },
+            "description": "Changed. The body is the package as it now reads."
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is missing or is not valid JSON."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity may not change this package's upstream tracking."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such package, or it is not readable by this identity."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body must be sent as application/json."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The pattern is not a glob, or the package was not registered from git."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Track a git package's upstream tags",
+        "tags": [
+          "packages"
         ]
       }
     },

@@ -55,6 +55,8 @@ type Package struct {
 
 	// Source is nil for a package registered before sources were recorded.
 	Source *Provenance
+	// Tracking is nil unless the package comes from git.
+	Tracking *Tracking
 
 	Components   []Component
 	Capabilities Capabilities
@@ -315,6 +317,31 @@ func (v PackageVersion) ShortCommit() string { return shortCommit(v.SourceCommit
 // CommitHref links the commit on its forge, empty where the forge's commit
 // URL shape is not known.
 func (v PackageVersion) CommitHref() string { return commitHref(v.SourceURL, v.SourceCommit) }
+
+// TrackingChangeDisabledReason is why the track-upstream control is disabled.
+const TrackingChangeDisabledReason = "Only this package's owner or a catalog admin may change its upstream tracking."
+
+// Tracking is the upstream check's control and its last outcome.
+type Tracking struct {
+	On          bool
+	Pattern     string
+	LastChecked string
+	LastError   string
+	CanChange   bool
+}
+
+// Status is the line under the control: when the check last ran, and why
+// it failed if it did.
+func (t Tracking) Status() string {
+	status := "not checked yet"
+	if t.LastChecked != "" {
+		status = "last checked " + t.LastChecked
+	}
+	if t.LastError != "" {
+		status += " · error: " + t.LastError
+	}
+	return status
+}
 
 // Provenance is where a package comes from, plus the commit the version on
 // screen was downloaded at.

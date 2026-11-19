@@ -40,6 +40,7 @@ type seedPackage struct {
 	// repo and subdir make a git-sourced package whose versions come from
 	// tags v<semver>; archive is an archive-url one. Neither is an upload.
 	repo, subdir, archive string
+	tracked               bool
 }
 
 func capability(name apiclient.PackageCapabilityName, level apiclient.PackageCapabilityLevel, detail ...string) apiclient.PackageCapability {
@@ -88,7 +89,7 @@ func seedPackages() []seedPackage {
 		{
 			id: "example/platform-toolkit", publisher: "example/platform", category: "Infrastructure",
 			version: "1.3.0", age: 2 * day, kind: plugin, verdict: clean, uses: 42,
-			repo:        "https://github.com/example/platform-toolkit",
+			repo: "https://github.com/example/platform-toolkit", tracked: true,
 			tags:        []string{"terraform", "aws", "guardrails", "scaffolding"},
 			description: "Platform guardrails, ADR authoring and service scaffolding in one portable package.",
 			components: []apiclient.PackageComponent{
@@ -305,6 +306,11 @@ func packageDetail(p seedPackage, name string, now time.Time) apiclient.PackageD
 		}
 		if p.subdir != "" {
 			detail.Source.Subdirectory = ptr(p.subdir)
+		}
+		detail.Tracking = &apiclient.PackageTracking{TagPattern: "v*", CanChange: true}
+		if p.tracked {
+			detail.Tracking.TrackUpstream = true
+			detail.Tracking.LastCheckedAt = ptr(now.Add(-40 * time.Minute))
 		}
 	case p.archive != "":
 		detail.Source = &apiclient.PackageSource{Kind: apiclient.PackageSourceKindArchiveUrl, Url: ptr(p.archive)}

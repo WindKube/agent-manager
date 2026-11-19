@@ -29,6 +29,15 @@ func Run(ctx context.Context, def Definition, cfg Config) error {
 		return fmt.Errorf("worker %s declares no queues, so it would never work a job", def.Name)
 	}
 
+	var periodic []*river.PeriodicJob
+	if def.Periodic != nil {
+		jobs, periodicErr := def.Periodic(cfg)
+		if periodicErr != nil {
+			return fmt.Errorf("worker %s: %w", def.Name, periodicErr)
+		}
+		periodic = jobs
+	}
+
 	built, err := Build(ctx, def, cfg, log)
 	if err != nil {
 		return err
@@ -55,11 +64,6 @@ func Run(ctx context.Context, def Definition, cfg Config) error {
 	queues := make(map[string]river.QueueConfig, len(def.Queues))
 	for name, concurrency := range def.Queues {
 		queues[name] = river.QueueConfig{MaxWorkers: concurrency}
-	}
-
-	periodic := make([]*river.PeriodicJob, 0, len(def.Periodic))
-	for i := range def.Periodic {
-		periodic = append(periodic, &def.Periodic[i])
 	}
 
 	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{

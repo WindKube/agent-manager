@@ -68,6 +68,30 @@ func (a *API) defaults(op string) http.HandlerFunc {
 			d.Details[packageKey(r)] = detail
 			JSON(w, http.StatusOK, detail)
 		}
+	case "setPackageTracking":
+		return func(w http.ResponseWriter, r *http.Request) {
+			var in apiclient.PackageTrackingUpdate
+			if !decode(w, r, &in) {
+				return
+			}
+			detail, ok := d.Details[packageKey(r)]
+			if !ok {
+				Problem(w, http.StatusNotFound, "no such package")
+				return
+			}
+			if detail.Tracking == nil {
+				Problem(w, http.StatusUnprocessableEntity, "not registered from git")
+				return
+			}
+			tracking := *detail.Tracking
+			tracking.TrackUpstream = in.TrackUpstream
+			if in.TagPattern != nil {
+				tracking.TagPattern = *in.TagPattern
+			}
+			detail.Tracking = &tracking
+			d.Details[packageKey(r)] = detail
+			JSON(w, http.StatusOK, detail)
+		}
 
 	case "listProfiles":
 		return func(w http.ResponseWriter, _ *http.Request) {

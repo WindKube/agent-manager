@@ -64,6 +64,13 @@ type PackageVisibilityUpdate struct {
 	Visibility string `json:"visibility" enum:"organisation,team,private" doc:"Who may see the package in the catalog." example:"team"`
 }
 
+// PackageTrackingUpdate is the body of PUT
+// /v1/packages/{namespace}/{name}/tracking.
+type PackageTrackingUpdate struct {
+	TrackUpstream bool   `json:"trackUpstream" doc:"Register new upstream tags matching tagPattern as they appear."`
+	TagPattern    string `json:"tagPattern,omitempty" maxLength:"100" doc:"A glob a tag must match. Absent keeps the current pattern. A prerelease tag is registered only when the pattern itself contains a hyphen." example:"v*"`
+}
+
 // PackageRegistered is an acknowledgement, not a published version: bytes
 // are fetched by `worker fetcher`, so the version has no digest yet.
 type PackageRegistered struct {

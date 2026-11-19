@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -134,4 +135,17 @@ func TestLoadReadsPrefixedEnvironment(t *testing.T) {
 func TestLoadFailsWithoutRequiredCredential(t *testing.T) {
 	_, err := Load[Web]()
 	require.Error(t, err)
+}
+
+func TestTheUpstreamIntervalDefaultsToAnHourAndRefusesLessThanFiveMinutes(t *testing.T) {
+	t.Setenv("AGENT_MANAGER_DATABASE_URL", "postgres://x")
+	t.Setenv("AGENT_MANAGER_RIVER_DATABASE_URL", "postgres://y")
+	t.Setenv("AGENT_MANAGER_BLOB_URL", "mem://")
+	cfg, err := Load[Fetcher]()
+	require.NoError(t, err)
+	require.Equal(t, time.Hour, cfg.UpstreamInterval)
+	require.NoError(t, CheckUpstreamInterval(cfg.UpstreamInterval))
+
+	require.NoError(t, CheckUpstreamInterval(MinUpstreamInterval))
+	require.Error(t, CheckUpstreamInterval(MinUpstreamInterval-time.Second))
 }

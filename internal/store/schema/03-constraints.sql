@@ -261,3 +261,8 @@ create index "fetch_attempt_occurred_at_idx" on "fetch_attempt" ("occurred_at" d
 alter table "version"
   add constraint "version_source_commit_is_a_sha"
   check ("source_commit" ~ '^[0-9a-f]{40}$');
+
+-- Only a git source has tags to follow.
+alter table "package"
+  add constraint "package_tracks_only_git"
+  check (not "track_upstream" or "source_kind" = 'git');

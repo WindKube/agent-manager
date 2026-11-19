@@ -3,7 +3,6 @@ package commands
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -19,25 +18,18 @@ import (
 	"agent-manager/internal/blob"
 	"agent-manager/internal/domain/pkgspec"
 	"agent-manager/internal/fetch"
-	"agent-manager/internal/outbox"
 	"agent-manager/internal/repourl"
 	"agent-manager/internal/store/audit"
 	"agent-manager/internal/store/models"
 	"agent-manager/internal/worker/fetcher"
 )
 
+// The registration refusals live beside the shared registration in
+// fetcher.Register; these names are what the api's error mapping reads.
 var (
-	ErrRegistration = errors.New("registration refused")
-	// FR-007's refusal. Which state blocked it is conflictMessage's job: this
-	// row can be held by a version still being fetched, or one whose fetch
-	// failed, and "published" would be a lie in both.
-	ErrImmutable = errors.New("this publisher/name@version cannot be registered again")
+	ErrRegistration = fetcher.ErrRegistration
+	ErrImmutable    = fetcher.ErrImmutable
 )
-
-// uniqueVersionConstraint is named here because Postgres reports the
-// constraint, not the requirement: translating 23505-on-this-index into
-// ErrImmutable is what tells a publisher why the hub refused.
-const uniqueVersionConstraint = "version_package_semver"
 
 const (
 	// MaxTagCount bounds a registration's own tags. High enough for real
@@ -105,8 +97,7 @@ func RegisterPackage(ctx context.Context, db bun.IDB, p auth.Principal, in Regis
 	if refErr := ref.Validate(); refErr != nil {
 		return contract.PackageRegistered{}, fmt.Errorf("%w: %w", ErrRegistration, refErr)
 	}
-	sortKey, err := models.SemverSort(in.Version)
-	if err != nil {
+	if _, err = models.SemverSort(in.Version); err != nil {
 		return contract.PackageRegistered{}, fmt.Errorf("%w: %w", ErrRegistration, err)
 	}
 
@@ -129,68 +120,18 @@ func RegisterPackage(ctx context.Context, db bun.IDB, p auth.Principal, in Regis
 		if txErr != nil {
 			return txErr
 		}
-		source := fetch.ProvenanceOf(fetch.SourceRef{
-			Kind: in.Source, URL: in.URL, Ref: in.Ref, Subdirectory: in.Subdirectory,
-		})
-		pkg, txErr := upsertPackage(ctx, tx, publisherID, categoryID, p, in, source)
+		pkg, txErr := upsertPackage(ctx, tx, publisherID, categoryID, p, in)
 		if txErr != nil {
 			return txErr
-		}
-		if sourceErr := recordSource(ctx, tx, p, pkg, source); sourceErr != nil {
-			return sourceErr
 		}
 		out.PackageID = pkg.ID.String()
 		out.Kind = string(pkg.Kind)
 
-		// Only so the refusal can name the state. The unique index below is
-		// what enforces FR-007, and it catches the race this SELECT loses.
-		existing := new(models.Version)
-		switch selErr := tx.NewSelect().Model(existing).
-			Where("package_id = ? and semver = ?", pkg.ID, in.Version).
-			Scan(ctx); {
-		case selErr == nil:
-			return fmt.Errorf("%w: %s", ErrImmutable, conflictMessage(ref, existing))
-		case !errors.Is(selErr, sql.ErrNoRows):
-			return fmt.Errorf("check for an existing version of %s: %w", ref, selErr)
-		}
-
-		version := &models.Version{
-			ID:         models.NewID(),
-			PackageID:  pkg.ID,
-			Semver:     in.Version,
-			SemverSort: sortKey,
-			ObjectKey:  ref.BundleKey(),
-			// manifest starts empty (NOT NULL) since the authoritative one
-			// isn't fetched yet; digest stays null, which the schema's
-			// scanning-check permits.
-			Manifest: json.RawMessage(`{}`),
-			Tags:     fetcher.VersionTags(append(in.Keywords, in.Tags...)),
-			DistTag:  models.DistTagNone,
-			Verdict:  models.VerdictScanning,
-			Visible:  false,
-		}
-		if source.Kind == fetch.SourceGit {
-			version.SourceRef = source.Ref
-		}
-		if _, insertErr := tx.NewInsert().Model(version).Exec(ctx); insertErr != nil {
-			if isUniqueViolation(insertErr, uniqueVersionConstraint) {
-				// The SELECT above lost the race, and this transaction is
-				// already aborted, so the winning row cannot be re-read for
-				// a state-specific message. The rollback leaves what it
-				// stored untouched: no object key rewritten, no digest
-				// cleared, no fetch job enqueued over its bytes.
-				return fmt.Errorf("%w: %s", ErrImmutable, conflictMessage(ref, nil))
-			}
-			return fmt.Errorf("create version %s: %w", ref, insertErr)
-		}
-		out.VersionID = version.ID.String()
-
-		job := fetcher.Job{
-			VersionID: version.ID,
-			PackageID: pkg.ID,
-			Namespace: in.Namespace,
-			Name:      in.Name,
-			Semver:    in.Version,
+		versionID, txErr := fetcher.Register(ctx, tx, fetcher.Registrar{
+			Actor: memberRef(p), ActorKind: models.ActorKindIdentity, Source: p.Source,
+		}, pkg, fetcher.NewVersion{
+			Semver: in.Version,
+			Tags:   fetcher.VersionTags(append(in.Keywords, in.Tags...)),
 			Source: fetcher.JobSource{
 				Kind:         in.Source,
 				URL:          in.URL,
@@ -199,20 +140,12 @@ func RegisterPackage(ctx context.Context, db bun.IDB, p auth.Principal, in Regis
 				ArchiveName:  in.ArchiveName,
 				Archive:      in.Archive,
 			},
-		}
-		outboxJob, txErr := job.OutboxJob()
+		})
 		if txErr != nil {
-			return fmt.Errorf("%w: %w", ErrRegistration, txErr)
+			return txErr
 		}
-		if _, enqueueErr := (outbox.Writer{}).Enqueue(ctx, tx, outboxJob); enqueueErr != nil {
-			return fmt.Errorf("enqueue the fetch of %s: %w", ref, enqueueErr)
-		}
-
-		audit := identityAudit(p, models.AuditKindFetch, "registered",
-			fmt.Sprintf("registered %s from %s", ref, describeRegistrationSource(in)),
-			audit.Version(in.Namespace, in.Name, in.Version))
-		audit.Data = map[string]any{"source": string(in.Source)}
-		return writeAudit(ctx, tx, audit)
+		out.VersionID = versionID.String()
+		return nil
 	})
 	if err != nil {
 		return contract.PackageRegistered{}, err
@@ -346,25 +279,6 @@ func deriveFromURL(in Registration) (name, version string) {
 	return name, version
 }
 
-func describeRegistrationSource(in Registration) string {
-	switch in.Source {
-	case fetch.SourceUpload:
-		if in.ArchiveName != "" {
-			return "upload " + in.ArchiveName
-		}
-		return "an upload"
-	default:
-		described := string(in.Source) + " " + in.URL
-		if in.Ref != "" {
-			described += "@" + in.Ref
-		}
-		if in.Subdirectory != "" {
-			described += " (" + in.Subdirectory + ")"
-		}
-		return described
-	}
-}
-
 // upsertPublisher creates the namespace on first use. `verified` is left
 // alone: it is a catalog admin's decision, never inferred from a registration.
 func upsertPublisher(ctx context.Context, tx bun.IDB, slug string) (uuid.UUID, error) {
@@ -409,7 +323,7 @@ func resolveCategory(ctx context.Context, tx bun.IDB, nameOrSlug string) (*uuid.
 // is provisional for a URL source; the fetcher settles it once the
 // manifest is in hand. An existing package keeps its kind.
 func upsertPackage(ctx context.Context, tx bun.IDB, publisherID uuid.UUID, categoryID *uuid.UUID,
-	p auth.Principal, in Registration, source fetch.Provenance,
+	p auth.Principal, in Registration,
 ) (*models.Package, error) {
 	// Looked up by (namespace, name), matching the unique index — not by
 	// (publisher_id, name), which would miss a name owned by a sibling
@@ -443,12 +357,12 @@ func upsertPackage(ctx context.Context, tx bun.IDB, publisherID uuid.UUID, categ
 		Kind:        in.Kind,
 		CategoryID:  categoryID,
 		Visibility:  in.Visibility,
-
-		SourceKind:         models.FetchSourceKind(source.Kind),
-		SourceURL:          source.URL,
-		SourceRef:          source.Ref,
-		SourceSubdirectory: source.Subdirectory,
 	}
+	// Recorded at creation, so a new package's first registration is not
+	// audited as a change of source.
+	source := fetch.ProvenanceOf(fetch.SourceRef{Kind: in.Source, URL: in.URL, Ref: in.Ref, Subdirectory: in.Subdirectory})
+	pkg.SourceKind, pkg.SourceURL, pkg.SourceRef, pkg.SourceSubdirectory =
+		models.FetchSourceKind(source.Kind), source.URL, source.Ref, source.Subdirectory
 	// The owner is the authenticated actor, never a value the request body
 	// could name — an identity registering a package it does not control
 	// itself would be exactly the hole an owner column exists to close.
@@ -463,82 +377,6 @@ func upsertPackage(ctx context.Context, tx bun.IDB, publisherID uuid.UUID, categ
 	return pkg, nil
 }
 
-// recordSource moves the package's recorded source to this registration's.
-// A new ref from the same place is the normal course of releases and is
-// carried by the registration's own audit row; a different kind, URL or
-// subdirectory is a change of where the package comes from and is audited.
-func recordSource(ctx context.Context, tx bun.IDB, p auth.Principal, pkg *models.Package, source fetch.Provenance) error {
-	kind := models.FetchSourceKind(source.Kind)
-	moved := pkg.SourceKind != kind || pkg.SourceURL != source.URL || pkg.SourceSubdirectory != source.Subdirectory
-	if !moved && pkg.SourceRef == source.Ref {
-		return nil
-	}
-
-	previousKind, previousURL := pkg.SourceKind, pkg.SourceURL
-	previous := describeProvenance(fetch.Provenance{
-		Kind: fetch.SourceKind(pkg.SourceKind), URL: pkg.SourceURL, Subdirectory: pkg.SourceSubdirectory,
-	})
-	pkg.SourceKind, pkg.SourceURL, pkg.SourceRef, pkg.SourceSubdirectory =
-		kind, source.URL, source.Ref, source.Subdirectory
-	if _, err := tx.NewUpdate().Model(pkg).
-		Column("source_kind", "source_url", "source_ref", "source_subdirectory").
-		Set("updated_at = now()").
-		WherePK().Exec(ctx); err != nil {
-		return fmt.Errorf("record the source of %s/%s: %w", pkg.Namespace, pkg.Name, err)
-	}
-	if !moved {
-		return nil
-	}
-
-	entry := identityAudit(p, models.AuditKindFetch, "source-changed",
-		fmt.Sprintf("changed the source of %s/%s from %s to %s", pkg.Namespace, pkg.Name,
-			previous, describeProvenance(fetch.Provenance{Kind: source.Kind, URL: source.URL, Subdirectory: source.Subdirectory})),
-		audit.Package(pkg.Namespace, pkg.Name))
-	entry.Data = map[string]any{
-		"sourceKind":         string(source.Kind),
-		"sourceUrl":          source.URL,
-		"sourceSubdirectory": source.Subdirectory,
-		"previousSourceKind": string(previousKind),
-		"previousSourceUrl":  previousURL,
-	}
-	return writeAudit(ctx, tx, entry)
-}
-
-func describeProvenance(source fetch.Provenance) string {
-	if source.Kind == "" {
-		return "no recorded source"
-	}
-	described := string(source.Kind)
-	if source.URL != "" {
-		described += " " + source.URL
-	}
-	if source.Subdirectory != "" {
-		described += " (" + source.Subdirectory + ")"
-	}
-	return described
-}
-
-// conflictMessage names the state that blocks a re-registration, since FR-007
-// is only actionable if it says what happened instead of asserting
-// "published" for a version that never got that far. existing is nil for the
-// race the insert-time catch lost, where the winning row cannot be re-read.
-func conflictMessage(ref blob.VersionRef, existing *models.Version) string {
-	subject := ref.String()
-	switch {
-	case existing == nil:
-		return subject + " was just registered by another request; its bytes are immutable"
-	case existing.Digest == nil:
-		return subject + " is already registered; its fetch has not finished, or it failed — " +
-			"check the audit log for the outcome before registering it again"
-	case existing.Verdict == models.VerdictFlagged:
-		return subject + " is published and was flagged by the scanner; its bytes are immutable"
-	case existing.Verdict == models.VerdictRejected:
-		return subject + " is published and was rejected by the scanner; its bytes are immutable"
-	default:
-		return subject + " is already published and its bytes are immutable"
-	}
-}
-
 // isUniqueViolation reports whether err is Postgres 23505 on the named
 // constraint, checked by sqlstate rather than message since messages are
 // localised and reworded between releases.
@@ -550,13 +388,15 @@ func isUniqueViolation(err error, constraint string) bool {
 	return pgErr.Code == "23505" && pgErr.ConstraintName == constraint
 }
 
-// PackageNotPermittedError is a visibility-change refusal by an identity
+// PackageNotPermittedError is a visibility or tracking change refused to an identity
 // that is neither the package's owner nor a catalog admin, mirroring
 // NotPermittedError's shape for the same reason: the caller can already see
 // the package (it answered 200, not 404), so the only useful thing left to
 // say is who may act on it.
 type PackageNotPermittedError struct {
 	Owner string
+	// Change names what was refused; empty is visibility.
+	Change string
 }
 
 func (e *PackageNotPermittedError) Error() string {
@@ -564,8 +404,70 @@ func (e *PackageNotPermittedError) Error() string {
 	if e.Owner != "" {
 		who = "its owner is " + e.Owner
 	}
-	return "this identity may not change this package's visibility: that needs the owner or a " +
+	change := e.Change
+	if change == "" {
+		change = "visibility"
+	}
+	return "this identity may not change this package's " + change + ": that needs the owner or a " +
 		"catalog admin, and " + who
+}
+
+// SetPackageTracking opts a git package in or out of the upstream check,
+// gated like SetPackageVisibility. An empty pattern keeps the current one.
+func SetPackageTracking(ctx context.Context, db bun.IDB, p auth.Principal,
+	namespace, name string, track bool, pattern string,
+) error {
+	pattern = strings.TrimSpace(pattern)
+	if pattern != "" && !fetcher.ValidTagPattern(pattern) {
+		return fmt.Errorf("%w: %q is not a tag pattern: a glob such as v* of at most 100 characters", ErrRegistration, pattern)
+	}
+
+	return db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		pkg := new(models.Package)
+		if err := tx.NewSelect().Model(pkg).
+			Where("namespace = ? and name = ?", namespace, name).
+			For("update").Limit(1).Scan(ctx); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return queries.ErrNotFound
+			}
+			return fmt.Errorf("read package %s/%s: %w", namespace, name, err)
+		}
+
+		owns := pkg.OwnerIdentityID != nil && *pkg.OwnerIdentityID == p.IdentityID
+		if !owns && p.Role != models.OrgRoleCatalogAdmin {
+			owner := ""
+			if pkg.OwnerIdentityID != nil {
+				owner = pkg.OwnerIdentityID.String()
+			}
+			return &PackageNotPermittedError{Owner: owner, Change: "upstream tracking"}
+		}
+		if pkg.SourceKind != models.FetchSourceGit {
+			return fmt.Errorf("%w: %s/%s was not registered from git, so it has no upstream tags to track",
+				ErrRegistration, namespace, name)
+		}
+		if pattern == "" {
+			pattern = pkg.TagPattern
+		}
+		if pkg.TrackUpstream == track && pkg.TagPattern == pattern {
+			return nil
+		}
+
+		if _, err := tx.NewUpdate().Model((*models.Package)(nil)).
+			Set("track_upstream = ?", track).
+			Set("tag_pattern = ?", pattern).
+			Set("updated_at = now()").
+			Where("id = ?", pkg.ID).Exec(ctx); err != nil {
+			return fmt.Errorf("set the upstream tracking of %s/%s: %w", namespace, name, err)
+		}
+
+		text := fmt.Sprintf("stopped tracking the upstream of %s/%s", namespace, name)
+		if track {
+			text = fmt.Sprintf("tracking the upstream of %s/%s for tags matching %s", namespace, name, pattern)
+		}
+		entry := identityAudit(p, models.AuditKindFetch, "tracking-changed", text, audit.Package(namespace, name))
+		entry.Data = map[string]any{"trackUpstream": track, "tagPattern": pattern}
+		return writeAudit(ctx, tx, entry)
+	})
 }
 
 // SetPackageVisibility changes an existing package's visibility. FR-126 and

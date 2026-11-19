@@ -137,6 +137,7 @@ func (s *Server) register() {
 	// cannot resubmit any of them. The two deletes are additionally gated on
 	// the role the api demands and sit behind a typed confirmation.
 	s.engine.POST("/packages/visibility", s.setPackageVisibility)
+	s.engine.POST("/packages/tracking", s.setPackageTracking)
 	s.engine.POST("/packages/:namespace/:name/delete", s.deletePackage)
 	s.engine.POST("/packages/:namespace/:name/versions/:version/delete", s.deleteVersion)
 

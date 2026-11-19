@@ -1175,6 +1175,54 @@ func TestFetcherCanPerformTheWholeIngestionWriteInOneTransaction(t *testing.T) {
 	})
 }
 
+// The upstream check is a registration the fetcher performs itself: lock the
+// tracked package, add the invisible version, its fetch job and audit row, and
+// stamp the check, in one transaction. No grant beyond the ingestion write is
+// needed, and this is what says so.
+func TestFetcherCanRegisterAnUpstreamTagInOneTransaction(t *testing.T) {
+	ctx := context.Background()
+	pkgID := seedPackage(t, ctx)
+	_, err := pool.Exec(ctx, `update package set source_kind = 'git', source_url = 'https://github.com/acme/skills',
+	  track_upstream = true where id = $1`, pkgID)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `update package set source_kind = 'upload' where id = $1`, pkgID)
+	requirePgError(t, err, "23514", "package_tracks_only_git")
+
+	asRole(t, "am_fetcher", func(ctx context.Context, conn *pgxpool.Conn) {
+		tx, err := conn.Begin(ctx)
+		require.NoError(t, err)
+		defer func() { _ = tx.Rollback(ctx) }()
+
+		var semvers []string
+		require.NoError(t, tx.QueryRow(ctx,
+			`select array(select semver from version where package_id = p.id)
+			   from package p where p.id = $1 and p.track_upstream for update`, pkgID).Scan(&semvers))
+
+		verID := models.NewID()
+		_, err = tx.Exec(ctx,
+			`insert into version (id, package_id, semver, semver_sort, object_key, manifest, dist_tag, verdict, source_ref)
+			 values ($1, $2, '8.0.0', $3, 'skills/ex/p/8.0.0/bundle.tar.zst', '{}', 'none', 'scanning', 'v8.0.0')`,
+			verID, pkgID, semverSort(t, "8.0.0"))
+		require.NoError(t, err, "version")
+
+		_, err = tx.Exec(ctx,
+			`insert into outbox (id, job_kind, payload, idempotency_key, state) values ($1, 'fetch', '{}', $2, 'pending')`,
+			models.NewID(), "fetch:"+verID.String()+":8.0.0")
+		require.NoError(t, err, "outbox")
+
+		_, err = tx.Exec(ctx,
+			`insert into audit_event (id, actor, actor_kind, kind, text, subject_kind, subject_id, namespace)
+			 values ($1, 'fetcher', 'system', 'fetch', 'registered', 'version', 'ex/p@8.0.0', 'ex')`, models.NewID())
+		require.NoError(t, err, "audit_event")
+
+		_, err = tx.Exec(ctx,
+			`update package set source_ref = 'v8.0.0', last_checked_at = now(), last_check_error = null where id = $1`, pkgID)
+		require.NoError(t, err, "package")
+
+		require.NoError(t, tx.Commit(ctx))
+	})
+}
+
 // capability is the table the fetcher must NOT have. It could derive the `expected`
 // set — it already parses the manifest — but it is the most exposed role here, the
 // one fetching attacker-supplied archives over the network and unpacking them. The

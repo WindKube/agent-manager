@@ -33,6 +33,7 @@ var routes = map[string]string{
 	"getPackageScan":       "GET /v1/packages/{namespace}/{name}/scan",
 	"deleteVersion":        "DELETE /v1/packages/{namespace}/{name}/versions/{version}",
 	"setPackageVisibility": "PUT /v1/packages/{namespace}/{name}/visibility",
+	"setPackageTracking":   "PUT /v1/packages/{namespace}/{name}/tracking",
 
 	"listProfiles":       "GET /v1/profiles",
 	"createProfile":      "POST /v1/profiles",

@@ -3077,7 +3077,8 @@ type PackageDetail struct {
 	Source    *PackageSource   `json:"source,omitempty"`
 
 	// Tags The latest version's manifest keywords. Tags belong to the version, not the package.
-	Tags []string `json:"tags"`
+	Tags     []string         `json:"tags"`
+	Tracking *PackageTracking `json:"tracking,omitempty"`
 
 	// Verdict Examples: clean
 	Verdict PackageDetailVerdict `json:"verdict"`
@@ -3332,6 +3333,30 @@ type PackageSource struct {
 
 // PackageSourceKind Examples: git
 type PackageSourceKind string
+
+// PackageTracking defines model for PackageTracking.
+type PackageTracking struct {
+	CanChange bool `json:"canChange"`
+
+	// LastCheckError Why the last check could not list the upstream tags; absent when it could.
+	LastCheckError *string    `json:"lastCheckError,omitempty"`
+	LastCheckedAt  *time.Time `json:"lastCheckedAt,omitempty"`
+
+	// TagPattern Examples: v*
+	TagPattern    string `json:"tagPattern"`
+	TrackUpstream bool   `json:"trackUpstream"`
+}
+
+// PackageTrackingUpdate defines model for PackageTrackingUpdate.
+type PackageTrackingUpdate struct {
+	// TagPattern A glob a tag must match. Absent keeps the current pattern. A prerelease tag is registered only when the pattern itself contains a hyphen.
+	//
+	// Examples: v*
+	TagPattern *string `json:"tagPattern,omitempty"`
+
+	// TrackUpstream Register new upstream tags matching tagPattern as they appear.
+	TrackUpstream bool `json:"trackUpstream"`
+}
 
 // PackageVersion defines model for PackageVersion.
 type PackageVersion struct {
@@ -4320,6 +4345,9 @@ type RegisterPackageMultipartRequestBody RegisterPackageMultipartBody
 // PreviewPackageMultipartRequestBody defines body for PreviewPackage for multipart/form-data ContentType.
 type PreviewPackageMultipartRequestBody PreviewPackageMultipartBody
 
+// SetPackageTrackingJSONRequestBody defines body for SetPackageTracking for application/json ContentType.
+type SetPackageTrackingJSONRequestBody = PackageTrackingUpdate
+
 // SetPackageVisibilityJSONRequestBody defines body for SetPackageVisibility for application/json ContentType.
 type SetPackageVisibilityJSONRequestBody = PackageVisibilityUpdate
 
@@ -4736,6 +4764,24 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /v1/packages/{namespace}/{name}/scan (the `GetPackageScan` operationId).
 	GetPackageScan(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetPackageTrackingWithBody Track a git package's upstream tags
+	//
+	// Opts a package registered from git in or out of the fetcher's periodic upstream check, which registers each new tag matching the pattern exactly as a registration would: version, fetch job and audit row, then the ordinary fetch, scan and gate. One audit row of kind `fetch`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /v1/packages/{namespace}/{name}/tracking (the `SetPackageTracking` operationId).
+	SetPackageTrackingWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetPackageTracking Track a git package's upstream tags
+	//
+	// Opts a package registered from git in or out of the fetcher's periodic upstream check, which registers each new tag matching the pattern exactly as a registration would: version, fetch job and audit row, then the ordinary fetch, scan and gate. One audit row of kind `fetch`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /v1/packages/{namespace}/{name}/tracking (the `SetPackageTracking` operationId).
+	SetPackageTracking(ctx context.Context, namespace string, name string, body SetPackageTrackingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteVersion Withdraw one version from the catalog
 	//
@@ -5676,6 +5722,44 @@ func (c *Client) GetPackageFile(ctx context.Context, namespace string, name stri
 // Corresponds with GET /v1/packages/{namespace}/{name}/scan (the `GetPackageScan` operationId).
 func (c *Client) GetPackageScan(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetPackageScanRequest(c.Server, namespace, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetPackageTrackingWithBody Track a git package's upstream tags
+//
+// Opts a package registered from git in or out of the fetcher's periodic upstream check, which registers each new tag matching the pattern exactly as a registration would: version, fetch job and audit row, then the ordinary fetch, scan and gate. One audit row of kind `fetch`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /v1/packages/{namespace}/{name}/tracking (the `SetPackageTracking` operationId).
+func (c *Client) SetPackageTrackingWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetPackageTrackingRequestWithBody(c.Server, namespace, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetPackageTracking Track a git package's upstream tags
+//
+// Opts a package registered from git in or out of the fetcher's periodic upstream check, which registers each new tag matching the pattern exactly as a registration would: version, fetch job and audit row, then the ordinary fetch, scan and gate. One audit row of kind `fetch`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /v1/packages/{namespace}/{name}/tracking (the `SetPackageTracking` operationId).
+func (c *Client) SetPackageTracking(ctx context.Context, namespace string, name string, body SetPackageTrackingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetPackageTrackingRequest(c.Server, namespace, name, body)
 	if err != nil {
 		return nil, err
 	}
@@ -7652,6 +7736,60 @@ func NewGetPackageScanRequest(server string, namespace string, name string) (*ht
 	return req, nil
 }
 
+// NewSetPackageTrackingRequest calls the generic SetPackageTracking builder with application/json body
+func NewSetPackageTrackingRequest(server string, namespace string, name string, body SetPackageTrackingJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetPackageTrackingRequestWithBody(server, namespace, name, "application/json", bodyReader)
+}
+
+// NewSetPackageTrackingRequestWithBody constructs an http.Request for the SetPackageTracking method, with any body, and a specified content type
+func NewSetPackageTrackingRequestWithBody(server string, namespace string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/packages/%s/%s/tracking", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewDeleteVersionRequest constructs an http.Request for the DeleteVersion method
 func NewDeleteVersionRequest(server string, namespace string, name string, version string) (*http.Request, error) {
 	var err error
@@ -8810,6 +8948,24 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /v1/packages/{namespace}/{name}/scan (the `GetPackageScan` operationId).
 	GetPackageScanWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*GetPackageScanResponse, error)
+
+	// SetPackageTrackingWithBodyWithResponse Track a git package's upstream tags
+	//
+	// Opts a package registered from git in or out of the fetcher's periodic upstream check, which registers each new tag matching the pattern exactly as a registration would: version, fetch job and audit row, then the ordinary fetch, scan and gate. One audit row of kind `fetch`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/packages/{namespace}/{name}/tracking (the `SetPackageTracking` operationId).
+	SetPackageTrackingWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetPackageTrackingResponse, error)
+
+	// SetPackageTrackingWithResponse Track a git package's upstream tags
+	//
+	// Opts a package registered from git in or out of the fetcher's periodic upstream check, which registers each new tag matching the pattern exactly as a registration would: version, fetch job and audit row, then the ordinary fetch, scan and gate. One audit row of kind `fetch`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/packages/{namespace}/{name}/tracking (the `SetPackageTracking` operationId).
+	SetPackageTrackingWithResponse(ctx context.Context, namespace string, name string, body SetPackageTrackingJSONRequestBody, reqEditors ...RequestEditorFn) (*SetPackageTrackingResponse, error)
 
 	// DeleteVersionWithResponse Withdraw one version from the catalog
 	//
@@ -11252,6 +11408,96 @@ func (r GetPackageScanResponse) ContentType() string {
 	return ""
 }
 
+type SetPackageTrackingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PackageDetail
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetPackageTrackingResponse) GetJSON200() *PackageDetail {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r SetPackageTrackingResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r SetPackageTrackingResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r SetPackageTrackingResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r SetPackageTrackingResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r SetPackageTrackingResponse) GetApplicationproblemJSON415() *Error {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r SetPackageTrackingResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r SetPackageTrackingResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r SetPackageTrackingResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetPackageTrackingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetPackageTrackingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetPackageTrackingResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type DeleteVersionResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -13266,6 +13512,36 @@ func (c *ClientWithResponses) GetPackageScanWithResponse(ctx context.Context, na
 		return nil, err
 	}
 	return ParseGetPackageScanResponse(rsp)
+}
+
+// SetPackageTrackingWithBodyWithResponse Track a git package's upstream tags
+//
+// Opts a package registered from git in or out of the fetcher's periodic upstream check, which registers each new tag matching the pattern exactly as a registration would: version, fetch job and audit row, then the ordinary fetch, scan and gate. One audit row of kind `fetch`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/packages/{namespace}/{name}/tracking (the `SetPackageTracking` operationId).
+func (c *ClientWithResponses) SetPackageTrackingWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetPackageTrackingResponse, error) {
+	rsp, err := c.SetPackageTrackingWithBody(ctx, namespace, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetPackageTrackingResponse(rsp)
+}
+
+// SetPackageTrackingWithResponse Track a git package's upstream tags
+//
+// Opts a package registered from git in or out of the fetcher's periodic upstream check, which registers each new tag matching the pattern exactly as a registration would: version, fetch job and audit row, then the ordinary fetch, scan and gate. One audit row of kind `fetch`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/packages/{namespace}/{name}/tracking (the `SetPackageTracking` operationId).
+func (c *ClientWithResponses) SetPackageTrackingWithResponse(ctx context.Context, namespace string, name string, body SetPackageTrackingJSONRequestBody, reqEditors ...RequestEditorFn) (*SetPackageTrackingResponse, error) {
+	rsp, err := c.SetPackageTracking(ctx, namespace, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetPackageTrackingResponse(rsp)
 }
 
 // DeleteVersionWithResponse Withdraw one version from the catalog
@@ -15422,6 +15698,81 @@ func ParseGetPackageScanResponse(rsp *http.Response) (*GetPackageScanResponse, e
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetPackageTrackingResponse parses an HTTP response from a SetPackageTrackingWithResponse call
+func ParseSetPackageTrackingResponse(rsp *http.Response) (*SetPackageTrackingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetPackageTrackingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PackageDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

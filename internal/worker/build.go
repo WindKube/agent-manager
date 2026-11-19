@@ -31,6 +31,7 @@ type Config struct {
 	FetchTimeout      time.Duration `env:"FETCH_TIMEOUT" envDefault:"60s"`
 	OutboundAllowlist []string      `env:"OUTBOUND_ALLOWLIST" envSeparator:","`
 	GitHubToken       string        `env:"GITHUB_TOKEN"`
+	UpstreamInterval  time.Duration `env:"UPSTREAM_INTERVAL" envDefault:"1h"`
 }
 
 // Built is a role's dependencies plus the handles that back them.

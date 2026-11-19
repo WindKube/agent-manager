@@ -168,6 +168,30 @@ func (s *Server) setPackageVisibility(ctx context.Context, in *setPackageVisibil
 	return &getPackageOutput{Body: detail}, nil
 }
 
+// ---- PUT /v1/packages/{namespace}/{name}/tracking ----------------------------
+
+type setPackageTrackingInput struct {
+	Namespace string `path:"namespace" doc:"The publishing namespace — the FIRST segment of the publisher slug." example:"example"`
+	Name      string `path:"name" doc:"The package name within that namespace." example:"platform-toolkit"`
+	Body      contract.PackageTrackingUpdate
+}
+
+func (s *Server) setPackageTracking(ctx context.Context, in *setPackageTrackingInput) (*getPackageOutput, error) {
+	principal, _ := PrincipalFrom(ctx)
+
+	err := commands.SetPackageTracking(ctx, s.deps.DB, principal, in.Namespace, in.Name,
+		in.Body.TrackUpstream, in.Body.TagPattern)
+	if err != nil {
+		return nil, packageFailure(ctx, err)
+	}
+
+	detail, err := queries.Package(ctx, s.deps.DB, principal, in.Namespace, in.Name)
+	if err != nil {
+		return nil, packageFailure(ctx, err)
+	}
+	return &getPackageOutput{Body: detail}, nil
+}
+
 // packageFailure maps SetPackageVisibility's refusals onto the wire, the same
 // shape profileFailure gives the profile commands: queries.ErrNotFound reaches
 // fail() and becomes the 404 that makes an unreadable package indistinguishable

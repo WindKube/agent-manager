@@ -351,3 +351,44 @@ func TestTheDetailCarriesThePackageSourceAndEachVersionsCommit(t *testing.T) {
 	require.Equal(t, "v1.3.0", page.Versions[0].SourceRef)
 	require.Equal(t, "https://github.com/acme/skills", page.Versions[0].SourceURL)
 }
+
+// setPackageTracking over the wire: offered only for a git package, gated
+// like visibility, and answered with the package as it now reads.
+func TestTrackingAGitPackagesUpstreamIsTheOwnersOrACatalogAdmins(t *testing.T) {
+	handler := liveHandler(t)
+	seedCatalog(t)
+	ctx := context.Background()
+	const path = "/v1/packages/example/platform-toolkit/tracking"
+
+	rec := request(t, handler, http.MethodPut, path, kw.token, `{"trackUpstream":true}`)
+	require.Equal(t, http.StatusUnprocessableEntity, rec.Code, "a package with no git source has no upstream")
+	require.Nil(t, detail(t, handler, kw.token, "example/platform-toolkit").Tracking)
+
+	_, err := pool.Exec(ctx, `update package set source_kind = 'git', source_url = 'https://github.com/acme/skills'
+	  where namespace = 'example' and name = 'platform-toolkit'`)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, restoreErr := pool.Exec(context.Background(), `update package
+		  set track_upstream = false, tag_pattern = 'v*', source_kind = null, source_url = null
+		  where namespace = 'example' and name = 'platform-toolkit'`)
+		require.NoError(t, restoreErr)
+	})
+
+	rec = request(t, handler, http.MethodPut, path, an.token, `{"trackUpstream":true}`)
+	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
+
+	rec = request(t, handler, http.MethodPut, path, kw.token, `{"trackUpstream":true,"tagPattern":"v["}`)
+	require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+
+	rec = request(t, handler, http.MethodPut, path, kw.token, `{"trackUpstream":true,"tagPattern":"release-*"}`)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var page contract.PackageDetail
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &page))
+	require.Equal(t, &contract.PackageTracking{TrackUpstream: true, TagPattern: "release-*", CanChange: true}, page.Tracking)
+
+	var rows int
+	require.NoError(t, pool.QueryRow(ctx, `select count(*) from audit_event
+	  where subject_kind = 'package' and subject_id = 'example/platform-toolkit'
+	    and data->>'action' = 'tracking-changed' and data->>'tagPattern' = 'release-*'`).Scan(&rows))
+	require.Equal(t, 1, rows)
+}

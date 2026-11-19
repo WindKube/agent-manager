@@ -10,6 +10,7 @@ import (
 
 	"agent-manager/internal/blob"
 	"agent-manager/internal/domain/pkgspec"
+	"agent-manager/internal/store/audit"
 	"agent-manager/internal/store/models"
 )
 
@@ -24,14 +25,19 @@ const (
 // takes a transaction rather than a pool: on the success path that is the
 // publish transaction, so the record cannot survive a rolled back publish or
 // go missing after a committed one.
-func writeFetchAudit(ctx context.Context, tx bun.IDB, text string) error {
-	event := &models.AuditEvent{
-		ID:        models.NewID(),
+func writeFetchAudit(ctx context.Context, tx bun.IDB, job Job, action, text string, data map[string]any) error {
+	event, err := audit.New(audit.Entry{
+		Kind:      models.AuditKindFetch,
+		Action:    action,
 		Actor:     auditActor,
 		ActorKind: models.ActorKindSystem,
-		Kind:      models.AuditKindFetch,
 		Text:      text,
 		Source:    auditSource,
+		Subject:   audit.Version(job.Namespace, job.Name, job.Semver),
+		Data:      data,
+	})
+	if err != nil {
+		return err
 	}
 	// am_fetcher holds INSERT-only on audit_event — no SELECT — and bun appends
 	// RETURNING for OccurredAt's `default:` tag unless told not to.
@@ -51,7 +57,8 @@ func (w *Worker) auditFailure(ctx context.Context, job Job, reason Reason, cause
 		detail = firstLine(cause.Error())
 		text += " (" + detail + ")"
 	}
-	if err := writeFetchAudit(ctx, w.deps.DB, text); err != nil {
+	if err := writeFetchAudit(ctx, w.deps.DB, job, "fetch-failed", text,
+		map[string]any{"reason": string(reason)}); err != nil {
 		return err
 	}
 	if outcome, ok := outcomeOf(reason); ok {
@@ -113,6 +120,15 @@ func storedText(job Job, pkg *pkgspec.Package, commit blob.Commit) string {
 		text += fmt.Sprintf(", %d %s not stored", n, plural(n, "link"))
 	}
 	return text
+}
+
+func storedData(pkg *pkgspec.Package, commit blob.Commit) map[string]any {
+	return map[string]any{
+		"digest":     "sha256:" + hex.EncodeToString(commit.Bundle.Digest[:]),
+		"sizeBytes":  commit.Bundle.Size,
+		"kind":       string(pkg.Kind),
+		"components": len(pkg.Components),
+	}
 }
 
 // describeSource names where a fetch went without reproducing a credential.

@@ -13,6 +13,7 @@ import (
 
 	"agent-manager/internal/api/contract"
 	"agent-manager/internal/auth"
+	"agent-manager/internal/store/audit"
 	"agent-manager/internal/store/models"
 )
 
@@ -71,12 +72,17 @@ type subject struct {
 	ruleID    string
 	versionID uuid.UUID
 	hasBytes  bool
-	packageID string
+	namespace string
+	name      string
 	semver    string
 	verdict   models.Verdict
 }
 
-func (s subject) ref() string { return s.packageID + "@" + s.semver }
+func (s subject) ref() string { return s.namespace + "/" + s.name + "@" + s.semver }
+
+func (s subject) auditSubject(findingID uuid.UUID) audit.Subject {
+	return audit.Finding(findingID, s.namespace, s.name, s.semver, s.ruleID)
+}
 
 // lockSubjectSQL reads the finding and its subject version, locking only
 // the finding row: two reviewers deciding at once would otherwise both
@@ -88,7 +94,8 @@ select
   fnd.rule_id,
   fnd.version_id,
   ver.digest is not null,
-  pkg.namespace || '/' || pkg.name,
+  pkg.namespace,
+  pkg.name,
   ver.semver,
   ver.verdict::text
 from finding as fnd
@@ -100,7 +107,7 @@ for update of fnd`
 func lockSubject(ctx context.Context, tx bun.IDB, id uuid.UUID) (subject, error) {
 	var out subject
 	err := tx.QueryRowContext(ctx, lockSubjectSQL, id).Scan(&out.state, &out.ruleID,
-		&out.versionID, &out.hasBytes, &out.packageID, &out.semver, &out.verdict)
+		&out.versionID, &out.hasBytes, &out.namespace, &out.name, &out.semver, &out.verdict)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return subject{}, ErrFindingNotFound
@@ -173,8 +180,10 @@ func AcceptFinding(ctx context.Context, db bun.IDB, p auth.Principal, in Decisio
 			Verdict:   string(found.verdict),
 			ExpiresAt: &expires,
 		}
-		return writeDecisionAudit(ctx, tx, p,
-			fmt.Sprintf("override granted for %s — %s", found.ref(), found.ruleID))
+		audit := identityAudit(p, models.AuditKindApprove, "accepted",
+			fmt.Sprintf("override granted for %s — %s", found.ref(), found.ruleID), found.auditSubject(in.FindingID))
+		audit.Data = map[string]any{"expiresAt": expires.Format(time.RFC3339)}
+		return writeAudit(ctx, tx, audit)
 	})
 	if err != nil {
 		return contract.FindingDecision{}, err
@@ -243,21 +252,11 @@ func RejectFinding(ctx context.Context, db bun.IDB, p auth.Principal, in Decisio
 		if in.Note != "" {
 			text += ": " + in.Note
 		}
-		return writeDecisionAudit(ctx, tx, p, text)
+		return writeAudit(ctx, tx, identityAudit(p, models.AuditKindApprove, "rejected", text,
+			found.auditSubject(in.FindingID)))
 	})
 	if err != nil {
 		return contract.FindingDecision{}, err
 	}
 	return out, nil
-}
-
-// writeDecisionAudit writes the one row both decisions are accountable
-// for, so the two call sites can't disagree about kind or actor.
-func writeDecisionAudit(ctx context.Context, tx bun.IDB, p auth.Principal, text string) error {
-	actor := p.Email
-	if actor == "" {
-		actor = p.Subject
-	}
-	return writeAudit(ctx, tx, models.AuditKindApprove, actor, string(models.ActorKindIdentity),
-		text, p.Source)
 }

@@ -216,6 +216,15 @@ create index "outbox_pending_created_at_idx" on "outbox" ("created_at") where "s
 
 create index "audit_event_occurred_at_idx" on "audit_event" ("occurred_at" desc);
 
+create index "audit_event_subject_idx" on "audit_event" ("subject_kind", "subject_id", "occurred_at" desc);
+
+-- Every row written since the subject columns exist names its subject. NOT
+-- VALID is what keeps the rows written before them (both columns null, never
+-- backfilled) legal: Postgres checks it on every insert and never rescans.
+alter table "audit_event"
+  add constraint "audit_event_subject_required"
+  check ("subject_kind" is not null and "subject_id" is not null) not valid;
+
 -- The finding detail pane reads every location for one finding, so the child
 -- table needs the parent lookup its foreign key does not give it.
 create index "finding_evidence_finding_idx" on "finding_evidence" ("finding_id");

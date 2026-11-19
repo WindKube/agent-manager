@@ -12,6 +12,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"agent-manager/internal/domain/capability"
+	"agent-manager/internal/store/audit"
 	"agent-manager/internal/store/models"
 )
 
@@ -557,15 +558,16 @@ func writeAudit(insert func(string, any) error, versions int, now time.Time) err
 	// is the one shape the grants permit.
 	rows := make([]models.AuditEvent, 0, 8)
 	for _, spec := range auditRows(versions) {
-		rows = append(rows, models.AuditEvent{
-			ID:         seedID("audit", spec.text),
-			OccurredAt: now.Add(-spec.ago),
-			Actor:      spec.actor,
-			ActorKind:  spec.actorKind,
-			Kind:       spec.kind,
-			Text:       spec.text,
-			Source:     spec.source,
+		event, err := audit.New(audit.Entry{
+			Kind: spec.kind, Action: spec.action, Actor: spec.actor, ActorKind: spec.actorKind,
+			Text: spec.text, Source: spec.source, Subject: spec.subject,
 		})
+		if err != nil {
+			return err
+		}
+		event.ID = seedID("audit", spec.text)
+		event.OccurredAt = now.Add(-spec.ago)
+		rows = append(rows, *event)
 	}
 	return insert("audit events", &rows)
 }

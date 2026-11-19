@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"agent-manager/internal/store/audit"
 	"agent-manager/internal/store/models"
 )
 
@@ -759,30 +760,48 @@ type auditSpec struct {
 	text      string
 	source    string
 	ago       time.Duration
+	action    string
+	subject   audit.Subject
 }
 
 // auditRows departs from the design mock in two ways, both because an
 // audit row records something that happened here: the actor is the email
 // writeAudit takes, not a display form, and the rescan row counts the
 // versions this seed actually wrote.
-func auditRows(versions int) []auditSpec {
-	return []auditSpec{
+func auditRows(versions int) []*auditSpec {
+	return []*auditSpec{
 		{"jkowalski@example.com", models.ActorKindIdentity, models.AuditKindSync,
-			"synced example/platform-engineer r14 to Claude Code, Codex", "cli / mbp-jk", 40 * time.Minute},
+			"synced example/platform-engineer r14 to Claude Code, Codex", "cli / mbp-jk", 40 * time.Minute,
+			"synced", revisionSubject("example/platform-engineer", 14)},
 		{"scanner", models.ActorKindSystem, models.AuditKindScan,
-			"quarantined community/slack-digest@0.5.1 — SH-NET-002", "system", 55 * time.Minute},
+			"quarantined community/slack-digest@0.5.1 — SH-NET-002", "system", 55 * time.Minute,
+			"scanned", audit.Version("community", "slack-digest", "0.5.1")},
 		{"ewojcik@example.com", models.ActorKindIdentity, models.AuditKindApprove,
-			"override granted for community/aws-cost-explainer@2.0.0", "web", 3 * time.Hour},
+			"override granted for community/aws-cost-explainer@2.0.0", "web", 3 * time.Hour,
+			"accepted", findingSubject("SH-FS-007", "community", "aws-cost-explainer", "2.0.0")},
 		{"pkaczmarek@example.com", models.ActorKindIdentity, models.AuditKindProfile,
-			"published Platform Engineer r14 — pinned ADR Writer to 3.0.2", "web", 4 * time.Hour},
+			"published Platform Engineer r14 — pinned ADR Writer to 3.0.2", "web", 4 * time.Hour,
+			"published", revisionSubject("example/platform-engineer", 14)},
 		{"pkaczmarek@example.com", models.ActorKindIdentity, models.AuditKindShare,
-			"shared SRE On-call with group " + GroupEngAll + " as consumer", "web", 5*time.Hour + 30*time.Minute},
+			"shared SRE On-call with group " + GroupEngAll + " as consumer", "web", 5*time.Hour + 30*time.Minute,
+			"shared", audit.Profile(seedID("profile", "example/sre-oncall"), "example/sre-oncall")},
 		{"fetcher", models.ActorKindSystem, models.AuditKindFetch,
-			"stored example/terraform-module-review@2.4.1", "system", 7 * time.Hour},
+			"stored example/terraform-module-review@2.4.1", "system", 7 * time.Hour,
+			"stored", audit.Version("example", "terraform-module-review", "2.4.1")},
 		{"mlewandowska@example.com", models.ActorKindIdentity, models.AuditKindLogin,
-			"device authorisation approved", "cli / dev-ml", 26 * time.Hour},
+			"device authorisation approved", "cli / dev-ml", 26 * time.Hour,
+			"approved", audit.Device(seedID("device", "dev-ml"), "dev-ml")},
 		{"ewojcik@example.com", models.ActorKindIdentity, models.AuditKindScan,
 			fmt.Sprintf("rescan completed for %d versions, 1 new finding", versions),
-			"system", 28 * time.Hour},
+			"system", 28 * time.Hour,
+			"scanned", audit.Version("community", "slack-digest", "0.5.1")},
 	}
+}
+
+func findingSubject(rule, namespace, name, semver string) audit.Subject {
+	return audit.Finding(seedID("finding", rule), namespace, name, semver, rule)
+}
+
+func revisionSubject(slug string, seq int) audit.Subject {
+	return audit.Revision(seedID("revision", fmt.Sprintf("%s#%d", slug, seq)), seedID("profile", slug), slug, seq)
 }

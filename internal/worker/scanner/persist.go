@@ -67,7 +67,7 @@ func (w *Worker) record(ctx context.Context, job Job, result analysis, started t
 		if err := w.setVerdict(ctx, tx, job, verdict); err != nil {
 			return err
 		}
-		return writeScanAudit(ctx, tx, scanText(job, stamp, result, verdict))
+		return writeScanAudit(ctx, tx, job, stamp, result, verdict)
 	})
 	if err != nil {
 		return Outcome{}, err

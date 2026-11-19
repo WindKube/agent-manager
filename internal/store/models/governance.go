@@ -38,6 +38,14 @@ type AuditEvent struct {
 	Kind       AuditKind `bun:"kind,type:audit_kind,notnull"`
 	Text       string    `bun:"text,type:text,notnull"`
 	Source     string    `bun:"source,type:text,nullzero"`
+	// The subject columns are null only on rows written before they existed;
+	// build a row with audit.New, which refuses one without a subject.
+	SubjectKind AuditSubjectKind `bun:"subject_kind,type:audit_subject_kind,nullzero"`
+	SubjectID   string           `bun:"subject_id,type:text,nullzero"`
+	// Namespace is the package namespace of a package, version or finding
+	// subject, so a consumer can filter by it without a join.
+	Namespace string         `bun:"namespace,type:text,nullzero"`
+	Data      map[string]any `bun:"data,type:jsonb,notnull,default:'{}'"`
 }
 
 // FetchAttempt is one ingestion fetch and how it ended, successful or not: a

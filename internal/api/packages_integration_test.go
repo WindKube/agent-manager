@@ -78,7 +78,9 @@ func TestRegisteringAnUploadReturns202AndThenRefusesTheSameVersionWith409(t *tes
 		   (select count(*) from version where id = $1),
 		   (select count(*) from outbox where job_kind = 'fetch' and idempotency_key = 'fetch:' || $1 || ':1.3.0'),
 		   (select count(*) from audit_event where kind = 'fetch' and actor_kind = 'identity'
-		      and text like 'registered uploads/platform-toolkit@1.3.0 from upload%')`,
+		      and text like 'registered uploads/platform-toolkit@1.3.0 from upload%'
+		      and subject_kind = 'version' and subject_id = 'uploads/platform-toolkit@1.3.0' 
+		      and data->>'action' = 'registered' and data->>'semver' = '1.3.0' and data->>'source' = 'upload')`,
 		registered.VersionID).Scan(&versions, &jobs, &audits))
 	require.Equal(t, 1, versions)
 	require.Equal(t, 1, jobs)

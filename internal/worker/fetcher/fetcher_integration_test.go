@@ -437,6 +437,11 @@ func TestAGitRegistrationBecomesAStoredVisibleVersionWithAQueuedScan(t *testing.
 	require.Len(t, texts, 1)
 	require.Contains(t, texts[0], "digest sha256:")
 	require.Contains(t, texts[0], "2 paths dropped as outside the spec layout")
+	require.Equal(t, 1, countRows(t,
+		`select count(*) from audit_event
+		  where actor = 'fetcher' and subject_kind = 'version' and subject_id = 'example/platform-toolkit@1.3.0'
+		    and namespace = 'example' and data->>'action' = 'stored' and data->>'package' = 'example/platform-toolkit'
+		    and data->>'digest' like 'sha256:%'`))
 
 	// And no finding row exists: the fetcher does not produce findings, and the
 	// grant says so as well as the code does.
@@ -710,6 +715,10 @@ func TestASSRFRefusalIsRecordedAsAFetchErrorAndNeverAsAFinding(t *testing.T) {
 	require.Equal(t, 1, countRows(t, `select count(*) from fetch_attempt where outcome = 'blocked'`))
 	require.Len(t, texts, 1)
 	require.Contains(t, texts[0], string(fetcher.ReasonRefused))
+	require.Equal(t, 1, countRows(t,
+		`select count(*) from audit_event
+		  where actor = 'fetcher' and subject_kind = 'version' and subject_id = 'refused/platform-toolkit@1.3.0'
+		    and data->>'action' = 'fetch-failed' and data->>'reason' = $1`, string(fetcher.ReasonRefused)))
 
 	// And the object store holds nothing for it: the refusal happened before the
 	// commit, so there is not even a staged object to clean up.

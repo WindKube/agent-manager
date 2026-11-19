@@ -10,6 +10,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"agent-manager/internal/auth"
+	"agent-manager/internal/store/audit"
 	"agent-manager/internal/store/models"
 )
 
@@ -102,7 +103,9 @@ func DeleteVersion(ctx context.Context, db bun.IDB, p auth.Principal, namespace,
 
 		text := fmt.Sprintf("deleted version %s of %s/%s from the catalog (archived; %s)",
 			semver, namespace, name, pinNote(out.PinnedByProfiles))
-		return writeCatalogDeleteAudit(ctx, tx, p, text)
+		audit := catalogDeleteAudit(p, text, audit.Version(namespace, name, semver))
+		audit.Data = map[string]any{"pinnedByProfiles": out.PinnedByProfiles}
+		return writeAudit(ctx, tx, audit)
 	})
 	if err != nil {
 		return VersionWithdrawal{}, err
@@ -151,7 +154,9 @@ func DeletePackage(ctx context.Context, db bun.IDB, p auth.Principal, namespace,
 
 		text := fmt.Sprintf("deleted package %s/%s from the catalog (archived %d version(s))",
 			namespace, name, out.VersionsArchived)
-		return writeCatalogDeleteAudit(ctx, tx, p, text)
+		audit := catalogDeleteAudit(p, text, audit.Package(namespace, name))
+		audit.Data = map[string]any{"versionsArchived": out.VersionsArchived}
+		return writeAudit(ctx, tx, audit)
 	})
 	if err != nil {
 		return PackageWithdrawal{}, err
@@ -229,17 +234,9 @@ func pinNote(n int) string {
 	}
 }
 
-// writeCatalogDeleteAudit reuses AuditKindFetch rather than adding a
-// dedicated audit_kind value: that enum is a Postgres type, and a new value
-// needs an Atlas-generated migration (`.bin/atlas`, unavailable in this
-// worktree — see the branch's report). `fetch` is already this codebase's
-// catalog-lifecycle kind (registerPackage's own audit row uses it for
-// "registered X from Y"), and the free-text below states the actual action
-// without ambiguity, which is what an operator reading the audit log acts on.
-func writeCatalogDeleteAudit(ctx context.Context, tx bun.IDB, p auth.Principal, text string) error {
-	actor := p.Email
-	if actor == "" {
-		actor = p.Subject
-	}
-	return writeAudit(ctx, tx, models.AuditKindFetch, actor, string(models.ActorKindIdentity), text, p.Source)
+// catalogDeleteAudit reuses AuditKindFetch rather than a dedicated
+// audit_kind value: `fetch` is already this codebase's catalog-lifecycle
+// kind, and data.action says `deleted` for a consumer that needs it exact.
+func catalogDeleteAudit(p auth.Principal, text string, subject audit.Subject) audit.Entry {
+	return identityAudit(p, models.AuditKindFetch, "deleted", text, subject)
 }

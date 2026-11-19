@@ -136,7 +136,8 @@ func TestAuditEventRejectsUpdateAndDeleteFromEveryRole(t *testing.T) {
 	// would make this test pass for the wrong reason.
 	id := models.NewID()
 	_, err := pool.Exec(ctx,
-		`insert into audit_event (id, actor, actor_kind, kind, "text") values ($1, 'system', 'system', 'login', 'seed')`, id)
+		`insert into audit_event (id, actor, actor_kind, kind, "text", subject_kind, subject_id)
+		 values ($1, 'system', 'system', 'login', 'seed', 'identity', 'seed')`, id)
 	require.NoError(t, err)
 
 	// Every role, not just the request path. am_migrate is included because
@@ -160,8 +161,8 @@ func TestAuditEventRejectsUpdateAndDeleteFromEveryRole(t *testing.T) {
 					{name: "update from another table is denied", stmt: `update audit_event set "text" = 'tampered' from pg_class where audit_event.id = $1`, args: []any{id}},
 					// The upsert route: INSERT is granted, so the DO UPDATE half is the
 					// only thing standing between an append-only log and an editable one.
-					{name: "insert on conflict do update is denied", stmt: `insert into audit_event (id, actor, actor_kind, kind, "text")
-						values ($1, 'x', 'system', 'login', 'y') on conflict (id) do update set "text" = 'pwned'`, args: []any{id}},
+					{name: "insert on conflict do update is denied", stmt: `insert into audit_event (id, actor, actor_kind, kind, "text", subject_kind, subject_id)
+						values ($1, 'x', 'system', 'login', 'y', 'identity', 'x') on conflict (id) do update set "text" = 'pwned'`, args: []any{id}},
 				} {
 					t.Run(tc.name, func(t *testing.T) {
 						_, err := conn.Exec(ctx, tc.stmt, tc.args...)
@@ -171,7 +172,8 @@ func TestAuditEventRejectsUpdateAndDeleteFromEveryRole(t *testing.T) {
 
 				t.Run("insert is allowed, because the log must still be writable", func(t *testing.T) {
 					_, err := conn.Exec(ctx,
-						`insert into audit_event (id, actor, actor_kind, kind, "text") values ($1, 'a@example.com', 'identity', 'login', 'signed in')`,
+						`insert into audit_event (id, actor, actor_kind, kind, "text", subject_kind, subject_id)
+						 values ($1, 'a@example.com', 'identity', 'login', 'signed in', 'identity', 'a')`,
 						models.NewID())
 					require.NoError(t, err)
 				})
@@ -193,6 +195,38 @@ func TestAuditEventRejectsUpdateAndDeleteFromEveryRole(t *testing.T) {
 	var text string
 	require.NoError(t, pool.QueryRow(ctx, `select "text" from audit_event where id = $1`, id).Scan(&text))
 	require.Equal(t, "seed", text, "the seeded row must be byte-identical after every denied attempt")
+}
+
+// Every role that writes audit rows can write the subject columns, and none
+// can write a row without a subject. The check is NOT VALID, so rows from
+// before the columns existed stay legal without a backfill.
+func TestAuditEventRequiresASubjectFromEveryWritingRole(t *testing.T) {
+	var validated bool
+	require.NoError(t, pool.QueryRow(context.Background(),
+		`select convalidated from pg_constraint where conname = 'audit_event_subject_required'`).Scan(&validated))
+	require.False(t, validated, "the check must stay NOT VALID, or migrating a hub with history fails")
+
+	for _, role := range []string{"am_api", "am_fetcher", "am_scanner"} {
+		t.Run(role, func(t *testing.T) {
+			asRole(t, role, func(ctx context.Context, conn *pgxpool.Conn) {
+				_, err := conn.Exec(ctx,
+					`insert into audit_event (id, actor, actor_kind, kind, "text", subject_kind, subject_id, namespace, data)
+					 values ($1, 'fetcher', 'system', 'fetch', 'stored', 'version', 'example/a@1.0.0', 'example', '{"semver":"1.0.0"}')`,
+					models.NewID())
+				require.NoError(t, err, "the subject columns must be insertable by every writing role")
+
+				_, err = conn.Exec(ctx,
+					`insert into audit_event (id, actor, actor_kind, kind, "text") values ($1, 'x', 'system', 'fetch', 'y')`,
+					models.NewID())
+				requirePgError(t, err, "23514", "audit_event_subject_required")
+
+				_, err = conn.Exec(ctx,
+					`insert into audit_event (id, actor, actor_kind, kind, "text", subject_kind)
+					 values ($1, 'x', 'system', 'fetch', 'y', 'version')`, models.NewID())
+				requirePgError(t, err, "23514", "audit_event_subject_required")
+			})
+		})
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -1112,8 +1146,8 @@ func TestFetcherCanPerformTheWholeIngestionWriteInOneTransaction(t *testing.T) {
 		require.NoError(t, err, "outbox")
 
 		_, err = tx.Exec(ctx,
-			`insert into audit_event (id, actor, actor_kind, kind, text)
-			 values ($1, 'fetcher', 'system', 'fetch', 'fetched 1.0.0')`, models.NewID())
+			`insert into audit_event (id, actor, actor_kind, kind, text, subject_kind, subject_id, namespace)
+			 values ($1, 'fetcher', 'system', 'fetch', 'fetched 1.0.0', 'version', 'example/a@1.0.0', 'example')`, models.NewID())
 		require.NoError(t, err, "audit_event")
 
 		require.NoError(t, tx.Commit(ctx), "the whole ingestion write must commit as one transaction")
@@ -1403,8 +1437,8 @@ func TestEveryOrganizationScreenMutationHasAnAuditKindToRecordItWith(t *testing.
 		{kind: "secret", action: "rotate the identity-provider secret"}, // US7
 	} {
 		t.Run(tc.kind+": "+tc.action, func(t *testing.T) {
-			_, err := pool.Exec(ctx, `insert into audit_event (id, actor, actor_kind, kind, text)
-				values ($1, 'admin@example.com', 'identity', $2::audit_kind, $3)`,
+			_, err := pool.Exec(ctx, `insert into audit_event (id, actor, actor_kind, kind, text, subject_kind, subject_id)
+				values ($1, 'admin@example.com', 'identity', $2::audit_kind, $3, 'policy', '1')`,
 				models.NewID(), tc.kind, tc.action)
 			require.NoError(t, err)
 		})

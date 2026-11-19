@@ -6,7 +6,7 @@
 -- Sorted, and with foreign keys lifted out of the CREATE TABLE statements, so
 -- the output is byte-stable across runs. See the migrate:schema task.
 
-CREATE TABLE "audit_event" ("id" uuid NOT NULL, "occurred_at" timestamptz NOT NULL DEFAULT now(), "actor" text NOT NULL, "actor_kind" actor_kind NOT NULL, "kind" audit_kind NOT NULL, "text" text NOT NULL, "source" text, PRIMARY KEY ("id"));
+CREATE TABLE "audit_event" ("id" uuid NOT NULL, "occurred_at" timestamptz NOT NULL DEFAULT now(), "actor" text NOT NULL, "actor_kind" actor_kind NOT NULL, "kind" audit_kind NOT NULL, "text" text NOT NULL, "source" text, "subject_kind" audit_subject_kind, "subject_id" text, "namespace" text, "data" jsonb NOT NULL DEFAULT '{}', PRIMARY KEY ("id"));
 CREATE TABLE "capability" ("version_id" uuid NOT NULL, "source" capability_source NOT NULL, "name" text NOT NULL, "detail" jsonb, "level" capability_level NOT NULL, "created_at" timestamptz NOT NULL DEFAULT now(), PRIMARY KEY ("version_id", "source", "name"));
 CREATE TABLE "category" ("id" uuid NOT NULL, "name" text NOT NULL, "slug" text NOT NULL, "created_at" timestamptz NOT NULL DEFAULT now(), "updated_at" timestamptz NOT NULL DEFAULT now(), PRIMARY KEY ("id"), UNIQUE ("name"), UNIQUE ("slug"));
 CREATE TABLE "component" ("version_id" uuid NOT NULL, "path" text NOT NULL, "kind" component_kind NOT NULL, "name" text NOT NULL, "note" text, "created_at" timestamptz NOT NULL DEFAULT now(), PRIMARY KEY ("version_id", "path"));

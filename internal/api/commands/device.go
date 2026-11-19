@@ -14,6 +14,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"agent-manager/internal/auth"
+	"agent-manager/internal/store/audit"
 	"agent-manager/internal/store/models"
 )
 
@@ -212,7 +213,7 @@ func decideDevice(
 		return "", fmt.Errorf("deciding a device authorisation needs an identity")
 	}
 
-	var host string
+	var decided models.DeviceAuthorization
 	err := db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		update := tx.NewUpdate().
 			Model((*models.DeviceAuthorization)(nil)).
@@ -243,29 +244,29 @@ func decideDevice(
 		// Read back in the same transaction, so the host is this row's.
 		if err := tx.NewSelect().
 			Model((*models.DeviceAuthorization)(nil)).
-			Column("requesting_host").
+			Column("id", "requesting_host").
 			Where("user_code = ?", code).
-			Scan(ctx, &host); err != nil {
+			Scan(ctx, &decided.ID, &decided.RequestingHost); err != nil {
 			return fmt.Errorf("read requesting host: %w", err)
 		}
 
-		actor := p.Email
-		if actor == "" {
-			actor = p.Subject
-		}
+		host := decided.RequestingHost
 		verb := "approved"
 		if state == models.DeviceAuthStateDenied {
 			verb = "denied"
 		}
-		// audit_kind has no `deny` value; `login` covers both, and the
-		// device code must never appear in this text.
-		return writeAudit(ctx, tx, models.AuditKindLogin, actor, string(models.ActorKindIdentity),
-			fmt.Sprintf("%s %s a CLI login on %s", actor, verb, host), auth.CLISource(host))
+		// audit_kind has no `deny` value; `login` covers both, and neither
+		// the device code nor the user code may appear in this row.
+		audit := identityAudit(p, models.AuditKindLogin, verb,
+			fmt.Sprintf("%s %s a CLI login on %s", memberRef(p), verb, host),
+			audit.Device(decided.ID, host))
+		audit.Source = auth.CLISource(host)
+		return writeAudit(ctx, tx, audit)
 	})
 	if err != nil {
 		return "", err
 	}
-	return host, nil
+	return decided.RequestingHost, nil
 }
 
 // DeviceTokenInput is one poll of POST /v1/device/token.

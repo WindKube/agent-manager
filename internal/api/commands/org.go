@@ -16,6 +16,7 @@ import (
 
 	"agent-manager/internal/api/contract"
 	"agent-manager/internal/auth"
+	"agent-manager/internal/store/audit"
 	"agent-manager/internal/store/models"
 )
 
@@ -181,7 +182,16 @@ func UpdatePolicy(ctx context.Context, db bun.IDB, p auth.Principal,
 		if affected, _ := res.RowsAffected(); affected == 0 {
 			return fmt.Errorf("update the organisation policy: %w", sql.ErrNoRows)
 		}
-		return writeOrgAudit(ctx, tx, p, models.AuditKindPolicy, "updated the organisation policy")
+		audit := identityAudit(p, models.AuditKindPolicy, "updated", "updated the organisation policy",
+			audit.Policy())
+		audit.Data = map[string]any{
+			"scanGate":              string(gate),
+			"requireSignedBundles":  in.RequireSignedBundles,
+			"communityNeedsReview":  in.CommunityNeedsReview,
+			"rescanOnNewVersion":    in.RescanOnNewVersion,
+			"allowPersonalProfiles": in.AllowPersonalProfiles,
+		}
+		return writeAudit(ctx, tx, audit)
 	})
 	if err != nil {
 		return contract.OrganizationPolicy{}, err
@@ -257,9 +267,13 @@ func EnsureAdminGroup(ctx context.Context, db bun.IDB, groupName string) (bool, 
 		}
 		changed = true
 
-		return writeAudit(ctx, tx, models.AuditKindRole, BootstrapActor, string(models.ActorKindSystem),
-			fmt.Sprintf("mapped group %q to role %s, as declared by this deployment", groupName, role),
-			bootstrapAuditSource)
+		return writeAudit(ctx, tx, audit.Entry{
+			Kind: models.AuditKindRole, Action: "mapped", Actor: BootstrapActor, ActorKind: models.ActorKindSystem,
+			Text:    fmt.Sprintf("mapped group %q to role %s, as declared by this deployment", groupName, role),
+			Source:  bootstrapAuditSource,
+			Subject: audit.Mapping(groupName),
+			Data:    map[string]any{"role": string(role)},
+		})
 	})
 	if err != nil {
 		return false, err
@@ -291,8 +305,10 @@ func CreateMapping(ctx context.Context, db bun.IDB, p auth.Principal,
 			Exec(ctx); txErr != nil {
 			return fmt.Errorf("map group %q to %s: %w", groupName, role, txErr)
 		}
-		return writeOrgAudit(ctx, tx, p, models.AuditKindRole,
-			fmt.Sprintf("mapped group %q to role %s", groupName, role))
+		audit := identityAudit(p, models.AuditKindRole, "mapped",
+			fmt.Sprintf("mapped group %q to role %s", groupName, role), audit.Mapping(groupName))
+		audit.Data = map[string]any{"role": string(role)}
+		return writeAudit(ctx, tx, audit)
 	})
 	if err != nil {
 		return contract.GroupRoleMapping{}, err
@@ -312,7 +328,8 @@ func DeleteMapping(ctx context.Context, db bun.IDB, p auth.Principal, groupName 
 		if affected, _ := res.RowsAffected(); affected == 0 {
 			return ErrMappingNotFound
 		}
-		return writeOrgAudit(ctx, tx, p, models.AuditKindRole, fmt.Sprintf("removed mapping for group %q", groupName))
+		return writeAudit(ctx, tx, identityAudit(p, models.AuditKindRole, "unmapped",
+			fmt.Sprintf("removed mapping for group %q", groupName), audit.Mapping(groupName)))
 	})
 }
 
@@ -348,7 +365,8 @@ func CreateCategory(ctx context.Context, db bun.IDB, p auth.Principal,
 			}
 			return fmt.Errorf("create category %q: %w", name, txErr)
 		}
-		return writeOrgAudit(ctx, tx, p, models.AuditKindCategory, fmt.Sprintf("added category %q", name))
+		return writeAudit(ctx, tx, identityAudit(p, models.AuditKindCategory, "created",
+			fmt.Sprintf("added category %q", name), audit.Category(row.ID.String(), name)))
 	})
 	if err != nil {
 		return contract.OrganizationCategory{}, err
@@ -386,7 +404,8 @@ func UpdateCategory(ctx context.Context, db bun.IDB, p auth.Principal,
 		if affected, _ := res.RowsAffected(); affected == 0 {
 			return ErrCategoryNotFound
 		}
-		return writeOrgAudit(ctx, tx, p, models.AuditKindCategory, fmt.Sprintf("renamed category to %q", name))
+		return writeAudit(ctx, tx, identityAudit(p, models.AuditKindCategory, "renamed",
+			fmt.Sprintf("renamed category to %q", name), audit.Category(id, name)))
 	})
 	if err != nil {
 		return contract.OrganizationCategory{}, err
@@ -411,7 +430,8 @@ func DeleteCategory(ctx context.Context, db bun.IDB, p auth.Principal, id string
 		if affected, _ := res.RowsAffected(); affected == 0 {
 			return ErrCategoryNotFound
 		}
-		return writeOrgAudit(ctx, tx, p, models.AuditKindCategory, fmt.Sprintf("deleted category %s", id))
+		return writeAudit(ctx, tx, identityAudit(p, models.AuditKindCategory, "deleted",
+			fmt.Sprintf("deleted category %s", id), audit.Category(id, "")))
 	})
 }
 
@@ -439,14 +459,4 @@ func slugify(name string) string {
 		}
 	}
 	return strings.TrimSuffix(b.String(), "-")
-}
-
-// writeOrgAudit is the one audit write every mutation in this file goes
-// through, so actor derivation can't drift between them.
-func writeOrgAudit(ctx context.Context, tx bun.IDB, p auth.Principal, kind models.AuditKind, text string) error {
-	actor := p.Email
-	if actor == "" {
-		actor = p.Subject
-	}
-	return writeAudit(ctx, tx, kind, actor, string(models.ActorKindIdentity), text, p.Source)
 }

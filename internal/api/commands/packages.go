@@ -21,6 +21,7 @@ import (
 	"agent-manager/internal/fetch"
 	"agent-manager/internal/outbox"
 	"agent-manager/internal/repourl"
+	"agent-manager/internal/store/audit"
 	"agent-manager/internal/store/models"
 	"agent-manager/internal/worker/fetcher"
 )
@@ -198,13 +199,11 @@ func RegisterPackage(ctx context.Context, db bun.IDB, p auth.Principal, in Regis
 			return fmt.Errorf("enqueue the fetch of %s: %w", ref, enqueueErr)
 		}
 
-		actor := p.Email
-		if actor == "" {
-			actor = p.Subject
-		}
-		text := fmt.Sprintf("registered %s from %s", ref, describeRegistrationSource(in))
-		return writeAudit(ctx, tx, models.AuditKindFetch, actor, string(models.ActorKindIdentity),
-			text, p.Source)
+		audit := identityAudit(p, models.AuditKindFetch, "registered",
+			fmt.Sprintf("registered %s from %s", ref, describeRegistrationSource(in)),
+			audit.Version(in.Namespace, in.Name, in.Version))
+		audit.Data = map[string]any{"source": string(in.Source)}
+		return writeAudit(ctx, tx, audit)
 	})
 	if err != nil {
 		return contract.PackageRegistered{}, err
@@ -554,12 +553,10 @@ func SetPackageVisibility(ctx context.Context, db bun.IDB, p auth.Principal,
 			return fmt.Errorf("set the visibility of %s/%s: %w", namespace, name, err)
 		}
 
-		actor := p.Email
-		if actor == "" {
-			actor = p.Subject
-		}
-		text := fmt.Sprintf("changed the visibility of %s/%s to %s", namespace, name, visibility)
-		return writeAudit(ctx, tx, models.AuditKindShare, actor, string(models.ActorKindIdentity),
-			text, p.Source)
+		audit := identityAudit(p, models.AuditKindShare, "visibility-changed",
+			fmt.Sprintf("changed the visibility of %s/%s to %s", namespace, name, visibility),
+			audit.Package(namespace, name))
+		audit.Data = map[string]any{"visibility": string(visibility)}
+		return writeAudit(ctx, tx, audit)
 	})
 }

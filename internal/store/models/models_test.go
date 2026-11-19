@@ -228,6 +228,7 @@ func enumCases() []enumCase {
 		enumCheck[models.ScanGate](models.PGScanGate),
 		enumCheck[models.ActorKind](models.PGActorKind),
 		enumCheck[models.AuditKind](models.PGAuditKind),
+		enumCheck[models.AuditSubjectKind](models.PGAuditSubjectKind),
 		enumCheck[models.OutboxState](models.PGOutboxState),
 		enumCheck[models.EvidenceRole](models.PGEvidenceRole),
 		enumCheck[models.FetchSourceKind](models.PGFetchSourceKind),

@@ -10,6 +10,7 @@ import (
 	"agent-manager/internal/api/contract"
 	"agent-manager/internal/api/queries"
 	"agent-manager/internal/auth"
+	"agent-manager/internal/store/audit"
 	"agent-manager/internal/store/models"
 )
 
@@ -42,10 +43,6 @@ func ReportSync(ctx context.Context, db bun.IDB, p auth.Principal, in contract.S
 			return fmt.Errorf("record sync event: %w", err)
 		}
 
-		actor := p.Email
-		if actor == "" {
-			actor = p.Subject
-		}
 		text := fmt.Sprintf("synced %s r%d to %s", in.Profile, ref.Seq, in.Host)
 		if len(in.Targets) > 0 {
 			text += " (" + strings.Join(in.Targets, ", ") + ")"
@@ -53,8 +50,11 @@ func ReportSync(ctx context.Context, db bun.IDB, p auth.Principal, in contract.S
 		if n := len(in.Skipped); n > 0 {
 			text += fmt.Sprintf(", %d entr%s skipped locally", n, plural(n))
 		}
-		return writeAudit(ctx, tx, models.AuditKindSync, actor, string(models.ActorKindIdentity),
-			text, auth.CLISource(in.Host))
+		audit := identityAudit(p, models.AuditKindSync, "synced", text,
+			audit.Revision(ref.RevisionID, ref.ProfileID, in.Profile, ref.Seq))
+		audit.Source = auth.CLISource(in.Host)
+		audit.Data = map[string]any{"host": in.Host, "targets": append([]string{}, in.Targets...)}
+		return writeAudit(ctx, tx, audit)
 	})
 }
 

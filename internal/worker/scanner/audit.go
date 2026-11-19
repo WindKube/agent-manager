@@ -8,6 +8,7 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"agent-manager/internal/store/audit"
 	"agent-manager/internal/store/models"
 	"agent-manager/internal/worker/scanner/checks"
 )
@@ -22,14 +23,24 @@ const (
 // writeScanAudit inserts the one audit row a verdict is accountable for. It
 // takes the transaction rather than a pool, so the record cannot survive a
 // rolled back scan or go missing after a committed one.
-func writeScanAudit(ctx context.Context, tx bun.IDB, text string) error {
-	event := &models.AuditEvent{
-		ID:        models.NewID(),
+func writeScanAudit(ctx context.Context, tx bun.IDB, job Job, stamp string, result analysis, verdict models.Verdict) error {
+	event, err := audit.New(audit.Entry{
+		Kind:      models.AuditKindScan,
+		Action:    "scanned",
 		Actor:     auditActor,
 		ActorKind: models.ActorKindSystem,
-		Kind:      models.AuditKindScan,
-		Text:      text,
+		Text:      scanText(job, stamp, result, verdict),
 		Source:    auditSource,
+		Subject:   audit.Version(job.Namespace, job.Name, job.Semver),
+		Data: map[string]any{
+			"verdict":   string(verdict),
+			"analyzers": stamp,
+			"ruleIds":   ruleIDs(result.findings),
+			"timedOut":  result.timedOut,
+		},
+	})
+	if err != nil {
+		return err
 	}
 	// am_scanner holds INSERT-only on audit_event — no SELECT — and bun appends
 	// RETURNING for OccurredAt's `default:` tag unless told not to.

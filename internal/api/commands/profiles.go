@@ -18,6 +18,7 @@ import (
 	"agent-manager/internal/auth"
 	"agent-manager/internal/blob"
 	"agent-manager/internal/domain/resolve"
+	"agent-manager/internal/store/audit"
 	"agent-manager/internal/store/models"
 )
 
@@ -202,12 +203,18 @@ func CreateProfile(ctx context.Context, db bun.IDB, p auth.Principal,
 			}
 		}
 
-		text := fmt.Sprintf("created profile %s (%s)", in.Slug, in.Visibility)
+		subject := audit.Profile(profile.ID, in.Slug)
 		if forked != "" {
-			text = fmt.Sprintf("forked %s from %s with %s, which inherits no later revision of it",
-				in.Slug, forked, counted(copied, "package", "packages"))
+			audit := identityAudit(p, models.AuditKindProfile, "forked",
+				fmt.Sprintf("forked %s from %s with %s, which inherits no later revision of it",
+					in.Slug, forked, counted(copied, "package", "packages")), subject)
+			audit.Data = map[string]any{"forkedFrom": forked, "entries": copied}
+			return writeAudit(ctx, tx, audit)
 		}
-		return writeProfileAudit(ctx, tx, p, models.AuditKindProfile, text)
+		audit := identityAudit(p, models.AuditKindProfile, "created",
+			fmt.Sprintf("created profile %s (%s)", in.Slug, in.Visibility), subject)
+		audit.Data = map[string]any{"visibility": string(in.Visibility)}
+		return writeAudit(ctx, tx, audit)
 	})
 	if err != nil {
 		return contract.Profile{}, err
@@ -269,9 +276,11 @@ func SetProfileEntries(ctx context.Context, db bun.IDB, p auth.Principal,
 			}
 		}
 
-		return writeProfileAudit(ctx, tx, p, models.AuditKindProfile, fmt.Sprintf(
+		audit := identityAudit(p, models.AuditKindProfile, "entries-set", fmt.Sprintf(
 			"set the packages in %s: %s, %d changed", slug,
-			counted(len(rows), "entry", "entries"), changed))
+			counted(len(rows), "entry", "entries"), changed), audit.Profile(facts.ID, slug))
+		audit.Data = map[string]any{"entries": len(rows), "changed": changed}
+		return writeAudit(ctx, tx, audit)
 	})
 }
 
@@ -474,8 +483,10 @@ func RemoveProfileEntry(ctx context.Context, db bun.IDB, p auth.Principal, slug,
 			return refused("%s does not hold %s, so there is nothing to remove", slug, id)
 		}
 
-		return writeProfileAudit(ctx, tx, p, models.AuditKindProfile,
-			fmt.Sprintf("removed %s from %s", id, slug))
+		audit := identityAudit(p, models.AuditKindProfile, "entry-removed",
+			fmt.Sprintf("removed %s from %s", id, slug), audit.Profile(facts.ID, slug))
+		audit.Data = map[string]any{"package": id}
+		return writeAudit(ctx, tx, audit)
 	})
 }
 
@@ -506,8 +517,8 @@ func SetProfileSharing(ctx context.Context, db bun.IDB, p auth.Principal,
 			return fmt.Errorf("share %s: %w", slug, err)
 		}
 
-		return writeProfileAudit(ctx, tx, p, models.AuditKindShare,
-			"shared "+slug+" with "+describeShares(in.Members))
+		return writeAudit(ctx, tx, identityAudit(p, models.AuditKindShare, "shared",
+			"shared "+slug+" with "+describeShares(in.Members), audit.Profile(facts.ID, slug)))
 	})
 }
 
@@ -643,18 +654,20 @@ func SetProfileTargets(ctx context.Context, db bun.IDB, p auth.Principal,
 			return fmt.Errorf("set the sync targets of %s: %w", slug, err)
 		}
 
-		enabled := "nothing"
-		if len(in.Targets) > 0 {
-			ordered := make([]string, 0, len(in.Targets))
-			for _, target := range vocabulary {
-				if wanted[target] {
-					ordered = append(ordered, target)
-				}
+		ordered := make([]string, 0, len(in.Targets))
+		for _, target := range vocabulary {
+			if wanted[target] {
+				ordered = append(ordered, target)
 			}
+		}
+		enabled := "nothing"
+		if len(ordered) > 0 {
 			enabled = strings.Join(ordered, ", ")
 		}
-		return writeProfileAudit(ctx, tx, p, models.AuditKindProfile,
-			"set the sync targets of "+slug+" to "+enabled)
+		audit := identityAudit(p, models.AuditKindProfile, "targets-set",
+			"set the sync targets of "+slug+" to "+enabled, audit.Profile(facts.ID, slug))
+		audit.Data = map[string]any{"targets": ordered}
+		return writeAudit(ctx, tx, audit)
 	})
 }
 
@@ -707,8 +720,9 @@ func PublishRevision(ctx context.Context, db bun.IDB, p auth.Principal,
 			return fmt.Errorf("encode the lockfile for %s r%d: %w", slug, seq, txErr)
 		}
 
+		revisionID := models.NewID()
 		if _, txErr = tx.NewInsert().Model(&models.Revision{
-			ID:        models.NewID(),
+			ID:        revisionID,
 			ProfileID: facts.ID,
 			Seq:       seq,
 			Note:      note,
@@ -725,7 +739,8 @@ func PublishRevision(ctx context.Context, db bun.IDB, p auth.Principal,
 		if note != "" {
 			text += " — " + note
 		}
-		return writeProfileAudit(ctx, tx, p, models.AuditKindProfile, text)
+		return writeAudit(ctx, tx, identityAudit(p, models.AuditKindProfile, "published", text,
+			audit.Revision(revisionID, facts.ID, facts.Slug, revision)))
 	})
 	if err != nil {
 		return contract.Lockfile{}, err
@@ -777,8 +792,8 @@ func DeleteProfile(ctx context.Context, db bun.IDB, p auth.Principal, slug strin
 			return fmt.Errorf("delete %s: %w", slug, err)
 		}
 
-		return writeProfileAudit(ctx, tx, p, models.AuditKindProfile,
-			fmt.Sprintf("deleted profile %s (%s)", slug, facts.Name))
+		return writeAudit(ctx, tx, identityAudit(p, models.AuditKindProfile, "deleted",
+			fmt.Sprintf("deleted profile %s (%s)", slug, facts.Name), audit.Profile(facts.ID, slug)))
 	})
 }
 
@@ -789,12 +804,6 @@ func memberRef(p auth.Principal) string {
 		return p.Email
 	}
 	return p.Subject
-}
-
-func writeProfileAudit(ctx context.Context, tx bun.IDB, p auth.Principal,
-	kind models.AuditKind, text string,
-) error {
-	return writeAudit(ctx, tx, kind, memberRef(p), string(models.ActorKindIdentity), text, p.Source)
 }
 
 // counted renders "1 entry" / "4 entries" for an audit line.

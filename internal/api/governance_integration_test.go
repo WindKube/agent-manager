@@ -547,6 +547,12 @@ func TestAcceptingAFindingWritesTheStateTheOverrideAndExactlyOneAuditRow(t *test
 	require.Equal(t, an.claims.Email, event.Actor, "the row names the reviewer, not the role")
 	require.Contains(t, event.Text, "gov/risky-digest@1.0.0")
 	require.Contains(t, event.Text, "GOV-NET-001")
+	require.Equal(t, models.AuditSubjectFinding, event.SubjectKind)
+	require.Equal(t, fixture.openFinding.String(), event.SubjectID)
+	require.Equal(t, "gov", event.Namespace)
+	require.Equal(t, "accepted", event.Data["action"])
+	require.Equal(t, "GOV-NET-001", event.Data["ruleId"])
+	require.Equal(t, "1.0.0", event.Data["semver"])
 
 	require.Equal(t, models.FindingStateApproved, findingRow(t, fixture.openFinding).State)
 

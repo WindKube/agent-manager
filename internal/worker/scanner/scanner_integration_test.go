@@ -400,6 +400,10 @@ func TestAHostileBundleReachesAFlaggedVerdictWithFindingsAReviewerCanRead(t *tes
 		  where kind = 'scan' and actor = 'scanner' and actor_kind = 'system'
 		    and source = 'system' and text like $1`,
 		"flagged example/hostile-report@1.0.0 —%"))
+	require.Equal(t, 1, countRows(t,
+		`select count(*) from audit_event
+		  where kind = 'scan' and subject_kind = 'version' and subject_id = 'example/hostile-report@1.0.0'
+		    and namespace = 'example' and data->>'verdict' = 'flagged' and data->'ruleIds' ? 'SH-NET-002'`))
 }
 
 func TestABenignBundleReachesACleanVerdictWithEveryCheckRecorded(t *testing.T) {

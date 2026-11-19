@@ -36,6 +36,7 @@ const (
 	PGScanGate          = "scan_gate"
 	PGActorKind         = "actor_kind"
 	PGAuditKind         = "audit_kind"
+	PGAuditSubjectKind  = "audit_subject_kind"
 	PGOutboxState       = "outbox_state"
 	PGEvidenceRole      = "evidence_role"
 	PGFetchSourceKind   = "fetch_source_kind"
@@ -70,6 +71,10 @@ var enumTypes = map[string][]string{
 	PGAuditKind: {
 		"fetch", "scan", "approve", "profile", "share", "sync", "login",
 		"policy", "role", "category", "secret",
+	},
+	PGAuditSubjectKind: {
+		"package", "version", "finding", "profile", "revision",
+		"category", "mapping", "policy", "identity", "device",
 	},
 	PGOutboxState:     {"pending", "delivered"},
 	PGEvidenceRole:    {"primary", "supporting"},
@@ -397,6 +402,25 @@ const (
 )
 
 func (v AuditKind) Valid() bool { return inEnum(PGAuditKind, string(v)) }
+
+// AuditSubjectKind is what an audit row is about; each comment names what
+// subject_id holds for that kind.
+type AuditSubjectKind string
+
+const (
+	AuditSubjectPackage  AuditSubjectKind = "package"  // namespace/name, the api's package id
+	AuditSubjectVersion  AuditSubjectKind = "version"  // namespace/name@semver
+	AuditSubjectFinding  AuditSubjectKind = "finding"  // finding.id
+	AuditSubjectProfile  AuditSubjectKind = "profile"  // profile.id
+	AuditSubjectRevision AuditSubjectKind = "revision" // revision.id
+	AuditSubjectCategory AuditSubjectKind = "category" // category.id
+	AuditSubjectMapping  AuditSubjectKind = "mapping"  // group_role_map.group_name
+	AuditSubjectPolicy   AuditSubjectKind = "policy"   // org_policy.id, always "1"
+	AuditSubjectIdentity AuditSubjectKind = "identity" // identity.id
+	AuditSubjectDevice   AuditSubjectKind = "device"   // device_authorization.id
+)
+
+func (v AuditSubjectKind) Valid() bool { return inEnum(PGAuditSubjectKind, string(v)) }
 
 type OutboxState string
 

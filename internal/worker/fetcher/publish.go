@@ -198,7 +198,7 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 			return fmt.Errorf("enqueue the scan of %s: %w", job, enqueueErr)
 		}
 
-		if auditErr := writeFetchAudit(ctx, tx, storedText(job, pkg, commit)); auditErr != nil {
+		if auditErr := writeFetchAudit(ctx, tx, job, "stored", storedText(job, pkg, commit), storedData(pkg, commit)); auditErr != nil {
 			return auditErr
 		}
 		if attemptErr := writeFetchAttempt(ctx, tx, job, models.FetchOutcomeOK, ""); attemptErr != nil {

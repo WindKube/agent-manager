@@ -11,6 +11,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"agent-manager/internal/auth"
+	"agent-manager/internal/store/audit"
 	"agent-manager/internal/store/models"
 )
 
@@ -109,11 +110,7 @@ func SignOut(ctx context.Context, db bun.IDB, p auth.Principal, token string) er
 			return err
 		}
 
-		actor := p.Email
-		if actor == "" {
-			actor = p.Subject
-		}
-		return writeAudit(ctx, tx, models.AuditKindLogin, actor, string(models.ActorKindIdentity),
-			fmt.Sprintf("%s signed out", actor), p.Source)
+		return writeAudit(ctx, tx, identityAudit(p, models.AuditKindLogin, "signed-out",
+			fmt.Sprintf("%s signed out", memberRef(p)), audit.Identity(p.IdentityID)))
 	})
 }

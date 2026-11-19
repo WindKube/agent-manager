@@ -83,7 +83,7 @@ func InspectWith(validator *Validator, tree *bundle.Bundle, root string) (*Packa
 		return out, manifestErr
 	}
 
-	components, err := filtered.deriveComponents(validator, out.MCP)
+	components, err := filtered.deriveComponents(validator)
 	if err != nil {
 		return out, err
 	}
@@ -169,8 +169,8 @@ func (p *Package) ExpectedCapabilities() []ExpectedCapability {
 
 func (p *Package) ComponentCount(kind ComponentKind) int {
 	n := 0
-	for _, component := range p.Components {
-		if component.Kind == kind {
+	for i := range p.Components {
+		if p.Components[i].Kind == kind {
 			n++
 		}
 	}

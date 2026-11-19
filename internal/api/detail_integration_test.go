@@ -230,14 +230,19 @@ func TestThePluginVariantListsItsComponentsAndTheSkillVariantNamesItsParent(t *t
 			pluginVersionID, component.path, component.kind, component.name, component.note)
 		require.NoError(t, err)
 	}
+	_, err := pool.Exec(ctx,
+		`insert into component (version_id, path, kind, name, note, event, matcher, target)
+		 values ($1, 'com.anthropic.claude-code/hooks/hooks.json#/hooks/PreToolUse/0/hooks/0', 'hook',
+		         'PreToolUse', 'command', 'PreToolUse', 'Bash', './guard.sh')`, pluginVersionID)
+	require.NoError(t, err)
 	t.Cleanup(func() {
-		_, err := pool.Exec(context.Background(), `delete from component where version_id = $1`, pluginVersionID)
-		require.NoError(t, err)
+		_, cleanupErr := pool.Exec(context.Background(), `delete from component where version_id = $1`, pluginVersionID)
+		require.NoError(t, cleanupErr)
 	})
 
 	t.Run("a plugin lists the components the file tree revealed", func(t *testing.T) {
 		page := detail(t, handler, kw.token, "example/platform-toolkit")
-		require.Len(t, page.Components, 4)
+		require.Len(t, page.Components, 5)
 
 		// Ordered by the enum's declaration order — skill, mcp, ext — which is the
 		// design's order and not the alphabetical one. Sorting the text would put
@@ -247,8 +252,14 @@ func TestThePluginVariantListsItsComponentsAndTheSkillVariantNamesItsParent(t *t
 		for _, component := range page.Components {
 			kinds = append(kinds, component.Kind)
 		}
-		require.Equal(t, []string{"skill", "skill", "mcp", "ext"}, kinds)
+		require.Equal(t, []string{"skill", "skill", "mcp", "ext", "hook"}, kinds)
 		require.Equal(t, "adr-writer", page.Components[0].Name, "and by name within a kind")
+
+		hook := page.Components[4]
+		require.Equal(t, "PreToolUse", hook.Event)
+		require.Equal(t, "Bash", hook.Matcher)
+		require.Equal(t, "./guard.sh", hook.Target)
+		require.Empty(t, page.Components[2].Transport, "a row with no surface columns renders none")
 
 		// The catalog fixtures store a minimal manifest with no `$schema`, and the
 		// honest answer to "which spec version" is then none rather than a guess.
@@ -282,7 +293,7 @@ func TestThePluginVariantListsItsComponentsAndTheSkillVariantNamesItsParent(t *t
 	// pii-redactor is seeded standalone. Making it a component of security-review-kit
 	// is the only way to reach the skill variant's parent branch, because nothing in
 	// the catalog fixtures sets parent_package_id.
-	_, err := pool.Exec(ctx,
+	_, err = pool.Exec(ctx,
 		`update package set parent_package_id = (
 		   select id from package where namespace = 'example' and name = 'security-review-kit')
 		  where namespace = 'example' and name = 'pii-redactor'`)

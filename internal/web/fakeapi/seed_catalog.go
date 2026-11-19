@@ -55,6 +55,15 @@ func component(kind apiclient.PackageComponentKind, name, path, note string) api
 	return apiclient.PackageComponent{Kind: kind, Name: name, Path: path, Note: &note}
 }
 
+func hook(event, matcher, command string) apiclient.PackageComponent {
+	note := "command"
+	return apiclient.PackageComponent{
+		Kind: apiclient.PackageComponentKindHook, Name: event, Note: &note,
+		Path:  "com.anthropic.claude-code/hooks/hooks.json#/hooks/" + event + "/0/hooks/0",
+		Event: &event, Matcher: &matcher, Target: &command,
+	}
+}
+
 func dependent(slug, name string, mode apiclient.PackageDependentMode, pin string) apiclient.PackageDependent {
 	out := apiclient.PackageDependent{Slug: slug, Name: name, Mode: mode}
 	switch mode {
@@ -100,6 +109,7 @@ func seedPackages() []seedPackage {
 				component(skillKind, "cost-explainer", "skills/cost-explainer", "SKILL.md"),
 				component(mcpKind, "terraform-registry", "mcp.json", "streamable http · registry.terraform.io"),
 				component(apiclient.PackageComponentKindExt, "com.anthropic.claude-code", "com.anthropic.claude-code", "client extension: hooks/"),
+				hook("PreToolUse", "Bash", "${CLAUDE_PLUGIN_ROOT}/hooks/guard.sh"),
 			},
 			caps: scanned([]apiclient.PackageCapability{
 				capability(apiclient.Network, allowlisted, "registry.terraform.io"),

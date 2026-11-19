@@ -454,6 +454,7 @@ func hostileDetail(api *fakeapi.API) {
 	note := `<b>note</b>`
 	digest := `sha256:<script>alert('digest')</script>`
 	pin := `1.0.0"><script>alert('pin')</script>`
+	hookTarget := `<script>alert('hook')</script>`
 	api.Data.Details["evil/thing"] = apiclient.PackageDetail{
 		Id:             "evil/thing",
 		Name:           `<script>alert('detailname')</script>`,
@@ -471,6 +472,11 @@ func hostileDetail(api *fakeapi.API) {
 			Name: `<script>alert('component')</script>`,
 			Path: `skills/<script>alert('path')</script>`,
 			Note: &note,
+		}, {
+			Kind:   apiclient.PackageComponentKindHook,
+			Name:   "PreToolUse",
+			Path:   "hooks.json#/hooks/PreToolUse/0/hooks/0",
+			Target: &hookTarget,
 		}},
 		Capabilities: apiclient.PackageCapabilities{
 			Scanned: true,
@@ -511,6 +517,7 @@ func TestDetailDerivedContentIsEscaped(t *testing.T) {
 		{`<script>alert('desc')</script>`, `&lt;script&gt;alert(&#39;desc&#39;)&lt;/script&gt;`},
 		{`<script>alert('manifest')</script>`, `&lt;script&gt;alert(&#39;manifest&#39;)&lt;/script&gt;`},
 		{`<script>alert('component')</script>`, `&lt;script&gt;alert(&#39;component&#39;)&lt;/script&gt;`},
+		{`<script>alert('hook')</script>`, `&lt;script&gt;alert(&#39;hook&#39;)&lt;/script&gt;`},
 		{`<script>alert('cap')</script>`, `&lt;script&gt;alert(&#39;cap&#39;)&lt;/script&gt;`},
 		{`<script>alert('target')</script>`, `&lt;script&gt;alert(&#39;target&#39;)&lt;/script&gt;`},
 		{`<script>alert('key')</script>`, `&lt;script&gt;alert(&#39;key&#39;)&lt;/script&gt;`},
@@ -636,6 +643,15 @@ func TestAddToProfileOffersAPlainFormToACuratableProfile(t *testing.T) {
 		`<input type="hidden" name="slug" value="platform-engineer"> `+
 		`<input type="hidden" name="id" value="community/postgres-migration-guard"> `+
 		`<button type="submit" class="am-btn">Add</button></form>`)
+}
+
+func TestPackageContentsGroupComponentsByKind(t *testing.T) {
+	_, h := newServer(t)
+	body := get(t, h, "/packages/example/platform-toolkit").Body.String()
+
+	require.Contains(t, body, `<div class="am-comp-group">Hooks</div>`)
+	require.Contains(t, body, "PreToolUse · matcher Bash · ${CLAUDE_PLUGIN_ROOT}/hooks/guard.sh")
+	require.Less(t, strings.Index(body, ">Skills<"), strings.Index(body, ">Hooks<"))
 }
 
 // A working profiles read that answers none and one that fails must render

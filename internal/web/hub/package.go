@@ -191,6 +191,8 @@ func packageDetail(body *apiclient.PackageDetail, now time.Time) view.Package {
 		detail.Components = append(detail.Components, view.Component{
 			Kind: string(component.Kind), Name: component.Name,
 			Path: component.Path, Note: deref(component.Note),
+			Event: deref(component.Event), Matcher: deref(component.Matcher),
+			Transport: transportOf(component.Transport), Target: deref(component.Target),
 		})
 	}
 	for i := range body.Versions {
@@ -337,6 +339,13 @@ func humanSize(bytes int64) string {
 		size, unit = size/1024, next
 	}
 	return strconv.FormatFloat(size, 'f', 1, 64) + " " + unit
+}
+
+func transportOf(value *apiclient.PackageComponentTransport) string {
+	if value == nil {
+		return ""
+	}
+	return string(*value)
 }
 
 func derefInt(value *int64) int64 {

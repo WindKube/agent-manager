@@ -142,6 +142,10 @@ type Component struct {
 	Kind      ComponentKind `bun:"kind,type:component_kind,notnull"`
 	Name      string        `bun:"name,type:text,notnull"`
 	Note      string        `bun:"note,type:text,nullzero"`
+	Event     string        `bun:"event,type:text,nullzero"`
+	Matcher   string        `bun:"matcher,type:text,nullzero"`
+	Transport string        `bun:"transport,type:text,nullzero"`
+	Target    string        `bun:"target,type:text,nullzero"`
 	CreatedAt time.Time     `bun:"created_at,type:timestamptz,notnull,default:now()"`
 
 	Version *Version `bun:"rel:belongs-to,join:version_id=id"`

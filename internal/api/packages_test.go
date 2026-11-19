@@ -146,7 +146,8 @@ func TestThePreviewListsEveryEntryWithAMarkAndNamesWhatItDropped(t *testing.T) {
 	require.Equal(t, []contract.PreviewComponent{
 		{Kind: "skill", Name: "k8s-manifest-review", Path: "skills/k8s-manifest-review", Note: "SKILL.md"},
 		{Kind: "skill", Name: "terraform-plan-review", Path: "skills/terraform-plan-review", Note: "SKILL.md + scripts/"},
-		{Kind: "mcp", Name: "terraform-state", Path: "mcp.json", Note: "stdio"},
+		{Kind: "mcp", Name: "terraform-state", Path: "mcp.json#/mcpServers/terraform-state", Note: "stdio",
+			ComponentSurface: contract.ComponentSurface{Transport: "stdio", Target: "terraform-mcp"}},
 		{Kind: "ext", Name: "com.anthropic.claude-code", Path: "com.anthropic.claude-code", Note: "client extension: hooks/"},
 	}, preview.Components)
 

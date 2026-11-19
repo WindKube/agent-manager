@@ -34,10 +34,11 @@ type PreviewEntry struct {
 }
 
 type PreviewComponent struct {
-	Kind string `json:"kind" enum:"skill,mcp,ext" example:"skill"`
+	Kind string `json:"kind" enum:"skill,mcp,ext,agent,command,hook" example:"skill"`
 	Name string `json:"name" example:"terraform-review"`
 	Path string `json:"path" example:"skills/terraform-review/SKILL.md"`
 	Note string `json:"note,omitempty" example:"SKILL.md + scripts/"`
+	ComponentSurface
 }
 
 // PreviewCapability is a declared expectation, not evidence: a finding is

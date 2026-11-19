@@ -1,4 +1,4 @@
-h1:wvGy4jh/++3Q0xDNoNraLlsbBXdOqR8wB9ql1kLi97g=
+h1:M87kqPkcCteAL4Uh9hhLKMLRXj9LNLg17jNkHXoO3fg=
 20260827150113_init.sql h1:aKaMFjJ82z0Pqa0t1/t0viIOhej4DPz5qZtFK2yy0JQ=
 20260827150200_roles_and_grants.sql h1:vFLj6y+ljV21vO6RMNz5ocVkNiYy0h/ewSEdoKevLE4=
 20260828000342_namespace_audit_kinds_evidence_and_fetch_attempts.sql h1:DsNTEhm6DlVkncHLFr3Nf+pX3Pr5ZWYXI43oKkbsxz4=
@@ -15,3 +15,4 @@ h1:wvGy4jh/++3Q0xDNoNraLlsbBXdOqR8wB9ql1kLi97g=
 20261119225023_package_upstream_tracking.sql h1:8Xp10kRWmiod2JM43fD5mGeGtsnOSfKXoDn9jC9RLbc=
 20261119231853_signature_verification.sql h1:bMEaFYBbsgCuW/v1Rh0ISRCwJ4M6t5EMz8zh0hkVIJM=
 20261119232830_package_expected_signer.sql h1:RChl1rrIz8XjDU6fTqJy4Gg3CaXEAEy+NxbjFE9i9oI=
+20261119234918_component_surfaces.sql h1:iIuqFSZTXrayk9zpna2FMltAb7Bt1UpLqd/YRg6cw0I=

@@ -292,6 +292,77 @@ type Component struct {
 	Name string
 	Path string
 	Note string
+
+	Event     string
+	Matcher   string
+	Transport string
+	Target    string
+}
+
+// Detail is the row's right-hand text: what a hook or MCP server runs or
+// reaches, and the note for anything else.
+func (c Component) Detail() string {
+	switch c.Kind {
+	case "hook":
+		matcher := c.Matcher
+		if matcher == "" {
+			matcher = "every tool"
+		}
+		parts := []string{c.Event, "matcher " + matcher}
+		if c.Target != "" {
+			parts = append(parts, c.Target)
+		}
+		return strings.Join(parts, " · ")
+	case "mcp":
+		if c.Transport != "" && c.Target != "" {
+			return c.Transport + " · " + c.Target
+		}
+	}
+	return c.Note
+}
+
+// ComponentGroup is one kind's rows in the contents section.
+type ComponentGroup struct {
+	Label      string
+	Components []Component
+}
+
+var componentGroups = []struct{ kind, label string }{
+	{"skill", "Skills"}, {"agent", "Agents"}, {"command", "Commands"},
+	{"hook", "Hooks"}, {"mcp", "MCP servers"}, {"ext", "Client extensions"},
+}
+
+// ComponentGroups groups the rows by kind, omitting empty kinds.
+func (p Package) ComponentGroups() []ComponentGroup {
+	out := make([]ComponentGroup, 0, len(componentGroups))
+	for _, group := range componentGroups {
+		var rows []Component
+		for i := range p.Components {
+			if p.Components[i].Kind == group.kind {
+				rows = append(rows, p.Components[i])
+			}
+		}
+		if len(rows) > 0 {
+			out = append(out, ComponentGroup{Label: group.label, Components: rows})
+		}
+	}
+	return out
+}
+
+// ContentsNote counts the components by kind, naming the plugin-surface
+// kinds only where present.
+func (p Package) ContentsNote() string {
+	parts := []string{
+		strconv.Itoa(p.CountOf("skill")) + " skills",
+		strconv.Itoa(p.CountOf("mcp")) + " MCP",
+	}
+	for _, kind := range []string{"agent", "command", "hook"} {
+		if n := p.CountOf(kind); n > 0 {
+			parts = append(parts, plural(n, kind))
+		}
+	}
+	parts = append(parts, strconv.Itoa(p.CountOf("ext"))+" extensions")
+	return strings.Join(parts, " · ")
 }
 
 // PackageVersion is one row of the versions panel.
@@ -637,7 +708,8 @@ func (p Package) Origin() string {
 // CountOf is how many components of a kind the tree revealed.
 func (p Package) CountOf(kind string) int {
 	n := 0
-	for _, component := range p.Components {
+	for i := range p.Components {
+		component := &p.Components[i]
 		if component.Kind == kind {
 			n++
 		}
@@ -670,7 +742,7 @@ func (p Package) Tree() string {
 		}
 		nodes = append(nodes, node{label: "skills/", children: skills})
 	}
-	if p.CountOf("mcp") > 0 {
+	if p.hasRootMCP() {
 		nodes = append(nodes, node{label: "mcp.json"})
 	}
 	for _, ext := range p.namesOf("ext") {
@@ -703,9 +775,22 @@ func continuation(last bool) string {
 	return "│   "
 }
 
+// hasRootMCP: an MCP server may also come from the Claude Code extension,
+// which the tree shows as its directory rather than as mcp.json.
+func (p Package) hasRootMCP() bool {
+	for i := range p.Components {
+		component := &p.Components[i]
+		if component.Kind == "mcp" && (component.Path == "mcp.json" || strings.HasPrefix(component.Path, "mcp.json#")) {
+			return true
+		}
+	}
+	return false
+}
+
 func (p Package) namesOf(kind string) []string {
 	out := make([]string, 0, len(p.Components))
-	for _, component := range p.Components {
+	for i := range p.Components {
+		component := &p.Components[i]
 		if component.Kind == kind {
 			out = append(out, component.Name)
 		}

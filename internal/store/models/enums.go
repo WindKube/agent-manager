@@ -50,7 +50,7 @@ var enumTypes = map[string][]string{
 	PGPackageVisibility: {"organisation", "team", "private"},
 	PGDistTag:           {"latest", "archived", "none"},
 	PGVerdict:           {"scanning", "clean", "flagged", "rejected"},
-	PGComponentKind:     {"skill", "mcp", "ext"},
+	PGComponentKind:     {"skill", "mcp", "ext", "agent", "command", "hook"},
 	PGCapabilitySource:  {"inferred", "expected"},
 	PGCapabilityLevel:   {"scoped", "allowlisted", "review"},
 	PGSignatureKind:     {"none", "cosign-bundle"},
@@ -168,9 +168,12 @@ func (v Verdict) Valid() bool { return inEnum(PGVerdict, string(v)) }
 type ComponentKind string
 
 const (
-	ComponentKindSkill ComponentKind = "skill"
-	ComponentKindMCP   ComponentKind = "mcp"
-	ComponentKindExt   ComponentKind = "ext"
+	ComponentKindSkill   ComponentKind = "skill"
+	ComponentKindMCP     ComponentKind = "mcp"
+	ComponentKindExt     ComponentKind = "ext"
+	ComponentKindAgent   ComponentKind = "agent"
+	ComponentKindCommand ComponentKind = "command"
+	ComponentKindHook    ComponentKind = "hook"
 )
 
 func (v ComponentKind) Valid() bool { return inEnum(PGComponentKind, string(v)) }

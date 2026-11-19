@@ -63,7 +63,7 @@ func TestTheTreeIsDerivedFromTheComponentRows(t *testing.T) {
 		Components: []view.Component{
 			{Kind: "skill", Name: "terraform-module-review"},
 			{Kind: "skill", Name: "adr-writer"},
-			{Kind: "mcp", Name: "terraform-registry"},
+			{Kind: "mcp", Name: "terraform-registry", Path: "mcp.json#/mcpServers/terraform-registry"},
 			{Kind: "ext", Name: "com.anthropic.claude-code"},
 		},
 	}
@@ -77,6 +77,12 @@ func TestTheTreeIsDerivedFromTheComponentRows(t *testing.T) {
 		"├── mcp.json",
 		"└── com.anthropic.claude-code/",
 	}, "\n"), plugin.Tree())
+
+	t.Run("an MCP server declared by the Claude Code extension draws no mcp.json", func(t *testing.T) {
+		ext := view.Package{Kind: view.KindPlugin, Name: "guard", ManifestObject: "plugin.json",
+			Components: []view.Component{{Kind: "mcp", Name: "docs", Path: "com.anthropic.claude-code/.mcp.json#/mcpServers/docs"}}}
+		require.NotContains(t, ext.Tree(), "mcp.json")
+	})
 
 	t.Run("a plugin with no mcp component draws no mcp.json", func(t *testing.T) {
 		bare := view.Package{Kind: view.KindPlugin, Name: "solo", ManifestObject: "plugin.json",
@@ -279,4 +285,28 @@ func TestProfileOptionsHeldMarksExactlyTheDependentSlugs(t *testing.T) {
 	// The input is never mutated: a caller building options once and reusing
 	// them for a second package must not see the first package's answer.
 	require.False(t, options[0].Held)
+}
+
+func TestComponentsAreGroupedByKindWithTheirSurface(t *testing.T) {
+	p := view.Package{Kind: view.KindPlugin, Components: []view.Component{
+		{Kind: "skill", Name: "a"},
+		{Kind: "mcp", Name: "local", Note: "stdio", Transport: "stdio", Target: "npx -y pkg@1.2.3"},
+		{Kind: "hook", Name: "PreToolUse", Event: "PreToolUse", Target: "./guard.sh"},
+		{Kind: "hook", Name: "PostToolUse", Event: "PostToolUse", Matcher: "Edit"},
+		{Kind: "agent", Name: "reviewer", Note: "Reviews."},
+	}}
+
+	groups := p.ComponentGroups()
+	labels := make([]string, 0, len(groups))
+	for _, group := range groups {
+		labels = append(labels, group.Label)
+	}
+	require.Equal(t, []string{"Skills", "Agents", "Hooks", "MCP servers"}, labels, "empty kinds are omitted")
+	require.Len(t, groups[2].Components, 2)
+
+	require.Equal(t, "PreToolUse · matcher every tool · ./guard.sh", groups[2].Components[0].Detail())
+	require.Equal(t, "PostToolUse · matcher Edit", groups[2].Components[1].Detail())
+	require.Equal(t, "stdio · npx -y pkg@1.2.3", groups[3].Components[0].Detail())
+	require.Equal(t, "Reviews.", groups[1].Components[0].Detail())
+	require.Equal(t, "1 skills · 1 MCP · 1 agent · 2 hooks · 0 extensions", p.ContentsNote())
 }

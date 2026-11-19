@@ -13,7 +13,7 @@ create type audit_subject_kind as enum ('package', 'version', 'finding', 'profil
 create type capability_level as enum ('scoped', 'allowlisted', 'review');
 create type capability_source as enum ('inferred', 'expected');
 create type check_result as enum ('pass', 'fail', 'warn');
-create type component_kind as enum ('skill', 'mcp', 'ext');
+create type component_kind as enum ('skill', 'mcp', 'ext', 'agent', 'command', 'hook');
 create type device_auth_state as enum ('pending', 'approved', 'consumed', 'expired', 'denied');
 create type dist_tag as enum ('latest', 'archived', 'none');
 create type entry_mode as enum ('latest', 'pinned', 'range');

@@ -96,10 +96,19 @@ type VersionSignature struct {
 }
 
 type PackageComponent struct {
-	Kind string `json:"kind" enum:"skill,mcp,ext" example:"skill"`
+	Kind string `json:"kind" enum:"skill,mcp,ext,agent,command,hook" example:"skill"`
 	Name string `json:"name" example:"terraform-module-review"`
-	Path string `json:"path" example:"skills/terraform-module-review"`
+	Path string `json:"path" doc:"Unique within the version. A component inside a JSON document is file#/json/pointer." example:"skills/terraform-module-review"`
 	Note string `json:"note,omitempty" example:"SKILL.md + scripts/"`
+	ComponentSurface
+}
+
+// ComponentSurface is what a hook or MCP server runs or reaches.
+type ComponentSurface struct {
+	Event     string `json:"event,omitempty" doc:"A hook's event." example:"PreToolUse"`
+	Matcher   string `json:"matcher,omitempty" doc:"A hook's tool matcher; absent matches every tool." example:"Bash"`
+	Transport string `json:"transport,omitempty" enum:"stdio,http,sse" doc:"An MCP server's transport." example:"stdio"`
+	Target    string `json:"target,omitempty" doc:"A hook's command, a stdio server's command line, or a remote server's URL host. Publisher-controlled text." example:"npx -y @acme/mcp@1.2.3"`
 }
 
 type PackageCapabilities struct {

@@ -158,7 +158,8 @@ func TestComponentsAreDerivedFromTheFileTree(t *testing.T) {
 	require.Equal(t, []pkgspec.Component{
 		{Kind: pkgspec.ComponentSkill, Name: "k8s-manifest-review", Path: "skills/k8s-manifest-review", Note: "SKILL.md"},
 		{Kind: pkgspec.ComponentSkill, Name: "terraform-plan-review", Path: "skills/terraform-plan-review", Note: "SKILL.md + scripts/"},
-		{Kind: pkgspec.ComponentMCP, Name: "terraform-state", Path: "mcp.json", Note: "stdio"},
+		{Kind: pkgspec.ComponentMCP, Name: "terraform-state", Path: "mcp.json#/mcpServers/terraform-state", Note: "stdio",
+			Transport: "stdio", Target: "terraform-mcp"},
 		{Kind: pkgspec.ComponentExt, Name: "com.anthropic.claude-code", Path: "com.anthropic.claude-code", Note: "client extension: hooks/"},
 	}, pkg.Components)
 

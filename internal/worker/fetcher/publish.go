@@ -268,7 +268,8 @@ func insertComponents(ctx context.Context, tx bun.IDB, versionID uuid.UUID, comp
 		return nil
 	}
 	rows := make([]models.Component, 0, len(components))
-	for _, component := range components {
+	for i := range components {
+		component := &components[i]
 		kind := models.ComponentKind(component.Kind)
 		if !kind.Valid() {
 			return fmt.Errorf("component %q of version %s has kind %q, which the schema does not allow",
@@ -280,6 +281,10 @@ func insertComponents(ctx context.Context, tx bun.IDB, versionID uuid.UUID, comp
 			Kind:      kind,
 			Name:      component.Name,
 			Note:      component.Note,
+			Event:     component.Event,
+			Matcher:   component.Matcher,
+			Transport: component.Transport,
+			Target:    component.Target,
 		})
 	}
 	if _, err := tx.NewInsert().Model(&rows).

@@ -1930,14 +1930,31 @@
       "PackageComponent": {
         "additionalProperties": false,
         "properties": {
+          "event": {
+            "description": "A hook's event.",
+            "examples": [
+              "PreToolUse"
+            ],
+            "type": "string"
+          },
           "kind": {
             "enum": [
               "skill",
               "mcp",
-              "ext"
+              "ext",
+              "agent",
+              "command",
+              "hook"
             ],
             "examples": [
               "skill"
+            ],
+            "type": "string"
+          },
+          "matcher": {
+            "description": "A hook's tool matcher; absent matches every tool.",
+            "examples": [
+              "Bash"
             ],
             "type": "string"
           },
@@ -1954,8 +1971,28 @@
             "type": "string"
           },
           "path": {
+            "description": "Unique within the version. A component inside a JSON document is file#/json/pointer.",
             "examples": [
               "skills/terraform-module-review"
+            ],
+            "type": "string"
+          },
+          "target": {
+            "description": "A hook's command, a stdio server's command line, or a remote server's URL host. Publisher-controlled text.",
+            "examples": [
+              "npx -y @acme/mcp@1.2.3"
+            ],
+            "type": "string"
+          },
+          "transport": {
+            "description": "An MCP server's transport.",
+            "enum": [
+              "stdio",
+              "http",
+              "sse"
+            ],
+            "examples": [
+              "stdio"
             ],
             "type": "string"
           }
@@ -2925,14 +2962,31 @@
       "PreviewComponent": {
         "additionalProperties": false,
         "properties": {
+          "event": {
+            "description": "A hook's event.",
+            "examples": [
+              "PreToolUse"
+            ],
+            "type": "string"
+          },
           "kind": {
             "enum": [
               "skill",
               "mcp",
-              "ext"
+              "ext",
+              "agent",
+              "command",
+              "hook"
             ],
             "examples": [
               "skill"
+            ],
+            "type": "string"
+          },
+          "matcher": {
+            "description": "A hook's tool matcher; absent matches every tool.",
+            "examples": [
+              "Bash"
             ],
             "type": "string"
           },
@@ -2951,6 +3005,25 @@
           "path": {
             "examples": [
               "skills/terraform-review/SKILL.md"
+            ],
+            "type": "string"
+          },
+          "target": {
+            "description": "A hook's command, a stdio server's command line, or a remote server's URL host. Publisher-controlled text.",
+            "examples": [
+              "npx -y @acme/mcp@1.2.3"
+            ],
+            "type": "string"
+          },
+          "transport": {
+            "description": "An MCP server's transport.",
+            "enum": [
+              "stdio",
+              "http",
+              "sse"
+            ],
+            "examples": [
+              "stdio"
             ],
             "type": "string"
           }

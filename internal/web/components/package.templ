@@ -1,10 +1,6 @@
 package components
 
-import (
-	"strconv"
-
-	"agent-manager/internal/web/view"
-)
+import "agent-manager/internal/web/view"
 
 // PackageScreen is the detail page of US3.
 //
@@ -310,16 +306,19 @@ templ packageContents(p view.Package) {
 		<div class="am-section-head">
 			<div class="am-section-title">Package contents</div>
 			<div class="am-section-note">
-				{ strconv.Itoa(p.CountOf("skill")) } skills · { strconv.Itoa(p.CountOf("mcp")) } MCP · { strconv.Itoa(p.CountOf("ext")) } extensions
+				{ p.ContentsNote() }
 			</div>
 		</div>
 		<pre class="am-pre">{ p.Tree() }</pre>
-		for _, component := range p.Components {
-			<div class="am-comp">
-				<span class={ ComponentClass(component.Kind) }>{ component.Kind }</span>
-				<span class="am-mono am-comp-name">{ component.Name }</span>
-				<span class="am-comp-note">{ component.Note }</span>
-			</div>
+		for _, group := range p.ComponentGroups() {
+			<div class="am-comp-group">{ group.Label }</div>
+			for _, component := range group.Components {
+				<div class="am-comp">
+					<span class={ ComponentClass(component.Kind) }>{ component.Kind }</span>
+					<span class="am-mono am-comp-name">{ component.Name }</span>
+					<span class="am-comp-note">{ component.Detail() }</span>
+				</div>
+			}
 		}
 	</section>
 }

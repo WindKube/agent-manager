@@ -371,12 +371,17 @@ func previewOf(pkg *pkgspec.Package, err error) contract.PackagePreview {
 				Mark: mark(entry.Kept, err != nil && entry.Path == pkg.ManifestObject),
 			})
 		}
-		for _, component := range pkg.Components {
+		for i := range pkg.Components {
+			component := &pkg.Components[i]
 			out.Components = append(out.Components, contract.PreviewComponent{
 				Kind: string(component.Kind),
 				Name: component.Name,
 				Path: component.Path,
 				Note: component.Note,
+				ComponentSurface: contract.ComponentSurface{
+					Event: component.Event, Matcher: component.Matcher,
+					Transport: component.Transport, Target: component.Target,
+				},
 			})
 		}
 		for _, capability := range pkg.ExpectedCapabilities() {

@@ -857,19 +857,49 @@ func (e PackageCapabilityName) Valid() bool {
 
 // Defines values for PackageComponentKind.
 const (
-	PackageComponentKindExt   PackageComponentKind = "ext"
-	PackageComponentKindMcp   PackageComponentKind = "mcp"
-	PackageComponentKindSkill PackageComponentKind = "skill"
+	PackageComponentKindAgent   PackageComponentKind = "agent"
+	PackageComponentKindCommand PackageComponentKind = "command"
+	PackageComponentKindExt     PackageComponentKind = "ext"
+	PackageComponentKindHook    PackageComponentKind = "hook"
+	PackageComponentKindMcp     PackageComponentKind = "mcp"
+	PackageComponentKindSkill   PackageComponentKind = "skill"
 )
 
 // Valid indicates whether the value is a known member of the PackageComponentKind enum.
 func (e PackageComponentKind) Valid() bool {
 	switch e {
+	case PackageComponentKindAgent:
+		return true
+	case PackageComponentKindCommand:
+		return true
 	case PackageComponentKindExt:
+		return true
+	case PackageComponentKindHook:
 		return true
 	case PackageComponentKindMcp:
 		return true
 	case PackageComponentKindSkill:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PackageComponentTransport.
+const (
+	PackageComponentTransportHttp  PackageComponentTransport = "http"
+	PackageComponentTransportSse   PackageComponentTransport = "sse"
+	PackageComponentTransportStdio PackageComponentTransport = "stdio"
+)
+
+// Valid indicates whether the value is a known member of the PackageComponentTransport enum.
+func (e PackageComponentTransport) Valid() bool {
+	switch e {
+	case PackageComponentTransportHttp:
+		return true
+	case PackageComponentTransportSse:
+		return true
+	case PackageComponentTransportStdio:
 		return true
 	default:
 		return false
@@ -1229,19 +1259,49 @@ func (e PreviewCapabilityLevel) Valid() bool {
 
 // Defines values for PreviewComponentKind.
 const (
-	PreviewComponentKindExt   PreviewComponentKind = "ext"
-	PreviewComponentKindMcp   PreviewComponentKind = "mcp"
-	PreviewComponentKindSkill PreviewComponentKind = "skill"
+	PreviewComponentKindAgent   PreviewComponentKind = "agent"
+	PreviewComponentKindCommand PreviewComponentKind = "command"
+	PreviewComponentKindExt     PreviewComponentKind = "ext"
+	PreviewComponentKindHook    PreviewComponentKind = "hook"
+	PreviewComponentKindMcp     PreviewComponentKind = "mcp"
+	PreviewComponentKindSkill   PreviewComponentKind = "skill"
 )
 
 // Valid indicates whether the value is a known member of the PreviewComponentKind enum.
 func (e PreviewComponentKind) Valid() bool {
 	switch e {
+	case PreviewComponentKindAgent:
+		return true
+	case PreviewComponentKindCommand:
+		return true
 	case PreviewComponentKindExt:
+		return true
+	case PreviewComponentKindHook:
 		return true
 	case PreviewComponentKindMcp:
 		return true
 	case PreviewComponentKindSkill:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PreviewComponentTransport.
+const (
+	PreviewComponentTransportHttp  PreviewComponentTransport = "http"
+	PreviewComponentTransportSse   PreviewComponentTransport = "sse"
+	PreviewComponentTransportStdio PreviewComponentTransport = "stdio"
+)
+
+// Valid indicates whether the value is a known member of the PreviewComponentTransport enum.
+func (e PreviewComponentTransport) Valid() bool {
+	switch e {
+	case PreviewComponentTransportHttp:
+		return true
+	case PreviewComponentTransportSse:
+		return true
+	case PreviewComponentTransportStdio:
 		return true
 	default:
 		return false
@@ -3017,8 +3077,18 @@ type PackageCapabilityName string
 
 // PackageComponent defines model for PackageComponent.
 type PackageComponent struct {
+	// Event A hook's event.
+	//
+	// Examples: PreToolUse
+	Event *string `json:"event,omitempty"`
+
 	// Kind Examples: skill
 	Kind PackageComponentKind `json:"kind"`
+
+	// Matcher A hook's tool matcher; absent matches every tool.
+	//
+	// Examples: Bash
+	Matcher *string `json:"matcher,omitempty"`
 
 	// Name Examples: terraform-module-review
 	Name string `json:"name"`
@@ -3026,12 +3096,29 @@ type PackageComponent struct {
 	// Note Examples: SKILL.md + scripts/
 	Note *string `json:"note,omitempty"`
 
-	// Path Examples: skills/terraform-module-review
+	// Path Unique within the version. A component inside a JSON document is file#/json/pointer.
+	//
+	// Examples: skills/terraform-module-review
 	Path string `json:"path"`
+
+	// Target A hook's command, a stdio server's command line, or a remote server's URL host. Publisher-controlled text.
+	//
+	// Examples: npx -y @acme/mcp@1.2.3
+	Target *string `json:"target,omitempty"`
+
+	// Transport An MCP server's transport.
+	//
+	// Examples: stdio
+	Transport *PackageComponentTransport `json:"transport,omitempty"`
 }
 
 // PackageComponentKind Examples: skill
 type PackageComponentKind string
+
+// PackageComponentTransport An MCP server's transport.
+//
+// Examples: stdio
+type PackageComponentTransport string
 
 // PackageDeleted defines model for PackageDeleted.
 type PackageDeleted struct {
@@ -3505,8 +3592,18 @@ type PreviewCapabilityLevel string
 
 // PreviewComponent defines model for PreviewComponent.
 type PreviewComponent struct {
+	// Event A hook's event.
+	//
+	// Examples: PreToolUse
+	Event *string `json:"event,omitempty"`
+
 	// Kind Examples: skill
 	Kind PreviewComponentKind `json:"kind"`
+
+	// Matcher A hook's tool matcher; absent matches every tool.
+	//
+	// Examples: Bash
+	Matcher *string `json:"matcher,omitempty"`
 
 	// Name Examples: terraform-review
 	Name string `json:"name"`
@@ -3516,10 +3613,25 @@ type PreviewComponent struct {
 
 	// Path Examples: skills/terraform-review/SKILL.md
 	Path string `json:"path"`
+
+	// Target A hook's command, a stdio server's command line, or a remote server's URL host. Publisher-controlled text.
+	//
+	// Examples: npx -y @acme/mcp@1.2.3
+	Target *string `json:"target,omitempty"`
+
+	// Transport An MCP server's transport.
+	//
+	// Examples: stdio
+	Transport *PreviewComponentTransport `json:"transport,omitempty"`
 }
 
 // PreviewComponentKind Examples: skill
 type PreviewComponentKind string
+
+// PreviewComponentTransport An MCP server's transport.
+//
+// Examples: stdio
+type PreviewComponentTransport string
 
 // PreviewEntry defines model for PreviewEntry.
 type PreviewEntry struct {

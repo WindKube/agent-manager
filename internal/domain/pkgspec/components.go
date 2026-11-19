@@ -25,20 +25,35 @@ var ErrTreeInvalid = errors.New("package tree is not a valid spec layout")
 type ComponentKind string
 
 const (
-	ComponentSkill ComponentKind = "skill"
-	ComponentMCP   ComponentKind = "mcp"
-	ComponentExt   ComponentKind = "ext"
+	ComponentSkill   ComponentKind = "skill"
+	ComponentMCP     ComponentKind = "mcp"
+	ComponentExt     ComponentKind = "ext"
+	ComponentAgent   ComponentKind = "agent"
+	ComponentCommand ComponentKind = "command"
+	ComponentHook    ComponentKind = "hook"
 )
 
+// Component is one thing the tree holds. Path is unique within a version: a
+// component inside a JSON document is addressed as `file#/json/pointer`.
 type Component struct {
 	Kind ComponentKind
 	Name string
 	Path string
 	Note string
+
+	// Event and Matcher are a hook's trigger.
+	Event   string
+	Matcher string
+	// Transport is an MCP server's stdio, http or sse.
+	Transport string
+	// Target is what runs or is reached: a hook's command, a stdio server's
+	// command line, or a remote server's URL host.
+	Target string
 }
 
-func (l *layout) deriveComponents(validator *Validator, mcp *MCPConfig) ([]Component, error) {
+func (l *layout) deriveComponents(validator *Validator) ([]Component, error) {
 	components := make([]Component, 0, len(l.skillDirs)+len(l.extDirs)+1)
+	surfaces := ReadSurfaces(l.files)
 
 	for _, dir := range l.skillDirs {
 		manifestPath := dir + "/" + SkillManifest
@@ -65,15 +80,44 @@ func (l *layout) deriveComponents(validator *Validator, mcp *MCPConfig) ([]Compo
 		})
 	}
 
-	if mcp != nil {
-		for _, name := range mcp.ServerNames() {
-			components = append(components, Component{
-				Kind: ComponentMCP,
-				Name: name,
-				Path: MCPConfigFile,
-				Note: mcp.MCPServers[name].Type,
-			})
+	for i := range surfaces.Servers {
+		server := &surfaces.Servers[i]
+		target := server.Host()
+		if server.Transport == TransportStdio {
+			target = server.CommandLine()
 		}
+		components = append(components, Component{
+			Kind:      ComponentMCP,
+			Name:      server.Name,
+			Path:      server.Location(),
+			Note:      server.Type,
+			Transport: server.Transport,
+			Target:    target,
+		})
+	}
+
+	for _, hook := range surfaces.Hooks {
+		components = append(components, Component{
+			Kind:    ComponentHook,
+			Name:    hook.Event,
+			Path:    hook.Location(),
+			Note:    hook.Type,
+			Event:   hook.Event,
+			Matcher: hook.Matcher,
+			Target:  hook.Command,
+		})
+	}
+
+	for _, prompt := range surfaces.Prompts {
+		if prompt.Kind == ComponentSkill {
+			continue
+		}
+		components = append(components, Component{
+			Kind: prompt.Kind,
+			Name: prompt.Name,
+			Path: prompt.Path,
+			Note: clipNote(prompt.Description),
+		})
 	}
 
 	for _, ext := range l.extDirs {
@@ -86,6 +130,19 @@ func (l *layout) deriveComponents(validator *Validator, mcp *MCPConfig) ([]Compo
 	}
 
 	return components, nil
+}
+
+func clipNote(text string) string {
+	text = strings.Join(strings.Fields(text), " ")
+	const limit = 120
+	if len(text) <= limit {
+		return text
+	}
+	cut := limit
+	for cut > 0 && text[cut]&0xC0 == 0x80 {
+		cut--
+	}
+	return text[:cut] + "…"
 }
 
 func skillNote(l *layout, dir string) string {

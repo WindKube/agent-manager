@@ -229,14 +229,16 @@ func writeCatalog(
 		for _, tag := range tags {
 			tagRows = append(tagRows, models.VersionTag{VersionID: versionID, Tag: tag, CreatedAt: createdAt})
 		}
-		for _, component := range version.inspected.Components {
+		for i := range version.inspected.Components {
+			component := &version.inspected.Components[i]
 			kind := models.ComponentKind(component.Kind)
 			if !kind.Valid() {
 				return fmt.Errorf("seed %s: component kind %q", version.ref, component.Kind)
 			}
 			componentRows = append(componentRows, models.Component{
 				VersionID: versionID, Path: component.Path, Kind: kind,
-				Name: component.Name, Note: component.Note, CreatedAt: createdAt,
+				Name: component.Name, Note: component.Note, Event: component.Event, Matcher: component.Matcher,
+				Transport: component.Transport, Target: component.Target, CreatedAt: createdAt,
 			})
 		}
 		// Kind `none` states that no signature was supplied, which is a row the

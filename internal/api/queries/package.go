@@ -244,16 +244,17 @@ order by ver.semver_sort desc, ver.created_at desc`
 }
 
 // packageComponents is ordered by the enum's declaration order — skill,
-// mcp, ext — not the text, which would put ext first. `order by cmp.kind`
+// mcp, ext, agent, command, hook — not the text, which would put ext first. `order by cmp.kind`
 // is qualified for that reason: a bare `order by kind` binds to the cast
 // output column and sorts alphabetically instead, a defect this query
 // actually had.
 func packageComponents(ctx context.Context, db bun.IDB, versionID string) ([]contract.PackageComponent, error) {
 	const query = `
-select cmp.kind::text, cmp.name, cmp.path, coalesce(cmp.note, '')
+select cmp.kind::text, cmp.name, cmp.path, coalesce(cmp.note, ''),
+  coalesce(cmp.event, ''), coalesce(cmp.matcher, ''), coalesce(cmp.transport, ''), coalesce(cmp.target, '')
 from component as cmp
 where cmp.version_id = ?
-order by cmp.kind, cmp.name`
+order by cmp.kind, cmp.name, cmp.path`
 
 	rows, err := db.QueryContext(ctx, query, versionID)
 	if err != nil {
@@ -264,7 +265,8 @@ order by cmp.kind, cmp.name`
 	components := []contract.PackageComponent{}
 	for rows.Next() {
 		var component contract.PackageComponent
-		if err := rows.Scan(&component.Kind, &component.Name, &component.Path, &component.Note); err != nil {
+		if err := rows.Scan(&component.Kind, &component.Name, &component.Path, &component.Note,
+			&component.Event, &component.Matcher, &component.Transport, &component.Target); err != nil {
 			return nil, fmt.Errorf("scan a component row: %w", err)
 		}
 		components = append(components, component)

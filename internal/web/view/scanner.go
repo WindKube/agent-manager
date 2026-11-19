@@ -268,6 +268,19 @@ type FindingRow struct {
 	// a reader can learn what the rule id means on hover before selecting
 	// this row.
 	Explanation string
+	// PackageID links the subject back to the catalog.
+	PackageID string
+	// Primary is the finding's own denormalised location, the headline. Nil
+	// when the scan recorded none, a state the pane says out loud.
+	Primary *Evidence
+}
+
+// FindingsPage is one page of the findings list.
+type FindingsPage struct {
+	Rows     []FindingRow
+	Total    int
+	Page     int
+	PageSize int
 }
 
 // ScanMeta is the scan that raised the finding.
@@ -300,17 +313,12 @@ type FindingDetail struct {
 	// Explanation is promoted from here: the rule pack's prose, bundle-adjacent,
 	// escaped like everything else, and the same field the list row hovers.
 	FindingRow
-	// Primary is the finding's own denormalised location, the headline. Nil
-	// when the scan recorded none, a state the pane says out loud.
-	Primary *Evidence
 	// Supporting are the remaining locations. The primary is deliberately
 	// not among them, to avoid showing the first location twice.
 	Supporting []Evidence
 	Checks     []Check
 	Scan       ScanMeta
 	Override   *Override
-	// Package links the subject back to the catalog.
-	PackageID string
 }
 
 // CanAccept is read against the finding rather than the viewer: a rejected

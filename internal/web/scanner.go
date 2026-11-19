@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -41,31 +40,27 @@ func (s *Server) scanner(c *gin.Context) {
 	}
 
 	ctx := session(c)
-	now := time.Now().UTC()
 
 	summary, err := s.deps.Scanner.ScannerSummary(ctx, scannerWindow)
 	if status, ok := s.governanceFailure(c, err, &screen.GovernanceState, "scanner summary"); !ok {
 		s.renderScanner(c, status, screen)
 		return
 	}
-	screen.Summary = scannerSummary(summary, now)
+	screen.Summary = summary
 
 	page, err := s.deps.Scanner.Findings(ctx, hub.FindingQuery{State: query.APIState(), Page: query.Page})
 	if status, ok := s.governanceFailure(c, err, &screen.GovernanceState, "findings"); !ok {
 		s.renderScanner(c, status, screen)
 		return
 	}
-	screen.Total, screen.Page, screen.PageSize = page.Total, page.Page, page.PageSize
-	for i := range page.Findings {
-		screen.Findings = append(screen.Findings, findingRow(&page.Findings[i], now))
-	}
+	screen.Findings, screen.Total, screen.Page, screen.PageSize = page.Rows, page.Total, page.Page, page.PageSize
 
 	// With no explicit selection the first row of the page is shown, so the
 	// screen's first paint is a finding being triaged. Still addressed by id,
 	// so a copied URL names the finding and not the position.
 	selected := query.Selected
-	if selected == "" && len(page.Findings) > 0 {
-		selected = page.Findings[0].ID
+	if selected == "" && len(page.Rows) > 0 {
+		selected = page.Rows[0].ID
 	}
 	if selected == "" {
 		s.renderScanner(c, http.StatusOK, screen)
@@ -87,8 +82,7 @@ func (s *Server) scanner(c *gin.Context) {
 		}
 	}
 
-	resolved := findingDetail(detail, now)
-	screen.Selected = &resolved
+	screen.Selected = &detail
 	s.renderScanner(c, http.StatusOK, screen)
 }
 
@@ -255,9 +249,9 @@ func (s *Server) decideFinding(c *gin.Context, accept bool) {
 	if accept {
 		// days of 0 sends no expiry, and the api applies its own default —
 		// never an override that lapses never, which nothing here can record.
-		_, err = s.deps.Reviewer.AcceptFinding(session(c), id, note, days)
+		err = s.deps.Reviewer.AcceptFinding(session(c), id, note, days)
 	} else {
-		_, err = s.deps.Reviewer.RejectFinding(session(c), id, note)
+		err = s.deps.Reviewer.RejectFinding(session(c), id, note)
 	}
 
 	switch {
@@ -329,106 +323,3 @@ func (s *Server) backToScanner(c *gin.Context, target string, outcome decisionOu
 	c.Header("Cache-Control", "no-store")
 	c.Redirect(http.StatusSeeOther, parsed.String())
 }
-
-// ---- mapping the hub's answers onto the screen's models -----------------------
-
-// The hub hands over instants, counts and canonical vocabulary. These four
-// functions are the only place in this role that decides how a figure reads.
-
-func scannerSummary(from hub.ScannerSummary, now time.Time) view.ScannerSummary {
-	out := view.ScannerSummary{
-		PeriodDays:      from.PeriodDays,
-		VersionsScanned: from.VersionsScanned,
-		Quarantined:     from.Quarantined,
-		OverridesActive: from.OverridesActive,
-	}
-	if from.NearestExpiry != nil {
-		out.NearestExpiry = view.Until(*from.NearestExpiry, now)
-	}
-	if from.MedianScan != nil {
-		// nil stays empty ("nothing finished in the window"); a median that
-		// rounds to nothing is still a measurement and gets its unit.
-		out.MedianScan = view.Duration(*from.MedianScan)
-		if out.MedianScan == "" {
-			out.MedianScan = "0ms"
-		}
-	}
-	return out
-}
-
-func findingRow(from *hub.Finding, now time.Time) view.FindingRow {
-	return view.FindingRow{
-		ID:          from.ID,
-		RuleID:      from.RuleID,
-		Engine:      from.Engine,
-		Title:       from.Title,
-		Explanation: from.Detail,
-		Subject:     from.Subject,
-		Severity:    view.Severity(from.Severity),
-		State:       view.FindingState(from.State),
-		Verdict:     view.Verdict(from.Verdict),
-		Raised:      view.Relative(from.RaisedAt, now),
-	}
-}
-
-func findingDetail(from hub.FindingDetail, now time.Time) view.FindingDetail {
-	row := findingRow(&from.Finding, now)
-	// The detail fetch answers with its own Explanation rather than reusing
-	// the embedded Finding's, and this is why: the two come from different
-	// api calls (the list and the single-finding fetch), so the pane trusts
-	// the one that is actually about this finding.
-	row.Explanation = from.Explanation
-	out := view.FindingDetail{
-		FindingRow: row,
-		PackageID:  from.PackageID,
-		Scan: view.ScanMeta{
-			PackVersion: from.Scan.PackVersion,
-			Started:     view.Timestamp(from.Scan.StartedAt),
-			Verdict:     view.Verdict(from.Scan.Verdict),
-			TimedOut:    from.Scan.TimedOut,
-		},
-	}
-	if from.Scan.FinishedAt != nil {
-		out.Scan.Finished = view.Timestamp(*from.Scan.FinishedAt)
-	}
-
-	// The primary location is found by ROLE, never position: the hub promises
-	// nothing about slice order, and reading index 0 would silently promote a
-	// supporting location the day that ordering changes.
-	for _, item := range from.Evidence {
-		evidence := view.Evidence{Path: item.Path, Line: item.Line, Quote: item.Quote}
-		if item.Role == evidencePrimary && out.Primary == nil {
-			out.Primary = &evidence
-			continue
-		}
-		out.Supporting = append(out.Supporting, evidence)
-	}
-
-	for _, check := range from.Checks {
-		out.Checks = append(out.Checks, view.Check{
-			ID:        check.ID,
-			Engine:    check.Engine,
-			Label:     check.Label,
-			Explain:   check.Explain,
-			Result:    view.CheckResult(check.Result),
-			WarnCount: check.WarnCount,
-		})
-	}
-
-	if from.Override != nil {
-		override := view.Override{
-			Reviewer: from.Override.Reviewer,
-			Note:     from.Override.Note,
-			Decided:  view.Timestamp(from.Override.DecidedAt),
-		}
-		if from.Override.ExpiresAt != nil {
-			override.Expires = view.Until(*from.Override.ExpiresAt, now)
-		}
-		out.Override = &override
-	}
-	return out
-}
-
-// evidencePrimary is the role the api gives the location a finding denormalises
-// onto its own row. Every finding has exactly one.
-const evidencePrimary = "primary"

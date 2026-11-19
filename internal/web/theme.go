@@ -140,11 +140,7 @@ func (s *Server) badges(c *gin.Context) *view.Badges {
 		logFrom(c).Debug().Err(err).Msg("read the sidebar counts")
 		return nil
 	}
-	return &view.Badges{
-		Packages:     counts.Packages,
-		Profiles:     counts.Profiles,
-		OpenFindings: counts.OpenFindings,
-	}
+	return &counts
 }
 
 // render writes one full page: the shell with a screen inside it.

@@ -10,7 +10,7 @@ import (
 	"agent-manager/internal/web"
 	"agent-manager/internal/web/components"
 	"agent-manager/internal/web/fixture"
-	"agent-manager/internal/web/hub"
+	"agent-manager/internal/web/view"
 )
 
 // TestEverySidebarEntryIsARealScreen walks every entry of components.Nav, in both
@@ -25,7 +25,7 @@ import (
 func TestEverySidebarEntryIsARealScreen(t *testing.T) {
 	// Non-zero counts, so a badge that renders "10" or "4" here is provably the
 	// number this source answered rather than the design's compiled-in figures.
-	source := &governance{badges: hub.Badges{Packages: 7, Profiles: 3, OpenFindings: 2}}
+	source := &governance{badges: view.Badges{Packages: 7, Profiles: 3, OpenFindings: 2}}
 	h := web.New(web.Deps{
 		Catalog:      fixture.New(),
 		Scanner:      source,

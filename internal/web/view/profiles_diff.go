@@ -12,9 +12,7 @@ import (
 // no other source of truth to drift from.
 
 // LockfileSnapshot is one revision's lockfile, reduced to what a diff
-// compares. Keeping this separate from hub.RevisionLockfile is what makes
-// DiffRevisions a pure function over plain data instead of one more consumer
-// of the hub's wire shape.
+// compares.
 type LockfileSnapshot struct {
 	Revision      int
 	Gate          string

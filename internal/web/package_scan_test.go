@@ -9,7 +9,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"agent-manager/internal/web/hub"
 	"agent-manager/internal/web/view"
 )
 
@@ -25,7 +24,7 @@ import (
 // isolation from the rest of the detail screen's reads.
 type packageScanFixture struct {
 	pkg  view.Package
-	scan hub.PackageScanDetail
+	scan view.PackageScan
 	err  error
 }
 
@@ -39,7 +38,7 @@ func (s packageScanFixture) Package(_ context.Context, _, _ string) (view.Packag
 	return s.pkg, nil
 }
 
-func (s packageScanFixture) PackageScan(_ context.Context, _, _ string) (hub.PackageScanDetail, error) {
+func (s packageScanFixture) PackageScan(_ context.Context, _, _ string) (view.PackageScan, error) {
 	return s.scan, s.err
 }
 
@@ -48,11 +47,12 @@ func testPackage() view.Package {
 }
 
 func TestPackageScanPanelIsCollapsedByDefaultAndCostsNoRoundTrip(t *testing.T) {
-	source := packageScanFixture{pkg: testPackage(), scan: hub.PackageScanDetail{
+	source := packageScanFixture{pkg: testPackage(), scan: view.PackageScan{
 		Scanned: true,
-		Scan:    hub.Scan{PackVersion: "1.0.0+abc", StartedAt: time.Now(), Verdict: "flagged"},
-		Findings: []hub.FindingDetail{{
-			Finding: hub.Finding{ID: "f1", RuleID: "SH-NET-002", Severity: "high", State: "open",
+		Verdict: "flagged",
+		Scan:    view.ScanMeta{PackVersion: "1.0.0+abc", Started: view.Timestamp(time.Now()), Verdict: "flagged"},
+		Findings: []view.FindingDetail{{
+			FindingRow: view.FindingRow{ID: "f1", RuleID: "SH-NET-002", Severity: "high", State: "open",
 				Title: "Undeclared network egress"},
 		}},
 	}}
@@ -81,15 +81,16 @@ func TestPackageScanPanelIsCollapsedByDefaultAndCostsNoRoundTrip(t *testing.T) {
 
 func TestPackageScanShowsTheApprovalAndTheReviewersComment(t *testing.T) {
 	expires := time.Now().Add(48 * time.Hour)
-	source := packageScanFixture{pkg: testPackage(), scan: hub.PackageScanDetail{
+	source := packageScanFixture{pkg: testPackage(), scan: view.PackageScan{
 		Scanned: true,
-		Scan:    hub.Scan{PackVersion: "1.0.0+abc", StartedAt: time.Now(), Verdict: "flagged"},
-		Findings: []hub.FindingDetail{{
-			Finding: hub.Finding{ID: "f1", RuleID: "SH-FS-007", Severity: "low", State: "approved",
+		Verdict: "flagged",
+		Scan:    view.ScanMeta{PackVersion: "1.0.0+abc", Started: view.Timestamp(time.Now()), Verdict: "flagged"},
+		Findings: []view.FindingDetail{{
+			FindingRow: view.FindingRow{ID: "f1", RuleID: "SH-FS-007", Severity: "low", State: "approved",
 				Title: "Filesystem write outside declared scope"},
-			Override: &hub.Override{
+			Override: &view.Override{
 				Reviewer: "reviewer@example.com", Note: "Scoped to the cache directory only.",
-				ExpiresAt: &expires, DecidedAt: time.Now(),
+				Expires: view.Until(expires, time.Now()), Decided: view.Timestamp(time.Now()),
 			},
 		}},
 	}}
@@ -101,11 +102,12 @@ func TestPackageScanShowsTheApprovalAndTheReviewersComment(t *testing.T) {
 }
 
 func TestPackageScanTellsARejectedFindingApartFromAnAcceptedOne(t *testing.T) {
-	source := packageScanFixture{pkg: testPackage(), scan: hub.PackageScanDetail{
+	source := packageScanFixture{pkg: testPackage(), scan: view.PackageScan{
 		Scanned: true,
-		Scan:    hub.Scan{PackVersion: "1.0.0+abc", StartedAt: time.Now(), Verdict: "rejected"},
-		Findings: []hub.FindingDetail{{
-			Finding: hub.Finding{ID: "f1", RuleID: "SH-INJ-011", Severity: "high", State: "rejected",
+		Verdict: "rejected",
+		Scan:    view.ScanMeta{PackVersion: "1.0.0+abc", Started: view.Timestamp(time.Now()), Verdict: "rejected"},
+		Findings: []view.FindingDetail{{
+			FindingRow: view.FindingRow{ID: "f1", RuleID: "SH-INJ-011", Severity: "high", State: "rejected",
 				Title: "Prompt injection pattern"},
 		}},
 	}}
@@ -124,9 +126,9 @@ func TestPackageScanTellsItsFourStatesApart(t *testing.T) {
 	}{
 		{"never scanned", packageScanFixture{pkg: testPackage()}, "scan-unscanned"},
 		{"scanned clean, no findings", packageScanFixture{pkg: testPackage(),
-			scan: hub.PackageScanDetail{Scanned: true, Scan: hub.Scan{Verdict: "clean"}}}, "scan-no-findings"},
+			scan: view.PackageScan{Scanned: true, Verdict: "clean", Scan: view.ScanMeta{Verdict: "clean"}}}, "scan-no-findings"},
 		{"rejected version", packageScanFixture{pkg: testPackage(),
-			scan: hub.PackageScanDetail{Rejected: true}}, "scan-rejected"},
+			scan: view.PackageScan{Rejected: true}}, "scan-rejected"},
 		{"read failed", packageScanFixture{pkg: testPackage(), err: errors.New("boom")}, "scan-unavailable"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -149,18 +151,16 @@ func TestPackageScanTellsItsFourStatesApart(t *testing.T) {
 func TestPackageScanIsEscapedWhereverItIsRendered(t *testing.T) {
 	const payload = `<img src=x onerror="alert(1)">`
 
-	source := packageScanFixture{pkg: testPackage(), scan: hub.PackageScanDetail{
+	source := packageScanFixture{pkg: testPackage(), scan: view.PackageScan{
 		Scanned: true,
-		Scan:    hub.Scan{PackVersion: "1.0.0+" + payload, StartedAt: time.Now(), Verdict: "flagged"},
-		Checks:  []hub.Check{{ID: "shell-audit", Label: "Label " + payload, Result: "fail"}},
-		Findings: []hub.FindingDetail{{
-			Finding: hub.Finding{ID: "f1", RuleID: "SH-NET-002", Severity: "high", State: "open",
-				Title: "Title " + payload},
-			Explanation: "Detail " + payload,
-			Evidence: []hub.Evidence{
-				{Path: "scripts/" + payload + ".sh", Line: 41, Quote: payload, Role: "primary"},
-			},
-			Override: &hub.Override{Reviewer: "reviewer " + payload, Note: "note " + payload, DecidedAt: time.Now()},
+		Verdict: "flagged",
+		Scan:    view.ScanMeta{PackVersion: "1.0.0+" + payload, Started: view.Timestamp(time.Now()), Verdict: "flagged"},
+		Checks:  []view.Check{{ID: "shell-audit", Label: "Label " + payload, Result: "fail"}},
+		Findings: []view.FindingDetail{{
+			FindingRow: view.FindingRow{ID: "f1", RuleID: "SH-NET-002", Severity: "high", State: "open",
+				Title: "Title " + payload, Explanation: "Detail " + payload,
+				Primary: &view.Evidence{Path: "scripts/" + payload + ".sh", Line: 41, Quote: payload}},
+			Override: &view.Override{Reviewer: "reviewer " + payload, Note: "note " + payload, Decided: view.Timestamp(time.Now())},
 		}},
 	}}
 	body := get(t, handler(t, source), "/packages/example/thing").Body.String()

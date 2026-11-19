@@ -43,9 +43,7 @@ func (s *Server) profiles(c *gin.Context) {
 		s.renderProfiles(c, status, screen)
 		return
 	}
-	for _, row := range rows {
-		screen.Rows = append(screen.Rows, profileRow(row))
-	}
+	screen.Rows = rows
 	s.renderProfiles(c, http.StatusOK, screen)
 }
 
@@ -99,9 +97,7 @@ func (s *Server) renderCreateProfileFailure(c *gin.Context, err error) {
 
 	if s.deps.Profiles != nil {
 		if rows, readErr := s.deps.Profiles.Profiles(session(c)); readErr == nil {
-			for _, row := range rows {
-				screen.Rows = append(screen.Rows, profileRow(row))
-			}
+			screen.Rows = rows
 		}
 	}
 	s.renderProfiles(c, http.StatusUnprocessableEntity, screen)
@@ -130,7 +126,7 @@ func (s *Server) profileDetail(c *gin.Context) {
 		return
 	}
 
-	screen = profileScreen(detail)
+	screen = detail
 	screen.Notice = profileNotice(c.Query("notice"))
 	if screen.Permissions.Curate && s.deps.Catalog != nil {
 		screen.AddOptions = s.availablePackages(session(c), detail.Entries)
@@ -158,10 +154,9 @@ func (s *Server) revisionDiff(ctx context.Context, slug, raw string) *view.Revis
 	if err != nil {
 		return &view.RevisionDiffPanel{Revision: revision, Missing: true}
 	}
-	newerSnapshot := revisionSnapshot(newer)
 
 	if revision == 1 {
-		return &view.RevisionDiffPanel{Revision: revision, Diff: view.DiffRevisions(newerSnapshot, nil)}
+		return &view.RevisionDiffPanel{Revision: revision, Diff: view.DiffRevisions(newer, nil)}
 	}
 
 	older, err := s.deps.Profiles.Revision(ctx, slug, revision-1)
@@ -170,24 +165,7 @@ func (s *Server) revisionDiff(ctx context.Context, slug, raw string) *view.Revis
 		// that as an empty diff.
 		return &view.RevisionDiffPanel{Revision: revision, PredecessorUnavailable: true}
 	}
-	olderSnapshot := revisionSnapshot(older)
-	return &view.RevisionDiffPanel{Revision: revision, Diff: view.DiffRevisions(newerSnapshot, &olderSnapshot)}
-}
-
-func revisionSnapshot(from hub.RevisionLockfile) view.LockfileSnapshot {
-	out := view.LockfileSnapshot{
-		Revision: from.Revision, Gate: from.Gate, DefaultPolicy: from.DefaultPolicy,
-		Targets: from.Targets,
-	}
-	for _, entry := range from.Entries {
-		out.Entries = append(out.Entries, view.LockfileEntrySnapshot{
-			ID: entry.ID, Version: entry.Version, Resolution: entry.Resolution,
-		})
-	}
-	for _, skip := range from.Skipped {
-		out.Skipped = append(out.Skipped, view.LockfileSkipSnapshot{ID: skip.ID, Reason: skip.Reason})
-	}
-	return out
+	return &view.RevisionDiffPanel{Revision: revision, Diff: view.DiffRevisions(newer, &older)}
 }
 
 // maxAddOptionPages bounds how much of the catalog is walked to build the "Add
@@ -200,7 +178,7 @@ const maxAddOptionPages = 50
 // hold. A catalog read failure yields no options rather than an error: the
 // screen has already rendered on the profile read succeeding, and the Add
 // control degrading to absent is better than the whole page failing on it.
-func (s *Server) availablePackages(ctx context.Context, held []hub.ProfileEntry) []view.ProfileAddOption {
+func (s *Server) availablePackages(ctx context.Context, held []view.ProfileEntryRow) []view.ProfileAddOption {
 	holding := make(map[string]struct{}, len(held))
 	for i := range held {
 		holding[held[i].ID] = struct{}{}
@@ -377,7 +355,7 @@ func (s *Server) setEntryMode(c *gin.Context, mode string) {
 	s.backToProfile(c, slug, profileEntryUpdated)
 }
 
-func entrySettingFor(entry *hub.ProfileEntry) hub.EntrySetting {
+func entrySettingFor(entry *view.ProfileEntryRow) hub.EntrySetting {
 	setting := hub.EntrySetting{ID: entry.ID, Mode: entry.Mode}
 	switch entry.Mode {
 	case "pinned":
@@ -431,7 +409,7 @@ func (s *Server) publishRevision(c *gin.Context) {
 	}
 
 	note := strings.TrimSpace(c.PostForm("note"))
-	if _, err := s.deps.Curator.PublishRevision(session(c), slug, note); err != nil {
+	if err := s.deps.Curator.PublishRevision(session(c), slug, note); err != nil {
 		s.profileWriteFailed(c, slug, err)
 		return
 	}
@@ -481,7 +459,7 @@ func (s *Server) renderProfileRefusal(c *gin.Context, slug, detail string) {
 	screen := view.Profile{GovernanceState: view.GovernanceState{Unavailable: true}, Refusal: detail}
 	if s.deps.Profiles != nil {
 		if fresh, err := s.deps.Profiles.Profile(session(c), slug); err == nil {
-			screen = profileScreen(fresh)
+			screen = fresh
 			screen.Refusal = detail
 		}
 	}
@@ -571,72 +549,4 @@ func (s *Server) redirectProfiles(c *gin.Context, target string, outcome profile
 
 	c.Header("Cache-Control", "no-store")
 	c.Redirect(http.StatusSeeOther, parsed.String())
-}
-
-// ---- mapping the hub's answers onto the screen's models -------------------
-
-func profileRow(from hub.ProfileSummary) view.ProfileRow {
-	return view.ProfileRow{
-		Slug: from.Slug, Name: from.Name, Visibility: from.Visibility,
-		PackageCount: from.PackageCount, HeadRevision: from.HeadRevision,
-	}
-}
-
-func profileScreen(from hub.ProfileDetail) view.Profile {
-	out := view.Profile{
-		Slug: from.Slug, Name: from.Name, Description: from.Description,
-		Visibility: from.Visibility, OwnerTeam: from.OwnerTeam,
-		DefaultPolicy: from.DefaultPolicy, Gate: from.Gate,
-		HeadRevision: from.HeadRevision, ForkedFrom: from.ForkedFrom,
-		Role: from.Role,
-		Permissions: view.ProfilePermissions{
-			Curate: from.Permissions.Curate, Share: from.Permissions.Share,
-			Publish: from.Permissions.Publish, Delete: from.Permissions.Delete,
-		},
-		UnpublishedChanges: from.UnpublishedChanges,
-	}
-	for i := range from.Entries {
-		out.Entries = append(out.Entries, profileEntryRow(&from.Entries[i]))
-	}
-	for _, member := range from.Members {
-		out.Members = append(out.Members, view.ProfileMemberRow{
-			Kind: member.Kind, Ref: member.Ref, Role: member.Role,
-			DisplayName: member.DisplayName,
-		})
-	}
-	for _, target := range from.Targets {
-		out.Targets = append(out.Targets, view.ProfileTargetRow{Target: target.Target, Enabled: target.Enabled})
-	}
-	for _, revision := range from.Revisions {
-		out.Revisions = append(out.Revisions, view.ProfileRevisionRow{
-			Revision: revision.Revision, Note: revision.Note,
-			PublishedAt: view.Timestamp(revision.PublishedAt), PublishedBy: revision.PublishedBy,
-		})
-	}
-	return out
-}
-
-func profileEntryRow(from *hub.ProfileEntry) view.ProfileEntryRow {
-	entry := view.ProfileEntryRow{
-		ID: from.ID, Name: from.Name, Kind: view.Kind(from.Kind),
-		Mode: from.Mode, Range: from.Range, PinnedVersion: from.PinnedVersion,
-		LatestVersion: from.LatestVersion, LatestVerdict: view.Verdict(from.LatestVerdict),
-		Version: from.Version, Verdict: view.Verdict(from.Verdict), Digest: from.Digest,
-		Outcome: view.ProfileOutcome(from.Outcome), Note: from.Note,
-		Unpublished: from.Unpublished,
-	}
-	if from.Skip != nil {
-		entry.Skip = &view.ProfileSkip{
-			Reason: from.Skip.Reason, Detail: from.Skip.Detail,
-			WouldHaveResolvedTo: from.Skip.WouldHaveResolvedTo,
-		}
-	}
-	if from.Override != nil {
-		override := view.ProfileOverride{Reviewer: from.Override.Reviewer, Note: from.Override.Note}
-		if from.Override.ExpiresAt != nil {
-			override.Expires = view.Timestamp(*from.Override.ExpiresAt)
-		}
-		entry.Override = &override
-	}
-	return entry
 }

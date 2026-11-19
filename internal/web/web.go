@@ -79,7 +79,7 @@ type PackageFileSource interface {
 // separate from PackageSource for the same reason PackageFileSource is: a
 // deployment can answer the rest of the page while this read is unavailable.
 type PackageScanSource interface {
-	PackageScan(ctx context.Context, namespace, name string) (hub.PackageScanDetail, error)
+	PackageScan(ctx context.Context, namespace, name string) (view.PackageScan, error)
 }
 
 // Registrar is the import modal's door to the two registration operations,
@@ -92,45 +92,45 @@ type Registrar interface {
 // ScannerSource is the Scanner screen's three reads. It excludes the accept
 // and reject decision, which lives on Reviewer.
 type ScannerSource interface {
-	ScannerSummary(ctx context.Context, days int) (hub.ScannerSummary, error)
-	Findings(ctx context.Context, q hub.FindingQuery) (hub.FindingsPage, error)
-	Finding(ctx context.Context, id string) (hub.FindingDetail, error)
+	ScannerSummary(ctx context.Context, days int) (view.ScannerSummary, error)
+	Findings(ctx context.Context, q hub.FindingQuery) (view.FindingsPage, error)
+	Finding(ctx context.Context, id string) (view.FindingDetail, error)
 }
 
 // Reviewer is the two decisions a scanner reviewer can take, separate from
 // ScannerSource because it writes an audit row a fixture must not fake.
 type Reviewer interface {
-	AcceptFinding(ctx context.Context, id, note string, days int) (hub.Decision, error)
-	RejectFinding(ctx context.Context, id, note string) (hub.Decision, error)
+	AcceptFinding(ctx context.Context, id, note string, days int) error
+	RejectFinding(ctx context.Context, id, note string) error
 }
 
 // AuditSource is the audit screen and its export. AuditExport hands back a
 // LIVE body the caller owns the Close of, since the audit table grows without bound.
 type AuditSource interface {
-	Audit(ctx context.Context, page int) (hub.AuditPage, error)
+	Audit(ctx context.Context, page int) (view.AuditPage, error)
 	AuditExport(ctx context.Context) (io.ReadCloser, string, error)
 }
 
 // ProfileSource is the Profiles screens' reads, kept separate from
 // ProfileCurator's writes as ScannerSource is from Reviewer.
 type ProfileSource interface {
-	Profiles(ctx context.Context) ([]hub.ProfileSummary, error)
-	Profile(ctx context.Context, slug string) (hub.ProfileDetail, error)
+	Profiles(ctx context.Context) ([]view.ProfileRow, error)
+	Profile(ctx context.Context, slug string) (view.Profile, error)
 	// Revision is the "Show diff" panel's read: one published revision's
 	// resolved lockfile, by number.
-	Revision(ctx context.Context, slug string, revision int) (hub.RevisionLockfile, error)
+	Revision(ctx context.Context, slug string, revision int) (view.LockfileSnapshot, error)
 }
 
 // ProfileCurator is every write the profile screens offer: create, curate,
 // share, target and publish. One interface, not five, since each is gated by
 // the same profile's ProfilePermissions.
 type ProfileCurator interface {
-	CreateProfile(ctx context.Context, creation hub.ProfileCreation) (hub.ProfileSummary, error)
-	SetProfileEntries(ctx context.Context, slug string, entries []hub.EntrySetting) (hub.ProfileDetail, error)
-	RemoveProfileEntry(ctx context.Context, slug, id string) (hub.ProfileDetail, error)
-	SetProfileSharing(ctx context.Context, slug string, members []hub.Share) (hub.ProfileDetail, error)
-	SetProfileTargets(ctx context.Context, slug string, targets []string) (hub.ProfileDetail, error)
-	PublishRevision(ctx context.Context, slug, note string) (hub.PublishedRevision, error)
+	CreateProfile(ctx context.Context, creation hub.ProfileCreation) (view.ProfileRow, error)
+	SetProfileEntries(ctx context.Context, slug string, entries []hub.EntrySetting) (view.Profile, error)
+	RemoveProfileEntry(ctx context.Context, slug, id string) (view.Profile, error)
+	SetProfileSharing(ctx context.Context, slug string, members []hub.Share) (view.Profile, error)
+	SetProfileTargets(ctx context.Context, slug string, targets []string) (view.Profile, error)
+	PublishRevision(ctx context.Context, slug, note string) error
 	DeleteProfile(ctx context.Context, slug string) error
 }
 
@@ -144,7 +144,7 @@ type DeviceSource interface {
 // BadgeSource is the sidebar's three counts, read once per full page render.
 // Nil means a shell with no badges, not three zeroes.
 type BadgeSource interface {
-	Badges(ctx context.Context) (hub.Badges, error)
+	Badges(ctx context.Context) (view.Badges, error)
 }
 
 // StorageSource is the Storage screen's one read.

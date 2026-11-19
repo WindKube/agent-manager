@@ -37,11 +37,11 @@ import (
 // a test can state exactly what the api answers and then assert what reached the
 // api. Every field is a knob some test turns; the zero value answers empties.
 type governance struct {
-	summary  hub.ScannerSummary
-	findings []hub.Finding
-	detail   hub.FindingDetail
-	audit    []hub.AuditEntry
-	badges   hub.Badges
+	summary  view.ScannerSummary
+	findings []view.FindingRow
+	detail   view.FindingDetail
+	audit    []view.AuditRow
+	badges   view.Badges
 	export   string
 	storage  view.Storage
 	runtime  view.Runtime
@@ -51,7 +51,6 @@ type governance struct {
 	// which is the only way to assert that a refusal refused BEFORE the call.
 	accepted []acceptCall
 	rejected []string
-	decision hub.Decision
 	decideBy error
 }
 
@@ -64,42 +63,42 @@ func (g *governance) Catalog(context.Context, view.CatalogQuery) (view.CatalogPa
 	return view.CatalogPage{Query: view.CatalogQuery{}.Normalise(), Page: 1, PageSize: view.DefaultPageSize}, nil
 }
 
-func (g *governance) ScannerSummary(context.Context, int) (hub.ScannerSummary, error) {
+func (g *governance) ScannerSummary(context.Context, int) (view.ScannerSummary, error) {
 	return g.summary, g.err
 }
 
-func (g *governance) Findings(context.Context, hub.FindingQuery) (hub.FindingsPage, error) {
+func (g *governance) Findings(context.Context, hub.FindingQuery) (view.FindingsPage, error) {
 	if g.err != nil {
-		return hub.FindingsPage{}, g.err
+		return view.FindingsPage{}, g.err
 	}
-	return hub.FindingsPage{Findings: g.findings, Total: len(g.findings), Page: 1, PageSize: 20}, nil
+	return view.FindingsPage{Rows: g.findings, Total: len(g.findings), Page: 1, PageSize: 20}, nil
 }
 
-func (g *governance) Finding(_ context.Context, id string) (hub.FindingDetail, error) {
+func (g *governance) Finding(_ context.Context, id string) (view.FindingDetail, error) {
 	if g.err != nil {
-		return hub.FindingDetail{}, g.err
+		return view.FindingDetail{}, g.err
 	}
 	if g.detail.ID != id {
-		return hub.FindingDetail{}, view.ErrNotFound
+		return view.FindingDetail{}, view.ErrNotFound
 	}
 	return g.detail, nil
 }
 
-func (g *governance) AcceptFinding(_ context.Context, id, note string, days int) (hub.Decision, error) {
+func (g *governance) AcceptFinding(_ context.Context, id, note string, days int) error {
 	g.accepted = append(g.accepted, acceptCall{id: id, note: note, days: days})
-	return g.decision, g.decideBy
+	return g.decideBy
 }
 
-func (g *governance) RejectFinding(_ context.Context, id, _ string) (hub.Decision, error) {
+func (g *governance) RejectFinding(_ context.Context, id, _ string) error {
 	g.rejected = append(g.rejected, id)
-	return g.decision, g.decideBy
+	return g.decideBy
 }
 
-func (g *governance) Audit(_ context.Context, page int) (hub.AuditPage, error) {
+func (g *governance) Audit(_ context.Context, page int) (view.AuditPage, error) {
 	if g.err != nil {
-		return hub.AuditPage{}, g.err
+		return view.AuditPage{}, g.err
 	}
-	return hub.AuditPage{Entries: g.audit, Total: len(g.audit), Page: page, PageSize: 50}, nil
+	return view.AuditPage{Rows: g.audit, Total: len(g.audit), Page: page, PageSize: 50}, nil
 }
 
 func (g *governance) AuditExport(context.Context) (io.ReadCloser, string, error) {
@@ -109,7 +108,7 @@ func (g *governance) AuditExport(context.Context) (io.ReadCloser, string, error)
 	return io.NopCloser(strings.NewReader(g.export)), "application/x-ndjson", nil
 }
 
-func (g *governance) Badges(context.Context) (hub.Badges, error) { return g.badges, g.err }
+func (g *governance) Badges(context.Context) (view.Badges, error) { return g.badges, g.err }
 
 func (g *governance) Storage(context.Context) (view.Storage, error) {
 	if g.err != nil {
@@ -148,12 +147,12 @@ func post(t *testing.T, h http.Handler, target string, form url.Values) *httptes
 
 const govFindingID = "6f1c0a4e-9f4b-4f2a-9c1d-2f9b6a7e4d11"
 
-func govFinding() hub.Finding {
-	return hub.Finding{
+func govFinding() view.FindingRow {
+	return view.FindingRow{
 		ID: govFindingID, RuleID: "SH-NET-002", Severity: "high", State: "open",
 		Title:   "Script contacts a host the package does not declare",
 		Subject: "community/slack-digest@0.5.1", PackageID: "community/slack-digest",
-		Version: "0.5.1", Verdict: "flagged", RaisedAt: time.Now().Add(-time.Hour),
+		Verdict: "flagged", Raised: view.Relative(time.Now().Add(-time.Hour), time.Now()),
 	}
 }
 
@@ -165,10 +164,10 @@ func govFinding() hub.Finding {
 // only check that ran.
 func TestTheCheckMatrixShowsEveryCheckThatRanAndNotOnlyTheFailures(t *testing.T) {
 	source := &governance{
-		findings: []hub.Finding{govFinding()},
-		detail: hub.FindingDetail{
-			Finding: govFinding(),
-			Checks: []hub.Check{
+		findings: []view.FindingRow{govFinding()},
+		detail: view.FindingDetail{
+			FindingRow: govFinding(),
+			Checks: []view.Check{
 				{ID: "manifest-schema", Label: "Manifest schema", Result: "pass"},
 				{ID: "network-allowlist", Label: "Network allowlist", Result: "fail"},
 				{ID: "shell-audit", Label: "Shell command audit", Result: "warn", WarnCount: 2},
@@ -198,14 +197,15 @@ func TestTheCheckMatrixShowsEveryCheckThatRanAndNotOnlyTheFailures(t *testing.T)
 // not anything was ever hovered.
 func TestACheckAndARuleIdExplainThemselvesOnHoverAndWithoutOne(t *testing.T) {
 	finding := govFinding()
-	finding.Detail = "Why SH-NET-002 fires, for the list row."
+	finding.Explanation = "Why SH-NET-002 fires, for the list row."
+	pane := finding
+	pane.Explanation = "Why SH-NET-002 fires, for the pane."
 
 	source := &governance{
-		findings: []hub.Finding{finding},
-		detail: hub.FindingDetail{
-			Finding:     finding,
-			Explanation: "Why SH-NET-002 fires, for the pane.",
-			Checks: []hub.Check{
+		findings: []view.FindingRow{finding},
+		detail: view.FindingDetail{
+			FindingRow: pane,
+			Checks: []view.Check{
 				{
 					ID: "network-allowlist", Label: "Network allowlist",
 					Explain: "What the network allowlist check looks for.", Result: "fail",
@@ -243,25 +243,24 @@ func TestScanEvidenceIsEscapedWhereverItIsRendered(t *testing.T) {
 	hostile := govFinding()
 	hostile.Title = "Title " + payload
 	hostile.Subject = "community/x@1.0.0 " + payload
+	pane := hostile
+	pane.Explanation = "Detail " + payload
+	pane.Primary = &view.Evidence{Path: "scripts/" + payload + ".sh", Line: 41, Quote: payload}
 
 	source := &governance{
-		findings: []hub.Finding{hostile},
-		detail: hub.FindingDetail{
-			Finding:     hostile,
-			Explanation: "Detail " + payload,
-			Evidence: []hub.Evidence{
-				{Path: "scripts/" + payload + ".sh", Line: 41, Quote: payload, Role: "primary"},
-				{Path: "second/" + payload, Quote: "supporting " + payload, Role: "supporting"},
-			},
-			Checks: []hub.Check{{ID: "shell-audit", Label: "Label " + payload, Result: "fail"}},
-			Scan:   hub.Scan{PackVersion: "2026.08.31+" + payload},
-			Override: &hub.Override{
-				Reviewer: "reviewer " + payload, Note: "note " + payload, DecidedAt: time.Now(),
+		findings: []view.FindingRow{hostile},
+		detail: view.FindingDetail{
+			FindingRow: pane,
+			Supporting: []view.Evidence{{Path: "second/" + payload, Quote: "supporting " + payload}},
+			Checks:     []view.Check{{ID: "shell-audit", Label: "Label " + payload, Result: "fail"}},
+			Scan:       view.ScanMeta{PackVersion: "2026.08.31+" + payload},
+			Override: &view.Override{
+				Reviewer: "reviewer " + payload, Note: "note " + payload, Decided: view.Timestamp(time.Now()),
 			},
 		},
-		audit: []hub.AuditEntry{{
-			ID: "a1", OccurredAt: time.Now(), Actor: "actor " + payload,
-			ActorKind: "identity", Kind: "scan", Text: "text " + payload, Source: "src " + payload,
+		audit: []view.AuditRow{{
+			ID: "a1", At: view.Timestamp(time.Now()), Actor: "actor " + payload,
+			Kind: "scan", Text: "text " + payload, Source: "src " + payload,
 		}},
 	}
 	h := govHandler(source, fixture.SignedInViewers(), nil)
@@ -346,7 +345,7 @@ func TestTheEmptyScannerSaysWhatWouldBeThereAndHowToGetIt(t *testing.T) {
 // TestAnActionAViewerMayNotTakeIsDisabledWithItsReason is FR-126.
 func TestAnActionAViewerMayNotTakeIsDisabledWithItsReason(t *testing.T) {
 	source := func() *governance {
-		return &governance{findings: []hub.Finding{govFinding()}, detail: hub.FindingDetail{Finding: govFinding()}}
+		return &governance{findings: []view.FindingRow{govFinding()}, detail: view.FindingDetail{FindingRow: govFinding()}}
 	}
 
 	t.Run("a role that cannot decide gets the controls disabled and told why", func(t *testing.T) {
@@ -442,11 +441,11 @@ func TestApprovingNeverClaimsTheVersionBecameClean(t *testing.T) {
 	approved.Verdict = "flagged"
 
 	source := &governance{
-		findings: []hub.Finding{approved},
-		detail: hub.FindingDetail{
-			Finding: approved,
-			Override: &hub.Override{
-				Reviewer: "a-reviewer", Note: "accepted for one quarter", DecidedAt: time.Now(),
+		findings: []view.FindingRow{approved},
+		detail: view.FindingDetail{
+			FindingRow: approved,
+			Override: &view.Override{
+				Reviewer: "a-reviewer", Note: "accepted for one quarter", Decided: view.Timestamp(time.Now()),
 			},
 		},
 	}
@@ -464,8 +463,8 @@ func TestApprovingNeverClaimsTheVersionBecameClean(t *testing.T) {
 // rendering fault rather than as a fact about the scan.
 func TestAFindingWithNoRecordedEvidenceSaysSoRatherThanRenderingAnEmptyPanel(t *testing.T) {
 	source := &governance{
-		findings: []hub.Finding{govFinding()},
-		detail:   hub.FindingDetail{Finding: govFinding()},
+		findings: []view.FindingRow{govFinding()},
+		detail:   view.FindingDetail{FindingRow: govFinding()},
 	}
 	body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/scanner").Body.String()
 
@@ -477,14 +476,13 @@ func TestAFindingWithNoRecordedEvidenceSaysSoRatherThanRenderingAnEmptyPanel(t *
 // evidence by role and the hub promises nothing about position, so an index-based
 // reader would promote a supporting location to the headline the day that changes.
 func TestThePrimaryEvidenceIsFoundByItsRoleAndNotByItsPosition(t *testing.T) {
+	pane := govFinding()
+	pane.Primary = &view.Evidence{Path: "headline.sh", Line: 41, Quote: "first"}
 	source := &governance{
-		findings: []hub.Finding{govFinding()},
-		detail: hub.FindingDetail{
-			Finding: govFinding(),
-			Evidence: []hub.Evidence{
-				{Path: "supporting.sh", Line: 9, Quote: "second", Role: "supporting"},
-				{Path: "headline.sh", Line: 41, Quote: "first", Role: "primary"},
-			},
+		findings: []view.FindingRow{govFinding()},
+		detail: view.FindingDetail{
+			FindingRow: pane,
+			Supporting: []view.Evidence{{Path: "supporting.sh", Line: 9, Quote: "second"}},
 		},
 	}
 	body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/scanner").Body.String()
@@ -500,7 +498,7 @@ func TestThePrimaryEvidenceIsFoundByItsRoleAndNotByItsPosition(t *testing.T) {
 // TestAFindingIdThatNamesNothingIsItsOwnState, and it is the pane's state rather
 // than the screen's: the list beside it read perfectly well.
 func TestAFindingIdThatNamesNothingIsItsOwnState(t *testing.T) {
-	source := &governance{findings: []hub.Finding{govFinding()}}
+	source := &governance{findings: []view.FindingRow{govFinding()}}
 	rec := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/scanner?finding=not-a-uuid")
 
 	require.Equal(t, http.StatusNotFound, rec.Code)
@@ -513,9 +511,9 @@ func TestAFindingIdThatNamesNothingIsItsOwnState(t *testing.T) {
 // are actors; a screen that let them read as usernames would put a machine's
 // action against somebody with that name.
 func TestTheAuditScreenNeverAttributesASystemRowToAPerson(t *testing.T) {
-	source := &governance{audit: []hub.AuditEntry{
-		{ID: "a1", OccurredAt: time.Now(), Actor: "scanner", ActorKind: "system", Kind: "scan", Text: "flagged x@1", Source: "system"},
-		{ID: "a2", OccurredAt: time.Now(), Actor: "an-operator", ActorKind: "identity", Kind: "approve", Text: "override granted", Source: "web"},
+	source := &governance{audit: []view.AuditRow{
+		{ID: "a1", At: view.Timestamp(time.Now()), Actor: "scanner", System: true, Kind: "scan", Text: "flagged x@1", Source: "system"},
+		{ID: "a2", At: view.Timestamp(time.Now()), Actor: "an-operator", Kind: "approve", Text: "override granted", Source: "web"},
 	}}
 	body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/audit").Body.String()
 
@@ -530,8 +528,8 @@ func TestTheAuditScreenNeverAttributesASystemRowToAPerson(t *testing.T) {
 // keyboard and announces nothing to a screen reader; a real <a> is both by
 // construction.
 func TestEveryAuditRowIsAKeyboardReachableLinkToItsOwnDetail(t *testing.T) {
-	source := &governance{audit: []hub.AuditEntry{
-		{ID: "a1", OccurredAt: time.Now(), Actor: "an-operator", ActorKind: "identity", Kind: "approve", Text: "override granted", Source: "web"},
+	source := &governance{audit: []view.AuditRow{
+		{ID: "a1", At: view.Timestamp(time.Now()), Actor: "an-operator", Kind: "approve", Text: "override granted", Source: "web"},
 	}}
 	body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/audit").Body.String()
 
@@ -546,8 +544,8 @@ func TestEveryAuditRowIsAKeyboardReachableLinkToItsOwnDetail(t *testing.T) {
 func TestClickingAnAuditRowOpensAPanelWithTheWholeUntruncatedMessage(t *testing.T) {
 	message := `failed to fetch community/skills@1.2.3 from git https://github.com/mattpocock/skills@v1.2.3 ` +
 		`(skills/engineering/code-review): archive member rejected: symlink (member "mattpocock-skills-835450e/AGENTS.md")`
-	source := &governance{audit: []hub.AuditEntry{
-		{ID: "a1", OccurredAt: time.Now(), Actor: "fetcher", ActorKind: "system", Kind: "fetch", Text: message},
+	source := &governance{audit: []view.AuditRow{
+		{ID: "a1", At: view.Timestamp(time.Now()), Actor: "fetcher", System: true, Kind: "fetch", Text: message},
 	}}
 	body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/audit?entry=a1").Body.String()
 
@@ -565,8 +563,8 @@ func TestClickingAnAuditRowOpensAPanelWithTheWholeUntruncatedMessage(t *testing.
 // stale link or one for a row a page turn left behind must say so; a panel
 // that silently renders empty reads as a bug rather than an honest state.
 func TestAnAuditEntryNotOnThePageIsNamedMissingRatherThanRenderingNothing(t *testing.T) {
-	source := &governance{audit: []hub.AuditEntry{
-		{ID: "a1", OccurredAt: time.Now(), Actor: "an-operator", ActorKind: "identity", Kind: "approve", Text: "override granted"},
+	source := &governance{audit: []view.AuditRow{
+		{ID: "a1", At: view.Timestamp(time.Now()), Actor: "an-operator", Kind: "approve", Text: "override granted"},
 	}}
 	body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/audit?entry=does-not-exist").Body.String()
 
@@ -577,8 +575,8 @@ func TestAnAuditEntryNotOnThePageIsNamedMissingRatherThanRenderingNothing(t *tes
 // own "not recorded" convention (SourceLabel) into the panel, where a bare dash
 // with no other cells around it reads as a rendering bug rather than a fact.
 func TestTheAuditPanelSaysSoRatherThanLeavingAnEmptySourceCell(t *testing.T) {
-	source := &governance{audit: []hub.AuditEntry{
-		{ID: "a1", OccurredAt: time.Now(), Actor: "an-operator", ActorKind: "identity", Kind: "approve", Text: "override granted"},
+	source := &governance{audit: []view.AuditRow{
+		{ID: "a1", At: view.Timestamp(time.Now()), Actor: "an-operator", Kind: "approve", Text: "override granted"},
 	}}
 	body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/audit?entry=a1").Body.String()
 
@@ -643,7 +641,7 @@ func TestTheAuditExportStreamsThroughAndItsSentinelIsChecked(t *testing.T) {
 // viewer of every deployment.
 func TestTheSidebarCountsAreTheApisAndAreAbsentRatherThanZero(t *testing.T) {
 	t.Run("the counts on the page are the ones the api answered", func(t *testing.T) {
-		source := &governance{badges: hub.Badges{Packages: 7, Profiles: 3, OpenFindings: 11}}
+		source := &governance{badges: view.Badges{Packages: 7, Profiles: 3, OpenFindings: 11}}
 		body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/catalog").Body.String()
 
 		require.Contains(t, body, `<span class="am-nav-badge">7</span>`)
@@ -656,7 +654,7 @@ func TestTheSidebarCountsAreTheApisAndAreAbsentRatherThanZero(t *testing.T) {
 	})
 
 	t.Run("nothing to count renders no badge, not a zero", func(t *testing.T) {
-		source := &governance{badges: hub.Badges{Packages: 2}}
+		source := &governance{badges: view.Badges{Packages: 2}}
 		body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/catalog").Body.String()
 
 		require.Contains(t, body, `<span class="am-nav-badge">2</span>`)
@@ -676,9 +674,9 @@ func TestTheSidebarCountsAreTheApisAndAreAbsentRatherThanZero(t *testing.T) {
 // layer takes off the placeholder list.
 func TestNoRouteFromTheSidebarSaysItIsUnfinished(t *testing.T) {
 	source := &governance{
-		findings: []hub.Finding{govFinding()},
-		detail:   hub.FindingDetail{Finding: govFinding()},
-		audit:    []hub.AuditEntry{{ID: "a1", OccurredAt: time.Now(), Actor: "scanner", ActorKind: "system", Kind: "scan", Text: "flagged x@1"}},
+		findings: []view.FindingRow{govFinding()},
+		detail:   view.FindingDetail{FindingRow: govFinding()},
+		audit:    []view.AuditRow{{ID: "a1", At: view.Timestamp(time.Now()), Actor: "scanner", System: true, Kind: "scan", Text: "flagged x@1"}},
 	}
 	h := govHandler(source, fixture.SignedInViewers(), &governance{})
 
@@ -694,7 +692,7 @@ func TestNoRouteFromTheSidebarSaysItIsUnfinished(t *testing.T) {
 // TestFilteringAndPagingKeepTheRestOfTheScreensState. A filter that dropped the
 // page or a page turn that dropped the filter is how a reviewer loses their place.
 func TestFilteringAndPagingKeepTheRestOfTheScreensState(t *testing.T) {
-	source := &governance{findings: []hub.Finding{govFinding()}, detail: hub.FindingDetail{Finding: govFinding()}}
+	source := &governance{findings: []view.FindingRow{govFinding()}, detail: view.FindingDetail{FindingRow: govFinding()}}
 	body := get(t, govHandler(source, fixture.SignedInViewers(), nil), "/scanner?state=open").Body.String()
 
 	require.Contains(t, body, `href="/scanner?finding=`+govFindingID+`&amp;state=open"`,

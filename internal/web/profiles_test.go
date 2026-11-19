@@ -30,8 +30,8 @@ import (
 // NOT implement web.Registrar or web.ScannerSource, so a test built on it never
 // exercises a screen this file is not about.
 type profiles struct {
-	rows   []hub.ProfileSummary
-	detail hub.ProfileDetail
+	rows   []view.ProfileRow
+	detail view.Profile
 	err    error
 
 	entrySets  [][]hub.EntrySetting
@@ -45,63 +45,63 @@ type profiles struct {
 	// revisions and revisionErr back Revision, the "Show diff" panel's read.
 	// revisionErr, when set, is returned for every revision number so a test
 	// can drive PredecessorUnavailable by giving revision N but not N-1.
-	revisions   map[int]hub.RevisionLockfile
+	revisions   map[int]view.LockfileSnapshot
 	revisionErr error
 }
 
-func (p *profiles) Profiles(context.Context) ([]hub.ProfileSummary, error) {
+func (p *profiles) Profiles(context.Context) ([]view.ProfileRow, error) {
 	if p.err != nil {
 		return nil, p.err
 	}
 	return p.rows, nil
 }
 
-func (p *profiles) Profile(_ context.Context, slug string) (hub.ProfileDetail, error) {
+func (p *profiles) Profile(_ context.Context, slug string) (view.Profile, error) {
 	if p.err != nil {
-		return hub.ProfileDetail{}, p.err
+		return view.Profile{}, p.err
 	}
 	if p.detail.Slug != slug {
-		return hub.ProfileDetail{}, view.ErrNotFound
+		return view.Profile{}, view.ErrNotFound
 	}
 	return p.detail, nil
 }
 
-func (p *profiles) Revision(_ context.Context, _ string, revision int) (hub.RevisionLockfile, error) {
+func (p *profiles) Revision(_ context.Context, _ string, revision int) (view.LockfileSnapshot, error) {
 	if p.revisionErr != nil {
-		return hub.RevisionLockfile{}, p.revisionErr
+		return view.LockfileSnapshot{}, p.revisionErr
 	}
 	lockfile, ok := p.revisions[revision]
 	if !ok {
-		return hub.RevisionLockfile{}, view.ErrNotFound
+		return view.LockfileSnapshot{}, view.ErrNotFound
 	}
 	return lockfile, nil
 }
 
-func (p *profiles) CreateProfile(context.Context, hub.ProfileCreation) (hub.ProfileSummary, error) {
-	return hub.ProfileSummary{}, p.writeErr
+func (p *profiles) CreateProfile(context.Context, hub.ProfileCreation) (view.ProfileRow, error) {
+	return view.ProfileRow{}, p.writeErr
 }
 
-func (p *profiles) SetProfileEntries(_ context.Context, _ string, entries []hub.EntrySetting) (hub.ProfileDetail, error) {
+func (p *profiles) SetProfileEntries(_ context.Context, _ string, entries []hub.EntrySetting) (view.Profile, error) {
 	p.entrySets = append(p.entrySets, entries)
 	return p.detail, p.writeErr
 }
 
-func (p *profiles) SetProfileSharing(_ context.Context, _ string, members []hub.Share) (hub.ProfileDetail, error) {
+func (p *profiles) SetProfileSharing(_ context.Context, _ string, members []hub.Share) (view.Profile, error) {
 	p.shares = append(p.shares, members)
 	return p.detail, p.writeErr
 }
 
-func (p *profiles) SetProfileTargets(_ context.Context, _ string, targets []string) (hub.ProfileDetail, error) {
+func (p *profiles) SetProfileTargets(_ context.Context, _ string, targets []string) (view.Profile, error) {
 	p.targetSets = append(p.targetSets, targets)
 	return p.detail, p.writeErr
 }
 
-func (p *profiles) PublishRevision(_ context.Context, slug, _ string) (hub.PublishedRevision, error) {
+func (p *profiles) PublishRevision(_ context.Context, slug, _ string) error {
 	p.published = append(p.published, slug)
-	return hub.PublishedRevision{}, p.writeErr
+	return p.writeErr
 }
 
-func (p *profiles) RemoveProfileEntry(_ context.Context, slug, id string) (hub.ProfileDetail, error) {
+func (p *profiles) RemoveProfileEntry(_ context.Context, slug, id string) (view.Profile, error) {
 	p.removed = append(p.removed, [2]string{slug, id})
 	return p.detail, p.writeErr
 }
@@ -150,13 +150,13 @@ func profHandlerWithCatalog(source *profiles, curator web.ProfileCurator, catalo
 	return web.New(deps, web.Options{}).Handler()
 }
 
-func baseProfileDetail() hub.ProfileDetail {
-	return hub.ProfileDetail{
+func baseProfileDetail() view.Profile {
+	return view.Profile{
 		Slug: "example/platform-engineer", Name: "Platform Engineer",
 		Visibility: "organisation", DefaultPolicy: "floating-latest", Gate: "warn-with-override",
 		HeadRevision: 3, Role: "owner",
-		Permissions: hub.ProfilePermissions{Curate: true, Share: true, Publish: true, Delete: true},
-		Entries: []hub.ProfileEntry{
+		Permissions: view.ProfilePermissions{Curate: true, Share: true, Publish: true, Delete: true},
+		Entries: []view.ProfileEntryRow{
 			{
 				ID: "community/postgres-migration-guard", Name: "Postgres Migration Guard", Kind: "skill",
 				Mode: "latest", LatestVersion: "0.8.3", LatestVerdict: "flagged",
@@ -170,7 +170,7 @@ func baseProfileDetail() hub.ProfileDetail {
 // TestProfilesListShowsExactlyTheReadableSet asserts the list shows exactly
 // the readable set, and no others.
 func TestProfilesListShowsExactlyTheReadableSet(t *testing.T) {
-	source := &profiles{rows: []hub.ProfileSummary{
+	source := &profiles{rows: []view.ProfileRow{
 		{Slug: "example/platform-engineer", Name: "Platform Engineer", Visibility: "organisation", PackageCount: 4, HeadRevision: 14},
 		{Slug: "example/sre-oncall", Name: "SRE On-call", Visibility: "shared", PackageCount: 0, HeadRevision: 0},
 	}}
@@ -242,12 +242,11 @@ func TestProfileDetailRendersThePolicyNoteVerbatim(t *testing.T) {
 // excluded package is reported with its reason rather than silently dropped.
 func TestProfileDetailReportsASkippedEntryRatherThanOmittingIt(t *testing.T) {
 	detail := baseProfileDetail()
-	detail.Entries = append(detail.Entries, hub.ProfileEntry{
+	detail.Entries = append(detail.Entries, view.ProfileEntryRow{
 		ID: "community/release-notes", Name: "Release Notes", Kind: "skill",
 		Mode: "pinned", PinnedVersion: "1.2.7", Outcome: "skipped",
-		Skip: &hub.Skip{
-			ID: "community/release-notes", Reason: "flagged-awaiting-approval",
-			Detail: "Awaiting approval from a scanner reviewer.",
+		Skip: &view.ProfileSkip{
+			Reason: "flagged-awaiting-approval", Detail: "Awaiting approval from a scanner reviewer.",
 		},
 	})
 	body := get(t, profHandler(&profiles{detail: detail}, fixture.SignedInViewers(), nil),
@@ -272,7 +271,7 @@ func TestProfileDetailUnreadableAnswersAsMissing(t *testing.T) {
 // hub.SetProfileEntries's whole-set contract.
 func TestProfileEntryPinRoundTrips(t *testing.T) {
 	detail := baseProfileDetail()
-	detail.Entries = append(detail.Entries, hub.ProfileEntry{
+	detail.Entries = append(detail.Entries, view.ProfileEntryRow{
 		ID: "example/adr-writer", Name: "ADR Writer", Kind: "skill", Mode: "latest",
 		LatestVersion: "3.0.2", Version: "3.0.2", Verdict: "clean", Outcome: "resolved",
 	})
@@ -396,7 +395,7 @@ func addOptions(t *testing.T, body, selectID string) string {
 func TestProfileDetailAddControlIsAbsentWithoutCatalogOrRole(t *testing.T) {
 	t.Run("no curate permission", func(t *testing.T) {
 		detail := baseProfileDetail()
-		detail.Permissions = hub.ProfilePermissions{}
+		detail.Permissions = view.ProfilePermissions{}
 		source := &profiles{detail: detail}
 		catalog := catalogStub{rows: []view.Row{{ID: "example/adr-writer", Name: "ADR Writer", Kind: view.KindSkill}}}
 		body := get(t, profHandlerWithCatalog(source, nil, catalog), "/profiles/example/platform-engineer").Body.String()
@@ -471,7 +470,7 @@ func TestProfileEntryAddOfAnIDAlreadyHeldFloatsRatherThanDuplicating(t *testing.
 // and records nothing.
 func TestProfileWritesAreGatedByRole(t *testing.T) {
 	detail := baseProfileDetail()
-	detail.Permissions = hub.ProfilePermissions{}
+	detail.Permissions = view.ProfilePermissions{}
 	source := &profiles{detail: detail}
 	h := profHandler(source, fixture.SignedInViewers(), source)
 
@@ -615,7 +614,7 @@ func TestProfileEntryDataIsEscapedWhereverItIsRendered(t *testing.T) {
 	detail := baseProfileDetail()
 	detail.Entries[0].Name = "Guard " + payload
 	detail.Entries[0].Note = "Note " + payload
-	detail.Members = []hub.ProfileMember{{Kind: "user", Ref: "x", Role: "owner", DisplayName: "Owner " + payload}}
+	detail.Members = []view.ProfileMemberRow{{Kind: "user", Ref: "x", Role: "owner", DisplayName: "Owner " + payload}}
 
 	body := get(t, profHandler(&profiles{detail: detail}, fixture.SignedInViewers(), nil),
 		"/profiles/example/platform-engineer").Body.String()
@@ -629,7 +628,7 @@ func TestProfileEntryDataIsEscapedWhereverItIsRendered(t *testing.T) {
 // into a Skills section and a Plugins section, each listing only its own kind.
 func TestProfileEntriesAreSplitIntoSkillsAndPlugins(t *testing.T) {
 	detail := baseProfileDetail()
-	detail.Entries = []hub.ProfileEntry{
+	detail.Entries = []view.ProfileEntryRow{
 		{ID: "example/adr-writer", Name: "ADR Writer", Kind: "skill", Mode: "latest", Outcome: "resolved"},
 		{ID: "example/platform-toolkit", Name: "Platform Toolkit", Kind: "plugin", Mode: "latest", Outcome: "resolved"},
 	}
@@ -719,8 +718,8 @@ func TestAddEntryFormOffersVersionModeAtAddTime(t *testing.T) {
 // text beneath it — rather than a control that silently disappears.
 func TestDisabledProfileControlsAreShownGreyedOutNotHidden(t *testing.T) {
 	detail := baseProfileDetail()
-	detail.Permissions = hub.ProfilePermissions{}
-	detail.Targets = []hub.ProfileTarget{{Target: "claude-code", Enabled: true}, {Target: "codex", Enabled: false}}
+	detail.Permissions = view.ProfilePermissions{}
+	detail.Targets = []view.ProfileTargetRow{{Target: "claude-code", Enabled: true}, {Target: "codex", Enabled: false}}
 	source := &profiles{detail: detail}
 	body := html.UnescapeString(get(t, profHandler(source, fixture.SignedInViewers(), nil), "/profiles/example/platform-engineer").Body.String())
 
@@ -761,7 +760,7 @@ func TestDisabledProfileControlsAreShownGreyedOutNotHidden(t *testing.T) {
 // hints one could appear except the per-revision "Show diff" link.
 func TestProfileRevisionDiffIsAbsentWithoutAQuery(t *testing.T) {
 	detail := baseProfileDetail()
-	detail.Revisions = []hub.ProfileRevision{{Revision: 5}, {Revision: 4}}
+	detail.Revisions = []view.ProfileRevisionRow{{Revision: 5}, {Revision: 4}}
 	source := &profiles{detail: detail}
 	body := get(t, profHandler(source, fixture.SignedInViewers(), nil), "/profiles/example/platform-engineer").Body.String()
 
@@ -776,23 +775,23 @@ func TestProfileRevisionDiffIsAbsentWithoutAQuery(t *testing.T) {
 func TestProfileRevisionDiffReportsAddedRemovedChangedAndGovernance(t *testing.T) {
 	detail := baseProfileDetail()
 	detail.HeadRevision = 5
-	detail.Revisions = []hub.ProfileRevision{{Revision: 5}, {Revision: 4}}
+	detail.Revisions = []view.ProfileRevisionRow{{Revision: 5}, {Revision: 4}}
 	source := &profiles{
 		detail: detail,
-		revisions: map[int]hub.RevisionLockfile{
+		revisions: map[int]view.LockfileSnapshot{
 			4: {
 				Revision: 4, Gate: "warn-with-override", DefaultPolicy: "floating-latest",
 				Targets: []string{"claude-code"},
-				Entries: []hub.LockedEntry{
+				Entries: []view.LockfileEntrySnapshot{
 					{ID: "example/adr-writer", Version: "3.0.1", Resolution: "latest"},
 					{ID: "community/postgres-migration-guard", Version: "0.8.2", Resolution: "latest"},
 				},
-				Skipped: []hub.Skip{{ID: "community/release-notes", Reason: "flagged-awaiting-approval"}},
+				Skipped: []view.LockfileSkipSnapshot{{ID: "community/release-notes", Reason: "flagged-awaiting-approval"}},
 			},
 			5: {
 				Revision: 5, Gate: "block", DefaultPolicy: "pinned",
 				Targets: []string{"claude-code", "codex"},
-				Entries: []hub.LockedEntry{
+				Entries: []view.LockfileEntrySnapshot{
 					{ID: "example/adr-writer", Version: "3.0.2", Resolution: "pinned"},
 					{ID: "example/security-review-kit", Version: "1.0.0", Resolution: "latest"},
 				},
@@ -836,14 +835,14 @@ func TestProfileRevisionDiffReportsAddedRemovedChangedAndGovernance(t *testing.T
 // rather than an empty diff or an error.
 func TestProfileRevisionDiffFirstRevisionShowsWhatItIntroduced(t *testing.T) {
 	detail := baseProfileDetail()
-	detail.Revisions = []hub.ProfileRevision{{Revision: 1}}
+	detail.Revisions = []view.ProfileRevisionRow{{Revision: 1}}
 	source := &profiles{
 		detail: detail,
-		revisions: map[int]hub.RevisionLockfile{
+		revisions: map[int]view.LockfileSnapshot{
 			1: {
 				Revision: 1, Gate: "warn-with-override", DefaultPolicy: "floating-latest",
-				Entries: []hub.LockedEntry{{ID: "example/adr-writer", Version: "3.0.0", Resolution: "latest"}},
-				Skipped: []hub.Skip{{ID: "community/release-notes", Reason: "flagged-awaiting-approval"}},
+				Entries: []view.LockfileEntrySnapshot{{ID: "example/adr-writer", Version: "3.0.0", Resolution: "latest"}},
+				Skipped: []view.LockfileSkipSnapshot{{ID: "community/release-notes", Reason: "flagged-awaiting-approval"}},
 			},
 		},
 	}
@@ -863,7 +862,7 @@ func TestProfileRevisionDiffFirstRevisionShowsWhatItIntroduced(t *testing.T) {
 // unreadable one give.
 func TestProfileRevisionDiffMissingRevisionSaysSoPlainly(t *testing.T) {
 	detail := baseProfileDetail()
-	source := &profiles{detail: detail, revisions: map[int]hub.RevisionLockfile{}}
+	source := &profiles{detail: detail, revisions: map[int]view.LockfileSnapshot{}}
 	rec := get(t, profHandler(source, fixture.SignedInViewers(), nil),
 		view.RevisionDiffHref("example/platform-engineer", 99))
 
@@ -879,8 +878,8 @@ func TestProfileRevisionDiffPredecessorUnavailableSaysSoRatherThanEmptyDiff(t *t
 	detail.HeadRevision = 5
 	source := &profiles{
 		detail: detail,
-		revisions: map[int]hub.RevisionLockfile{
-			5: {Revision: 5, Entries: []hub.LockedEntry{{ID: "example/adr-writer", Version: "3.0.2", Resolution: "pinned"}}},
+		revisions: map[int]view.LockfileSnapshot{
+			5: {Revision: 5, Entries: []view.LockfileEntrySnapshot{{ID: "example/adr-writer", Version: "3.0.2", Resolution: "pinned"}}},
 		},
 	}
 	body := get(t, profHandler(source, fixture.SignedInViewers(), nil),
@@ -894,7 +893,7 @@ func TestProfileRevisionDiffPredecessorUnavailableSaysSoRatherThanEmptyDiff(t *t
 // in both themes.
 func TestProfileScreensRenderInBothThemes(t *testing.T) {
 	source := &profiles{
-		rows:   []hub.ProfileSummary{{Slug: "example/platform-engineer", Name: "Platform Engineer"}},
+		rows:   []view.ProfileRow{{Slug: "example/platform-engineer", Name: "Platform Engineer"}},
 		detail: baseProfileDetail(),
 	}
 	h := profHandler(source, fixture.SignedInViewers(), nil)

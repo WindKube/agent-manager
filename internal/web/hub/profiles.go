@@ -7,16 +7,13 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"time"
 
 	"agent-manager/internal/apiclient"
 	"agent-manager/internal/web/view"
 )
 
 // The profile screen's door to the api, through the generated client and
-// nothing else. Nothing here renders — no relative dates, no collapsed pills
-// — because deciding what a gate outcome MEANS is the resolver's job and
-// deciding how it READS is the screen's.
+// nothing else.
 //
 // Three refusals, three screens: 401 is signed out, 403 is a role that may
 // not do this, 404 is a profile that does not exist or is not readable
@@ -24,9 +21,6 @@ import (
 // means the caller is permitted and the api understood but refuses, so it
 // arrives as ProfileRefusedError carrying that sentence. Everything else is
 // the api unreachable or broken, rendered as a bad gateway.
-//
-// Note, Skip.Detail and a member's DisplayName quote content this hub did
-// not write. Render them escaped, always.
 
 // ProfileRefusedError is the api refusing a curation request it understood
 // from a caller it permitted: the slug is taken, the body leaves out a
@@ -39,151 +33,6 @@ type ProfileRefusedError struct {
 }
 
 func (e *ProfileRefusedError) Error() string { return e.Detail }
-
-// ProfileDetail is one profile as the detail screen draws it.
-type ProfileDetail struct {
-	Slug        string
-	Name        string
-	Description string
-	Visibility  string
-	OwnerTeam   string
-
-	DefaultPolicy string
-	// Gate is the org gate in force NOW, which Entries were resolved under —
-	// not the gate the head revision froze; the two disagreeing is part of
-	// what UnpublishedChanges reports.
-	Gate         string
-	HeadRevision int
-	// ForkedFrom is lineage and nothing else: a fork never inherits the
-	// upstream's later revisions.
-	ForkedFrom string
-
-	// Role is legitimately empty: most readers of an org-visibility profile
-	// hold no membership, so "no role" is a state, not a missing value.
-	Role        string
-	Permissions ProfilePermissions
-
-	UnpublishedChanges bool
-
-	Entries   []ProfileEntry
-	Members   []ProfileMember
-	Targets   []ProfileTarget
-	Revisions []ProfileRevision
-}
-
-// ProfilePermissions is the api's answer to what this identity may do here,
-// so a screen can disable a control rather than offer one that will be
-// refused. It is the screen's copy of the answer, never the mechanism: the
-// operations enforce this themselves regardless of what a browser was shown.
-type ProfilePermissions struct {
-	Curate  bool
-	Share   bool
-	Publish bool
-	// Delete is the role check alone (owner only). The api refuses
-	// separately, with a distinct error, when the profile holds a
-	// published revision — that is a fact about the profile, not the role,
-	// and the screen reads it off HeadRevision rather than a second bit here.
-	Delete bool
-}
-
-// ProfileEntry is one package in a profile, with two version pairs. Latest*
-// are the CATALOG's newest offering and its scan state, unaffected by what
-// the gate does. Version/Verdict are what the entry actually resolves to,
-// empty exactly when excluded.
-type ProfileEntry struct {
-	ID   string
-	Name string
-	Kind string
-
-	// Mode is the profile's setting, not a label for what happened: a pin
-	// the gate refused is still a pin.
-	Mode          string
-	Range         string
-	PinnedVersion string
-
-	LatestVersion string
-	LatestVerdict string
-
-	Version string
-	Verdict string
-	Digest  string
-
-	Outcome string
-	Note    string
-	// Skip is present exactly when Outcome is skipped: an excluded package is
-	// reported with its reason, never silently dropped.
-	Skip *Skip
-	// Override is the ACTIVE acceptance that let a flagged version through.
-	Override *EntryOverride
-
-	// Unpublished says this row would resolve differently from the head
-	// revision's lockfile; either way no machine has seen it.
-	Unpublished bool
-}
-
-// Skip is one excluded package and why. Reason is the canonical code and
-// Detail is the resolver's prose about the finding that caused it.
-type Skip struct {
-	ID                  string
-	Reason              string
-	Detail              string
-	WouldHaveResolvedTo string
-}
-
-// EntryOverride is the acceptance a flagged version resolved under — a type
-// of its own rather than governance.go's Override, since that one is the
-// decision as the scanner screen records it and this is what the resolver applied.
-type EntryOverride struct {
-	Reviewer string
-	Note     string
-	// ExpiresAt is nil when the acceptance does not lapse. The api's wire
-	// shape models "no expiry" as the ZERO instant (the schema requires the
-	// field), so it is turned back into absence here, at the door, rather
-	// than in every screen that formats a date.
-	ExpiresAt *time.Time
-}
-
-// ProfileMember is one subject the profile is shared with. A group is
-// matched against the identity provider's claim on every request rather
-// than expanded into people, which is why Kind travels.
-type ProfileMember struct {
-	Kind string
-	Ref  string
-	Role string
-	// DisplayName is empty for a membership naming somebody this hub has
-	// never seen sign in.
-	DisplayName string
-}
-
-// ProfileTarget is one agent directory convention and whether this profile
-// enables it. The api answers with the WHOLE vocabulary so a screen draws
-// the same checkboxes without holding a copy of the enum.
-type ProfileTarget struct {
-	Target  string
-	Enabled bool
-}
-
-// ProfileRevision is one published revision, as the history panel lists it.
-type ProfileRevision struct {
-	Revision    int
-	Note        string
-	PublishedAt time.Time
-	PublishedBy string
-}
-
-// ProfileSummary is a profile as the list names it — and what creating one
-// answers with.
-type ProfileSummary struct {
-	Slug         string
-	Name         string
-	Visibility   string
-	PackageCount int
-	HeadRevision int
-	// CanCurate is FR-126 at list scope: whether this identity's role on
-	// this profile lets it change what the profile holds, so a caller
-	// choosing among several profiles need not read each one's detail.
-	CanCurate bool
-}
 
 // ProfileCreation is the create form. Every optional field is omitted from
 // the request when empty, which is what makes the api's defaults apply — an
@@ -216,35 +65,8 @@ type Share struct {
 	Role string
 }
 
-// PublishedRevision is what a publish froze. Deliberately not the whole
-// lockfile — the bundle object keys and signature refs are in it and no
-// screen may show either. What is here is what the confirmation states.
-type PublishedRevision struct {
-	// Revision is the number the SERVER allocated: a concurrent publish may
-	// hold the one the caller expected, so this is the only place to learn it.
-	Revision   int
-	Note       string
-	ResolvedAt time.Time
-	Gate       string
-	Entries    []LockedEntry
-	// Skipped: a revision that excluded a package says so, rather than
-	// announcing a clean publish.
-	Skipped []Skip
-}
-
-// LockedEntry is one package frozen at an exact version.
-type LockedEntry struct {
-	ID         string
-	Kind       string
-	Version    string
-	Digest     string
-	Resolution string
-	Verdict    string
-	Override   *EntryOverride
-}
-
 // Profiles reads GET /v1/profiles: exactly the profiles this identity may read.
-func (c *Client) Profiles(ctx context.Context) ([]ProfileSummary, error) {
+func (c *Client) Profiles(ctx context.Context) ([]view.ProfileRow, error) {
 	resp, err := c.api.ListProfilesWithResponse(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list profiles: %w", err)
@@ -253,31 +75,31 @@ func (c *Client) Profiles(ctx context.Context) ([]ProfileSummary, error) {
 		return nil, fmt.Errorf("list profiles: %w", governanceError(resp.HTTPResponse, resp.Body))
 	}
 
-	out := make([]ProfileSummary, 0, len(resp.JSON200.Profiles))
+	out := make([]view.ProfileRow, 0, len(resp.JSON200.Profiles))
 	for i := range resp.JSON200.Profiles {
-		out = append(out, profileSummary(&resp.JSON200.Profiles[i]))
+		out = append(out, profileRow(&resp.JSON200.Profiles[i]))
 	}
 	return out, nil
 }
 
 // Profile reads GET /v1/profiles/{slug}.
-func (c *Client) Profile(ctx context.Context, slug string) (ProfileDetail, error) {
+func (c *Client) Profile(ctx context.Context, slug string) (view.Profile, error) {
 	if err := checkSlug(slug); err != nil {
-		return ProfileDetail{}, err
+		return view.Profile{}, err
 	}
 
 	resp, err := c.api.GetProfileWithResponse(ctx, slug)
 	if err != nil {
-		return ProfileDetail{}, fmt.Errorf("get profile %s: %w", slug, err)
+		return view.Profile{}, fmt.Errorf("get profile %s: %w", slug, err)
 	}
 	if resp.JSON200 == nil {
-		return ProfileDetail{}, profileFailure("get profile "+slug, resp.HTTPResponse, resp.Body)
+		return view.Profile{}, profileFailure("get profile "+slug, resp.HTTPResponse, resp.Body)
 	}
-	return profileDetail(resp.JSON200), nil
+	return profileScreen(resp.JSON200), nil
 }
 
 // CreateProfile posts POST /v1/profiles.
-func (c *Client) CreateProfile(ctx context.Context, creation ProfileCreation) (ProfileSummary, error) {
+func (c *Client) CreateProfile(ctx context.Context, creation ProfileCreation) (view.ProfileRow, error) {
 	body := apiclient.CreateProfileJSONRequestBody{Slug: creation.Slug, Name: creation.Name}
 	if creation.Description != "" {
 		body.Description = &creation.Description
@@ -297,18 +119,18 @@ func (c *Client) CreateProfile(ctx context.Context, creation ProfileCreation) (P
 
 	resp, err := c.api.CreateProfileWithResponse(ctx, body)
 	if err != nil {
-		return ProfileSummary{}, fmt.Errorf("create profile %s: %w", creation.Slug, err)
+		return view.ProfileRow{}, fmt.Errorf("create profile %s: %w", creation.Slug, err)
 	}
 	if resp.JSON201 == nil {
-		return ProfileSummary{}, profileFailure("create profile "+creation.Slug,
+		return view.ProfileRow{}, profileFailure("create profile "+creation.Slug,
 			resp.HTTPResponse, resp.Body)
 	}
 
-	return profileSummary(resp.JSON201), nil
+	return profileRow(resp.JSON201), nil
 }
 
-func profileSummary(from *apiclient.Profile) ProfileSummary {
-	summary := ProfileSummary{
+func profileRow(from *apiclient.Profile) view.ProfileRow {
+	row := view.ProfileRow{
 		Slug:         from.Slug,
 		Name:         from.Name,
 		PackageCount: int(from.PackageCount),
@@ -316,9 +138,9 @@ func profileSummary(from *apiclient.Profile) ProfileSummary {
 		CanCurate:    from.CanCurate,
 	}
 	if from.Visibility != nil {
-		summary.Visibility = string(*from.Visibility)
+		row.Visibility = string(*from.Visibility)
 	}
-	return summary
+	return row
 }
 
 // SetProfileEntries puts PUT /v1/profiles/{slug}/entries — the WHOLE ordered
@@ -326,9 +148,9 @@ func profileSummary(from *apiclient.Profile) ProfileSummary {
 // express a reorder. An empty slice is refused by the api naming every
 // package left out, to catch a client acting on stale state — RemoveProfileEntry
 // below is the addressed way to take one out instead.
-func (c *Client) SetProfileEntries(ctx context.Context, slug string, entries []EntrySetting) (ProfileDetail, error) {
+func (c *Client) SetProfileEntries(ctx context.Context, slug string, entries []EntrySetting) (view.Profile, error) {
 	if err := checkSlug(slug); err != nil {
-		return ProfileDetail{}, err
+		return view.Profile{}, err
 	}
 
 	// Built with a length rather than left nil so an empty set is sent as
@@ -349,31 +171,31 @@ func (c *Client) SetProfileEntries(ctx context.Context, slug string, entries []E
 
 	resp, err := c.api.SetProfileEntriesWithResponse(ctx, slug, body)
 	if err != nil {
-		return ProfileDetail{}, fmt.Errorf("set the entries of %s: %w", slug, err)
+		return view.Profile{}, fmt.Errorf("set the entries of %s: %w", slug, err)
 	}
 	if resp.JSON200 == nil {
-		return ProfileDetail{}, profileFailure("set the entries of "+slug,
+		return view.Profile{}, profileFailure("set the entries of "+slug,
 			resp.HTTPResponse, resp.Body)
 	}
-	return profileDetail(resp.JSON200), nil
+	return profileScreen(resp.JSON200), nil
 }
 
 // RemoveProfileEntry posts POST /v1/profiles/{slug}/entries/remove: the
 // targeted removal SetProfileEntries's whole-set contract does not offer.
-func (c *Client) RemoveProfileEntry(ctx context.Context, slug, id string) (ProfileDetail, error) {
+func (c *Client) RemoveProfileEntry(ctx context.Context, slug, id string) (view.Profile, error) {
 	if err := checkSlug(slug); err != nil {
-		return ProfileDetail{}, err
+		return view.Profile{}, err
 	}
 
 	resp, err := c.api.RemoveProfileEntryWithResponse(ctx, slug, apiclient.ProfileEntryRemoval{Id: id})
 	if err != nil {
-		return ProfileDetail{}, fmt.Errorf("remove %s from %s: %w", id, slug, err)
+		return view.Profile{}, fmt.Errorf("remove %s from %s: %w", id, slug, err)
 	}
 	if resp.JSON200 == nil {
-		return ProfileDetail{}, profileFailure("remove "+id+" from "+slug,
+		return view.Profile{}, profileFailure("remove "+id+" from "+slug,
 			resp.HTTPResponse, resp.Body)
 	}
-	return profileDetail(resp.JSON200), nil
+	return profileScreen(resp.JSON200), nil
 }
 
 // DeleteProfile deletes DELETE /v1/profiles/{slug}. Refuses with a 409,
@@ -398,9 +220,9 @@ func (c *Client) DeleteProfile(ctx context.Context, slug string) error {
 // SetProfileSharing puts PUT /v1/profiles/{slug}/sharing: an UPSERT of
 // roles, not a replacement — a subject the body does not name keeps its
 // role. There is no way to remove one.
-func (c *Client) SetProfileSharing(ctx context.Context, slug string, members []Share) (ProfileDetail, error) {
+func (c *Client) SetProfileSharing(ctx context.Context, slug string, members []Share) (view.Profile, error) {
 	if err := checkSlug(slug); err != nil {
-		return ProfileDetail{}, err
+		return view.Profile{}, err
 	}
 
 	body := apiclient.SetProfileSharingJSONRequestBody{
@@ -416,21 +238,21 @@ func (c *Client) SetProfileSharing(ctx context.Context, slug string, members []S
 
 	resp, err := c.api.SetProfileSharingWithResponse(ctx, slug, body)
 	if err != nil {
-		return ProfileDetail{}, fmt.Errorf("set the sharing of %s: %w", slug, err)
+		return view.Profile{}, fmt.Errorf("set the sharing of %s: %w", slug, err)
 	}
 	if resp.JSON200 == nil {
-		return ProfileDetail{}, profileFailure("set the sharing of "+slug,
+		return view.Profile{}, profileFailure("set the sharing of "+slug,
 			resp.HTTPResponse, resp.Body)
 	}
-	return profileDetail(resp.JSON200), nil
+	return profileScreen(resp.JSON200), nil
 }
 
 // SetProfileTargets puts PUT /v1/profiles/{slug}/targets — the enabled set
 // in full. An omitted target is disabled; an empty list means the profile
 // writes nothing until somebody chooses.
-func (c *Client) SetProfileTargets(ctx context.Context, slug string, targets []string) (ProfileDetail, error) {
+func (c *Client) SetProfileTargets(ctx context.Context, slug string, targets []string) (view.Profile, error) {
 	if err := checkSlug(slug); err != nil {
-		return ProfileDetail{}, err
+		return view.Profile{}, err
 	}
 
 	body := apiclient.SetProfileTargetsJSONRequestBody{
@@ -442,22 +264,20 @@ func (c *Client) SetProfileTargets(ctx context.Context, slug string, targets []s
 
 	resp, err := c.api.SetProfileTargetsWithResponse(ctx, slug, body)
 	if err != nil {
-		return ProfileDetail{}, fmt.Errorf("set the targets of %s: %w", slug, err)
+		return view.Profile{}, fmt.Errorf("set the targets of %s: %w", slug, err)
 	}
 	if resp.JSON200 == nil {
-		return ProfileDetail{}, profileFailure("set the targets of "+slug,
+		return view.Profile{}, profileFailure("set the targets of "+slug,
 			resp.HTTPResponse, resp.Body)
 	}
-	return profileDetail(resp.JSON200), nil
+	return profileScreen(resp.JSON200), nil
 }
 
-// PublishRevision posts POST /v1/profiles/{slug}/revisions. The api's
-// Location header is deliberately not carried: that is the API's URL space,
-// which no browser on this role's origin may follow. A screen links to its
-// own route and gets the number it needs from the body.
-func (c *Client) PublishRevision(ctx context.Context, slug, note string) (PublishedRevision, error) {
+// PublishRevision posts POST /v1/profiles/{slug}/revisions. A 201 is the
+// whole answer: no screen reads the lockfile it returns.
+func (c *Client) PublishRevision(ctx context.Context, slug, note string) error {
 	if err := checkSlug(slug); err != nil {
-		return PublishedRevision{}, err
+		return err
 	}
 
 	body := apiclient.PublishRevisionJSONRequestBody{}
@@ -467,79 +287,41 @@ func (c *Client) PublishRevision(ctx context.Context, slug, note string) (Publis
 
 	resp, err := c.api.PublishRevisionWithResponse(ctx, slug, body)
 	if err != nil {
-		return PublishedRevision{}, fmt.Errorf("publish a revision of %s: %w", slug, err)
+		return fmt.Errorf("publish a revision of %s: %w", slug, err)
 	}
 	if resp.JSON201 == nil {
-		return PublishedRevision{}, profileFailure("publish a revision of "+slug,
+		return profileFailure("publish a revision of "+slug,
 			resp.HTTPResponse, resp.Body)
 	}
-
-	lockfile := resp.JSON201
-	published := PublishedRevision{
-		Revision:   int(lockfile.Revision),
-		Note:       deref(lockfile.Note),
-		ResolvedAt: lockfile.ResolvedAt,
-		Gate:       string(lockfile.Gate),
-		Entries:    make([]LockedEntry, 0, len(lockfile.Entries)),
-		Skipped:    make([]Skip, 0, len(lockfile.Skipped)),
-	}
-	for i := range lockfile.Entries {
-		entry := &lockfile.Entries[i]
-		published.Entries = append(published.Entries, LockedEntry{
-			ID:         entry.Id,
-			Kind:       string(entry.Kind),
-			Version:    entry.Version,
-			Digest:     entry.Digest,
-			Resolution: string(entry.Resolution),
-			Verdict:    string(entry.Verdict),
-			Override:   entryOverride(entry.Override),
-		})
-	}
-	for _, skipped := range lockfile.Skipped {
-		published.Skipped = append(published.Skipped, skip(skipped))
-	}
-	return published, nil
-}
-
-// RevisionLockfile is one published revision's resolved lockfile, read by
-// the "Show diff" panel. Deliberately a narrower shape than the api's own —
-// no digest, no object key, no signature — because a diff reports what
-// changed, not where the bytes live.
-type RevisionLockfile struct {
-	Revision      int
-	Gate          string
-	DefaultPolicy string
-	Targets       []string
-	Entries       []LockedEntry
-	Skipped       []Skip
+	return nil
 }
 
 // Revision reads GET /v1/profiles/{slug}/revisions/{revision}: one published
 // revision, exactly as it was frozen. The diff panel is the only caller —
 // it compares two of these rather than trusting a stored delta, since the
 // lockfile is the durable record and a diff must never drift from it.
-func (c *Client) Revision(ctx context.Context, slug string, revision int) (RevisionLockfile, error) {
+func (c *Client) Revision(ctx context.Context, slug string, revision int) (view.LockfileSnapshot, error) {
 	if err := checkSlug(slug); err != nil {
-		return RevisionLockfile{}, err
+		return view.LockfileSnapshot{}, err
 	}
 
 	resp, err := c.api.GetRevisionWithResponse(ctx, slug, strconv.Itoa(revision))
 	if err != nil {
-		return RevisionLockfile{}, fmt.Errorf("get revision %d of %s: %w", revision, slug, err)
+		return view.LockfileSnapshot{}, fmt.Errorf("get revision %d of %s: %w", revision, slug, err)
 	}
 	if resp.JSON200 == nil {
-		return RevisionLockfile{}, profileFailure(fmt.Sprintf("get revision %d of %s", revision, slug),
+		return view.LockfileSnapshot{}, profileFailure(fmt.Sprintf("get revision %d of %s", revision, slug),
 			resp.HTTPResponse, resp.Body)
 	}
-	return revisionLockfile(resp.JSON200), nil
+	return lockfileSnapshot(resp.JSON200), nil
 }
 
-func revisionLockfile(from *apiclient.Lockfile) RevisionLockfile {
-	out := RevisionLockfile{
+func lockfileSnapshot(from *apiclient.Lockfile) view.LockfileSnapshot {
+	out := view.LockfileSnapshot{
 		Revision: int(from.Revision),
 		Gate:     string(from.Gate),
-		Entries:  make([]LockedEntry, 0, len(from.Entries)),
-		Skipped:  make([]Skip, 0, len(from.Skipped)),
+		Entries:  make([]view.LockfileEntrySnapshot, 0, len(from.Entries)),
+		Skipped:  make([]view.LockfileSkipSnapshot, 0, len(from.Skipped)),
 	}
 	if from.DefaultPolicy != nil {
 		out.DefaultPolicy = string(*from.DefaultPolicy)
@@ -549,18 +331,16 @@ func revisionLockfile(from *apiclient.Lockfile) RevisionLockfile {
 	}
 	for i := range from.Entries {
 		entry := &from.Entries[i]
-		out.Entries = append(out.Entries, LockedEntry{
+		out.Entries = append(out.Entries, view.LockfileEntrySnapshot{
 			ID:         entry.Id,
-			Kind:       string(entry.Kind),
 			Version:    entry.Version,
-			Digest:     entry.Digest,
 			Resolution: string(entry.Resolution),
-			Verdict:    string(entry.Verdict),
-			Override:   entryOverride(entry.Override),
 		})
 	}
 	for _, skipped := range from.Skipped {
-		out.Skipped = append(out.Skipped, skip(skipped))
+		out.Skipped = append(out.Skipped, view.LockfileSkipSnapshot{
+			ID: skipped.Id, Reason: string(skipped.Reason),
+		})
 	}
 	return out
 }
@@ -576,8 +356,8 @@ func checkSlug(slug string) error {
 	return nil
 }
 
-func profileDetail(body *apiclient.ProfileDetail) ProfileDetail {
-	detail := ProfileDetail{
+func profileScreen(body *apiclient.ProfileDetail) view.Profile {
+	out := view.Profile{
 		Slug:               body.Slug,
 		Name:               body.Name,
 		Description:        deref(body.Description),
@@ -588,26 +368,22 @@ func profileDetail(body *apiclient.ProfileDetail) ProfileDetail {
 		HeadRevision:       int(body.HeadRevision),
 		ForkedFrom:         deref(body.ForkedFrom),
 		UnpublishedChanges: body.UnpublishedChanges,
-		Permissions: ProfilePermissions{
+		Permissions: view.ProfilePermissions{
 			Curate:  body.Permissions.Curate,
 			Share:   body.Permissions.Share,
 			Publish: body.Permissions.Publish,
 			Delete:  body.Permissions.Delete,
 		},
-		Entries:   make([]ProfileEntry, 0, len(body.Entries)),
-		Members:   make([]ProfileMember, 0, len(body.Members)),
-		Targets:   make([]ProfileTarget, 0, len(body.Targets)),
-		Revisions: make([]ProfileRevision, 0, len(body.Revisions)),
 	}
 	if body.Role != nil {
-		detail.Role = string(*body.Role)
+		out.Role = string(*body.Role)
 	}
 
 	for i := range body.Entries {
-		detail.Entries = append(detail.Entries, profileEntry(&body.Entries[i]))
+		out.Entries = append(out.Entries, profileEntry(&body.Entries[i]))
 	}
 	for _, member := range body.Members {
-		detail.Members = append(detail.Members, ProfileMember{
+		out.Members = append(out.Members, view.ProfileMemberRow{
 			Kind:        string(member.Kind),
 			Ref:         member.Ref,
 			Role:        string(member.Role),
@@ -615,67 +391,62 @@ func profileDetail(body *apiclient.ProfileDetail) ProfileDetail {
 		})
 	}
 	for _, target := range body.Targets {
-		detail.Targets = append(detail.Targets, ProfileTarget{
+		out.Targets = append(out.Targets, view.ProfileTargetRow{
 			Target: string(target.Target), Enabled: target.Enabled,
 		})
 	}
 	for _, revision := range body.Revisions {
-		detail.Revisions = append(detail.Revisions, ProfileRevision{
+		out.Revisions = append(out.Revisions, view.ProfileRevisionRow{
 			Revision:    int(revision.Revision),
 			Note:        deref(revision.Note),
-			PublishedAt: revision.PublishedAt,
+			PublishedAt: view.Timestamp(revision.PublishedAt),
 			PublishedBy: revision.PublishedBy,
 		})
 	}
-	return detail
+	return out
 }
 
-func profileEntry(from *apiclient.ProfileEntry) ProfileEntry {
-	entry := ProfileEntry{
+func profileEntry(from *apiclient.ProfileEntry) view.ProfileEntryRow {
+	entry := view.ProfileEntryRow{
 		ID:            from.Id,
 		Name:          from.Name,
-		Kind:          string(from.Kind),
+		Kind:          view.Kind(from.Kind),
 		Mode:          string(from.Mode),
 		Range:         deref(from.Range),
 		PinnedVersion: deref(from.PinnedVersion),
 		LatestVersion: deref(from.LatestVersion),
 		Version:       deref(from.Version),
 		Digest:        deref(from.Digest),
-		Outcome:       string(from.Outcome),
+		Outcome:       view.ProfileOutcome(from.Outcome),
 		Note:          deref(from.Note),
-		Override:      entryOverride(from.Override),
+		Override:      lockfileOverride(from.Override),
 		Unpublished:   from.Unpublished,
 	}
 	if from.LatestVerdict != nil {
-		entry.LatestVerdict = string(*from.LatestVerdict)
+		entry.LatestVerdict = view.Verdict(*from.LatestVerdict)
 	}
 	if from.Verdict != nil {
-		entry.Verdict = string(*from.Verdict)
+		entry.Verdict = view.Verdict(*from.Verdict)
 	}
 	if from.Skip != nil {
-		excluded := skip(*from.Skip)
-		entry.Skip = &excluded
+		entry.Skip = &view.ProfileSkip{
+			Reason:              string(from.Skip.Reason),
+			Detail:              deref(from.Skip.Detail),
+			WouldHaveResolvedTo: deref(from.Skip.WouldHaveResolvedTo),
+		}
 	}
 	return entry
 }
 
-func skip(from apiclient.LockfileSkip) Skip {
-	return Skip{
-		ID:                  from.Id,
-		Reason:              string(from.Reason),
-		Detail:              deref(from.Detail),
-		WouldHaveResolvedTo: deref(from.WouldHaveResolvedTo),
-	}
-}
-
-func entryOverride(from *apiclient.LockfileOverride) *EntryOverride {
+// lockfileOverride turns the schema's zero-instant "no expiry" back into
+// absence, so no screen says an override that never lapses expired in year 1.
+func lockfileOverride(from *apiclient.LockfileOverride) *view.ProfileOverride {
 	if from == nil {
 		return nil
 	}
-	out := &EntryOverride{Reviewer: from.Reviewer, Note: from.Note}
+	out := &view.ProfileOverride{Reviewer: from.Reviewer, Note: from.Note}
 	if !from.ExpiresAt.IsZero() {
-		expires := from.ExpiresAt
-		out.ExpiresAt = &expires
+		out.Expires = view.Timestamp(from.ExpiresAt)
 	}
 	return out
 }

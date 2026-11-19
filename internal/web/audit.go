@@ -34,10 +34,7 @@ func (s *Server) audit(c *gin.Context) {
 		return
 	}
 
-	screen.Total, screen.Page, screen.PageSize = entries.Total, entries.Page, entries.PageSize
-	for _, entry := range entries.Entries {
-		screen.Rows = append(screen.Rows, auditRow(entry))
-	}
+	screen.Rows, screen.Total, screen.Page, screen.PageSize = entries.Rows, entries.Total, entries.Page, entries.PageSize
 
 	if query.Selected != "" {
 		if row := findAuditRow(screen.Rows, query.Selected); row != nil {
@@ -68,19 +65,6 @@ func findAuditRow(rows []view.AuditRow, id string) *view.AuditRow {
 
 func (s *Server) renderAudit(c *gin.Context, status int, screen view.Audit) {
 	s.render(c, status, "Audit log", "audit", components.AuditScreen(screen))
-}
-
-func auditRow(from hub.AuditEntry) view.AuditRow {
-	return view.AuditRow{
-		ID:    from.ID,
-		At:    view.Timestamp(from.OccurredAt),
-		Actor: from.Actor,
-		// From actor_kind, never inferred from the name.
-		System: from.ActorKind == view.ActorKindSystem,
-		Kind:   from.Kind,
-		Text:   from.Text,
-		Source: from.Source,
-	}
 }
 
 // ---- the export -----------------------------------------------------------

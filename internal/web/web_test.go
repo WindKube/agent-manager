@@ -17,7 +17,6 @@ import (
 	"agent-manager/internal/web"
 	"agent-manager/internal/web/components"
 	"agent-manager/internal/web/fixture"
-	"agent-manager/internal/web/hub"
 	"agent-manager/internal/web/view"
 )
 
@@ -639,18 +638,18 @@ func (s noProfiles) Package(ctx context.Context, namespace, name string) (view.P
 	return s.base.Package(ctx, namespace, name)
 }
 
-func (noProfiles) Profiles(context.Context) ([]hub.ProfileSummary, error) { return nil, nil }
+func (noProfiles) Profiles(context.Context) ([]view.ProfileRow, error) { return nil, nil }
 
-func (noProfiles) Profile(_ context.Context, slug string) (hub.ProfileDetail, error) {
-	return hub.ProfileDetail{}, view.ErrNotFound
+func (noProfiles) Profile(_ context.Context, slug string) (view.Profile, error) {
+	return view.Profile{}, view.ErrNotFound
 }
 
 // Revision is unread by this screen, but a stub that omits it stops satisfying
 // web.ProfileSource — and a stub that fails that assertion in handler() leaves
 // deps.Profiles nil, which renders as "you have no profiles" and would make
 // the tests below pass without exercising anything.
-func (noProfiles) Revision(context.Context, string, int) (hub.RevisionLockfile, error) {
-	return hub.RevisionLockfile{}, view.ErrNotFound
+func (noProfiles) Revision(context.Context, string, int) (view.LockfileSnapshot, error) {
+	return view.LockfileSnapshot{}, view.ErrNotFound
 }
 
 type profilesUnavailable struct{ base *fixture.Catalog }
@@ -663,16 +662,16 @@ func (s profilesUnavailable) Package(ctx context.Context, namespace, name string
 	return s.base.Package(ctx, namespace, name)
 }
 
-func (profilesUnavailable) Profiles(context.Context) ([]hub.ProfileSummary, error) {
+func (profilesUnavailable) Profiles(context.Context) ([]view.ProfileRow, error) {
 	return nil, errors.New("the profiles api is down")
 }
 
-func (profilesUnavailable) Profile(_ context.Context, slug string) (hub.ProfileDetail, error) {
-	return hub.ProfileDetail{}, view.ErrNotFound
+func (profilesUnavailable) Profile(_ context.Context, slug string) (view.Profile, error) {
+	return view.Profile{}, view.ErrNotFound
 }
 
-func (profilesUnavailable) Revision(context.Context, string, int) (hub.RevisionLockfile, error) {
-	return hub.RevisionLockfile{}, view.ErrNotFound
+func (profilesUnavailable) Revision(context.Context, string, int) (view.LockfileSnapshot, error) {
+	return view.LockfileSnapshot{}, view.ErrNotFound
 }
 
 // A profile that already holds the package is told so, not offered as new —

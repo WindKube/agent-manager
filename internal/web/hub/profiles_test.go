@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -94,14 +93,14 @@ func TestTheProfileDetailReachesTheScreenAsFactsAndNotAsSentences(t *testing.T) 
 	require.Empty(t, detail.Members[1].DisplayName,
 		"a membership may name somebody this hub has never seen sign in")
 
-	require.Equal(t, []hub.ProfileTarget{
+	require.Equal(t, []view.ProfileTargetRow{
 		{Target: "claude-code", Enabled: true},
 		{Target: "codex", Enabled: false},
 	}, detail.Targets, "the whole vocabulary arrives, so the screen holds no copy of the enum")
 
 	require.Len(t, detail.Revisions, 2)
 	require.Equal(t, 14, detail.Revisions[0].Revision)
-	require.Equal(t, time.Date(2026, 8, 27, 14, 2, 0, 0, time.UTC), detail.Revisions[0].PublishedAt.UTC())
+	require.Equal(t, "2026-08-27 14:02 UTC", detail.Revisions[0].PublishedAt)
 	require.Empty(t, detail.Revisions[1].Note)
 }
 
@@ -118,9 +117,9 @@ func TestARowKeepsTheCatalogsOfferingApartFromWhatTheEntryResolvesTo(t *testing.
 	require.Len(t, detail.Entries, 3)
 
 	flagged := detail.Entries[1]
-	require.Equal(t, "flagged", flagged.LatestVerdict, "the Scan badge is the catalog's verdict")
+	require.Equal(t, view.VerdictFlagged, flagged.LatestVerdict, "the Scan badge is the catalog's verdict")
 	require.Equal(t, "0.5.1", flagged.Version)
-	require.Equal(t, "overridden", flagged.Outcome)
+	require.Equal(t, view.OutcomeOverridden, flagged.Outcome)
 	require.True(t, flagged.Unpublished)
 	require.NotNil(t, flagged.Override)
 	require.Equal(t, "ewojcik@example.com", flagged.Override.Reviewer)
@@ -135,7 +134,7 @@ func TestARowKeepsTheCatalogsOfferingApartFromWhatTheEntryResolvesTo(t *testing.
 	require.NotNil(t, excluded.Skip)
 	require.Equal(t, "version-rejected", excluded.Skip.Reason)
 	require.Equal(t, "2.0.0", excluded.Skip.WouldHaveResolvedTo)
-	require.Equal(t, "rejected", excluded.LatestVerdict,
+	require.Equal(t, view.VerdictRejected, excluded.LatestVerdict,
 		"the row still shows what the catalog holds, or the reader cannot see why it was excluded")
 }
 
@@ -161,7 +160,7 @@ func TestAnOverrideThatDoesNotLapseIsNotOneThatExpiredInTheYearOne(t *testing.T)
 	detail, err := client.Profile(t.Context(), "example/platform-engineer")
 	require.NoError(t, err)
 	require.NotNil(t, detail.Entries[0].Override)
-	require.Nil(t, detail.Entries[0].Override.ExpiresAt,
+	require.Empty(t, detail.Entries[0].Override.Expires,
 		"the zero instant is the absence of an expiry, and must not reach a screen as a date")
 }
 
@@ -196,10 +195,7 @@ func TestAProfileSlugOfSeveralSegmentsIsSentAsOnePathSegment(t *testing.T) {
 				return err
 			}},
 		{"publishing a revision", "/v1/profiles/example%2Fplatform-engineer/revisions",
-			func(c *hub.Client) error {
-				_, err := c.PublishRevision(t.Context(), slug, "")
-				return err
-			}},
+			func(c *hub.Client) error { return c.PublishRevision(t.Context(), slug, "") }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var got string
@@ -246,7 +242,7 @@ func TestAnEmptySlugIsAnsweredAsNoProfileRatherThanBecomingTheWholeList(t *testi
 	require.Empty(t, detail.Slug)
 	require.False(t, reached, "the api was asked for a profile with no slug")
 
-	_, err = client.PublishRevision(t.Context(), "", "note")
+	err = client.PublishRevision(t.Context(), "", "note")
 	require.ErrorIs(t, err, view.ErrNotFound)
 	require.False(t, reached)
 }
@@ -496,59 +492,22 @@ func TestSharingSendsOnlyTheSubjectsWhoseRoleIsChanging(t *testing.T) {
 		strings.TrimSpace(body))
 }
 
-func TestPublishingReportsTheNumberTheServerChoseAndWhatItLeftOut(t *testing.T) {
-	var body string
+func TestPublishingPostsTheNoteAndTakesA201AsSuccess(t *testing.T) {
+	var method, path, body string
 	client := clientAgainst(t, func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
-		body = string(raw)
-		w.Header().Set("Location", "/v1/profiles/example%2Fplatform-engineer/revisions/15")
-		writeCreated(w, `{
-		  "schemaVersion":"1.0.0",
-		  "profile":{"slug":"example/platform-engineer","name":"Platform Engineer",
-		             "visibility":"organisation"},
-		  "revision":15,"note":"pinned ADR Writer to 3.0.2",
-		  "resolvedAt":"2026-08-31T10:00:00Z","gate":"warn-with-override",
-		  "defaultPolicy":"floating-latest",
-		  "entries":[
-		    {"id":"example/adr-writer","kind":"skill","version":"3.0.2",
-		     "digest":"sha256:1111111111111111111111111111111111111111111111111111111111111111",
-		     "objectKey":"bundles/example/adr-writer/3.0.2/bundle.tar.zst",
-		     "resolution":"pinned","verdict":"clean"},
-		    {"id":"community/slack-digest","kind":"plugin","version":"0.5.1",
-		     "digest":"sha256:2222222222222222222222222222222222222222222222222222222222222222",
-		     "objectKey":"bundles/community/slack-digest/0.5.1/bundle.tar.zst",
-		     "resolution":"latest","verdict":"flagged",
-		     "override":{"reviewer":"ewojcik@example.com","note":"our own collector",
-		                 "expiresAt":"2026-09-12T09:00:00Z"}}
-		  ],
-		  "skipped":[{"id":"community/finops","reason":"version-rejected",
-		              "detail":"SH-FS-007 in scripts/collect.sh","wouldHaveResolvedTo":"2.0.0"}],
-		  "targets":["claude-code"]
-		}`)
+		method, path, body = r.Method, r.URL.EscapedPath(), string(raw)
+		writeCreated(w, `{"schemaVersion":"1.0.0","revision":15,"gate":"warn-with-override",
+		                  "resolvedAt":"2026-08-31T10:00:00Z","entries":[],"skipped":[],
+		                  "targets":[],"profile":{"slug":"example/platform-engineer",
+		                  "name":"Platform Engineer"}}`)
 	})
 
-	published, err := client.PublishRevision(t.Context(), "example/platform-engineer",
-		"pinned ADR Writer to 3.0.2")
+	err := client.PublishRevision(t.Context(), "example/platform-engineer", "pinned ADR Writer to 3.0.2")
 	require.NoError(t, err)
+	require.Equal(t, http.MethodPost, method)
+	require.Equal(t, "/v1/profiles/example%2Fplatform-engineer/revisions", path)
 	require.Contains(t, body, `"note":"pinned ADR Writer to 3.0.2"`)
-
-	require.Equal(t, 15, published.Revision,
-		"the number is the server's, and this is the only place a screen may learn which one it got")
-	require.Equal(t, "warn-with-override", published.Gate)
-	require.Equal(t, time.Date(2026, 8, 31, 10, 0, 0, 0, time.UTC), published.ResolvedAt.UTC())
-
-	require.Len(t, published.Entries, 2)
-	require.Equal(t, "3.0.2", published.Entries[0].Version)
-	require.Equal(t, "pinned", published.Entries[0].Resolution)
-	require.NotNil(t, published.Entries[1].Override)
-	require.NotNil(t, published.Entries[1].Override.ExpiresAt)
-
-	// FR-036: a revision that excluded a package says so. A publish confirmation
-	// that dropped this would announce a clean publish of an incomplete profile.
-	require.Len(t, published.Skipped, 1)
-	require.Equal(t, "community/finops", published.Skipped[0].ID)
-	require.Equal(t, "version-rejected", published.Skipped[0].Reason)
-	require.Equal(t, "SH-FS-007 in scripts/collect.sh", published.Skipped[0].Detail)
 }
 
 // A publish with nothing to say sends no note rather than an empty one, so the
@@ -563,11 +522,8 @@ func TestAPublishWithNoNoteSendsNoNoteField(t *testing.T) {
 		                  "targets":[],"profile":{"slug":"example/new","name":"New"}}`)
 	})
 
-	published, err := client.PublishRevision(t.Context(), "example/new", "")
-	require.NoError(t, err)
+	require.NoError(t, client.PublishRevision(t.Context(), "example/new", ""))
 	require.Equal(t, `{}`, strings.TrimSpace(body))
-	require.Empty(t, published.Note)
-	require.Empty(t, published.Skipped)
 }
 
 // writeCreated answers a 201 with a JSON body. The content type has to be set
@@ -605,8 +561,7 @@ func profileCalls(ctx context.Context) map[string]func(*hub.Client) error {
 			return err
 		},
 		"publishing a revision": func(c *hub.Client) error {
-			_, err := c.PublishRevision(ctx, slug, "note")
-			return err
+			return c.PublishRevision(ctx, slug, "note")
 		},
 	}
 }

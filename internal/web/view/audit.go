@@ -36,6 +36,14 @@ type AuditRow struct {
 	Source string
 }
 
+// AuditPage is one page of the audit log.
+type AuditPage struct {
+	Rows     []AuditRow
+	Total    int
+	Page     int
+	PageSize int
+}
+
 // ActorNote labels a machine actor. A person's row gets nothing: the actor column
 // carrying a name IS the statement, and annotating it would be noise on every row.
 func (r AuditRow) ActorNote() string {

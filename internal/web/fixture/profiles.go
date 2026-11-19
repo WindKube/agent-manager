@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"agent-manager/internal/web/hub"
 	"agent-manager/internal/web/view"
 )
 
@@ -27,8 +26,8 @@ const (
 )
 
 // Profiles implements the list half of web.ProfileSource.
-func (c *Catalog) Profiles(context.Context) ([]hub.ProfileSummary, error) {
-	return []hub.ProfileSummary{
+func (c *Catalog) Profiles(context.Context) ([]view.ProfileRow, error) {
+	return []view.ProfileRow{
 		{Slug: fixtureProfileSlug, Name: "Platform Engineer", Visibility: "organisation",
 			PackageCount: 2, HeadRevision: 14, CanCurate: true},
 		{Slug: fixtureProfileForkedSlug, Name: "SRE On-call", Visibility: "shared",
@@ -37,20 +36,19 @@ func (c *Catalog) Profiles(context.Context) ([]hub.ProfileSummary, error) {
 }
 
 // Profile implements the detail half of web.ProfileSource.
-func (c *Catalog) Profile(_ context.Context, slug string) (hub.ProfileDetail, error) {
+func (c *Catalog) Profile(_ context.Context, slug string) (view.Profile, error) {
 	now := time.Now().UTC()
 
 	switch slug {
 	case fixtureProfileSlug:
-		expires := now.Add(9 * 24 * time.Hour)
-		return hub.ProfileDetail{
+		return view.Profile{
 			Slug: fixtureProfileSlug, Name: "Platform Engineer",
 			Description: "The tools platform engineers sync onto a new machine.",
 			Visibility:  "organisation", OwnerTeam: "example/platform",
 			DefaultPolicy: "floating-latest", Gate: "warn-with-override",
 			HeadRevision: 14, Role: "owner",
-			Permissions: hub.ProfilePermissions{Curate: true, Share: true, Publish: true},
-			Entries: []hub.ProfileEntry{
+			Permissions: view.ProfilePermissions{Curate: true, Share: true, Publish: true},
+			Entries: []view.ProfileEntryRow{
 				{
 					ID: "example/adr-writer", Name: "ADR Writer", Kind: "skill",
 					Mode: "pinned", PinnedVersion: "3.0.2",
@@ -65,40 +63,40 @@ func (c *Catalog) Profile(_ context.Context, slug string) (hub.ProfileDetail, er
 					Version: "0.8.3", Verdict: "flagged", Digest: "sha256:" + fixtureDigest,
 					Outcome: "warned",
 					Note:    "Flagged (SH-INJ-011 in SKILL.md); warn-with-override includes it with a warning.",
-					Override: &hub.EntryOverride{
-						Reviewer:  "fixture-reviewer",
-						Note:      "Accepted for the platform team's own use; the instruction text is inert here.",
-						ExpiresAt: &expires,
+					Override: &view.ProfileOverride{
+						Reviewer: "fixture-reviewer",
+						Note:     "Accepted for the platform team's own use; the instruction text is inert here.",
+						Expires:  view.Timestamp(now.Add(9 * 24 * time.Hour)),
 					},
 				},
 			},
-			Members: []hub.ProfileMember{
+			Members: []view.ProfileMemberRow{
 				{Kind: "user", Ref: "fixture-owner@fixture.invalid", Role: "owner", DisplayName: "Fixture Owner"},
 				{Kind: "group", Ref: "eng-platform", Role: "maintainer"},
 			},
-			Targets: []hub.ProfileTarget{
+			Targets: []view.ProfileTargetRow{
 				{Target: "claude-code", Enabled: true},
 				{Target: "codex", Enabled: false},
 			},
-			Revisions: []hub.ProfileRevision{
-				{Revision: 14, Note: "pinned ADR Writer to 3.0.2", PublishedAt: now.Add(-7 * 24 * time.Hour), PublishedBy: "fixture-owner@fixture.invalid"},
-				{Revision: 13, PublishedAt: now.Add(-30 * 24 * time.Hour), PublishedBy: "fixture-owner@fixture.invalid"},
+			Revisions: []view.ProfileRevisionRow{
+				{Revision: 14, Note: "pinned ADR Writer to 3.0.2", PublishedAt: view.Timestamp(now.Add(-7 * 24 * time.Hour)), PublishedBy: "fixture-owner@fixture.invalid"},
+				{Revision: 13, PublishedAt: view.Timestamp(now.Add(-30 * 24 * time.Hour)), PublishedBy: "fixture-owner@fixture.invalid"},
 			},
 		}, nil
 	case fixtureProfileForkedSlug:
-		return hub.ProfileDetail{
+		return view.Profile{
 			Slug: fixtureProfileForkedSlug, Name: "SRE On-call",
 			Visibility: "shared", DefaultPolicy: "floating-latest", Gate: "warn-with-override",
 			ForkedFrom: fixtureProfileSlug, Role: "consumer",
-			Permissions:        hub.ProfilePermissions{},
+			Permissions:        view.ProfilePermissions{},
 			UnpublishedChanges: true,
-			Targets: []hub.ProfileTarget{
+			Targets: []view.ProfileTargetRow{
 				{Target: "claude-code", Enabled: false},
 				{Target: "codex", Enabled: false},
 			},
 		}, nil
 	default:
-		return hub.ProfileDetail{}, view.ErrNotFound
+		return view.Profile{}, view.ErrNotFound
 	}
 }
 
@@ -108,30 +106,30 @@ const fixtureDigest = "9f2c6a1e4b7d3f5081a2c9e6b7d4f1a3c8e5b2d9f6a1c4e7b0d3f6a9c
 // resolved lockfile. Revision 14's note above ("pinned ADR Writer to 3.0.2")
 // is what the diff between these two revisions shows: a version bump and a
 // pin-mode change on that one entry, nothing else.
-func (c *Catalog) Revision(_ context.Context, slug string, revision int) (hub.RevisionLockfile, error) {
+func (c *Catalog) Revision(_ context.Context, slug string, revision int) (view.LockfileSnapshot, error) {
 	if slug != fixtureProfileSlug {
-		return hub.RevisionLockfile{}, view.ErrNotFound
+		return view.LockfileSnapshot{}, view.ErrNotFound
 	}
 	switch revision {
 	case 14:
-		return hub.RevisionLockfile{
+		return view.LockfileSnapshot{
 			Revision: 14, Gate: "warn-with-override", DefaultPolicy: "floating-latest",
 			Targets: []string{"claude-code"},
-			Entries: []hub.LockedEntry{
-				{ID: "example/adr-writer", Kind: "skill", Version: "3.0.2", Resolution: "pinned", Verdict: "clean", Digest: fixtureDigest},
-				{ID: "community/postgres-migration-guard", Kind: "skill", Version: "0.8.3", Resolution: "latest", Verdict: "flagged", Digest: fixtureDigest},
+			Entries: []view.LockfileEntrySnapshot{
+				{ID: "example/adr-writer", Version: "3.0.2", Resolution: "pinned"},
+				{ID: "community/postgres-migration-guard", Version: "0.8.3", Resolution: "latest"},
 			},
 		}, nil
 	case 13:
-		return hub.RevisionLockfile{
+		return view.LockfileSnapshot{
 			Revision: 13, Gate: "warn-with-override", DefaultPolicy: "floating-latest",
 			Targets: []string{"claude-code"},
-			Entries: []hub.LockedEntry{
-				{ID: "example/adr-writer", Kind: "skill", Version: "3.0.1", Resolution: "latest", Verdict: "clean", Digest: fixtureDigest},
-				{ID: "community/postgres-migration-guard", Kind: "skill", Version: "0.8.3", Resolution: "latest", Verdict: "flagged", Digest: fixtureDigest},
+			Entries: []view.LockfileEntrySnapshot{
+				{ID: "example/adr-writer", Version: "3.0.1", Resolution: "latest"},
+				{ID: "community/postgres-migration-guard", Version: "0.8.3", Resolution: "latest"},
 			},
 		}, nil
 	default:
-		return hub.RevisionLockfile{}, view.ErrNotFound
+		return view.LockfileSnapshot{}, view.ErrNotFound
 	}
 }

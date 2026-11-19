@@ -15,6 +15,9 @@ type ProfileRow struct {
 	Visibility   string
 	PackageCount int
 	HeadRevision int
+	// CanCurate is whether this identity's role lets it change what the
+	// profile holds, so a list need not read each profile's detail.
+	CanCurate bool
 }
 
 // Unpublished is a profile with no revision at all — created but never
@@ -236,15 +239,11 @@ type ProfileSkip struct {
 func (s ProfileSkip) ReasonLabel() string { return SkipReasonLabel(s.Reason) }
 
 // ProfileOverride is the acceptance a flagged version resolved under.
-//
-// Unlike the scanner's Override, a nil Expires here genuinely means the
-// acceptance does not lapse — the hub has already turned the lockfile schema's
-// required-but-sometimes-absent zero instant back into that absence at the
-// door (see hub.EntryOverride).
 type ProfileOverride struct {
 	Reviewer string
 	Note     string
-	// Expires is "" when the acceptance does not lapse.
+	// Expires is "" when the acceptance does not lapse: the lockfile schema
+	// models that as the zero instant, never as a date.
 	Expires string
 }
 

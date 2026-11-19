@@ -470,6 +470,28 @@ func TestTheWholeLoopFromAnImportedHostilePackageToAChangedResolution(t *testing
 	require.True(t, resolvesToServableBytes(t, pkg),
 		"an acceptance does not withdraw the bytes")
 
+	// The package's history is one filter: the registration, the stored bytes and
+	// the verdict are about its version, the acceptance about its finding.
+	packageRef := pkg.namespace + "/" + pkg.name
+	history, err := queries.Audit(ctx, db,
+		queries.AuditFilter{SubjectKind: "package", SubjectID: packageRef}, 1, queries.MaxAuditPageSize)
+	require.NoError(t, err)
+	actions := map[string]contract.AuditEntry{}
+	for _, entry := range history.Entries {
+		require.Equal(t, pkg.namespace, entry.Namespace)
+		require.Equal(t, packageRef, entry.Data["package"])
+		actions[entry.Data["action"].(string)] = entry
+	}
+	require.Len(t, actions, 4, "registered, stored, scanned and accepted, and nothing about another package")
+	for _, action := range []string{"registered", "stored", "scanned"} {
+		require.Equal(t, "version", actions[action].SubjectKind, action)
+		require.Equal(t, packageRef+"@"+pkg.semver, actions[action].SubjectID, action)
+	}
+	require.Equal(t, "flagged", actions["scanned"].Data["verdict"])
+	require.Equal(t, "finding", actions["accepted"].SubjectKind)
+	require.Equal(t, findingID.String(), actions["accepted"].SubjectID)
+	require.Equal(t, "SH-NET-002", actions["accepted"].Data["ruleId"])
+
 	// --- the rejection -------------------------------------------------------
 	//
 	// A second package, because rejection is terminal: doing both to one version

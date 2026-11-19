@@ -187,6 +187,14 @@ func statusParam(status string) string {
 
 func ptr[T any](v T) *T { return &v }
 
+// optional is nil for an empty string, so an unset filter is left off the query.
+func optional(v string) *string {
+	if v == "" {
+		return nil
+	}
+	return &v
+}
+
 // bearer forwards the caller's own session token, and only ever theirs. A
 // request outside a signed-in browser session carries no Authorization
 // header, and the web role must not appear to have a fallback.

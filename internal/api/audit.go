@@ -16,7 +16,29 @@ import (
 
 // ---- GET /v1/audit -----------------------------------------------------------
 
+// AuditFilterInput is shared by the page and the export, so the export is
+// always the page's full current scope.
+type AuditFilterInput struct {
+	SubjectKind string `query:"subjectKind" enum:"package,version,finding,profile,revision,category,mapping,policy,identity,device" doc:"Only rows about this kind of subject. package also matches the rows about its versions and findings."`
+	SubjectID   string `query:"subjectId" maxLength:"200" doc:"Only rows about this subject id; pair it with subjectKind."`
+	Namespace   string `query:"namespace" maxLength:"200" doc:"Only rows whose subject is in this package namespace."`
+}
+
+// Resolve refuses a bare subjectId: no index serves it, and an id means
+// nothing without its kind.
+func (f *AuditFilterInput) Resolve(huma.Context) []error {
+	if f.SubjectID != "" && f.SubjectKind == "" {
+		return []error{&huma.ErrorDetail{Location: "query.subjectId", Message: "subjectId needs subjectKind", Value: f.SubjectID}}
+	}
+	return nil
+}
+
+func (f AuditFilterInput) filter() queries.AuditFilter {
+	return queries.AuditFilter{SubjectKind: f.SubjectKind, SubjectID: f.SubjectID, Namespace: f.Namespace}
+}
+
 type listAuditInput struct {
+	AuditFilterInput
 	Page     int `query:"page" minimum:"1" default:"1" doc:"Clamped into range: a page past the end returns the last one."`
 	PageSize int `query:"pageSize" minimum:"1" maximum:"200" default:"50"`
 }
@@ -26,7 +48,7 @@ type listAuditOutput struct {
 }
 
 func (s *Server) listAudit(ctx context.Context, in *listAuditInput) (*listAuditOutput, error) {
-	page, err := queries.Audit(ctx, s.deps.DB, in.Page, in.PageSize)
+	page, err := queries.Audit(ctx, s.deps.DB, in.filter(), in.Page, in.PageSize)
 	if err != nil {
 		return nil, fail(logging.From(ctx), err)
 	}
@@ -66,7 +88,8 @@ const auditExportMediaType = "application/x-ndjson"
 // end-of-stream without the trailer has an incomplete export. The failure is also
 // logged with the request's correlation id, which is what joins the operator's
 // truncated file to the cause.
-func (s *Server) exportAudit(ctx context.Context, _ *struct{}) (*huma.StreamResponse, error) {
+func (s *Server) exportAudit(ctx context.Context, in *AuditFilterInput) (*huma.StreamResponse, error) {
+	filter := in.filter()
 	log := logging.From(ctx)
 
 	return &huma.StreamResponse{Body: func(hctx huma.Context) {
@@ -83,7 +106,7 @@ func (s *Server) exportAudit(ctx context.Context, _ *struct{}) (*huma.StreamResp
 		out := bufio.NewWriterSize(hctx.BodyWriter(), 32*1024)
 		encoder := json.NewEncoder(out)
 
-		written, err := queries.AuditExport(hctx.Context(), s.deps.DB, func(entry contract.AuditEntry) error {
+		written, err := queries.AuditExport(hctx.Context(), s.deps.DB, filter, func(entry contract.AuditEntry) error {
 			return encoder.Encode(entry)
 		})
 		if err != nil {

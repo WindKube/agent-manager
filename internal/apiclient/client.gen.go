@@ -20,16 +20,16 @@ import (
 
 // Defines values for AuditEntryActorKind.
 const (
-	Identity AuditEntryActorKind = "identity"
-	System   AuditEntryActorKind = "system"
+	AuditEntryActorKindIdentity AuditEntryActorKind = "identity"
+	AuditEntryActorKindSystem   AuditEntryActorKind = "system"
 )
 
 // Valid indicates whether the value is a known member of the AuditEntryActorKind enum.
 func (e AuditEntryActorKind) Valid() bool {
 	switch e {
-	case Identity:
+	case AuditEntryActorKindIdentity:
 		return true
-	case System:
+	case AuditEntryActorKindSystem:
 		return true
 	default:
 		return false
@@ -75,6 +75,48 @@ func (e AuditEntryKind) Valid() bool {
 	case AuditEntryKindShare:
 		return true
 	case AuditEntryKindSync:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditEntrySubjectKind.
+const (
+	AuditEntrySubjectKindCategory AuditEntrySubjectKind = "category"
+	AuditEntrySubjectKindDevice   AuditEntrySubjectKind = "device"
+	AuditEntrySubjectKindFinding  AuditEntrySubjectKind = "finding"
+	AuditEntrySubjectKindIdentity AuditEntrySubjectKind = "identity"
+	AuditEntrySubjectKindMapping  AuditEntrySubjectKind = "mapping"
+	AuditEntrySubjectKindPackage  AuditEntrySubjectKind = "package"
+	AuditEntrySubjectKindPolicy   AuditEntrySubjectKind = "policy"
+	AuditEntrySubjectKindProfile  AuditEntrySubjectKind = "profile"
+	AuditEntrySubjectKindRevision AuditEntrySubjectKind = "revision"
+	AuditEntrySubjectKindVersion  AuditEntrySubjectKind = "version"
+)
+
+// Valid indicates whether the value is a known member of the AuditEntrySubjectKind enum.
+func (e AuditEntrySubjectKind) Valid() bool {
+	switch e {
+	case AuditEntrySubjectKindCategory:
+		return true
+	case AuditEntrySubjectKindDevice:
+		return true
+	case AuditEntrySubjectKindFinding:
+		return true
+	case AuditEntrySubjectKindIdentity:
+		return true
+	case AuditEntrySubjectKindMapping:
+		return true
+	case AuditEntrySubjectKindPackage:
+		return true
+	case AuditEntrySubjectKindPolicy:
+		return true
+	case AuditEntrySubjectKindProfile:
+		return true
+	case AuditEntrySubjectKindRevision:
+		return true
+	case AuditEntrySubjectKindVersion:
 		return true
 	default:
 		return false
@@ -1707,6 +1749,90 @@ func (e ViewerRole) Valid() bool {
 	}
 }
 
+// Defines values for ListAuditParamsSubjectKind.
+const (
+	ListAuditParamsSubjectKindCategory ListAuditParamsSubjectKind = "category"
+	ListAuditParamsSubjectKindDevice   ListAuditParamsSubjectKind = "device"
+	ListAuditParamsSubjectKindFinding  ListAuditParamsSubjectKind = "finding"
+	ListAuditParamsSubjectKindIdentity ListAuditParamsSubjectKind = "identity"
+	ListAuditParamsSubjectKindMapping  ListAuditParamsSubjectKind = "mapping"
+	ListAuditParamsSubjectKindPackage  ListAuditParamsSubjectKind = "package"
+	ListAuditParamsSubjectKindPolicy   ListAuditParamsSubjectKind = "policy"
+	ListAuditParamsSubjectKindProfile  ListAuditParamsSubjectKind = "profile"
+	ListAuditParamsSubjectKindRevision ListAuditParamsSubjectKind = "revision"
+	ListAuditParamsSubjectKindVersion  ListAuditParamsSubjectKind = "version"
+)
+
+// Valid indicates whether the value is a known member of the ListAuditParamsSubjectKind enum.
+func (e ListAuditParamsSubjectKind) Valid() bool {
+	switch e {
+	case ListAuditParamsSubjectKindCategory:
+		return true
+	case ListAuditParamsSubjectKindDevice:
+		return true
+	case ListAuditParamsSubjectKindFinding:
+		return true
+	case ListAuditParamsSubjectKindIdentity:
+		return true
+	case ListAuditParamsSubjectKindMapping:
+		return true
+	case ListAuditParamsSubjectKindPackage:
+		return true
+	case ListAuditParamsSubjectKindPolicy:
+		return true
+	case ListAuditParamsSubjectKindProfile:
+		return true
+	case ListAuditParamsSubjectKindRevision:
+		return true
+	case ListAuditParamsSubjectKindVersion:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ExportAuditParamsSubjectKind.
+const (
+	ExportAuditParamsSubjectKindCategory ExportAuditParamsSubjectKind = "category"
+	ExportAuditParamsSubjectKindDevice   ExportAuditParamsSubjectKind = "device"
+	ExportAuditParamsSubjectKindFinding  ExportAuditParamsSubjectKind = "finding"
+	ExportAuditParamsSubjectKindIdentity ExportAuditParamsSubjectKind = "identity"
+	ExportAuditParamsSubjectKindMapping  ExportAuditParamsSubjectKind = "mapping"
+	ExportAuditParamsSubjectKindPackage  ExportAuditParamsSubjectKind = "package"
+	ExportAuditParamsSubjectKindPolicy   ExportAuditParamsSubjectKind = "policy"
+	ExportAuditParamsSubjectKindProfile  ExportAuditParamsSubjectKind = "profile"
+	ExportAuditParamsSubjectKindRevision ExportAuditParamsSubjectKind = "revision"
+	ExportAuditParamsSubjectKindVersion  ExportAuditParamsSubjectKind = "version"
+)
+
+// Valid indicates whether the value is a known member of the ExportAuditParamsSubjectKind enum.
+func (e ExportAuditParamsSubjectKind) Valid() bool {
+	switch e {
+	case ExportAuditParamsSubjectKindCategory:
+		return true
+	case ExportAuditParamsSubjectKindDevice:
+		return true
+	case ExportAuditParamsSubjectKindFinding:
+		return true
+	case ExportAuditParamsSubjectKindIdentity:
+		return true
+	case ExportAuditParamsSubjectKindMapping:
+		return true
+	case ExportAuditParamsSubjectKindPackage:
+		return true
+	case ExportAuditParamsSubjectKindPolicy:
+		return true
+	case ExportAuditParamsSubjectKindProfile:
+		return true
+	case ExportAuditParamsSubjectKindRevision:
+		return true
+	case ExportAuditParamsSubjectKindVersion:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListFindingsParamsState.
 const (
 	ListFindingsParamsStateAll      ListFindingsParamsState = "all"
@@ -1916,16 +2042,34 @@ type AuditEntry struct {
 	//
 	// Examples: identity
 	ActorKind AuditEntryActorKind `json:"actorKind"`
-	Id        openapi_types.UUID  `json:"id"`
+
+	// Data Small, stable keys describing the event: always action, plus subject identifiers such as name, semver, package, ruleId, profile and revision. Never a secret or a free-form note.
+	Data *map[string]interface{} `json:"data,omitempty"`
+	Id   openapi_types.UUID      `json:"id"`
 
 	// Kind Examples: approve
-	Kind       AuditEntryKind `json:"kind"`
-	OccurredAt time.Time      `json:"occurredAt"`
+	Kind AuditEntryKind `json:"kind"`
+
+	// Namespace The package namespace, on a package, version or finding subject.
+	//
+	// Examples: community
+	Namespace  *string   `json:"namespace,omitempty"`
+	OccurredAt time.Time `json:"occurredAt"`
 
 	// Source web, cli / <host> or system.
 	//
 	// Examples: web
 	Source *string `json:"source,omitempty"`
+
+	// SubjectId The subject's id: namespace/name for a package, namespace/name@semver for a version, the group name for a mapping, 1 for the policy, and a uuid for everything else.
+	//
+	// Examples: community/slack-digest@0.5.1
+	SubjectId *string `json:"subjectId,omitempty"`
+
+	// SubjectKind What the row is about.
+	//
+	// Examples: version
+	SubjectKind *AuditEntrySubjectKind `json:"subjectKind,omitempty"`
 
 	// Text The human-readable record of what happened. It quotes package and profile names, so it is rendered escaped (FR-055).
 	//
@@ -1940,6 +2084,11 @@ type AuditEntryActorKind string
 
 // AuditEntryKind Examples: approve
 type AuditEntryKind string
+
+// AuditEntrySubjectKind What the row is about.
+//
+// Examples: version
+type AuditEntrySubjectKind string
 
 // AuditPage defines model for AuditPage.
 type AuditPage struct {
@@ -3907,10 +4056,37 @@ type ViewerRole string
 
 // ListAuditParams defines parameters for ListAudit.
 type ListAuditParams struct {
+	// SubjectKind Only rows about this kind of subject. package also matches the rows about its versions and findings.
+	SubjectKind *ListAuditParamsSubjectKind `form:"subjectKind,omitempty" json:"subjectKind,omitempty"`
+
+	// SubjectId Only rows about this subject id; pair it with subjectKind.
+	SubjectId *string `form:"subjectId,omitempty" json:"subjectId,omitempty"`
+
+	// Namespace Only rows whose subject is in this package namespace.
+	Namespace *string `form:"namespace,omitempty" json:"namespace,omitempty"`
+
 	// Page Clamped into range: a page past the end returns the last one.
 	Page     *int64 `form:"page,omitempty" json:"page,omitempty"`
 	PageSize *int64 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
+
+// ListAuditParamsSubjectKind defines parameters for ListAudit.
+type ListAuditParamsSubjectKind string
+
+// ExportAuditParams defines parameters for ExportAudit.
+type ExportAuditParams struct {
+	// SubjectKind Only rows about this kind of subject. package also matches the rows about its versions and findings.
+	SubjectKind *ExportAuditParamsSubjectKind `form:"subjectKind,omitempty" json:"subjectKind,omitempty"`
+
+	// SubjectId Only rows about this subject id; pair it with subjectKind.
+	SubjectId *string `form:"subjectId,omitempty" json:"subjectId,omitempty"`
+
+	// Namespace Only rows whose subject is in this package namespace.
+	Namespace *string `form:"namespace,omitempty" json:"namespace,omitempty"`
+}
+
+// ExportAuditParamsSubjectKind defines parameters for ExportAudit.
+type ExportAuditParamsSubjectKind string
 
 // ListFindingsParams defines parameters for ListFindings.
 type ListFindingsParams struct {
@@ -4190,17 +4366,17 @@ type ClientInterface interface {
 
 	// ListAudit The audit log, paged, most recent first
 	//
-	// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. There is deliberately no filter. The export below must return the full CURRENT SCOPE (FR-051), and with no filters the current scope is the whole log — a filter added here without being added there would quietly stop that holding. Rows are append-only, enforced by revoked grants rather than by anything in this process (FR-052). `text` quotes package and profile names, so it is rendered escaped.
+	// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. Optional filters narrow it to one subject or one package namespace; the export takes the same filters, so it always returns the page's full CURRENT SCOPE (FR-051). Rows written before subjects were recorded carry none and match no subject filter. Rows are append-only, enforced by revoked grants rather than by anything in this process (FR-052). `text` quotes package and profile names, so it is rendered escaped.
 	//
 	// Corresponds with GET /v1/audit (the `ListAudit` operationId).
 	ListAudit(ctx context.Context, params *ListAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ExportAudit Export the whole audit log
 	//
-	// FR-051: the full current scope, not the visible page. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
+	// FR-051: the full current scope, not the visible page — the whole log, or what the same filters as listAudit select. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
 	//
 	// Corresponds with GET /v1/audit/export (the `ExportAudit` operationId).
-	ExportAudit(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+	ExportAudit(ctx context.Context, params *ExportAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetBadges The application shell's counts
 	//
@@ -4739,7 +4915,7 @@ type ClientInterface interface {
 
 // ListAudit The audit log, paged, most recent first
 //
-// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. There is deliberately no filter. The export below must return the full CURRENT SCOPE (FR-051), and with no filters the current scope is the whole log — a filter added here without being added there would quietly stop that holding. Rows are append-only, enforced by revoked grants rather than by anything in this process (FR-052). `text` quotes package and profile names, so it is rendered escaped.
+// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. Optional filters narrow it to one subject or one package namespace; the export takes the same filters, so it always returns the page's full CURRENT SCOPE (FR-051). Rows written before subjects were recorded carry none and match no subject filter. Rows are append-only, enforced by revoked grants rather than by anything in this process (FR-052). `text` quotes package and profile names, so it is rendered escaped.
 //
 // Corresponds with GET /v1/audit (the `ListAudit` operationId).
 func (c *Client) ListAudit(ctx context.Context, params *ListAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -4756,11 +4932,11 @@ func (c *Client) ListAudit(ctx context.Context, params *ListAuditParams, reqEdit
 
 // ExportAudit Export the whole audit log
 //
-// FR-051: the full current scope, not the visible page. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
+// FR-051: the full current scope, not the visible page — the whole log, or what the same filters as listAudit select. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
 //
 // Corresponds with GET /v1/audit/export (the `ExportAudit` operationId).
-func (c *Client) ExportAudit(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewExportAuditRequest(c.Server)
+func (c *Client) ExportAudit(ctx context.Context, params *ExportAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExportAuditRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -5993,6 +6169,42 @@ func NewListAuditRequest(server string, params *ListAuditParams) (*http.Request,
 		// per the OpenAPI spec (e.g. "color=blue,black,brown").
 		var rawQueryFragments []string
 
+		if params.SubjectKind != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "subjectKind", *params.SubjectKind, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.SubjectId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "subjectId", *params.SubjectId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Namespace != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "namespace", *params.Namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if params.Page != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "page", *params.Page, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
@@ -6032,7 +6244,7 @@ func NewListAuditRequest(server string, params *ListAuditParams) (*http.Request,
 }
 
 // NewExportAuditRequest constructs an http.Request for the ExportAudit method
-func NewExportAuditRequest(server string) (*http.Request, error) {
+func NewExportAuditRequest(server string, params *ExportAuditParams) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -6048,6 +6260,57 @@ func NewExportAuditRequest(server string) (*http.Request, error) {
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.SubjectKind != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "subjectKind", *params.SubjectKind, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.SubjectId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "subjectId", *params.SubjectId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Namespace != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "namespace", *params.Namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -8133,7 +8396,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListAuditWithResponse The audit log, paged, most recent first
 	//
-	// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. There is deliberately no filter. The export below must return the full CURRENT SCOPE (FR-051), and with no filters the current scope is the whole log — a filter added here without being added there would quietly stop that holding. Rows are append-only, enforced by revoked grants rather than by anything in this process (FR-052). `text` quotes package and profile names, so it is rendered escaped.
+	// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. Optional filters narrow it to one subject or one package namespace; the export takes the same filters, so it always returns the page's full CURRENT SCOPE (FR-051). Rows written before subjects were recorded carry none and match no subject filter. Rows are append-only, enforced by revoked grants rather than by anything in this process (FR-052). `text` quotes package and profile names, so it is rendered escaped.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -8142,12 +8405,12 @@ type ClientWithResponsesInterface interface {
 
 	// ExportAuditWithResponse Export the whole audit log
 	//
-	// FR-051: the full current scope, not the visible page. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
+	// FR-051: the full current scope, not the visible page — the whole log, or what the same filters as listAudit select. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /v1/audit/export (the `ExportAudit` operationId).
-	ExportAuditWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ExportAuditResponse, error)
+	ExportAuditWithResponse(ctx context.Context, params *ExportAuditParams, reqEditors ...RequestEditorFn) (*ExportAuditResponse, error)
 
 	// GetBadgesWithResponse The application shell's counts
 	//
@@ -8816,6 +9079,8 @@ type ExportAuditResponse struct {
 	HTTPResponse *http.Response
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
 	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
 	ApplicationproblemJSON500 *Error
 	// Headers200 the parsed response headers for an HTTP 200 response
@@ -8825,6 +9090,11 @@ type ExportAuditResponse struct {
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r ExportAuditResponse) GetApplicationproblemJSON401() *Error {
 	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r ExportAuditResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
 }
 
 // GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
@@ -12343,7 +12613,7 @@ func (r GetViewerResponse) ContentType() string {
 
 // ListAuditWithResponse The audit log, paged, most recent first
 //
-// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. There is deliberately no filter. The export below must return the full CURRENT SCOPE (FR-051), and with no filters the current scope is the whole log — a filter added here without being added there would quietly stop that holding. Rows are append-only, enforced by revoked grants rather than by anything in this process (FR-052). `text` quotes package and profile names, so it is rendered escaped.
+// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. Optional filters narrow it to one subject or one package namespace; the export takes the same filters, so it always returns the page's full CURRENT SCOPE (FR-051). Rows written before subjects were recorded carry none and match no subject filter. Rows are append-only, enforced by revoked grants rather than by anything in this process (FR-052). `text` quotes package and profile names, so it is rendered escaped.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -12358,13 +12628,13 @@ func (c *ClientWithResponses) ListAuditWithResponse(ctx context.Context, params 
 
 // ExportAuditWithResponse Export the whole audit log
 //
-// FR-051: the full current scope, not the visible page. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
+// FR-051: the full current scope, not the visible page — the whole log, or what the same filters as listAudit select. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
 //
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /v1/audit/export (the `ExportAudit` operationId).
-func (c *ClientWithResponses) ExportAuditWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ExportAuditResponse, error) {
-	rsp, err := c.ExportAudit(ctx, reqEditors...)
+func (c *ClientWithResponses) ExportAuditWithResponse(ctx context.Context, params *ExportAuditParams, reqEditors ...RequestEditorFn) (*ExportAuditResponse, error) {
+	rsp, err := c.ExportAudit(ctx, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -13428,6 +13698,13 @@ func ParseExportAuditResponse(rsp *http.Response) (*ExportAuditResponse, error) 
 			return nil, err
 		}
 		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

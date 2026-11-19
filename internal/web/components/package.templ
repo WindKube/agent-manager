@@ -39,6 +39,8 @@ templ PackageScreen(p view.Package) {
 				if p.Category != "" {
 					<span class="am-detail-cat">{ p.Category }</span>
 				}
+				<span class="am-detail-sep">|</span>
+				<a id="package-history" href={ view.AuditHistoryHref(p.ID) }>History</a>
 			</div>
 			if p.Notice != nil {
 				<div class={ NoticeClass(*p.Notice) } id="package-notice">{ p.Notice.Text }</div>

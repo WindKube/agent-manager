@@ -31,3 +31,10 @@ func Seed() *Data {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+func deref(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
+}

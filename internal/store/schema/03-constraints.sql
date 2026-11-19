@@ -218,6 +218,12 @@ create index "audit_event_occurred_at_idx" on "audit_event" ("occurred_at" desc)
 
 create index "audit_event_subject_idx" on "audit_event" ("subject_kind", "subject_id", "occurred_at" desc);
 
+-- A package's history also reads the rows about its versions and findings,
+-- which name it in data.package.
+create index "audit_event_package_idx" on "audit_event" (("data" ->> 'package'), "occurred_at" desc);
+
+create index "audit_event_namespace_idx" on "audit_event" ("namespace", "occurred_at" desc);
+
 -- Every row written since the subject columns exist names its subject. NOT
 -- VALID is what keeps the rows written before them (both columns null, never
 -- backfilled) legal: Postgres checks it on every insert and never rescans.

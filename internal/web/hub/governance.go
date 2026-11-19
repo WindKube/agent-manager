@@ -207,8 +207,14 @@ func (c *Client) RejectFinding(ctx context.Context, id, note string) error {
 }
 
 // Audit reads GET /v1/audit.
-func (c *Client) Audit(ctx context.Context, page int) (view.AuditPage, error) {
-	params := &apiclient.ListAuditParams{}
+func (c *Client) Audit(ctx context.Context, page int, filter view.AuditFilter) (view.AuditPage, error) {
+	params := &apiclient.ListAuditParams{
+		SubjectId: optional(filter.SubjectID),
+		Namespace: optional(filter.Namespace),
+	}
+	if filter.SubjectKind != "" {
+		params.SubjectKind = ptr(apiclient.ListAuditParamsSubjectKind(filter.SubjectKind))
+	}
 	if page > 0 {
 		params.Page = ptr(int64(page))
 	}
@@ -229,18 +235,36 @@ func (c *Client) Audit(ctx context.Context, page int) (view.AuditPage, error) {
 		Page:     int(body.Page),
 		PageSize: int(body.PageSize),
 	}
-	for _, entry := range body.Entries {
-		out.Rows = append(out.Rows, view.AuditRow{
-			ID:     entry.Id.String(),
-			At:     view.Timestamp(entry.OccurredAt),
-			Actor:  entry.Actor,
-			System: string(entry.ActorKind) == view.ActorKindSystem,
-			Kind:   string(entry.Kind),
-			Text:   entry.Text,
-			Source: deref(entry.Source),
-		})
+	for i := range body.Entries {
+		out.Rows = append(out.Rows, auditRow(&body.Entries[i]))
 	}
 	return out, nil
+}
+
+func auditRow(entry *apiclient.AuditEntry) view.AuditRow {
+	row := view.AuditRow{
+		ID:        entry.Id.String(),
+		At:        view.Timestamp(entry.OccurredAt),
+		Actor:     entry.Actor,
+		System:    string(entry.ActorKind) == view.ActorKindSystem,
+		Kind:      string(entry.Kind),
+		Text:      entry.Text,
+		Source:    deref(entry.Source),
+		SubjectID: deref(entry.SubjectId),
+		Namespace: deref(entry.Namespace),
+	}
+	if entry.SubjectKind != nil {
+		row.SubjectKind = string(*entry.SubjectKind)
+	}
+	switch row.SubjectKind {
+	case "package":
+		row.Package = row.SubjectID
+	case "version", "finding":
+		if entry.Data != nil {
+			row.Package, _ = (*entry.Data)["package"].(string)
+		}
+	}
+	return row
 }
 
 // AuditExport is the streamed export, the ONE method here that does not
@@ -249,8 +273,15 @@ func (c *Client) Audit(ctx context.Context, page int) (view.AuditPage, error) {
 // undoing the api's own streaming. The reader is the CALLER's to close, and
 // the caller must expect a stream that stops early: a truncated export
 // arrives as a short 200 whose last line is not the api's completeness sentinel.
-func (c *Client) AuditExport(ctx context.Context) (io.ReadCloser, string, error) {
-	resp, err := c.api.ExportAudit(ctx)
+func (c *Client) AuditExport(ctx context.Context, filter view.AuditFilter) (io.ReadCloser, string, error) {
+	params := &apiclient.ExportAuditParams{
+		SubjectId: optional(filter.SubjectID),
+		Namespace: optional(filter.Namespace),
+	}
+	if filter.SubjectKind != "" {
+		params.SubjectKind = ptr(apiclient.ExportAuditParamsSubjectKind(filter.SubjectKind))
+	}
+	resp, err := c.api.ExportAudit(ctx, params)
 	if err != nil {
 		return nil, "", fmt.Errorf("export the audit log: %w", err)
 	}

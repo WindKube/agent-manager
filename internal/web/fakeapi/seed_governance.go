@@ -1,9 +1,9 @@
 package fakeapi
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -83,12 +83,7 @@ func seedGovernance(d *Data, now time.Time) {
 	}
 
 	d.Audit = seedAudit(now)
-	var export strings.Builder
-	for _, e := range d.Audit {
-		export.WriteString(`{"id":"` + e.Id.String() + `","kind":"` + string(e.Kind) + `","actor":"` + e.Actor + `"}` + "\n")
-	}
-	export.WriteString(`{"complete":true,"rows":` + strconv.Itoa(len(d.Audit)) + "}\n")
-	d.AuditExport = export.String()
+	d.AuditExport = auditExport(d.Audit)
 
 	seedScans(d)
 }
@@ -192,29 +187,50 @@ func seedAudit(now time.Time) []apiclient.AuditEntry {
 		text      string
 		source    string
 		ago       time.Duration
+		subject   auditSubject
 	}{
-		{"fixture-operator", apiclient.Identity, apiclient.AuditEntryKindSync, "synced platform-engineer r14 to Claude Code and AGENTS.md", "cli / fixture-host", 40 * time.Minute},
-		{"scanner", apiclient.System, apiclient.AuditEntryKindScan, "flagged community/slack-digest@0.5.1 — SH-NET-002 (rule pack " + rulePack + ")", "system", 3 * time.Hour},
-		{"fixture-reviewer", apiclient.Identity, apiclient.AuditEntryKindApprove, "override granted for community/aws-cost-explainer@2.0.0", "web", 6 * day},
-		{"fixture-operator", apiclient.Identity, apiclient.AuditEntryKindProfile, "published platform-engineer r14 — pinned adr-writer to 3.0.2", "web", 7 * day},
-		{"fetcher", apiclient.System, apiclient.AuditEntryKindFetch, "stored example/terraform-module-review@2.4.1", "system", 8 * day},
-		{"scanner", apiclient.System, apiclient.AuditEntryKindScan, "cleared example/pii-redactor@1.4.2 — 7 checks, no findings (rule pack " + rulePack + ")", "system", 9 * day},
-		{"fixture-operator", apiclient.Identity, apiclient.AuditEntryKindLogin, "device authorisation approved", "cli / fixture-host", 10 * day},
+		{"fixture-operator", apiclient.AuditEntryActorKindIdentity, apiclient.AuditEntryKindSync, "synced platform-engineer r14 to Claude Code and AGENTS.md", "cli / fixture-host", 40 * time.Minute, auditSubject{kind: apiclient.AuditEntrySubjectKindRevision, id: "b0000000-0000-4000-8000-000000000014", data: map[string]any{"action": "synced", "profile": "platform-engineer", "revision": 14}}},
+		{"scanner", apiclient.AuditEntryActorKindSystem, apiclient.AuditEntryKindScan, "flagged community/slack-digest@0.5.1 — SH-NET-002 (rule pack " + rulePack + ")", "system", 3 * time.Hour, versionSubject("community", "slack-digest", "0.5.1", "scanned")},
+		{"fixture-reviewer", apiclient.AuditEntryActorKindIdentity, apiclient.AuditEntryKindApprove, "override granted for community/aws-cost-explainer@2.0.0", "web", 6 * day, auditSubject{kind: apiclient.AuditEntrySubjectKindFinding, id: "f0000000-0000-4000-8000-000000000002", namespace: "community", data: map[string]any{"action": "accepted", "package": "community/aws-cost-explainer", "name": "aws-cost-explainer", "semver": "2.0.0", "ruleId": "SH-FS-007"}}},
+		{"fixture-operator", apiclient.AuditEntryActorKindIdentity, apiclient.AuditEntryKindProfile, "published platform-engineer r14 — pinned adr-writer to 3.0.2", "web", 7 * day, auditSubject{kind: apiclient.AuditEntrySubjectKindRevision, id: "b0000000-0000-4000-8000-000000000014", data: map[string]any{"action": "published", "profile": "platform-engineer", "revision": 14}}},
+		{"fetcher", apiclient.AuditEntryActorKindSystem, apiclient.AuditEntryKindFetch, "stored example/terraform-module-review@2.4.1", "system", 8 * day, versionSubject("example", "terraform-module-review", "2.4.1", "stored")},
+		{"scanner", apiclient.AuditEntryActorKindSystem, apiclient.AuditEntryKindScan, "cleared example/pii-redactor@1.4.2 — 7 checks, no findings (rule pack " + rulePack + ")", "system", 9 * day, versionSubject("example", "pii-redactor", "1.4.2", "scanned")},
+		{"fixture-operator", apiclient.AuditEntryActorKindIdentity, apiclient.AuditEntryKindLogin, "device authorisation approved", "cli / fixture-host", 10 * day, auditSubject{kind: apiclient.AuditEntrySubjectKindDevice, id: "d0000000-0000-4000-8000-000000000001", data: map[string]any{"action": "approved", "host": "fixture-host"}}},
 		// Long enough that the row's text cell clips it.
-		{"fetcher", apiclient.System, apiclient.AuditEntryKindFetch, "failed to fetch community/skills@1.2.3 from git " +
+		{"fetcher", apiclient.AuditEntryActorKindSystem, apiclient.AuditEntryKindFetch, "failed to fetch community/skills@1.2.3 from git " +
 			"https://github.com/mattpocock/skills@v1.2.3 (skills/engineering/code-review): archive " +
-			"member rejected: symlink (member \"mattpocock-skills-835450e/AGENTS.md\")", "system", 11 * day},
+			"member rejected: symlink (member \"mattpocock-skills-835450e/AGENTS.md\")", "system", 11 * day, versionSubject("community", "skills", "1.2.3", "fetch-failed")},
 	}
 
 	out := make([]apiclient.AuditEntry, 0, len(rows))
-	for i, r := range rows {
-		out = append(out, apiclient.AuditEntry{
+	for i := range rows {
+		r := &rows[i]
+		entry := apiclient.AuditEntry{
 			Id:         uuid.MustParse(fmt.Sprintf("a0000000-0000-4000-8000-%012d", i+1)),
 			OccurredAt: now.Add(-r.ago), Actor: r.actor, ActorKind: r.actorKind,
 			Kind: r.kind, Text: r.text, Source: ptr(r.source),
-		})
+			SubjectKind: ptr(r.subject.kind), SubjectId: ptr(r.subject.id), Data: &r.subject.data,
+		}
+		if r.subject.namespace != "" {
+			entry.Namespace = ptr(r.subject.namespace)
+		}
+		out = append(out, entry)
 	}
 	return out
+}
+
+type auditSubject struct {
+	kind      apiclient.AuditEntrySubjectKind
+	id        string
+	namespace string
+	data      map[string]any
+}
+
+func versionSubject(namespace, name, semver, action string) auditSubject {
+	return auditSubject{
+		kind: apiclient.AuditEntrySubjectKindVersion, id: namespace + "/" + name + "@" + semver, namespace: namespace,
+		data: map[string]any{"action": action, "package": namespace + "/" + name, "name": name, "semver": semver},
+	}
 }
 
 // seedScans answers getPackageScan for every catalog package: the latest
@@ -256,4 +272,16 @@ func seedScans(d *Data) {
 		}
 		d.Scans[p.Id] = scan
 	}
+}
+
+// auditExport is the api's NDJSON: every entry as the wire carries it, then the
+// completeness sentinel.
+func auditExport(entries []apiclient.AuditEntry) string {
+	var out bytes.Buffer
+	encoder := json.NewEncoder(&out)
+	for i := range entries {
+		_ = encoder.Encode(&entries[i])
+	}
+	_ = encoder.Encode(map[string]any{"complete": true, "rows": len(entries)})
+	return out.String()
 }

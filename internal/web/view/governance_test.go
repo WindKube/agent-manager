@@ -234,6 +234,18 @@ func TestTheAuditScreensLinksCarryTheRestOfItsState(t *testing.T) {
 	require.Equal(t, "/audit?page=2", q.CloseHref())
 	require.Equal(t, "/audit", view.AuditQuery{Page: 1}.CloseHref())
 
+	t.Run("the filter rides every link, and a bare id or unknown kind is dropped", func(t *testing.T) {
+		f := view.AuditQuery{Page: 3, Filter: view.AuditFilter{SubjectKind: "version", SubjectID: "a/b@1.0.0"}}.Normalise()
+		require.Equal(t, "/audit?page=2&subjectId=a%2Fb%401.0.0&subjectKind=version", f.PageHref(2))
+		require.Equal(t, "/audit/export?subjectId=a%2Fb%401.0.0&subjectKind=version", f.ExportHref())
+		require.Equal(t, "/audit/export", q.ExportHref())
+
+		bare := view.AuditQuery{Filter: view.AuditFilter{SubjectID: "x", Namespace: "community"}}.Normalise()
+		require.Equal(t, view.AuditFilter{Namespace: "community"}, bare.Filter)
+		unknown := view.AuditQuery{Filter: view.AuditFilter{SubjectKind: "machine", SubjectID: "x"}}.Normalise()
+		require.False(t, unknown.Filter.Active())
+	})
+
 	t.Run("an unbounded id from the url is not echoed back into every row's link", func(t *testing.T) {
 		long := view.AuditQuery{Selected: strings.Repeat("a", 500)}.Normalise()
 		require.Empty(t, long.Selected)

@@ -20,7 +20,7 @@ import (
 func (s *Server) audit(c *gin.Context) {
 	query := auditQueryFromURL(c)
 	screen := view.Audit{Query: query, Page: query.Page, ExportAvailable: true}
-	entries, err := s.deps.Hub.Audit(session(c), query.Page)
+	entries, err := s.deps.Hub.Audit(session(c), query.Page, query.Filter)
 	if status, ok := s.governanceFailure(c, err, &screen.GovernanceState, "audit log"); !ok {
 		// The export is offered only beside rows that could be read.
 		screen.ExportAvailable = false
@@ -45,7 +45,13 @@ func auditQueryFromURL(c *gin.Context) view.AuditQuery {
 	if err != nil {
 		page = 1
 	}
-	return view.AuditQuery{Page: page, Selected: c.Query("entry")}.Normalise()
+	return view.AuditQuery{Page: page, Selected: c.Query("entry"), Filter: auditFilterFromURL(c)}.Normalise()
+}
+
+func auditFilterFromURL(c *gin.Context) view.AuditFilter {
+	return view.AuditFilter{
+		SubjectKind: c.Query("subjectKind"), SubjectID: c.Query("subjectId"), Namespace: c.Query("namespace"),
+	}
 }
 
 func findAuditRow(rows []view.AuditRow, id string) *view.AuditRow {
@@ -72,11 +78,13 @@ const exportMediaType = "application/x-ndjson"
 // through this hop and one saved from the api directly are the same file.
 const exportFilename = "audit-log.ndjson"
 
-// auditExport streams the whole current scope to the browser. It does NOT
+// auditExport streams the current scope — the whole log, or the screen's
+// filter — to the browser. It does NOT
 // read the body into memory first: the audit table is the one designed to
 // grow without bound, and an io.ReadAll here would undo the api's own streaming.
 func (s *Server) auditExport(c *gin.Context) {
-	body, mediaType, err := s.deps.Hub.AuditExport(session(c))
+	query := view.AuditQuery{Filter: auditFilterFromURL(c)}.Normalise()
+	body, mediaType, err := s.deps.Hub.AuditExport(session(c), query.Filter)
 	switch {
 	case errors.Is(err, view.ErrSignedOut):
 		s.toSignIn(c)

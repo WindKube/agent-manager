@@ -64,7 +64,7 @@ const auditID = "a0000000-0000-4000-8000-0000000000a1"
 func auditEntry(actor string, kind apiclient.AuditEntryKind, text, source string) apiclient.AuditEntry {
 	entry := apiclient.AuditEntry{
 		Id: uuid.MustParse(auditID), OccurredAt: time.Now(), Actor: actor,
-		ActorKind: apiclient.Identity, Kind: kind, Text: text,
+		ActorKind: apiclient.AuditEntryActorKindIdentity, Kind: kind, Text: text,
 	}
 	if source != "" {
 		entry.Source = &source
@@ -406,7 +406,7 @@ func TestAFindingIdThatNamesNothingIsItsOwnState(t *testing.T) {
 func TestTheAuditScreenNeverAttributesASystemRowToAPerson(t *testing.T) {
 	api, h := newServer(t)
 	system := auditEntry("scanner", apiclient.AuditEntryKindScan, "flagged x@1", "system")
-	system.ActorKind = apiclient.System
+	system.ActorKind = apiclient.AuditEntryActorKindSystem
 	person := auditEntry("an-operator", apiclient.AuditEntryKindApprove, "override granted", "web")
 	person.Id = uuid.MustParse("a0000000-0000-4000-8000-0000000000a2")
 	api.Data.Audit = []apiclient.AuditEntry{system, person}
@@ -440,7 +440,7 @@ func TestClickingAnAuditRowOpensAPanelWithTheWholeUntruncatedMessage(t *testing.
 		`(skills/engineering/code-review): archive member rejected: symlink (member "mattpocock-skills-835450e/AGENTS.md")`
 	api, h := newServer(t)
 	entry := auditEntry("fetcher", apiclient.AuditEntryKindFetch, message, "")
-	entry.ActorKind = apiclient.System
+	entry.ActorKind = apiclient.AuditEntryActorKindSystem
 	api.Data.Audit = []apiclient.AuditEntry{entry}
 	body := get(t, h, "/audit?entry="+auditID).Body.String()
 
@@ -589,4 +589,56 @@ func TestFilteringAndPagingKeepTheRestOfTheScreensState(t *testing.T) {
 	require.Contains(t, body, `href="/scanner?finding=`+govFindingID+`&amp;state=open"`,
 		"selecting a finding dropped the filter")
 	require.Contains(t, body, `<a class="am-chip am-chip-on" href="/scanner?state=open"`)
+}
+
+// TestTheAuditScreenHonoursASubjectFilter is the package page's History link
+// landing: only the package's own rows (its versions' included), a chip naming
+// the filter with a way out, and every link on the page keeping the filter.
+func TestTheAuditScreenHonoursASubjectFilter(t *testing.T) {
+	_, h := newServer(t)
+	body := get(t, h, "/audit?subjectKind=package&subjectId=community/slack-digest").Body.String()
+
+	require.Contains(t, body, `id="audit-filter"`)
+	require.Contains(t, body, "package community/slack-digest")
+	require.Contains(t, body, `<a class="am-chip" href="/audit">Clear filter</a>`)
+	require.Contains(t, body, "flagged community/slack-digest@0.5.1")
+	require.NotContains(t, body, "stored example/terraform-module-review@2.4.1",
+		"a row about another package leaked through the filter")
+	require.Contains(t, body, "1 event")
+	require.Contains(t, body, `href="/audit/export?subjectId=community%2Fslack-digest&amp;subjectKind=package"`,
+		"the export must be the filtered scope, not the whole log")
+	require.Contains(t, body, "entry=a0000000-0000-4000-8000-000000000002&amp;subjectId=community%2Fslack-digest&amp;subjectKind=package",
+		"opening a row must not drop the filter")
+}
+
+func TestTheUnfilteredAuditScreenOffersNoFilterChip(t *testing.T) {
+	_, h := newServer(t)
+	body := get(t, h, "/audit?subjectKind=machine&subjectId=x").Body.String()
+
+	require.NotContains(t, body, `id="audit-filter"`, "an unknown subject kind is dropped, not sent on")
+	require.Contains(t, body, "stored example/terraform-module-review@2.4.1")
+}
+
+// TestAnAuditEntryAboutAVersionLinksToItsPackage: the row names a version, the
+// panel opens the package page that version belongs to.
+func TestAnAuditEntryAboutAVersionLinksToItsPackage(t *testing.T) {
+	_, h := newServer(t)
+	body := get(t, h, "/audit?entry=a0000000-0000-4000-8000-000000000002").Body.String()
+
+	require.Contains(t, body, "version community/slack-digest@0.5.1")
+	require.Contains(t, body, `<a id="audit-entry-package" href="/packages/community/slack-digest">`)
+
+	login := get(t, h, "/audit?entry=a0000000-0000-4000-8000-000000000007").Body.String()
+	require.Contains(t, login, "device d0000000-0000-4000-8000-000000000001")
+	require.NotContains(t, login, `id="audit-entry-package"`, "a row about a device has no package to open")
+}
+
+func TestTheAuditExportForwardsTheFilter(t *testing.T) {
+	_, h := newServer(t)
+	body := get(t, h, "/audit/export?subjectKind=package&subjectId=community/slack-digest").Body.String()
+
+	lines := strings.Split(strings.TrimSpace(body), "\n")
+	require.Len(t, lines, 2, "one matching row and the completeness sentinel")
+	require.Contains(t, lines[0], `"subjectId":"community/slack-digest@0.5.1"`)
+	require.Contains(t, lines[1], `"complete":true`)
 }

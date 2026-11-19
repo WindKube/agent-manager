@@ -160,3 +160,10 @@ func TestPackageScanIsEscapedWhereverItIsRendered(t *testing.T) {
 	require.Truef(t, strings.Contains(body, "&lt;img src=x onerror="),
 		"the payload did not render at all, so this test asserts nothing:\n%s", body)
 }
+
+func TestThePackagePageLinksToItsAuditHistory(t *testing.T) {
+	_, h := newServer(t)
+	body := get(t, h, "/packages/"+scanPackage).Body.String()
+
+	require.Contains(t, body, `<a id="package-history" href="/audit?subjectId=example%2Fadr-writer&amp;subjectKind=package">History</a>`)
+}

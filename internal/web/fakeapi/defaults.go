@@ -115,15 +115,20 @@ func (a *API) defaults(op string) http.HandlerFunc {
 		return func(w http.ResponseWriter, _ *http.Request) { JSON(w, http.StatusOK, d.Decision) }
 	case "listAudit":
 		return func(w http.ResponseWriter, r *http.Request) {
-			entries, page, size := paginate(d.Audit, r, 50)
+			matched := d.audit(r)
+			entries, page, size := paginate(matched, r, 50)
 			JSON(w, http.StatusOK, apiclient.AuditPage{
-				Entries: entries, Page: page, PageSize: size, Total: int64(len(d.Audit)),
+				Entries: entries, Page: page, PageSize: size, Total: int64(len(matched)),
 			})
 		}
 	case "exportAudit":
-		return func(w http.ResponseWriter, _ *http.Request) {
+		return func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/x-ndjson")
-			_, _ = w.Write([]byte(d.AuditExport))
+			if !auditFiltered(r) {
+				_, _ = w.Write([]byte(d.AuditExport))
+				return
+			}
+			_, _ = w.Write([]byte(auditExport(d.audit(r))))
 		}
 	case "getBadges":
 		return func(w http.ResponseWriter, _ *http.Request) { JSON(w, http.StatusOK, d.Badges) }
@@ -260,4 +265,38 @@ func (d *Data) findings(r *http.Request) apiclient.FindingsPage {
 	}
 	rows, page, size := paginate(matched, r, 20)
 	return apiclient.FindingsPage{Findings: rows, Page: page, PageSize: size, Total: int64(len(matched))}
+}
+
+func auditFiltered(r *http.Request) bool {
+	q := r.URL.Query()
+	return q.Get("subjectKind") != "" || q.Get("namespace") != ""
+}
+
+// audit applies listAudit's filters the way the api does, including a package
+// subject matching the rows about its versions and findings.
+func (d *Data) audit(r *http.Request) []apiclient.AuditEntry {
+	q := r.URL.Query()
+	kind, id, namespace := q.Get("subjectKind"), q.Get("subjectId"), q.Get("namespace")
+	matched := make([]apiclient.AuditEntry, 0, len(d.Audit))
+	for i := range d.Audit {
+		e := &d.Audit[i]
+		entryKind, entryID := "", deref(e.SubjectId)
+		if e.SubjectKind != nil {
+			entryKind = string(*e.SubjectKind)
+		}
+		if kind != "" {
+			match := entryKind == kind && (id == "" || entryID == id)
+			if kind == "package" && id != "" && (entryKind == "version" || entryKind == "finding") && e.Data != nil {
+				match = match || (*e.Data)["package"] == id
+			}
+			if !match {
+				continue
+			}
+		}
+		if namespace != "" && deref(e.Namespace) != namespace {
+			continue
+		}
+		matched = append(matched, *e)
+	}
+	return matched
 }

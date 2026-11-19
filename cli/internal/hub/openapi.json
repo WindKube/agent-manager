@@ -37,6 +37,11 @@
             ],
             "type": "string"
           },
+          "data": {
+            "additionalProperties": {},
+            "description": "Small, stable keys describing the event: always action, plus subject identifiers such as name, semver, package, ruleId, profile and revision. Never a secret or a free-form note.",
+            "type": "object"
+          },
           "id": {
             "format": "uuid",
             "type": "string"
@@ -60,6 +65,13 @@
             ],
             "type": "string"
           },
+          "namespace": {
+            "description": "The package namespace, on a package, version or finding subject.",
+            "examples": [
+              "community"
+            ],
+            "type": "string"
+          },
           "occurredAt": {
             "format": "date-time",
             "type": "string"
@@ -68,6 +80,32 @@
             "description": "web, cli / \u003chost\u003e or system.",
             "examples": [
               "web"
+            ],
+            "type": "string"
+          },
+          "subjectId": {
+            "description": "The subject's id: namespace/name for a package, namespace/name@semver for a version, the group name for a mapping, 1 for the policy, and a uuid for everything else.",
+            "examples": [
+              "community/slack-digest@0.5.1"
+            ],
+            "type": "string"
+          },
+          "subjectKind": {
+            "description": "What the row is about.",
+            "enum": [
+              "package",
+              "version",
+              "finding",
+              "profile",
+              "revision",
+              "category",
+              "mapping",
+              "policy",
+              "identity",
+              "device"
+            ],
+            "examples": [
+              "version"
             ],
             "type": "string"
           },
@@ -4160,9 +4198,53 @@
   "paths": {
     "/v1/audit": {
       "get": {
-        "description": "One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. There is deliberately no filter. The export below must return the full CURRENT SCOPE (FR-051), and with no filters the current scope is the whole log — a filter added here without being added there would quietly stop that holding. Rows are append-only, enforced by revoked grants rather than by anything in this process (FR-052). `text` quotes package and profile names, so it is rendered escaped.",
+        "description": "One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. Optional filters narrow it to one subject or one package namespace; the export takes the same filters, so it always returns the page's full CURRENT SCOPE (FR-051). Rows written before subjects were recorded carry none and match no subject filter. Rows are append-only, enforced by revoked grants rather than by anything in this process (FR-052). `text` quotes package and profile names, so it is rendered escaped.",
         "operationId": "listAudit",
         "parameters": [
+          {
+            "description": "Only rows about this kind of subject. package also matches the rows about its versions and findings.",
+            "explode": false,
+            "in": "query",
+            "name": "subjectKind",
+            "schema": {
+              "description": "Only rows about this kind of subject. package also matches the rows about its versions and findings.",
+              "enum": [
+                "package",
+                "version",
+                "finding",
+                "profile",
+                "revision",
+                "category",
+                "mapping",
+                "policy",
+                "identity",
+                "device"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only rows about this subject id; pair it with subjectKind.",
+            "explode": false,
+            "in": "query",
+            "name": "subjectId",
+            "schema": {
+              "description": "Only rows about this subject id; pair it with subjectKind.",
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only rows whose subject is in this package namespace.",
+            "explode": false,
+            "in": "query",
+            "name": "namespace",
+            "schema": {
+              "description": "Only rows whose subject is in this package namespace.",
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
           {
             "description": "Clamped into range: a page past the end returns the last one.",
             "explode": false,
@@ -4218,7 +4300,7 @@
                 }
               }
             },
-            "description": "`page` or `pageSize` is outside its range."
+            "description": "`page` or `pageSize` is outside its range, or a filter is invalid."
           },
           "500": {
             "content": {
@@ -4239,8 +4321,54 @@
     },
     "/v1/audit/export": {
       "get": {
-        "description": "FR-051: the full current scope, not the visible page. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.",
+        "description": "FR-051: the full current scope, not the visible page — the whole log, or what the same filters as listAudit select. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.",
         "operationId": "exportAudit",
+        "parameters": [
+          {
+            "description": "Only rows about this kind of subject. package also matches the rows about its versions and findings.",
+            "explode": false,
+            "in": "query",
+            "name": "subjectKind",
+            "schema": {
+              "description": "Only rows about this kind of subject. package also matches the rows about its versions and findings.",
+              "enum": [
+                "package",
+                "version",
+                "finding",
+                "profile",
+                "revision",
+                "category",
+                "mapping",
+                "policy",
+                "identity",
+                "device"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only rows about this subject id; pair it with subjectKind.",
+            "explode": false,
+            "in": "query",
+            "name": "subjectId",
+            "schema": {
+              "description": "Only rows about this subject id; pair it with subjectKind.",
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only rows whose subject is in this package namespace.",
+            "explode": false,
+            "in": "query",
+            "name": "namespace",
+            "schema": {
+              "description": "Only rows whose subject is in this package namespace.",
+              "maxLength": 200,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -4271,6 +4399,16 @@
               }
             },
             "description": "Missing, expired or invalid token."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A filter is invalid."
           },
           "500": {
             "content": {

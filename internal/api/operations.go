@@ -970,14 +970,14 @@ func (s *Server) registerAudit() {
 		Summary:     "The audit log, paged, most recent first",
 		Description: "One page of `audit_event`, ordered by when it happened, newest first, served by the " +
 			"index created for exactly that read. " +
-			"There is deliberately no filter. The export below must return the full CURRENT SCOPE " +
-			"(FR-051), and with no filters the current scope is the whole log — a filter added " +
-			"here without being added there would quietly stop that holding. " +
+			"Optional filters narrow it to one subject or one package namespace; the export takes the " +
+			"same filters, so it always returns the page's full CURRENT SCOPE (FR-051). Rows written " +
+			"before subjects were recorded carry none and match no subject filter. " +
 			"Rows are append-only, enforced by revoked grants rather than by anything in this " +
 			"process (FR-052). `text` quotes package and profile names, so it is rendered escaped.",
 		Responses: map[string]*huma.Response{
 			"401": s.errorResponse("Missing, expired or invalid token."),
-			"422": s.errorResponse("`page` or `pageSize` is outside its range."),
+			"422": s.errorResponse("`page` or `pageSize` is outside its range, or a filter is invalid."),
 			"500": s.errorResponse("The request could not be completed."),
 		},
 	}, s.listAudit)
@@ -988,7 +988,8 @@ func (s *Server) registerAudit() {
 		Path:        "/v1/audit/export",
 		Tags:        []string{"audit"},
 		Summary:     "Export the whole audit log",
-		Description: "FR-051: the full current scope, not the visible page. Newline-delimited JSON, one " +
+		Description: "FR-051: the full current scope, not the visible page — the whole log, or what the " +
+			"same filters as listAudit select. Newline-delimited JSON, one " +
 			"row per line, streamed — the rows are never materialised, because `audit_event` is " +
 			"the one table in this schema designed to grow without bound. " +
 			"NDJSON rather than CSV because an audit row's text quotes names a publisher chose, " +
@@ -999,6 +1000,7 @@ func (s *Server) registerAudit() {
 		Responses: map[string]*huma.Response{
 			"200": auditExportResponse(),
 			"401": s.errorResponse("Missing, expired or invalid token."),
+			"422": s.errorResponse("A filter is invalid."),
 			"500": s.errorResponse("The request could not be completed."),
 		},
 	}, s.exportAudit)

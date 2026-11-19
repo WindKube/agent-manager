@@ -762,6 +762,51 @@ func TestTheAuditExportIsTheWholeLogAndNotTheVisiblePage(t *testing.T) {
 	require.Equal(t, page.Entries[0].ID, rows[0].ID)
 }
 
+// The filters narrow the page and the export alike, and the rows carry their
+// subject on the wire.
+func TestTheAuditFiltersNarrowThePageAndTheExportAlike(t *testing.T) {
+	handler := liveHandler(t)
+	fixture := seedGovernance(t)
+	// The log is append-only and shared by the suite, so the package and the
+	// namespace are counted as deltas.
+	total := func(query string) int {
+		return getJSON[contract.AuditPage](t, handler, kw.token, "/v1/audit?"+query).Total
+	}
+	packageBefore, namespaceBefore := total("subjectKind=package&subjectId=gov/risky-digest"), total("namespace=gov")
+
+	accept := request(t, handler, http.MethodPost,
+		"/v1/findings/"+fixture.openFinding.String()+"/accept", an.token, `{"note":"for the filter"}`)
+	require.Equal(t, http.StatusOK, accept.Code, accept.Body.String())
+
+	byFinding := getJSON[contract.AuditPage](t, handler, kw.token,
+		"/v1/audit?subjectKind=finding&subjectId="+fixture.openFinding.String())
+	require.Equal(t, 1, byFinding.Total)
+	entry := byFinding.Entries[0]
+	require.Equal(t, "finding", entry.SubjectKind)
+	require.Equal(t, fixture.openFinding.String(), entry.SubjectID)
+	require.Equal(t, "gov", entry.Namespace)
+	require.Equal(t, "accepted", entry.Data["action"])
+	require.Equal(t, "gov/risky-digest", entry.Data["package"])
+
+	require.Equal(t, packageBefore+1, total("subjectKind=package&subjectId=gov/risky-digest"),
+		"a package's history includes the rows about its findings")
+	require.Equal(t, namespaceBefore+1, total("namespace=gov"))
+	require.Zero(t, total("namespace=nobody"))
+
+	rec := request(t, handler, http.MethodGet,
+		"/v1/audit/export?subjectKind=finding&subjectId="+fixture.openFinding.String(), kw.token, "")
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	rows, trailer := readExport(t, rec.Body.Bytes())
+	require.Len(t, rows, 1, "the export is the filtered scope")
+	require.Equal(t, entry, rows[0])
+	require.Equal(t, 1, trailer.Rows)
+
+	for _, path := range []string{"/v1/audit?subjectId=x", "/v1/audit/export?subjectId=x", "/v1/audit?subjectKind=machine"} {
+		rec := request(t, handler, http.MethodGet, path, kw.token, "")
+		require.Equal(t, http.StatusUnprocessableEntity, rec.Code, "%s: %s", path, rec.Body.String())
+	}
+}
+
 // readExport parses the NDJSON stream: every line an audit row, except the last,
 // which is the completeness sentinel.
 func readExport(t *testing.T, body []byte) ([]contract.AuditEntry, *contract.AuditExportTrailer) {

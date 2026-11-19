@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -267,7 +268,7 @@ func TestTheAuditPageIsMappedRowForRow(t *testing.T) {
 		}`)
 	})
 
-	page, err := client.Audit(t.Context(), 1)
+	page, err := client.Audit(t.Context(), 1, view.AuditFilter{})
 	require.NoError(t, err)
 	require.Equal(t, 512, page.Total)
 	require.Len(t, page.Rows, 2)
@@ -276,6 +277,40 @@ func TestTheAuditPageIsMappedRowForRow(t *testing.T) {
 	require.True(t, page.Rows[1].System,
 		"a system row must not be attributable to a person, so the kind is carried and not inferred")
 	require.Empty(t, page.Rows[1].Source)
+}
+
+// The filter travels as the api's query params, and a row about a version is
+// mapped to its package so the screen can link it.
+func TestTheAuditFilterIsForwardedAndSubjectsAreMapped(t *testing.T) {
+	var query url.Values
+	client := clientAgainst(t, func(w http.ResponseWriter, r *http.Request) {
+		query = r.URL.Query()
+		writeCatalog(w, `{
+		  "entries":[
+		    {"id":"01930000-0000-7000-8000-00000000000a","occurredAt":"2026-08-27T14:02:00Z",
+		     "actor":"scanner","actorKind":"system","kind":"scan","text":"flagged community/slack-digest@0.5.1",
+		     "subjectKind":"version","subjectId":"community/slack-digest@0.5.1","namespace":"community",
+		     "data":{"action":"scanned","package":"community/slack-digest","semver":"0.5.1"}},
+		    {"id":"01930000-0000-7000-8000-00000000000b","occurredAt":"2026-08-27T13:48:00Z",
+		     "actor":"a@example.com","actorKind":"identity","kind":"login","text":"a signed in",
+		     "subjectKind":"identity","subjectId":"01930000-0000-7000-8000-0000000000ff"}
+		  ],
+		  "total":2,"page":1,"pageSize":50
+		}`)
+	})
+
+	page, err := client.Audit(t.Context(), 1,
+		view.AuditFilter{SubjectKind: "package", SubjectID: "community/slack-digest"})
+	require.NoError(t, err)
+	require.Equal(t, "package", query.Get("subjectKind"))
+	require.Equal(t, "community/slack-digest", query.Get("subjectId"))
+	require.False(t, query.Has("namespace"), "an unset filter is left off the query")
+
+	require.Equal(t, "version", page.Rows[0].SubjectKind)
+	require.Equal(t, "community/slack-digest", page.Rows[0].Package)
+	require.Equal(t, "/packages/community/slack-digest", page.Rows[0].PackageHref())
+	require.Empty(t, page.Rows[1].Package)
+	require.Empty(t, page.Rows[1].PackageHref())
 }
 
 // The export is handed back as a live stream. A method that decoded it would
@@ -287,7 +322,7 @@ func TestTheAuditExportIsHandedBackAsAStreamAndNotAsBytes(t *testing.T) {
 		_, _ = w.Write([]byte(lines))
 	})
 
-	body, mediaType, err := client.AuditExport(t.Context())
+	body, mediaType, err := client.AuditExport(t.Context(), view.AuditFilter{})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, body.Close()) })
 	require.Equal(t, "application/x-ndjson", mediaType)
@@ -308,7 +343,7 @@ func TestARefusedExportYieldsNoReader(t *testing.T) {
 		_, _ = w.Write([]byte(`{"title":"Unauthorized"}`))
 	})
 
-	body, _, err := client.AuditExport(t.Context())
+	body, _, err := client.AuditExport(t.Context(), view.AuditFilter{})
 	require.Nil(t, body)
 	require.True(t, errors.Is(err, view.ErrSignedOut))
 }

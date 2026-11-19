@@ -2,6 +2,7 @@ package view
 
 import (
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -34,6 +35,30 @@ type AuditRow struct {
 	// escaped on render like everything else (001 FR-055).
 	Text   string
 	Source string
+
+	// The subject, empty on rows written before the api recorded one.
+	SubjectKind string
+	SubjectID   string
+	Namespace   string
+	// Package is the namespace/name a package, version or finding row is about.
+	Package string
+}
+
+// PackageHref links a row about a package, or one of its versions or
+// findings, to that package's page; empty for any other row.
+func (r AuditRow) PackageHref() string {
+	if _, _, ok := SplitPackageID(r.Package); !ok {
+		return ""
+	}
+	return PackageHref(r.Package)
+}
+
+// SubjectLabel names the row's subject for the detail panel.
+func (r AuditRow) SubjectLabel() string {
+	if r.SubjectKind == "" {
+		return "Not recorded"
+	}
+	return r.SubjectKind + " " + r.SubjectID
 }
 
 // AuditPage is one page of the audit log.
@@ -94,10 +119,79 @@ func (r AuditRow) KindTone() string { return KindTone(r.Kind) }
 // honest before the first answer arrives.
 const DefaultAuditPageSize = 50
 
-// AuditQuery is one request for the screen: which page, and which of its rows
-// is open in the detail panel.
+// AuditFilter narrows the log to one subject or one package namespace. The
+// api applies it; the screen only carries it from link to link.
+type AuditFilter struct {
+	SubjectKind string
+	SubjectID   string
+	Namespace   string
+}
+
+// auditSubjectKinds is the api's vocabulary; anything else off a URL is dropped
+// rather than sent on to be refused.
+var auditSubjectKinds = []string{
+	"package", "version", "finding", "profile", "revision",
+	"category", "mapping", "policy", "identity", "device",
+}
+
+// maxAuditFilterLength mirrors the api's own bound on subjectId and namespace.
+const maxAuditFilterLength = 200
+
+func (f AuditFilter) normalise() AuditFilter {
+	f.SubjectKind = strings.TrimSpace(f.SubjectKind)
+	f.SubjectID = strings.TrimSpace(f.SubjectID)
+	f.Namespace = strings.TrimSpace(f.Namespace)
+	if !slices.Contains(auditSubjectKinds, f.SubjectKind) {
+		f.SubjectKind = ""
+	}
+	if f.SubjectKind == "" || len(f.SubjectID) > maxAuditFilterLength {
+		f.SubjectID = ""
+	}
+	if len(f.Namespace) > maxAuditFilterLength {
+		f.Namespace = ""
+	}
+	return f
+}
+
+func (f AuditFilter) Active() bool { return f.SubjectKind != "" || f.Namespace != "" }
+
+// Label is the filter chip's text.
+func (f AuditFilter) Label() string {
+	var parts []string
+	if f.SubjectKind != "" {
+		parts = append(parts, strings.TrimSpace(f.SubjectKind+" "+f.SubjectID))
+	}
+	if f.Namespace != "" {
+		parts = append(parts, "namespace "+f.Namespace)
+	}
+	return strings.Join(parts, ", ")
+}
+
+func (f AuditFilter) values() url.Values {
+	values := url.Values{}
+	if f.SubjectKind != "" {
+		values.Set("subjectKind", f.SubjectKind)
+	}
+	if f.SubjectID != "" {
+		values.Set("subjectId", f.SubjectID)
+	}
+	if f.Namespace != "" {
+		values.Set("namespace", f.Namespace)
+	}
+	return values
+}
+
+// AuditHistoryHref is one package's history: its own rows and those about its
+// versions and findings.
+func AuditHistoryHref(packageID string) string {
+	return "/audit?" + AuditFilter{SubjectKind: "package", SubjectID: packageID}.values().Encode()
+}
+
+// AuditQuery is one request for the screen: which page, which filter, and
+// which of its rows is open in the detail panel.
 type AuditQuery struct {
-	Page int
+	Page   int
+	Filter AuditFilter
 	// Selected is a row id off the URL: untrusted text, only ever a query
 	// value and never used to build a path, so bounded rather than validated.
 	Selected string
@@ -114,22 +208,42 @@ func (q AuditQuery) Normalise() AuditQuery {
 	if len(q.Selected) > maxAuditIDLength {
 		q.Selected = ""
 	}
+	q.Filter = q.Filter.normalise()
 	return q
 }
 
-// EntryHref opens one row's detail panel without disturbing the page.
-func (q AuditQuery) EntryHref(id string) string {
-	values := url.Values{}
-	if q.Page > 1 {
-		values.Set("page", strconv.Itoa(q.Page))
+func (q AuditQuery) href(page int, entry string) string {
+	values := q.Filter.values()
+	if page > 1 {
+		values.Set("page", strconv.Itoa(page))
 	}
-	values.Set("entry", id)
+	if entry != "" {
+		values.Set("entry", entry)
+	}
+	if len(values) == 0 {
+		return "/audit"
+	}
 	return "/audit?" + values.Encode()
 }
 
+// EntryHref opens one row's detail panel without disturbing the page.
+func (q AuditQuery) EntryHref(id string) string { return q.href(q.Page, id) }
+
 // CloseHref is the page with no row open — the pager's own target, since
 // closing the panel and turning the page land on the same place.
-func (q AuditQuery) CloseHref() string { return AuditPageHref(q.Page) }
+func (q AuditQuery) CloseHref() string { return q.href(q.Page, "") }
+
+// PageHref is the pager's target, keeping the filter.
+func (q AuditQuery) PageHref(page int) string { return q.href(page, "") }
+
+// ExportHref is the export of the current scope: the filter, never the page.
+func (q AuditQuery) ExportHref() string {
+	values := q.Filter.values()
+	if len(values) == 0 {
+		return AuditExportHref
+	}
+	return AuditExportHref + "?" + values.Encode()
+}
 
 // Audit is the whole screen.
 type Audit struct {
@@ -198,7 +312,7 @@ func AuditPageHref(page int) string {
 
 // AuditExportHref is the streamed export of 001 FR-051.
 //
-// It takes no page and no filter, and that is the requirement rather than a
-// simplification: the export is the full current scope, so a link carrying the
-// visible page's number would quietly export a screenful.
+// It takes no page, and that is the requirement rather than a simplification:
+// the export is the full current scope, so a link carrying the visible page's
+// number would quietly export a screenful. AuditQuery.ExportHref adds the filter.
 const AuditExportHref = "/audit/export"

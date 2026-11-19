@@ -554,3 +554,29 @@ func TestGitSourceAuthenticatesToTheGitHubAPIOnlyWhenGivenAToken(t *testing.T) {
 		}
 	}
 }
+
+func TestGitSourceNeverSendsTheTokenToAnotherHost(t *testing.T) {
+	tarball := forgeTarball(t, "example-kit-9f1c2ab", map[string]string{"plugin.json": testPluginManifest})
+	var auth []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth = append(auth, r.Header.Get("Authorization"))
+		if strings.HasSuffix(r.URL.Path, "/git/ref/tags/v1.0.0") {
+			_, _ = fmt.Fprintf(w, `{"ref":"refs/tags/v1.0.0","object":{"type":"commit","sha":%q}}`, testCommit)
+			return
+		}
+		w.Header().Set("Content-Type", "application/gzip")
+		_, _ = w.Write(tarball)
+	}))
+	defer server.Close()
+
+	source, err := fetch.NewGitSource(&rewriteClient{server: server}, "ghp_test")
+	require.NoError(t, err)
+	_, err = source.Fetch(context.Background(), fetch.SourceRef{
+		Kind: fetch.SourceGit, URL: "https://git.attacker.example/example/kit", Ref: "v1.0.0",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, auth)
+	for _, got := range auth {
+		require.Empty(t, got)
+	}
+}

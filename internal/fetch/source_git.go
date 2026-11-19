@@ -365,8 +365,14 @@ func hasManifestUnder(files *bundle.Bundle, root string) bool {
 	return files.Has(prefix+pluginManifestName) || files.Has(prefix+skillManifestName)
 }
 
+// authorize attaches the token only to api.github.com over https: it is a
+// github.com credential, and any other host is named by whoever registered
+// the package.
 func (s GitSource) authorize(request *http.Request) {
-	if s.token != "" {
-		request.Header.Set("Authorization", "Bearer "+s.token)
+	if s.token == "" || request.URL.Scheme != "https" || !strings.EqualFold(request.URL.Hostname(), githubAPIHost) {
+		return
 	}
+	request.Header.Set("Authorization", "Bearer "+s.token)
 }
+
+const githubAPIHost = "api.github.com"

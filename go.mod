@@ -4,6 +4,7 @@ go 1.26.6
 
 require (
 	github.com/Masterminds/semver/v3 v3.5.0
+	github.com/WindKube/agent-manager/cli v0.0.0
 	github.com/a-h/templ v0.3.1020
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/coreos/go-oidc/v3 v3.20.0
@@ -206,3 +207,5 @@ tool (
 	github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 	github.com/riverqueue/river/cmd/river
 )
+
+replace github.com/WindKube/agent-manager/cli => ./cli

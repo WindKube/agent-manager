@@ -10,9 +10,18 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"path"
-	"strings"
+
+	"github.com/WindKube/agent-manager/cli/archiveguard"
 )
+
+// Limits bounds one extraction; see archiveguard.Limits.
+type Limits = archiveguard.Limits
+
+// DefaultMaxCompressedBytes is the upload limit the product states.
+const DefaultMaxCompressedBytes = archiveguard.DefaultMaxCompressedBytes
+
+// DefaultLimits returns every cap at its default.
+func DefaultLimits() Limits { return archiveguard.DefaultLimits() }
 
 // The four failure kinds a caller must be able to tell apart: a malformed
 // archive, an archive that busts a cap, a member we refuse outright, and an
@@ -63,28 +72,28 @@ func (k ErrorKind) sentinel() error {
 
 // Reason values for KindTooLarge, one per cap.
 const (
-	CapCompressedSize   = "compressed archive size"
-	CapDecompressedSize = "total decompressed size"
-	CapCompressionRatio = "compression ratio"
-	CapEntryCount       = "entry count"
-	CapEntrySize        = "single entry size"
-	CapPathDepth        = "path depth"
-	CapPathLength       = "path length"
+	CapCompressedSize   = string(archiveguard.CapCompressedSize)
+	CapDecompressedSize = string(archiveguard.CapDecompressedSize)
+	CapCompressionRatio = string(archiveguard.CapCompressionRatio)
+	CapEntryCount       = string(archiveguard.CapEntryCount)
+	CapEntrySize        = string(archiveguard.CapEntrySize)
+	CapPathDepth        = string(archiveguard.CapPathDepth)
+	CapPathLength       = string(archiveguard.CapPathLength)
 )
 
 // Reason values for KindRejectedMember, one per member kind or path shape refused outright.
 const (
-	RejectAbsolutePath = "absolute path"
-	RejectTraversal    = "parent directory traversal"
-	RejectSymlink      = "symlink"
-	RejectHardlink     = "hardlink"
-	RejectDevice       = "device node"
-	RejectFIFO         = "fifo"
-	RejectSocket       = "socket"
+	RejectAbsolutePath = string(archiveguard.RejectAbsolutePath)
+	RejectTraversal    = string(archiveguard.RejectTraversal)
+	RejectSymlink      = string(archiveguard.RejectSymlink)
+	RejectHardlink     = string(archiveguard.RejectHardlink)
+	RejectDevice       = string(archiveguard.RejectDevice)
+	RejectFIFO         = string(archiveguard.RejectFIFO)
+	RejectSocket       = string(archiveguard.RejectSocket)
 	RejectDuplicate    = "duplicate path"
-	RejectMemberType   = "unsupported member type"
-	RejectPathChars    = "unsafe characters in path"
-	RejectEmptyPath    = "empty path"
+	RejectMemberType   = string(archiveguard.RejectMemberType)
+	RejectPathChars    = string(archiveguard.RejectPathChars)
+	RejectEmptyPath    = string(archiveguard.RejectEmptyPath)
 )
 
 // Error carries the kind, so a caller can report "malformed archive" versus "too large"
@@ -131,47 +140,50 @@ func rejected(reason, member string) *Error {
 	return &Error{Kind: KindRejectedMember, Reason: reason, Path: member}
 }
 
+// fromGuard translates an archiveguard.Violation into this package's Error. A
+// timeout's Reason is the budget itself, as it always was here.
+func fromGuard(err error) error {
+	var v *archiveguard.Violation
+	if !errors.As(err, &v) {
+		return err
+	}
+	switch v.Kind {
+	case archiveguard.KindTimeout:
+		return &Error{Kind: KindTimeout, Reason: v.Detail, cause: v.Cause}
+	case archiveguard.KindTooLarge:
+		return tooLarge(string(v.Rule), v.Path)
+	default:
+		return rejected(string(v.Rule), v.Path)
+	}
+}
+
 type extractor struct {
-	// parent is the caller's context and ctx adds our own wall-clock cap on top of it.
-	// Both are kept so alive can tell whose budget expired.
-	parent context.Context
-	ctx    context.Context
+	clock  *archiveguard.Clock
 	limits Limits
-	guard  ratioGuard
+	guard  *archiveguard.Guard
 	seen   map[string]struct{}
-	count  int
 	out    *Bundle
 }
 
 func newExtractor(ctx context.Context, lim Limits) (*extractor, context.CancelFunc) {
-	lim = lim.withDefaults()
+	lim = lim.WithDefaults()
 	// The wall-clock cap is a deadline over the whole extraction, checked on every read,
 	// every member and every chunk: an archive can pass every size check and still take
 	// forever, and so can the peer feeding it to us.
-	cctx, cancel := context.WithTimeout(ctx, lim.MaxDuration)
+	clock, cancel := archiveguard.StartClock(ctx, lim.MaxDuration)
 	return &extractor{
-		parent: ctx,
-		ctx:    cctx,
+		clock:  clock,
 		limits: lim,
-		guard:  ratioGuard{limits: lim},
+		guard:  archiveguard.NewGuard(lim),
 		seen:   make(map[string]struct{}),
 		out:    New(),
 	}, cancel
 }
 
-// alive reports our own wall-clock cap as an extraction failure, but passes the caller's
-// cancellation or deadline straight through: a shutdown or a request timeout is not an
-// archive defect and must not be reported as one, nor be blamed on a budget that never
-// expired. The caller's context is checked first because ctx inherits its deadline, so
-// both are done at once when the caller's is the shorter of the two.
+// alive reports our own wall-clock cap as a KindTimeout Error and passes the caller's
+// cancellation or deadline straight through.
 func (e *extractor) alive() error {
-	if parentErr := e.parent.Err(); parentErr != nil {
-		return fmt.Errorf("extraction stopped: %w", parentErr)
-	}
-	if ctxErr := e.ctx.Err(); ctxErr != nil {
-		return &Error{Kind: KindTimeout, Reason: e.limits.MaxDuration.String(), cause: ctxErr}
-	}
-	return nil
+	return fromGuard(e.clock.Err())
 }
 
 // clockFirst prefers the clock's verdict over a read failure. A read that failed because
@@ -188,19 +200,7 @@ func (e *extractor) clockFirst(err error) error {
 // reader makes every read observe the clock, so a peer that trickles bytes cannot outlast
 // MaxDuration however slowly it feeds us.
 func (e *extractor) reader(r io.Reader) io.Reader {
-	return &clockReader{e: e, r: r}
-}
-
-type clockReader struct {
-	e *extractor
-	r io.Reader
-}
-
-func (c *clockReader) Read(p []byte) (int, error) {
-	if err := c.e.alive(); err != nil {
-		return 0, err
-	}
-	return c.r.Read(p)
+	return archiveguard.ClockReader(r, e.alive)
 }
 
 // Extract sniffs .zip or .tar.gz and extracts under lim. The archive is
@@ -210,7 +210,7 @@ func (c *clockReader) Read(p []byte) (int, error) {
 // lim.MaxDecompressedBytes are also the caller's memory budget per concurrent
 // extraction.
 func Extract(ctx context.Context, r io.Reader, lim Limits) (*Bundle, error) {
-	lim = lim.withDefaults()
+	lim = lim.WithDefaults()
 	// The wall-clock budget starts before the first byte is read. Buffering the upload is
 	// part of the extraction: a peer that trickles bytes would otherwise hold a goroutine
 	// and the whole compressed buffer for as long as it liked, with MaxDuration bounding
@@ -236,7 +236,7 @@ func Extract(ctx context.Context, r io.Reader, lim Limits) (*Bundle, error) {
 // of the archive, never a declared one: it is the ceiling on the compression-ratio
 // denominator.
 func ExtractZip(ctx context.Context, ra io.ReaderAt, size int64, lim Limits) (*Bundle, error) {
-	lim = lim.withDefaults()
+	lim = lim.WithDefaults()
 	e, cancel := newExtractor(ctx, lim)
 	defer cancel()
 	return e.zip(ra, size)
@@ -248,8 +248,8 @@ func (e *extractor) zip(ra io.ReaderAt, size int64) (*Bundle, error) {
 	}
 	// size is the ceiling on the ratio denominator, so it is set here from the real byte
 	// count and never from anything the archive declares about itself.
-	e.guard.archiveSize = size
-	zr, zipErr := zip.NewReader(&countingReaderAt{ra: ra, guard: &e.guard}, size)
+	e.guard.SetArchiveSize(size)
+	zr, zipErr := zip.NewReader(e.guard.ReaderAt(ra), size)
 	if zipErr != nil {
 		return nil, e.clockFirst(malformed("cannot read zip directory", zipErr))
 	}
@@ -260,7 +260,7 @@ func (e *extractor) zip(ra io.ReaderAt, size int64) (*Bundle, error) {
 // are consumed, so the ratio denominator grows with real input rather than with anything
 // the archive declares.
 func ExtractTarGz(ctx context.Context, r io.Reader, lim Limits) (*Bundle, error) {
-	lim = lim.withDefaults()
+	lim = lim.WithDefaults()
 	e, cancel := newExtractor(ctx, lim)
 	defer cancel()
 	return e.tarGz(r)
@@ -269,10 +269,7 @@ func ExtractTarGz(ctx context.Context, r io.Reader, lim Limits) (*Bundle, error)
 func (e *extractor) tarGz(r io.Reader) (*Bundle, error) {
 	// One byte past the cap is enough to know the archive is over it, and it stops the
 	// gzip reader from pulling an unbounded stream into memory.
-	counted := &countingReader{
-		r:     io.LimitReader(e.reader(r), e.limits.MaxCompressedBytes+1),
-		guard: &e.guard,
-	}
+	counted := e.guard.Reader(io.LimitReader(e.reader(r), e.limits.MaxCompressedBytes+1))
 	gz, gzErr := gzip.NewReader(counted)
 	if gzErr != nil {
 		return nil, e.clockFirst(malformed("cannot read gzip header", gzErr))
@@ -285,8 +282,8 @@ func (e *extractor) tarGz(r io.Reader) (*Bundle, error) {
 	}
 	// Checked before walkErr: an oversized archive shows up as a truncated stream, and
 	// "too large" is the honest reason for it.
-	if e.guard.compressed > e.limits.MaxCompressedBytes {
-		return nil, tooLarge(CapCompressedSize, "")
+	if err := e.guard.CheckCompressed(); err != nil {
+		return nil, fromGuard(err)
 	}
 	if walkErr != nil {
 		return nil, walkErr
@@ -311,7 +308,7 @@ func (e *extractor) extractZip(zr *zip.Reader) (*Bundle, error) {
 			return nil, err
 		}
 		mode := f.Mode()
-		clean, skip, err := e.acceptMember(f.Name, mode, zipMemberReason(mode))
+		clean, skip, err := e.acceptMember(f.Name, mode, archiveguard.ZipMemberRule(mode))
 		if err != nil {
 			return nil, err
 		}
@@ -360,7 +357,7 @@ func (e *extractor) walkTar(tr *tar.Reader) (*Bundle, error) {
 			continue
 		}
 		mode := hdr.FileInfo().Mode()
-		clean, skip, memberErr := e.acceptMember(hdr.Name, mode, tarMemberReason(hdr.Typeflag))
+		clean, skip, memberErr := e.acceptMember(hdr.Name, mode, archiveguard.TarMemberRule(hdr.Typeflag))
 		if memberErr != nil {
 			return nil, memberErr
 		}
@@ -377,45 +374,26 @@ func (e *extractor) walkTar(tr *tar.Reader) (*Bundle, error) {
 	}
 }
 
-// droppable reports whether a member of this kind is left out of the tree
-// instead of refusing the archive.
+// acceptMember applies every path rule and every member-kind rule. rule is what this
+// member's type breaks, or "" for a plain file or a directory. skip is true for anything
+// that contributes no file to the tree: a directory, or a dropped link.
 //
-// A symlink or a hardlink is not extracted either way: neither can be
-// represented in a bundle, and nothing here writes to a filesystem, so no link
-// is ever followed. What differs is the blast radius. Ordinary repositories
-// carry symlinks — a tarball of one with an AGENTS.md link at its root is the
-// case that found this — and refusing the archive made every such repository
-// permanently unimportable, including when the link is nowhere near the
-// subdirectory the caller asked for.
-//
-// A device node, a fifo or a socket is not the same: no plugin or skill tree has
-// a legitimate reason to carry one, so its presence says the archive is hostile
-// or broken, and the loud outcome is the useful one. Path-shape rejections stay
-// fatal for the same reason — a traversal is an attack on this extractor, not an
-// artefact of a normal repository.
-func droppable(reason string) bool {
-	return reason == RejectSymlink || reason == RejectHardlink
-}
-
-// acceptMember applies every path rule and every member-kind rule. memberReason is the
-// rejection reason for this member's type, or "" when the type is a plain file or a
-// directory. skip is true for anything that contributes no file to the tree: a
-// directory, or a member dropped under droppable.
-func (e *extractor) acceptMember(name string, mode fs.FileMode, memberReason string) (clean string, skip bool, err error) {
-	if memberReason != "" && !droppable(memberReason) {
-		return "", false, rejected(memberReason, name)
+// A symlink or a hardlink is dropped and recorded rather than refusing the archive
+// (archiveguard.Rule.Droppable): a bundle cannot represent either and nothing here writes
+// to a filesystem, while ordinary repositories carry them. Every other refused kind, and
+// every path-shape rejection, stays fatal.
+func (e *extractor) acceptMember(name string, mode fs.FileMode, rule archiveguard.Rule) (clean string, skip bool, err error) {
+	if rule != "" && !rule.Droppable() {
+		return "", false, fromGuard(archiveguard.RejectMember(rule, name))
 	}
-	e.count++
-	if e.count > e.limits.MaxEntries {
-		return "", false, tooLarge(CapEntryCount, name)
+	if countErr := e.guard.CountEntry(name); countErr != nil {
+		return "", false, fromGuard(countErr)
 	}
-	// A dropped member is validated like any other. A symlink is harmless; a
-	// symlink whose own path is a traversal is not an artefact of a normal
-	// repository, and reporting the path it named means never recording an
+	// A dropped member is validated like any other, so its recorded path is never an
 	// unchecked one.
-	clean, isDir, err := e.validatePath(name)
+	clean, isDir, err := archiveguard.ValidatePath(name, e.limits)
 	if err != nil {
-		return "", false, err
+		return "", false, fromGuard(err)
 	}
 	// Directories are implicit in a Bundle but still occupy a path, so a directory
 	// colliding with a file, or with another directory, is a duplicate like any other.
@@ -423,47 +401,11 @@ func (e *extractor) acceptMember(name string, mode fs.FileMode, memberReason str
 		return "", false, rejected(RejectDuplicate, name)
 	}
 	e.seen[clean] = struct{}{}
-	if memberReason != "" {
-		e.out.skip(clean, memberReason)
+	if rule != "" {
+		e.out.skip(clean, string(rule))
 		return "", true, nil
 	}
 	return clean, isDir || mode.IsDir(), nil
-}
-
-func (e *extractor) validatePath(name string) (clean string, isDir bool, err error) {
-	if len(name) > e.limits.MaxPathBytes {
-		return "", false, tooLarge(CapPathLength, truncate(name))
-	}
-	if name == "" {
-		return "", false, rejected(RejectEmptyPath, name)
-	}
-	// A backslash is a path separator to any Windows consumer of this tree, so `a\..\..\x`
-	// is a traversal that would otherwise be waved through. A NUL truncates the path for
-	// any C consumer. Neither belongs in a plugin path.
-	if strings.ContainsAny(name, "\\\x00") {
-		return "", false, rejected(RejectPathChars, name)
-	}
-	if path.IsAbs(name) || hasDriveLetter(name) {
-		return "", false, rejected(RejectAbsolutePath, name)
-	}
-	isDir = strings.HasSuffix(name, "/")
-	clean = path.Clean(strings.TrimSuffix(name, "/"))
-	if clean == "." || clean == "" {
-		if isDir {
-			// The archive root itself: nothing to record, and nothing to reject.
-			return ".", true, nil
-		}
-		return "", false, rejected(RejectEmptyPath, name)
-	}
-	// Cleaning is normalisation, not sanitisation: the rejection below runs on the cleaned
-	// form, so no `..` can reach a stored path by cancelling itself out on the way.
-	if clean == ".." || strings.HasPrefix(clean, "../") {
-		return "", false, rejected(RejectTraversal, name)
-	}
-	if strings.Count(clean, "/")+1 > e.limits.MaxPathDepth {
-		return "", false, tooLarge(CapPathDepth, clean)
-	}
-	return clean, isDir, nil
 }
 
 const readChunk = 32 << 10
@@ -482,11 +424,8 @@ func (e *extractor) readMember(r io.Reader, member string) ([]byte, error) {
 		n, readErr := r.Read(chunk)
 		if n > 0 {
 			got += int64(n)
-			if got > e.limits.MaxEntryBytes {
-				return nil, tooLarge(CapEntrySize, member)
-			}
-			if gErr := e.guard.produced(int64(n), member); gErr != nil {
-				return nil, gErr
+			if gErr := e.guard.Produced(int64(n), got, member); gErr != nil {
+				return nil, fromGuard(gErr)
 			}
 			data = append(data, chunk[:n]...)
 		}
@@ -499,82 +438,16 @@ func (e *extractor) readMember(r io.Reader, member string) ([]byte, error) {
 	}
 }
 
-// maxTrailerBytes bounds what may follow the tar end-of-archive marker. GNU tar pads to
-// 10 KiB, so this is generous; anything past it is not padding.
-const maxTrailerBytes = 1 << 20
-
 // drainTrailer reads to the end of the compressed stream so its own checksum is verified.
-// Without it a truncated upload is invisible: the tar end marker arrives first and the
-// short tree looks complete.
 func (e *extractor) drainTrailer(r io.Reader) error {
-	n, err := io.Copy(io.Discard, io.LimitReader(e.reader(r), maxTrailerBytes+1))
+	err := archiveguard.DrainTrailer(e.reader(r))
+	if errors.Is(err, archiveguard.ErrTrailingData) {
+		return malformed("trailing data after end of archive", nil)
+	}
 	if err != nil {
 		return e.clockFirst(malformed("cannot read archive trailer", err))
 	}
-	if n > maxTrailerBytes {
-		return malformed("trailing data after end of archive", nil)
-	}
 	return nil
-}
-
-// ratioGuard enforces the total decompressed cap and the compression ratio on every chunk
-// as it is produced. Waiting until the end is the bug this exists to avoid: by then the
-// bomb has already landed.
-type ratioGuard struct {
-	limits       Limits
-	archiveSize  int64
-	compressed   int64
-	decompressed int64
-}
-
-func (g *ratioGuard) consumed(n int64) {
-	if n > 0 {
-		g.compressed += n
-	}
-}
-
-func (g *ratioGuard) produced(n int64, member string) error {
-	g.decompressed += n
-	if g.decompressed > g.limits.MaxDecompressedBytes {
-		return tooLarge(CapDecompressedSize, member)
-	}
-	// The denominator is real input consumed, clamped to the archive's real size when it
-	// is known: a zip can point several members at the same bytes and re-read its central
-	// directory, so without the clamp an attacker could inflate their own allowance.
-	denom := g.compressed
-	if g.archiveSize > 0 && denom > g.archiveSize {
-		denom = g.archiveSize
-	}
-	allowed := denom * g.limits.MaxCompressionRatio
-	if allowed < g.limits.RatioGraceBytes {
-		allowed = g.limits.RatioGraceBytes
-	}
-	if g.decompressed > allowed {
-		return tooLarge(CapCompressionRatio, member)
-	}
-	return nil
-}
-
-type countingReader struct {
-	r     io.Reader
-	guard *ratioGuard
-}
-
-func (c *countingReader) Read(p []byte) (int, error) {
-	n, err := c.r.Read(p)
-	c.guard.consumed(int64(n))
-	return n, err
-}
-
-type countingReaderAt struct {
-	ra    io.ReaderAt
-	guard *ratioGuard
-}
-
-func (c *countingReaderAt) ReadAt(p []byte, off int64) (int, error) {
-	n, err := c.ra.ReadAt(p, off)
-	c.guard.consumed(int64(n))
-	return n, err
 }
 
 func readCapped(r io.Reader, maxBytes int64) ([]byte, error) {
@@ -589,54 +462,4 @@ func readCapped(r io.Reader, maxBytes int64) ([]byte, error) {
 		return nil, malformed("empty archive", nil)
 	}
 	return data, nil
-}
-
-func tarMemberReason(typeflag byte) string {
-	switch typeflag {
-	case tar.TypeReg, tar.TypeDir:
-		return ""
-	case tar.TypeSymlink:
-		return RejectSymlink
-	case tar.TypeLink:
-		return RejectHardlink
-	case tar.TypeChar, tar.TypeBlock:
-		return RejectDevice
-	case tar.TypeFifo:
-		return RejectFIFO
-	default:
-		return RejectMemberType
-	}
-}
-
-func zipMemberReason(mode fs.FileMode) string {
-	switch {
-	case mode.IsRegular(), mode.IsDir():
-		return ""
-	case mode&fs.ModeSymlink != 0:
-		return RejectSymlink
-	case mode&(fs.ModeDevice|fs.ModeCharDevice) != 0:
-		return RejectDevice
-	case mode&fs.ModeNamedPipe != 0:
-		return RejectFIFO
-	case mode&fs.ModeSocket != 0:
-		return RejectSocket
-	default:
-		return RejectMemberType
-	}
-}
-
-func hasDriveLetter(p string) bool {
-	if len(p) < 2 || p[1] != ':' {
-		return false
-	}
-	c := p[0]
-	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
-}
-
-func truncate(s string) string {
-	const limit = 64
-	if len(s) <= limit {
-		return s
-	}
-	return s[:limit] + "..."
 }

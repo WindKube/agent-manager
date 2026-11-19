@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/WindKube/agent-manager/cli/archiveguard"
 	"github.com/stretchr/testify/require"
 )
 
@@ -515,7 +516,7 @@ func TestReadMemberEnforcesCapsAgainstRealBytes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			e, cancel := newExtractor(context.Background(), tc.limits)
 			defer cancel()
-			e.guard.consumed(1024)
+			e.guard.Consumed(1024)
 			_, err := e.readMember(io.LimitReader(zeroReader{}, tc.real), "liar.bin")
 			requireKind(t, err, KindTooLarge, tc.capName)
 		})
@@ -537,49 +538,6 @@ func (zeroReader) Read(p []byte) (int, error) {
 		p[i] = 0
 	}
 	return len(p), nil
-}
-
-func TestRatioGuardChecksEveryChunk(t *testing.T) {
-	for _, tc := range []struct {
-		name        string
-		guard       ratioGuard
-		consume     int64
-		firstChunk  int64
-		secondChunk int64
-		capName     string
-	}{
-		{
-			name:        "trips the instant cumulative output passes ratio times input",
-			guard:       ratioGuard{limits: Limits{MaxDecompressedBytes: 1 << 30, MaxCompressionRatio: 10, RatioGraceBytes: 0}},
-			consume:     100,
-			firstChunk:  1000,
-			secondChunk: 1,
-			capName:     CapCompressionRatio,
-		},
-		{
-			name:        "clamps the denominator to the archive's real size",
-			guard:       ratioGuard{limits: Limits{MaxDecompressedBytes: 1 << 30, MaxCompressionRatio: 10, RatioGraceBytes: 0}, archiveSize: 100},
-			consume:     1_000_000,
-			firstChunk:  1000,
-			secondChunk: 1,
-			capName:     CapCompressionRatio,
-		},
-		{
-			name:        "trips on the total decompressed cap when the ratio is generous",
-			guard:       ratioGuard{limits: Limits{MaxDecompressedBytes: 1000, MaxCompressionRatio: 1 << 20, RatioGraceBytes: 1 << 20}},
-			consume:     100,
-			firstChunk:  1000,
-			secondChunk: 1,
-			capName:     CapDecompressedSize,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			g := tc.guard
-			g.consumed(tc.consume)
-			require.NoError(t, g.produced(tc.firstChunk, "m"))
-			requireKind(t, g.produced(tc.secondChunk, "m"), KindTooLarge, tc.capName)
-		})
-	}
 }
 
 func TestExtractHonoursWallClock(t *testing.T) {
@@ -639,92 +597,6 @@ func TestExtractTarGzOversizeReportsTooLargeNotMalformed(t *testing.T) {
 	// reason and the one the caller has to surface.
 	_, err := ExtractTarGz(context.Background(), bytes.NewReader(benignTarGz(t)), Limits{MaxCompressedBytes: 40})
 	requireKind(t, err, KindTooLarge, CapCompressedSize)
-}
-
-func TestValidatePathRules(t *testing.T) {
-	e := &extractor{limits: DefaultLimits()}
-	for _, tc := range []struct {
-		name   string
-		path   string
-		reason string
-	}{
-		{"NUL byte truncating the path for a C consumer", "a\x00b.txt", RejectPathChars},
-		{"backslash", `a\b.txt`, RejectPathChars},
-		{"empty name", "", RejectEmptyPath},
-		{"bare dot", ".", RejectEmptyPath},
-		{"root", "/", RejectAbsolutePath},
-		{"parent only", "..", RejectTraversal},
-		{"parent directory of the root", "../", RejectTraversal},
-		{"lowercase drive letter", "c:/x", RejectAbsolutePath},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := e.validatePath(tc.path)
-			requireKind(t, err, KindRejectedMember, tc.reason)
-		})
-	}
-
-	t.Run("a canonical relative path is accepted unchanged", func(t *testing.T) {
-		clean, isDir, err := e.validatePath("skills/demo/SKILL.md")
-		require.NoError(t, err)
-		require.False(t, isDir)
-		require.Equal(t, "skills/demo/SKILL.md", clean)
-	})
-}
-
-func TestMemberKindMapping(t *testing.T) {
-	for _, tc := range []struct {
-		name     string
-		typeflag byte
-		reason   string
-	}{
-		{"regular file", tar.TypeReg, ""},
-		{"directory", tar.TypeDir, ""},
-		{"symlink", tar.TypeSymlink, RejectSymlink},
-		{"hardlink", tar.TypeLink, RejectHardlink},
-		{"char device", tar.TypeChar, RejectDevice},
-		{"block device", tar.TypeBlock, RejectDevice},
-		{"fifo", tar.TypeFifo, RejectFIFO},
-		{"anything else", tar.TypeCont, RejectMemberType},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.reason, tarMemberReason(tc.typeflag))
-		})
-	}
-
-	for _, tc := range []struct {
-		name   string
-		mode   fs.FileMode
-		reason string
-	}{
-		{"regular file", 0o644, ""},
-		{"directory", fs.ModeDir | 0o755, ""},
-		{"symlink", fs.ModeSymlink | 0o777, RejectSymlink},
-		{"device", fs.ModeDevice | 0o644, RejectDevice},
-		{"fifo", fs.ModeNamedPipe | 0o644, RejectFIFO},
-		{"socket", fs.ModeSocket | 0o644, RejectSocket},
-		{"irregular", fs.ModeIrregular | 0o644, RejectMemberType},
-	} {
-		t.Run("zip "+tc.name, func(t *testing.T) {
-			require.Equal(t, tc.reason, zipMemberReason(tc.mode))
-		})
-	}
-}
-
-func TestDefaultLimitsMatchResearchR3(t *testing.T) {
-	l := DefaultLimits()
-	require.Equal(t, int64(25<<20), l.MaxCompressedBytes)
-	require.Equal(t, int64(250<<20), l.MaxDecompressedBytes)
-	require.Equal(t, int64(100), l.MaxCompressionRatio)
-	require.Equal(t, 10_000, l.MaxEntries)
-	require.Equal(t, int64(25<<20), l.MaxEntryBytes)
-	require.Equal(t, 32, l.MaxPathDepth)
-	require.Equal(t, 1024, l.MaxPathBytes)
-	require.Equal(t, 60*time.Second, l.MaxDuration)
-}
-
-func TestZeroLimitsFallBackToDefaults(t *testing.T) {
-	require.Equal(t, DefaultLimits(), Limits{}.withDefaults())
-	require.Equal(t, DefaultLimits(), Limits{MaxEntries: DefaultMaxEntries}.withDefaults())
 }
 
 func TestExtractPassesCallerContextFailureThrough(t *testing.T) {
@@ -980,4 +852,24 @@ func TestALinkIsDroppedAndReportedRatherThanRefusingTheArchive(t *testing.T) {
 		require.Empty(t, files.Paths())
 		require.Len(t, files.Skipped(), 1)
 	})
+}
+
+func TestGuardViolationsKeepThisPackagesErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		v      *archiveguard.Violation
+		kind   ErrorKind
+		reason string
+	}{
+		{"cap", &archiveguard.Violation{Kind: archiveguard.KindTooLarge, Rule: archiveguard.CapPathDepth, Path: "a/b"}, KindTooLarge, CapPathDepth},
+		{"member kind", &archiveguard.Violation{Kind: archiveguard.KindRejected, Rule: archiveguard.RejectSymlink, Path: "l"}, KindRejectedMember, "symlink"},
+		{"socket", &archiveguard.Violation{Kind: archiveguard.KindRejected, Rule: archiveguard.RejectSocket, Path: "s"}, KindRejectedMember, "socket"},
+		{"timeout reason is the budget", &archiveguard.Violation{Kind: archiveguard.KindTimeout, Rule: archiveguard.ReasonTimeBudget, Detail: "1m0s", Cause: context.DeadlineExceeded}, KindTimeout, "1m0s"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			requireKind(t, fromGuard(tc.v), tc.kind, tc.reason)
+		})
+	}
+	require.Equal(t, "archive exceeds extraction limits: path depth (member \"a/b\")",
+		fromGuard(&archiveguard.Violation{Kind: archiveguard.KindTooLarge, Rule: archiveguard.CapPathDepth, Path: "a/b"}).Error())
 }

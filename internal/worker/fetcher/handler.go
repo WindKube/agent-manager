@@ -98,6 +98,11 @@ func (w *Worker) run(ctx context.Context, job Job) (Result, error) {
 		return Result{}, classify(job.String(), err)
 	}
 
+	signature, verdict, err := w.verifySignatures(ctx, job.VersionID, tree)
+	if err != nil {
+		return Result{}, classify(job.String(), err)
+	}
+
 	pkg, err := pkgspec.InspectWith(w.validator, tree.Files, tree.Root)
 	if err != nil {
 		return Result{}, classify(job.String(), err)
@@ -144,7 +149,7 @@ func (w *Worker) run(ctx context.Context, job Job) (Result, error) {
 			hex.EncodeToString(commit.Bundle.Digest[:]), commit.Bundle.Size))
 	}
 
-	published, latest, err := w.publish(ctx, job, tree, pkg, commit)
+	published, latest, err := w.publish(ctx, job, tree, pkg, commit, stored{signature: signature, verdict: verdict})
 	if err != nil {
 		return Result{}, classify(job.String(), err)
 	}

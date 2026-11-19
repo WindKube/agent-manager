@@ -128,13 +128,15 @@ func (o *Override) ActiveAt(t time.Time) bool {
 	return o != nil && (o.ExpiresAt == nil || o.ExpiresAt.After(t))
 }
 
-// Signature is registry-side signature provenance. Verified stays nil or
-// false until cryptographic verification ships and must never be rendered
-// as a pass; nothing here reads it, only Ref decides eligibility.
+// Signature is registry-side signature provenance: where the Sigstore
+// bundle was found, and whether the fetcher verified it against the archive.
+// Only a verified signature counts as signed.
 type Signature struct {
 	Ref      string
 	Verified *bool
 }
+
+func (s *Signature) verified() bool { return s != nil && s.Verified != nil && *s.Verified }
 
 // Candidate is one version an entry may resolve to. Digest and ObjectKey
 // are opaque here, carried only so a caller building a lockfile entry
@@ -171,7 +173,7 @@ type Entry struct {
 
 type Input struct {
 	Gate Gate
-	// RequireSignatures: a version with no signature reference is not
+	// RequireSignatures: a version without a verified signature is not
 	// resolvable while it is set.
 	RequireSignatures bool
 	// At is passed rather than read off the clock so the resolver stays
@@ -369,7 +371,7 @@ func dispositionOf(in Input, candidate Candidate) disposition {
 	case VerdictClean, VerdictFlagged:
 	}
 
-	if in.RequireSignatures && (candidate.Signature == nil || candidate.Signature.Ref == "") {
+	if in.RequireSignatures && !candidate.Signature.verified() {
 		return disposition{reason: ReasonUnsignedSignaturesRequired}
 	}
 	if candidate.Verdict == VerdictClean {

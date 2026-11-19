@@ -97,6 +97,10 @@ type Fetcher struct {
 	OutboundAllowlist []string `env:"OUTBOUND_ALLOWLIST" envSeparator:","`
 	MaxUploadBytes    int64    `env:"MAX_UPLOAD_BYTES" envDefault:"26214400"`
 	GitHubToken       string   `env:"GITHUB_TOKEN"`
+	// SigstoreTrustedRoot is a path to a Sigstore trusted_root.json. Empty
+	// means the public-good root, fetched over TUF from the root embedded in
+	// the binary, held in memory and refreshed daily.
+	SigstoreTrustedRoot string `env:"SIGSTORE_TRUSTED_ROOT"`
 	// UpstreamInterval is how often tracked git packages are checked for new
 	// tags; see CheckUpstreamInterval for its floor.
 	UpstreamInterval time.Duration `env:"UPSTREAM_INTERVAL" envDefault:"1h"`

@@ -300,8 +300,9 @@ func TestARangeMatchingNothingExcludesTheEntry(t *testing.T) {
 }
 
 func TestRequiringSignedBundlesExcludesAVersionCarryingNoSignature(t *testing.T) {
+	verified := true
 	signed := older()
-	signed.Signature = &resolve.Signature{Ref: "sigstore:guard@1.0.0"}
+	signed.Signature = &resolve.Signature{Ref: "sigstore:guard@1.0.0", Verified: &verified}
 
 	resolveWith := func(candidates ...resolve.Candidate) resolve.Resolution {
 		result, err := resolve.Resolve(resolve.Input{

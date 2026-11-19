@@ -121,3 +121,14 @@ func TestNormaliseRefusesATagWithACharacterTheFacetCannotRender(t *testing.T) {
 		})
 	}
 }
+
+func TestNormaliseTakesASigstoreBundleOnlyBesideAnUpload(t *testing.T) {
+	in := validRegistration("community")
+	in.SigstoreBundle = []byte(`{}`)
+	_, err := in.normalise()
+	require.NoError(t, err)
+
+	in.Source, in.Archive, in.URL = fetch.SourceGit, nil, "https://github.com/community/widget"
+	_, err = in.normalise()
+	require.ErrorIs(t, err, ErrRegistration)
+}

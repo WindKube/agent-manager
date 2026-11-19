@@ -18,6 +18,7 @@ import (
 	"agent-manager/internal/domain/pkgspec"
 	"agent-manager/internal/fetch"
 	"agent-manager/internal/outbox"
+	"agent-manager/internal/signing"
 	"agent-manager/internal/worker"
 )
 
@@ -75,6 +76,7 @@ type Worker struct {
 	limits    bundle.Limits
 	validator *pkgspec.Validator
 	enqueue   outbox.Enqueuer
+	verifier  *signing.Verifier
 }
 
 // New assembles the handler from what the bootstrap handed the role. A nil
@@ -89,6 +91,8 @@ func New(deps worker.Deps) (*Worker, error) {
 		return nil, errors.New("fetcher: no object-store writer, so it could not store a bundle")
 	case deps.Fetch == nil:
 		return nil, errors.New("fetcher: no outbound client")
+	case deps.Signatures == nil:
+		return nil, errors.New("fetcher: no signature verifier")
 	}
 
 	validator, err := pkgspec.Default()
@@ -112,6 +116,7 @@ func New(deps worker.Deps) (*Worker, error) {
 		limits:    bundle.DefaultLimits(),
 		validator: validator,
 		enqueue:   outbox.NewWriter(),
+		verifier:  deps.Signatures,
 	}, nil
 }
 

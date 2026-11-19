@@ -178,6 +178,9 @@ services:
         postgres://am_fetcher:local-development-am-fetcher@postgres:5432/agent_manager?sslmode=disable
       # Optional. Without it GitHub allows 60 API requests an hour, which upstream tracking exhausts quickly.
       AGENT_MANAGER_GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      # Optional path to a Sigstore trusted_root.json. Empty fetches the public-good root over TUF
+      # (tuf-repo-cdn.sigstore.dev, through the outbound client) on the first signed fetch and daily after.
+      AGENT_MANAGER_SIGSTORE_TRUSTED_ROOT: ${SIGSTORE_TRUSTED_ROOT:-}
     command: ["worker", "run", "fetcher"]
     # A worker has no HTTP listener yet, so the image's HEALTHCHECK — which probes
     # the api's port — would mark it unhealthy forever. T109 adds the metrics and

@@ -157,7 +157,9 @@ type Capability struct {
 	Version *Version `bun:"rel:belongs-to,join:version_id=id"`
 }
 
-// Signature is registry-side metadata, never a manifest field.
+// Signature is registry-side metadata, never a manifest field. Kind none
+// with a null Result is unsigned; a cosign-bundle row carries the Sigstore
+// bundle the fetcher found (Ref says where) and what verifying it said.
 type Signature struct {
 	bun.BaseModel `bun:"table:signature,alias:sig"`
 
@@ -167,8 +169,21 @@ type Signature struct {
 	VerifiedAt *time.Time       `bun:"verified_at,type:timestamptz,nullzero"`
 	VerifiedBy string           `bun:"verified_by,type:text,nullzero"`
 	Result     *SignatureResult `bun:"result,type:signature_result,nullzero"`
-	CreatedAt  time.Time        `bun:"created_at,type:timestamptz,notnull,default:now()"`
-	UpdatedAt  time.Time        `bun:"updated_at,type:timestamptz,notnull,default:now()"`
+	// Bundle is null when what was found was not JSON at all.
+	Bundle json.RawMessage `bun:"bundle,type:jsonb,nullzero"`
+	// ArtifactDigest is the sha256 of the archive as downloaded, the bytes
+	// the bundle was checked against; the stored object is a repack of it.
+	ArtifactDigest []byte `bun:"artifact_digest,type:bytea,nullzero"`
+	// SignerIssuer and SignerIdentity are the certificate's OIDC issuer and
+	// SAN, set only on a verified row.
+	SignerIssuer   string     `bun:"signer_issuer,type:text,nullzero"`
+	SignerIdentity string     `bun:"signer_identity,type:text,nullzero"`
+	SignedAt       *time.Time `bun:"signed_at,type:timestamptz,nullzero"`
+	LogIndex       *int64     `bun:"log_index,type:bigint,nullzero"`
+	// Reason is why an invalid bundle did not verify.
+	Reason    string    `bun:"reason,type:text,nullzero"`
+	CreatedAt time.Time `bun:"created_at,type:timestamptz,notnull,default:now()"`
+	UpdatedAt time.Time `bun:"updated_at,type:timestamptz,notnull,default:now()"`
 
 	Version *Version `bun:"rel:belongs-to,join:version_id=id"`
 }

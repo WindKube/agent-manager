@@ -12,6 +12,7 @@ import (
 
 	"agent-manager/internal/blob"
 	"agent-manager/internal/fetch"
+	"agent-manager/internal/signing"
 )
 
 // Definition is the complete description of a background role.
@@ -70,5 +71,7 @@ type Deps struct {
 	Fetch     fetch.Client // nil unless Needs.Outbound
 	// GitHubToken authenticates GitHub API calls; empty means anonymous (60 requests an hour).
 	GitHubToken string
-	Log         zerolog.Logger
+	// Signatures verifies Sigstore bundles; nil unless Needs.Outbound.
+	Signatures *signing.Verifier
+	Log        zerolog.Logger
 }

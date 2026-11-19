@@ -149,3 +149,17 @@ func TestTheUpstreamIntervalDefaultsToAnHourAndRefusesLessThanFiveMinutes(t *tes
 	require.NoError(t, CheckUpstreamInterval(MinUpstreamInterval))
 	require.Error(t, CheckUpstreamInterval(MinUpstreamInterval-time.Second))
 }
+
+func TestTheSigstoreTrustedRootIsOptionalAndReadFromItsOwnVariable(t *testing.T) {
+	t.Setenv("AGENT_MANAGER_DATABASE_URL", "postgres://x")
+	t.Setenv("AGENT_MANAGER_RIVER_DATABASE_URL", "postgres://y")
+	t.Setenv("AGENT_MANAGER_BLOB_URL", "mem://")
+	cfg, err := Load[Fetcher]()
+	require.NoError(t, err)
+	require.Empty(t, cfg.SigstoreTrustedRoot)
+
+	t.Setenv("AGENT_MANAGER_SIGSTORE_TRUSTED_ROOT", "/etc/sigstore/trusted_root.json")
+	cfg, err = Load[Fetcher]()
+	require.NoError(t, err)
+	require.Equal(t, "/etc/sigstore/trusted_root.json", cfg.SigstoreTrustedRoot)
+}

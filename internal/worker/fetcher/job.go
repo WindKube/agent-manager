@@ -41,6 +41,9 @@ type JobSource struct {
 	// jsonb: the only transactional door available, since the api role
 	// holds no blob.Writer.
 	Archive []byte `json:"archive,omitempty"`
+
+	// SigstoreBundle is a bundle uploaded beside the archive.
+	SigstoreBundle []byte `json:"sigstoreBundle,omitempty"`
 }
 
 // Kind is the River job kind, which is the same string as the outbox
@@ -103,11 +106,12 @@ func (j Job) OutboxJob() (outbox.Job, error) {
 // SourceRef is the reference handed to the fetch Source registry.
 func (j Job) SourceRef() fetch.SourceRef {
 	return fetch.SourceRef{
-		Kind:         j.Source.Kind,
-		URL:          j.Source.URL,
-		Ref:          j.Source.Ref,
-		Subdirectory: j.Source.Subdirectory,
-		ArchiveName:  j.Source.ArchiveName,
+		Kind:           j.Source.Kind,
+		URL:            j.Source.URL,
+		Ref:            j.Source.Ref,
+		Subdirectory:   j.Source.Subdirectory,
+		ArchiveName:    j.Source.ArchiveName,
+		SigstoreBundle: j.Source.SigstoreBundle,
 	}
 }
 

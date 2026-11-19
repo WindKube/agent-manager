@@ -4,14 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
+	tuffetcher "github.com/theupdateframework/go-tuf/v2/metadata/fetcher"
 
 	"agent-manager/internal/blob"
 	"agent-manager/internal/config"
 	"agent-manager/internal/fetch"
+	"agent-manager/internal/signing"
 	"agent-manager/internal/store"
 )
 
@@ -32,6 +35,9 @@ type Config struct {
 	OutboundAllowlist []string      `env:"OUTBOUND_ALLOWLIST" envSeparator:","`
 	GitHubToken       string        `env:"GITHUB_TOKEN"`
 	UpstreamInterval  time.Duration `env:"UPSTREAM_INTERVAL" envDefault:"1h"`
+	// SigstoreTrustedRoot is a trusted_root.json; empty fetches the public-good
+	// root over TUF through the outbound client.
+	SigstoreTrustedRoot string `env:"SIGSTORE_TRUSTED_ROOT"`
 }
 
 // Built is a role's dependencies plus the handles that back them.
@@ -132,7 +138,33 @@ func Build(ctx context.Context, def Definition, cfg Config, log zerolog.Logger) 
 		}
 		built.Deps.Fetch = client
 		built.Deps.GitHubToken = cfg.GitHubToken
+
+		verifier, err := signing.New(signing.Options{
+			TrustedRootPath: cfg.SigstoreTrustedRoot,
+			Fetcher:         tufFetcher(client),
+		})
+		if err != nil {
+			if closeErr := built.Close(); closeErr != nil {
+				log.Error().Err(closeErr).Msg("closing partially built dependencies")
+			}
+			return nil, fmt.Errorf("worker %s: %w", def.Name, err)
+		}
+		built.Deps.Signatures = verifier
 	}
 
 	return built, nil
+}
+
+// tufFetcher sends the Sigstore TUF downloads through the SSRF-guarded client
+// rather than go-tuf's own http.DefaultClient.
+func tufFetcher(client fetch.Client) *tuffetcher.DefaultFetcher {
+	f := tuffetcher.NewDefaultFetcher()
+	f.SetHTTPClient(guardedDoer{client: client})
+	return f
+}
+
+type guardedDoer struct{ client fetch.Client }
+
+func (d guardedDoer) Do(req *http.Request) (*http.Response, error) {
+	return d.client.Do(req.Context(), req)
 }

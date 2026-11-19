@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"net/http"
@@ -153,7 +154,8 @@ func TestGitSourceUsesTheTarballEndpointAndNeverAShell(t *testing.T) {
 			w.Header().Set("Content-Type", "application/gzip")
 			_, _ = w.Write(tarball)
 		case "/repos/example/platform-toolkit/git/ref/tags/v9.9.9",
-			"/repos/example/private/git/ref/tags/HEAD", "/repos/example/broken/git/ref/tags/HEAD":
+			"/repos/example/private/git/ref/tags/HEAD", "/repos/example/broken/git/ref/tags/HEAD",
+			"/repos/example/platform-toolkit/releases/tags/v1.3.0":
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"message":"Not Found"}`))
 		case "/repos/example/platform-toolkit/commits/v9.9.9":
@@ -186,7 +188,10 @@ func TestGitSourceUsesTheTarballEndpointAndNeverAShell(t *testing.T) {
 		require.Equal(t, []string{
 			"/repos/example/platform-toolkit/git/ref/tags/v1.3.0",
 			"/repos/example/platform-toolkit/tarball/" + testCommit,
+			"/repos/example/platform-toolkit/releases/tags/v1.3.0",
 		}, client.seen)
+		require.Empty(t, tree.Signatures, "no release is unsigned")
+		require.Equal(t, sha256.Sum256(tarball), tree.ArchiveDigest)
 		require.Equal(t, testCommit, tree.Commit)
 		require.Equal(t, "https://github.com/example/platform-toolkit", tree.SourceURL)
 
@@ -347,6 +352,8 @@ func TestArchiveURLSourceFetchesThroughTheInjectedClient(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		case "/dist/private.zip":
 			w.WriteHeader(http.StatusUnauthorized)
+		case "/dist/platform-toolkit-1.3.0.zip.sigstore.json", "/dist/latest.zip.sigstore.json":
+			w.WriteHeader(http.StatusNotFound)
 		default:
 			w.WriteHeader(http.StatusTeapot)
 		}
@@ -364,6 +371,8 @@ func TestArchiveURLSourceFetchesThroughTheInjectedClient(t *testing.T) {
 		require.Equal(t, ".", tree.Root)
 		require.Contains(t, tree.Origin, "platform-toolkit-1.3.0.zip")
 		require.Empty(t, tree.Commit)
+		require.Equal(t, sha256.Sum256(archive), tree.ArchiveDigest)
+		require.Empty(t, tree.Signatures)
 	})
 
 	t.Run("the source url is where the bytes came from after redirects, without its query", func(t *testing.T) {
@@ -531,6 +540,8 @@ func TestGitSourceAuthenticatesToTheGitHubAPIOnlyWhenGivenAToken(t *testing.T) {
 			switch r.URL.Path {
 			case "/repos/example/platform-toolkit/git/ref/tags/v1.3.0":
 				_, _ = fmt.Fprintf(w, `{"ref":"refs/tags/v1.3.0","object":{"type":"commit","sha":%q}}`, testCommit)
+			case "/repos/example/platform-toolkit/releases/tags/v1.3.0":
+				w.WriteHeader(http.StatusNotFound)
 			default:
 				w.Header().Set("Content-Type", "application/gzip")
 				_, _ = w.Write(tarball)
@@ -548,7 +559,7 @@ func TestGitSourceAuthenticatesToTheGitHubAPIOnlyWhenGivenAToken(t *testing.T) {
 		if token != "" {
 			want = "Bearer " + token
 		}
-		require.Len(t, auth, 2)
+		require.Len(t, auth, 3)
 		for _, got := range auth {
 			require.Equal(t, want, got)
 		}
@@ -562,6 +573,10 @@ func TestGitSourceNeverSendsTheTokenToAnotherHost(t *testing.T) {
 		auth = append(auth, r.Header.Get("Authorization"))
 		if strings.HasSuffix(r.URL.Path, "/git/ref/tags/v1.0.0") {
 			_, _ = fmt.Fprintf(w, `{"ref":"refs/tags/v1.0.0","object":{"type":"commit","sha":%q}}`, testCommit)
+			return
+		}
+		if strings.Contains(r.URL.Path, "/releases/") {
+			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 		w.Header().Set("Content-Type", "application/gzip")

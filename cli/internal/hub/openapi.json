@@ -1650,7 +1650,7 @@
             "type": "string"
           },
           "verified": {
-            "description": "False until Sigstore verification ships (FR-048a). Never render a false value as a pass.",
+            "description": "Whether the hub verified the Sigstore bundle against the archive it downloaded. False means a bundle was found and did not verify; never render it as a pass.",
             "type": "boolean"
           }
         },
@@ -6367,6 +6367,9 @@
                 "ref": {
                   "contentType": "text/plain"
                 },
+                "sigstoreBundle": {
+                  "contentType": "application/json,application/octet-stream"
+                },
                 "source": {
                   "contentType": "text/plain"
                 },
@@ -6432,6 +6435,13 @@
                     "examples": [
                       "v1.3.0"
                     ],
+                    "type": "string"
+                  },
+                  "sigstoreBundle": {
+                    "contentEncoding": "binary",
+                    "contentMediaType": "application/octet-stream",
+                    "description": "Optional, upload only: a Sigstore bundle (.sigstore.json) over the archive's exact bytes, as cosign sign-blob --bundle writes it. The fetcher verifies it and records the signer; a git or archive-url source is checked for a bundle published beside it instead.",
+                    "format": "binary",
                     "type": "string"
                   },
                   "source": {

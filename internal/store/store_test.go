@@ -1754,3 +1754,38 @@ func outboxStateOf(t *testing.T, ctx context.Context, id uuid.UUID) (string, boo
 
 	return *state, true
 }
+
+func TestOnlyTheFetcherRecordsAVerifiedSignatureAndOnlyWithItsSigner(t *testing.T) {
+	ctx := context.Background()
+	pkgID := seedPackage(t, ctx)
+	verID := seedVersion(t, ctx, pkgID, "8.0.0", bytes.Repeat([]byte{0x8a}, 32), "skills/ex/p/8.0.0/bundle.tar.zst")
+	artifact := bytes.Repeat([]byte{0x8b}, 32)
+
+	asRole(t, "am_fetcher", func(ctx context.Context, conn *pgxpool.Conn) {
+		_, err := conn.Exec(ctx, `insert into signature (version_id, kind, result, bundle, artifact_digest)
+			values ($1, 'cosign-bundle', 'verified', '{}', $2)`, verID, artifact)
+		requirePgError(t, err, "23514", "signature_verified_names_a_signer")
+
+		_, err = conn.Exec(ctx, `insert into signature (version_id, kind, result) values ($1, 'none', 'invalid')`, verID)
+		requirePgError(t, err, "23514", "signature_none_has_no_result")
+
+		_, err = conn.Exec(ctx, `insert into signature
+			(version_id, ref, kind, result, verified_at, bundle, artifact_digest, signer_issuer, signer_identity, signed_at, log_index)
+			values ($1, 'https://cdn.example.dev/p.zip.sigstore.json', 'cosign-bundle', 'verified', now(), '{}', $2,
+			        'https://token.actions.githubusercontent.com', 'https://github.com/example/p/.github/workflows/release.yaml@refs/tags/v8.0.0',
+			        now(), 42)`, verID, artifact)
+		require.NoError(t, err)
+	})
+
+	asRole(t, "am_scanner", func(ctx context.Context, conn *pgxpool.Conn) {
+		_, err := conn.Exec(ctx, `update signature set signer_identity = 'attacker' where version_id = $1`, verID)
+		requirePgError(t, err, "42501", "")
+	})
+
+	asRole(t, "am_api", func(ctx context.Context, conn *pgxpool.Conn) {
+		var identity string
+		require.NoError(t, conn.QueryRow(ctx,
+			`select signer_identity from signature where version_id = $1`, verID).Scan(&identity))
+		require.Contains(t, identity, "release.yaml")
+	})
+}

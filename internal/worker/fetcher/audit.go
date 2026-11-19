@@ -11,6 +11,7 @@ import (
 
 	"agent-manager/internal/blob"
 	"agent-manager/internal/domain/pkgspec"
+	"agent-manager/internal/signing"
 	"agent-manager/internal/store/audit"
 	"agent-manager/internal/store/models"
 )
@@ -110,7 +111,7 @@ func outcomeOf(reason Reason) (models.FetchOutcome, bool) {
 
 // storedText is the audit line: what was stored, from where, and what it
 // turned out to contain.
-func storedText(job Job, pkg *pkgspec.Package, commit blob.Commit) string {
+func storedText(job Job, pkg *pkgspec.Package, commit blob.Commit, sig signing.Result) string {
 	text := fmt.Sprintf("stored %s (%s) from %s, digest sha256:%s, %d bytes",
 		job, pkg.Kind, describeSource(job.Source),
 		hex.EncodeToString(commit.Bundle.Digest[:]), commit.Bundle.Size)
@@ -124,16 +125,32 @@ func storedText(job Job, pkg *pkgspec.Package, commit blob.Commit) string {
 	if n := len(pkg.Layout.Links); n > 0 {
 		text += fmt.Sprintf(", %d %s not stored", n, plural(n, "link"))
 	}
-	return text
+	return text + ", " + signatureText(sig)
 }
 
-func storedData(pkg *pkgspec.Package, commit blob.Commit) map[string]any {
-	return map[string]any{
+func signatureText(sig signing.Result) string {
+	switch sig.Status {
+	case signing.StatusVerified:
+		return fmt.Sprintf("signature verified: %s via %s", sig.Identity, sig.Issuer)
+	case signing.StatusInvalid:
+		return "signature invalid: " + firstLine(sig.Reason)
+	default:
+		return "unsigned"
+	}
+}
+
+func storedData(pkg *pkgspec.Package, commit blob.Commit, sig signing.Result) map[string]any {
+	data := map[string]any{
 		"digest":     "sha256:" + hex.EncodeToString(commit.Bundle.Digest[:]),
 		"sizeBytes":  commit.Bundle.Size,
 		"kind":       string(pkg.Kind),
 		"components": len(pkg.Components),
+		"signature":  string(sig.Status),
 	}
+	if sig.Status == signing.StatusVerified {
+		data["signerIssuer"], data["signerIdentity"] = sig.Issuer, sig.Identity
+	}
+	return data
 }
 
 // describeSource names where a fetch went without reproducing a credential.

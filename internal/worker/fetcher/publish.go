@@ -15,9 +15,17 @@ import (
 	"agent-manager/internal/blob"
 	"agent-manager/internal/domain/pkgspec"
 	"agent-manager/internal/fetch"
+	"agent-manager/internal/signing"
 	"agent-manager/internal/store/models"
 	"agent-manager/internal/worker/scanner"
 )
+
+// stored is what verifying the version's signature produced, for the
+// publish transaction to record.
+type stored struct {
+	signature models.Signature
+	verdict   signing.Result
+}
 
 // errAlreadyPublished is the transaction finding the version already committed.
 var errAlreadyPublished = errors.New("version already has committed bytes")
@@ -27,7 +35,7 @@ var errAlreadyPublished = errors.New("version already has committed bytes")
 // together or not at all, so a crash in the middle leaves orphaned objects
 // rather than a half-published version. It returns whether it published, and
 // whether this version took the package's `latest` dist tag.
-func (w *Worker) publish(ctx context.Context, job Job, tree fetch.Tree, pkg *pkgspec.Package, commit blob.Commit) (published, latest bool, err error) {
+func (w *Worker) publish(ctx context.Context, job Job, tree fetch.Tree, pkg *pkgspec.Package, commit blob.Commit, sig stored) (published, latest bool, err error) {
 	err = w.deps.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		// `for update` closes the window the pre-flight idempotency check
 		// cannot: two deliveries can both pass that check, and only one may
@@ -152,10 +160,9 @@ func (w *Worker) publish(ctx context.Context, job Job, tree fetch.Tree, pkg *pkg
 
 		// `capability` is deliberately not written here: am_fetcher holds no
 		// grant on it.
-		if _, signatureErr := tx.NewInsert().Model(&models.Signature{
-			VersionID: job.VersionID,
-			Kind:      models.SignatureKindNone,
-		}).On("conflict (version_id) do nothing").Exec(ctx); signatureErr != nil {
+		signatureRow := sig.signature
+		if _, signatureErr := tx.NewInsert().Model(&signatureRow).
+			On("conflict (version_id) do nothing").Returning("NULL").Exec(ctx); signatureErr != nil {
 			return fmt.Errorf("record the signature state for %s: %w", job, signatureErr)
 		}
 
@@ -201,7 +208,7 @@ func (w *Worker) publish(ctx context.Context, job Job, tree fetch.Tree, pkg *pkg
 			return fmt.Errorf("enqueue the scan of %s: %w", job, enqueueErr)
 		}
 
-		if auditErr := writeFetchAudit(ctx, tx, job, "stored", storedText(job, pkg, commit), storedData(pkg, commit)); auditErr != nil {
+		if auditErr := writeFetchAudit(ctx, tx, job, "stored", storedText(job, pkg, commit, sig.verdict), storedData(pkg, commit, sig.verdict)); auditErr != nil {
 			return auditErr
 		}
 		if attemptErr := writeFetchAttempt(ctx, tx, job, models.FetchOutcomeOK, ""); attemptErr != nil {

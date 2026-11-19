@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/google/go-github/v90/github"
@@ -129,7 +130,8 @@ func (s GitSource) Fetch(ctx context.Context, ref SourceRef) (Tree, error) {
 	}
 
 	// A forge tarball is always gzipped tar; the format is not sniffed.
-	files, err := bundle.ExtractTarGz(ctx, resp.Body, ref.Limits)
+	archive := newDigesting(resp.Body)
+	files, err := bundle.ExtractTarGz(ctx, archive, ref.Limits)
 	if err != nil {
 		return Tree{}, fmt.Errorf("extract %s: %w", repo, err)
 	}
@@ -148,13 +150,100 @@ func (s GitSource) Fetch(ctx context.Context, ref SourceRef) (Tree, error) {
 			ErrRefNotFound, repo, pluginManifestName, skillManifestName)
 	}
 
+	signatures, err := s.releaseSignatures(ctx, api, repo, gitRef)
+	if err != nil {
+		return Tree{}, err
+	}
 	return Tree{
-		Files:     files,
-		Root:      root,
-		Origin:    "git " + repo.CloneURL() + "@" + gitRef + subdirectorySuffix(repo.Subdir),
-		SourceURL: repoURL(repo, ref.URL),
-		Commit:    commit,
+		Files:         files,
+		Root:          root,
+		Origin:        "git " + repo.CloneURL() + "@" + gitRef + subdirectorySuffix(repo.Subdir),
+		SourceURL:     repoURL(repo, ref.URL),
+		Commit:        commit,
+		ArchiveDigest: archive.sum(),
+		Signatures:    signatures,
 	}, nil
+}
+
+// maxReleaseSignatures bounds how many bundles one release may make us download.
+const maxReleaseSignatures = 5
+
+// releaseSignatures downloads the `*.sigstore.json` assets of the release
+// named like the ref, tarball bundles first. No release, or a release with no
+// such asset, is unsigned; any other failure is retried.
+func (s GitSource) releaseSignatures(ctx context.Context, api *github.Client, repo repourl.Repository, gitRef string) ([]SignatureCandidate, error) {
+	if gitRef == DefaultRef || IsCommitSHA(strings.ToLower(gitRef)) {
+		return nil, nil
+	}
+	var release struct {
+		Assets []struct {
+			ID   int64  `json:"id"`
+			Name string `json:"name"`
+			Size int64  `json:"size"`
+		} `json:"assets"`
+	}
+	found, err := s.getJSON(ctx, api, repo,
+		fmt.Sprintf("repos/%s/%s/releases/tags/%s", repo.Owner, repo.Repo, url.PathEscape(gitRef)), &release)
+	if err != nil {
+		return nil, retryable(err)
+	}
+	if !found {
+		return nil, nil
+	}
+
+	assets := release.Assets[:0]
+	for _, asset := range release.Assets {
+		if strings.HasSuffix(asset.Name, SigstoreSuffix) && asset.Size <= maxSignatureBytes {
+			assets = append(assets, asset)
+		}
+	}
+	sort.SliceStable(assets, func(i, j int) bool {
+		return strings.Contains(assets[i].Name, ".tar.gz") && !strings.Contains(assets[j].Name, ".tar.gz")
+	})
+	if len(assets) > maxReleaseSignatures {
+		assets = assets[:maxReleaseSignatures]
+	}
+
+	out := make([]SignatureCandidate, 0, len(assets))
+	for _, asset := range assets {
+		request, reqErr := api.NewRequest(ctx, http.MethodGet,
+			fmt.Sprintf("repos/%s/%s/releases/assets/%d", repo.Owner, repo.Repo, asset.ID), nil)
+		if reqErr != nil {
+			return nil, fmt.Errorf("build asset request for %s: %w", repo, reqErr)
+		}
+		s.authorize(request)
+		request.Header.Set("Accept", "application/octet-stream")
+		resp, doErr := s.client.Do(ctx, request)
+		if doErr != nil {
+			return nil, retryable(fmt.Errorf("fetch release asset %s of %s: %w", asset.Name, repo, doErr))
+		}
+		body, readErr := func() ([]byte, error) {
+			defer func() { _ = resp.Body.Close() }()
+			if statusErr := githubError(resp, repo); statusErr != nil {
+				return nil, statusErr
+			}
+			return readSignature(resp.Body)
+		}()
+		if readErr != nil {
+			return nil, retryable(fmt.Errorf("release asset %s: %w", asset.Name, readErr))
+		}
+		out = append(out, SignatureCandidate{
+			Origin: fmt.Sprintf("release %s asset %s of %s", gitRef, asset.Name, repo.WebURL()),
+			Bundle: body,
+		})
+	}
+	return out, nil
+}
+
+// retryable reports a failure to collect a signature as the remote's: the
+// archive itself was fetched, so credentials and refs are not the problem,
+// and calling the version unsigned would be a lie. The cause is flattened to
+// text so a wrapped 404 or 403 cannot classify it as a permanent failure.
+func retryable(err error) error {
+	if errors.Is(err, ErrBlocked) {
+		return err
+	}
+	return fmt.Errorf("%w: %s", ErrRemote, err.Error())
 }
 
 // target parses the reference and picks the API it is reached through,

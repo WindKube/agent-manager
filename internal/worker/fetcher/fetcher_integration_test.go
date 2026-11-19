@@ -34,6 +34,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -51,6 +52,7 @@ import (
 	"agent-manager/internal/blob"
 	"agent-manager/internal/bundle"
 	"agent-manager/internal/fetch"
+	"agent-manager/internal/signing/signingtest"
 	"agent-manager/internal/store/models"
 	"agent-manager/internal/store/storetest"
 	"agent-manager/internal/worker"
@@ -174,11 +176,36 @@ func forge(t *testing.T, files map[string]string) (base string, seen *[]string) 
 // forgeAt is forge with the tag-to-commit mapping in the test's hands, so a
 // tag can be moved between two fetches.
 func forgeAt(t *testing.T, files map[string]string, tagCommit func(tag string) string) (base string, seen *[]string) {
+	return forgeWith(t, files, tagCommit, nil)
+}
+
+// forgeWith is forgeAt whose every tag has a release, carrying the assets
+// releaseAssets makes from the tarball the forge serves; nil means no tag has
+// a release.
+func forgeWith(t *testing.T, files map[string]string, tagCommit func(tag string) string,
+	releaseAssets func(tarball []byte) map[string][]byte,
+) (base string, seen *[]string) {
 	t.Helper()
 
 	paths := new([]string)
 	var mu sync.Mutex
 	tarball := forgeTarball(t, "org-plugin-9e3f1c2", files)
+	// Built on first use, so the assets may be signed by a harness made after
+	// the forge.
+	var (
+		assetsOnce sync.Once
+		assetNames []string
+		assets     map[string][]byte
+	)
+	loadAssets := func() {
+		assetsOnce.Do(func() {
+			assets = releaseAssets(tarball)
+			for name := range assets {
+				assetNames = append(assetNames, name)
+			}
+			sort.Strings(assetNames)
+		})
+	}
 
 	// Any tag but v9.9.9, which stands in for "the remote does not have it" and
 	// is answered exactly as a forge answers a private repository — a 404 on the
@@ -208,6 +235,22 @@ func forgeAt(t *testing.T, files map[string]string, tagCommit func(tag string) s
 		case strings.HasPrefix(rest, "tarball/"):
 			w.Header().Set("Content-Type", "application/gzip")
 			_, _ = w.Write(tarball)
+		case strings.HasPrefix(rest, "releases/tags/") && releaseAssets != nil:
+			loadAssets()
+			listed := make([]map[string]any, 0, len(assetNames))
+			for i, name := range assetNames {
+				listed = append(listed, map[string]any{"id": i + 1, "name": name, "size": len(assets[name])})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"assets": listed})
+		case strings.HasPrefix(rest, "releases/assets/") && releaseAssets != nil:
+			loadAssets()
+			var id int
+			_, _ = fmt.Sscanf(strings.TrimPrefix(rest, "releases/assets/"), "%d", &id)
+			if id < 1 || id > len(assetNames) {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			_, _ = w.Write(assets[assetNames[id-1]])
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -219,8 +262,9 @@ func forgeAt(t *testing.T, files map[string]string, tagCommit func(tag string) s
 
 // harness is the role as the bootstrap would have built it.
 type harness struct {
-	worker *fetcher.Worker
-	bucket *blob.Bucket
+	worker   *fetcher.Worker
+	bucket   *blob.Bucket
+	sigstore *signingtest.Sigstore
 }
 
 func newHarness(t *testing.T, allowlist []string) harness {
@@ -236,16 +280,18 @@ func newHarness(t *testing.T, allowlist []string) harness {
 	// Needs{DB: AccessReadWrite, Blob: AccessReadWrite, Outbound: true} rendered as
 	// what the bootstrap hands over. BlobWrite is present because this role and no
 	// other declares AccessReadWrite.
+	sigstore := signingtest.New(t)
 	w, err := fetcher.New(worker.Deps{
-		DB:        workerDB,
-		BlobRead:  bucket.Reader(),
-		BlobWrite: bucket.Writer(),
-		Fetch:     client,
-		Log:       zerolog.New(io.Discard),
+		DB:         workerDB,
+		BlobRead:   bucket.Reader(),
+		BlobWrite:  bucket.Writer(),
+		Fetch:      client,
+		Signatures: sigstore.Verifier(),
+		Log:        zerolog.New(io.Discard),
 	})
 	require.NoError(t, err)
 
-	return harness{worker: w, bucket: bucket}
+	return harness{worker: w, bucket: bucket, sigstore: sigstore}
 }
 
 func loopbackOf(t *testing.T, rawURL string) string {
@@ -398,6 +444,7 @@ func TestAGitRegistrationBecomesAStoredVisibleVersionWithAQueuedScan(t *testing.
 	require.Equal(t, []string{
 		"/api/v3/repos/org/plugin/git/ref/tags/v1.3.0",
 		"/api/v3/repos/org/plugin/tarball/" + forgeCommit,
+		"/api/v3/repos/org/plugin/releases/tags/v1.3.0",
 	}, *seen)
 
 	after := readVersion(t, versionID)

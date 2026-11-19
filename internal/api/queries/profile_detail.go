@@ -320,7 +320,8 @@ select
   ver.visible and ver.dist_tag <> 'archived',
   ver.digest,
   ver.object_key,
-  coalesce(sig.ref, ''),
+  case when sig.kind = 'cosign-bundle' then coalesce(sig.ref, '') else '' end,
+  coalesce(sig.result = 'verified', false),
   coalesce(flag.rule_id, ''),
   coalesce(flag.evidence_path, ''),
   exists (select 1 from finding as open_fnd
@@ -381,6 +382,7 @@ func profileCandidates(ctx context.Context, db bun.IDB, p auth.Principal,
 			candidate resolve.Candidate
 			digest    []byte
 			ref       string
+			verified  bool
 			ruleID    string
 			path      string
 			hasOpen   bool
@@ -389,14 +391,14 @@ func profileCandidates(ctx context.Context, db bun.IDB, p auth.Principal,
 			expires   sql.NullTime
 		)
 		if err := rows.Scan(&packageID, &candidate.ID, &candidate.Semver, &candidate.Verdict,
-			&candidate.Visible, &digest, &candidate.ObjectKey, &ref, &ruleID, &path,
+			&candidate.Visible, &digest, &candidate.ObjectKey, &ref, &verified, &ruleID, &path,
 			&hasOpen, &reviewer, &note, &expires); err != nil {
 			return nil, fmt.Errorf("scan a candidate version: %w", err)
 		}
 
 		candidate.Digest = "sha256:" + hex.EncodeToString(digest)
 		if ref != "" {
-			candidate.Signature = &resolve.Signature{Ref: ref}
+			candidate.Signature = &resolve.Signature{Ref: ref, Verified: &verified}
 		}
 		candidate.FlagDetail = flagDetail(ruleID, path)
 		// An acceptance permits nothing while any finding on the version

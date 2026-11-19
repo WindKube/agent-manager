@@ -78,7 +78,9 @@ type Registration struct {
 
 	ArchiveName string
 	Archive     []byte
-	Preview     *contract.PackagePreview
+	// SigstoreBundle is a bundle uploaded beside the archive (upload only).
+	SigstoreBundle []byte
+	Preview        *contract.PackagePreview
 }
 
 // RegisterPackage is publisher, package, version, the `fetch` job and the
@@ -133,12 +135,13 @@ func RegisterPackage(ctx context.Context, db bun.IDB, p auth.Principal, in Regis
 			Semver: in.Version,
 			Tags:   fetcher.VersionTags(append(in.Keywords, in.Tags...)),
 			Source: fetcher.JobSource{
-				Kind:         in.Source,
-				URL:          in.URL,
-				Ref:          in.Ref,
-				Subdirectory: in.Subdirectory,
-				ArchiveName:  in.ArchiveName,
-				Archive:      in.Archive,
+				Kind:           in.Source,
+				URL:            in.URL,
+				Ref:            in.Ref,
+				Subdirectory:   in.Subdirectory,
+				ArchiveName:    in.ArchiveName,
+				Archive:        in.Archive,
+				SigstoreBundle: in.SigstoreBundle,
 			},
 		})
 		if txErr != nil {
@@ -184,6 +187,10 @@ func (in Registration) normalise() (Registration, error) {
 	case fetch.SourceGit, fetch.SourceArchiveURL:
 		if in.URL == "" {
 			return in, fmt.Errorf("%w: a %s registration needs a url", ErrRegistration, in.Source)
+		}
+		if len(in.SigstoreBundle) > 0 {
+			return in, fmt.Errorf("%w: a %s registration carries no signature: the hub looks for one beside the source",
+				ErrRegistration, in.Source)
 		}
 		if in.Name == "" || in.Version == "" {
 			derivedName, derivedVersion := deriveFromURL(in)

@@ -42,6 +42,7 @@ import (
 	"agent-manager/internal/auth"
 	"agent-manager/internal/blob"
 	"agent-manager/internal/fetch"
+	"agent-manager/internal/signing/signingtest"
 	"agent-manager/internal/store/models"
 	"agent-manager/internal/worker"
 	"agent-manager/internal/worker/fetcher"
@@ -149,11 +150,12 @@ func newLoopHarness(t *testing.T, forgeURLs ...string) loopHarness {
 	require.NoError(t, err)
 
 	fetchWorker, err := fetcher.New(worker.Deps{
-		DB:        db,
-		BlobRead:  bucket.Reader(),
-		BlobWrite: bucket.Writer(),
-		Fetch:     client,
-		Log:       zerolog.New(io.Discard),
+		DB:         db,
+		BlobRead:   bucket.Reader(),
+		BlobWrite:  bucket.Writer(),
+		Fetch:      client,
+		Signatures: signingtest.New(t).Verifier(),
+		Log:        zerolog.New(io.Discard),
 	})
 	require.NoError(t, err)
 

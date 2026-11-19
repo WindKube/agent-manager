@@ -16,6 +16,7 @@ import (
 	"agent-manager/internal/domain/pkgspec"
 	"agent-manager/internal/fetch"
 	"agent-manager/internal/outbox"
+	"agent-manager/internal/signing"
 	"agent-manager/internal/store/models"
 	"agent-manager/internal/worker"
 )
@@ -240,8 +241,9 @@ func TestTheAuditRowNamesTheStoredVersionAndNeverACredential(t *testing.T) {
 	}
 	commit := blob.Commit{Bundle: blob.Object{Size: 4096}}
 
-	text := storedText(job, pkg, commit)
+	text := storedText(job, pkg, commit, signing.Result{Status: signing.StatusUnsigned})
 	require.Contains(t, text, "stored example/platform-toolkit@1.3.0 (plugin)")
+	require.Contains(t, text, ", unsigned")
 	require.Contains(t, text, "git https://redacted@github.com/org/plugin@v1.3.0")
 	require.Contains(t, text, "digest sha256:"+
 		"0000000000000000000000000000000000000000000000000000000000000000")
@@ -252,6 +254,13 @@ func TestTheAuditRowNamesTheStoredVersionAndNeverACredential(t *testing.T) {
 
 	// The failure row is the same rule: the reason is named, the credential is not.
 	require.NotContains(t, describeSource(job.Source), "s3cr3t")
+
+	require.Contains(t, storedText(job, pkg, commit, signing.Result{
+		Status: signing.StatusVerified, Issuer: "https://issuer.example", Identity: "release@example.com",
+	}), "signature verified: release@example.com via https://issuer.example")
+	require.Contains(t, storedText(job, pkg, commit, signing.Result{
+		Status: signing.StatusInvalid, Reason: "digest mismatch\nmore",
+	}), "signature invalid: digest mismatch")
 	require.Equal(t, "upload platform-toolkit-1.3.0.zip",
 		describeSource(JobSource{Kind: fetch.SourceUpload, ArchiveName: "platform-toolkit-1.3.0.zip"}))
 }
@@ -359,7 +368,17 @@ func TestTheWorkerRefusesToStartWithoutTheHalfThatWritesBytes(t *testing.T) {
 		Fetch:     stubFetch{},
 	})
 	require.ErrorContains(t, err, "no object-store writer")
+
+	_, err = New(worker.Deps{
+		DB:        stubDB{},
+		BlobRead:  stubBlob{},
+		BlobWrite: stubWriter{},
+		Fetch:     stubFetch{},
+	})
+	require.ErrorContains(t, err, "no signature verifier")
 }
+
+type stubWriter struct{ blob.Writer }
 
 // The fetch kind is enqueued onto outbox.QueueFetch; a Definition that registered
 // river.QueueDefault instead would never see it delivered.

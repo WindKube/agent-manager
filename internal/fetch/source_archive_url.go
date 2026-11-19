@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"path"
@@ -70,17 +71,68 @@ func (s ArchiveURLSource) Fetch(ctx context.Context, ref SourceRef) (Tree, error
 		return Tree{}, statusErr
 	}
 
-	files, err := bundle.Extract(ctx, resp.Body, ref.Limits)
+	archive := newDigesting(resp.Body)
+	files, err := bundle.Extract(ctx, archive, ref.Limits)
 	if err != nil {
 		return Tree{}, fmt.Errorf("extract archive from %s: %w", redactURL(ref.URL), err)
 	}
 
-	return Tree{
-		Files:     files,
-		Root:      packageRoot(files, "", ref.Subdirectory),
-		Origin:    "archive " + redactURL(ref.URL) + subdirectorySuffix(ref.Subdirectory),
-		SourceURL: servedFrom(resp, ref.URL),
-	}, nil
+	tree := Tree{
+		Files:         files,
+		Root:          packageRoot(files, "", ref.Subdirectory),
+		Origin:        "archive " + redactURL(ref.URL) + subdirectorySuffix(ref.Subdirectory),
+		SourceURL:     servedFrom(resp, ref.URL),
+		ArchiveDigest: archive.sum(),
+	}
+	signature, err := s.sibling(ctx, ref.URL)
+	if err != nil {
+		return Tree{}, err
+	}
+	if signature != nil {
+		tree.Signatures = []SignatureCandidate{*signature}
+	}
+	return tree, nil
+}
+
+// sibling fetches `<url>.sigstore.json`. A refusal to serve it (404, 410,
+// 401, 403: a private bucket answers a missing object with 403) means the
+// archive is unsigned; anything else is a failure worth retrying.
+func (s ArchiveURLSource) sibling(ctx context.Context, rawURL string) (*SignatureCandidate, error) {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return nil, fmt.Errorf("%w: the archive url will not parse: %w", ErrRemote, err)
+	}
+	parsed.Path += SigstoreSuffix
+	parsed.RawPath = ""
+	target := parsed.String()
+
+	resp, err := s.client.Get(ctx, target)
+	if err != nil {
+		if errors.Is(err, ErrBlocked) {
+			return nil, fmt.Errorf("fetch signature: %w", err)
+		}
+		return nil, fmt.Errorf("%w: fetch signature %s: %w", ErrRemote, redactURL(target), err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	switch {
+	case resp.StatusCode == http.StatusNotFound, resp.StatusCode == http.StatusGone,
+		resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden:
+		return nil, nil
+	case resp.StatusCode < 200 || resp.StatusCode > 299:
+		return nil, fmt.Errorf("%w: signature %s answered %d", ErrRemote, redactURL(target), resp.StatusCode)
+	}
+	body, err := readSignature(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("%w: read signature %s: %w", ErrRemote, redactURL(target), err)
+	}
+	return &SignatureCandidate{Origin: withoutSecrets(target), Bundle: body}, nil
+}
+
+// readSignature reads a bundle, keeping one byte past the cap so the
+// verifier sees an oversized one as oversized rather than as truncated JSON.
+func readSignature(r io.Reader) ([]byte, error) {
+	return io.ReadAll(io.LimitReader(r, maxSignatureBytes+1))
 }
 
 // servedFrom is the URL that answered after redirects, without userinfo,

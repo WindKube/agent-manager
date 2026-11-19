@@ -266,3 +266,15 @@ alter table "version"
 alter table "package"
   add constraint "package_tracks_only_git"
   check (not "track_upstream" or "source_kind" = 'git');
+
+-- A verified signature always names who signed it and what it was checked
+-- against; an unsigned row has no verdict to carry.
+alter table "signature"
+  add constraint "signature_verified_names_a_signer"
+  check ("result" is distinct from 'verified'
+         or ("signer_issuer" is not null and "signer_identity" is not null
+             and "bundle" is not null and "artifact_digest" is not null));
+
+alter table "signature"
+  add constraint "signature_none_has_no_result"
+  check ("kind" <> 'none' or "result" is null);

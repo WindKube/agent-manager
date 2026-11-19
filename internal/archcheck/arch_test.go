@@ -109,6 +109,14 @@ var rules = []rule{
 		),
 		forbidden: exact("net/http"),
 	},
+	{
+		name: "signature verification opens no connection of its own",
+		why: "the fetcher's outbound credential boundary is the SSRF-guarded internal/fetch client. " +
+			"internal/signing reaches the Sigstore TUF mirror only through the fetcher the role hands " +
+			"it, which is that client; a net/http import here is how a second, unguarded client appears.",
+		scope:     under("internal/signing"),
+		forbidden: anyOf(exact("net/http"), under(module+"/internal/store"), under(module+"/internal/blob")),
+	},
 }
 
 // andNot narrows a scope: in it when pred says so and except does not.

@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"agent-manager/internal/domain/pkgspec"
 	"agent-manager/internal/fetch"
 	"agent-manager/internal/logging"
+	"agent-manager/internal/signing"
 	"agent-manager/internal/store/models"
 )
 
@@ -57,6 +59,8 @@ type registrationForm struct {
 	Tags string `form:"tags" required:"false" doc:"Comma-separated tags. Added to whatever the manifest's own keywords contribute at publish — this does not replace them, and is not replaced by them." example:"terraform,aws,guardrails"`
 
 	Archive huma.FormFile `form:"archive" required:"false" contentType:"application/zip,application/gzip,application/x-gzip,application/x-tar,application/octet-stream" doc:"Required when source is upload, and refused otherwise. huma treats a form field as required unless told otherwise, which is what required:\"false\" is doing on every optional field here."`
+
+	SigstoreBundle huma.FormFile `form:"sigstoreBundle" required:"false" contentType:"application/json,application/octet-stream" doc:"Optional, upload only: a Sigstore bundle (.sigstore.json) over the archive's exact bytes, as cosign sign-blob --bundle writes it. The fetcher verifies it and records the signer; a git or archive-url source is checked for a bundle published beside it instead."`
 }
 
 // maxUploadBytes is FR-001's 25 MB upload cap, applied to the WHOLE request body
@@ -253,6 +257,11 @@ func registrationFrom(ctx context.Context, form *registrationForm) (commands.Reg
 		}
 		out.Archive = archive
 		out.ArchiveName = form.Archive.Filename
+		if form.SigstoreBundle.IsSet {
+			if out.SigstoreBundle, err = readSigstoreBundle(form.SigstoreBundle); err != nil {
+				return commands.Registration{}, err
+			}
+		}
 
 		// The upload path is the one case where the api HAS the manifest before it
 		// writes a row, so the manifest decides the kind, the name and the version
@@ -279,6 +288,10 @@ func registrationFrom(ctx context.Context, form *registrationForm) (commands.Reg
 		if form.Archive.IsSet {
 			return commands.Registration{}, huma.Error422UnprocessableEntity(
 				"a " + string(kind) + " registration carries no archive: the hub fetches the bytes itself")
+		}
+		if form.SigstoreBundle.IsSet {
+			return commands.Registration{}, huma.Error422UnprocessableEntity(
+				"a " + string(kind) + " registration carries no signature: the hub looks for a .sigstore.json beside the source")
 		}
 
 	default:
@@ -416,6 +429,23 @@ func archiveProblem(err error) string {
 	default:
 		return "the archive could not be read: " + err.Error()
 	}
+}
+
+// readSigstoreBundle reads the optional bundle part. Whether it verifies is the
+// fetcher's call; here it only has to be a JSON document of a sane size.
+func readSigstoreBundle(file huma.FormFile) ([]byte, error) {
+	defer func() { _ = file.Close() }()
+	body, err := io.ReadAll(io.LimitReader(file, signing.MaxBundleBytes+1))
+	switch {
+	case err != nil:
+		return nil, huma.Error422UnprocessableEntity("the attached sigstore bundle could not be read: " + err.Error())
+	case len(body) > signing.MaxBundleBytes:
+		return nil, huma.Error422UnprocessableEntity(fmt.Sprintf(
+			"a sigstore bundle may be at most %d bytes", signing.MaxBundleBytes))
+	case !json.Valid(body):
+		return nil, huma.Error422UnprocessableEntity("the attached sigstore bundle is not JSON")
+	}
+	return body, nil
 }
 
 // readFormFile reads an uploaded part into memory, refusing an absent one.

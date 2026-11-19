@@ -2867,7 +2867,7 @@ type LockfileSignature struct {
 	// Ref Examples: sigstore:acme/code-review@2.4.1
 	Ref *string `json:"ref,omitempty"`
 
-	// Verified False until Sigstore verification ships (FR-048a). Never render a false value as a pass.
+	// Verified Whether the hub verified the Sigstore bundle against the archive it downloaded. False means a bundle was found and did not verify; never render it as a pass.
 	Verified *bool `json:"verified,omitempty"`
 }
 
@@ -4256,6 +4256,9 @@ type RegisterPackageMultipartBody struct {
 	//
 	// Examples: v1.3.0
 	Ref *string `json:"ref,omitempty"`
+
+	// SigstoreBundle Optional, upload only: a Sigstore bundle (.sigstore.json) over the archive's exact bytes, as cosign sign-blob --bundle writes it. The fetcher verifies it and records the signer; a git or archive-url source is checked for a bundle published beside it instead.
+	SigstoreBundle *openapi_types.File `json:"sigstoreBundle,omitempty"`
 
 	// Source Which of FR-001's three shapes this is.
 	//

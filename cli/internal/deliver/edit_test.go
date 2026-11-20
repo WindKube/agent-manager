@@ -151,3 +151,27 @@ func TestAJSONCFileThatIsNotAnObjectIsRefused(t *testing.T) {
 	_, err = jsoncSet([]byte(`{"mcp": {`), ocEntry, "mcp", "kit-gh")
 	require.Error(t, err)
 }
+
+func TestAJSONCArrayElementIsAppendedReplacedAndRemovedLeavingTheRestByteForByte(t *testing.T) {
+	group := map[string]any{"matcher": "Bash"}
+	for _, before := range []string{
+		"{\n  \"hooks\": {\n    \"Stop\": [\n      {\"matcher\": \"x\"}, // mine\n    ],\n  },\n}\n",
+		"{\n  \"hooks\": {\"Stop\": [{\"matcher\": \"x\"}]}\n}\n",
+		"{\n  \"model\": \"opus\"\n}\n",
+	} {
+		added, err := jsoncAppend([]byte(before), group, "hooks", "Stop")
+		require.NoError(t, err, before)
+		list, err := jsoncGet(added, "hooks", "Stop")
+		require.NoError(t, err)
+		require.Equal(t, map[string]any{"matcher": "Bash"}, list.([]any)[len(list.([]any))-1])
+
+		n := len(list.([]any)) - 1
+		replaced, err := jsoncSetElem(added, n, map[string]any{"matcher": "Edit"}, "hooks", "Stop")
+		require.NoError(t, err)
+		require.Contains(t, string(replaced), `"Edit"`)
+
+		removed, err := jsoncRemoveElem(replaced, n, "hooks", "Stop")
+		require.NoError(t, err)
+		require.Equal(t, before, string(removed), "%q -> %q", before, added)
+	}
+}

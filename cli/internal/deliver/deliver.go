@@ -22,10 +22,9 @@ import (
 
 // Reasons a component is not placed for a target.
 const (
-	SkipPluginRoot      = "uses ${CLAUDE_PLUGIN_ROOT}, which only an installed Claude Code plugin expands"
-	SkipServedBy        = "served by"
-	SkipUnusableName    = "name is not usable as a file or directory name"
-	SkipNoAgentLocation = "this agent has no location for it"
+	SkipPluginRoot   = "uses ${CLAUDE_PLUGIN_ROOT}, which only an installed Claude Code plugin expands"
+	SkipServedBy     = "served by"
+	SkipUnusableName = "name is not usable as a file or directory name"
 )
 
 // Deliverer implements apply.Components for every target this build writes.
@@ -319,6 +318,10 @@ func (d *Deliverer) slotOf(target record.Target, c record.Component) (slot, erro
 		return &dirSlot{d: d, comp: c}, nil
 	case record.ComponentMCPServer:
 		return d.mcpSlotOf(target, c)
+	case record.ComponentAgent, record.ComponentCommand:
+		return &fileSlot{d: d, comp: c}, nil
+	case record.ComponentHook:
+		return &hookSlot{d: d, comp: c}, nil
 	default:
 		return nil, fmt.Errorf("%s %s for target %s: this build cannot remove a %s it recorded", c.Kind, c.Name, target, c.Kind)
 	}
@@ -347,18 +350,10 @@ func (p *placer) skip(kind record.ComponentKind, name, reason string) {
 }
 
 func (p *placer) slots() []slot {
-	for _, a := range p.plugin.Agents {
-		p.skip(record.ComponentAgent, a.Name, skipNotYet)
-	}
-	for _, c := range p.plugin.Commands {
-		p.skip(record.ComponentCommand, c.Name, skipNotYet)
-	}
-	for _, h := range p.plugin.Hooks {
-		p.skip(record.ComponentHook, hookName(h), skipNotYet)
-	}
-	return append(p.skillSlots(), p.mcpSlots()...)
+	var out []slot
+	out = append(out, p.skillSlots()...)
+	out = append(out, p.mcpSlots()...)
+	out = append(out, p.agentSlots()...)
+	out = append(out, p.commandSlots()...)
+	return append(out, p.hookSlots()...)
 }
-
-const skipNotYet = "this build does not place this kind of component"
-
-func hookName(h pluginparts.Hook) string { return h.Source }

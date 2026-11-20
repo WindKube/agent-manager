@@ -460,9 +460,6 @@ func (s *openCodeMCPSlot) edit(have string, change func([]byte) ([]byte, error))
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", s.comp.Path, err)
 	}
-	if doc == nil && len(out) > 0 && out[len(out)-1] != '\n' {
-		out = append(out, '\n')
-	}
 	if err := s.d.writeConfig(s.comp.Path, out); err != nil {
 		return "", err
 	}

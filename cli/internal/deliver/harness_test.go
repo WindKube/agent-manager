@@ -41,7 +41,8 @@ type harness struct {
 	recPath string
 	bundles map[string][]byte // by lockfile digest
 	log     *captureLog
-	claude  *fakeClaude // nil: no claude on PATH
+	claude  *fakeClaude
+	cli     deliver.ClaudeCLI // nil: no claude on PATH
 }
 
 func newHarness(t *testing.T) *harness {
@@ -49,12 +50,14 @@ func newHarness(t *testing.T) *harness {
 	home := t.TempDir()
 	reg, err := layout.NewRegistry(layout.Config{HomeDir: home, PluginRoot: filepath.Join(home, ".agent-manager", "hub", "plugins")})
 	require.NoError(t, err)
+	claude := &fakeClaude{config: filepath.Join(home, ".claude.json")}
 	return &harness{
 		t: t, home: home, reg: reg, rec: record.New(hubURL),
 		recPath: filepath.Join(home, ".agent-manager", "hub", record.FileName),
 		bundles: map[string][]byte{},
 		log:     &captureLog{},
-		claude:  &fakeClaude{config: filepath.Join(home, ".claude.json")},
+		claude:  claude,
+		cli:     claude.run,
 	}
 }
 
@@ -118,17 +121,13 @@ func (h *harness) sync(lf *hub.Lockfile, force bool) *apply.Result {
 		profileTargets = append(profileTargets, record.Target(tg))
 	}
 	slices.Sort(profileTargets)
-	var claude deliver.ClaudeCLI
-	if h.claude != nil {
-		claude = h.claude.run
-	}
 	applier, err := apply.New(apply.Config{
 		Home: home, Record: h.rec, RecordPath: h.recPath,
 		Profiles: []apply.ProfileState{{Slug: lf.Profile.Slug, Revision: int(lf.Revision), Targets: profileTargets}},
 		Bundles:  bundleSource(h.bundles), Force: force, Log: h.log,
 		Fingerprints: apply.TreeFingerprinter{}, Verifier: apply.TreeFingerprinter{},
 		Components: &deliver.Deliverer{
-			Targets: targets, Home: home, Force: force, Log: h.log, Claude: claude,
+			Targets: targets, Home: home, Force: force, Log: h.log, Claude: h.cli,
 			ProfileTargets: map[string][]record.Target{lf.Profile.Slug: profileTargets},
 		},
 	})

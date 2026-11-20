@@ -243,7 +243,8 @@ func lastLineIndent(extra string) string {
 
 func appendMember(obj *hujson.Object, name string, value any, indent, unit string) error {
 	memberIndent := indent + unit
-	b, err := marshalIndentJSON(value, memberIndent, unit)
+	inline := len(obj.Members) > 0 && !strings.Contains(string(obj.AfterExtra), "\n")
+	b, err := encodeFor(value, inline, memberIndent, unit)
 	if err != nil {
 		return err
 	}
@@ -267,12 +268,26 @@ func appendMember(obj *hujson.Object, name string, value any, indent, unit strin
 		Name:  hujson.Value{BeforeExtra: hujson.Extra(head + "\n" + memberIndent), Value: hujson.Literal(nameLit)},
 		Value: hujson.Value{BeforeExtra: hujson.Extra(" "), Value: nv.Value},
 	}
+	if inline {
+		m.Name.BeforeExtra = hujson.Extra(" ")
+	}
 	if n := len(obj.Members); n > 0 && obj.Members[n-1].Value.AfterExtra != nil {
 		m.Value.AfterExtra = hujson.Extra("") // keep the trailing comma
 	}
 	obj.Members = append(obj.Members, m)
-	obj.AfterExtra = hujson.Extra("\n" + tail)
+	if !inline {
+		obj.AfterExtra = hujson.Extra("\n" + tail)
+	}
 	return nil
+}
+
+// encodeFor renders a value for a container written on one line (compact)
+// or one member per line (indented like its siblings).
+func encodeFor(value any, inline bool, indent, unit string) ([]byte, error) {
+	if inline {
+		return marshalJSON(value)
+	}
+	return marshalIndentJSON(value, indent, unit)
 }
 
 func removeMember(obj *hujson.Object, i int) {
@@ -282,11 +297,9 @@ func removeMember(obj *hujson.Object, i int) {
 	if !last {
 		return
 	}
-	before := string(m.Name.BeforeExtra)
-	if j := strings.LastIndexByte(before, '\n'); j >= 0 {
-		before = before[:j]
+	if before := string(m.Name.BeforeExtra); strings.Contains(before, "\n") {
+		obj.AfterExtra = hujson.Extra(before[:strings.LastIndexByte(before, '\n')] + string(obj.AfterExtra))
 	}
-	obj.AfterExtra = hujson.Extra(before + string(obj.AfterExtra))
 	if n := len(obj.Members); n > 0 {
 		prev := &obj.Members[n-1].Value
 		switch {
@@ -298,5 +311,155 @@ func removeMember(obj *hujson.Object, i int) {
 		}
 	} else if strings.TrimSpace(string(obj.AfterExtra)) == "" {
 		obj.AfterExtra = nil
+	}
+}
+
+// jsoncAppend appends value to the array at path, creating the array (and
+// its parent objects) when it is absent.
+func jsoncAppend(doc []byte, value any, path ...string) ([]byte, error) {
+	cur, err := jsoncGet(doc, path...)
+	if err != nil {
+		return nil, err
+	}
+	if cur == nil {
+		return jsoncSet(doc, []any{value}, path...)
+	}
+	return editArray(doc, path, func(arr *hujson.Array, indent, unit string, list []any) ([]any, error) {
+		if err := appendElement(arr, value, indent, unit); err != nil {
+			return nil, err
+		}
+		return append(list, roundTrip(value)), nil
+	})
+}
+
+// jsoncSetElem replaces element i of the array at path.
+func jsoncSetElem(doc []byte, i int, value any, path ...string) ([]byte, error) {
+	return editArray(doc, path, func(arr *hujson.Array, indent, unit string, list []any) ([]any, error) {
+		b, err := marshalIndentJSON(value, indent+unit, unit)
+		if err != nil {
+			return nil, err
+		}
+		nv, err := hujson.Parse(b)
+		if err != nil {
+			return nil, err
+		}
+		nv.BeforeExtra, nv.AfterExtra = arr.Elements[i].BeforeExtra, arr.Elements[i].AfterExtra
+		arr.Elements[i] = nv
+		list[i] = roundTrip(value)
+		return list, nil
+	})
+}
+
+// jsoncRemoveElem removes element i of the array at path; an array left
+// empty is removed with its emptied parents, as jsoncRemove does.
+func jsoncRemoveElem(doc []byte, i int, path ...string) ([]byte, error) {
+	cur, err := jsoncGet(doc, path...)
+	if err != nil {
+		return nil, err
+	}
+	if list, _ := cur.([]any); len(list) == 1 && i == 0 {
+		return jsoncRemove(doc, path...)
+	}
+	return editArray(doc, path, func(arr *hujson.Array, _, _ string, list []any) ([]any, error) {
+		removeElement(arr, i)
+		return append(list[:i:i], list[i+1:]...), nil
+	})
+}
+
+func editArray(doc []byte, path []string, change func(arr *hujson.Array, indent, unit string, list []any) ([]any, error)) ([]byte, error) {
+	root, err := hujson.Parse(doc)
+	if err != nil {
+		return nil, err
+	}
+	before, err := standard(root)
+	if err != nil {
+		return nil, err
+	}
+	obj, ok := root.Value.(*hujson.Object)
+	if !ok {
+		return nil, errors.New("the file is not a JSON object")
+	}
+	unit := indentUnit(obj)
+	indent := ""
+	v := &root
+	for _, name := range path {
+		o, isObj := v.Value.(*hujson.Object)
+		if !isObj {
+			return nil, fmt.Errorf("%q is not an object", strings.Join(path, "."))
+		}
+		i := memberIndex(o, name)
+		if i < 0 {
+			return nil, fmt.Errorf("%q is absent", strings.Join(path, "."))
+		}
+		v = &o.Members[i].Value
+		indent += unit
+	}
+	arr, ok := v.Value.(*hujson.Array)
+	if !ok {
+		return nil, fmt.Errorf("%q is not an array", strings.Join(path, "."))
+	}
+	cur, err := standard(*v)
+	if err != nil {
+		return nil, err
+	}
+	list, _ := cur.([]any)
+	list, err = change(arr, indent, unit, append([]any(nil), list...))
+	if err != nil {
+		return nil, err
+	}
+	root.UpdateOffsets()
+	return checkJSONC(root.Pack(), setIn(before, list, path))
+}
+
+func appendElement(arr *hujson.Array, value any, indent, unit string) error {
+	elemIndent := indent + unit
+	inline := len(arr.Elements) > 0 && !strings.Contains(string(arr.AfterExtra), "\n")
+	b, err := encodeFor(value, inline, elemIndent, unit)
+	if err != nil {
+		return err
+	}
+	nv, err := hujson.Parse(b)
+	if err != nil {
+		return err
+	}
+	after := string(arr.AfterExtra)
+	head, tail := after, indent
+	if i := strings.LastIndexByte(after, '\n'); i >= 0 {
+		head, tail = after[:i], after[i+1:]
+	}
+	nv.BeforeExtra = hujson.Extra(head + "\n" + elemIndent)
+	if inline {
+		nv.BeforeExtra = hujson.Extra(" ")
+	}
+	nv.AfterExtra = nil
+	if n := len(arr.Elements); n > 0 && arr.Elements[n-1].AfterExtra != nil {
+		nv.AfterExtra = hujson.Extra("")
+	}
+	arr.Elements = append(arr.Elements, nv)
+	if !inline {
+		arr.AfterExtra = hujson.Extra("\n" + tail)
+	}
+	return nil
+}
+
+func removeElement(arr *hujson.Array, i int) {
+	e := arr.Elements[i]
+	last := i == len(arr.Elements)-1
+	arr.Elements = append(arr.Elements[:i], arr.Elements[i+1:]...)
+	if !last {
+		return
+	}
+	if before := string(e.BeforeExtra); strings.Contains(before, "\n") {
+		arr.AfterExtra = hujson.Extra(before[:strings.LastIndexByte(before, '\n')] + string(arr.AfterExtra))
+	}
+	if n := len(arr.Elements); n > 0 {
+		prev := &arr.Elements[n-1]
+		switch {
+		case e.AfterExtra != nil && prev.AfterExtra == nil:
+			prev.AfterExtra = hujson.Extra("")
+		case e.AfterExtra == nil && prev.AfterExtra != nil:
+			arr.AfterExtra = append(prev.AfterExtra, arr.AfterExtra...)
+			prev.AfterExtra = nil
+		}
 	}
 }

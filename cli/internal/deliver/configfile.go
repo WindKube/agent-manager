@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/WindKube/agent-manager/cli/internal/apply"
 )
 
 // canonical fingerprints a decoded JSON or TOML value: object keys sorted, no
@@ -57,20 +59,36 @@ func (d *Deliverer) readConfig(path string) ([]byte, error) {
 // writeConfig replaces a config file atomically, through a symlink that stays
 // inside the home, keeping the file's mode (0600 for a new one).
 func (d *Deliverer) writeConfig(path string, data []byte) error {
-	if d.Home == nil {
-		return errors.New("internal: no home to contain writes in")
-	}
-	c, err := d.Home.Contains(path)
+	c, err := d.containedPath(path)
 	if err != nil {
 		return err
 	}
-	dest := c.Resolved
-	mode := fs.FileMode(0o600)
-	if info, serr := os.Stat(dest); serr == nil {
+	return atomicWrite(c.Resolved, data, 0o600)
+}
+
+// writeFile replaces a file atomically, replacing a symlink rather than
+// writing through it.
+func (d *Deliverer) writeFile(path string, data []byte, newMode fs.FileMode) error {
+	c, err := d.containedPath(path)
+	if err != nil {
+		return err
+	}
+	return atomicWrite(c.Dest, data, newMode)
+}
+
+func (d *Deliverer) containedPath(path string) (apply.Contained, error) {
+	if d.Home == nil {
+		return apply.Contained{}, errors.New("internal: no home to contain writes in")
+	}
+	return d.Home.Contains(path)
+}
+
+func atomicWrite(dest string, data []byte, mode fs.FileMode) error {
+	if info, err := os.Lstat(dest); err == nil && info.Mode().IsRegular() {
 		mode = info.Mode().Perm()
 	}
-	if mkErr := os.MkdirAll(filepath.Dir(dest), 0o750); mkErr != nil {
-		return mkErr
+	if err := os.MkdirAll(filepath.Dir(dest), 0o750); err != nil {
+		return err
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(dest), "."+filepath.Base(dest)+".amctl-*")
 	if err != nil {
@@ -93,7 +111,7 @@ func (d *Deliverer) writeConfig(path string, data []byte) error {
 		return err
 	}
 	if err := os.Rename(tmp.Name(), dest); err != nil {
-		return fmt.Errorf("replace %s: %w", path, err)
+		return fmt.Errorf("replace %s: %w", dest, err)
 	}
 	return nil
 }

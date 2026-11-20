@@ -194,7 +194,7 @@ func TestAnEntryAmctlDidNotWriteIsRefusedUnlessItIsIdentical(t *testing.T) {
 
 func TestWithoutTheClaudeCLIClaudeCodeServersAreSkipped(t *testing.T) {
 	h := newHarness(t)
-	h.claude = nil
+	h.cli = nil
 	res := h.sync(lockfile("base", []record.Target{record.TargetClaudeCode, record.TargetCodex},
 		h.pluginEntry("acme/kit", "1.0.0", mcpKit(mcpConfig))), false)
 	requireNoFailures(t, res)

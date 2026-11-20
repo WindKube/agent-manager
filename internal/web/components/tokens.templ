@@ -1,0 +1,138 @@
+package components
+
+import (
+	"strconv"
+
+	"agent-manager/internal/web/view"
+)
+
+// ServiceTokensScreen creates, lists and revokes the scoped, expiring
+// credentials CI and headless machines sync with.
+templ ServiceTokensScreen(s view.ServiceTokens) {
+	<div class="am-header">
+		<div class="am-header-text">
+			<h1 class="am-h1">Service tokens</h1>
+			<p class="am-lede">
+				Credentials for CI pipelines, golden images and headless machines. A token can only
+				sync the profiles it names or read the catalog, never acts as you, and always expires.
+				Set it as AMCTL_TOKEN where amctl runs.
+			</p>
+		</div>
+	</div>
+	if s.Notice != nil {
+		<div class={ NoticeClass(*s.Notice) } id="tokens-notice">{ s.Notice.Text }</div>
+	}
+	if s.Unavailable {
+		<div class="am-notice am-notice-dan" id="tokens-unavailable">
+			<p class="am-note">
+				The hub's api did not answer, so tokens cannot be listed or created. Retry in a moment.
+			</p>
+		</div>
+	} else {
+		<div class="am-screen-body">
+			if s.Created != nil {
+				@tokenSecret(*s.Created)
+			}
+			@tokenCreateForm(s)
+			@tokenList(s)
+		</div>
+	}
+}
+
+// tokenSecret is the only time the secret is on a page.
+templ tokenSecret(c view.CreatedServiceToken) {
+	<section class="am-gov-card" id="tokens-secret" role="alertdialog" aria-labelledby="tokens-secret-title">
+		<div class="am-section-head">
+			<div class="am-section-title" id="tokens-secret-title">{ c.Name } created</div>
+		</div>
+		<div class="am-gov-body am-gov-body-stack">
+			<p class="am-note">
+				Copy this secret now. The hub stores only its hash, so it cannot be shown again; if it
+				is lost, revoke the token and create another.
+			</p>
+			<p class="am-note am-mono" id="tokens-secret-value">{ c.Secret }</p>
+		</div>
+	</section>
+}
+
+templ tokenCreateForm(s view.ServiceTokens) {
+	<section class="am-gov-card">
+		<div class="am-section-head">
+			<div class="am-section-title">New token</div>
+		</div>
+		<form method="post" action="/tokens">
+			<div class="am-gov-body am-gov-body-stack">
+				<div class="am-field">
+					<label class="am-label" for="tokens-name">Name</label>
+					<input id="tokens-name" class="am-input" type="text" name="name" maxlength="100" required value={ s.Form.Name } placeholder="release pipeline"/>
+				</div>
+				<div class="am-label">Profiles it may sync</div>
+				if len(s.Profiles) == 0 {
+					<p class="am-note" id="tokens-no-profiles">You cannot read any profile, so a token can only read the catalog.</p>
+				}
+				for _, p := range s.Profiles {
+					<label class="am-toggle">
+						<input type="checkbox" name="profile" value={ p.Slug } if s.Form.Selected(p.Slug) {
+							checked
+						}/>
+						<span class="am-toggle-label">
+							{ p.Name }
+							<span class="am-toggle-note am-mono">{ view.SyncProfileScope(p.Slug) }</span>
+						</span>
+					</label>
+				}
+				<label class="am-toggle">
+					<input type="checkbox" name="readCatalog" value="1" if s.Form.ReadCatalog {
+						checked
+					}/>
+					<span class="am-toggle-label">
+						Read the catalog
+						<span class="am-toggle-note">Read-only access to packages and their scans that you can read.</span>
+					</span>
+				</label>
+				<div class="am-field">
+					<label class="am-label" for="tokens-expires">Expires</label>
+					<input id="tokens-expires" class="am-input" type="date" name="expires" required value={ s.Form.Expires } min={ s.MinExpires } max={ s.MaxExpires }/>
+				</div>
+			</div>
+			<div class="am-org-form-row">
+				<button type="submit" class="am-btn am-btn-primary">Create token</button>
+			</div>
+		</form>
+	</section>
+}
+
+templ tokenList(s view.ServiceTokens) {
+	<section class="am-gov-card">
+		<div class="am-section-head">
+			<div class="am-section-title">Tokens</div>
+			<div class="am-section-note">{ strconv.Itoa(len(s.Tokens)) }</div>
+		</div>
+		<div class="am-org-row am-org-row-head">
+			<div>Name</div>
+			<div>Scopes</div>
+			<div>Status</div>
+			<div></div>
+		</div>
+		for _, t := range s.Tokens {
+			<div class="am-org-row" id={ "token-" + t.ID }>
+				<div>
+					{ t.Name }
+					<span class="am-toggle-note">by { t.CreatedBy }, last used { t.LastUsed() }</span>
+				</div>
+				<div class="am-org-cell-mono">{ t.ScopeList() }</div>
+				<div>{ t.StatusLine() }</div>
+				<div class="am-org-actions">
+					if t.Revocable() {
+						<form method="post" action={ templ.SafeURL(t.RevokeHref()) }>
+							<button type="submit" class="am-btn">Revoke</button>
+						</form>
+					}
+				</div>
+			</div>
+		}
+		if len(s.Tokens) == 0 {
+			<div class="am-empty" id="tokens-empty">No service tokens yet.</div>
+		}
+	</section>
+}

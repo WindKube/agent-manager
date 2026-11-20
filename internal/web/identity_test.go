@@ -203,6 +203,10 @@ func sweep() []sweptScreen {
 		inShell("ProfilesScreen", func() templ.Component { return components.ProfilesScreen(view.Profiles{}) }),
 		inShell("ProfileScreen", func() templ.Component { return components.ProfileScreen(view.Profile{}) }),
 		inShell("CLIScreen", func() templ.Component { return components.CLIScreen(view.CLI{}) }),
+		// Swept empty: a token's creator is a person by nature.
+		inShell("ServiceTokensScreen", func() templ.Component {
+			return components.ServiceTokensScreen(view.ServiceTokens{})
+		}),
 		// The Storage screen, swept empty for the same reason: a fetch's requested
 		// reference is operator-supplied and person-shaped by nature.
 		inShell("StorageScreen", func() templ.Component { return components.StorageScreen(view.Storage{}) }),

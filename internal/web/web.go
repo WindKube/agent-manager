@@ -168,6 +168,9 @@ func (s *Server) register() {
 	// bearer-equivalent for the length of its validity.
 	s.engine.GET("/cli", s.cli)
 	s.engine.POST("/cli/confirm", s.confirmDeviceCode)
+	s.engine.GET("/tokens", s.tokens)
+	s.engine.POST("/tokens", s.createToken)
+	s.engine.POST("/tokens/:id/revoke", s.revokeToken)
 	s.engine.GET("/storage", s.storage)
 
 	// Every Organization write is a POST form that redirects, same as Scanner.

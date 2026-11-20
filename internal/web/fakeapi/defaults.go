@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -259,6 +260,36 @@ func (a *API) defaults(op string) http.HandlerFunc {
 				return
 			}
 			JSON(w, http.StatusOK, apiclient.ApprovedDeviceAuthorization{RequestingHost: pending.RequestingHost})
+		}
+
+	case "listServiceTokens":
+		return func(w http.ResponseWriter, _ *http.Request) {
+			JSON(w, http.StatusOK, apiclient.ServiceTokenList{Tokens: d.ServiceTokens})
+		}
+	case "createServiceToken":
+		return func(w http.ResponseWriter, r *http.Request) {
+			var in apiclient.CreateServiceTokenRequest
+			if !decode(w, r, &in) {
+				return
+			}
+			token := apiclient.ServiceToken{
+				Id: uuid.New(), Name: in.Name, Scopes: in.Scopes, CreatedBy: d.viewerRef(),
+				CreatedAt: time.Now().UTC(), ExpiresAt: in.ExpiresAt, Status: apiclient.Active,
+			}
+			d.ServiceTokens = append([]apiclient.ServiceToken{token}, d.ServiceTokens...)
+			JSON(w, http.StatusCreated, apiclient.ServiceTokenCreated{Token: token, Secret: "amst_fake-" + token.Id.String()})
+		}
+	case "revokeServiceToken":
+		return func(w http.ResponseWriter, r *http.Request) {
+			for i := range d.ServiceTokens {
+				if d.ServiceTokens[i].Id.String() == r.PathValue("id") {
+					now := time.Now().UTC()
+					d.ServiceTokens[i].RevokedAt, d.ServiceTokens[i].Status = &now, apiclient.Revoked
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+			}
+			Problem(w, http.StatusNotFound, "no such service token")
 		}
 	}
 	panic("fakeapi: no default for " + op)

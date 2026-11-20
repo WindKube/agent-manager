@@ -121,6 +121,8 @@ func runSync(ctx context.Context, opts *Options, flags syncFlags, deps syncDeps)
 		run := &syncRun{
 			opts: opts, flags: flags, deps: deps, s: s,
 			home: home, target: target, client: client, host: host,
+			serviceToken: cred.Credential.FromEnvironment() &&
+				strings.HasPrefix(cred.Credential.Token, serviceTokenPrefix),
 		}
 		return WithLock(home, func(l *Lock) error {
 			run.lock = l
@@ -173,6 +175,8 @@ type syncRun struct {
 	target Hub
 	client *hub.Hub
 	host   string
+	// serviceToken: AMCTL_TOKEN holds a hub service token, scoped to profiles.
+	serviceToken bool
 
 	// lock is carried this far, not discarded at WithLock, so Lock.Lost can
 	// still be consulted — the mitigation for a frozen, reclaimed holder.
@@ -402,6 +406,9 @@ func validRevision(flag, value string) error {
 	return nil
 }
 
+// serviceTokenPrefix is the hub's service-token secret prefix.
+const serviceTokenPrefix = "amst_"
+
 // fetchLockfiles resolves each profile's revision; what to install comes from here alone.
 func (r *syncRun) fetchLockfiles(ctx context.Context, profiles []string, revisions map[string]string) ([]*hub.Lockfile, error) {
 	out := make([]*hub.Lockfile, 0, len(profiles))
@@ -410,7 +417,7 @@ func (r *syncRun) fetchLockfiles(ctx context.Context, profiles []string, revisio
 		r.s.Debugf("resolving profile %s at revision %s", slug, want)
 		lf, err := r.client.GetRevision(ctx, slug, want)
 		if err != nil {
-			return nil, revisionFailure(slug, want, err)
+			return nil, revisionFailure(slug, want, r.serviceToken, err)
 		}
 		if want != revisionHead {
 			// An exact state was asked for; a different one is not a near miss.
@@ -430,10 +437,16 @@ func (r *syncRun) fetchLockfiles(ctx context.Context, profiles []string, revisio
 }
 
 // revisionFailure preserves internal/hub's classification with %w rather than flattening it.
-func revisionFailure(slug, revision string, err error) error {
+func revisionFailure(slug, revision string, serviceToken bool, err error) error {
 	switch {
+	case errors.Is(err, hub.ErrUnauthorised) && serviceToken:
+		return Refusef("profile %s: %w; the service token in %s is expired, revoked or unknown to this hub",
+			slug, err, credentials.TokenEnvVar)
 	case errors.Is(err, hub.ErrUnauthorised):
 		return Refusef("profile %s: %w; run `amctl login` or check %s", slug, err, credentials.TokenEnvVar)
+	case errors.Is(err, hub.ErrForbidden) && serviceToken:
+		return Refusef("profile %s: %w; the service token in %s is not scoped to it — it needs sync:profile/%s",
+			slug, err, credentials.TokenEnvVar, slug)
 	case errors.Is(err, hub.ErrForbidden):
 		return Refusef("profile %s: %w; this credential may not read that profile", slug, err)
 	case errors.Is(err, hub.ErrNotFound) && revision != revisionHead:

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -36,6 +37,9 @@ type Control interface {
 	SetHealthy(bool) error
 	// SyncReports lets a suite assert exactly one row was written per sync.
 	SyncReports() ([]hub.SyncReport, error)
+	// MintServiceToken returns an `amst_` token that may sync only profiles,
+	// as a hub service token scoped to sync:profile/<slug> does.
+	MintServiceToken(profiles ...string) (string, error)
 }
 
 // staleSignature matches no package, so the object-store handler refuses it
@@ -124,7 +128,11 @@ type tokenInfo struct {
 	expiresAt time.Time
 	clientID  string
 	host      string
+	// profiles is set for a service token: it may sync these and nothing else.
+	profiles []string
 }
+
+func (t tokenInfo) serviceToken() bool { return t.profiles != nil }
 
 // Hub is the running fake. Tests construct it; they do NOT pass it around —
 // pass [Hub.Target] instead. See doc.go.
@@ -332,7 +340,12 @@ func (h *Hub) health(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (h *Hub) listProfiles(w http.ResponseWriter, r *http.Request) {
-	if !h.authorized(w, r) {
+	info, ok := h.authorized(w, r)
+	if !ok {
+		return
+	}
+	if info.serviceToken() {
+		writeProblem(w, http.StatusForbidden, "Forbidden", "a service token may not call listProfiles with its scopes")
 		return
 	}
 	out := hub.ProfileList{Profiles: make([]hub.Profile, 0, len(h.profiles))}
@@ -357,7 +370,8 @@ func (h *Hub) listProfiles(w http.ResponseWriter, r *http.Request) {
 var revisionPattern = regexp.MustCompile(`^(head|\d+)$`)
 
 func (h *Hub) getRevision(w http.ResponseWriter, r *http.Request) {
-	if !h.authorized(w, r) {
+	info, ok := h.authorized(w, r)
+	if !ok {
 		return
 	}
 	slug := r.PathValue("slug")
@@ -367,7 +381,10 @@ func (h *Hub) getRevision(w http.ResponseWriter, r *http.Request) {
 			"revision must match ^(head|[0-9]+)$")
 		return
 	}
-	if _, ok := h.profileSpec(slug); !ok {
+	if !inScope(w, info, slug) {
+		return
+	}
+	if _, known := h.profileSpec(slug); !known {
 		writeProblem(w, http.StatusNotFound, "Not Found", "no such profile")
 		return
 	}
@@ -392,7 +409,8 @@ func (h *Hub) getRevision(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Hub) getBundle(w http.ResponseWriter, r *http.Request) {
-	if !h.authorized(w, r) {
+	info, ok := h.authorized(w, r)
+	if !ok {
 		return
 	}
 	// The namespace, not the publisher slug. A publisher slug is two segments and
@@ -401,7 +419,7 @@ func (h *Hub) getBundle(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("namespace") + "/" + r.PathValue("name")
 	key := id + "@" + r.PathValue("version")
 	p, ok := h.pkgs[key]
-	if !ok {
+	if !ok || (info.serviceToken() && !h.locked(info.profiles, key)) {
 		writeProblem(w, http.StatusNotFound, "Not Found", "no such package version")
 		return
 	}
@@ -467,7 +485,8 @@ func writeBundle(w http.ResponseWriter, b blob) {
 }
 
 func (h *Hub) reportSync(w http.ResponseWriter, r *http.Request) {
-	if !h.authorized(w, r) {
+	info, ok := h.authorized(w, r)
+	if !ok {
 		return
 	}
 	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
@@ -507,6 +526,9 @@ func (h *Hub) reportSync(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if !inScope(w, info, body.Profile) {
+		return
+	}
 	if _, ok := h.profileSpec(body.Profile); !ok {
 		writeProblem(w, http.StatusNotFound, "Not Found", "no such profile")
 		return
@@ -525,21 +547,53 @@ func (h *Hub) reportSync(w http.ResponseWriter, r *http.Request) {
 // malformed, unknown or expired token is 401 and they are NOT distinguished in the
 // body: telling a caller which of those it was is a probing oracle, and the
 // four failure classes are decided by status code, not by prose.
-func (h *Hub) authorized(w http.ResponseWriter, r *http.Request) bool {
+func (h *Hub) authorized(w http.ResponseWriter, r *http.Request) (tokenInfo, bool) {
 	raw := r.Header.Get("Authorization")
 	token, ok := strings.CutPrefix(raw, "Bearer ")
 	if !ok || token == "" {
 		writeProblem(w, http.StatusUnauthorized, "Unauthorized", "a bearer token is required")
-		return false
+		return tokenInfo{}, false
 	}
 	h.mu.Lock()
 	info, known := h.tokens[token]
 	h.mu.Unlock()
 	if !known || h.opts.Now().After(info.expiresAt) {
 		writeProblem(w, http.StatusUnauthorized, "Unauthorized", "the bearer token is not valid")
-		return false
+		return tokenInfo{}, false
 	}
-	return true
+	return info, true
+}
+
+// inScope answers a service token outside its profiles with the hub's 403,
+// before anything about the profile is looked up.
+func inScope(w http.ResponseWriter, info tokenInfo, slug string) bool {
+	if !info.serviceToken() || slices.Contains(info.profiles, slug) {
+		return true
+	}
+	writeProblem(w, http.StatusForbidden, "Forbidden",
+		"this service token is not scoped to profile "+slug+"; it needs sync:profile/"+slug)
+	return false
+}
+
+// locked reports whether any revision of profiles locks the bundle key.
+func (h *Hub) locked(profiles []string, key string) bool {
+	for _, slug := range profiles {
+		for k, body := range h.lockfiles {
+			if rev, ok := strings.CutPrefix(k, slug+"/"); !ok || strings.Contains(rev, "/") {
+				continue
+			}
+			var lf hub.Lockfile
+			if json.Unmarshal(body, &lf) != nil {
+				continue
+			}
+			for i := range lf.Entries {
+				if lf.Entries[i].Id+"@"+lf.Entries[i].Version == key {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // ---- responses
@@ -573,6 +627,17 @@ func (c control) SetHealthy(ok bool) error {
 	defer c.h.mu.Unlock()
 	c.h.healthy = ok
 	return nil
+}
+
+func (c control) MintServiceToken(profiles ...string) (string, error) {
+	token := "amst_" + randomToken()
+	c.h.mu.Lock()
+	defer c.h.mu.Unlock()
+	c.h.tokens[token] = tokenInfo{
+		expiresAt: c.h.opts.Now().Add(c.h.opts.TokenTTL), host: "service-token",
+		profiles: append([]string{}, profiles...),
+	}
+	return token, nil
 }
 
 func (c control) SyncReports() ([]hub.SyncReport, error) {

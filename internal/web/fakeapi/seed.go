@@ -3,6 +3,8 @@ package fakeapi
 import (
 	"time"
 
+	"github.com/google/uuid"
+
 	"agent-manager/internal/apiclient"
 )
 
@@ -20,6 +22,12 @@ func Seed() *Data {
 		Categories:         []string{"Infrastructure", "Security & compliance", "Data", "Developer workflow", "Documentation"},
 		IdentityConnection: apiclient.IdentityConnectionTest{Ok: true},
 		Devices:            map[string]apiclient.PendingDeviceAuthorization{},
+		ServiceTokens: []apiclient.ServiceToken{{
+			Id: uuid.MustParse("0193f2a0-0000-7000-8000-00000000c1c1"), Name: "release pipeline",
+			Scopes: []string{"sync:profile/example/platform-engineer"}, CreatedBy: "ada@fixture.invalid",
+			CreatedAt: now.Add(-30 * 24 * time.Hour), ExpiresAt: now.Add(60 * 24 * time.Hour),
+			LastUsedAt: ptr(now.Add(-2 * time.Hour)), Status: apiclient.Active,
+		}},
 	}
 	seedCatalog(d, now)
 	seedGovernance(d, now)

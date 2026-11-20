@@ -36,6 +36,7 @@ type Data struct {
 	Storage            apiclient.StorageReport
 	Runtime            apiclient.RuntimeReport
 	Devices            map[string]apiclient.PendingDeviceAuthorization
+	ServiceTokens      []apiclient.ServiceToken
 }
 
 // SignedOut clears the viewer, so every protected request lands on sign-in.
@@ -66,4 +67,11 @@ func signedIn() *apiclient.Viewer {
 		HasRole:     true,
 		Groups:      []string{"eng-platform", "eng-all"},
 	}
+}
+
+func (d *Data) viewerRef() string {
+	if d.Viewer == nil {
+		return ""
+	}
+	return d.Viewer.Email
 }

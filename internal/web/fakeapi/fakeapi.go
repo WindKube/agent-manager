@@ -18,6 +18,8 @@ import (
 
 // routes maps each operationId the web role calls to its method and path.
 // TestRoutesExistInTheContract holds this table to internal/apiclient/openapi.json.
+//
+//nolint:gosec // G101: operation ids and paths, not credentials.
 var routes = map[string]string{
 	"getViewer":     "GET /v1/viewer",
 	"createSession": "POST /v1/sessions",
@@ -69,6 +71,10 @@ var routes = map[string]string{
 
 	"lookupDeviceCode":  "GET /v1/device/authorizations/{user_code}",
 	"approveDeviceCode": "POST /v1/device/authorizations/{user_code}/approve",
+
+	"listServiceTokens":  "GET /v1/service-tokens",
+	"createServiceToken": "POST /v1/service-tokens",
+	"revokeServiceToken": "DELETE /v1/service-tokens/{id}",
 }
 
 // Routes is the operation table, exported for the contract test.

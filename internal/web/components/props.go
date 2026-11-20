@@ -55,6 +55,7 @@ var Nav = []NavGroup{
 	}},
 	{Label: "Onboarding", Items: []NavItem{
 		{ID: "cli", Label: "Connect the CLI", Href: "/cli"},
+		{ID: "tokens", Label: "Service tokens", Href: "/tokens"},
 	}},
 }
 

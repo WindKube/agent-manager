@@ -146,6 +146,16 @@ type Scanner struct {
 	ScanEngineThreshold string `env:"SCAN_ENGINE_THRESHOLD" envDefault:"medium"`
 }
 
+// Notifier is the webhook role's own knobs. Its database and outbound
+// settings are the worker bootstrap's; it has no object-store field because
+// it holds no object-store credential.
+type Notifier struct {
+	// WebhookTimeout bounds one delivery attempt.
+	WebhookTimeout time.Duration `env:"WEBHOOK_TIMEOUT" envDefault:"10s"`
+	// WebhookDeliveryRetention is how long the delivery log is kept.
+	WebhookDeliveryRetention time.Duration `env:"WEBHOOK_DELIVERY_RETENTION" envDefault:"720h"`
+}
+
 type Migrate struct {
 	Observability
 	RiverDatabaseURL string `env:"RIVER_DATABASE_URL,required,notEmpty"`

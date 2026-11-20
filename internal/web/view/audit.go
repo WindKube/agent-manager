@@ -131,7 +131,7 @@ type AuditFilter struct {
 // rather than sent on to be refused.
 var auditSubjectKinds = []string{
 	"package", "version", "finding", "profile", "revision",
-	"category", "mapping", "policy", "identity", "device", "service-token", "machine",
+	"category", "mapping", "policy", "identity", "device", "service-token", "machine", "webhook",
 }
 
 // maxAuditFilterLength mirrors the api's own bound on subjectId and namespace.

@@ -59,6 +59,15 @@ func TestScannerAndFetcherCarryTheirOwnCredentials(t *testing.T) {
 	}
 }
 
+func TestTheNotifierHasNoObjectStoreField(t *testing.T) {
+	typ := reflect.TypeOf(Notifier{})
+	for i := range typ.NumField() {
+		require.NotEqual(t, "BLOB_URL", strings.Split(typ.Field(i).Tag.Get("env"), ",")[0])
+	}
+	_, found := typ.FieldByName("BlobURL")
+	require.False(t, found, "the notifier signs and posts JSON; it never reads a bundle")
+}
+
 // The mint secret is the one value two roles must hold. If their tags drift
 // apart, both roles start, both look correctly configured, and every sign-in
 // fails at the mint — so the two tags are asserted to be the same variable.

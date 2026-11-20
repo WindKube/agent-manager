@@ -343,3 +343,28 @@ alter table "machine_skip"
 create index "machine_install_package_version_idx" on "machine_install" ("package_id", "version_id");
 create index "machine_skip_machine_profile_idx" on "machine_skip" ("machine_id", "profile_id");
 create index "machine_last_identity_idx" on "machine" ("last_identity_id");
+
+-- Webhooks.
+alter table "webhook_subscription"
+  add constraint "webhook_subscription_name_is_bounded"
+  check (char_length(btrim("name")) between 1 and 100);
+
+alter table "webhook_subscription"
+  add constraint "webhook_subscription_url_is_https"
+  check ("url" like 'https://%' and char_length("url") <= 2048);
+
+alter table "webhook_subscription"
+  add constraint "webhook_subscription_has_an_event_type"
+  check (cardinality("event_types") between 1 and 50 and cardinality("namespaces") <= 50);
+
+alter table "webhook_subscription"
+  add constraint "webhook_subscription_secret_is_32_bytes"
+  check (octet_length("secret") = 32);
+
+alter table "webhook_delivery"
+  add constraint "webhook_delivery_fields_are_bounded"
+  check ("attempt" >= 1 and coalesce(char_length("response_body"), 0) <= 1024
+         and coalesce(char_length("error"), 0) <= 1024);
+
+create index "webhook_delivery_subscription_idx" on "webhook_delivery" ("subscription_id", "occurred_at" desc);
+create index "webhook_delivery_occurred_at_idx" on "webhook_delivery" ("occurred_at");

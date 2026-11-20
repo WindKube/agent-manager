@@ -269,9 +269,11 @@ There is deliberately no ordering column — evidence reads as `order by role, p
 is stable, and a `position` would be a second thing to keep right for no question anyone asks.
 
 ### `override`
-| `finding_id` uuid pk fk → finding | `reviewer_identity_id` uuid fk → identity | `note` text | `expires_at` timestamptz | `created_at` |
+| `finding_id` uuid pk fk → finding | `reviewer_identity_id` uuid fk → identity | `note` text | `expires_at` timestamptz | `created_at` | `expiring_notified_at`, `expired_notified_at` timestamptz, nullable |
 
-FR-028. The "Overrides active / expires in 12 days" stat reads `expires_at`.
+FR-028. The "Overrides active / expires in 12 days" stat reads `expires_at`. The two notice
+columns record the `waiver.expiring` / `waiver.expired` audit rows already written for this
+expiry; re-accepting clears them.
 
 ---
 
@@ -490,6 +492,31 @@ Current state, not history: `sync_event` stays the record of each report. A repo
 
 ---
 
+## Webhooks
+
+### `webhook_subscription`
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid pk | |
+| `name` | text | 1–100 characters |
+| `url` | text | `https://` only, at most 2048 characters; validated against private and loopback addresses at creation and by the outbound client at delivery |
+| `event_types` | text[] | 1–50 `internal/notify` event types, or the single entry `*` |
+| `namespaces` | text[] | Empty means every namespace |
+| `secret` | bytea | 32 bytes, the HMAC key. `am_api` writes it and holds no `SELECT` on the column |
+| `enabled`, `disabled_reason` | | The notifier disables on a 410 and says so |
+| `created_by_identity_id` | uuid fk → identity | |
+| `last_delivery_at`, `last_delivery_status`, `last_delivery_error` | nullable | The last attempt, so the list needs no join |
+
+### `webhook_delivery`
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid pk | |
+| `subscription_id` | uuid fk → webhook_subscription | Deleting a subscription deletes its deliveries first, in the same transaction |
+| `event_id` | uuid | The `audit_event` delivered, and the `Webhook-Id` header |
+| `event_type`, `attempt`, `status_code`, `error`, `response_body`, `duration_ms`, `occurred_at` | | One row per attempt; the response body is cut at 1 KiB. Pruned after 30 days by the notifier |
+
+---
+
 ## Job hand-off
 
 ### `outbox`
@@ -587,6 +614,10 @@ against a stated decision instead of a fresh guess.
 | `am_api` | `SELECT` on `fetch_attempt` | FR-053's "recent fetch outcomes" panel, served by `api` |
 | `am_api` | `SELECT`, `INSERT`, `UPDATE` on `service_token` | Resolving, creating, revoking and touching service tokens |
 | `am_api` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` on `machine`; `SELECT`, `INSERT`, `DELETE` on `machine_install`, `machine_skip` | The sync report replaces a machine's rows per profile; forgetting a machine deletes them |
+| `am_api` | column `SELECT` on `webhook_subscription` except `secret`; `INSERT`, `UPDATE`, `DELETE` on it; `SELECT`, `DELETE` on `webhook_delivery` | Managing subscriptions, and deleting one with its delivery log; the secret is shown once at creation and rotation and never read back |
+| `am_notifier` | `SELECT` on `webhook_subscription`; `UPDATE (enabled, disabled_reason, updated_at, last_delivery_*)` on it; `SELECT`, `INSERT`, `DELETE` on `webhook_delivery` | Signing, disabling on 410, recording and pruning deliveries |
+| `am_notifier` | `SELECT`, `INSERT` on `audit_event`; `INSERT` on `outbox` | Events derive from audit rows; delivery jobs go through the outbox |
+| `am_notifier` | `SELECT` on `override`, `finding`, `version`, `package`; `UPDATE (expiring_notified_at, expired_notified_at)` on `override` | The waiver expiry notices |
 | `am_web` | **none — no role, no grant, no DSN** | Principle II. It reaches data only through `api` over HTTP |
 | `am_migrate` | DDL owner, used only by the Atlas init container | quickstart.md's `migrate-schema` gate |
 
@@ -609,6 +640,8 @@ will reach for by neighbourhood, so each carries the reason it stays withheld.
 | `SELECT` on `fetch_attempt` from `am_fetcher` | It writes every row in it | It never reads its own history, the same reason it holds only `INSERT` on `audit_event` and `outbox` |
 | `UPDATE`, `DELETE` on `fetch_attempt` from **every** role | An attempt row looks like something a retention job would tidy | An attempt is a record of something that already happened. Note what this does **not** amount to: `fetch_attempt` is not covered by FR-052's revoke, which names `audit_event` and only `audit_event`, so a table owner can still grant itself back |
 | Any grant on `machine`, `machine_install`, `machine_skip` to `am_fetcher`, `am_scanner` | Neighbouring governance tables | Only the api reports and reads the inventory |
+| `SELECT (secret)` on `webhook_subscription` from `am_api` | It writes the column | The secret is shown once; only the notifier, which signs with it, reads it |
+| Any other grant to `am_notifier` | It reads the audit log, which mentions everything | It posts to URLs a person typed in, so it reaches only what it signs, records or notices |
 | Any grant on `service_token` to `am_fetcher`, `am_scanner`; `DELETE` from `am_api` | Neighbouring identity tables | `token_hash` is a bearer credential at rest, and a revoked or expired row is the evidence the credential existed |
 | `SELECT` on `identity`, `session`, `device_authorization`, `profile*`, `audit_event` from `am_scanner` | The grant summary above says "`SELECT` on the catalog and its scan history", which an earlier draft wrote as "SELECT broadly" | `session.token_hash` and `device_authorization.device_code_hash` are bearer credentials at rest. "Broadly" is read as the catalog and its scan history; narrowing a grant is always safe, widening one is the mistake worth avoiding |
 

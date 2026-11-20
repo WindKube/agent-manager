@@ -9,7 +9,8 @@
 #
 # The env blocks below ARE the credential boundary (constitution principle II).
 # Read them as a table: `web` has no DATABASE_URL and no BLOB_URL, `api` holds a
-# read-only object-store key, and only `fetcher` holds one that can write. None
+# read-only object-store key, only `fetcher` holds one that can write, and
+# `notifier` holds none. None
 # of that is an oversight to tidy up — internal/config has no field for what a
 # role must not read, so adding a line here would not even compile.
 name: agent-manager
@@ -222,6 +223,23 @@ services:
     # A worker has no HTTP listener yet, so the image's HEALTHCHECK — which probes
     # the api's port — would mark it unhealthy forever. T109 adds the metrics and
     # liveness listener on AGENT_MANAGER_METRICS_ADDR; the probe comes back then.
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+
+  # The notifier signs and posts webhooks. It reaches the network through the
+  # same SSRF-guarded client as the fetcher and holds no object-store key.
+  notifier:
+    <<: *app-image
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: [*observability, *queue-url]
+      AGENT_MANAGER_DATABASE_URL: >-
+        postgres://am_notifier:local-development-am-notifier@postgres:5432/agent_manager?sslmode=disable
+      AGENT_MANAGER_WEBHOOK_TIMEOUT: 10s
+    command: ["worker", "run", "notifier"]
     healthcheck:
       disable: true
     restart: unless-stopped

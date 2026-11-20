@@ -40,6 +40,8 @@ var wantTables = []string{
 	"org_policy", "audit_event", "sync_event", "fetch_attempt",
 	// Fleet inventory
 	"machine", "machine_install", "machine_skip",
+	// Webhooks
+	"webhook_subscription", "webhook_delivery",
 	// Job hand-off
 	"outbox",
 }

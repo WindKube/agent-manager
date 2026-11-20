@@ -15,6 +15,7 @@ create role am_migrate login password 'local-development-am-migrate';
 create role am_api     login password 'local-development-am-api';
 create role am_fetcher login password 'local-development-am-fetcher';
 create role am_scanner login password 'local-development-am-scanner';
+create role am_notifier login password 'local-development-am-notifier';
 
 -- The queue is a separate database with a single role that owns it, so River's
 -- own migrator needs no grant from us and Atlas can never see its tables

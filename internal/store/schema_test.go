@@ -198,6 +198,8 @@ var wantForeignKeys = []string{
 	"sync_event(revision_id) -> revision",
 	"sync_event(service_token_id) -> service_token",
 	"version(package_id) -> package",
+	"webhook_delivery(subscription_id) -> webhook_subscription",
+	"webhook_subscription(created_by_identity_id) -> identity",
 }
 
 // `go test` runs with the package directory as the working directory, so this is

@@ -117,6 +117,32 @@ var rules = []rule{
 		scope:     under("internal/signing"),
 		forbidden: anyOf(exact("net/http"), under(module+"/internal/store"), under(module+"/internal/blob")),
 	},
+	{
+		name: "the notifier holds no object-store credential and opens no socket of its own",
+		why: "worker notifier posts to URLs a catalog-admin typed in, so its only door to the network " +
+			"is the SSRF-guarded internal/fetch client the bootstrap hands it, and it never needs a " +
+			"bundle. A blob import is a credential it is deliberately not given; a net import is how " +
+			"an unguarded dialer appears beside the guarded one.",
+		scope: under("internal/worker/notifier"),
+		forbidden: anyOf(
+			under(module+"/internal/blob"),
+			under("gocloud.dev/blob"),
+			exact("net"),
+		),
+	},
+	{
+		name: "the webhook vocabulary is free of I/O",
+		why: "internal/notify is shared by the api, which holds no outbound client, and the notifier, " +
+			"which holds no object store; anything it links reaches both roles.",
+		scope: under("internal/notify"),
+		forbidden: anyOf(
+			under(module+"/internal/store"),
+			under(module+"/internal/blob"),
+			exact("github.com/uptrace/bun"),
+			under("github.com/jackc/pgx"),
+			exact("net/http"),
+		),
+	},
 }
 
 // andNot narrows a scope: in it when pred says so and except does not.
@@ -157,7 +183,8 @@ var mayTouchDatastore = []func(string) bool{
 	under("internal/store"),
 	under("internal/blob"),
 	// `worker fetcher` is the only role that may write bundle bytes; `worker
-	// scanner` reads them and writes verdicts.
+	// scanner` reads them and writes verdicts; `worker notifier` reads the
+	// audit log and writes the webhook delivery log.
 	under("internal/worker"),
 }
 

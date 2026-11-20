@@ -62,3 +62,17 @@ func TestTheFetcherIsRegisteredAsTheOnlyRoleThatMayWriteBundleBytes(t *testing.T
 			"role %q declares Blob: AccessReadWrite, which hands it a blob.Writer", def.Name)
 	}
 }
+
+func TestTheNotifierReachesTheNetworkButHoldsNoObjectStoreCredential(t *testing.T) {
+	found, err := roles.Lookup("notifier")
+	require.NoError(t, err)
+
+	require.Equal(t, worker.Needs{
+		DB:       worker.AccessReadWrite,
+		Blob:     worker.AccessNone,
+		Outbound: true,
+	}, found.Needs)
+	require.Contains(t, found.Queues, outbox.QueueNotify)
+	require.NotNil(t, found.Register)
+	require.NotNil(t, found.Periodic)
+}

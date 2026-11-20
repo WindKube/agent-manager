@@ -60,7 +60,8 @@
               "role",
               "category",
               "secret",
-              "token"
+              "token",
+              "webhook"
             ],
             "examples": [
               "approve"
@@ -106,7 +107,8 @@
               "identity",
               "device",
               "service-token",
-              "machine"
+              "machine",
+              "webhook"
             ],
             "examples": [
               "version"
@@ -524,6 +526,81 @@
           "name",
           "scopes",
           "expiresAt"
+        ],
+        "type": "object"
+      },
+      "CreateWebhookRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "eventTypes": {
+            "description": "The event types to deliver, or the single entry * for every one.",
+            "examples": [
+              [
+                "scan.completed",
+                "waiver.expiring"
+              ]
+            ],
+            "items": {
+              "enum": [
+                "*",
+                "package.version.registered",
+                "package.version.stored",
+                "package.version.fetch-failed",
+                "package.version.deleted",
+                "package.deleted",
+                "scan.completed",
+                "finding.accepted",
+                "finding.rejected",
+                "waiver.expiring",
+                "waiver.expired",
+                "profile.revision.published",
+                "policy.changed",
+                "service-token.created",
+                "service-token.revoked",
+                "machine.forgotten"
+              ],
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "type": "array"
+          },
+          "name": {
+            "description": "What the webhook is for.",
+            "examples": [
+              "security channel"
+            ],
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "namespaces": {
+            "description": "Only events about packages in these namespaces. Absent or empty delivers every namespace, and events with no namespace.",
+            "examples": [
+              [
+                "platform"
+              ]
+            ],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "url": {
+            "description": "https only, with no credentials in it and not a private or loopback address.",
+            "examples": [
+              "https://hooks.example.com/agent-manager"
+            ],
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "url",
+          "eventTypes"
         ],
         "type": "object"
       },
@@ -4928,6 +5005,58 @@
         ],
         "type": "object"
       },
+      "UpdateWebhookRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "description": "Re-enabling clears the reason a webhook was disabled.",
+            "type": "boolean"
+          },
+          "eventTypes": {
+            "items": {
+              "enum": [
+                "*",
+                "package.version.registered",
+                "package.version.stored",
+                "package.version.fetch-failed",
+                "package.version.deleted",
+                "package.deleted",
+                "scan.completed",
+                "finding.accepted",
+                "finding.rejected",
+                "waiver.expiring",
+                "waiver.expired",
+                "profile.revision.published",
+                "policy.changed",
+                "service-token.created",
+                "service-token.revoked",
+                "machine.forgotten"
+              ],
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "namespaces": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "url": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "VersionDeleted": {
         "additionalProperties": false,
         "properties": {
@@ -5051,6 +5180,226 @@
           "groups"
         ],
         "type": "object"
+      },
+      "Webhook": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "description": "The email or subject of the person who created it.",
+            "examples": [
+              "kwiatrzyk@example.com"
+            ],
+            "type": "string"
+          },
+          "disabledReason": {
+            "description": "Why the hub disabled it, when it did; absent when a person did.",
+            "examples": [
+              "the receiver answered 410 Gone"
+            ],
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "eventTypes": {
+            "examples": [
+              [
+                "scan.completed"
+              ]
+            ],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "lastDeliveryAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastDeliveryError": {
+            "type": "string"
+          },
+          "lastDeliveryStatus": {
+            "description": "The HTTP status of the last attempt; absent when it got no response.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "examples": [
+              "security channel"
+            ],
+            "type": "string"
+          },
+          "namespaces": {
+            "description": "Empty means every namespace.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "url": {
+            "examples": [
+              "https://hooks.example.com/agent-manager"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "url",
+          "eventTypes",
+          "namespaces",
+          "enabled",
+          "createdBy",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "WebhookCreated": {
+        "additionalProperties": false,
+        "properties": {
+          "secret": {
+            "description": "The signing secret, whsec_ and base64. Returned once.",
+            "examples": [
+              "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw"
+            ],
+            "type": "string"
+          },
+          "webhook": {
+            "$ref": "#/components/schemas/Webhook"
+          }
+        },
+        "required": [
+          "webhook",
+          "secret"
+        ],
+        "type": "object"
+      },
+      "WebhookDelivery": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt": {
+            "examples": [
+              1
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "durationMs": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "error": {
+            "type": "string"
+          },
+          "eventId": {
+            "description": "The audit event delivered, and the Webhook-Id header the receiver saw.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "eventType": {
+            "examples": [
+              "scan.completed"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "occurredAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "responseBody": {
+            "description": "The first KiB of the receiver's answer.",
+            "type": "string"
+          },
+          "statusCode": {
+            "description": "Absent when no response arrived.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "eventId",
+          "eventType",
+          "attempt",
+          "durationMs",
+          "occurredAt"
+        ],
+        "type": "object"
+      },
+      "WebhookDeliveryList": {
+        "additionalProperties": false,
+        "properties": {
+          "deliveries": {
+            "description": "Newest first, at most 100, kept for 30 days.",
+            "items": {
+              "$ref": "#/components/schemas/WebhookDelivery"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "deliveries"
+        ],
+        "type": "object"
+      },
+      "WebhookList": {
+        "additionalProperties": false,
+        "properties": {
+          "eventTypes": {
+            "description": "Every event type a subscription can select.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "webhooks": {
+            "description": "Most recently created first.",
+            "items": {
+              "$ref": "#/components/schemas/Webhook"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "webhooks",
+          "eventTypes"
+        ],
+        "type": "object"
+      },
+      "WebhookSecret": {
+        "additionalProperties": false,
+        "properties": {
+          "secret": {
+            "description": "The new signing secret, whsec_ and base64. The previous one stops signing immediately.",
+            "examples": [
+              "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "secret"
+        ],
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -5107,7 +5456,8 @@
                 "identity",
                 "device",
                 "service-token",
-                "machine"
+                "machine",
+                "webhook"
               ],
               "type": "string"
             }
@@ -5232,7 +5582,8 @@
                 "identity",
                 "device",
                 "service-token",
-                "machine"
+                "machine",
+                "webhook"
               ],
               "type": "string"
             }
@@ -10259,6 +10610,438 @@
           "identity"
         ]
       }
+    },
+    "/v1/webhooks": {
+      "get": {
+        "description": "Never carries a secret.",
+        "operationId": "listWebhooks",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Webhooks are managed by a catalog-admin."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Every webhook subscription",
+        "tags": [
+          "webhooks"
+        ]
+      },
+      "post": {
+        "description": "Stores a subscription and writes one `webhook` audit row. The signing secret is returned in this response and never again.",
+        "operationId": "createWebhook",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWebhookRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookCreated"
+                }
+              }
+            },
+            "description": "Created."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Webhooks are managed by a catalog-admin."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The URL is not https, carries credentials or names a private address, or an event type is unknown."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Subscribe a URL to events",
+        "tags": [
+          "webhooks"
+        ]
+      }
+    },
+    "/v1/webhooks/{id}": {
+      "delete": {
+        "operationId": "deleteWebhook",
+        "parameters": [
+          {
+            "description": "The webhook's id, as listed.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The webhook's id, as listed.",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Webhooks are managed by a catalog-admin."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such webhook."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Delete a webhook and its delivery log",
+        "tags": [
+          "webhooks"
+        ]
+      },
+      "patch": {
+        "description": "Changes only the fields given and writes one `webhook` audit row.",
+        "operationId": "updateWebhook",
+        "parameters": [
+          {
+            "description": "The webhook's id, as listed.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The webhook's id, as listed.",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWebhookRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Webhook"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Webhooks are managed by a catalog-admin."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such webhook."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The resulting webhook would be invalid."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Change a webhook's name, URL, filters or whether it is enabled",
+        "tags": [
+          "webhooks"
+        ]
+      }
+    },
+    "/v1/webhooks/{id}/deliveries": {
+      "get": {
+        "description": "The newest 100 attempts of the last 30 days, with the first KiB of each response.",
+        "operationId": "listWebhookDeliveries",
+        "parameters": [
+          {
+            "description": "The webhook's id, as listed.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The webhook's id, as listed.",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookDeliveryList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Webhooks are managed by a catalog-admin."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such webhook."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "A webhook's recent delivery attempts",
+        "tags": [
+          "webhooks"
+        ]
+      }
+    },
+    "/v1/webhooks/{id}/secret": {
+      "post": {
+        "description": "The new secret is returned once and signs every delivery from now on, retries included.",
+        "operationId": "rotateWebhookSecret",
+        "parameters": [
+          {
+            "description": "The webhook's id, as listed.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The webhook's id, as listed.",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookSecret"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Webhooks are managed by a catalog-admin."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such webhook."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Replace a webhook's signing secret",
+        "tags": [
+          "webhooks"
+        ]
+      }
     }
   },
   "security": [
@@ -10310,6 +11093,10 @@
     {
       "description": "Probes a supervisor calls. Unauthenticated.",
       "name": "system"
+    },
+    {
+      "description": "Signed outbound notifications of catalog, scan and governance events.",
+      "name": "webhooks"
     }
   ]
 }

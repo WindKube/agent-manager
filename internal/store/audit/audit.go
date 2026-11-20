@@ -27,6 +27,7 @@ import (
 //	device    host
 //	service-token  name
 //	machine   host
+//	webhook   name
 type Subject struct {
 	Kind      models.AuditSubjectKind
 	ID        string
@@ -89,6 +90,10 @@ func Machine(id uuid.UUID, host string) Subject {
 
 func ServiceToken(id uuid.UUID, name string) Subject {
 	return Subject{Kind: models.AuditSubjectToken, ID: id.String(), Data: map[string]any{"name": name}}
+}
+
+func Webhook(id uuid.UUID, name string) Subject {
+	return Subject{Kind: models.AuditSubjectWebhook, ID: id.String(), Data: map[string]any{"name": name}}
 }
 
 // Entry is one audit row to be written. Action is the machine-readable verb

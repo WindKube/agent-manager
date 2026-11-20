@@ -67,6 +67,10 @@ func All() []any {
 		(*MachineInstall)(nil),
 		(*MachineSkip)(nil),
 
+		// Webhooks
+		(*WebhookSubscription)(nil),
+		(*WebhookDelivery)(nil),
+
 		// Job hand-off
 		(*Outbox)(nil),
 	}

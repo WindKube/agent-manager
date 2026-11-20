@@ -96,6 +96,7 @@ func humaConfig(opts Options) huma.Config {
 				{Name: "scanner", Description: "Findings, their evidence, and the decisions taken on them."},
 				{Name: "service-tokens", Description: "Scoped, expiring, non-human credentials for CI and headless machines."},
 				{Name: "system", Description: "Probes a supervisor calls. Unauthenticated."},
+				{Name: "webhooks", Description: "Signed outbound notifications of catalog, scan and governance events."},
 			},
 		},
 		OpenAPIPath: OpenAPIPath,

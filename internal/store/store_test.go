@@ -145,7 +145,7 @@ func TestAuditEventRejectsUpdateAndDeleteFromEveryRole(t *testing.T) {
 	// `grant all on all tables` hands it UPDATE, DELETE and TRUNCATE and the
 	// revoke has to take all three back — and because in a real deployment
 	// am_migrate is the table owner, where a revoke is easy to assume is a no-op.
-	for _, role := range []string{"am_api", "am_fetcher", "am_scanner", "am_migrate"} {
+	for _, role := range []string{"am_api", "am_fetcher", "am_scanner", "am_notifier", "am_migrate"} {
 		t.Run(role, func(t *testing.T) {
 			asRole(t, role, func(ctx context.Context, conn *pgxpool.Conn) {
 				for _, tc := range []struct {
@@ -207,7 +207,7 @@ func TestAuditEventRequiresASubjectFromEveryWritingRole(t *testing.T) {
 		`select convalidated from pg_constraint where conname = 'audit_event_subject_required'`).Scan(&validated))
 	require.False(t, validated, "the check must stay NOT VALID, or migrating a hub with history fails")
 
-	for _, role := range []string{"am_api", "am_fetcher", "am_scanner"} {
+	for _, role := range []string{"am_api", "am_fetcher", "am_scanner", "am_notifier"} {
 		t.Run(role, func(t *testing.T) {
 			asRole(t, role, func(ctx context.Context, conn *pgxpool.Conn) {
 				_, err := conn.Exec(ctx,
@@ -335,7 +335,7 @@ func TestWebRoleHasNoDatabaseRoleAtAll(t *testing.T) {
 		got = append(got, name)
 	}
 	require.NoError(t, rows.Err())
-	require.Equal(t, []string{"am_api", "am_fetcher", "am_migrate", "am_scanner"}, got)
+	require.Equal(t, []string{"am_api", "am_fetcher", "am_migrate", "am_notifier", "am_scanner"}, got)
 }
 
 // ---------------------------------------------------------------------------
@@ -810,6 +810,8 @@ func TestIndexDefinitionsAreExactlyAsSpecified(t *testing.T) {
 		"machine_install_package_version_idx": "CREATE INDEX machine_install_package_version_idx ON public.machine_install USING btree (package_id, version_id)",
 		"machine_skip_machine_profile_idx":    "CREATE INDEX machine_skip_machine_profile_idx ON public.machine_skip USING btree (machine_id, profile_id)",
 		"machine_last_identity_idx":           "CREATE INDEX machine_last_identity_idx ON public.machine USING btree (last_identity_id)",
+		"webhook_delivery_subscription_idx":   "CREATE INDEX webhook_delivery_subscription_idx ON public.webhook_delivery USING btree (subscription_id, occurred_at DESC)",
+		"webhook_delivery_occurred_at_idx":    "CREATE INDEX webhook_delivery_occurred_at_idx ON public.webhook_delivery USING btree (occurred_at)",
 	}
 
 	for name, def := range want {
@@ -1983,4 +1985,149 @@ func TestAMachineSkipIsAWholeEntryOrAWholeComponent(t *testing.T) {
 	require.NoError(t, skip(&target, &component, &reason))
 	requirePgError(t, skip(&target, &component, nil), "23514", "machine_skip_component_is_whole")
 	requirePgError(t, skip(nil, &component, &reason), "23514", "machine_skip_component_is_whole")
+}
+
+// ---------------------------------------------------------------------------
+// Webhooks — the api writes the secret, only the notifier reads it
+// ---------------------------------------------------------------------------
+
+func insertWebhook(ctx context.Context, conn interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}, creator uuid.UUID) (uuid.UUID, error) {
+	id := models.NewID()
+	_, err := conn.Exec(ctx, `insert into webhook_subscription (id, name, url, event_types, secret, created_by_identity_id)
+		values ($1, 'siem', 'https://hooks.example.com/x', '{scan.completed}', $2, $3)`,
+		id, append(id[:], id[:]...), creator)
+	return id, err
+}
+
+func TestTheWebhookSecretIsWrittenByTheAPIAndReadOnlyByTheNotifier(t *testing.T) {
+	ctx := context.Background()
+	creator := seedIdentity(t, ctx)
+
+	var id uuid.UUID
+	asRole(t, "am_api", func(ctx context.Context, conn *pgxpool.Conn) {
+		var err error
+		id, err = insertWebhook(ctx, conn, creator)
+		require.NoError(t, err)
+
+		var name string
+		require.NoError(t, conn.QueryRow(ctx, `select name from webhook_subscription where id = $1`, id).Scan(&name))
+		_, err = conn.Exec(ctx, `update webhook_subscription set secret = $2, enabled = false where id = $1`,
+			id, append(creator[:], creator[:]...))
+		require.NoError(t, err, "rotating writes the secret without reading it")
+
+		_, err = conn.Exec(ctx, `select secret from webhook_subscription where id = $1`, id)
+		requirePgError(t, err, "42501", "")
+		_, err = conn.Exec(ctx, `select * from webhook_subscription where id = $1`, id)
+		requirePgError(t, err, "42501", "")
+		_, err = conn.Exec(ctx, `insert into webhook_delivery (id, subscription_id, event_id, event_type, attempt, duration_ms)
+			values ($1, $2, $1, 'scan.completed', 1, 5)`, models.NewID(), id)
+		requirePgError(t, err, "42501", "")
+	})
+
+	asRole(t, "am_notifier", func(ctx context.Context, conn *pgxpool.Conn) {
+		var secret []byte
+		require.NoError(t, conn.QueryRow(ctx, `select secret from webhook_subscription where id = $1`, id).Scan(&secret))
+		require.Len(t, secret, 32)
+
+		_, err := conn.Exec(ctx, `update webhook_subscription set enabled = false, disabled_reason = 'gone',
+			last_delivery_at = now(), last_delivery_status = 410, updated_at = now() where id = $1`, id)
+		require.NoError(t, err)
+
+		delivery := models.NewID()
+		_, err = conn.Exec(ctx, `insert into webhook_delivery (id, subscription_id, event_id, event_type, attempt, status_code, duration_ms)
+			values ($1, $2, $1, 'scan.completed', 1, 410, 5)`, delivery, id)
+		require.NoError(t, err)
+		_, err = conn.Exec(ctx, `delete from webhook_delivery where id = $1`, delivery)
+		require.NoError(t, err, "the notifier prunes its own log")
+
+		for _, stmt := range []string{
+			`update webhook_subscription set url = 'https://elsewhere.example.com' where id = $1`,
+			`update webhook_subscription set secret = '\x00' where id = $1`,
+			`update webhook_subscription set event_types = '{*}' where id = $1`,
+			`delete from webhook_subscription where id = $1`,
+		} {
+			_, err = conn.Exec(ctx, stmt, id)
+			requirePgError(t, err, "42501", "")
+		}
+		_, err = insertWebhook(ctx, conn, creator)
+		requirePgError(t, err, "42501", "")
+	})
+
+	for _, role := range []string{"am_fetcher", "am_scanner"} {
+		t.Run(role, func(t *testing.T) {
+			asRole(t, role, func(ctx context.Context, conn *pgxpool.Conn) {
+				for _, stmt := range []string{
+					`select name from webhook_subscription where id = $1`,
+					`select id from webhook_delivery where subscription_id = $1`,
+				} {
+					_, err := conn.Exec(ctx, stmt, id)
+					requirePgError(t, err, "42501", "")
+				}
+			})
+		})
+	}
+
+	asRole(t, "am_api", func(ctx context.Context, conn *pgxpool.Conn) {
+		_, err := conn.Exec(ctx, `delete from webhook_delivery where subscription_id = $1`, id)
+		require.NoError(t, err)
+		_, err = conn.Exec(ctx, `delete from webhook_subscription where id = $1`, id)
+		require.NoError(t, err)
+	})
+}
+
+func TestAWebhookIsHTTPSWithA32ByteSecretAndAnEventType(t *testing.T) {
+	ctx := context.Background()
+	creator := seedIdentity(t, ctx)
+	key := bytes.Repeat([]byte{1}, 32)
+
+	_, err := pool.Exec(ctx, `insert into webhook_subscription (id, name, url, event_types, secret, created_by_identity_id)
+		values ($1, 'x', 'http://hooks.example.com', '{*}', $2, $3)`, models.NewID(), key, creator)
+	requirePgError(t, err, "23514", "webhook_subscription_url_is_https")
+	_, err = pool.Exec(ctx, `insert into webhook_subscription (id, name, url, event_types, secret, created_by_identity_id)
+		values ($1, 'x', 'https://hooks.example.com', '{}', $2, $3)`, models.NewID(), key, creator)
+	requirePgError(t, err, "23514", "webhook_subscription_has_an_event_type")
+	_, err = pool.Exec(ctx, `insert into webhook_subscription (id, name, url, event_types, secret, created_by_identity_id)
+		values ($1, 'x', 'https://hooks.example.com', '{*}', $2, $3)`, models.NewID(), key[:16], creator)
+	requirePgError(t, err, "23514", "webhook_subscription_secret_is_32_bytes")
+}
+
+func TestTheNotifierReachesOnlyWhatItSignsRecordsOrNotices(t *testing.T) {
+	ctx := context.Background()
+	findingID := seedFinding(t, ctx)
+	reviewer := seedIdentity(t, ctx)
+	_, err := pool.Exec(ctx, `insert into override (finding_id, reviewer_identity_id, note, expires_at)
+		values ($1, $2, 'accepted', now() + interval '3 days')`, findingID, reviewer)
+	require.NoError(t, err)
+
+	asRole(t, "am_notifier", func(ctx context.Context, conn *pgxpool.Conn) {
+		var ruleID string
+		require.NoError(t, conn.QueryRow(ctx, `select fnd.rule_id from override ovr
+			join finding fnd on fnd.id = ovr.finding_id
+			join version ver on ver.id = fnd.version_id
+			join package pkg on pkg.id = ver.package_id
+			where ovr.finding_id = $1`, findingID).Scan(&ruleID))
+
+		_, err := conn.Exec(ctx, `update override set expiring_notified_at = now(), expired_notified_at = now()
+			where finding_id = $1`, findingID)
+		require.NoError(t, err)
+		_, err = conn.Exec(ctx, `insert into outbox (id, job_kind, payload, idempotency_key, state)
+			values ($1, 'notify', '{}', 'k', 'pending')`, models.NewID())
+		require.NoError(t, err)
+
+		for _, stmt := range []string{
+			`update override set expires_at = now() + interval '1 year' where finding_id = $1`,
+			`update finding set state = 'approved' where id = $1`,
+			`delete from override where finding_id = $1`,
+			`select token_hash from session where id = $1`,
+			`select token_hash from service_token where id = $1`,
+			`select id from outbox where id = $1`,
+			`select id from machine where id = $1`,
+			`update version set verdict = 'clean' where id = $1`,
+		} {
+			_, err = conn.Exec(ctx, stmt, findingID)
+			requirePgError(t, err, "42501", "")
+		}
+	})
 }

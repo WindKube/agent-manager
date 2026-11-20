@@ -70,11 +70,11 @@ var enumTypes = map[string][]string{
 	PGActorKind:         {"identity", "system", "service-token"},
 	PGAuditKind: {
 		"fetch", "scan", "approve", "profile", "share", "sync", "login",
-		"policy", "role", "category", "secret", "token",
+		"policy", "role", "category", "secret", "token", "webhook",
 	},
 	PGAuditSubjectKind: {
 		"package", "version", "finding", "profile", "revision",
-		"category", "mapping", "policy", "identity", "device", "service-token", "machine",
+		"category", "mapping", "policy", "identity", "device", "service-token", "machine", "webhook",
 	},
 	PGOutboxState:     {"pending", "delivered"},
 	PGEvidenceRole:    {"primary", "supporting"},
@@ -406,6 +406,9 @@ const (
 	AuditKindSecret AuditKind = "secret"
 	// AuditKindToken is a service token's lifecycle: created, revoked, used.
 	AuditKindToken AuditKind = "token"
+	// AuditKindWebhook is a webhook subscription's lifecycle; the secret and
+	// the URL past its host never reach a row.
+	AuditKindWebhook AuditKind = "webhook"
 )
 
 func (v AuditKind) Valid() bool { return inEnum(PGAuditKind, string(v)) }
@@ -427,6 +430,7 @@ const (
 	AuditSubjectDevice   AuditSubjectKind = "device"        // device_authorization.id
 	AuditSubjectToken    AuditSubjectKind = "service-token" // service_token.id
 	AuditSubjectMachine  AuditSubjectKind = "machine"       // machine.id
+	AuditSubjectWebhook  AuditSubjectKind = "webhook"       // webhook_subscription.id
 )
 
 func (v AuditSubjectKind) Valid() bool { return inEnum(PGAuditSubjectKind, string(v)) }

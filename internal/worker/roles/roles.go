@@ -13,15 +13,18 @@ import (
 
 	"agent-manager/internal/worker"
 	"agent-manager/internal/worker/fetcher"
+	"agent-manager/internal/worker/notifier"
 	"agent-manager/internal/worker/scanner"
 )
 
-// definitions is the one list. The two roles' Needs are the credential split
+// definitions is the one list. The roles' Needs are the credential split
 // written where a reader can compare them: the fetcher may write bundle bytes
-// and reach the network, the scanner may do neither.
+// and reach the network, the scanner may do neither, and the notifier reaches
+// the network but holds no object-store credential.
 var definitions = []worker.Definition{
-	fetcher.Definition(), // Needs{DB: AccessReadWrite, Blob: AccessReadWrite, Outbound: true}
-	scanner.Definition(), // Needs{DB: AccessReadWrite, Blob: AccessRead,      Outbound: false}
+	fetcher.Definition(),  // Needs{DB: AccessReadWrite, Blob: AccessReadWrite, Outbound: true}
+	scanner.Definition(),  // Needs{DB: AccessReadWrite, Blob: AccessRead,      Outbound: false}
+	notifier.Definition(), // Needs{DB: AccessReadWrite, Blob: AccessNone,      Outbound: true}
 }
 
 // Definitions returns the registered roles in registration order.

@@ -109,6 +109,10 @@ type Override struct {
 	Note               string     `bun:"note,type:text,nullzero"`
 	ExpiresAt          *time.Time `bun:"expires_at,type:timestamptz,nullzero"`
 	CreatedAt          time.Time  `bun:"created_at,type:timestamptz,notnull,default:now()"`
+	// The waiver notices already raised for this expiry; re-accepting clears
+	// both, since the new expiry deserves its own.
+	ExpiringNotifiedAt *time.Time `bun:"expiring_notified_at,type:timestamptz,nullzero"`
+	ExpiredNotifiedAt  *time.Time `bun:"expired_notified_at,type:timestamptz,nullzero"`
 
 	Finding  *Finding  `bun:"rel:belongs-to,join:finding_id=id"`
 	Reviewer *Identity `bun:"rel:belongs-to,join:reviewer_identity_id=id"`

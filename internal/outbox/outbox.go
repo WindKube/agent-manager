@@ -54,8 +54,9 @@ func (k Kind) Valid() bool {
 // registers — no kind may share river.QueueDefault, or a worker that never
 // registers that queue's job kind starves on jobs it cannot run.
 const (
-	QueueFetch = "fetch"
-	QueueScan  = "scan"
+	QueueFetch  = "fetch"
+	QueueScan   = "scan"
+	QueueNotify = "notify"
 )
 
 // queueByKind names the River queue a kind is delivered to. The outbox row carries

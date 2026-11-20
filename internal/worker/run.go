@@ -32,7 +32,7 @@ func Run(ctx context.Context, def Definition, cfg Config) error {
 		return fmt.Errorf("worker %s declares no queues, so it would never work a job", def.Name)
 	}
 
-	var periodic []*river.PeriodicJob
+	var periodic []PeriodicJob
 	if def.Periodic != nil {
 		jobs, periodicErr := def.Periodic(cfg)
 		if periodicErr != nil {
@@ -70,11 +70,10 @@ func Run(ctx context.Context, def Definition, cfg Config) error {
 	}
 
 	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
-		Logger:       slog.New(zerolog.NewSlogHandler(log)),
-		Middleware:   []rivertype.Middleware{outbox.TraceMiddleware()},
-		PeriodicJobs: periodic,
-		Queues:       queues,
-		Workers:      workers,
+		Logger:     slog.New(zerolog.NewSlogHandler(log)),
+		Middleware: []rivertype.Middleware{outbox.TraceMiddleware()},
+		Queues:     queues,
+		Workers:    workers,
 	})
 	if err != nil {
 		return fmt.Errorf("worker %s: build the river client: %w", def.Name, err)
@@ -101,6 +100,8 @@ func Run(ctx context.Context, def Definition, cfg Config) error {
 	if startErr := client.Start(ctx); startErr != nil {
 		return fmt.Errorf("worker %s: start: %w", def.Name, startErr)
 	}
+
+	schedule(ctx, client, periodic, log)
 
 	<-ctx.Done()
 

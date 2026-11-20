@@ -6,6 +6,8 @@
 package worker
 
 import (
+	"time"
+
 	"github.com/riverqueue/river"
 	"github.com/rs/zerolog"
 	"github.com/uptrace/bun"
@@ -22,7 +24,17 @@ type Definition struct {
 	Needs    Needs          // what the bootstrap is permitted to construct
 	Register func(Deps, *river.Workers) error
 	// Periodic builds the jobs this role schedules, from the role's config.
-	Periodic func(Config) ([]*river.PeriodicJob, error)
+	Periodic func(Config) ([]PeriodicJob, error)
+}
+
+// PeriodicJob is a job a role inserts every Interval. The role schedules it
+// itself rather than through River's PeriodicJobs, which only the one client
+// elected leader of the whole queue database runs: with several roles sharing
+// it, every other role's schedule silently never fired.
+type PeriodicJob struct {
+	Interval   time.Duration
+	Args       river.JobArgs
+	RunOnStart bool
 }
 
 // Access is how much of a datastore a role may be handed.

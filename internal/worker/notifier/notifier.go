@@ -57,7 +57,7 @@ func register(deps worker.Deps, workers *river.Workers) error {
 	return river.AddWorkerSafely(workers, NewDeliverer(deps.DB, deps.Fetch, cfg.WebhookTimeout))
 }
 
-func periodic(worker.Config) ([]*river.PeriodicJob, error) {
+func periodic(worker.Config) ([]worker.PeriodicJob, error) {
 	cfg, err := config.Load[config.Notifier]()
 	if err != nil {
 		return nil, fmt.Errorf("notifier: %w", err)
@@ -69,16 +69,10 @@ func periodic(worker.Config) ([]*river.PeriodicJob, error) {
 		return nil, fmt.Errorf("%sWAIVER_CHECK_INTERVAL must be at least 1m and %sWAIVER_NOTICE positive",
 			config.EnvPrefix, config.EnvPrefix)
 	}
-	return []*river.PeriodicJob{
-		river.NewPeriodicJob(river.PeriodicInterval(cfg.WebhookDispatchInterval),
-			func() (river.JobArgs, *river.InsertOpts) { return Dispatch{}, nil },
-			&river.PeriodicJobOpts{ID: Dispatch{}.Kind(), RunOnStart: true}),
-		river.NewPeriodicJob(river.PeriodicInterval(cfg.WaiverCheckInterval),
-			func() (river.JobArgs, *river.InsertOpts) { return WaiverCheck{}, nil },
-			&river.PeriodicJobOpts{ID: WaiverCheck{}.Kind(), RunOnStart: true}),
-		river.NewPeriodicJob(river.PeriodicInterval(pruneInterval),
-			func() (river.JobArgs, *river.InsertOpts) { return Prune{}, nil },
-			&river.PeriodicJobOpts{ID: Prune{}.Kind(), RunOnStart: true}),
+	return []worker.PeriodicJob{
+		{Interval: cfg.WebhookDispatchInterval, Args: Dispatch{}, RunOnStart: true},
+		{Interval: cfg.WaiverCheckInterval, Args: WaiverCheck{}, RunOnStart: true},
+		{Interval: pruneInterval, Args: Prune{}, RunOnStart: true},
 	}, nil
 }
 

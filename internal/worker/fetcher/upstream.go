@@ -45,15 +45,11 @@ func (UpstreamCheck) Kind() string { return "upstream-check" }
 // the role works no other queue.
 func (UpstreamCheck) InsertOpts() river.InsertOpts { return river.InsertOpts{Queue: outbox.QueueFetch} }
 
-func periodic(cfg worker.Config) ([]*river.PeriodicJob, error) {
+func periodic(cfg worker.Config) ([]worker.PeriodicJob, error) {
 	if err := config.CheckUpstreamInterval(cfg.UpstreamInterval); err != nil {
 		return nil, err
 	}
-	return []*river.PeriodicJob{river.NewPeriodicJob(
-		river.PeriodicInterval(cfg.UpstreamInterval),
-		func() (river.JobArgs, *river.InsertOpts) { return UpstreamCheck{}, nil },
-		&river.PeriodicJobOpts{ID: UpstreamCheck{}.Kind()},
-	)}, nil
+	return []worker.PeriodicJob{{Interval: cfg.UpstreamInterval, Args: UpstreamCheck{}}}, nil
 }
 
 // Upstream works the `upstream-check` job.

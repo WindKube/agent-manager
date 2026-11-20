@@ -801,7 +801,7 @@ func TestTheAuditFiltersNarrowThePageAndTheExportAlike(t *testing.T) {
 	require.Equal(t, entry, rows[0])
 	require.Equal(t, 1, trailer.Rows)
 
-	for _, path := range []string{"/v1/audit?subjectId=x", "/v1/audit/export?subjectId=x", "/v1/audit?subjectKind=machine"} {
+	for _, path := range []string{"/v1/audit?subjectId=x", "/v1/audit/export?subjectId=x", "/v1/audit?subjectKind=spaceship"} {
 		rec := request(t, handler, http.MethodGet, path, kw.token, "")
 		require.Equal(t, http.StatusUnprocessableEntity, rec.Code, "%s: %s", path, rec.Body.String())
 	}

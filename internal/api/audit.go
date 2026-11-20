@@ -19,7 +19,7 @@ import (
 // AuditFilterInput is shared by the page and the export, so the export is
 // always the page's full current scope.
 type AuditFilterInput struct {
-	SubjectKind string `query:"subjectKind" enum:"package,version,finding,profile,revision,category,mapping,policy,identity,device,service-token" doc:"Only rows about this kind of subject. package also matches the rows about its versions and findings."`
+	SubjectKind string `query:"subjectKind" enum:"package,version,finding,profile,revision,category,mapping,policy,identity,device,service-token,machine" doc:"Only rows about this kind of subject. package also matches the rows about its versions and findings."`
 	SubjectID   string `query:"subjectId" maxLength:"200" doc:"Only rows about this subject id; pair it with subjectKind."`
 	Namespace   string `query:"namespace" maxLength:"200" doc:"Only rows whose subject is in this package namespace."`
 }

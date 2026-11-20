@@ -37,6 +37,7 @@ func (s *Server) register() {
 	s.registerOrganization()
 	s.registerRuntime()
 	s.registerServiceTokens()
+	s.registerInventory()
 }
 
 // publicSecurity is the empty security requirement that removes the document's

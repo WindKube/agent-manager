@@ -142,7 +142,7 @@ type AuditEntry struct {
 	Text       string    `json:"text" doc:"The human-readable record of what happened. It quotes package and profile names, so it is rendered escaped (FR-055)." example:"override granted for community/aws-cost-explainer@2.0.0"`
 	Source     string    `json:"source,omitempty" doc:"web, cli / <host> or system." example:"web"`
 	// The subject fields are absent on rows written before they existed.
-	SubjectKind string         `json:"subjectKind,omitempty" enum:"package,version,finding,profile,revision,category,mapping,policy,identity,device,service-token" doc:"What the row is about." example:"version"`
+	SubjectKind string         `json:"subjectKind,omitempty" enum:"package,version,finding,profile,revision,category,mapping,policy,identity,device,service-token,machine" doc:"What the row is about." example:"version"`
 	SubjectID   string         `json:"subjectId,omitempty" doc:"The subject's id: namespace/name for a package, namespace/name@semver for a version, the group name for a mapping, 1 for the policy, and a uuid for everything else." example:"community/slack-digest@0.5.1"`
 	Namespace   string         `json:"namespace,omitempty" doc:"The package namespace, on a package, version or finding subject." example:"community"`
 	Data        map[string]any `json:"data,omitempty" doc:"Small, stable keys describing the event: always action, plus subject identifiers such as name, semver, package, ruleId, profile and revision. Never a secret or a free-form note."`

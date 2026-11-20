@@ -105,7 +105,8 @@
               "policy",
               "identity",
               "device",
-              "service-token"
+              "service-token",
+              "machine"
             ],
             "examples": [
               "version"
@@ -1738,6 +1739,292 @@
         "required": [
           "id",
           "reason"
+        ],
+        "type": "object"
+      },
+      "Machine": {
+        "additionalProperties": false,
+        "properties": {
+          "amctlVersion": {
+            "examples": [
+              "0.9.0"
+            ],
+            "type": "string"
+          },
+          "arch": {
+            "examples": [
+              "arm64"
+            ],
+            "type": "string"
+          },
+          "firstSeenAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "hostname": {
+            "examples": [
+              "dev-laptop-01"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "description": "The random id the CLI generated for itself.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "lastProfile": {
+            "description": "Slug of the profile the last report synced.",
+            "examples": [
+              "platform-baseline"
+            ],
+            "type": "string"
+          },
+          "lastRevision": {
+            "examples": [
+              7
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "lastSeenAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "os": {
+            "examples": [
+              "darwin"
+            ],
+            "type": "string"
+          },
+          "reportedBy": {
+            "description": "The person behind the last report: the reporter, or the service token's creator.",
+            "examples": [
+              "kw@example.com"
+            ],
+            "type": "string"
+          },
+          "serviceToken": {
+            "description": "Name of the service token that filed the last report, if one did.",
+            "examples": [
+              "ci-runner"
+            ],
+            "type": "string"
+          },
+          "stale": {
+            "description": "No report for longer than staleAfterDays. Computed on read.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "hostname",
+          "firstSeenAt",
+          "lastSeenAt",
+          "stale",
+          "lastProfile",
+          "lastRevision",
+          "reportedBy"
+        ],
+        "type": "object"
+      },
+      "MachineDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "installs": {
+            "description": "Installs from profiles and of packages this identity may read, as of each profile's last report.",
+            "items": {
+              "$ref": "#/components/schemas/MachineInstall"
+            },
+            "type": "array"
+          },
+          "machine": {
+            "$ref": "#/components/schemas/Machine"
+          },
+          "skipped": {
+            "description": "What the latest report of each readable profile did not install, without packages this identity may not read.",
+            "items": {
+              "$ref": "#/components/schemas/MachineSkip"
+            },
+            "type": "array"
+          },
+          "staleAfterDays": {
+            "examples": [
+              14
+            ],
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "machine",
+          "staleAfterDays",
+          "installs",
+          "skipped"
+        ],
+        "type": "object"
+      },
+      "MachineInstall": {
+        "additionalProperties": false,
+        "properties": {
+          "package": {
+            "description": "namespace/name",
+            "examples": [
+              "acme/code-review"
+            ],
+            "type": "string"
+          },
+          "profile": {
+            "examples": [
+              "platform-baseline"
+            ],
+            "type": "string"
+          },
+          "target": {
+            "enum": [
+              "claude-code",
+              "codex",
+              "opencode"
+            ],
+            "examples": [
+              "claude-code"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "examples": [
+              "2.4.1"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "package",
+          "version",
+          "target",
+          "profile"
+        ],
+        "type": "object"
+      },
+      "MachineList": {
+        "additionalProperties": false,
+        "properties": {
+          "machines": {
+            "description": "Most recently seen first.",
+            "items": {
+              "$ref": "#/components/schemas/Machine"
+            },
+            "type": "array"
+          },
+          "page": {
+            "examples": [
+              1
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "pageSize": {
+            "examples": [
+              50
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "staleAfterDays": {
+            "examples": [
+              14
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Machines matching every filter, across all pages.",
+            "examples": [
+              42
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "versions": {
+            "description": "With a package filter, how many of the matching machines hold each of its versions.",
+            "items": {
+              "$ref": "#/components/schemas/MachineVersionCount"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "machines",
+          "total",
+          "page",
+          "pageSize",
+          "staleAfterDays"
+        ],
+        "type": "object"
+      },
+      "MachineSkip": {
+        "additionalProperties": false,
+        "properties": {
+          "component": {
+            "examples": [
+              "mcp-server lint"
+            ],
+            "type": "string"
+          },
+          "entry": {
+            "examples": [
+              "acme/code-review"
+            ],
+            "type": "string"
+          },
+          "profile": {
+            "examples": [
+              "platform-baseline"
+            ],
+            "type": "string"
+          },
+          "reason": {
+            "examples": [
+              "no claude CLI on PATH"
+            ],
+            "type": "string"
+          },
+          "target": {
+            "description": "Absent when the whole entry was skipped.",
+            "enum": [
+              "claude-code",
+              "codex",
+              "opencode"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile",
+          "entry"
+        ],
+        "type": "object"
+      },
+      "MachineVersionCount": {
+        "additionalProperties": false,
+        "properties": {
+          "machines": {
+            "description": "Machines in this listing's scope with this version installed.",
+            "examples": [
+              12
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "version": {
+            "examples": [
+              "2.4.1"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "machines"
         ],
         "type": "object"
       },
@@ -4819,7 +5106,8 @@
                 "policy",
                 "identity",
                 "device",
-                "service-token"
+                "service-token",
+                "machine"
               ],
               "type": "string"
             }
@@ -4943,7 +5231,8 @@
                 "policy",
                 "identity",
                 "device",
-                "service-token"
+                "service-token",
+                "machine"
               ],
               "type": "string"
             }
@@ -5948,6 +6237,292 @@
         "summary": "Liveness and readiness",
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/v1/machines": {
+      "get": {
+        "description": "A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. A package filter names a package this identity can read, and then also counts the matching machines per version. Stale is computed on read.",
+        "operationId": "listMachines",
+        "parameters": [
+          {
+            "description": "Only machines with this package installed, as namespace/name.",
+            "explode": false,
+            "in": "query",
+            "name": "package",
+            "schema": {
+              "description": "Only machines with this package installed, as namespace/name.",
+              "examples": [
+                "acme/code-review"
+              ],
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only machines with this version of the package installed; needs package.",
+            "explode": false,
+            "in": "query",
+            "name": "version",
+            "schema": {
+              "description": "Only machines with this version of the package installed; needs package.",
+              "examples": [
+                "2.4.1"
+              ],
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only machines that reported this profile.",
+            "explode": false,
+            "in": "query",
+            "name": "profile",
+            "schema": {
+              "description": "Only machines that reported this profile.",
+              "examples": [
+                "platform-baseline"
+              ],
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only stale machines, or only fresh ones.",
+            "explode": false,
+            "in": "query",
+            "name": "stale",
+            "schema": {
+              "description": "Only stale machines, or only fresh ones.",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Clamped into range: a page past the end returns the last one.",
+            "explode": false,
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "description": "Clamped into range: a page past the end returns the last one.",
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "default": 50,
+              "format": "int64",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MachineList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A service token cannot read the machine inventory."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The package, version or profile filter names nothing this identity can read."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Machines that reported a sync",
+        "tags": [
+          "machines"
+        ]
+      }
+    },
+    "/v1/machines/{id}": {
+      "delete": {
+        "description": "Deletes the machine and its inventory and writes one `sync` audit row. A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. The sync events it reported stay. A machine that reports again reappears.",
+        "operationId": "forgetMachine",
+        "parameters": [
+          {
+            "description": "The machine's id, as listed.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The machine's id, as listed.",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Forgotten."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A service token cannot read the machine inventory."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such machine, or not one this identity may see."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Forget a machine",
+        "tags": [
+          "machines"
+        ]
+      },
+      "get": {
+        "description": "A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. Installs and skips list only profiles and packages this identity can read.",
+        "operationId": "getMachine",
+        "parameters": [
+          {
+            "description": "The machine's id, as listed.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The machine's id, as listed.",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MachineDetail"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A service token cannot read the machine inventory."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such machine, or not one this identity may see."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "One machine's installs and latest skips",
+        "tags": [
+          "machines"
         ]
       }
     },
@@ -9711,6 +10286,10 @@
     {
       "description": "Who a request is acting as, and the sessions that say so.",
       "name": "identity"
+    },
+    {
+      "description": "Which machines reported a sync, and what each one has installed.",
+      "name": "machines"
     },
     {
       "description": "Counts the application shell renders.",

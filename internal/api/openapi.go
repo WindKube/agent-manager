@@ -90,6 +90,7 @@ func humaConfig(opts Options) huma.Config {
 				{Name: "catalog", Description: "Browsing what is registered. Readable without a token."},
 				{Name: "device", Description: "RFC 8628 device authorisation. Unauthenticated by definition."},
 				{Name: "identity", Description: "Who a request is acting as, and the sessions that say so."},
+				{Name: "machines", Description: "Which machines reported a sync, and what each one has installed."},
 				{Name: "navigation", Description: "Counts the application shell renders."},
 				{Name: "profiles", Description: "What this identity may read, and how it resolves."},
 				{Name: "scanner", Description: "Findings, their evidence, and the decisions taken on them."},

@@ -2,6 +2,8 @@ package commands
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -11,6 +13,8 @@ import (
 
 	"agent-manager/internal/api/contract"
 	"agent-manager/internal/api/queries"
+	"agent-manager/internal/auth"
+	"agent-manager/internal/store/audit"
 	"agent-manager/internal/store/models"
 )
 
@@ -185,4 +189,31 @@ func reportedSkips(in contract.SyncReport) ([]models.MachineSkip, error) {
 		})
 	}
 	return out, nil
+}
+
+// ForgetMachine deletes a machine p may see, with its installs and skips, and
+// writes one `sync` audit row. A machine that reports again reappears.
+func ForgetMachine(ctx context.Context, db bun.IDB, p auth.Principal, id uuid.UUID) error {
+	return db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		visible, args := queries.MachineVisible("m", p)
+		var host string
+		err := tx.QueryRowContext(ctx, "select m.hostname from machine as m where m.id = ? and "+visible+" for update",
+			append([]any{id}, args...)...).Scan(&host)
+		if errors.Is(err, sql.ErrNoRows) {
+			return queries.ErrNotFound
+		} else if err != nil {
+			return fmt.Errorf("lock machine %s: %w", id, err)
+		}
+
+		for _, model := range []any{(*models.MachineInstall)(nil), (*models.MachineSkip)(nil)} {
+			if _, err := tx.NewDelete().Model(model).Where("machine_id = ?", id).Exec(ctx); err != nil {
+				return fmt.Errorf("clear the inventory of machine %s: %w", id, err)
+			}
+		}
+		if _, err := tx.NewDelete().Model((*models.Machine)(nil)).Where("id = ?", id).Exec(ctx); err != nil {
+			return fmt.Errorf("forget machine %s: %w", id, err)
+		}
+		return writeAudit(ctx, tx, identityAudit(p, models.AuditKindSync, "forgotten",
+			fmt.Sprintf("forgot machine %s and its inventory", host), audit.Machine(id, host)))
+	})
 }

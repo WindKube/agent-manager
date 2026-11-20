@@ -93,6 +93,7 @@ const (
 	AuditEntrySubjectKindDevice       AuditEntrySubjectKind = "device"
 	AuditEntrySubjectKindFinding      AuditEntrySubjectKind = "finding"
 	AuditEntrySubjectKindIdentity     AuditEntrySubjectKind = "identity"
+	AuditEntrySubjectKindMachine      AuditEntrySubjectKind = "machine"
 	AuditEntrySubjectKindMapping      AuditEntrySubjectKind = "mapping"
 	AuditEntrySubjectKindPackage      AuditEntrySubjectKind = "package"
 	AuditEntrySubjectKindPolicy       AuditEntrySubjectKind = "policy"
@@ -112,6 +113,8 @@ func (e AuditEntrySubjectKind) Valid() bool {
 	case AuditEntrySubjectKindFinding:
 		return true
 	case AuditEntrySubjectKindIdentity:
+		return true
+	case AuditEntrySubjectKindMachine:
 		return true
 	case AuditEntrySubjectKindMapping:
 		return true
@@ -795,6 +798,48 @@ func (e LockfileSkipReason) Valid() bool {
 	case UnsignedAndSignaturesRequired:
 		return true
 	case VersionRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MachineInstallTarget.
+const (
+	MachineInstallTargetClaudeCode MachineInstallTarget = "claude-code"
+	MachineInstallTargetCodex      MachineInstallTarget = "codex"
+	MachineInstallTargetOpencode   MachineInstallTarget = "opencode"
+)
+
+// Valid indicates whether the value is a known member of the MachineInstallTarget enum.
+func (e MachineInstallTarget) Valid() bool {
+	switch e {
+	case MachineInstallTargetClaudeCode:
+		return true
+	case MachineInstallTargetCodex:
+		return true
+	case MachineInstallTargetOpencode:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MachineSkipTarget.
+const (
+	MachineSkipTargetClaudeCode MachineSkipTarget = "claude-code"
+	MachineSkipTargetCodex      MachineSkipTarget = "codex"
+	MachineSkipTargetOpencode   MachineSkipTarget = "opencode"
+)
+
+// Valid indicates whether the value is a known member of the MachineSkipTarget enum.
+func (e MachineSkipTarget) Valid() bool {
+	switch e {
+	case MachineSkipTargetClaudeCode:
+		return true
+	case MachineSkipTargetCodex:
+		return true
+	case MachineSkipTargetOpencode:
 		return true
 	default:
 		return false
@@ -1947,6 +1992,7 @@ const (
 	ListAuditParamsSubjectKindDevice       ListAuditParamsSubjectKind = "device"
 	ListAuditParamsSubjectKindFinding      ListAuditParamsSubjectKind = "finding"
 	ListAuditParamsSubjectKindIdentity     ListAuditParamsSubjectKind = "identity"
+	ListAuditParamsSubjectKindMachine      ListAuditParamsSubjectKind = "machine"
 	ListAuditParamsSubjectKindMapping      ListAuditParamsSubjectKind = "mapping"
 	ListAuditParamsSubjectKindPackage      ListAuditParamsSubjectKind = "package"
 	ListAuditParamsSubjectKindPolicy       ListAuditParamsSubjectKind = "policy"
@@ -1966,6 +2012,8 @@ func (e ListAuditParamsSubjectKind) Valid() bool {
 	case ListAuditParamsSubjectKindFinding:
 		return true
 	case ListAuditParamsSubjectKindIdentity:
+		return true
+	case ListAuditParamsSubjectKindMachine:
 		return true
 	case ListAuditParamsSubjectKindMapping:
 		return true
@@ -1992,6 +2040,7 @@ const (
 	ExportAuditParamsSubjectKindDevice       ExportAuditParamsSubjectKind = "device"
 	ExportAuditParamsSubjectKindFinding      ExportAuditParamsSubjectKind = "finding"
 	ExportAuditParamsSubjectKindIdentity     ExportAuditParamsSubjectKind = "identity"
+	ExportAuditParamsSubjectKindMachine      ExportAuditParamsSubjectKind = "machine"
 	ExportAuditParamsSubjectKindMapping      ExportAuditParamsSubjectKind = "mapping"
 	ExportAuditParamsSubjectKindPackage      ExportAuditParamsSubjectKind = "package"
 	ExportAuditParamsSubjectKindPolicy       ExportAuditParamsSubjectKind = "policy"
@@ -2011,6 +2060,8 @@ func (e ExportAuditParamsSubjectKind) Valid() bool {
 	case ExportAuditParamsSubjectKindFinding:
 		return true
 	case ExportAuditParamsSubjectKindIdentity:
+		return true
+	case ExportAuditParamsSubjectKindMachine:
 		return true
 	case ExportAuditParamsSubjectKindMapping:
 		return true
@@ -2073,6 +2124,24 @@ func (e ListFindingsParamsSeverity) Valid() bool {
 	case ListFindingsParamsSeverityLow:
 		return true
 	case ListFindingsParamsSeverityMedium:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListMachinesParamsStale.
+const (
+	False ListMachinesParamsStale = "false"
+	True  ListMachinesParamsStale = "true"
+)
+
+// Valid indicates whether the value is a known member of the ListMachinesParamsStale enum.
+func (e ListMachinesParamsStale) Valid() bool {
+	switch e {
+	case False:
+		return true
+	case True:
 		return true
 	default:
 		return false
@@ -3081,6 +3150,135 @@ type LockfileSkip struct {
 
 // LockfileSkipReason Examples: flagged-awaiting-approval
 type LockfileSkipReason string
+
+// Machine defines model for Machine.
+type Machine struct {
+	// AmctlVersion Examples: 0.9.0
+	AmctlVersion *string `json:"amctlVersion,omitempty"`
+
+	// Arch Examples: arm64
+	Arch        *string   `json:"arch,omitempty"`
+	FirstSeenAt time.Time `json:"firstSeenAt"`
+
+	// Hostname Examples: dev-laptop-01
+	Hostname string `json:"hostname"`
+
+	// Id The random id the CLI generated for itself.
+	Id openapi_types.UUID `json:"id"`
+
+	// LastProfile Slug of the profile the last report synced.
+	//
+	// Examples: platform-baseline
+	LastProfile string `json:"lastProfile"`
+
+	// LastRevision Examples: 7
+	LastRevision int64     `json:"lastRevision"`
+	LastSeenAt   time.Time `json:"lastSeenAt"`
+
+	// Os Examples: darwin
+	Os *string `json:"os,omitempty"`
+
+	// ReportedBy The person behind the last report: the reporter, or the service token's creator.
+	//
+	// Examples: kw@example.com
+	ReportedBy string `json:"reportedBy"`
+
+	// ServiceToken Name of the service token that filed the last report, if one did.
+	//
+	// Examples: ci-runner
+	ServiceToken *string `json:"serviceToken,omitempty"`
+
+	// Stale No report for longer than staleAfterDays. Computed on read.
+	Stale bool `json:"stale"`
+}
+
+// MachineDetail defines model for MachineDetail.
+type MachineDetail struct {
+	// Installs Installs from profiles and of packages this identity may read, as of each profile's last report.
+	Installs []MachineInstall `json:"installs"`
+	Machine  Machine          `json:"machine"`
+
+	// Skipped What the latest report of each readable profile did not install, without packages this identity may not read.
+	Skipped []MachineSkip `json:"skipped"`
+
+	// StaleAfterDays Examples: 14
+	StaleAfterDays int64 `json:"staleAfterDays"`
+}
+
+// MachineInstall defines model for MachineInstall.
+type MachineInstall struct {
+	// Package namespace/name
+	//
+	// Examples: acme/code-review
+	Package string `json:"package"`
+
+	// Profile Examples: platform-baseline
+	Profile string `json:"profile"`
+
+	// Target Examples: claude-code
+	Target MachineInstallTarget `json:"target"`
+
+	// Version Examples: 2.4.1
+	Version string `json:"version"`
+}
+
+// MachineInstallTarget Examples: claude-code
+type MachineInstallTarget string
+
+// MachineList defines model for MachineList.
+type MachineList struct {
+	// Machines Most recently seen first.
+	Machines []Machine `json:"machines"`
+
+	// Page Examples: 1
+	Page int64 `json:"page"`
+
+	// PageSize Examples: 50
+	PageSize int64 `json:"pageSize"`
+
+	// StaleAfterDays Examples: 14
+	StaleAfterDays int64 `json:"staleAfterDays"`
+
+	// Total Machines matching every filter, across all pages.
+	//
+	// Examples: 42
+	Total int64 `json:"total"`
+
+	// Versions With a package filter, how many of the matching machines hold each of its versions.
+	Versions *[]MachineVersionCount `json:"versions,omitempty"`
+}
+
+// MachineSkip defines model for MachineSkip.
+type MachineSkip struct {
+	// Component Examples: mcp-server lint
+	Component *string `json:"component,omitempty"`
+
+	// Entry Examples: acme/code-review
+	Entry string `json:"entry"`
+
+	// Profile Examples: platform-baseline
+	Profile string `json:"profile"`
+
+	// Reason Examples: no claude CLI on PATH
+	Reason *string `json:"reason,omitempty"`
+
+	// Target Absent when the whole entry was skipped.
+	Target *MachineSkipTarget `json:"target,omitempty"`
+}
+
+// MachineSkipTarget Absent when the whole entry was skipped.
+type MachineSkipTarget string
+
+// MachineVersionCount defines model for MachineVersionCount.
+type MachineVersionCount struct {
+	// Machines Machines in this listing's scope with this version installed.
+	//
+	// Examples: 12
+	Machines int64 `json:"machines"`
+
+	// Version Examples: 2.4.1
+	Version string `json:"version"`
+}
 
 // Organization defines model for Organization.
 type Organization struct {
@@ -4607,6 +4805,28 @@ type ListFindingsParamsState string
 // ListFindingsParamsSeverity defines parameters for ListFindings.
 type ListFindingsParamsSeverity string
 
+// ListMachinesParams defines parameters for ListMachines.
+type ListMachinesParams struct {
+	// Package Only machines with this package installed, as namespace/name.
+	Package *string `form:"package,omitempty" json:"package,omitempty"`
+
+	// Version Only machines with this version of the package installed; needs package.
+	Version *string `form:"version,omitempty" json:"version,omitempty"`
+
+	// Profile Only machines that reported this profile.
+	Profile *string `form:"profile,omitempty" json:"profile,omitempty"`
+
+	// Stale Only stale machines, or only fresh ones.
+	Stale *ListMachinesParamsStale `form:"stale,omitempty" json:"stale,omitempty"`
+
+	// Page Clamped into range: a page past the end returns the last one.
+	Page     *int64 `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int64 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
+// ListMachinesParamsStale defines parameters for ListMachines.
+type ListMachinesParamsStale string
+
 // ListPackagesParams defines parameters for ListPackages.
 type ListPackagesParams struct {
 	// Q Case-insensitive substring, matched against name, id, publisher and tags (FR-010).
@@ -5010,6 +5230,27 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /v1/health (the `Health` operationId).
 	Health(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListMachines Machines that reported a sync
+	//
+	// A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. A package filter names a package this identity can read, and then also counts the matching machines per version. Stale is computed on read.
+	//
+	// Corresponds with GET /v1/machines (the `ListMachines` operationId).
+	ListMachines(ctx context.Context, params *ListMachinesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ForgetMachine Forget a machine
+	//
+	// Deletes the machine and its inventory and writes one `sync` audit row. A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. The sync events it reported stay. A machine that reports again reappears.
+	//
+	// Corresponds with DELETE /v1/machines/{id} (the `ForgetMachine` operationId).
+	ForgetMachine(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetMachine One machine's installs and latest skips
+	//
+	// A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. Installs and skips list only profiles and packages this identity can read.
+	//
+	// Corresponds with GET /v1/machines/{id} (the `GetMachine` operationId).
+	GetMachine(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetOrganization Identity provider settings, policy, mappings and categories
 	//
@@ -5788,6 +6029,57 @@ func (c *Client) RejectFinding(ctx context.Context, id openapi_types.UUID, body 
 // Corresponds with GET /v1/health (the `Health` operationId).
 func (c *Client) Health(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewHealthRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListMachines Machines that reported a sync
+//
+// A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. A package filter names a package this identity can read, and then also counts the matching machines per version. Stale is computed on read.
+//
+// Corresponds with GET /v1/machines (the `ListMachines` operationId).
+func (c *Client) ListMachines(ctx context.Context, params *ListMachinesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListMachinesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ForgetMachine Forget a machine
+//
+// Deletes the machine and its inventory and writes one `sync` audit row. A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. The sync events it reported stay. A machine that reports again reappears.
+//
+// Corresponds with DELETE /v1/machines/{id} (the `ForgetMachine` operationId).
+func (c *Client) ForgetMachine(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewForgetMachineRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetMachine One machine's installs and latest skips
+//
+// A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. Installs and skips list only profiles and packages this identity can read.
+//
+// Corresponds with GET /v1/machines/{id} (the `GetMachine` operationId).
+func (c *Client) GetMachine(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetMachineRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -7500,6 +7792,188 @@ func NewHealthRequest(server string) (*http.Request, error) {
 	}
 
 	operationPath := fmt.Sprintf("/v1/health")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListMachinesRequest constructs an http.Request for the ListMachines method
+func NewListMachinesRequest(server string, params *ListMachinesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/machines")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Package != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "package", *params.Package, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Version != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "version", *params.Version, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Profile != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "profile", *params.Profile, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Stale != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "stale", *params.Stale, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "page", *params.Page, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.PageSize != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "pageSize", *params.PageSize, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewForgetMachineRequest constructs an http.Request for the ForgetMachine method
+func NewForgetMachineRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/machines/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetMachineRequest constructs an http.Request for the GetMachine method
+func NewGetMachineRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/machines/%s", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -9484,6 +9958,33 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/health (the `Health` operationId).
 	HealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthResponse, error)
 
+	// ListMachinesWithResponse Machines that reported a sync
+	//
+	// A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. A package filter names a package this identity can read, and then also counts the matching machines per version. Stale is computed on read.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/machines (the `ListMachines` operationId).
+	ListMachinesWithResponse(ctx context.Context, params *ListMachinesParams, reqEditors ...RequestEditorFn) (*ListMachinesResponse, error)
+
+	// ForgetMachineWithResponse Forget a machine
+	//
+	// Deletes the machine and its inventory and writes one `sync` audit row. A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. The sync events it reported stay. A machine that reports again reappears.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/machines/{id} (the `ForgetMachine` operationId).
+	ForgetMachineWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*ForgetMachineResponse, error)
+
+	// GetMachineWithResponse One machine's installs and latest skips
+	//
+	// A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. Installs and skips list only profiles and packages this identity can read.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/machines/{id} (the `GetMachine` operationId).
+	GetMachineWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetMachineResponse, error)
+
 	// GetOrganizationWithResponse Identity provider settings, policy, mappings and categories
 	//
 	// The Organization screen's whole read. The provider panel's issuer, client id and scopes are this role's own configuration; the device authorisation endpoint is read from that provider's live discovery document, absent when discovery cannot be completed. NEVER carries the client secret, in any form — not the value, not a masked or length-revealing stand-in. Requires the catalog-admin role.
@@ -10915,6 +11416,206 @@ func (r HealthResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r HealthResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListMachinesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *MachineList
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListMachinesResponse) GetJSON200() *MachineList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListMachinesResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ListMachinesResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r ListMachinesResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ListMachinesResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListMachinesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListMachinesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListMachinesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListMachinesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ForgetMachineResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ForgetMachineResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ForgetMachineResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r ForgetMachineResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ForgetMachineResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ForgetMachineResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ForgetMachineResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ForgetMachineResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ForgetMachineResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetMachineResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *MachineDetail
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetMachineResponse) GetJSON200() *MachineDetail {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetMachineResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetMachineResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetMachineResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r GetMachineResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetMachineResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetMachineResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetMachineResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetMachineResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -14248,6 +14949,51 @@ func (c *ClientWithResponses) HealthWithResponse(ctx context.Context, reqEditors
 	return ParseHealthResponse(rsp)
 }
 
+// ListMachinesWithResponse Machines that reported a sync
+//
+// A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. A package filter names a package this identity can read, and then also counts the matching machines per version. Stale is computed on read.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/machines (the `ListMachines` operationId).
+func (c *ClientWithResponses) ListMachinesWithResponse(ctx context.Context, params *ListMachinesParams, reqEditors ...RequestEditorFn) (*ListMachinesResponse, error) {
+	rsp, err := c.ListMachines(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListMachinesResponse(rsp)
+}
+
+// ForgetMachineWithResponse Forget a machine
+//
+// Deletes the machine and its inventory and writes one `sync` audit row. A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. The sync events it reported stay. A machine that reports again reappears.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/machines/{id} (the `ForgetMachine` operationId).
+func (c *ClientWithResponses) ForgetMachineWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*ForgetMachineResponse, error) {
+	rsp, err := c.ForgetMachine(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseForgetMachineResponse(rsp)
+}
+
+// GetMachineWithResponse One machine's installs and latest skips
+//
+// A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. Installs and skips list only profiles and packages this identity can read.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/machines/{id} (the `GetMachine` operationId).
+func (c *ClientWithResponses) GetMachineWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetMachineResponse, error) {
+	rsp, err := c.GetMachine(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetMachineResponse(rsp)
+}
+
 // GetOrganizationWithResponse Identity provider settings, policy, mappings and categories
 //
 // The Organization screen's whole read. The provider panel's issuer, client id and scopes are this role's own configuration; the device authorisation endpoint is read from that provider's live discovery document, absent when discovery cannot be completed. NEVER carries the client secret, in any form — not the value, not a masked or length-revealing stand-in. Requires the catalog-admin role.
@@ -15867,6 +16613,164 @@ func ParseHealthResponse(rsp *http.Response) (*HealthResponse, error) {
 			return nil, err
 		}
 		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListMachinesResponse parses an HTTP response from a ListMachinesWithResponse call
+func ParseListMachinesResponse(rsp *http.Response) (*ListMachinesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListMachinesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MachineList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseForgetMachineResponse parses an HTTP response from a ForgetMachineWithResponse call
+func ParseForgetMachineResponse(rsp *http.Response) (*ForgetMachineResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ForgetMachineResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetMachineResponse parses an HTTP response from a GetMachineWithResponse call
+func ParseGetMachineResponse(rsp *http.Response) (*GetMachineResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetMachineResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MachineDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
 
 	}
 

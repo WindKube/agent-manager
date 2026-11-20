@@ -41,14 +41,17 @@ services:
       timeout: 3s
       retries: 20
 
+  # MinIO no longer publishes images; Bitnami's frozen build carries the server,
+  # mc and a shell in one. It runs as uid 1001, hence the data path it owns.
   minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
-    command: ["server", "/data", "--console-address", ":9001"]
+    image: &minio-image bitnamilegacy/minio:2025.7.23
+    entrypoint: ["minio"]
+    command: ["server", "/bitnami/minio/data", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
     volumes:
-      - minio-data:/data
+      - minio-data:/bitnami/minio/data
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -59,7 +62,7 @@ services:
       retries: 20
 
   minio-init:
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    image: *minio-image
     depends_on:
       minio:
         condition: service_healthy
@@ -71,6 +74,7 @@ services:
       WRITER_SECRET: local-development-minio-writer
       READER_KEY: am-reader
       READER_SECRET: local-development-minio-reader
+      MC_CONFIG_DIR: /tmp/.mc
     volumes:
       - ./deploy/local/minio/policies.sh:/policies.sh:ro
     entrypoint: ["/bin/sh", "/policies.sh"]

@@ -172,6 +172,9 @@ func (s *Server) register() {
 	s.engine.POST("/tokens", s.createToken)
 	s.engine.POST("/tokens/:id/revoke", s.revokeToken)
 	s.engine.GET("/storage", s.storage)
+	s.engine.GET("/machines", s.machines)
+	s.engine.GET("/machines/:id", s.machineDetail)
+	s.engine.POST("/machines/:id/forget", s.forgetMachine)
 
 	// Every Organization write is a POST form that redirects, same as Scanner.
 	s.engine.GET("/org", s.org)

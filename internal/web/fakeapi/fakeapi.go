@@ -75,6 +75,10 @@ var routes = map[string]string{
 	"listServiceTokens":  "GET /v1/service-tokens",
 	"createServiceToken": "POST /v1/service-tokens",
 	"revokeServiceToken": "DELETE /v1/service-tokens/{id}",
+
+	"listMachines":  "GET /v1/machines",
+	"getMachine":    "GET /v1/machines/{id}",
+	"forgetMachine": "DELETE /v1/machines/{id}",
 }
 
 // Routes is the operation table, exported for the contract test.

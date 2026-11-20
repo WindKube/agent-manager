@@ -48,6 +48,7 @@ func (s *Server) packageDetail(c *gin.Context) {
 		s.loadProfileOptions(c, &detail)
 		s.loadFiles(c, &detail, namespace, name)
 		s.loadScan(c, &detail, namespace, name)
+		detail.Affected = s.affectedMachines(c, detail.ID, "")
 		detail.DeleteAccess = view.PackageDeleteAccessFor(viewerFor(c))
 		// Two vocabularies land on the same banner: a delete's tokens and a
 		// visibility change's. Each returns nil for the other's, so asking in

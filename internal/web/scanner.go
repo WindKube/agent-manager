@@ -74,6 +74,7 @@ func (s *Server) scanner(c *gin.Context) {
 		}
 	}
 
+	detail.Affected = s.affectedMachines(c, detail.PackageID, detail.Version)
 	screen.Selected = &detail
 	s.renderScanner(c, http.StatusOK, screen)
 }

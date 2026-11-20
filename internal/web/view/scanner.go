@@ -270,6 +270,7 @@ type FindingRow struct {
 	Explanation string
 	// PackageID links the subject back to the catalog.
 	PackageID string
+	Version   string
 	// Primary is the finding's own denormalised location, the headline. Nil
 	// when the scan recorded none, a state the pane says out loud.
 	Primary *Evidence
@@ -319,6 +320,8 @@ type FindingDetail struct {
 	Checks     []Check
 	Scan       ScanMeta
 	Override   *Override
+	// Affected is the machines holding this version; nil when not countable.
+	Affected *AffectedMachines
 }
 
 // CanAccept is read against the finding rather than the viewer: a rejected

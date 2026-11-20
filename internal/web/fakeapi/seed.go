@@ -29,6 +29,7 @@ func Seed() *Data {
 			LastUsedAt: ptr(now.Add(-2 * time.Hour)), Status: apiclient.Active,
 		}},
 	}
+	d.Machines = seedMachines(now)
 	seedCatalog(d, now)
 	seedGovernance(d, now)
 	seedProfiles(d, now)

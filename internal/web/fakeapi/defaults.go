@@ -291,6 +291,32 @@ func (a *API) defaults(op string) http.HandlerFunc {
 			}
 			Problem(w, http.StatusNotFound, "no such service token")
 		}
+
+	case "listMachines":
+		return func(w http.ResponseWriter, r *http.Request) {
+			JSON(w, http.StatusOK, d.machineList(r))
+		}
+	case "getMachine":
+		return func(w http.ResponseWriter, r *http.Request) {
+			for i := range d.Machines {
+				if d.Machines[i].Machine.Id.String() == r.PathValue("id") {
+					JSON(w, http.StatusOK, d.Machines[i])
+					return
+				}
+			}
+			Problem(w, http.StatusNotFound, "no such machine")
+		}
+	case "forgetMachine":
+		return func(w http.ResponseWriter, r *http.Request) {
+			for i := range d.Machines {
+				if d.Machines[i].Machine.Id.String() == r.PathValue("id") {
+					d.Machines = append(d.Machines[:i], d.Machines[i+1:]...)
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+			}
+			Problem(w, http.StatusNotFound, "no such machine")
+		}
 	}
 	panic("fakeapi: no default for " + op)
 }

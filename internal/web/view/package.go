@@ -63,6 +63,8 @@ type Package struct {
 	Capabilities Capabilities
 	Versions     []PackageVersion
 	Dependents   []Dependent
+	// Affected is nil when the viewer cannot filter the inventory by this package.
+	Affected *AffectedMachines
 
 	// ScanDetail is the security section: the latest version's scan result,
 	// its findings and any reviewer decision, read independently of

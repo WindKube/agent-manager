@@ -207,6 +207,12 @@ func sweep() []sweptScreen {
 		inShell("ServiceTokensScreen", func() templ.Component {
 			return components.ServiceTokensScreen(view.ServiceTokens{})
 		}),
+		// Swept empty: a machine's reporter is a person by nature.
+		inShell("MachinesScreen", func() templ.Component { return components.MachinesScreen(view.Machines{}) }),
+		inShell("MachineScreen", func() templ.Component { return components.MachineScreen(view.MachineDetail{}) }),
+		inShell("AffectedMachinesPanel", func() templ.Component {
+			return components.AffectedMachinesPanel(view.AffectedMachines{Package: "a/b", Total: 2})
+		}),
 		// The Storage screen, swept empty for the same reason: a fetch's requested
 		// reference is operator-supplied and person-shaped by nature.
 		inShell("StorageScreen", func() templ.Component { return components.StorageScreen(view.Storage{}) }),

@@ -37,6 +37,7 @@ type Data struct {
 	Runtime            apiclient.RuntimeReport
 	Devices            map[string]apiclient.PendingDeviceAuthorization
 	ServiceTokens      []apiclient.ServiceToken
+	Machines           []apiclient.MachineDetail
 }
 
 // SignedOut clears the viewer, so every protected request lands on sign-in.

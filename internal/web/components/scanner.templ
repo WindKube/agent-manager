@@ -221,6 +221,9 @@ templ findingDetail(s view.Scanner, detail view.FindingDetail) {
 		@evidencePanel(detail)
 		@checkMatrix(detail)
 		@scanPanel(detail.Scan)
+		if detail.Affected != nil {
+			@AffectedMachinesPanel(*detail.Affected)
+		}
 		if detail.Override != nil {
 			@overridePanel(*detail.Override)
 		}

@@ -42,6 +42,7 @@ var Nav = []NavGroup{
 	{Label: "Workspace", Items: []NavItem{
 		{ID: "catalog", Label: "Catalog", Href: "/catalog"},
 		{ID: "profiles", Label: "Profiles", Href: "/profiles"},
+		{ID: "machines", Label: "Machines", Href: "/machines"},
 	}},
 	{Label: "Security", Items: []NavItem{
 		{ID: "scanner", Label: "Scanner", Href: "/scanner", Alert: true},

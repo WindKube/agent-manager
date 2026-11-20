@@ -242,7 +242,7 @@ func TestTheAuditScreensLinksCarryTheRestOfItsState(t *testing.T) {
 
 		bare := view.AuditQuery{Filter: view.AuditFilter{SubjectID: "x", Namespace: "community"}}.Normalise()
 		require.Equal(t, view.AuditFilter{Namespace: "community"}, bare.Filter)
-		unknown := view.AuditQuery{Filter: view.AuditFilter{SubjectKind: "machine", SubjectID: "x"}}.Normalise()
+		unknown := view.AuditQuery{Filter: view.AuditFilter{SubjectKind: "spaceship", SubjectID: "x"}}.Normalise()
 		require.False(t, unknown.Filter.Active())
 	})
 

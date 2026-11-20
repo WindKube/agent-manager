@@ -613,7 +613,7 @@ func TestTheAuditScreenHonoursASubjectFilter(t *testing.T) {
 
 func TestTheUnfilteredAuditScreenOffersNoFilterChip(t *testing.T) {
 	_, h := newServer(t)
-	body := get(t, h, "/audit?subjectKind=machine&subjectId=x").Body.String()
+	body := get(t, h, "/audit?subjectKind=spaceship&subjectId=x").Body.String()
 
 	require.NotContains(t, body, `id="audit-filter"`, "an unknown subject kind is dropped, not sent on")
 	require.Contains(t, body, "stored example/terraform-module-review@2.4.1")

@@ -80,6 +80,9 @@ templ packageBody(p view.Package) {
 		</div>
 		<div class="am-detail-side">
 			@VersionsPanel(p)
+			if p.Affected != nil {
+				@AffectedMachinesPanel(*p.Affected)
+			}
 			@DependentsPanel(p)
 		</div>
 	</div>

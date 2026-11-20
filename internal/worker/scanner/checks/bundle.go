@@ -43,6 +43,9 @@ type Bundle struct {
 	// as a warning by the shell audit, never a pass.
 	Unparsed []string
 
+	// Surfaces are the hooks, MCP servers and tool grants the tree declares.
+	Surfaces *pkgspec.Surfaces
+
 	files map[string]bundle.File
 	paths []string
 	lines map[string][]string
@@ -100,7 +103,9 @@ func Inspect(tree *bundle.Bundle) (*Bundle, error) {
 		out.Expected = expected
 	}
 
+	out.Surfaces = pkgspec.ReadSurfaces(scanned)
 	out.classify()
+	out.classifySurfaces()
 	return out, nil
 }
 
@@ -171,6 +176,38 @@ func (b *Bundle) classify() {
 			b.Artefacts.URLs = append(b.Artefacts.URLs, urlsIn(filePath, b.Lines(filePath))...)
 		case capability.ClassManifest, capability.ClassOther:
 		}
+	}
+}
+
+// classifySurfaces feeds every hook command and stdio MCP command line to
+// the shell parser as a script of its own, at a `file#/pointer` path, so the
+// shell rules read what a client runs and not only what a bundle ships.
+func (b *Bundle) classifySurfaces() {
+	b.Unparsed = append(b.Unparsed, b.Surfaces.Unreadable...)
+	for _, hook := range b.Surfaces.Hooks {
+		if hook.Command != "" {
+			b.addSynthetic(hook.Location()+"/command", hook.Command)
+		}
+	}
+	for i := range b.Surfaces.Servers {
+		server := &b.Surfaces.Servers[i]
+		if server.Transport == pkgspec.TransportStdio && server.Command != "" {
+			b.addSynthetic(server.Location(), server.CommandLine())
+		}
+	}
+}
+
+func (b *Bundle) addSynthetic(location, line string) {
+	commands, err := parseShell(location, []byte(line))
+	if err != nil {
+		b.Unparsed = append(b.Unparsed, location)
+		return
+	}
+	for i := range commands {
+		// A synthetic script has no lines of its own to point at.
+		commands[i].Line = 0
+		b.Commands = append(b.Commands, commands[i])
+		b.Artefacts.Commands = append(b.Artefacts.Commands, commands[i].Command)
 	}
 }
 

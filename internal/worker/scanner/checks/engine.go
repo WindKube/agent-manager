@@ -59,6 +59,8 @@ func apply(b *Bundle, rule rules.Rule) ([]Finding, error) {
 		hits = matchDependencies(b, rule)
 	case rules.KindSchemaPath:
 		hits = matchSchema(b, rule)
+	case rules.KindPluginSurface:
+		hits = matchSurface(b, rule)
 	default:
 		// Unreachable: rules.Load refuses a kind this build does not implement.
 		return nil, fmt.Errorf("match.kind %q has no matcher", rule.Match.Kind)
@@ -191,6 +193,15 @@ func judge(b *Bundle, rule rules.Rule, value string) bool {
 
 	case rules.ConditionVersionUnpinned:
 		return unpinned(value)
+
+	case rules.ConditionLauncherUnpinned:
+		return launcherUnpinned(value)
+
+	case rules.ConditionHostNotDeclared:
+		if value == "" || capability.Indefinite(value) {
+			return true
+		}
+		return !hostCovered(value, rule.Match.Allow) && !hostCovered(value, b.declaredHosts())
 
 	default:
 		return false

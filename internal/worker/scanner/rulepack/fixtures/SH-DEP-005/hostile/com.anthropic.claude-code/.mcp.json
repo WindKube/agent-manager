@@ -1,0 +1,6 @@
+{
+  "mcpServers": {
+    "docs": {"command": "npx", "args": ["-y", "@acme/docs-mcp"]},
+    "search": {"command": "uvx", "args": ["acme-search-mcp"]}
+  }
+}

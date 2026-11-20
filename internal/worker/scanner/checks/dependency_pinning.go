@@ -9,6 +9,7 @@ func DependencyPinning() Check {
 			"`go.mod` and flags one that does not pin to a single release. An unpinned " +
 			"specifier resolves to whatever the registry serves at install time, so the bytes " +
 			"a reviewer approved are not the bytes the next machine installs — the package " +
-			"need not be hostile itself for that to be true.",
+			"need not be hostile itself for that to be true. An MCP server launched through npx, " +
+			"uvx, pnpm dlx, pipx run or docker run is judged the same way.",
 	}
 }

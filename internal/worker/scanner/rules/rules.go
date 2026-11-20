@@ -60,6 +60,8 @@ const (
 	KindSchemaPath Kind = "schema-path"
 	// KindDepManifest reads package.json, requirements.txt and go.mod.
 	KindDepManifest Kind = "dep-manifest"
+	// KindPluginSurface reads the parsed hooks, MCP servers and tool grants.
+	KindPluginSurface Kind = "plugin-surface"
 )
 
 // Extract names what a match yields as its target value: the thing a condition
@@ -72,6 +74,13 @@ const (
 	ExtractPackageSpec  Extract = "package-spec"
 	ExtractMatchedText  Extract = "matched-text"
 	ExtractPointerValue Extract = "pointer-value"
+	// ExtractLauncherPackage is the package a launcher (npx, uvx, docker run…)
+	// fetches and runs, as `launcher spec`.
+	ExtractLauncherPackage Extract = "launcher-package"
+	// ExtractHookTrigger is a hook's `Event:matcher`.
+	ExtractHookTrigger Extract = "hook-trigger"
+	// ExtractGrantedTool is one tool a skill, agent or command pre-approves.
+	ExtractGrantedTool Extract = "granted-tool"
 )
 
 // Condition is the named predicate applied to an extracted value. Adding one is a
@@ -93,6 +102,11 @@ const (
 	ConditionVersionUnpinned Condition = "version-unpinned"
 	// ConditionValueMatches is the extracted value against the rule's own pattern.
 	ConditionValueMatches Condition = "value-matches"
+	// ConditionLauncherUnpinned is a launched package with no exact version.
+	ConditionLauncherUnpinned Condition = "launcher-unpinned"
+	// ConditionHostNotDeclared is a host that is neither the manifest's
+	// homepage or repository host (or a subdomain of one) nor in match.allow.
+	ConditionHostNotDeclared Condition = "host-not-declared"
 )
 
 // Quote is which text a finding's evidence quotes.
@@ -110,11 +124,13 @@ const (
 
 // Match is a rule's matcher configuration.
 type Match struct {
-	Kind      Kind      `yaml:"kind"`
-	Command   []string  `yaml:"command"`
-	Pattern   string    `yaml:"pattern"`
-	Paths     []string  `yaml:"paths"`
-	Pointer   string    `yaml:"pointer"`
+	Kind    Kind     `yaml:"kind"`
+	Command []string `yaml:"command"`
+	Pattern string   `yaml:"pattern"`
+	Paths   []string `yaml:"paths"`
+	Pointer string   `yaml:"pointer"`
+	// Allow is the hosts host-not-declared accepts beyond the manifest's own.
+	Allow     []string  `yaml:"allow"`
 	Extract   Extract   `yaml:"extract"`
 	Condition Condition `yaml:"condition"`
 
@@ -389,10 +405,11 @@ func (r *Rule) compile() error {
 
 func (r *Rule) checkCombination() error {
 	allowed := map[Kind][]Extract{
-		KindShellAST:    {ExtractURLArgument, ExtractPathArgument, ExtractMatchedText},
-		KindRegex:       {ExtractURLArgument, ExtractPathArgument, ExtractMatchedText},
-		KindDepManifest: {ExtractPackageSpec},
-		KindSchemaPath:  {ExtractPointerValue, ExtractMatchedText},
+		KindShellAST:      {ExtractURLArgument, ExtractPathArgument, ExtractMatchedText, ExtractLauncherPackage},
+		KindRegex:         {ExtractURLArgument, ExtractPathArgument, ExtractMatchedText},
+		KindDepManifest:   {ExtractPackageSpec},
+		KindSchemaPath:    {ExtractPointerValue, ExtractMatchedText},
+		KindPluginSurface: {ExtractURLArgument, ExtractHookTrigger, ExtractGrantedTool},
 	}
 	extracts, known := allowed[r.Match.Kind]
 	if !known {
@@ -424,6 +441,14 @@ func (r *Rule) checkCombination() error {
 		if r.Match.Kind != KindDepManifest {
 			return fmt.Errorf("condition version-unpinned is only readable under dep-manifest, not %s", r.Match.Kind)
 		}
+	case ConditionLauncherUnpinned:
+		if r.Match.Extract != ExtractLauncherPackage {
+			return fmt.Errorf("condition launcher-unpinned needs extract launcher-package, not %q", r.Match.Extract)
+		}
+	case ConditionHostNotDeclared:
+		if r.Match.Extract != ExtractURLArgument {
+			return fmt.Errorf("condition host-not-declared needs extract url-argument, not %q", r.Match.Extract)
+		}
 	default:
 		return fmt.Errorf("match.condition %q is not a predicate this build implements", r.Match.Condition)
 	}
@@ -444,7 +469,7 @@ func (r *Rule) checkCombination() error {
 		if r.Evidence.Quote != QuoteSchemaError && r.Match.Pointer == "" {
 			return errors.New("match.kind schema-path needs match.pointer unless it quotes a schema-error")
 		}
-	case KindDepManifest:
+	case KindDepManifest, KindPluginSurface:
 	}
 	return nil
 }

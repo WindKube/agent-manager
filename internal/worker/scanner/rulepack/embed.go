@@ -6,7 +6,7 @@ import (
 	"io/fs"
 )
 
-//go:embed pack.yaml rules fixtures
+//go:embed pack.yaml rules all:fixtures
 var Files embed.FS
 
 func FS() fs.FS { return Files }

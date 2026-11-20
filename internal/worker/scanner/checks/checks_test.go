@@ -3,7 +3,9 @@ package checks_test
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -353,3 +355,84 @@ func resultOf(t *testing.T, runs []checks.CheckRun, id string) checks.Result {
 }
 
 func file(body string) *fstest.MapFile { return &fstest.MapFile{Data: []byte(body)} }
+
+// A hook command is code the client runs, so the shell rules read it as a
+// script of its own and the finding names the JSON pointer it came from.
+func TestTheShellRulesReadAHookCommand(t *testing.T) {
+	tree, err := checks.Tree(os.DirFS("testdata/hook-eval"))
+	require.NoError(t, err)
+	inspected, err := checks.Inspect(tree)
+	require.NoError(t, err)
+
+	pack, err := rules.Builtin()
+	require.NoError(t, err)
+	registry, err := checks.Default()
+	require.NoError(t, err)
+	_, findings, err := registry.Run(context.Background(), inspected, pack)
+	require.NoError(t, err)
+
+	const location = "com.anthropic.claude-code/hooks/hooks.json#/hooks/SessionStart/0/hooks/0/command"
+	byRule := map[string]checks.Finding{}
+	for _, finding := range findings {
+		byRule[finding.RuleID] = finding
+	}
+	require.Contains(t, byRule, "SH-SH-001", "eval of downloaded text in a hook is the curl|sh pattern")
+	require.Equal(t, location, byRule["SH-SH-001"].Primary().Path)
+	require.Zero(t, byRule["SH-SH-001"].Primary().Line, "a synthetic script has no line of its own")
+	require.Equal(t, location, byRule["SH-NET-002"].Primary().Path, "the curl inside the substitution is egress too")
+	require.Contains(t, byRule, "SH-HOOK-001")
+}
+
+func TestAnUnreadableHooksFileWarnsRatherThanPasses(t *testing.T) {
+	inspected := inspect(t, fstest.MapFS{
+		"plugin.json": file(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"x"}`),
+		"com.anthropic.claude-code/hooks/hooks.json": file(`{"hooks":`),
+	})
+	require.Equal(t, []string{"com.anthropic.claude-code/hooks/hooks.json"}, inspected.Unparsed)
+}
+
+func TestAStdioServerIsReadAsItsCommandLine(t *testing.T) {
+	inspected := inspect(t, fstest.MapFS{
+		"plugin.json": file(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"x"}`),
+		"mcp.json": file(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":` +
+			`{"db":{"type":"stdio","command":"docker","args":["run","-i","--rm","-e","TOKEN","ghcr.io/acme/db-mcp"]}}}`),
+	})
+	require.Len(t, inspected.Commands, 1)
+	command := inspected.Commands[0]
+	require.Equal(t, "mcp.json#/mcpServers/db", command.File)
+	require.Equal(t, "docker", command.Name)
+	require.Equal(t, []string{"run", "-i", "--rm", "-e", "TOKEN", "ghcr.io/acme/db-mcp"}, command.Args)
+}
+
+func TestPluginSurfaceFindingsNameWhereTheSurfaceIsDeclared(t *testing.T) {
+	pack, err := rules.Builtin()
+	require.NoError(t, err)
+	registry, err := checks.Default()
+	require.NoError(t, err)
+
+	for fixture, want := range map[string][]string{
+		"fixtures/SH-DEP-005/hostile": {
+			"SH-DEP-005 com.anthropic.claude-code/.mcp.json#/mcpServers/docs",
+			"SH-DEP-005 com.anthropic.claude-code/.mcp.json#/mcpServers/search",
+		},
+		"fixtures/SH-NET-005/hostile": {"SH-NET-005 com.anthropic.claude-code/.mcp.json#/mcpServers/tickets"},
+		"fixtures/SH-HOOK-001/hostile": {
+			"SH-HOOK-001 com.anthropic.claude-code/hooks/hooks.json#/hooks/PreToolUse/0/hooks/0",
+			"SH-HOOK-001 com.anthropic.claude-code/hooks/hooks.json#/hooks/SessionStart/0/hooks/0",
+		},
+		"fixtures/SH-SH-002/hostile": {"SH-SH-002 SKILL.md:6"},
+	} {
+		_, findings, err := scanFixture(t, registry, pack, fixture)
+		require.NoError(t, err)
+		got := make([]string, 0, len(findings))
+		for _, finding := range findings {
+			location := finding.Primary().Path
+			if finding.Primary().Line > 0 {
+				location += ":" + strconv.Itoa(finding.Primary().Line)
+			}
+			got = append(got, finding.RuleID+" "+location)
+		}
+		sort.Strings(got)
+		require.Equal(t, want, got, fixture)
+	}
+}

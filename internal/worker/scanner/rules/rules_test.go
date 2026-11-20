@@ -106,6 +106,29 @@ func TestLoadRefusesAPackThatCannotWork(t *testing.T) {
 			message: "host-not-in-expected",
 		},
 		{
+			name: "a launcher pin judged on something other than a launched package",
+			mutate: func(m fstest.MapFS) {
+				m["rules/SH-NET-002.yaml"] = rule(t,
+					"kind: shell-ast\n  command: [npx]\n  extract: matched-text\n  condition: launcher-unpinned")
+			},
+			message: "launcher-unpinned",
+		},
+		{
+			name: "a declared-host check on something other than a host",
+			mutate: func(m fstest.MapFS) {
+				m["rules/SH-NET-002.yaml"] = rule(t,
+					"kind: plugin-surface\n  extract: granted-tool\n  condition: host-not-declared")
+			},
+			message: "host-not-declared",
+		},
+		{
+			name: "a plugin-surface rule with a shell extractor",
+			mutate: func(m fstest.MapFS) {
+				m["rules/SH-NET-002.yaml"] = rule(t, "kind: plugin-surface\n  extract: path-argument")
+			},
+			message: "no reading under match.kind plugin-surface",
+		},
+		{
 			name: "a shell rule that matches every command unconditionally",
 			mutate: func(m fstest.MapFS) {
 				m["rules/SH-NET-002.yaml"] = rule(t, "kind: shell-ast\n  extract: matched-text\n  condition: always")

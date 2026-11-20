@@ -1,0 +1,22 @@
+id: SH-HOOK-001
+severity: low
+check: shell-audit
+title: Hook runs on every session, prompt or tool call
+detail: |
+  A hook in this package runs on SessionStart or UserPromptSubmit, or on
+  PreToolUse or PostToolUse with no matcher, an empty one, `*` or `.*`. It
+  therefore runs without the user doing anything specific, and sees every
+  prompt or tool call the agent makes.
+
+  This is informational: guard and logging hooks are often written this way.
+  Read the command before approving.
+match:
+  kind: plugin-surface
+  extract: hook-trigger
+  condition: value-matches
+  pattern: '^(SessionStart|UserPromptSubmit):|^(PreToolUse|PostToolUse):(\*|\.\*)?$'
+evidence:
+  quote: matched-node
+fixtures:
+  trips: fixtures/SH-HOOK-001/hostile
+  clean: fixtures/SH-HOOK-001/benign

@@ -69,6 +69,12 @@ func extractFromCommand(command *Command, extract rules.Extract) []string {
 	case rules.ExtractMatchedText:
 		return []string{command.Name}
 
+	case rules.ExtractLauncherPackage:
+		if spec := launchedPackage(command.Name, command.Args); spec != "" {
+			return []string{command.Name + " " + spec}
+		}
+		return nil
+
 	default:
 		return nil
 	}

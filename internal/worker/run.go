@@ -12,6 +12,8 @@ import (
 	"github.com/rs/zerolog"
 
 	"agent-manager/internal/logging"
+	"agent-manager/internal/metrics"
+	"agent-manager/internal/outbox"
 )
 
 // stopTimeout bounds the graceful shutdown: River stops fetching immediately
@@ -75,6 +77,17 @@ func Run(ctx context.Context, def Definition, cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("worker %s: build the river client: %w", def.Name, err)
 	}
+
+	stopMetrics, err := metrics.Serve(ctx, cfg.MetricsBind, log)
+	if err != nil {
+		return err
+	}
+	defer stopMetrics()
+
+	events, unsubscribe := client.Subscribe(jobEventKinds...)
+	defer unsubscribe()
+	go recordJobEvents(events)
+	go metrics.Poll(ctx, outbox.QueueSampleInterval, outbox.SampleQueues(pool, queueNames(def), log))
 
 	log.Info().
 		Str("db", def.Needs.DB.String()).

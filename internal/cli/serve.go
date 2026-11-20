@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 
@@ -17,6 +18,7 @@ import (
 	"agent-manager/internal/blob"
 	"agent-manager/internal/config"
 	"agent-manager/internal/logging"
+	"agent-manager/internal/metrics"
 	"agent-manager/internal/outbox"
 	"agent-manager/internal/store"
 )
@@ -68,6 +70,12 @@ func runAPI(ctx context.Context) error {
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	stopMetrics, err := metrics.Serve(ctx, cfg.MetricsBind, log)
+	if err != nil {
+		return err
+	}
+	defer stopMetrics()
 
 	handle, err := store.Open(ctx, cfg.DatabaseURL, cfg.RiverDatabaseURL)
 	if err != nil {
@@ -162,6 +170,7 @@ func runAPI(ctx context.Context) error {
 		DeviceCodeTTL:         cfg.DeviceCodeTTL,
 		DeviceTokenTTL:        cfg.DeviceTokenTTL,
 		SessionTTL:            cfg.SessionTTL,
+		Middleware:            []gin.HandlerFunc{metrics.HTTP()},
 	})
 
 	return server.Run(ctx)

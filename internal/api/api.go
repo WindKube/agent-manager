@@ -120,6 +120,8 @@ type Options struct {
 	// HealthTimeout caps how long a dependency probe may take before the role
 	// reports itself unready.
 	HealthTimeout time.Duration
+	// Middleware runs ahead of everything else, instrumentation included.
+	Middleware []gin.HandlerFunc
 }
 
 func (o Options) withDefaults() Options {
@@ -192,6 +194,7 @@ func New(deps Deps, opts Options) *Server {
 	// something.
 	engine.UseRawPath = true
 	engine.UnescapePathValues = true
+	engine.Use(opts.Middleware...)
 	engine.Use(correlation(deps.Log), recovery())
 	engine.NoRoute(notFound)
 	engine.NoMethod(methodNotAllowed)

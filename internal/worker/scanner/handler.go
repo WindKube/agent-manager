@@ -11,6 +11,7 @@ import (
 	"github.com/riverqueue/river"
 
 	"agent-manager/internal/bundle"
+	"agent-manager/internal/metrics"
 	"agent-manager/internal/outbox"
 	"agent-manager/internal/store/models"
 	"agent-manager/internal/worker/scanner/checks"
@@ -34,7 +35,10 @@ var errBudgetExceeded = errors.New("scan exceeded its budget")
 
 // Scan runs the whole pipeline for one job.
 func (w *Worker) Scan(ctx context.Context, job Job, lastAttempt bool) error {
-	_, err := w.scan(ctx, job, lastAttempt)
+	outcome, err := w.scan(ctx, job, lastAttempt)
+	if outcome.Recorded {
+		metrics.ScansTotal.WithLabelValues(string(outcome.Verdict)).Inc()
+	}
 	return err
 }
 

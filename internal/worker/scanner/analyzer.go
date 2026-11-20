@@ -8,6 +8,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"agent-manager/internal/metrics"
 	"agent-manager/internal/worker/scanner/checks"
 	"agent-manager/internal/worker/scanner/engine"
 	"agent-manager/internal/worker/scanner/rules"
@@ -85,6 +86,7 @@ func (a engineAnalyzer) Analyze(ctx context.Context, b *checks.Bundle) ([]checks
 		// A property of the package, not a failure of the engine. The rule pack
 		// still ran, so the honest record is a visible blind spot rather than a
 		// finding that would fail every large or malformed package twice.
+		metrics.ScanEngineErrors.WithLabelValues("unanalysable").Inc()
 		a.log.Warn().Err(err).Msg("the engine did not analyse this package; recording a blind spot")
 		return a.rows(checks.Result{Outcome: checks.OutcomeWarn, WarnCount: 1}), nil, nil
 
@@ -93,6 +95,7 @@ func (a engineAnalyzer) Analyze(ctx context.Context, b *checks.Bundle) ([]checks
 		return nil, nil, err
 
 	default:
+		metrics.ScanEngineErrors.WithLabelValues("failed").Inc()
 		// The engine failed. Recording this as a pass would quietly drop one
 		// engine's coverage across the whole catalog, so it fails closed
 		// wherever policy allows.

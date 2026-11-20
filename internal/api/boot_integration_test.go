@@ -98,6 +98,7 @@ func TestEachRoleBootsWithOnlyItsOwnEnvironment(t *testing.T) {
 			"AGENT_MANAGER_RIVER_DATABASE_URL": queueURL,
 			"AGENT_MANAGER_BLOB_URL":           "mem://",
 			"AGENT_MANAGER_API_ADDR":           fmt.Sprintf("127.0.0.1:%d", port),
+			"AGENT_MANAGER_METRICS_ADDR":       fmt.Sprintf("127.0.0.1:%d", freePort(t)),
 			"AGENT_MANAGER_LOG_FORMAT":         "console",
 		}
 
@@ -144,14 +145,16 @@ func TestEachRoleBootsWithOnlyItsOwnEnvironment(t *testing.T) {
 			"AGENT_MANAGER_RIVER_DATABASE_URL": queueURL,
 			"AGENT_MANAGER_BLOB_URL":           "mem://",
 			"AGENT_MANAGER_API_ADDR":           fmt.Sprintf("127.0.0.1:%d", apiPort),
+			"AGENT_MANAGER_METRICS_ADDR":       fmt.Sprintf("127.0.0.1:%d", freePort(t)),
 			"AGENT_MANAGER_LOG_FORMAT":         "console",
 		})
 		requireHealthy(t, fmt.Sprintf("http://127.0.0.1:%d/v1/health", apiPort))
 
-		webPort := freePort(t)
+		webPort, metricsPort := freePort(t), freePort(t)
 		env := map[string]string{
 			"AGENT_MANAGER_API_BASE_URL": fmt.Sprintf("http://127.0.0.1:%d", apiPort),
 			"AGENT_MANAGER_WEB_ADDR":     fmt.Sprintf("127.0.0.1:%d", webPort),
+			"AGENT_MANAGER_METRICS_ADDR": fmt.Sprintf("127.0.0.1:%d", metricsPort),
 			"AGENT_MANAGER_LOG_FORMAT":   "console",
 		}
 		for _, name := range datastoreVars {
@@ -178,6 +181,13 @@ func TestEachRoleBootsWithOnlyItsOwnEnvironment(t *testing.T) {
 			"the web role must render a screen with no database and no bucket")
 		require.Contains(t, body, "am-signin-card",
 			"and the screen must be the one that says how to get in")
+
+		// Two roles on one host, each with its own metrics listener, and the
+		// request above already counted under its route pattern.
+		status, body = fetch(t, fmt.Sprintf("http://127.0.0.1:%d/metrics", metricsPort))
+		require.Equal(t, http.StatusOK, status)
+		require.Contains(t, body, `agent_manager_http_requests_total{code="3xx",method="GET",route="/catalog"}`)
+		require.NotContains(t, body, "agent_manager_outbox", "web relays nothing, so it must report no outbox series")
 		require.NotContains(t, body, "am-sidebar",
 			"a signed-out request must not reach a shell, empty or otherwise")
 

@@ -188,6 +188,31 @@ The OpenAPI 3.1 document is **emitted from the operation definitions** and never
 hand-maintained; the typed client the web role uses is generated from it, and CI fails on a
 breaking change against the merge base.
 
+## Observability
+
+Every long-running role (`serve api`, `serve web`, each `worker run`) serves Prometheus
+metrics on `AGENT_MANAGER_METRICS_ADDR` (`:9090` by default, empty disables it), a listener
+separate from the application's. The same listener answers `GET /healthz` with 200 while the
+process runs, which is the workers' liveness probe. Everything this project records is
+prefixed `agent_manager_`:
+
+| Metric | Labels | From |
+| --- | --- | --- |
+| `http_requests_total`, `http_request_duration_seconds` | `route` (the pattern, never the raw path), `method`, `code` (status class) | api, web |
+| `river_jobs_total` | `kind`, `queue`, `result` (`completed`, `retried`, `discarded`, `cancelled`, `snoozed`) | workers |
+| `river_job_duration_seconds` | `kind`, `queue` | workers |
+| `river_queue_jobs` | `queue`, `state` — sampled every 15s, each queue by the role that drains it | workers |
+| `outbox_relayed_total` | `kind` | api |
+| `outbox_oldest_pending_age_seconds` | — | api |
+| `fetches_total` | `source`, `result` (`stored`, `unchanged` or the failure reason) | fetcher |
+| `signature_verifications_total` | `result` (`verified`, `invalid`, `unsigned`, `error`) | fetcher |
+| `scans_total` | `verdict` | scanner |
+| `scan_engine_errors_total` | `reason` (`failed`, `unanalysable`) | scanner |
+| `webhook_deliveries_total` | `status` (status class, or `error`) | notifier |
+
+The Go runtime and process collectors are registered as well. The one-shots (`migrate`,
+`seed`) serve nothing: they exit before a scrape would find them.
+
 ## Quickstart
 
 ```bash
@@ -214,8 +239,7 @@ scanner's rule packs and findings review, profile curation and publish, the RFC 
 flow for pairing a machine, and organisation policy and identity administration.
 
 Not there yet: the timed clean-checkout quickstart and the manual `aarch64` run are unverified
-by an agent (they need a human at a terminal), and there is no Prometheus metrics
-instrumentation — `AGENT_MANAGER_METRICS_ADDR` today backs only the liveness listener.
+by an agent (they need a human at a terminal).
 
 ## Acknowledgements
 
@@ -239,9 +263,10 @@ This project is assembled almost entirely from other people's work. What each pi
 | [`github.com/google/go-github`](https://github.com/google/go-github) | `v90.0.0` | The GitHub API for the git registration source: resolving a ref and downloading a tarball without shelling out to `git` |
 | [`github.com/google/uuid`](https://github.com/google/uuid) | `v1.6.0` | UUIDv7 primary keys, so insertion order and index locality come free |
 | [`github.com/jackc/pgx`](https://github.com/jackc/pgx) | `v5.10.0` | Postgres driver and connection pooling; the two pools (app, queue) are two `pgxpool.Pool`s on two databases |
-| [`github.com/klauspost/compress`](https://github.com/klauspost/compress) | `v1.19.2` | zstd for `bundle.tar.zst` — the archive format every version is stored as |
+| [`github.com/klauspost/compress`](https://github.com/klauspost/compress) | `v1.20.1` | zstd for `bundle.tar.zst` — the archive format every version is stored as |
 | [`github.com/oapi-codegen/oapi-codegen`](https://github.com/oapi-codegen/oapi-codegen) | `v2.8.0` | The typed client the web role uses to reach the api — its only door to data |
 | [`github.com/oapi-codegen/runtime`](https://github.com/oapi-codegen/runtime) | `v1.7.0` | Required by the generated client: oapi-codegen emits calls into it for path-parameter styling |
+| [`github.com/prometheus/client_golang`](https://github.com/prometheus/client_golang) | `v1.25.0` | The `/metrics` listener every long-running role serves |
 | [`github.com/riverqueue/river`](https://github.com/riverqueue/river) | `v0.45.0` | Durable job queue, on its own database by construction |
 | [`github.com/rs/zerolog`](https://github.com/rs/zerolog) | `v1.35.1` | Structured logging with the correlation id carried through the context |
 | [`github.com/santhosh-tekuri/jsonschema`](https://github.com/santhosh-tekuri/jsonschema) | `v6.0.2` | JSON Schema validation of skill and plugin manifests against the vendored Agent Skills schemas |

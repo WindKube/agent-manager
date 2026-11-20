@@ -20,6 +20,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"agent-manager/internal/fetch"
+	"agent-manager/internal/metrics"
 	"agent-manager/internal/notify"
 	"agent-manager/internal/outbox"
 	"agent-manager/internal/store/audit"
@@ -114,6 +115,7 @@ func (d *Deliverer) Deliver(ctx context.Context, job Delivery, attempt int) erro
 	}
 
 	result := d.post(ctx, sub, event.ID, body)
+	metrics.WebhookDeliveries.WithLabelValues(metrics.StatusClass(result.status)).Inc()
 	if err := d.record(ctx, sub, event, attempt, result); err != nil {
 		return err
 	}

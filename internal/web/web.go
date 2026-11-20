@@ -75,6 +75,8 @@ type Options struct {
 	// queue's, this role holds none, and nothing a request carries can steer
 	// where the proxy points.
 	RiverUI *url.URL
+	// Middleware runs ahead of everything else, instrumentation included.
+	Middleware []gin.HandlerFunc
 }
 
 // Server is the assembled router. It owns no connections.
@@ -112,6 +114,7 @@ func New(deps Deps, opts Options) *Server {
 	}
 	// The guard is global, so a new route is protected by default. It runs
 	// after correlation so its own log lines and redirect carry the request's id.
+	engine.Use(opts.Middleware...)
 	engine.Use(correlation(deps.Log), recovery(), srv.guard(), sameOrigin())
 	srv.register()
 	return srv

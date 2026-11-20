@@ -13,6 +13,8 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/rs/zerolog"
 	"github.com/uptrace/bun"
+
+	"agent-manager/internal/metrics"
 )
 
 // DefaultSweepInterval is the periodic drain. A LISTEN/NOTIFY notification is
@@ -140,6 +142,7 @@ func (r *Relay) Run(ctx context.Context) error {
 	// process was down are already pending and their notifications are
 	// long gone.
 	r.drainLogged(ctx)
+	r.SampleLag(ctx)
 
 	for {
 		select {
@@ -150,6 +153,7 @@ func (r *Relay) Run(ctx context.Context) error {
 		case <-sweep.C:
 			r.sweeps.Add(1)
 			r.drainLogged(ctx)
+			r.SampleLag(ctx)
 		case <-prune.C:
 			if _, err := r.Prune(ctx); err != nil && ctx.Err() == nil {
 				r.log.Error().Err(err).Msg("outbox prune failed")
@@ -189,7 +193,7 @@ type pendingRow struct {
 // mark commits, which is the at-least-once trade: a crash here redelivers,
 // where marking first would silently drop the job.
 func (r *Relay) deliverBatch(ctx context.Context) (int, error) {
-	var claimed int
+	var kinds []string
 
 	err := r.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		rows, err := claim(ctx, tx, r.cfg.Batch)
@@ -199,7 +203,6 @@ func (r *Relay) deliverBatch(ctx context.Context) (int, error) {
 		if len(rows) == 0 {
 			return nil
 		}
-		claimed = len(rows)
 
 		ids := make([]uuid.UUID, 0, len(rows))
 		for _, row := range rows {
@@ -209,6 +212,7 @@ func (r *Relay) deliverBatch(ctx context.Context) (int, error) {
 				return fmt.Errorf("insert %s job %s into the queue: %w", row.kind, row.id, err)
 			}
 			ids = append(ids, row.id)
+			kinds = append(kinds, row.kind)
 		}
 
 		if _, err := tx.NewRaw(
@@ -223,8 +227,27 @@ func (r *Relay) deliverBatch(ctx context.Context) (int, error) {
 		return 0, err
 	}
 
-	r.delivered.Add(int64(claimed))
-	return claimed, nil
+	r.delivered.Add(int64(len(kinds)))
+	for _, kind := range kinds {
+		metrics.OutboxRelayed.WithLabelValues(kind).Inc()
+	}
+	return len(kinds), nil
+}
+
+// SampleLag sets the age of the oldest pending row: the one number that says
+// whether jobs are reaching the queue at all, whatever the drain reports.
+func (r *Relay) SampleLag(ctx context.Context) {
+	var age float64
+	err := r.db.QueryRowContext(ctx,
+		`select coalesce(extract(epoch from now() - min(created_at)), 0)::float8
+		   from outbox where state = 'pending'`).Scan(&age)
+	if err != nil {
+		if ctx.Err() == nil {
+			r.log.Warn().Err(err).Msg("sample outbox lag")
+		}
+		return
+	}
+	metrics.OutboxOldestPending.WithLabelValues().Set(age)
 }
 
 func claim(ctx context.Context, tx bun.Tx, batch int) ([]pendingRow, error) {

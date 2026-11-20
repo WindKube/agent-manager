@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"agent-manager/internal/fetch"
+	"agent-manager/internal/metrics"
 	"agent-manager/internal/signing"
 	"agent-manager/internal/store/models"
 )
@@ -20,6 +21,7 @@ import (
 func (w *Worker) verifySignatures(ctx context.Context, versionID uuid.UUID, tree fetch.Tree) (models.Signature, signing.Result, error) {
 	row := models.Signature{VersionID: versionID, Kind: models.SignatureKindNone}
 	if len(tree.Signatures) == 0 {
+		metrics.SignatureVerifications.WithLabelValues(string(signing.StatusUnsigned)).Inc()
 		return row, signing.Result{Status: signing.StatusUnsigned}, nil
 	}
 
@@ -30,6 +32,7 @@ func (w *Worker) verifySignatures(ctx context.Context, versionID uuid.UUID, tree
 	for i, candidate := range tree.Signatures {
 		got, err := w.verifier.Verify(ctx, candidate.Bundle, tree.ArchiveDigest)
 		if err != nil {
+			metrics.SignatureVerifications.WithLabelValues("error").Inc()
 			return models.Signature{}, signing.Result{}, fmt.Errorf("%w: verify the signature from %s: %w",
 				fetch.ErrRemote, candidate.Origin, err)
 		}
@@ -40,6 +43,8 @@ func (w *Worker) verifySignatures(ctx context.Context, versionID uuid.UUID, tree
 			break
 		}
 	}
+
+	metrics.SignatureVerifications.WithLabelValues(string(result.Status)).Inc()
 
 	now := time.Now().UTC()
 	status := models.SignatureResultInvalid

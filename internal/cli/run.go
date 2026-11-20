@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/uptrace/bun"
@@ -23,6 +24,7 @@ import (
 	"agent-manager/internal/blob"
 	"agent-manager/internal/config"
 	"agent-manager/internal/logging"
+	"agent-manager/internal/metrics"
 	"agent-manager/internal/outbox"
 	"agent-manager/internal/seed"
 	"agent-manager/internal/store/models"
@@ -107,6 +109,12 @@ func runWeb(ctx context.Context) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	stopMetrics, err := metrics.Serve(ctx, cfg.MetricsBind, log)
+	if err != nil {
+		return err
+	}
+	defer stopMetrics()
+
 	// The mint secret is the one credential this role holds, buying
 	// exactly one operation: asking the api to open a session for an
 	// identity whose ID token verified. Empty is not a fallback — the api
@@ -150,6 +158,7 @@ func runWeb(ctx context.Context) error {
 		DevCredentialHint: cfg.DevCredentialHint,
 		DevCredentials:    devCredentials(cfg.DevCredentialHint),
 		RiverUI:           riverUI,
+		Middleware:        []gin.HandlerFunc{metrics.HTTP()},
 	})
 
 	return server.Run(ctx)

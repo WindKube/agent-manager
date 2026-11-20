@@ -12,6 +12,7 @@ import (
 	"agent-manager/internal/bundle"
 	"agent-manager/internal/domain/pkgspec"
 	"agent-manager/internal/fetch"
+	"agent-manager/internal/metrics"
 	"agent-manager/internal/outbox"
 )
 
@@ -49,6 +50,7 @@ func (w *Worker) Fetch(ctx context.Context, job Job) error {
 	}
 
 	result, err := w.run(ctx, job)
+	fetched(job.Source.Kind, result, err)
 	if err != nil {
 		reason := ReasonOf(err)
 		log.Error().Err(err).Str("reason", string(reason)).Msg("fetch failed")
@@ -72,6 +74,19 @@ func (w *Worker) Fetch(ctx context.Context, job Job) error {
 		Strs("links_not_stored", result.Package.Layout.Links).
 		Msg("version stored")
 	return nil
+}
+
+func fetched(source fetch.SourceKind, result Result, err error) {
+	outcome := "stored"
+	switch {
+	case err != nil && ReasonOf(err) != "":
+		outcome = string(ReasonOf(err))
+	case err != nil:
+		outcome = "error"
+	case result.AlreadyStored:
+		outcome = "unchanged"
+	}
+	metrics.FetchesTotal.WithLabelValues(string(source), outcome).Inc()
 }
 
 // run is the pipeline proper, with every step's failure classified.

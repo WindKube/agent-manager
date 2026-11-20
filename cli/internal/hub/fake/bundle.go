@@ -124,12 +124,13 @@ func skillFiles(id, version string) []bundleFile {
 	}
 }
 
-// pluginFiles is an Agent Plugins tree: the root holds plugin.json and skills/.
+// pluginFiles is an Agent Plugins tree: plugin.json, one skill and one MCP server.
 func pluginFiles(id, version string) []bundleFile {
 	_, name, _ := strings.Cut(id, "/")
 	return []bundleFile{
 		{Name: "plugin.json", Body: `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",` +
 			`"name":"` + name + `","version":"` + version + `","description":"fixture plugin"}`},
+		{Name: "mcp.json", Body: `{"mcpServers":{"lint":{"command":"lint-mcp","args":["--stdio"]}}}`},
 		{Name: "skills/review/SKILL.md", Body: "---\nname: review\ndescription: Reviews.\n---\nReview " + id + "\n"},
 	}
 }

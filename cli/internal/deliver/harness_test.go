@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"maps"
@@ -40,6 +41,7 @@ type harness struct {
 	recPath string
 	bundles map[string][]byte // by lockfile digest
 	log     *captureLog
+	claude  *fakeClaude // nil: no claude on PATH
 }
 
 func newHarness(t *testing.T) *harness {
@@ -52,6 +54,7 @@ func newHarness(t *testing.T) *harness {
 		recPath: filepath.Join(home, ".agent-manager", "hub", record.FileName),
 		bundles: map[string][]byte{},
 		log:     &captureLog{},
+		claude:  &fakeClaude{config: filepath.Join(home, ".claude.json")},
 	}
 }
 
@@ -115,13 +118,17 @@ func (h *harness) sync(lf *hub.Lockfile, force bool) *apply.Result {
 		profileTargets = append(profileTargets, record.Target(tg))
 	}
 	slices.Sort(profileTargets)
+	var claude deliver.ClaudeCLI
+	if h.claude != nil {
+		claude = h.claude.run
+	}
 	applier, err := apply.New(apply.Config{
 		Home: home, Record: h.rec, RecordPath: h.recPath,
 		Profiles: []apply.ProfileState{{Slug: lf.Profile.Slug, Revision: int(lf.Revision), Targets: profileTargets}},
 		Bundles:  bundleSource(h.bundles), Force: force, Log: h.log,
 		Fingerprints: apply.TreeFingerprinter{}, Verifier: apply.TreeFingerprinter{},
 		Components: &deliver.Deliverer{
-			Targets: targets, Home: home, Force: force, Log: h.log,
+			Targets: targets, Home: home, Force: force, Log: h.log, Claude: claude,
 			ProfileTargets: map[string][]record.Target{lf.Profile.Slug: profileTargets},
 		},
 	})
@@ -183,6 +190,52 @@ func (h *harness) snapshot() map[string]string {
 func requireNoFailures(t *testing.T, res *apply.Result) {
 	t.Helper()
 	require.Empty(t, res.Failed, "%v", res.Err())
+}
+
+// fakeClaude does what `claude mcp add-json/remove --scope user` does to the
+// user config file, including refusing to add twice or remove what is absent.
+type fakeClaude struct {
+	config string
+	calls  []string
+}
+
+func (f *fakeClaude) run(_ context.Context, args ...string) error {
+	f.calls = append(f.calls, strings.Join(args[:2], " ")+" "+args[2])
+	cfg := map[string]any{}
+	if b, err := os.ReadFile(f.config); err == nil {
+		if err := json.Unmarshal(b, &cfg); err != nil {
+			return err
+		}
+	}
+	servers, _ := cfg["mcpServers"].(map[string]any)
+	if servers == nil {
+		servers = map[string]any{}
+	}
+	name := args[2]
+	switch strings.Join(args[:2], " ") {
+	case "mcp add-json":
+		if _, ok := servers[name]; ok {
+			return fmt.Errorf("MCP server %s already exists in user config", name)
+		}
+		var v any
+		if err := json.Unmarshal([]byte(args[3]), &v); err != nil {
+			return err
+		}
+		servers[name] = v
+	case "mcp remove":
+		if _, ok := servers[name]; !ok {
+			return fmt.Errorf("no user-scoped MCP server found with name: %s", name)
+		}
+		delete(servers, name)
+	default:
+		return fmt.Errorf("fake claude: unexpected %v", args)
+	}
+	cfg["mcpServers"] = servers
+	b, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(f.config, b, 0o600)
 }
 
 type bundleSource map[string][]byte

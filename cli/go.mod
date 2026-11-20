@@ -10,8 +10,10 @@ require (
 	github.com/99designs/keyring v1.2.2
 	github.com/klauspost/compress v1.19.2
 	github.com/oapi-codegen/runtime v1.7.0
+	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
+	github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f
 	go.yaml.in/yaml/v3 v3.0.5
 )
 

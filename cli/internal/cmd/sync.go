@@ -42,10 +42,11 @@ type syncDeps struct {
 	// XDG_CONFIG_HOME, so an XDG-first resolver would install nowhere it opens.
 	lookupEnv func(string) (string, bool)
 	now       func() time.Time
+	claude    deliver.ClaudeCLI // nil: no claude CLI, so Claude Code MCP servers are skipped
 }
 
 func productionSyncDeps() syncDeps {
-	return syncDeps{hostname: os.Hostname, lookupEnv: os.LookupEnv, now: time.Now}
+	return syncDeps{hostname: os.Hostname, lookupEnv: os.LookupEnv, now: time.Now, claude: claudeOnPath()}
 }
 
 // syncFlags is sync's own flag set, per command instance.
@@ -799,6 +800,7 @@ func (r *syncRun) apply(
 		Verifier:     apply.TreeFingerprinter{},
 		Components: &deliver.Deliverer{
 			Targets: r.layouts, Home: home, Force: r.flags.force, Log: r.s, ProfileTargets: profileTargets,
+			Claude: r.deps.claude,
 		},
 		// Pruner is deliberately nil: prune does not exist yet, so a planned
 		// removal fails with ErrPruneUnavailable instead of silently not happening.

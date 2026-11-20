@@ -34,6 +34,7 @@ type Deliverer struct {
 	Home    *apply.Home
 	Force   bool
 	Log     apply.Logger
+	Claude  ClaudeCLI
 
 	// ProfileTargets is every target each profile writes in this run, which
 	// decides whether opencode already sees a skill through another target.
@@ -316,6 +317,8 @@ func (d *Deliverer) slotOf(target record.Target, c record.Component) (slot, erro
 	switch c.Kind {
 	case record.ComponentSkill:
 		return &dirSlot{d: d, comp: c}, nil
+	case record.ComponentMCPServer:
+		return d.mcpSlotOf(target, c)
 	default:
 		return nil, fmt.Errorf("%s %s for target %s: this build cannot remove a %s it recorded", c.Kind, c.Name, target, c.Kind)
 	}
@@ -344,9 +347,6 @@ func (p *placer) skip(kind record.ComponentKind, name, reason string) {
 }
 
 func (p *placer) slots() []slot {
-	for i := range p.plugin.Servers {
-		p.skip(record.ComponentMCPServer, p.plugin.Servers[i].Name, skipNotYet)
-	}
 	for _, a := range p.plugin.Agents {
 		p.skip(record.ComponentAgent, a.Name, skipNotYet)
 	}
@@ -356,7 +356,7 @@ func (p *placer) slots() []slot {
 	for _, h := range p.plugin.Hooks {
 		p.skip(record.ComponentHook, hookName(h), skipNotYet)
 	}
-	return p.skillSlots()
+	return append(p.skillSlots(), p.mcpSlots()...)
 }
 
 const skipNotYet = "this build does not place this kind of component"

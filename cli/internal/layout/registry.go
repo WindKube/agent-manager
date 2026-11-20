@@ -37,6 +37,7 @@ type ComponentRoots struct {
 	Agents    string // directory of agent files
 	Commands  string // "" when the agent has no command files amctl writes
 	ConfigDir string // the agent's own config directory (settings, MCP config)
+	MCPConfig string // the file MCP servers are configured in; "" when it is chosen among several
 }
 
 // Config is everything the targets need, already resolved by internal/cmd.
@@ -293,9 +294,19 @@ func newClaudeCodeTarget(cfg Config) (Target, error) {
 			Agents:    filepath.Join(configDir, "agents"),
 			Commands:  filepath.Join(configDir, "commands"),
 			ConfigDir: configDir,
+			MCPConfig: claudeCodeUserConfigFile(cfg),
 		},
 		pluginRoot: pluginRootFor(cfg, record.TargetClaudeCode),
 	}, nil
+}
+
+// claudeCodeUserConfigFile is where `claude mcp add --scope user` writes:
+// .claude.json inside CLAUDE_CONFIG_DIR when set, else beside ~/.claude.
+func claudeCodeUserConfigFile(cfg Config) string {
+	if cfg.ClaudeConfigDir != "" {
+		return filepath.Join(cfg.ClaudeConfigDir, ".claude.json")
+	}
+	return filepath.Join(cfg.HomeDir, ".claude.json")
 }
 
 func newCodexTarget(cfg Config) (Target, error) {
@@ -310,6 +321,7 @@ func newCodexTarget(cfg Config) (Target, error) {
 			Skills:    cx.UserSkillsRoot,
 			Agents:    filepath.Join(cx.Home, "agents"),
 			ConfigDir: cx.Home,
+			MCPConfig: filepath.Join(cx.Home, CodexConfigFile),
 		},
 		pluginRoot: pluginRootFor(cfg, record.TargetCodex),
 	}, nil

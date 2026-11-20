@@ -27,6 +27,7 @@ import (
 
 	"github.com/WindKube/agent-manager/cli/internal/apply"
 	"github.com/WindKube/agent-manager/cli/internal/credentials"
+	"github.com/WindKube/agent-manager/cli/internal/deliver"
 	"github.com/WindKube/agent-manager/cli/internal/hub"
 	"github.com/WindKube/agent-manager/cli/internal/hub/fake"
 	"github.com/WindKube/agent-manager/cli/internal/layout"
@@ -1815,10 +1816,20 @@ func TestAPluginIsDecomposedIntoEveryTargetsOwnLocations(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal([]byte(result.String()), &doc))
 	require.Len(t, doc.Result.Added, 3)
-	require.Len(t, doc.Result.Skipped, 1)
-	require.Equal(t, "opencode", doc.Result.Skipped[0].Target)
-	require.Equal(t, "skill review", doc.Result.Skipped[0].Component)
-	require.Contains(t, doc.Result.Skipped[0].Reason, "served by")
+	require.Len(t, doc.Result.Skipped, 2)
+	require.Equal(t, "claude-code", doc.Result.Skipped[0].Target)
+	require.Equal(t, "mcp-server lint", doc.Result.Skipped[0].Component)
+	require.Equal(t, deliver.SkipNoClaudeCLI, doc.Result.Skipped[0].Reason)
+	require.Equal(t, "opencode", doc.Result.Skipped[1].Target)
+	require.Equal(t, "skill review", doc.Result.Skipped[1].Component)
+	require.Contains(t, doc.Result.Skipped[1].Reason, "served by")
+
+	codex, err := os.ReadFile(filepath.Join(env.home, ".codex", "config.toml"))
+	require.NoError(t, err)
+	require.Equal(t, "[mcp_servers.toolkit-lint]\ncommand = \"lint-mcp\"\nargs = [\"--stdio\"]\n", string(codex))
+	openCode, err := os.ReadFile(filepath.Join(env.home, ".config", "opencode", "opencode.json"))
+	require.NoError(t, err)
+	require.Contains(t, string(openCode), `"toolkit-lint": {`)
 
 	code, _, diag, err = env.run(t, output.FormatHuman, flags)
 	require.NoError(t, err, diag.String())

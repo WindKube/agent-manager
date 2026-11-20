@@ -7,9 +7,9 @@
 -- models.EnumTypes(), so a drift between this file and the Go const sets fails
 -- the integration suite rather than surfacing as a runtime insert error.
 
-create type actor_kind as enum ('identity', 'system');
-create type audit_kind as enum ('fetch', 'scan', 'approve', 'profile', 'share', 'sync', 'login', 'policy', 'role', 'category', 'secret');
-create type audit_subject_kind as enum ('package', 'version', 'finding', 'profile', 'revision', 'category', 'mapping', 'policy', 'identity', 'device');
+create type actor_kind as enum ('identity', 'system', 'service-token');
+create type audit_kind as enum ('fetch', 'scan', 'approve', 'profile', 'share', 'sync', 'login', 'policy', 'role', 'category', 'secret', 'token');
+create type audit_subject_kind as enum ('package', 'version', 'finding', 'profile', 'revision', 'category', 'mapping', 'policy', 'identity', 'device', 'service-token');
 create type capability_level as enum ('scoped', 'allowlisted', 'review');
 create type capability_source as enum ('inferred', 'expected');
 create type check_result as enum ('pass', 'fail', 'warn');

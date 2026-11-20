@@ -181,10 +181,12 @@ var wantForeignKeys = []string{
 	"profile_entry(pinned_version_id) -> version",
 	"revision(profile_id) -> profile",
 	"scan(version_id) -> version",
+	"service_token(created_by_identity_id) -> identity",
 	"session(identity_id) -> identity",
 	"sync_event(identity_id) -> identity",
 	"sync_event(profile_id) -> profile",
 	"sync_event(revision_id) -> revision",
+	"sync_event(service_token_id) -> service_token",
 	"version(package_id) -> package",
 }
 

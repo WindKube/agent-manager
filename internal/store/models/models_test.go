@@ -35,7 +35,7 @@ var wantTables = []string{
 	// Profiles
 	"profile", "profile_entry", "revision", "membership", "sync_target",
 	// Identity
-	"identity", "group_role_map", "device_authorization", "session",
+	"identity", "group_role_map", "device_authorization", "session", "service_token",
 	// Governance
 	"org_policy", "audit_event", "sync_event", "fetch_attempt",
 	// Job hand-off

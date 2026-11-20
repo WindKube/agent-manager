@@ -806,6 +806,7 @@ func TestIndexDefinitionsAreExactlyAsSpecified(t *testing.T) {
 		"finding_evidence_finding_idx":     "CREATE INDEX finding_evidence_finding_idx ON public.finding_evidence USING btree (finding_id)",
 		"finding_evidence_one_primary_idx": "CREATE UNIQUE INDEX finding_evidence_one_primary_idx ON public.finding_evidence USING btree (finding_id) WHERE (role = 'primary'::evidence_role)",
 		"fetch_attempt_occurred_at_idx":    "CREATE INDEX fetch_attempt_occurred_at_idx ON public.fetch_attempt USING btree (occurred_at DESC)",
+		"service_token_created_by_idx":     "CREATE INDEX service_token_created_by_idx ON public.service_token USING btree (created_by_identity_id, created_at DESC)",
 	}
 
 	for name, def := range want {
@@ -1805,4 +1806,82 @@ func TestAnExpectedSignerIsWholeAndBounded(t *testing.T) {
 		require.NoError(t, set("https://issuer.example", `release@example\.dev`))
 		require.NoError(t, set(nil, nil))
 	})
+}
+
+// ---------------------------------------------------------------------------
+// Service tokens — only the api reads or writes them
+// ---------------------------------------------------------------------------
+
+func insertServiceToken(ctx context.Context, conn interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}, creator uuid.UUID, scopes []string, lifetime string) (uuid.UUID, error) {
+	id := models.NewID()
+	_, err := conn.Exec(ctx, `insert into service_token
+		(id, name, token_hash, scopes, created_by_identity_id, created_at, expires_at)
+		values ($1, 'ci', $2, $3, $4, now(), now() + $5::interval)`,
+		id, append(id[:], id[:]...), scopes, creator, lifetime)
+	return id, err
+}
+
+func TestOnlyTheAPIRoleReachesServiceTokensAndNoRoleDeletesOne(t *testing.T) {
+	ctx := context.Background()
+	creator := seedIdentity(t, ctx)
+
+	var id uuid.UUID
+	asRole(t, "am_api", func(ctx context.Context, conn *pgxpool.Conn) {
+		var err error
+		id, err = insertServiceToken(ctx, conn, creator, []string{"read:catalog"}, "90 days")
+		require.NoError(t, err)
+
+		var hash []byte
+		require.NoError(t, conn.QueryRow(ctx, `select token_hash from service_token where id = $1`, id).Scan(&hash))
+		_, err = conn.Exec(ctx, `update service_token set revoked_at = now(), last_used_at = now() where id = $1`, id)
+		require.NoError(t, err)
+
+		_, err = conn.Exec(ctx, `delete from service_token where id = $1`, id)
+		requirePgError(t, err, "42501", "")
+	})
+
+	for _, role := range []string{"am_fetcher", "am_scanner"} {
+		for _, stmt := range []string{
+			`select token_hash from service_token where id = $1`,
+			`update service_token set revoked_at = null where id = $1`,
+			`delete from service_token where id = $1`,
+		} {
+			t.Run(role+" cannot run "+stmt[:6], func(t *testing.T) {
+				asRole(t, role, func(ctx context.Context, conn *pgxpool.Conn) {
+					_, err := conn.Exec(ctx, stmt, id)
+					requirePgError(t, err, "42501", "")
+				})
+			})
+		}
+		t.Run(role+" cannot insert", func(t *testing.T) {
+			asRole(t, role, func(ctx context.Context, conn *pgxpool.Conn) {
+				_, err := insertServiceToken(ctx, conn, creator, []string{"read:catalog"}, "1 day")
+				requirePgError(t, err, "42501", "")
+			})
+		})
+	}
+
+	// The refused statements were refused for the privilege, not the SQL.
+	tag, err := pool.Exec(ctx, `delete from service_token where id = $1`, id)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, tag.RowsAffected())
+}
+
+func TestAServiceTokenNeedsAScopeAndAnExpiryWithinAYear(t *testing.T) {
+	ctx := context.Background()
+	creator := seedIdentity(t, ctx)
+
+	_, err := insertServiceToken(ctx, pool, creator, []string{}, "1 day")
+	requirePgError(t, err, "23514", "service_token_has_a_scope")
+
+	_, err = insertServiceToken(ctx, pool, creator, []string{"read:catalog"}, "1 year 1 day")
+	requirePgError(t, err, "23514", "service_token_expiry_is_bounded")
+
+	_, err = insertServiceToken(ctx, pool, creator, []string{"read:catalog"}, "-1 second")
+	requirePgError(t, err, "23514", "service_token_expiry_is_bounded")
+
+	_, err = insertServiceToken(ctx, pool, creator, []string{"read:catalog"}, "1 year")
+	require.NoError(t, err)
 }

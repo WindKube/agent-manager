@@ -286,3 +286,23 @@ alter table "package"
   check (("expected_signer_issuer" is null) = ("expected_signer_identity" is null)
          and coalesce(char_length("expected_signer_issuer"), 0) <= 512
          and coalesce(char_length("expected_signer_identity"), 0) <= 512);
+
+-- A service token always has a scope, a bounded name, a sha256 hash and an
+-- expiry within a year of creation: there is no "never expires".
+alter table "service_token"
+  add constraint "service_token_has_a_scope"
+  check (cardinality("scopes") >= 1);
+
+alter table "service_token"
+  add constraint "service_token_name_is_bounded"
+  check (char_length(btrim("name")) between 1 and 100);
+
+alter table "service_token"
+  add constraint "service_token_hash_is_sha256"
+  check (octet_length("token_hash") = 32);
+
+alter table "service_token"
+  add constraint "service_token_expiry_is_bounded"
+  check ("expires_at" > "created_at" and "expires_at" <= "created_at" + interval '1 year');
+
+create index "service_token_created_by_idx" on "service_token" ("created_by_identity_id", "created_at" desc);

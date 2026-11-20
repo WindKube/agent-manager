@@ -71,12 +71,16 @@ type SyncEvent struct {
 
 	ID         uuid.UUID `bun:"id,pk,type:uuid,notnull"`
 	IdentityID uuid.UUID `bun:"identity_id,type:uuid,notnull"`
-	ProfileID  uuid.UUID `bun:"profile_id,type:uuid,notnull"`
-	RevisionID uuid.UUID `bun:"revision_id,type:uuid,notnull"`
-	Host       string    `bun:"host,type:text,notnull"`
-	OccurredAt time.Time `bun:"occurred_at,type:timestamptz,notnull,default:now()"`
+	// ServiceTokenID is set when a service token reported the sync; IdentityID
+	// is then the token's creator.
+	ServiceTokenID *uuid.UUID `bun:"service_token_id,type:uuid,nullzero"`
+	ProfileID      uuid.UUID  `bun:"profile_id,type:uuid,notnull"`
+	RevisionID     uuid.UUID  `bun:"revision_id,type:uuid,notnull"`
+	Host           string     `bun:"host,type:text,notnull"`
+	OccurredAt     time.Time  `bun:"occurred_at,type:timestamptz,notnull,default:now()"`
 
-	Identity *Identity `bun:"rel:belongs-to,join:identity_id=id"`
-	Profile  *Profile  `bun:"rel:belongs-to,join:profile_id=id"`
-	Revision *Revision `bun:"rel:belongs-to,join:revision_id=id"`
+	Identity     *Identity     `bun:"rel:belongs-to,join:identity_id=id"`
+	ServiceToken *ServiceToken `bun:"rel:belongs-to,join:service_token_id=id"`
+	Profile      *Profile      `bun:"rel:belongs-to,join:profile_id=id"`
+	Revision     *Revision     `bun:"rel:belongs-to,join:revision_id=id"`
 }

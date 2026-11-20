@@ -67,14 +67,14 @@ var enumTypes = map[string][]string{
 	PGOrgRole:           {"catalog-admin", "scanner-reviewer", "profile-consumer", "read-only"},
 	PGDeviceAuthState:   {"pending", "approved", "consumed", "expired", "denied"},
 	PGScanGate:          {"block", "approval", "warn-with-override"},
-	PGActorKind:         {"identity", "system"},
+	PGActorKind:         {"identity", "system", "service-token"},
 	PGAuditKind: {
 		"fetch", "scan", "approve", "profile", "share", "sync", "login",
-		"policy", "role", "category", "secret",
+		"policy", "role", "category", "secret", "token",
 	},
 	PGAuditSubjectKind: {
 		"package", "version", "finding", "profile", "revision",
-		"category", "mapping", "policy", "identity", "device",
+		"category", "mapping", "policy", "identity", "device", "service-token",
 	},
 	PGOutboxState:     {"pending", "delivered"},
 	PGEvidenceRole:    {"primary", "supporting"},
@@ -380,8 +380,9 @@ func (v ScanGate) Valid() bool { return inEnum(PGScanGate, string(v)) }
 type ActorKind string
 
 const (
-	ActorKindIdentity ActorKind = "identity"
-	ActorKindSystem   ActorKind = "system"
+	ActorKindIdentity     ActorKind = "identity"
+	ActorKindSystem       ActorKind = "system"
+	ActorKindServiceToken ActorKind = "service-token"
 )
 
 func (v ActorKind) Valid() bool { return inEnum(PGActorKind, string(v)) }
@@ -403,6 +404,8 @@ const (
 	// AuditKindSecret is identity-provider credential rotation: the credential
 	// itself never reaches a row here, only the fact that it moved.
 	AuditKindSecret AuditKind = "secret"
+	// AuditKindToken is a service token's lifecycle: created, revoked, used.
+	AuditKindToken AuditKind = "token"
 )
 
 func (v AuditKind) Valid() bool { return inEnum(PGAuditKind, string(v)) }
@@ -412,16 +415,17 @@ func (v AuditKind) Valid() bool { return inEnum(PGAuditKind, string(v)) }
 type AuditSubjectKind string
 
 const (
-	AuditSubjectPackage  AuditSubjectKind = "package"  // namespace/name, the api's package id
-	AuditSubjectVersion  AuditSubjectKind = "version"  // namespace/name@semver
-	AuditSubjectFinding  AuditSubjectKind = "finding"  // finding.id
-	AuditSubjectProfile  AuditSubjectKind = "profile"  // profile.id
-	AuditSubjectRevision AuditSubjectKind = "revision" // revision.id
-	AuditSubjectCategory AuditSubjectKind = "category" // category.id
-	AuditSubjectMapping  AuditSubjectKind = "mapping"  // group_role_map.group_name
-	AuditSubjectPolicy   AuditSubjectKind = "policy"   // org_policy.id, always "1"
-	AuditSubjectIdentity AuditSubjectKind = "identity" // identity.id
-	AuditSubjectDevice   AuditSubjectKind = "device"   // device_authorization.id
+	AuditSubjectPackage  AuditSubjectKind = "package"       // namespace/name, the api's package id
+	AuditSubjectVersion  AuditSubjectKind = "version"       // namespace/name@semver
+	AuditSubjectFinding  AuditSubjectKind = "finding"       // finding.id
+	AuditSubjectProfile  AuditSubjectKind = "profile"       // profile.id
+	AuditSubjectRevision AuditSubjectKind = "revision"      // revision.id
+	AuditSubjectCategory AuditSubjectKind = "category"      // category.id
+	AuditSubjectMapping  AuditSubjectKind = "mapping"       // group_role_map.group_name
+	AuditSubjectPolicy   AuditSubjectKind = "policy"        // org_policy.id, always "1"
+	AuditSubjectIdentity AuditSubjectKind = "identity"      // identity.id
+	AuditSubjectDevice   AuditSubjectKind = "device"        // device_authorization.id
+	AuditSubjectToken    AuditSubjectKind = "service-token" // service_token.id
 )
 
 func (v AuditSubjectKind) Valid() bool { return inEnum(PGAuditSubjectKind, string(v)) }

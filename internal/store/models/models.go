@@ -54,6 +54,7 @@ func All() []any {
 		(*GroupRoleMap)(nil),
 		(*DeviceAuthorization)(nil),
 		(*Session)(nil),
+		(*ServiceToken)(nil),
 
 		// Governance
 		(*OrgPolicy)(nil),

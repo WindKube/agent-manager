@@ -31,9 +31,16 @@ type Principal struct {
 	DisplayName string
 	Groups      []string
 	Role        models.OrgRole
-	// Source is the audit row's source column: `web`, or `cli / <host>`.
+	// Source is the audit row's source column: `web`, `cli / <host>` or
+	// `service-token`.
 	Source string
+	// ServiceToken is set, and every identity field above is zero, when a
+	// service token authenticated the request.
+	ServiceToken *ServiceTokenGrant
 }
+
+// IsServiceToken reports whether a service token, not a person, is calling.
+func (p Principal) IsServiceToken() bool { return p.ServiceToken != nil }
 
 func (p Principal) Refs() []string {
 	refs := make([]string, 0, 2)

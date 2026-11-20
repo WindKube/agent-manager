@@ -350,6 +350,22 @@ transaction, not by a boolean (FR-042).
 
 Opaque server-side sessions for the web role. Hashed, same reasoning as above.
 
+### `service_token`
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid pk | |
+| `name` | text | 1–100 characters |
+| `token_hash` | bytea **unique** | sha256 of the `amst_` secret. **Hashed at rest**; the secret is shown once at creation |
+| `scopes` | text[] | At least one of `sync:profile/<slug>`, `read:catalog`. No write scopes exist |
+| `created_by_identity_id` | uuid fk → identity | The token reads with this identity's readability, never its role |
+| `expires_at` | timestamptz | Mandatory, at most one year after `created_at` |
+| `last_used_at` | timestamptz, nullable | Throttled to one write a minute |
+| `last_use_audited_at` | timestamptz, nullable | Bounds use auditing to one `audit_event` row a day |
+| `revoked_at` | timestamptz, nullable | Checked on every request |
+
+A non-human credential for CI and headless machines (item #3). Only `am_api` holds any grant
+on it.
+
 ---
 
 ## Governance
@@ -361,7 +377,7 @@ The `check (id = 1)` is what makes it a singleton at the schema level rather tha
 convention (spec Assumptions: single organisation per deployment).
 
 ### `audit_event` — append-only
-| `id` uuid pk | `occurred_at` timestamptz | `actor` text | `actor_kind` enum `identity \| system` | `kind` enum `fetch \| scan \| approve \| profile \| share \| sync \| login \| policy \| role \| category \| secret` | `text` text | `source` text |
+| `id` uuid pk | `occurred_at` timestamptz | `actor` text | `actor_kind` enum `identity \| system \| service-token` | `kind` enum `fetch \| scan \| approve \| profile \| share \| sync \| login \| policy \| role \| category \| secret \| token` | `text` text | `source` text |
 
 **Append-only is enforced by revoking `UPDATE` and `DELETE` from the application role**, not
 by convention (FR-052, constitution principle IV). Index `(occurred_at desc)`.
@@ -427,9 +443,10 @@ whatever they are.
 grows without bound. The first requirement that names a window is where a prune gets designed.
 
 ### `sync_event`
-| `id` uuid pk | `identity_id` uuid fk → identity | `profile_id` uuid fk → profile | `revision_id` uuid fk → revision | `host` text | `occurred_at` |
+| `id` uuid pk | `identity_id` uuid fk → identity | `service_token_id` uuid fk → service_token, nullable | `profile_id` uuid fk → profile | `revision_id` uuid fk → revision | `host` text | `occurred_at` |
 
-One row per sync, not per package (R8). The per-package fan-out for install counts happens
+One row per sync, not per package (R8). A sync reported by a service token names the token,
+and `identity_id` is then the token's creator. The per-package fan-out for install counts happens
 in the nightly aggregation job.
 
 ---
@@ -478,7 +495,7 @@ renders that intermediate state).
 | Scan, Finding, Override | `scan`, `scan_check`, `finding`, `finding_evidence`, `override` |
 | Profile, ProfileEntry, Revision, Membership | `profile`, `profile_entry`, `revision`, `membership`, `sync_target` |
 | Category | `category` |
-| Identity, DeviceAuthorization | `identity`, `group_role_map`, `device_authorization`, `session` |
+| Identity, DeviceAuthorization | `identity`, `group_role_map`, `device_authorization`, `session`, `service_token` |
 | AuditEvent | `audit_event`, `sync_event` |
 | OrgPolicy | `org_policy` |
 | — no spec entity; FR-053's fetch outcomes | `fetch_attempt` |
@@ -528,6 +545,7 @@ against a stated decision instead of a fresh guess.
 | `am_api` | `SELECT` on `finding_evidence` | The finding detail pane, served over HTTP by `api` |
 | `am_fetcher` | `INSERT` on `fetch_attempt` | FR-053 and the Edge Cases requirement that a refused fetch be recorded as a fetch error; the fetcher is what performs the fetch |
 | `am_api` | `SELECT` on `fetch_attempt` | FR-053's "recent fetch outcomes" panel, served by `api` |
+| `am_api` | `SELECT`, `INSERT`, `UPDATE` on `service_token` | Resolving, creating, revoking and touching service tokens |
 | `am_web` | **none — no role, no grant, no DSN** | Principle II. It reaches data only through `api` over HTTP |
 | `am_migrate` | DDL owner, used only by the Atlas init container | quickstart.md's `migrate-schema` gate |
 
@@ -549,6 +567,7 @@ will reach for by neighbourhood, so each carries the reason it stays withheld.
 | `INSERT` on `fetch_attempt` from `am_api` | A reference that names no repository at all can be rejected in the registration handler, before any outbox row exists — so a future `api` could have a refusal to record with no fetcher involved | No such handler exists yet, so there is no statement to name, and a grant on a prediction is exactly the excess that never surfaces. The layer that writes that handler widens this deliberately |
 | `SELECT` on `fetch_attempt` from `am_fetcher` | It writes every row in it | It never reads its own history, the same reason it holds only `INSERT` on `audit_event` and `outbox` |
 | `UPDATE`, `DELETE` on `fetch_attempt` from **every** role | An attempt row looks like something a retention job would tidy | An attempt is a record of something that already happened. Note what this does **not** amount to: `fetch_attempt` is not covered by FR-052's revoke, which names `audit_event` and only `audit_event`, so a table owner can still grant itself back |
+| Any grant on `service_token` to `am_fetcher`, `am_scanner`; `DELETE` from `am_api` | Neighbouring identity tables | `token_hash` is a bearer credential at rest, and a revoked or expired row is the evidence the credential existed |
 | `SELECT` on `identity`, `session`, `device_authorization`, `profile*`, `audit_event` from `am_scanner` | The grant summary above says "`SELECT` on the catalog and its scan history", which an earlier draft wrote as "SELECT broadly" | `session.token_hash` and `device_authorization.device_code_hash` are bearer credentials at rest. "Broadly" is read as the catalog and its scan history; narrowing a grant is always safe, widening one is the mistake worth avoiding |
 
 Three independent lines of evidence backed the `DELETE` half of that list as it stood at

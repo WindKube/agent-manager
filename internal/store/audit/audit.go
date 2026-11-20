@@ -25,6 +25,7 @@ import (
 //	revision  profile (slug), profileId, revision (seq)
 //	category  name (absent on delete, which knows only the id)
 //	device    host
+//	service-token  name
 type Subject struct {
 	Kind      models.AuditSubjectKind
 	ID        string
@@ -79,6 +80,10 @@ func Identity(id uuid.UUID) Subject {
 
 func Device(id uuid.UUID, host string) Subject {
 	return Subject{Kind: models.AuditSubjectDevice, ID: id.String(), Data: map[string]any{"host": host}}
+}
+
+func ServiceToken(id uuid.UUID, name string) Subject {
+	return Subject{Kind: models.AuditSubjectToken, ID: id.String(), Data: map[string]any{"name": name}}
 }
 
 // Entry is one audit row to be written. Action is the machine-readable verb

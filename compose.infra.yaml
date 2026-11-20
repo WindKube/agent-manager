@@ -27,7 +27,6 @@ services:
       POSTGRES_PASSWORD: local-development-postgres
       POSTGRES_DB: agent_manager
     volumes:
-      - ./deploy/local/postgres-init.sql:/docker-entrypoint-initdb.d/10-agent-manager.sql:ro
       - postgres-data:/var/lib/postgresql/data
     # An ephemeral host port, not 5432:5432. Most developers already have a
     # Postgres listening on 5432, and a port collision there took the whole stack
@@ -43,6 +42,20 @@ services:
 
   # MinIO no longer publishes images; Bitnami's frozen build carries the server,
   # mc and a shell in one. It runs as uid 1001, hence the data path it owns.
+  # Roles, passwords and the queue database, applied on every `up` rather than
+  # from docker-entrypoint-initdb.d, which runs only on an empty volume.
+  postgres-init:
+    image: postgres:16.15-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: local-development-postgres
+    volumes:
+      - ./deploy/local/postgres-init.sql:/postgres-init.sql:ro
+    command: ["psql", "-v", "ON_ERROR_STOP=1", "-h", "postgres", "-U", "postgres", "-d", "agent_manager",
+              "-f", "/postgres-init.sql"]
+
   minio:
     image: &minio-image bitnamilegacy/minio:2025.7.23
     entrypoint: ["minio"]
@@ -160,8 +173,8 @@ services:
         VERSION: local
         COMMIT: compose
     depends_on:
-      postgres:
-        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
     # The script reads these two and nothing else; atlas and river do their own
     # logging, so the observability variables every other service carries would
     # be read by nobody here.

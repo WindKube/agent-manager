@@ -1,4 +1,6 @@
--- Local-only cluster bootstrap. Runs once, from docker-entrypoint-initdb.d.
+-- Local-only cluster bootstrap, run by the postgres-init one-shot on every
+-- `up`, so it is idempotent: a role added later (am_notifier) gets its password
+-- on an existing volume too, not only on a fresh one.
 --
 -- The split of work is deliberate and matches data-model.md: this file is the
 -- DEPLOYMENT's half — which databases exist, who owns them, and the role
@@ -10,20 +12,33 @@
 -- role cannot log in without a password and a password in a migration is a
 -- credential in git. These passwords are local-development values and the stack
 -- they unlock listens only on the compose network.
+--
+-- am_queue owns the queue database alone, so River's own migrator needs no
+-- grant from us and Atlas can never see its tables (constitution principle IX,
+-- R11).
+do $$
+declare
+  r record;
+begin
+  for r in select * from (values
+    ('am_migrate', 'local-development-am-migrate'),
+    ('am_api', 'local-development-am-api'),
+    ('am_fetcher', 'local-development-am-fetcher'),
+    ('am_scanner', 'local-development-am-scanner'),
+    ('am_notifier', 'local-development-am-notifier'),
+    ('am_queue', 'local-development-am-queue')
+  ) as v(name, password) loop
+    if exists (select 1 from pg_roles where rolname = r.name) then
+      execute format('alter role %I login password %L', r.name, r.password);
+    else
+      execute format('create role %I login password %L', r.name, r.password);
+    end if;
+  end loop;
+end
+$$;
 
-create role am_migrate login password 'local-development-am-migrate';
-create role am_api     login password 'local-development-am-api';
-create role am_fetcher login password 'local-development-am-fetcher';
-create role am_scanner login password 'local-development-am-scanner';
-create role am_notifier login password 'local-development-am-notifier';
-
--- The queue is a separate database with a single role that owns it, so River's
--- own migrator needs no grant from us and Atlas can never see its tables
--- (constitution principle IX, R11). One role here is not a weaker boundary than
--- four: the isolation being protected is between the queue and the application
--- schema, not between the roles inside the queue.
-create role am_queue login password 'local-development-am-queue';
-create database river owner am_queue;
+select 'create database river owner am_queue'
+where not exists (select 1 from pg_database where datname = 'river') \gexec
 
 -- agent_manager itself is created by POSTGRES_DB, so only its ownership is set
 -- here. am_migrate has to own the schema before it can apply the first

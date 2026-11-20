@@ -16,6 +16,9 @@ CREATE TABLE "finding" ("id" uuid NOT NULL, "scan_id" uuid NOT NULL, "version_id
 CREATE TABLE "finding_evidence" ("id" uuid NOT NULL, "finding_id" uuid NOT NULL, "path" text NOT NULL, "line" integer, "quote" text, "role" evidence_role NOT NULL, "created_at" timestamptz NOT NULL DEFAULT now(), PRIMARY KEY ("id"));
 CREATE TABLE "group_role_map" ("group_name" text NOT NULL, "role" org_role NOT NULL, "created_at" timestamptz NOT NULL DEFAULT now(), "updated_at" timestamptz NOT NULL DEFAULT now(), PRIMARY KEY ("group_name"));
 CREATE TABLE "identity" ("id" uuid NOT NULL, "subject" text NOT NULL, "email" text, "display_name" text, "groups" text[] NOT NULL DEFAULT '{}', "last_seen_at" timestamptz, "created_at" timestamptz NOT NULL DEFAULT now(), "updated_at" timestamptz NOT NULL DEFAULT now(), PRIMARY KEY ("id"), UNIQUE ("subject"));
+CREATE TABLE "machine" ("id" uuid NOT NULL, "hostname" text NOT NULL, "os" text, "arch" text, "amctl_version" text, "last_identity_id" uuid NOT NULL, "last_service_token_id" uuid, "last_profile_id" uuid NOT NULL, "last_revision_id" uuid NOT NULL, "first_seen_at" timestamptz NOT NULL DEFAULT now(), "last_seen_at" timestamptz NOT NULL DEFAULT now(), PRIMARY KEY ("id"));
+CREATE TABLE "machine_install" ("machine_id" uuid NOT NULL, "profile_id" uuid NOT NULL, "target" sync_target_kind NOT NULL, "package_id" uuid NOT NULL, "version_id" uuid NOT NULL, PRIMARY KEY ("machine_id", "profile_id", "target", "package_id"));
+CREATE TABLE "machine_skip" ("id" uuid NOT NULL, "machine_id" uuid NOT NULL, "profile_id" uuid NOT NULL, "entry" text NOT NULL, "target" sync_target_kind, "component" text, "reason" text, PRIMARY KEY ("id"));
 CREATE TABLE "membership" ("profile_id" uuid NOT NULL, "subject_kind" subject_kind NOT NULL, "subject_ref" text NOT NULL, "role" membership_role NOT NULL, "created_at" timestamptz NOT NULL DEFAULT now(), "updated_at" timestamptz NOT NULL DEFAULT now(), PRIMARY KEY ("profile_id", "subject_kind", "subject_ref"));
 CREATE TABLE "org_policy" ("id" integer NOT NULL, "scan_gate" scan_gate NOT NULL, "default_version_policy" version_policy NOT NULL, "require_signed_bundles" boolean NOT NULL, "community_needs_review" boolean NOT NULL, "rescan_on_new_version" boolean NOT NULL, "allow_personal_profiles" boolean NOT NULL, "created_at" timestamptz NOT NULL DEFAULT now(), "updated_at" timestamptz NOT NULL DEFAULT now(), PRIMARY KEY ("id"));
 CREATE TABLE "outbox" ("id" uuid NOT NULL, "job_kind" text NOT NULL, "payload" jsonb NOT NULL, "idempotency_key" text NOT NULL, "state" outbox_state NOT NULL, "created_at" timestamptz NOT NULL DEFAULT now(), "delivered_at" timestamptz, PRIMARY KEY ("id"));
@@ -38,6 +41,13 @@ ALTER TABLE "device_authorization" ADD FOREIGN KEY ("approved_by_identity_id") R
 ALTER TABLE "finding" ADD FOREIGN KEY ("scan_id") REFERENCES "scan" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION;
 ALTER TABLE "finding" ADD FOREIGN KEY ("version_id") REFERENCES "version" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION;
 ALTER TABLE "finding_evidence" ADD FOREIGN KEY ("finding_id") REFERENCES "finding" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION;
+ALTER TABLE "machine" ADD FOREIGN KEY ("last_identity_id") REFERENCES "identity" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION;
+ALTER TABLE "machine" ADD FOREIGN KEY ("last_profile_id") REFERENCES "profile" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION;
+ALTER TABLE "machine" ADD FOREIGN KEY ("last_revision_id") REFERENCES "revision" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION;
+ALTER TABLE "machine" ADD FOREIGN KEY ("last_service_token_id") REFERENCES "service_token" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION;
+ALTER TABLE "machine_install" ADD FOREIGN KEY ("version_id") REFERENCES "version" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION;
+ALTER TABLE "machine_skip" ADD FOREIGN KEY ("machine_id") REFERENCES "machine" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION;
+ALTER TABLE "machine_skip" ADD FOREIGN KEY ("profile_id") REFERENCES "profile" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION;
 ALTER TABLE "override" ADD FOREIGN KEY ("reviewer_identity_id") REFERENCES "identity" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION;
 ALTER TABLE "package" ADD FOREIGN KEY ("category_id") REFERENCES "category" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION;
 ALTER TABLE "package" ADD FOREIGN KEY ("owner_identity_id") REFERENCES "identity" ("id") ON UPDATE NO ACTION ON DELETE NO ACTION;

@@ -140,16 +140,16 @@ func parseGeneratedTables(t *testing.T, sql string) map[string]map[string]bool {
 // the independence of its two sides: a list produced from either side turns the
 // test on that side into a tautology, and the pair then agrees about anything.
 //
-// Twelve of these cannot come from the Bun models — ten because the base column
+// Fifteen of these cannot come from the Bun models — thirteen because the base column
 // is part of the primary key, which is a shape data-model.md mandates for
-// signature and override; package.latest_version_id because a second belongs-to
+// signature, override and machine_install; package.latest_version_id because a second belongs-to
 // between package and version makes the Atlas loader's topological sort a cycle;
 // and the composite package(publisher_id, namespace) key, which a bun tag has no
 // way to spell at all. They are added by
 // internal/store/schema/03-constraints.sql, so nothing in Go fails if a statement
 // is lost from that file.
 var wantForeignKeys = []string{
-	// The twelve the loader cannot emit.
+	// The fifteen the loader cannot emit.
 	"capability(version_id) -> version",
 	"component(version_id) -> version",
 	"membership(profile_id) -> profile",
@@ -166,12 +166,22 @@ var wantForeignKeys = []string{
 	"signature(version_id) -> version",
 	"sync_target(profile_id) -> profile",
 	"version_tag(version_id) -> version",
-	// The seventeen the loader does emit, listed so an accidental loss on the
+	"machine_install(machine_id) -> machine",
+	"machine_install(profile_id) -> profile",
+	"machine_install(package_id) -> package",
+	// The ones the loader does emit, listed so an accidental loss on the
 	// generated side fails here too.
 	"device_authorization(approved_by_identity_id) -> identity",
 	"finding(scan_id) -> scan",
 	"finding(version_id) -> version",
 	"finding_evidence(finding_id) -> finding",
+	"machine(last_identity_id) -> identity",
+	"machine(last_profile_id) -> profile",
+	"machine(last_revision_id) -> revision",
+	"machine(last_service_token_id) -> service_token",
+	"machine_install(version_id) -> version",
+	"machine_skip(machine_id) -> machine",
+	"machine_skip(profile_id) -> profile",
 	"override(reviewer_identity_id) -> identity",
 	"package(category_id) -> category",
 	"package(owner_identity_id) -> identity",

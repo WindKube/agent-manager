@@ -37,7 +37,7 @@ func TestNewRefusesARowWithoutASubjectOrAction(t *testing.T) {
 	for name, e := range map[string]audit.Entry{
 		"no subject":     entry(audit.Subject{}),
 		"no subject id":  entry(audit.Mapping("")),
-		"unknown kind":   entry(audit.Subject{Kind: "machine", ID: "x"}),
+		"unknown kind":   entry(audit.Subject{Kind: "spaceship", ID: "x"}),
 		"no action":      func() audit.Entry { e := entry(audit.Policy()); e.Action = ""; return e }(),
 		"bad audit kind": func() audit.Entry { e := entry(audit.Policy()); e.Kind = "nope"; return e }(),
 		"data overwrites": func() audit.Entry {

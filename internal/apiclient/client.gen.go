@@ -1806,6 +1806,48 @@ func (e ServiceTokenStatus) Valid() bool {
 	}
 }
 
+// Defines values for SyncComponentSkipTarget.
+const (
+	SyncComponentSkipTargetClaudeCode SyncComponentSkipTarget = "claude-code"
+	SyncComponentSkipTargetCodex      SyncComponentSkipTarget = "codex"
+	SyncComponentSkipTargetOpencode   SyncComponentSkipTarget = "opencode"
+)
+
+// Valid indicates whether the value is a known member of the SyncComponentSkipTarget enum.
+func (e SyncComponentSkipTarget) Valid() bool {
+	switch e {
+	case SyncComponentSkipTargetClaudeCode:
+		return true
+	case SyncComponentSkipTargetCodex:
+		return true
+	case SyncComponentSkipTargetOpencode:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SyncInstallTarget.
+const (
+	SyncInstallTargetClaudeCode SyncInstallTarget = "claude-code"
+	SyncInstallTargetCodex      SyncInstallTarget = "codex"
+	SyncInstallTargetOpencode   SyncInstallTarget = "opencode"
+)
+
+// Valid indicates whether the value is a known member of the SyncInstallTarget enum.
+func (e SyncInstallTarget) Valid() bool {
+	switch e {
+	case SyncInstallTargetClaudeCode:
+		return true
+	case SyncInstallTargetCodex:
+		return true
+	case SyncInstallTargetOpencode:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SyncReportTargets.
 const (
 	SyncReportTargetsClaudeCode SyncReportTargets = "claude-code"
@@ -4333,12 +4375,71 @@ type StorageReport struct {
 	Truncated bool    `json:"truncated"`
 }
 
+// SyncComponentSkip defines model for SyncComponentSkip.
+type SyncComponentSkip struct {
+	// Component The component's kind and name.
+	//
+	// Examples: mcp-server lint
+	Component string `json:"component"`
+
+	// Entry namespace/name of the installed entry.
+	//
+	// Examples: acme/code-review
+	Entry string `json:"entry"`
+
+	// Reason Examples: no claude CLI on PATH
+	Reason string `json:"reason"`
+
+	// Target Examples: claude-code
+	Target SyncComponentSkipTarget `json:"target"`
+}
+
+// SyncComponentSkipTarget Examples: claude-code
+type SyncComponentSkipTarget string
+
+// SyncInstall defines model for SyncInstall.
+type SyncInstall struct {
+	// Changed This sync wrote the entry. The component skips of an entry it did not write carry over from the report that did.
+	Changed *bool `json:"changed,omitempty"`
+
+	// Id namespace/name
+	//
+	// Examples: acme/code-review
+	Id string `json:"id"`
+
+	// Target Examples: claude-code
+	Target SyncInstallTarget `json:"target"`
+
+	// Version Examples: 2.4.1
+	Version string `json:"version"`
+}
+
+// SyncInstallTarget Examples: claude-code
+type SyncInstallTarget string
+
 // SyncReport defines model for SyncReport.
 type SyncReport struct {
+	// AmctlVersion Examples: 0.9.0
+	AmctlVersion *string `json:"amctlVersion,omitempty"`
+
+	// Arch Examples: arm64
+	Arch *string `json:"arch,omitempty"`
+
 	// Host Hostname the sync landed on, for the audit row.
 	//
 	// Examples: dev-laptop-01
 	Host string `json:"host"`
+
+	// Installed Every entry of this profile installed on the machine after this sync. Replaces what the machine reported for this profile before.
+	Installed *[]SyncInstall `json:"installed,omitempty"`
+
+	// MachineId A random id the client generated once and keeps. Without it the sync is recorded but no machine inventory is kept.
+	//
+	// Examples: 0193a8e2-6b1f-7c3a-9d4e-2f5b8c1a7e60
+	MachineId *openapi_types.UUID `json:"machineId,omitempty"`
+
+	// Os Examples: darwin
+	Os *string `json:"os,omitempty"`
 
 	// Profile Slug of the profile that was synced.
 	//
@@ -4352,6 +4453,9 @@ type SyncReport struct {
 
 	// Skipped Entry ids the client skipped locally, if any.
 	Skipped *[]string `json:"skipped,omitempty"`
+
+	// SkippedComponents Components of entries this sync wrote that the client did not place.
+	SkippedComponents *[]SyncComponentSkip `json:"skippedComponents,omitempty"`
 
 	// Targets Agent directories the client actually wrote.
 	Targets []SyncReportTargets `json:"targets"`
@@ -5365,7 +5469,7 @@ type ClientInterface interface {
 
 	// ReportSyncWithBody Report a completed sync
 	//
-	// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
+	// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -5374,7 +5478,7 @@ type ClientInterface interface {
 
 	// ReportSync Report a completed sync
 	//
-	// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
+	// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -6712,7 +6816,7 @@ func (c *Client) GetStorage(ctx context.Context, reqEditors ...RequestEditorFn) 
 
 // ReportSyncWithBody Report a completed sync
 //
-// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
+// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 //
 // Takes any type of body and a specified content type.
 //
@@ -6731,7 +6835,7 @@ func (c *Client) ReportSyncWithBody(ctx context.Context, contentType string, bod
 
 // ReportSync Report a completed sync
 //
-// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
+// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -9886,7 +9990,7 @@ type ClientWithResponsesInterface interface {
 
 	// ReportSyncWithBodyWithResponse Report a completed sync
 	//
-	// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
+	// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -9895,7 +9999,7 @@ type ClientWithResponsesInterface interface {
 
 	// ReportSyncWithResponse Report a completed sync
 	//
-	// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
+	// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -14986,7 +15090,7 @@ func (c *ClientWithResponses) GetStorageWithResponse(ctx context.Context, reqEdi
 
 // ReportSyncWithBodyWithResponse Report a completed sync
 //
-// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
+// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -15001,7 +15105,7 @@ func (c *ClientWithResponses) ReportSyncWithBodyWithResponse(ctx context.Context
 
 // ReportSyncWithResponse Report a completed sync
 //
-// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
+// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //

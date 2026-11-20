@@ -17,12 +17,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	"github.com/WindKube/agent-manager/cli/internal/apply"
@@ -1834,4 +1836,50 @@ func TestAPluginIsDecomposedIntoEveryTargetsOwnLocations(t *testing.T) {
 	code, _, diag, err = env.run(t, output.FormatHuman, flags)
 	require.NoError(t, err, diag.String())
 	require.Equal(t, CodeNoChanges, code)
+}
+
+func TestSyncReportsThisMachinesInventoryUnderOneKeptID(t *testing.T) {
+	tg := startSyncFake(t)
+	env := newSyncEnv(t, tg)
+	flags := syncFlags{profiles: []string{tg.Fixtures.Plugin}}
+
+	_, _, diag, err := env.run(t, output.FormatHuman, flags)
+	require.NoError(t, err, diag.String())
+	_, _, diag, err = env.run(t, output.FormatHuman, flags)
+	require.NoError(t, err, diag.String())
+
+	reports, cerr := tg.Control.SyncReports()
+	require.NoError(t, cerr)
+	require.Len(t, reports, 2)
+
+	kept, err := os.ReadFile(filepath.Join(filepath.Dir(env.recordPath(t)), record.MachineIDFileName))
+	require.NoError(t, err)
+	id, err := uuid.Parse(strings.TrimSpace(string(kept)))
+	require.NoError(t, err)
+	for _, rep := range reports {
+		require.NotNil(t, rep.MachineId)
+		require.Equal(t, id, *rep.MachineId, "one id, kept across syncs")
+		require.Equal(t, runtime.GOOS, *rep.Os)
+		require.Equal(t, runtime.GOARCH, *rep.Arch)
+		require.Equal(t, Version, *rep.AmctlVersion)
+	}
+
+	rec := env.loadRecord(t)
+	prof, ok := rec.ProfileBySlug(tg.Fixtures.Plugin)
+	require.True(t, ok)
+	first, second := *reports[0].Installed, *reports[1].Installed
+	require.Len(t, first, len(prof.Entries))
+	require.Len(t, second, len(prof.Entries))
+	for i := range first {
+		require.True(t, first[i].Changed != nil && *first[i].Changed, "the first sync wrote %s", first[i].Id)
+		require.Nil(t, second[i].Changed, "the second sync wrote nothing")
+	}
+
+	require.NotNil(t, reports[0].SkippedComponents)
+	var components []string
+	for _, sk := range *reports[0].SkippedComponents {
+		components = append(components, string(sk.Target)+" "+sk.Component)
+	}
+	require.Equal(t, []string{"claude-code mcp-server lint", "opencode skill review"}, components)
+	require.Nil(t, reports[1].SkippedComponents, "an untouched entry's skips are the hub's to carry over")
 }

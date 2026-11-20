@@ -451,6 +451,45 @@ in the nightly aggregation job.
 
 ---
 
+## Fleet inventory
+
+Current state, not history: `sync_event` stays the record of each report. A report carrying a
+`machineId` upserts its `machine` row and replaces that machine's `machine_install` and
+`machine_skip` rows for the reported profile, in the same transaction as its `sync_event`.
+
+### `machine`
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid pk | Generated once by the CLI and kept in its state directory; not derived from hardware |
+| `hostname` | text | 1–255 characters, from the report's `host` |
+| `os`, `arch` | text, nullable | At most 32 characters each |
+| `amctl_version` | text, nullable | At most 64 characters |
+| `last_identity_id` | uuid fk → identity | The reporter, or the creator of the reporting service token |
+| `last_service_token_id` | uuid fk → service_token, nullable | |
+| `last_profile_id` | uuid fk → profile | |
+| `last_revision_id` | uuid fk → revision | |
+| `first_seen_at`, `last_seen_at` | timestamptz | Staleness is computed from `last_seen_at` on read |
+
+### `machine_install`
+| Column | Type | Notes |
+| --- | --- | --- |
+| `machine_id` | uuid pk, fk → machine | |
+| `profile_id` | uuid pk, fk → profile | |
+| `target` | `sync_target_kind` pk | |
+| `package_id` | uuid pk, fk → package | |
+| `version_id` | uuid fk → version | Index `(package_id, version_id)` answers "which machines run X@Y" |
+
+### `machine_skip`
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid pk | |
+| `machine_id` | uuid fk → machine | |
+| `profile_id` | uuid fk → profile | |
+| `entry` | text | The entry id as the client reported it |
+| `target`, `component`, `reason` | nullable | All null for a whole entry skipped, all set for one component of an installed plugin |
+
+---
+
 ## Job hand-off
 
 ### `outbox`
@@ -497,6 +536,7 @@ renders that intermediate state).
 | Category | `category` |
 | Identity, DeviceAuthorization | `identity`, `group_role_map`, `device_authorization`, `session`, `service_token` |
 | AuditEvent | `audit_event`, `sync_event` |
+| — no spec entity; item #6's fleet inventory | `machine`, `machine_install`, `machine_skip` |
 | OrgPolicy | `org_policy` |
 | — no spec entity; FR-053's fetch outcomes | `fetch_attempt` |
 
@@ -546,6 +586,7 @@ against a stated decision instead of a fresh guess.
 | `am_fetcher` | `INSERT` on `fetch_attempt` | FR-053 and the Edge Cases requirement that a refused fetch be recorded as a fetch error; the fetcher is what performs the fetch |
 | `am_api` | `SELECT` on `fetch_attempt` | FR-053's "recent fetch outcomes" panel, served by `api` |
 | `am_api` | `SELECT`, `INSERT`, `UPDATE` on `service_token` | Resolving, creating, revoking and touching service tokens |
+| `am_api` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` on `machine`; `SELECT`, `INSERT`, `DELETE` on `machine_install`, `machine_skip` | The sync report replaces a machine's rows per profile; forgetting a machine deletes them |
 | `am_web` | **none — no role, no grant, no DSN** | Principle II. It reaches data only through `api` over HTTP |
 | `am_migrate` | DDL owner, used only by the Atlas init container | quickstart.md's `migrate-schema` gate |
 
@@ -567,6 +608,7 @@ will reach for by neighbourhood, so each carries the reason it stays withheld.
 | `INSERT` on `fetch_attempt` from `am_api` | A reference that names no repository at all can be rejected in the registration handler, before any outbox row exists — so a future `api` could have a refusal to record with no fetcher involved | No such handler exists yet, so there is no statement to name, and a grant on a prediction is exactly the excess that never surfaces. The layer that writes that handler widens this deliberately |
 | `SELECT` on `fetch_attempt` from `am_fetcher` | It writes every row in it | It never reads its own history, the same reason it holds only `INSERT` on `audit_event` and `outbox` |
 | `UPDATE`, `DELETE` on `fetch_attempt` from **every** role | An attempt row looks like something a retention job would tidy | An attempt is a record of something that already happened. Note what this does **not** amount to: `fetch_attempt` is not covered by FR-052's revoke, which names `audit_event` and only `audit_event`, so a table owner can still grant itself back |
+| Any grant on `machine`, `machine_install`, `machine_skip` to `am_fetcher`, `am_scanner` | Neighbouring governance tables | Only the api reports and reads the inventory |
 | Any grant on `service_token` to `am_fetcher`, `am_scanner`; `DELETE` from `am_api` | Neighbouring identity tables | `token_hash` is a bearer credential at rest, and a revoked or expired row is the evidence the credential existed |
 | `SELECT` on `identity`, `session`, `device_authorization`, `profile*`, `audit_event` from `am_scanner` | The grant summary above says "`SELECT` on the catalog and its scan history", which an earlier draft wrote as "SELECT broadly" | `session.token_hash` and `device_authorization.device_code_hash` are bearer credentials at rest. "Broadly" is read as the catalog and its scan history; narrowing a grant is always safe, widening one is the mistake worth avoiding |
 

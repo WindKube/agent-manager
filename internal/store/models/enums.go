@@ -74,7 +74,7 @@ var enumTypes = map[string][]string{
 	},
 	PGAuditSubjectKind: {
 		"package", "version", "finding", "profile", "revision",
-		"category", "mapping", "policy", "identity", "device", "service-token",
+		"category", "mapping", "policy", "identity", "device", "service-token", "machine",
 	},
 	PGOutboxState:     {"pending", "delivered"},
 	PGEvidenceRole:    {"primary", "supporting"},
@@ -426,6 +426,7 @@ const (
 	AuditSubjectIdentity AuditSubjectKind = "identity"      // identity.id
 	AuditSubjectDevice   AuditSubjectKind = "device"        // device_authorization.id
 	AuditSubjectToken    AuditSubjectKind = "service-token" // service_token.id
+	AuditSubjectMachine  AuditSubjectKind = "machine"       // machine.id
 )
 
 func (v AuditSubjectKind) Valid() bool { return inEnum(PGAuditSubjectKind, string(v)) }

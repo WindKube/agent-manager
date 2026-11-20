@@ -19,6 +19,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	"github.com/WindKube/agent-manager/cli/internal/hub"
@@ -264,4 +265,64 @@ func (c *countingTransport) count() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.n
+}
+
+func TestAReportWithAMachineCarriesItsInventorySorted(t *testing.T) {
+	tg := startReportFake(t)
+	rep := baseReport(tg)
+	rep.MachineID = uuid.New()
+	rep.OS, rep.Arch, rep.AmctlVersion = "linux", "amd64", " 1.2.3 "
+	rep.Installed = []hub.Install{
+		{ID: "acme/zeta", Version: "1.0.0", Target: "codex"},
+		{ID: "acme/alpha", Version: "2.0.0", Target: "claude-code", Changed: true},
+	}
+	rep.SkippedComponents = []hub.ComponentSkip{
+		{Entry: "acme/alpha", Target: "claude-code", Component: "mcp-server lint", Reason: "no claude CLI"},
+	}
+	require.NoError(t, reporterFor(t, tg).Report(context.Background(), rep))
+
+	accepted, err := tg.Control.SyncReports()
+	require.NoError(t, err)
+	require.Len(t, accepted, 1)
+	got := accepted[0]
+	require.Equal(t, rep.MachineID, *got.MachineId)
+	require.Equal(t, "1.2.3", *got.AmctlVersion)
+	require.Equal(t, "linux", *got.Os)
+	require.Len(t, *got.Installed, 2)
+	require.Equal(t, "acme/alpha", (*got.Installed)[0].Id)
+	require.True(t, *(*got.Installed)[0].Changed)
+	require.Nil(t, (*got.Installed)[1].Changed)
+	require.Equal(t, "mcp-server lint", (*got.SkippedComponents)[0].Component)
+}
+
+func TestAReportWithoutAMachineSendsNoInventory(t *testing.T) {
+	tg := startReportFake(t)
+	rep := baseReport(tg)
+	rep.Installed = []hub.Install{{ID: "acme/alpha", Version: "2.0.0", Target: "claude-code"}}
+	require.NoError(t, reporterFor(t, tg).Report(context.Background(), rep))
+
+	accepted, err := tg.Control.SyncReports()
+	require.NoError(t, err)
+	require.Nil(t, accepted[0].MachineId)
+	require.Nil(t, accepted[0].Installed)
+}
+
+func TestAMachineWithNothingInstalledSendsAnEmptyList(t *testing.T) {
+	tg := startReportFake(t)
+	rep := baseReport(tg)
+	rep.MachineID = uuid.New()
+	require.NoError(t, reporterFor(t, tg).Report(context.Background(), rep))
+
+	accepted, err := tg.Control.SyncReports()
+	require.NoError(t, err)
+	require.NotNil(t, accepted[0].Installed, "an empty list clears the hub's installs for the profile")
+	require.Empty(t, *accepted[0].Installed)
+}
+
+func TestAnInstalledTargetOutsideTheContractIsRefusedLocally(t *testing.T) {
+	tg := startReportFake(t)
+	rep := baseReport(tg)
+	rep.MachineID = uuid.New()
+	rep.Installed = []hub.Install{{ID: "acme/alpha", Version: "2.0.0", Target: "agents-md"}}
+	require.ErrorIs(t, reporterFor(t, tg).Report(context.Background(), rep), hub.ErrReportInput)
 }

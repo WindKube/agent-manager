@@ -796,17 +796,20 @@ func TestIndexDefinitionsAreExactlyAsSpecified(t *testing.T) {
 	ctx := context.Background()
 
 	want := map[string]string{
-		"version_tags_gin":                 "CREATE INDEX version_tags_gin ON public.version USING gin (tags)",
-		"version_package_semver_sort_idx":  "CREATE INDEX version_package_semver_sort_idx ON public.version USING btree (package_id, semver_sort DESC)",
-		"version_verdict_visible_idx":      "CREATE INDEX version_verdict_visible_idx ON public.version USING btree (verdict) WHERE visible",
-		"version_created_at_idx":           "CREATE INDEX version_created_at_idx ON public.version USING btree (created_at DESC)",
-		"finding_open_version_idx":         "CREATE INDEX finding_open_version_idx ON public.finding USING btree (version_id) WHERE (state = 'open'::finding_state)",
-		"outbox_pending_created_at_idx":    "CREATE INDEX outbox_pending_created_at_idx ON public.outbox USING btree (created_at) WHERE (state = 'pending'::outbox_state)",
-		"audit_event_occurred_at_idx":      "CREATE INDEX audit_event_occurred_at_idx ON public.audit_event USING btree (occurred_at DESC)",
-		"finding_evidence_finding_idx":     "CREATE INDEX finding_evidence_finding_idx ON public.finding_evidence USING btree (finding_id)",
-		"finding_evidence_one_primary_idx": "CREATE UNIQUE INDEX finding_evidence_one_primary_idx ON public.finding_evidence USING btree (finding_id) WHERE (role = 'primary'::evidence_role)",
-		"fetch_attempt_occurred_at_idx":    "CREATE INDEX fetch_attempt_occurred_at_idx ON public.fetch_attempt USING btree (occurred_at DESC)",
-		"service_token_created_by_idx":     "CREATE INDEX service_token_created_by_idx ON public.service_token USING btree (created_by_identity_id, created_at DESC)",
+		"version_tags_gin":                    "CREATE INDEX version_tags_gin ON public.version USING gin (tags)",
+		"version_package_semver_sort_idx":     "CREATE INDEX version_package_semver_sort_idx ON public.version USING btree (package_id, semver_sort DESC)",
+		"version_verdict_visible_idx":         "CREATE INDEX version_verdict_visible_idx ON public.version USING btree (verdict) WHERE visible",
+		"version_created_at_idx":              "CREATE INDEX version_created_at_idx ON public.version USING btree (created_at DESC)",
+		"finding_open_version_idx":            "CREATE INDEX finding_open_version_idx ON public.finding USING btree (version_id) WHERE (state = 'open'::finding_state)",
+		"outbox_pending_created_at_idx":       "CREATE INDEX outbox_pending_created_at_idx ON public.outbox USING btree (created_at) WHERE (state = 'pending'::outbox_state)",
+		"audit_event_occurred_at_idx":         "CREATE INDEX audit_event_occurred_at_idx ON public.audit_event USING btree (occurred_at DESC)",
+		"finding_evidence_finding_idx":        "CREATE INDEX finding_evidence_finding_idx ON public.finding_evidence USING btree (finding_id)",
+		"finding_evidence_one_primary_idx":    "CREATE UNIQUE INDEX finding_evidence_one_primary_idx ON public.finding_evidence USING btree (finding_id) WHERE (role = 'primary'::evidence_role)",
+		"fetch_attempt_occurred_at_idx":       "CREATE INDEX fetch_attempt_occurred_at_idx ON public.fetch_attempt USING btree (occurred_at DESC)",
+		"service_token_created_by_idx":        "CREATE INDEX service_token_created_by_idx ON public.service_token USING btree (created_by_identity_id, created_at DESC)",
+		"machine_install_package_version_idx": "CREATE INDEX machine_install_package_version_idx ON public.machine_install USING btree (package_id, version_id)",
+		"machine_skip_machine_profile_idx":    "CREATE INDEX machine_skip_machine_profile_idx ON public.machine_skip USING btree (machine_id, profile_id)",
+		"machine_last_identity_idx":           "CREATE INDEX machine_last_identity_idx ON public.machine USING btree (last_identity_id)",
 	}
 
 	for name, def := range want {
@@ -1884,4 +1887,100 @@ func TestAServiceTokenNeedsAScopeAndAnExpiryWithinAYear(t *testing.T) {
 
 	_, err = insertServiceToken(ctx, pool, creator, []string{"read:catalog"}, "1 year")
 	require.NoError(t, err)
+}
+
+// ---------------------------------------------------------------------------
+// Fleet inventory — only the api reports and reads it
+// ---------------------------------------------------------------------------
+
+func TestOnlyTheAPIRoleReachesTheFleetInventory(t *testing.T) {
+	ctx := context.Background()
+	identity, profile, pkg := seedIdentity(t, ctx), seedProfile(t, ctx), seedPackage(t, ctx)
+	version := seedVersion(t, ctx, pkg, "1.0.0", bytes.Repeat([]byte{7}, 32), "bundles/inv/"+pkg.String())
+	revision := models.NewID()
+	_, err := pool.Exec(ctx, `insert into revision (id, profile_id, seq, lockfile, object_key, created_by)
+		values ($1, $2, 1, '{}', $3, 'a@example.com')`, revision, profile, "profiles/"+profile.String()+"/r1.json")
+	require.NoError(t, err)
+
+	machine := models.NewID()
+	insertMachine := `insert into machine (id, hostname, last_identity_id, last_profile_id, last_revision_id)
+		values ($1, 'laptop', $2, $3, $4)`
+	insertInstall := `insert into machine_install (machine_id, profile_id, target, package_id, version_id)
+		values ($1, $2, 'claude-code', $3, $4)`
+	insertSkip := `insert into machine_skip (id, machine_id, profile_id, entry, target, component, reason)
+		values ($1, $2, $3, 'acme/x', 'codex', 'mcp-server lint', 'no claude CLI')`
+
+	asRole(t, "am_api", func(ctx context.Context, conn *pgxpool.Conn) {
+		_, err := conn.Exec(ctx, insertMachine, machine, identity, profile, revision)
+		require.NoError(t, err)
+		_, err = conn.Exec(ctx, `update machine set last_seen_at = now(), hostname = 'laptop-2' where id = $1`, machine)
+		require.NoError(t, err)
+		_, err = conn.Exec(ctx, insertInstall, machine, profile, pkg, version)
+		require.NoError(t, err)
+		_, err = conn.Exec(ctx, insertSkip, models.NewID(), machine, profile)
+		require.NoError(t, err)
+		for _, stmt := range []string{
+			`select count(*) from machine_install where machine_id = $1`,
+			`select count(*) from machine_skip where machine_id = $1`,
+		} {
+			var n int
+			require.NoError(t, conn.QueryRow(ctx, stmt, machine).Scan(&n))
+			require.Equal(t, 1, n)
+		}
+	})
+
+	for _, role := range []string{"am_fetcher", "am_scanner"} {
+		for _, stmt := range []string{
+			`select hostname from machine where id = $1`,
+			`select version_id from machine_install where machine_id = $1`,
+			`select reason from machine_skip where machine_id = $1`,
+			`delete from machine_install where machine_id = $1`,
+			`update machine set hostname = 'x' where id = $1`,
+		} {
+			t.Run(role+" cannot run "+stmt, func(t *testing.T) {
+				asRole(t, role, func(ctx context.Context, conn *pgxpool.Conn) {
+					_, err := conn.Exec(ctx, stmt, machine)
+					requirePgError(t, err, "42501", "")
+				})
+			})
+		}
+	}
+
+	asRole(t, "am_api", func(ctx context.Context, conn *pgxpool.Conn) {
+		for _, stmt := range []string{
+			`delete from machine_install where machine_id = $1`,
+			`delete from machine_skip where machine_id = $1`,
+			`delete from machine where id = $1`,
+		} {
+			tag, err := conn.Exec(ctx, stmt, machine)
+			require.NoError(t, err, stmt)
+			require.EqualValues(t, 1, tag.RowsAffected(), stmt)
+		}
+	})
+}
+
+func TestAMachineSkipIsAWholeEntryOrAWholeComponent(t *testing.T) {
+	ctx := context.Background()
+	identity, profile := seedIdentity(t, ctx), seedProfile(t, ctx)
+	revision, machine := models.NewID(), models.NewID()
+	_, err := pool.Exec(ctx, `insert into revision (id, profile_id, seq, lockfile, object_key, created_by)
+		values ($1, $2, 1, '{}', $3, 'a@example.com')`, revision, profile, "profiles/"+profile.String()+"/r1.json")
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `insert into machine (id, hostname, last_identity_id, last_profile_id, last_revision_id)
+		values ($1, '  ', $2, $3, $4)`, machine, identity, profile, revision)
+	requirePgError(t, err, "23514", "machine_fields_are_bounded")
+	_, err = pool.Exec(ctx, `insert into machine (id, hostname, last_identity_id, last_profile_id, last_revision_id)
+		values ($1, 'laptop', $2, $3, $4)`, machine, identity, profile, revision)
+	require.NoError(t, err)
+
+	skip := func(target, component, reason *string) error {
+		_, err := pool.Exec(ctx, `insert into machine_skip (id, machine_id, profile_id, entry, target, component, reason)
+			values ($1, $2, $3, 'acme/x', $4::sync_target_kind, $5, $6)`, models.NewID(), machine, profile, target, component, reason)
+		return err
+	}
+	target, component, reason := "codex", "mcp-server lint", "no CLI"
+	require.NoError(t, skip(nil, nil, nil))
+	require.NoError(t, skip(&target, &component, &reason))
+	requirePgError(t, skip(&target, &component, nil), "23514", "machine_skip_component_is_whole")
+	requirePgError(t, skip(nil, &component, &reason), "23514", "machine_skip_component_is_whole")
 }

@@ -62,6 +62,11 @@ func All() []any {
 		(*SyncEvent)(nil),
 		(*FetchAttempt)(nil),
 
+		// Fleet inventory
+		(*Machine)(nil),
+		(*MachineInstall)(nil),
+		(*MachineSkip)(nil),
+
 		// Job hand-off
 		(*Outbox)(nil),
 	}

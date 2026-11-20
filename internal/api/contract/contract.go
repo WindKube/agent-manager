@@ -127,6 +127,27 @@ type SyncReport struct {
 	Host     string   `json:"host" doc:"Hostname the sync landed on, for the audit row." example:"dev-laptop-01"`
 	Targets  []string `json:"targets" enum:"claude-code,codex,opencode" doc:"Agent directories the client actually wrote."`
 	Skipped  []string `json:"skipped,omitempty" doc:"Entry ids the client skipped locally, if any."`
+
+	MachineID         string              `json:"machineId,omitempty" format:"uuid" doc:"A random id the client generated once and keeps. Without it the sync is recorded but no machine inventory is kept." example:"0193a8e2-6b1f-7c3a-9d4e-2f5b8c1a7e60"`
+	OS                string              `json:"os,omitempty" maxLength:"32" example:"darwin"`
+	Arch              string              `json:"arch,omitempty" maxLength:"32" example:"arm64"`
+	AmctlVersion      string              `json:"amctlVersion,omitempty" maxLength:"64" example:"0.9.0"`
+	Installed         []SyncInstall       `json:"installed,omitempty" maxItems:"5000" doc:"Every entry of this profile installed on the machine after this sync. Replaces what the machine reported for this profile before."`
+	SkippedComponents []SyncComponentSkip `json:"skippedComponents,omitempty" maxItems:"5000" doc:"Components of entries this sync wrote that the client did not place."`
+}
+
+type SyncInstall struct {
+	ID      string `json:"id" minLength:"3" maxLength:"256" doc:"namespace/name" example:"acme/code-review"`
+	Version string `json:"version" minLength:"1" maxLength:"128" example:"2.4.1"`
+	Target  string `json:"target" enum:"claude-code,codex,opencode" example:"claude-code"`
+	Changed bool   `json:"changed,omitempty" doc:"This sync wrote the entry. The component skips of an entry it did not write carry over from the report that did."`
+}
+
+type SyncComponentSkip struct {
+	Entry     string `json:"entry" minLength:"1" maxLength:"256" doc:"namespace/name of the installed entry." example:"acme/code-review"`
+	Target    string `json:"target" enum:"claude-code,codex,opencode" example:"claude-code"`
+	Component string `json:"component" minLength:"1" maxLength:"256" doc:"The component's kind and name." example:"mcp-server lint"`
+	Reason    string `json:"reason" minLength:"1" maxLength:"1024" example:"no claude CLI on PATH"`
 }
 
 type Health struct {

@@ -7,12 +7,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/99designs/keyring"
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
 	"github.com/WindKube/agent-manager/cli/internal/apply"
@@ -276,7 +278,7 @@ func (r *syncRun) do(ctx context.Context) error {
 	}
 	_ = err // re-derived by syncError from the Result below, not returned as-is
 	r.fill(&res, applied, fetch)
-	r.report(ctx, lockfiles, writable, fetch, attempted, applied) // after the tree's final state
+	r.report(ctx, lockfiles, writable, fetch, attempted, applied, rec) // after the tree's final state
 
 	if emitErr := r.opts.Emit(res); emitErr != nil {
 		return emitErr
@@ -976,11 +978,16 @@ func (r *syncRun) report(
 	fetch *bundleFetcher,
 	attempted map[string]int,
 	applied *apply.Result,
+	rec *record.Record,
 ) {
 	reporter, err := hub.NewReporter(r.client)
 	if err != nil {
 		r.s.Warnf("the sync could not be reported to %s: %v", r.target.URL, err)
 		return
+	}
+	machine, err := record.LoadMachineID(r.home.HubDir(r.target))
+	if err != nil {
+		r.s.Warnf("this machine's id could not be kept, so the hub records the sync without an inventory: %v", err)
 	}
 	states := profileStates(lockfiles, writable)
 	// Both skips and failures feed `skipped`: the wire has one field for
@@ -995,8 +1002,18 @@ func (r *syncRun) report(
 		skipped[fl.Profile] = append(skipped[fl.Profile], fl.ID)
 	}
 	landed := map[string]int{}
+	changed := map[string]bool{}
+	componentSkips := map[string][]hub.ComponentSkip{}
 	for i := range applied.Installed {
-		landed[applied.Installed[i].Change.Profile]++
+		inst := applied.Installed[i]
+		landed[inst.Change.Profile]++
+		changed[changeKey(inst.Change.Profile, inst.Change.Target, inst.Change.ID)] = true
+		for _, sk := range inst.Skipped {
+			componentSkips[inst.Change.Profile] = append(componentSkips[inst.Change.Profile], hub.ComponentSkip{
+				Entry: inst.Change.ID, Target: string(inst.Change.Target),
+				Component: string(sk.Kind) + " " + sk.Name, Reason: sk.Reason,
+			})
+		}
 	}
 	for _, st := range states {
 		// Had work and landed none of it: not synced, so don't report it. An
@@ -1014,10 +1031,24 @@ func (r *syncRun) report(
 			r.s.Warnf("%s: no writable target, so no sync was reported", st.Slug)
 			continue
 		}
-		err := reporter.Report(ctx, hub.Report{
+		rep := hub.Report{
 			Profile: st.Slug, Revision: st.Revision, Host: r.host,
 			Targets: targets, SkippedLocally: skipped[st.Slug],
-		})
+		}
+		if machine != uuid.Nil {
+			rep.MachineID, rep.OS, rep.Arch, rep.AmctlVersion = machine, runtime.GOOS, runtime.GOARCH, Version
+			rep.SkippedComponents = componentSkips[st.Slug]
+			if prof, ok := rec.ProfileBySlug(st.Slug); ok {
+				for i := range prof.Entries {
+					e := &prof.Entries[i]
+					rep.Installed = append(rep.Installed, hub.Install{
+						ID: e.ID, Version: e.Version, Target: string(e.Target),
+						Changed: changed[changeKey(st.Slug, e.Target, e.ID)],
+					})
+				}
+			}
+		}
+		err := reporter.Report(ctx, rep)
 		if err != nil {
 			r.s.Warnf("the sync of %s at revision %d was not reported to %s: %v; "+
 				"the packages are installed, and this report is not retried because the hub records one audit "+

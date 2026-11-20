@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"sync"
+
+	"github.com/google/uuid"
 )
 
 // This file reports one completed sync at most once, never retried: the
@@ -33,11 +35,34 @@ type Report struct {
 	// Host is this machine's name, for the audit row.
 	Host string
 
-	// Required, non-empty: the hub stores nothing per target beyond the audit text.
+	// Required, non-empty.
 	Targets []string
 
 	// SkippedLocally is what THIS CLIENT skipped, not the lockfile's own array.
 	SkippedLocally []string
+
+	// MachineID is this client's persisted random id; zero sends no inventory.
+	MachineID    uuid.UUID
+	OS           string
+	Arch         string
+	AmctlVersion string
+
+	// Installed is every entry of this profile on disk after the sync.
+	Installed []Install
+
+	// SkippedComponents is what this sync did not place of the entries it wrote.
+	SkippedComponents []ComponentSkip
+}
+
+// Install is one installed entry; Changed means this sync wrote it.
+type Install struct {
+	ID, Version, Target string
+	Changed             bool
+}
+
+// ComponentSkip is one plugin component this sync did not place.
+type ComponentSkip struct {
+	Entry, Target, Component, Reason string
 }
 
 // body builds the wire value, validating everything the hub would 422 on and
@@ -82,7 +107,64 @@ func (r Report) body() (SyncReport, error) {
 		// Omitted when empty, not sent as []: an empty array reads as "0 skipped".
 		out.Skipped = &skipped
 	}
+	if r.MachineID != uuid.Nil {
+		if err := r.inventory(&out); err != nil {
+			return SyncReport{}, err
+		}
+	}
 	return out, nil
+}
+
+// inventory adds the machine's fields. Installed is always sent with a
+// machine id, even empty: the hub replaces this profile's installs with it.
+func (r Report) inventory(out *SyncReport) error {
+	id := r.MachineID
+	out.MachineId = &id
+	optional := func(s string) *string {
+		if s = strings.TrimSpace(s); s == "" {
+			return nil
+		}
+		return &s
+	}
+	out.Os, out.Arch, out.AmctlVersion = optional(r.OS), optional(r.Arch), optional(r.AmctlVersion)
+
+	installed := make([]SyncInstall, 0, len(r.Installed))
+	for _, in := range r.Installed {
+		t := SyncInstallTarget(in.Target)
+		if !t.Valid() {
+			return fmt.Errorf("%w: profile %s reports %s installed for target %q, which the contract does not define",
+				ErrReportInput, out.Profile, in.ID, in.Target)
+		}
+		inst := SyncInstall{Id: in.ID, Version: in.Version, Target: t}
+		if in.Changed {
+			changed := true
+			inst.Changed = &changed
+		}
+		installed = append(installed, inst)
+	}
+	slices.SortFunc(installed, func(a, b SyncInstall) int {
+		return strings.Compare(a.Id+"\x00"+string(a.Target), b.Id+"\x00"+string(b.Target))
+	})
+	out.Installed = &installed
+
+	if len(r.SkippedComponents) == 0 {
+		return nil
+	}
+	skips := make([]SyncComponentSkip, 0, len(r.SkippedComponents))
+	for _, sk := range r.SkippedComponents {
+		t := SyncComponentSkipTarget(sk.Target)
+		if !t.Valid() {
+			return fmt.Errorf("%w: profile %s reports a skipped component of %s for target %q, which the contract does not define",
+				ErrReportInput, out.Profile, sk.Entry, sk.Target)
+		}
+		skips = append(skips, SyncComponentSkip{Entry: sk.Entry, Target: t, Component: sk.Component, Reason: sk.Reason})
+	}
+	slices.SortFunc(skips, func(a, b SyncComponentSkip) int {
+		return strings.Compare(a.Entry+"\x00"+string(a.Target)+"\x00"+a.Component,
+			b.Entry+"\x00"+string(b.Target)+"\x00"+b.Component)
+	})
+	out.SkippedComponents = &skips
+	return nil
 }
 
 func dedupeSorted(in []string) []string {

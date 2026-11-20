@@ -4401,14 +4401,143 @@
         ],
         "type": "object"
       },
+      "SyncComponentSkip": {
+        "additionalProperties": false,
+        "properties": {
+          "component": {
+            "description": "The component's kind and name.",
+            "examples": [
+              "mcp-server lint"
+            ],
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "entry": {
+            "description": "namespace/name of the installed entry.",
+            "examples": [
+              "acme/code-review"
+            ],
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason": {
+            "examples": [
+              "no claude CLI on PATH"
+            ],
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          },
+          "target": {
+            "enum": [
+              "claude-code",
+              "codex",
+              "opencode"
+            ],
+            "examples": [
+              "claude-code"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "entry",
+          "target",
+          "component",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "SyncInstall": {
+        "additionalProperties": false,
+        "properties": {
+          "changed": {
+            "description": "This sync wrote the entry. The component skips of an entry it did not write carry over from the report that did.",
+            "type": "boolean"
+          },
+          "id": {
+            "description": "namespace/name",
+            "examples": [
+              "acme/code-review"
+            ],
+            "maxLength": 256,
+            "minLength": 3,
+            "type": "string"
+          },
+          "target": {
+            "enum": [
+              "claude-code",
+              "codex",
+              "opencode"
+            ],
+            "examples": [
+              "claude-code"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "examples": [
+              "2.4.1"
+            ],
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "target"
+        ],
+        "type": "object"
+      },
       "SyncReport": {
         "additionalProperties": false,
         "properties": {
+          "amctlVersion": {
+            "examples": [
+              "0.9.0"
+            ],
+            "maxLength": 64,
+            "type": "string"
+          },
+          "arch": {
+            "examples": [
+              "arm64"
+            ],
+            "maxLength": 32,
+            "type": "string"
+          },
           "host": {
             "description": "Hostname the sync landed on, for the audit row.",
             "examples": [
               "dev-laptop-01"
             ],
+            "type": "string"
+          },
+          "installed": {
+            "description": "Every entry of this profile installed on the machine after this sync. Replaces what the machine reported for this profile before.",
+            "items": {
+              "$ref": "#/components/schemas/SyncInstall"
+            },
+            "maxItems": 5000,
+            "type": "array"
+          },
+          "machineId": {
+            "description": "A random id the client generated once and keeps. Without it the sync is recorded but no machine inventory is kept.",
+            "examples": [
+              "0193a8e2-6b1f-7c3a-9d4e-2f5b8c1a7e60"
+            ],
+            "format": "uuid",
+            "type": "string"
+          },
+          "os": {
+            "examples": [
+              "darwin"
+            ],
+            "maxLength": 32,
             "type": "string"
           },
           "profile": {
@@ -4431,6 +4560,14 @@
             "items": {
               "type": "string"
             },
+            "type": "array"
+          },
+          "skippedComponents": {
+            "description": "Components of entries this sync wrote that the client did not place.",
+            "items": {
+              "$ref": "#/components/schemas/SyncComponentSkip"
+            },
+            "maxItems": 5000,
             "type": "array"
           },
           "targets": {
@@ -9443,7 +9580,7 @@
     },
     "/v1/sync": {
       "post": {
-        "description": "Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.",
+        "description": "Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.",
         "operationId": "reportSync",
         "requestBody": {
           "content": {

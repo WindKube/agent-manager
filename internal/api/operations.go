@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -877,7 +878,9 @@ func (s *Server) registerSync() {
 		Summary:     "Report a completed sync",
 		Description: "Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per " +
 			"sync, not per package — install counts are aggregated server-side from the " +
-			"revision's contents.",
+			"revision's contents. A report carrying `machineId` also upserts that machine and " +
+			"replaces its installs and skips for the profile in the same transaction; one without " +
+			"it is recorded with no machine. An installed id@version the hub does not hold is a 422.",
 		DefaultStatus: http.StatusNoContent,
 		Responses: map[string]*huma.Response{
 			"204": {Description: "Recorded."},
@@ -1280,6 +1283,9 @@ func (s *Server) reportSync(ctx context.Context, in *reportSyncInput) (*struct{}
 		return nil, err
 	}
 	if err := commands.ReportSync(ctx, s.deps.DB, principal, in.Body); err != nil {
+		if errors.Is(err, commands.ErrValidation) {
+			return nil, huma.Error422UnprocessableEntity(err.Error())
+		}
 		return nil, fail(logging.From(ctx), err)
 	}
 	return &struct{}{}, nil

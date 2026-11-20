@@ -306,3 +306,40 @@ alter table "service_token"
   check ("expires_at" > "created_at" and "expires_at" <= "created_at" + interval '1 year');
 
 create index "service_token_created_by_idx" on "service_token" ("created_by_identity_id", "created_at" desc);
+
+-- Fleet inventory. machine_install's keys are its primary key, so the loader
+-- emits none of these three foreign keys.
+alter table "machine_install"
+  add constraint "machine_install_machine_id_fkey"
+  foreign key ("machine_id") references "machine" ("id")
+  on update no action on delete no action;
+
+alter table "machine_install"
+  add constraint "machine_install_profile_id_fkey"
+  foreign key ("profile_id") references "profile" ("id")
+  on update no action on delete no action;
+
+alter table "machine_install"
+  add constraint "machine_install_package_id_fkey"
+  foreign key ("package_id") references "package" ("id")
+  on update no action on delete no action;
+
+alter table "machine"
+  add constraint "machine_fields_are_bounded"
+  check (char_length(btrim("hostname")) between 1 and 255
+         and coalesce(char_length("os"), 0) <= 32
+         and coalesce(char_length("arch"), 0) <= 32
+         and coalesce(char_length("amctl_version"), 0) <= 64);
+
+-- A whole-entry skip names nothing more; a component skip names its target,
+-- its component and why.
+alter table "machine_skip"
+  add constraint "machine_skip_component_is_whole"
+  check (("component" is null) = ("reason" is null) and ("component" is null) = ("target" is null)
+         and char_length("entry") between 1 and 256
+         and coalesce(char_length("component"), 0) <= 256
+         and coalesce(char_length("reason"), 0) <= 1024);
+
+create index "machine_install_package_version_idx" on "machine_install" ("package_id", "version_id");
+create index "machine_skip_machine_profile_idx" on "machine_skip" ("machine_id", "profile_id");
+create index "machine_last_identity_idx" on "machine" ("last_identity_id");

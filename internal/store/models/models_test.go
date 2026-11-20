@@ -38,6 +38,8 @@ var wantTables = []string{
 	"identity", "group_role_map", "device_authorization", "session", "service_token",
 	// Governance
 	"org_policy", "audit_event", "sync_event", "fetch_attempt",
+	// Fleet inventory
+	"machine", "machine_install", "machine_skip",
 	// Job hand-off
 	"outbox",
 }
@@ -473,6 +475,9 @@ func TestBunEmitsNoForeignKeyWhereTheColumnIsPartOfThePrimaryKey(t *testing.T) {
 	want := []string{
 		"capability.version_id -> version.id",
 		"component.version_id -> version.id",
+		"machine_install.machine_id -> machine.id",
+		"machine_install.package_id -> package.id",
+		"machine_install.profile_id -> profile.id",
 		"membership.profile_id -> profile.id",
 		"override.finding_id -> finding.id",
 		"profile_entry.package_id -> package.id",

@@ -437,3 +437,18 @@ func TestARefusedMintIssuesNoSession(t *testing.T) {
 	require.Empty(t, cookieNamed(t, rec, sessionCookie))
 	require.Len(t, h.api.Calls("createSession"), 1)
 }
+
+func TestASharedCookieKeyLetsAnotherReplicaFinishTheSignIn(t *testing.T) {
+	first := newSignInHarness(t)
+	sealed, _ := first.begin(t, "")
+
+	_, client := fakeHub(t)
+	replica := New(Deps{Hub: client, Auth: &recordingProvider{}, Log: zerolog.Nop()},
+		Options{OIDCCookieKey: []byte("a-known-key-for-the-round-trip-cookie")})
+	_, opened := replica.openRound(sealed)
+	require.True(t, opened, "a replica holding the same key must accept the round trip")
+
+	stranger := New(Deps{Hub: client, Auth: &recordingProvider{}, Log: zerolog.Nop()}, Options{})
+	_, opened = stranger.openRound(sealed)
+	require.False(t, opened, "a per-process key must refuse another process's round trip")
+}

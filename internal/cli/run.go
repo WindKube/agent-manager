@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -151,6 +153,15 @@ func runWeb(ctx context.Context) error {
 		return err
 	}
 
+	cookieKey, err := webCookieKey(cfg.CookieKey)
+	if err != nil {
+		return err
+	}
+	if cookieKey == nil {
+		log.Warn().Msg("AGENT_MANAGER_WEB_COOKIE_KEY is unset; the sign-in cookie key is per process, " +
+			"so a sign-in in flight across a restart or a second replica fails")
+	}
+
 	server := web.New(web.Deps{
 		Hub:  client,
 		Auth: authProvider,
@@ -167,10 +178,30 @@ func runWeb(ctx context.Context) error {
 		DevCredentialHint: cfg.DevCredentialHint,
 		DevCredentials:    devCredentials(cfg.DevCredentialHint),
 		RiverUI:           riverUI,
+		OIDCCookieKey:     cookieKey,
 		Middleware:        []gin.HandlerFunc{metrics.HTTP(), tracing.Gin("web", "/healthz")},
 	})
 
 	return server.Run(ctx)
+}
+
+// webCookieKey decodes the configured sign-in cookie key, nil when none is set.
+func webCookieKey(raw string) ([]byte, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	key, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		key, err = base64.RawStdEncoding.DecodeString(raw)
+	}
+	if err != nil {
+		return nil, errors.New("WEB_COOKIE_KEY: not base64")
+	}
+	if len(key) < 32 {
+		return nil, fmt.Errorf("WEB_COOKIE_KEY: decodes to %d bytes, needs at least 32", len(key))
+	}
+	return key, nil
 }
 
 // riverUIURL turns the configured dashboard address into the base the web role

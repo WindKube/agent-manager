@@ -165,6 +165,9 @@ tasks:
       - helm template am agent-manager -f agent-manager/ci/all-features-values.yaml > /dev/null
       # The chart's own credential guard: web must refuse a datastore credential.
       - "! helm template am agent-manager --set web.secretEnv.AGENT_MANAGER_DATABASE_URL=x > /dev/null 2>&1"
+      # Replicas beyond one must share a cookie key.
+      - "! helm template am agent-manager --set web.replicas=2 > /dev/null 2>&1"
+      - helm template am agent-manager --set web.replicas=2 --set web.secretEnv.AGENT_MANAGER_WEB_COOKIE_KEY=x > /dev/null
 
   migrate:schema:
     desc: "Bun models -> internal/store/schema/02-tables.sql (layer 2 of the desired state)"

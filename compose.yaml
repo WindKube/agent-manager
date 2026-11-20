@@ -166,6 +166,8 @@ services:
       # this role holds none. Unset it and the River Dashboard entry renders
       # disabled with the reason on it rather than disappearing.
       AGENT_MANAGER_RIVER_UI_URL: http://queue-ui:8080
+      # A local-development value, so a sign-in survives `docker compose restart web`.
+      AGENT_MANAGER_WEB_COOKIE_KEY: bG9jYWwtZGV2ZWxvcG1lbnQtd2ViLWNvb2tpZS1rZXktMzI=
     command: ["serve", "web"]
     healthcheck:
       test: ["CMD", "/usr/local/bin/agent-manager", "healthcheck", "--url", "http://127.0.0.1:8080/healthz"]

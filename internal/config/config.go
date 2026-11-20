@@ -82,6 +82,9 @@ type Web struct {
 	// request can influence, and it is not a credential — the dashboard holds the
 	// queue credential, this role holds none.
 	RiverUIURL string `env:"RIVER_UI_URL"`
+	// CookieKey is base64 of at least 32 bytes signing the sign-in round-trip
+	// cookie. Every replica must share it; empty draws a per-process key.
+	CookieKey string `env:"WEB_COOKIE_KEY"`
 }
 
 type Fetcher struct {

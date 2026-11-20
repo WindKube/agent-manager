@@ -1,4 +1,7 @@
 {{- include "am.forbid" (dict "root" . "role" "web" "names" (list "AGENT_MANAGER_DATABASE_URL" "AGENT_MANAGER_RIVER_DATABASE_URL" "AGENT_MANAGER_BLOB_URL" "AWS_ACCESS_KEY_ID" "AWS_SECRET_ACCESS_KEY")) }}
+{{- if and (gt (int .Values.web.replicas) 1) (not .Values.web.existingSecret) (not .Values.web.secretEnv.AGENT_MANAGER_WEB_COOKIE_KEY) }}
+{{- fail "web.replicas > 1 needs web.secretEnv.AGENT_MANAGER_WEB_COOKIE_KEY (or web.existingSecret carrying it)" }}
+{{- end }}
 {{ include "am.deployment" (dict "root" . "role" "web" "args" (list "serve" "web") "port" .Values.web.port "readinessPath" "/healthz"
     "extraEnv" (list
       (dict "name" "AGENT_MANAGER_WEB_ADDR" "value" (printf ":%v" .Values.web.port))

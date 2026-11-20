@@ -88,8 +88,8 @@ api:
     limits: {memory: 256Mi}
 
 web:
-  # One replica: the sign-in round-trip cookie is signed with a key each
-  # process draws at boot, so a second replica would reject the first's.
+  # More than one needs AGENT_MANAGER_WEB_COOKIE_KEY: without it each replica
+  # signs the sign-in round trip with its own key and rejects the others'.
   replicas: 1
   port: 8080
   env:
@@ -104,6 +104,8 @@ web:
   secretEnv:
     AGENT_MANAGER_OIDC_CLIENT_SECRET: ""
     AGENT_MANAGER_SESSION_MINT_SECRET: ""
+    # base64 of at least 32 random bytes (`openssl rand -base64 32`).
+    AGENT_MANAGER_WEB_COOKIE_KEY: ""
   existingSecret: ""
   resources:
     requests: {cpu: 50m, memory: 64Mi}

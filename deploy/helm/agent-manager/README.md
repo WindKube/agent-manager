@@ -50,7 +50,8 @@ operator CRDs). `tracing.otlpEndpoint` turns on OTLP/HTTP trace export for every
 
 ## Limits
 
-- `web` runs one replica: its sign-in cookie key is per process.
+- `web` with more than one replica needs `AGENT_MANAGER_WEB_COOKIE_KEY` (shared by every
+  replica); without it each process signs the sign-in round trip with its own key.
 - The scan engine image is the one `.github/workflows/release-skill-scanner-image.yaml`
   publishes; there is no upstream image.
 - The pods run as UID 10001 with a read-only root filesystem and `/tmp` as an `emptyDir`.

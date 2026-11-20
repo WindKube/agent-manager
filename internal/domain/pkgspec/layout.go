@@ -109,8 +109,8 @@ type layout struct {
 }
 
 // extDir is a reverse-domain namespace directory present in the tree, with
-// firstChild the first segment inside it, for the panel's
-// `com.anthropic.claude-code/hooks/` label.
+// firstChild the first entry inside it (slash-terminated when a directory),
+// for the panel's `com.anthropic.claude-code/hooks/` label.
 type extDir struct {
 	name       string
 	firstChild string
@@ -170,7 +170,11 @@ func filterLayout(tree *bundle.Bundle, root string) (*layout, error) {
 			}
 		case isReverseDomain(segments[0]) && len(segments) > 1:
 			if _, ok := extSeen[segments[0]]; !ok {
-				extSeen[segments[0]] = segments[1]
+				child := segments[1]
+				if len(segments) > 2 {
+					child += "/"
+				}
+				extSeen[segments[0]] = child
 			}
 		}
 	}

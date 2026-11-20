@@ -242,3 +242,15 @@ func replaceFile(t *testing.T, b *bundle.Bundle, path string, body []byte) {
 		require.NoError(t, b.Add(file.Path, file.Mode, file.Data))
 	}
 }
+
+func TestAnExtensionWhoseFirstEntryIsAFileIsNotLabelledAsADirectory(t *testing.T) {
+	tree := bundle.New()
+	require.NoError(t, tree.Add("plugin.json", bundle.FileMode, []byte(conformantPlugin)))
+	require.NoError(t, tree.Add("com.anthropic.claude-code/.mcp.json", bundle.FileMode, []byte(`{"mcpServers":{}}`)))
+	require.NoError(t, tree.Add("com.anthropic.claude-code/hooks/hooks.json", bundle.FileMode, []byte(`{}`)))
+
+	pkg, err := pkgspec.Inspect(tree, "")
+	require.NoError(t, err)
+	require.Contains(t, pkg.Layout.Entries,
+		pkgspec.LayoutEntry{Path: "com.anthropic.claude-code/.mcp.json", Note: "client extension", Kept: true})
+}

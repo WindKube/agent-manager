@@ -217,7 +217,7 @@ func describeLayout(filtered *layout, manifestNote string) []LayoutEntry {
 	}
 	for _, ext := range filtered.extDirs {
 		entries = append(entries, LayoutEntry{
-			Path: ext.name + "/" + ext.firstChild + "/",
+			Path: ext.name + "/" + ext.firstChild,
 			Note: "client extension",
 			Kept: true,
 		})

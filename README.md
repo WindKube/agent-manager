@@ -238,6 +238,9 @@ and the catalog is already populated. The UI is on <http://localhost:8080> and t
 a directory-backed Dex emits the same `groups` claim the role mapping needs, at a fraction
 of the image size.
 
+For Kubernetes there is a Helm chart in [`deploy/helm/agent-manager`](deploy/helm/agent-manager),
+with the same per-role credential split and default-deny NetworkPolicies.
+
 Requires Docker and [Task](https://taskfile.dev). Nothing else is installed on the host —
 the toolchain is pinned in `mise.toml`, and the image has no Node.js in it.
 
@@ -302,6 +305,7 @@ This project is assembled almost entirely from other people's work. What each pi
 | **Atlas (community)** | Versioned migrations with a checksummed directory, so a tampered migration set fails to apply |
 | **MinIO** | S3-compatible object storage for bundle bytes in local development |
 | **Dex + glauth** | OIDC provider for local development, including the RFC 8628 device grant. glauth is the directory behind it, and it is there because the `groups` claim the hub maps to roles cannot come from a static password list |
+| **Helm** | The Kubernetes chart under `deploy/helm`, linted by `task helm:lint` |
 | **Jaeger** | Local trace viewer behind the `observability` compose profile |
 | **Tailwind CSS** | Styling via the standalone binary — no Node.js in any image |
 | **Redoc** | The static, self-contained API reference built by `task openapi:docs` |

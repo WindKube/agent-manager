@@ -1,0 +1,5 @@
+{{- $engine := list }}
+{{- if .Values.scanEngine.enabled }}
+{{- $engine = list (dict "name" "AGENT_MANAGER_SCAN_ENGINE_URL" "value" (printf "http://%s-scan-engine:%v" (include "am.fullname" .) .Values.scanEngine.port)) }}
+{{- end }}
+{{ include "am.deployment" (dict "root" . "role" "scanner" "args" (list "worker" "run" "scanner") "extraEnv" $engine) }}

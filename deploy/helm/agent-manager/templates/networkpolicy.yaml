@@ -1,0 +1,243 @@
+{{- define "am.egressTo" -}}
+- ports:
+    {{- range .ports }}
+    - protocol: TCP
+      port: {{ . }}
+    {{- end }}
+  {{- with .to }}
+  to:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end -}}
+
+{{- define "am.internet" -}}
+- to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+          {{- toYaml .Values.networkPolicy.internetExcept | nindent 10 }}
+{{- end -}}
+
+{{- define "am.podsOf" -}}
+podSelector:
+  matchLabels:
+    {{- include "am.selectorLabels" . | nindent 4 }}
+{{- end -}}
+
+{{- with .Values.networkPolicy }}
+{{- if .enabled }}
+{{- $np := . }}
+{{- $name := include "am.fullname" $ }}
+# Nothing in or out unless a policy below says so.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}-default-deny
+  labels:
+    {{- include "am.labels" (dict "root" $ "role" "network") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $.Chart.Name }}
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+  policyTypes: [Ingress, Egress]
+---
+# Name resolution for every role except the scan engine, which gets none.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}-dns
+  labels:
+    {{- include "am.labels" (dict "root" $ "role" "network") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $.Chart.Name }}
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: NotIn
+        values: [scan-engine]
+  policyTypes: [Egress]
+  egress:
+    - to:
+        {{- toYaml $np.dns | nindent 8 }}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}-web
+  labels:
+    {{- include "am.labels" (dict "root" $ "role" "web") | nindent 4 }}
+spec:
+  {{- include "am.podsOf" (dict "root" $ "role" "web") | nindent 2 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: {{ $.Values.web.port }}
+      {{- with $np.publicFrom }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  egress:
+    # The api is web's only door to data.
+    - to:
+        - {{ include "am.podsOf" (dict "root" $ "role" "api") | indent 10 | trim }}
+      ports:
+        - protocol: TCP
+          port: {{ $.Values.api.port }}
+    {{- include "am.egressTo" $np.identityProvider | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}-api
+  labels:
+    {{- include "am.labels" (dict "root" $ "role" "api") | nindent 4 }}
+spec:
+  {{- include "am.podsOf" (dict "root" $ "role" "api") | nindent 2 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - {{ include "am.podsOf" (dict "root" $ "role" "web") | indent 10 | trim }}
+      ports:
+        - protocol: TCP
+          port: {{ $.Values.api.port }}
+    # amctl and service tokens call the api directly.
+    - ports:
+        - protocol: TCP
+          port: {{ $.Values.api.port }}
+      {{- with $np.publicFrom }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  egress:
+    {{- include "am.egressTo" $np.postgres | nindent 4 }}
+    {{- include "am.egressTo" $np.objectStore | nindent 4 }}
+    {{- include "am.egressTo" $np.identityProvider | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}-fetcher
+  labels:
+    {{- include "am.labels" (dict "root" $ "role" "fetcher") | nindent 4 }}
+spec:
+  {{- include "am.podsOf" (dict "root" $ "role" "fetcher") | nindent 2 }}
+  policyTypes: [Egress]
+  egress:
+    {{- include "am.egressTo" $np.postgres | nindent 4 }}
+    {{- include "am.egressTo" $np.objectStore | nindent 4 }}
+    {{- include "am.internet" $ | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}-scanner
+  labels:
+    {{- include "am.labels" (dict "root" $ "role" "scanner") | nindent 4 }}
+spec:
+  {{- include "am.podsOf" (dict "root" $ "role" "scanner") | nindent 2 }}
+  policyTypes: [Egress]
+  egress:
+    {{- include "am.egressTo" $np.postgres | nindent 4 }}
+    {{- include "am.egressTo" $np.objectStore | nindent 4 }}
+    {{- if $.Values.scanEngine.enabled }}
+    - to:
+        - {{ include "am.podsOf" (dict "root" $ "role" "scan-engine") | indent 10 | trim }}
+      ports:
+        - protocol: TCP
+          port: {{ $.Values.scanEngine.port }}
+    {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}-notifier
+  labels:
+    {{- include "am.labels" (dict "root" $ "role" "notifier") | nindent 4 }}
+spec:
+  {{- include "am.podsOf" (dict "root" $ "role" "notifier") | nindent 2 }}
+  policyTypes: [Egress]
+  egress:
+    {{- include "am.egressTo" $np.postgres | nindent 4 }}
+    {{- include "am.internet" $ | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}-migrate
+  labels:
+    {{- include "am.labels" (dict "root" $ "role" "migrate") | nindent 4 }}
+spec:
+  {{- include "am.podsOf" (dict "root" $ "role" "migrate") | nindent 2 }}
+  policyTypes: [Egress]
+  egress:
+    {{- include "am.egressTo" $np.postgres | nindent 4 }}
+{{- if $.Values.scanEngine.enabled }}
+---
+# Hostile bytes are parsed here: the scanner may call in, nothing goes out, not
+# even DNS.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}-scan-engine
+  labels:
+    {{- include "am.labels" (dict "root" $ "role" "scan-engine") | nindent 4 }}
+spec:
+  {{- include "am.podsOf" (dict "root" $ "role" "scan-engine") | nindent 2 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - {{ include "am.podsOf" (dict "root" $ "role" "scanner") | indent 10 | trim }}
+      ports:
+        - protocol: TCP
+          port: {{ $.Values.scanEngine.port }}
+  egress: []
+{{- end }}
+{{- with $np.metricsFrom }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}-metrics
+  labels:
+    {{- include "am.labels" (dict "root" $ "role" "metrics") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+      agent-manager.io/metrics: "true"
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- toYaml . | nindent 8 }}
+      ports:
+        - protocol: TCP
+          port: {{ $.Values.metrics.port }}
+{{- end }}
+{{- if $.Values.tracing.otlpEndpoint }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $name }}-otlp
+  labels:
+    {{- include "am.labels" (dict "root" $ "role" "network") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+      agent-manager.io/metrics: "true"
+  policyTypes: [Egress]
+  egress:
+    {{- include "am.egressTo" $np.otlp | nindent 4 }}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -9,6 +9,8 @@ go = "1.26.6"
 golangci-lint = "2.12.2"
 task = "3"
 pre-commit = "4"
+# deploy/helm only (`task helm:lint`); nothing in the Go build needs it.
+helm = "4.3.1"
 
 # Both also run in CI (.github/workflows/security.yaml). Pinned so a local run and
 # a CI run agree on what a finding is.

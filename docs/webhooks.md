@@ -111,5 +111,8 @@ once, so update the receiver straight after.
 | `AGENT_MANAGER_WAIVER_CHECK_INTERVAL` | `1h` | how often waivers are checked |
 | `AGENT_MANAGER_WAIVER_NOTICE` | `168h` | how far ahead `waiver.expiring` fires |
 
-Receivers must resolve to public addresses, as for package fetches;
-`AGENT_MANAGER_OUTBOUND_ALLOWLIST` admits private ones.
+Receivers must be https and resolve to public addresses, as for package
+fetches. For a receiver on a private network, name it by hostname (a private
+IP literal is refused when the webhook is created), add its address to the
+notifier's `AGENT_MANAGER_OUTBOUND_ALLOWLIST`, and, if its certificate comes
+from an internal CA, point the notifier's `SSL_CERT_FILE` at that CA.

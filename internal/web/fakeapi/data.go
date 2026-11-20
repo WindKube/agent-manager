@@ -38,6 +38,10 @@ type Data struct {
 	Devices            map[string]apiclient.PendingDeviceAuthorization
 	ServiceTokens      []apiclient.ServiceToken
 	Machines           []apiclient.MachineDetail
+	Webhooks           []apiclient.Webhook
+	WebhookEventTypes  []string
+	// WebhookDeliveries is keyed by webhook id.
+	WebhookDeliveries map[string][]apiclient.WebhookDelivery
 }
 
 // SignedOut clears the viewer, so every protected request lands on sign-in.

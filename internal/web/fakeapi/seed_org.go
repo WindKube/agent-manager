@@ -119,3 +119,27 @@ func seedRuntime(now time.Time) apiclient.RuntimeReport {
 		RunHistory: history,
 	}
 }
+
+func seedWebhooks(d *Data, now time.Time) {
+	d.WebhookEventTypes = []string{
+		"*", "finding.accepted", "finding.rejected", "machine.forgotten", "package.deleted",
+		"package.version.deleted", "package.version.fetch-failed", "package.version.registered",
+		"package.version.stored", "policy.changed", "profile.revision.published", "scan.completed",
+		"service-token.created", "service-token.revoked", "waiver.expired", "waiver.expiring",
+	}
+	id := uuid.MustParse("0193f2a0-0000-7000-8000-0000000000e1")
+	d.Webhooks = []apiclient.Webhook{{
+		Id: id, Name: "security channel", Url: "https://hooks.example.com/agent-manager",
+		EventTypes: []string{"scan.completed", "waiver.expiring"}, Namespaces: []string{"example"}, Enabled: true,
+		CreatedBy: "ada@fixture.invalid", CreatedAt: now.Add(-10 * 24 * time.Hour), UpdatedAt: now.Add(-10 * 24 * time.Hour),
+		LastDeliveryAt: ptr(now.Add(-time.Hour)), LastDeliveryStatus: ptr[int64](200),
+	}}
+	d.WebhookDeliveries = map[string][]apiclient.WebhookDelivery{id.String(): {{
+		Id: uuid.MustParse("0193f2a0-0000-7000-8000-0000000000d1"), EventId: uuid.MustParse("0193f2a0-0000-7000-8000-0000000000a1"),
+		EventType: "scan.completed", Attempt: 2, StatusCode: ptr[int64](200), DurationMs: 84, OccurredAt: now.Add(-time.Hour),
+	}, {
+		Id: uuid.MustParse("0193f2a0-0000-7000-8000-0000000000d2"), EventId: uuid.MustParse("0193f2a0-0000-7000-8000-0000000000a1"),
+		EventType: "scan.completed", Attempt: 1, StatusCode: ptr[int64](503), ResponseBody: ptr("upstream busy"),
+		DurationMs: 1210, OccurredAt: now.Add(-2 * time.Hour),
+	}}}
+}

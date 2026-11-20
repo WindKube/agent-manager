@@ -1,0 +1,198 @@
+package components
+
+import (
+	"strconv"
+
+	"agent-manager/internal/web/view"
+)
+
+// WebhooksScreen creates, lists and manages the signed outbound webhooks the
+// notifier delivers audited events to.
+templ WebhooksScreen(s view.Webhooks) {
+	<div class="am-header">
+		<div class="am-header-text">
+			<h1 class="am-h1">Webhooks</h1>
+			<p class="am-lede">
+				HTTPS endpoints the hub posts audited events to, each body signed with HMAC-SHA256
+				under the webhook's own secret. A receiver that answers 410 Gone is disabled.
+			</p>
+		</div>
+	</div>
+	if s.Notice != nil {
+		<div class={ NoticeClass(*s.Notice) } id="webhooks-notice">{ s.Notice.Text }</div>
+	}
+	if s.Refused {
+		<div class="am-empty am-empty-auth" id="webhooks-refused">
+			Your role may not manage webhooks. This screen needs the catalog admin role.
+		</div>
+	} else if s.Unavailable {
+		<div class="am-notice am-notice-dan" id="webhooks-unavailable">
+			<p class="am-note">
+				The hub's api did not answer, so webhooks cannot be listed or created. Retry in a moment.
+			</p>
+		</div>
+	} else {
+		<div class="am-screen-body">
+			if s.Secret != nil {
+				@webhookSecret(*s.Secret)
+			}
+			@webhookCreateForm(s)
+			@webhookList(s)
+			if s.Open != nil {
+				@webhookDeliveries(s)
+			}
+		</div>
+	}
+}
+
+templ webhookSecret(w view.WebhookSecret) {
+	<section class="am-gov-card" id="webhooks-secret" role="alertdialog" aria-labelledby="webhooks-secret-title">
+		<div class="am-section-head">
+			<div class="am-section-title" id="webhooks-secret-title">Signing secret for { w.Name }</div>
+		</div>
+		<div class="am-gov-body am-gov-body-stack">
+			<p class="am-note">
+				Copy this secret into the receiver now; it is not shown again. Rotating it replaces it
+				at once, so update the receiver straight after.
+			</p>
+			<p class="am-note am-mono" id="webhooks-secret-value">{ w.Secret }</p>
+		</div>
+	</section>
+}
+
+templ webhookCreateForm(s view.Webhooks) {
+	<section class="am-gov-card">
+		<div class="am-section-head">
+			<div class="am-section-title">New webhook</div>
+		</div>
+		<form method="post" action="/webhooks">
+			<div class="am-gov-body am-gov-body-stack">
+				<div class="am-field">
+					<label class="am-label" for="webhooks-name">Name</label>
+					<input id="webhooks-name" class="am-input" type="text" name="name" maxlength="100" required value={ s.Form.Name } placeholder="security channel"/>
+				</div>
+				<div class="am-field">
+					<label class="am-label" for="webhooks-url">URL</label>
+					<input id="webhooks-url" class="am-input" type="url" name="url" maxlength="2048" required value={ s.Form.URL } placeholder="https://hooks.example.com/agent-manager"/>
+				</div>
+				<div class="am-label">Events</div>
+				for _, t := range s.EventTypes {
+					<label class="am-toggle">
+						<input type="checkbox" name="eventType" value={ t } if s.Form.Selected(t) {
+							checked
+						}/>
+						<span class="am-toggle-label am-mono">
+							if t == "*" {
+								every event
+							} else {
+								{ t }
+							}
+						</span>
+					</label>
+				}
+				<div class="am-field">
+					<label class="am-label" for="webhooks-namespaces">Namespaces</label>
+					<input id="webhooks-namespaces" class="am-input" type="text" name="namespaces" value={ s.Form.Namespaces } placeholder="empty for every namespace, or: platform, security"/>
+				</div>
+			</div>
+			<div class="am-org-form-row">
+				<button type="submit" class="am-btn am-btn-primary">Create webhook</button>
+			</div>
+		</form>
+	</section>
+}
+
+templ webhookList(s view.Webhooks) {
+	<section class="am-gov-card">
+		<div class="am-section-head">
+			<div class="am-section-title">Webhooks</div>
+			<div class="am-section-note">{ strconv.Itoa(len(s.Webhooks)) }</div>
+		</div>
+		<div class="am-org-row am-org-row-head">
+			<div>Name</div>
+			<div>Events</div>
+			<div>State</div>
+			<div></div>
+		</div>
+		for _, w := range s.Webhooks {
+			<div class="am-org-row" id={ "webhook-" + w.ID }>
+				<div>
+					<a href={ templ.SafeURL(w.DeliveriesHref()) }>{ w.Name }</a>
+					<span class="am-toggle-note am-mono">{ w.URL }</span>
+					<span class="am-toggle-note">{ w.NamespaceList() }, by { w.CreatedBy }</span>
+				</div>
+				<div class="am-org-cell-mono">{ w.EventList() }</div>
+				<div>
+					if w.Enabled {
+						<span class="am-pill am-pill-ok">{ w.State() }</span>
+					} else {
+						<span class="am-pill am-pill-warn">{ w.State() }</span>
+					}
+					<span class="am-toggle-note">{ w.LastDelivery() }</span>
+				</div>
+				<div class="am-org-actions">
+					<form method="post" action={ templ.SafeURL(w.Href("enabled")) }>
+						if w.Enabled {
+							<input type="hidden" name="enabled" value="0"/>
+							<button type="submit" class="am-btn">Disable</button>
+						} else {
+							<input type="hidden" name="enabled" value="1"/>
+							<button type="submit" class="am-btn">Enable</button>
+						}
+					</form>
+					<form method="post" action={ templ.SafeURL(w.Href("secret")) }>
+						<button type="submit" class="am-btn">Rotate secret</button>
+					</form>
+					<form method="post" action={ templ.SafeURL(w.Href("delete")) }>
+						<button type="submit" class="am-btn">Delete</button>
+					</form>
+				</div>
+			</div>
+		}
+		if len(s.Webhooks) == 0 {
+			<div class="am-empty" id="webhooks-empty">No webhooks yet.</div>
+		}
+	</section>
+}
+
+templ webhookDeliveries(s view.Webhooks) {
+	<section class="am-gov-card" id="webhook-deliveries">
+		<div class="am-section-head">
+			<div class="am-section-title">Recent deliveries to { s.Open.Name }</div>
+			<div class="am-section-note">{ strconv.Itoa(len(s.Deliveries)) }</div>
+		</div>
+		if s.DeliveriesUnavailable {
+			<div class="am-empty" id="webhook-deliveries-unavailable">The hub's api did not answer, so the delivery log could not be read.</div>
+		} else {
+			<div class="am-org-row am-org-row-head">
+				<div>When</div>
+				<div>Event</div>
+				<div>Outcome</div>
+				<div>Attempt</div>
+			</div>
+			for _, d := range s.Deliveries {
+				<div class="am-org-row">
+					<div>{ view.Timestamp(d.OccurredAt) }</div>
+					<div class="am-org-cell-mono">
+						{ d.EventType }
+						<span class="am-toggle-note">{ d.EventID }</span>
+					</div>
+					<div>
+						if d.Delivered() {
+							<span class="am-pill am-pill-ok">{ d.Outcome() }</span>
+						} else {
+							<span class="am-pill am-pill-dan">{ d.Outcome() }</span>
+						}
+						if d.ResponseBody != "" {
+							<span class="am-toggle-note am-mono">{ d.ResponseBody }</span>
+						}
+					</div>
+					<div>{ strconv.FormatInt(d.Attempt, 10) }, { d.Duration() }</div>
+				</div>
+			}
+			if len(s.Deliveries) == 0 {
+				<div class="am-empty" id="webhook-deliveries-empty">Nothing delivered yet.</div>
+			}
+		}
+	</section>
+}

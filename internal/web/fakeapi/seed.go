@@ -30,6 +30,7 @@ func Seed() *Data {
 		}},
 	}
 	d.Machines = seedMachines(now)
+	seedWebhooks(d, now)
 	seedCatalog(d, now)
 	seedGovernance(d, now)
 	seedProfiles(d, now)

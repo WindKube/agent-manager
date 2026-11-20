@@ -79,7 +79,7 @@ func TestShell(t *testing.T) {
 		body := get(t, h, "/catalog").Body.String()
 		for _, want := range []string{
 			"Workspace", "Security", "Administration", "Onboarding",
-			"Catalog", "Profiles", "Scanner", "Audit log", "Storage", "Organization",
+			"Catalog", "Profiles", "Scanner", "Audit log", "Storage", "Organization", "Webhooks",
 			"Connect the CLI", "am-nav-badge-alert",
 		} {
 			require.Containsf(t, body, want, "sidebar is missing %q", want)
@@ -144,7 +144,7 @@ func TestShell(t *testing.T) {
 	t.Run("no page references an external host", func(t *testing.T) {
 		// The image is distroless and the quickstart must work offline: a CDN
 		// reference would work on the author's machine and nowhere else.
-		for _, path := range []string{"/catalog", "/scanner", "/profiles", "/storage", "/audit", "/cli", "/org"} {
+		for _, path := range []string{"/catalog", "/scanner", "/profiles", "/storage", "/audit", "/cli", "/org", "/webhooks"} {
 			body := get(t, h, path).Body.String()
 			for _, forbidden := range []string{"//fonts.googleapis.com", "//fonts.gstatic.com", "//cdn.", "//unpkg.com", "//esm.sh", "//jsdelivr"} {
 				require.NotContainsf(t, body, forbidden, "%s references %s", path, forbidden)
@@ -154,7 +154,7 @@ func TestShell(t *testing.T) {
 
 	t.Run("the sidebar routes are all navigable rather than 404", func(t *testing.T) {
 		for _, path := range []string{"/", "/catalog", "/profiles", "/profiles/platform-engineer",
-			"/scanner", "/audit", "/storage", "/org", "/cli",
+			"/scanner", "/audit", "/storage", "/org", "/webhooks", "/cli",
 			"/packages/example/terraform-module-review"} {
 			require.Equalf(t, http.StatusOK, get(t, h, path).Code, "%s is not reachable", path)
 		}

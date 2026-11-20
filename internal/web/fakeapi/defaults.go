@@ -292,6 +292,81 @@ func (a *API) defaults(op string) http.HandlerFunc {
 			Problem(w, http.StatusNotFound, "no such service token")
 		}
 
+	case "listWebhooks":
+		return func(w http.ResponseWriter, _ *http.Request) {
+			JSON(w, http.StatusOK, apiclient.WebhookList{Webhooks: d.Webhooks, EventTypes: d.WebhookEventTypes})
+		}
+	case "createWebhook":
+		return func(w http.ResponseWriter, r *http.Request) {
+			var in apiclient.CreateWebhookRequest
+			if !decode(w, r, &in) {
+				return
+			}
+			now := time.Now().UTC()
+			hook := apiclient.Webhook{
+				Id: uuid.New(), Name: in.Name, Url: in.Url, Namespaces: []string{}, Enabled: true,
+				CreatedBy: d.viewerRef(), CreatedAt: now, UpdatedAt: now,
+			}
+			for _, t := range in.EventTypes {
+				hook.EventTypes = append(hook.EventTypes, string(t))
+			}
+			if in.Namespaces != nil {
+				hook.Namespaces = *in.Namespaces
+			}
+			d.Webhooks = append(d.Webhooks, hook)
+			JSON(w, http.StatusCreated, apiclient.WebhookCreated{Webhook: hook, Secret: "whsec_fake-" + hook.Id.String()})
+		}
+	case "updateWebhook":
+		return func(w http.ResponseWriter, r *http.Request) {
+			var in apiclient.UpdateWebhookRequest
+			if !decode(w, r, &in) {
+				return
+			}
+			hook := d.webhook(r.PathValue("id"))
+			if hook == nil {
+				Problem(w, http.StatusNotFound, "no such webhook")
+				return
+			}
+			if in.Enabled != nil {
+				hook.Enabled = *in.Enabled
+				if hook.Enabled {
+					hook.DisabledReason = nil
+				}
+			}
+			JSON(w, http.StatusOK, hook)
+		}
+	case "rotateWebhookSecret":
+		return func(w http.ResponseWriter, r *http.Request) {
+			if d.webhook(r.PathValue("id")) == nil {
+				Problem(w, http.StatusNotFound, "no such webhook")
+				return
+			}
+			JSON(w, http.StatusOK, apiclient.WebhookSecret{Secret: "whsec_rotated-" + uuid.NewString()})
+		}
+	case "deleteWebhook":
+		return func(w http.ResponseWriter, r *http.Request) {
+			for i := range d.Webhooks {
+				if d.Webhooks[i].Id.String() == r.PathValue("id") {
+					d.Webhooks = slices.Delete(d.Webhooks, i, i+1)
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+			}
+			Problem(w, http.StatusNotFound, "no such webhook")
+		}
+	case "listWebhookDeliveries":
+		return func(w http.ResponseWriter, r *http.Request) {
+			if d.webhook(r.PathValue("id")) == nil {
+				Problem(w, http.StatusNotFound, "no such webhook")
+				return
+			}
+			deliveries := d.WebhookDeliveries[r.PathValue("id")]
+			if deliveries == nil {
+				deliveries = []apiclient.WebhookDelivery{}
+			}
+			JSON(w, http.StatusOK, apiclient.WebhookDeliveryList{Deliveries: deliveries})
+		}
+
 	case "listMachines":
 		return func(w http.ResponseWriter, r *http.Request) {
 			JSON(w, http.StatusOK, d.machineList(r))
@@ -424,4 +499,13 @@ func (d *Data) audit(r *http.Request) []apiclient.AuditEntry {
 		matched = append(matched, *e)
 	}
 	return matched
+}
+
+func (d *Data) webhook(id string) *apiclient.Webhook {
+	for i := range d.Webhooks {
+		if d.Webhooks[i].Id.String() == id {
+			return &d.Webhooks[i]
+		}
+	}
+	return nil
 }

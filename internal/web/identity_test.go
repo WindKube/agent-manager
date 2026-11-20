@@ -207,6 +207,8 @@ func sweep() []sweptScreen {
 		inShell("ServiceTokensScreen", func() templ.Component {
 			return components.ServiceTokensScreen(view.ServiceTokens{})
 		}),
+		// Swept empty: a webhook's creator is a person by nature.
+		inShell("WebhooksScreen", func() templ.Component { return components.WebhooksScreen(view.Webhooks{}) }),
 		// Swept empty: a machine's reporter is a person by nature.
 		inShell("MachinesScreen", func() templ.Component { return components.MachinesScreen(view.Machines{}) }),
 		inShell("MachineScreen", func() templ.Component { return components.MachineScreen(view.MachineDetail{}) }),

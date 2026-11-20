@@ -187,6 +187,12 @@ func (s *Server) register() {
 	s.engine.POST("/org/categories/:id", s.renameCategory)
 	s.engine.POST("/org/categories/:id/delete", s.deleteCategory)
 
+	s.engine.GET("/webhooks", s.webhooks)
+	s.engine.POST("/webhooks", s.createWebhook)
+	s.engine.POST("/webhooks/:id/enabled", s.setWebhookEnabled)
+	s.engine.POST("/webhooks/:id/secret", s.rotateWebhookSecret)
+	s.engine.POST("/webhooks/:id/delete", s.deleteWebhook)
+
 	s.engine.GET("/runtime", s.runtime)
 
 	// The screen and the dashboard it embeds are separate paths on purpose: the

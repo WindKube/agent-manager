@@ -51,6 +51,7 @@ var Nav = []NavGroup{
 	{Label: "Administration", Items: []NavItem{
 		{ID: "storage", Label: "Storage", Href: "/storage"},
 		{ID: "org", Label: "Organization", Href: "/org"},
+		{ID: "webhooks", Label: "Webhooks", Href: "/webhooks"},
 		{ID: "runtime", Label: "Runtime", Href: "/runtime"},
 		{ID: "river", Label: "River Dashboard", Href: "/river"},
 	}},

@@ -76,6 +76,13 @@ var routes = map[string]string{
 	"createServiceToken": "POST /v1/service-tokens",
 	"revokeServiceToken": "DELETE /v1/service-tokens/{id}",
 
+	"listWebhooks":          "GET /v1/webhooks",
+	"createWebhook":         "POST /v1/webhooks",
+	"updateWebhook":         "PATCH /v1/webhooks/{id}",
+	"rotateWebhookSecret":   "POST /v1/webhooks/{id}/secret",
+	"deleteWebhook":         "DELETE /v1/webhooks/{id}",
+	"listWebhookDeliveries": "GET /v1/webhooks/{id}/deliveries",
+
 	"listMachines":  "GET /v1/machines",
 	"getMachine":    "GET /v1/machines/{id}",
 	"forgetMachine": "DELETE /v1/machines/{id}",

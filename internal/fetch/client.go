@@ -6,6 +6,8 @@ package fetch
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
@@ -57,6 +59,10 @@ type Options struct {
 	// rejected since a name can be made to resolve to a private address.
 	Allowlist []string
 
+	// RootCAs replaces the system trust store; nil keeps it. A test hook, so
+	// an httptest TLS server can stand in for a real receiver.
+	RootCAs *x509.CertPool
+
 	// Resolver is the seam that makes the multi-address SSRF cases testable.
 	// Nil means net.DefaultResolver.
 	Resolver Resolver
@@ -96,6 +102,7 @@ func New(opts Options) (Client, error) {
 			DisableKeepAlives:     true,
 			ForceAttemptHTTP2:     true,
 			TLSHandshakeTimeout:   10 * time.Second,
+			TLSClientConfig:       &tls.Config{RootCAs: opts.RootCAs, MinVersion: tls.VersionTLS12},
 			ExpectContinueTimeout: time.Second,
 		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {

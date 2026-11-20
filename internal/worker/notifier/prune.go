@@ -29,8 +29,15 @@ type Pruner struct {
 }
 
 func (p *Pruner) Work(ctx context.Context, _ *river.Job[Prune]) error {
-	_, err := PruneDeliveries(ctx, p.db, p.retention)
-	return err
+	if _, err := PruneDeliveries(ctx, p.db, p.retention); err != nil {
+		return err
+	}
+	// Twice the lookback, so a mark always outlives the window that reads it.
+	if _, err := p.db.ExecContext(ctx, `delete from webhook_dispatch where dispatched_at < now() - make_interval(secs => ?)`,
+		(2 * Lookback).Seconds()); err != nil {
+		return fmt.Errorf("prune webhook dispatch marks: %w", err)
+	}
+	return nil
 }
 
 // PruneDeliveries deletes delivery attempts older than retention.

@@ -515,6 +515,12 @@ Current state, not history: `sync_event` stays the record of each report. A repo
 | `event_id` | uuid | The `audit_event` delivered, and the `Webhook-Id` header |
 | `event_type`, `attempt`, `status_code`, `error`, `response_body`, `duration_ms`, `occurred_at` | | One row per attempt; the response body is cut at 1 KiB. Pruned after 30 days by the notifier |
 
+### `webhook_dispatch`
+| Column | Type | Notes |
+| --- | --- | --- |
+| `audit_event_id` | uuid pk | An audit row already fanned out to its subscriptions. The notifier claims a row by inserting this mark in the transaction that writes its `notify` outbox jobs, so each (subscription, event) is enqueued once |
+| `dispatched_at` | timestamptz | Pruned after 48 h, twice the 24 h window the dispatcher scans |
+
 ---
 
 ## Job hand-off
@@ -523,7 +529,7 @@ Current state, not history: `sync_event` stays the record of each report. A repo
 | Column | Type | Notes |
 | --- | --- | --- |
 | `id` | uuid pk (v7) | Ordering is the primary key |
-| `job_kind` | text | `fetch`, `scan`, `rescan-sweep` |
+| `job_kind` | text | `fetch`, `scan`, `rescan-sweep`, `notify` |
 | `payload` | jsonb | |
 | `idempotency_key` | text | `(job_kind, subject_id, subject_version)` from R5 |
 | `state` | enum `pending \| delivered` | |
@@ -616,6 +622,7 @@ against a stated decision instead of a fresh guess.
 | `am_api` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` on `machine`; `SELECT`, `INSERT`, `DELETE` on `machine_install`, `machine_skip` | The sync report replaces a machine's rows per profile; forgetting a machine deletes them |
 | `am_api` | column `SELECT` on `webhook_subscription` except `secret`; `INSERT`, `UPDATE`, `DELETE` on it; `SELECT`, `DELETE` on `webhook_delivery` | Managing subscriptions, and deleting one with its delivery log; the secret is shown once at creation and rotation and never read back |
 | `am_notifier` | `SELECT` on `webhook_subscription`; `UPDATE (enabled, disabled_reason, updated_at, last_delivery_*)` on it; `SELECT`, `INSERT`, `DELETE` on `webhook_delivery` | Signing, disabling on 410, recording and pruning deliveries |
+| `am_notifier` | `SELECT`, `INSERT`, `DELETE` on `webhook_dispatch` | Claiming audit rows for fan-out, and pruning the marks |
 | `am_notifier` | `SELECT`, `INSERT` on `audit_event`; `INSERT` on `outbox` | Events derive from audit rows; delivery jobs go through the outbox |
 | `am_notifier` | `SELECT` on `override`, `finding`, `version`, `package`; `UPDATE (expiring_notified_at, expired_notified_at)` on `override` | The waiver expiry notices |
 | `am_web` | **none — no role, no grant, no DSN** | Principle II. It reaches data only through `api` over HTTP |

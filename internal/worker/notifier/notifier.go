@@ -7,6 +7,7 @@ package notifier
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/riverqueue/river"
 
@@ -44,11 +45,27 @@ func register(deps worker.Deps, workers *river.Workers) error {
 	if err := checkDeps(deps); err != nil {
 		return err
 	}
-	return river.AddWorkerSafely(workers, &Pruner{db: deps.DB, retention: cfg.WebhookDeliveryRetention})
+	if err := river.AddWorkerSafely(workers, &Pruner{db: deps.DB, retention: cfg.WebhookDeliveryRetention}); err != nil {
+		return err
+	}
+	if err := river.AddWorkerSafely(workers, &Dispatcher{db: deps.DB, enqueue: outbox.NewWriter()}); err != nil {
+		return err
+	}
+	return river.AddWorkerSafely(workers, NewDeliverer(deps.DB, deps.Fetch, cfg.WebhookTimeout))
 }
 
 func periodic(worker.Config) ([]*river.PeriodicJob, error) {
+	cfg, err := config.Load[config.Notifier]()
+	if err != nil {
+		return nil, fmt.Errorf("notifier: %w", err)
+	}
+	if cfg.WebhookDispatchInterval < time.Second {
+		return nil, fmt.Errorf("%sWEBHOOK_DISPATCH_INTERVAL is %s; it must be at least 1s", config.EnvPrefix, cfg.WebhookDispatchInterval)
+	}
 	return []*river.PeriodicJob{
+		river.NewPeriodicJob(river.PeriodicInterval(cfg.WebhookDispatchInterval),
+			func() (river.JobArgs, *river.InsertOpts) { return Dispatch{}, nil },
+			&river.PeriodicJobOpts{ID: Dispatch{}.Kind(), RunOnStart: true}),
 		river.NewPeriodicJob(river.PeriodicInterval(pruneInterval),
 			func() (river.JobArgs, *river.InsertOpts) { return Prune{}, nil },
 			&river.PeriodicJobOpts{ID: Prune{}.Kind(), RunOnStart: true}),

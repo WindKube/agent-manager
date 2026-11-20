@@ -39,11 +39,12 @@ const (
 	KindFetch       Kind = "fetch"
 	KindScan        Kind = "scan"
 	KindRescanSweep Kind = "rescan-sweep"
+	KindNotify      Kind = "notify"
 )
 
 func (k Kind) Valid() bool {
 	switch k {
-	case KindFetch, KindScan, KindRescanSweep:
+	case KindFetch, KindScan, KindRescanSweep, KindNotify:
 		return true
 	default:
 		return false
@@ -65,6 +66,7 @@ var queueByKind = map[Kind]string{
 	KindFetch:       QueueFetch,
 	KindScan:        QueueScan,
 	KindRescanSweep: QueueScan,
+	KindNotify:      QueueNotify,
 }
 
 // Queue is the River queue a kind is delivered to.
@@ -77,6 +79,19 @@ func Queue(k Kind) string {
 // fetch or a scan that keeps failing is 25 attempts of noise nobody reads,
 // and it is what makes the Runtime screen's "retryable" count meaningless.
 const MaxJobAttempts = 3
+
+// MaxNotifyAttempts is a webhook delivery's budget instead: a receiver that is
+// down for an afternoon should still get the event, and the notify worker's
+// backoff spreads ten attempts over about 17 hours.
+const MaxNotifyAttempts = 10
+
+// MaxAttempts is the retry budget a kind is inserted with.
+func MaxAttempts(k Kind) int {
+	if k == KindNotify {
+		return MaxNotifyAttempts
+	}
+	return MaxJobAttempts
+}
 
 // Job is one queued unit of work as the caller describes it.
 type Job struct {

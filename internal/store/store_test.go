@@ -812,6 +812,7 @@ func TestIndexDefinitionsAreExactlyAsSpecified(t *testing.T) {
 		"machine_last_identity_idx":           "CREATE INDEX machine_last_identity_idx ON public.machine USING btree (last_identity_id)",
 		"webhook_delivery_subscription_idx":   "CREATE INDEX webhook_delivery_subscription_idx ON public.webhook_delivery USING btree (subscription_id, occurred_at DESC)",
 		"webhook_delivery_occurred_at_idx":    "CREATE INDEX webhook_delivery_occurred_at_idx ON public.webhook_delivery USING btree (occurred_at)",
+		"webhook_dispatch_dispatched_at_idx":  "CREATE INDEX webhook_dispatch_dispatched_at_idx ON public.webhook_dispatch USING btree (dispatched_at)",
 	}
 
 	for name, def := range want {
@@ -2130,4 +2131,22 @@ func TestTheNotifierReachesOnlyWhatItSignsRecordsOrNotices(t *testing.T) {
 			requirePgError(t, err, "42501", "")
 		}
 	})
+}
+
+func TestOnlyTheNotifierClaimsAuditRowsForDispatch(t *testing.T) {
+	id := models.NewID()
+	asRole(t, "am_notifier", func(ctx context.Context, conn *pgxpool.Conn) {
+		_, err := conn.Exec(ctx, `insert into webhook_dispatch (audit_event_id) values ($1)`, id)
+		require.NoError(t, err)
+		_, err = conn.Exec(ctx, `insert into webhook_dispatch (audit_event_id) values ($1) on conflict do nothing`, id)
+		require.NoError(t, err)
+		_, err = conn.Exec(ctx, `delete from webhook_dispatch where audit_event_id = $1`, id)
+		require.NoError(t, err)
+	})
+	for _, role := range []string{"am_api", "am_fetcher", "am_scanner"} {
+		asRole(t, role, func(ctx context.Context, conn *pgxpool.Conn) {
+			_, err := conn.Exec(ctx, `insert into webhook_dispatch (audit_event_id) values ($1)`, id)
+			requirePgError(t, err, "42501", "")
+		})
+	}
 }

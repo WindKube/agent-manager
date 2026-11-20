@@ -154,6 +154,9 @@ type Notifier struct {
 	WebhookTimeout time.Duration `env:"WEBHOOK_TIMEOUT" envDefault:"10s"`
 	// WebhookDeliveryRetention is how long the delivery log is kept.
 	WebhookDeliveryRetention time.Duration `env:"WEBHOOK_DELIVERY_RETENTION" envDefault:"720h"`
+	// WebhookDispatchInterval is how often new audit rows are fanned out,
+	// which is the floor of a webhook's latency.
+	WebhookDispatchInterval time.Duration `env:"WEBHOOK_DISPATCH_INTERVAL" envDefault:"10s"`
 }
 
 type Migrate struct {

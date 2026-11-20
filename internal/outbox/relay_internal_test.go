@@ -66,3 +66,11 @@ func TestAQueuedJobCarriesTheOutboxRowThrough(t *testing.T) {
 		})
 	}
 }
+
+func TestANotifyJobGetsTheWebhookRetryBudgetAndEveryOtherKindThree(t *testing.T) {
+	require.Equal(t, 10, MaxAttempts(KindNotify))
+	require.Equal(t, QueueNotify, Queue(KindNotify))
+	for _, k := range []Kind{KindFetch, KindScan, KindRescanSweep} {
+		require.Equal(t, MaxJobAttempts, MaxAttempts(k))
+	}
+}

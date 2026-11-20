@@ -1,4 +1,4 @@
-h1:7HKfnfZc28hFSbWa+LQKy6xGIpNCA8R51DfUv8IYEgA=
+h1:LWPxPHf7vbqJ9xTS7+Q4HkOq2hE2ts4sfR9p9BEk81U=
 20260827150113_init.sql h1:aKaMFjJ82z0Pqa0t1/t0viIOhej4DPz5qZtFK2yy0JQ=
 20260827150200_roles_and_grants.sql h1:vFLj6y+ljV21vO6RMNz5ocVkNiYy0h/ewSEdoKevLE4=
 20260828000342_namespace_audit_kinds_evidence_and_fetch_attempts.sql h1:DsNTEhm6DlVkncHLFr3Nf+pX3Pr5ZWYXI43oKkbsxz4=
@@ -20,3 +20,4 @@ h1:7HKfnfZc28hFSbWa+LQKy6xGIpNCA8R51DfUv8IYEgA=
 20261120071833_service_tokens.sql h1:aQLSDyh9ebD7ZdwSQ4xYOky3j3Yc10HySTS+wtKmCGw=
 20261120074515_fleet_inventory.sql h1:Kdh1+Vl4HhX1c6JxR3yJf5MbPNhsFd9S8752RVHzyb4=
 20261120083500_webhooks.sql h1:N7uH5IWxzmOfj4PB8fS68B7i8/b/FQxrNH+HZCLQY2w=
+20261120224302_webhook_dispatch.sql h1:/yLatxMPZEcq3f8ZYd3TlI2FnZ8ElndCsyyhQ2woMtc=

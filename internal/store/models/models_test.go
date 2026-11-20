@@ -41,7 +41,7 @@ var wantTables = []string{
 	// Fleet inventory
 	"machine", "machine_install", "machine_skip",
 	// Webhooks
-	"webhook_subscription", "webhook_delivery",
+	"webhook_subscription", "webhook_delivery", "webhook_dispatch",
 	// Job hand-off
 	"outbox",
 }

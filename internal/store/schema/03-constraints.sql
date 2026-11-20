@@ -368,3 +368,4 @@ alter table "webhook_delivery"
 
 create index "webhook_delivery_subscription_idx" on "webhook_delivery" ("subscription_id", "occurred_at" desc);
 create index "webhook_delivery_occurred_at_idx" on "webhook_delivery" ("occurred_at");
+create index "webhook_dispatch_dispatched_at_idx" on "webhook_dispatch" ("dispatched_at");

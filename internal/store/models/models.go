@@ -70,6 +70,7 @@ func All() []any {
 		// Webhooks
 		(*WebhookSubscription)(nil),
 		(*WebhookDelivery)(nil),
+		(*WebhookDispatch)(nil),
 
 		// Job hand-off
 		(*Outbox)(nil),

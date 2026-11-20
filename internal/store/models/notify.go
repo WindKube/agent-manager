@@ -34,6 +34,15 @@ type WebhookSubscription struct {
 	CreatedBy *Identity `bun:"rel:belongs-to,join:created_by_identity_id=id"`
 }
 
+// WebhookDispatch marks an audit row the notifier has fanned out to its
+// subscriptions; its primary key is what makes the fan-out happen once.
+type WebhookDispatch struct {
+	bun.BaseModel `bun:"table:webhook_dispatch,alias:whx"`
+
+	AuditEventID uuid.UUID `bun:"audit_event_id,pk,type:uuid,notnull"`
+	DispatchedAt time.Time `bun:"dispatched_at,type:timestamptz,notnull,default:now()"`
+}
+
 // WebhookDelivery is one delivery attempt, kept for 30 days and deleted with
 // its subscription.
 type WebhookDelivery struct {

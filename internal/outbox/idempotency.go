@@ -29,6 +29,8 @@ func Delivered(ctx context.Context, db bun.IDB, job Job) (bool, error) {
 		return bytesCommitted(ctx, db, job.SubjectID)
 	case KindScan:
 		return scanRecorded(ctx, db, job.SubjectID, job.SubjectVersion)
+	case KindNotify:
+		return webhookDelivered(ctx, db, job.SubjectID, job.SubjectVersion)
 	case KindRescanSweep:
 		// A sweep is not guarded here. It reads the catalog and fans out to
 		// per-version scan jobs, and each of those carries the guard above, so
@@ -80,4 +82,21 @@ func scanRecorded(ctx context.Context, db bun.IDB, versionID uuid.UUID, packVers
 		return false, fmt.Errorf("read scan history for version %s: %w", versionID, err)
 	}
 	return recorded, nil
+}
+
+// webhookDelivered answers "has the receiver already accepted this event?".
+// SubjectID is the subscription, SubjectVersion the audit event id.
+func webhookDelivered(ctx context.Context, db bun.IDB, subscriptionID uuid.UUID, eventID string) (bool, error) {
+	if subscriptionID == uuid.Nil || eventID == "" {
+		return false, fmt.Errorf("notify idempotency check: no subscription or event")
+	}
+	var delivered bool
+	err := db.QueryRowContext(ctx,
+		`select exists (select 1 from webhook_delivery
+		 where subscription_id = ? and event_id = ?::uuid and status_code between 200 and 299)`,
+		subscriptionID, eventID).Scan(&delivered)
+	if err != nil {
+		return false, fmt.Errorf("read deliveries of event %s to webhook %s: %w", eventID, subscriptionID, err)
+	}
+	return delivered, nil
 }

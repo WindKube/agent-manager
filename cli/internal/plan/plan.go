@@ -29,6 +29,10 @@ type Target struct {
 	// Withdrawn: a known target deliberately unimplemented, reported rather
 	// than refused (does not license an all-withdrawn profile to exit 0).
 	Withdrawn error
+
+	// ServedBy are targets whose skill root this agent also reads: when one
+	// of them is written in the same profile, a skill is not placed twice.
+	ServedBy []record.Target
 }
 
 // Op is what a plan does to one entry, finer-grained than the bucket the change lands in.

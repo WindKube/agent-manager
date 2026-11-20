@@ -846,3 +846,39 @@ func itoa(i int) string {
 	}
 	return string(b)
 }
+
+func TestPluginComponentsRoundTripAndAreValidated(t *testing.T) {
+	t.Parallel()
+	pluginRecord := func(comps ...record.Component) *record.Record {
+		r := record.New(hubA)
+		r.SetProfile(record.Profile{Slug: "base", Revision: 1, InstalledAt: installedAt(),
+			Targets: []record.Target{record.TargetOpenCode},
+			Entries: []record.Entry{{
+				ID: "acme/kit", Version: "1.0.0", Digest: mustDigest(t, digestHex), Kind: record.KindPlugin,
+				Target: record.TargetOpenCode, Dest: filepath.Join(destRoot, ".agent-manager", "plugins", "acme--kit"),
+				Components: comps, Partial: true,
+			}},
+		})
+		return r
+	}
+	mcp := record.Component{Kind: record.ComponentMCPServer, Name: "fs",
+		Path: filepath.Join(destRoot, ".config", "opencode", "opencode.json"), Key: "kit-fs", SHA256: fileHex}
+
+	p := recordPath(t)
+	want := pluginRecord(mcp)
+	_, err := record.Save(p, want)
+	require.NoError(t, err)
+	got, err := record.Load(p, hubA)
+	require.NoError(t, err)
+	require.Equal(t, want, got)
+
+	for name, bad := range map[string]record.Component{
+		"unknown kind":  {Kind: "theme", Name: "x", Path: mcp.Path, SHA256: fileHex},
+		"relative path": {Kind: record.ComponentAgent, Name: "x", Path: "agents/x.md", SHA256: fileHex},
+		"short hash":    {Kind: record.ComponentAgent, Name: "x", Path: mcp.Path, SHA256: "abc"},
+		"no name":       {Kind: record.ComponentAgent, Path: mcp.Path, SHA256: fileHex},
+	} {
+		require.ErrorIs(t, pluginRecord(bad).Validate(), record.ErrInvalid, name)
+	}
+	require.ErrorIs(t, pluginRecord(mcp, mcp).Validate(), record.ErrInvalid, "one component recorded twice")
+}

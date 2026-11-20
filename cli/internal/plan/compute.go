@@ -136,6 +136,13 @@ func Compute(in Inputs) (Plan, error) {
 		for i := range lf.Entries {
 			e := lf.Entries[i]
 			for _, t := range sortedTargetNames(writable[slug]) {
+				if by, served := servedBy(writable[slug], t, record.Kind(e.Kind)); served {
+					b.skips = append(b.skips, Skip{
+						Profile: slug, ID: e.Id, Target: t, Reason: SkipServedBySharedRoot, Recognised: true,
+						Detail: fmt.Sprintf("%s also loads skills from the %s skills directory this profile writes", t, by),
+					})
+					continue
+				}
 				d, err := b.route(slug, t, writable[slug][t], e)
 				if err != nil {
 					continue // already recorded as an unroutable conflict, or as a skip
@@ -438,7 +445,7 @@ func (b *builder) change(d desiredEntry, prev *record.Entry) Change {
 		Digest:        prev.Digest,
 		Fingerprinted: !prev.Fingerprint.IsZero(),
 	}
-	if prev.Version == d.version && prev.Digest == d.digest {
+	if prev.Version == d.version && prev.Digest == d.digest && !prev.Partial {
 		c.Op = OpUnchanged
 		c.Direction = DirectionSame
 		return c
@@ -672,6 +679,19 @@ func dedupeTargets(in []hub.LockfileTargets) []string {
 	}
 	slices.Sort(out)
 	return out
+}
+
+// servedBy: only a standalone skill; a plugin decides per component.
+func servedBy(writable map[record.Target]Target, t record.Target, kind record.Kind) (record.Target, bool) {
+	if kind != record.KindSkill {
+		return "", false
+	}
+	for _, by := range writable[t].ServedBy {
+		if _, ok := writable[by]; ok && by != t {
+			return by, true
+		}
+	}
+	return "", false
 }
 
 func sortedTargetNames(m map[record.Target]Target) []record.Target {

@@ -64,8 +64,12 @@ type Skip struct {
 	Package string `json:"package"`
 	Version string `json:"version,omitempty"`
 	Target  string `json:"target,omitempty"`
-	Reason  string `json:"reason"`
-	Detail  string `json:"detail,omitempty"`
+
+	// Component is set when one part of an installed plugin was not placed: `<kind> <name>`.
+	Component string `json:"component,omitempty"`
+
+	Reason string `json:"reason"`
+	Detail string `json:"detail,omitempty"`
 }
 
 // SyncResult is produced by `amctl sync` from the plan internal/plan computed.
@@ -133,7 +137,13 @@ func (r SyncResult) Human(w io.Writer) error {
 		}
 	}
 	for _, s := range rest {
-		if _, err := fmt.Fprintf(w, "  %-9s %s %s: %s\n", "skip", s.Package, s.Version, s.Reason); err != nil {
+		var err error
+		if s.Component != "" {
+			_, err = fmt.Fprintf(w, "  %-9s %s %s for %s: %s\n", "skip", s.Package, s.Component, s.Target, s.Reason)
+		} else {
+			_, err = fmt.Fprintf(w, "  %-9s %s %s: %s\n", "skip", s.Package, s.Version, s.Reason)
+		}
+		if err != nil {
 			return err
 		}
 	}

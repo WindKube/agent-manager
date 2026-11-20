@@ -70,16 +70,10 @@ type Fixtures struct {
 	// UnknownSkipReason is a profile whose skipped array carries a reason value
 	// this build has never seen. It must be reported verbatim.
 	UnknownSkipReason string
-	// UnwritableTarget is a profile whose lockfile names a target this client
-	// cannot write (codex, gated on gate R2's unmade measurement) alongside one
-	// it can. Codex must be reported as a SKIP naming the target, never
-	// silently dropped, while claude-code still installs: one target this
-	// build cannot write must not block the profile's other target.
-	//
-	// It is a profile of its own rather than a property of every profile. The
-	// earlier fixture named codex on all of them, which meant no profile the fake
-	// served could be synced at all — see the note in catalog.go's profiles().
-	UnwritableTarget string
+	// BothTargets is a profile whose lockfile names claude-code and codex.
+	BothTargets string
+	// Plugin is a profile with one plugin and every target this build writes.
+	Plugin string
 
 	MissingProfile string // 404
 }
@@ -228,7 +222,8 @@ func (h *Hub) Target() Target {
 			StalePresignedBundle:  slugPresignedStale,
 			StalePresignedEntryID: "contoso/offloaded-stale",
 			UnknownSkipReason:     slugFutureSkip,
-			UnwritableTarget:      slugUnwritable,
+			BothTargets:           slugBothTargets,
+			Plugin:                slugPlugin,
 			MissingProfile:        slugMissing,
 		},
 	}

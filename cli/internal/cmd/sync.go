@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/apply"
 	"github.com/WindKube/agent-manager/cli/internal/cache"
 	"github.com/WindKube/agent-manager/cli/internal/credentials"
+	"github.com/WindKube/agent-manager/cli/internal/deliver"
 	"github.com/WindKube/agent-manager/cli/internal/hub"
 	"github.com/WindKube/agent-manager/cli/internal/layout"
 	"github.com/WindKube/agent-manager/cli/internal/output"
@@ -26,6 +28,9 @@ import (
 
 // revisionHead is the contract's own spelling of "whatever is current".
 const revisionHead = "head"
+
+// pluginDirName holds each plugin unpacked per target, inside the hub's state directory.
+const pluginDirName = "plugins"
 
 // syncDeps is everything `sync` reaches outside its own process, gathered so
 // sync_test.go can drive real code against the fake hub (see loginDeps).
@@ -171,6 +176,8 @@ type syncRun struct {
 	// lock is carried this far, not discarded at WithLock, so Lock.Lost can
 	// still be consulted — the mitigation for a frozen, reclaimed holder.
 	lock *Lock
+
+	layouts map[record.Target]layout.Target // every target this build can write, as resolved
 }
 
 // stillOurs: a lock reclaimed while frozen means another amctl already owns
@@ -207,8 +214,14 @@ func (r *syncRun) do(ctx context.Context) error {
 		return err
 	}
 
-	configDir, _ := lookupEnv(r.deps.lookupEnv)(layout.ClaudeCodeConfigDirEnv)
-	reg, err := layout.NewRegistry(layout.Config{HomeDir: r.home.UserHome, ClaudeConfigDir: configDir})
+	env := lookupEnv(r.deps.lookupEnv)
+	configDir, _ := env(layout.ClaudeCodeConfigDirEnv)
+	codexHome, _ := env(layout.CodexHomeEnv)
+	xdgConfig, _ := env(layout.XDGConfigHomeEnv)
+	reg, err := layout.NewRegistry(layout.Config{
+		HomeDir: r.home.UserHome, ClaudeConfigDir: configDir, CodexHome: codexHome, XDGConfigHome: xdgConfig,
+		PluginRoot: filepath.Join(r.home.HubDir(r.target), pluginDirName),
+	})
 	if err != nil {
 		return err
 	}
@@ -456,11 +469,13 @@ func (r *syncRun) resolveTargets(reg *layout.Registry, lockfiles []*hub.Lockfile
 
 	out := make([]plan.Target, 0, len(ordered))
 	writable = map[record.Target]bool{}
+	r.layouts = map[record.Target]layout.Target{}
 	for _, name := range ordered {
 		t, err := reg.Resolve(record.Target(name))
 		switch {
 		case err == nil:
 			writable[record.Target(name)] = true
+			r.layouts[record.Target(name)] = t
 			out = append(out, plan.Target{Name: record.Target(name), Dest: destFunc(t)})
 		case errors.Is(err, layout.ErrUnknownTarget):
 			r.s.Warnf("the lockfile names target %s, which this build does not know: %v", name, err)
@@ -475,6 +490,18 @@ func (r *syncRun) resolveTargets(reg *layout.Registry, lockfiles []*hub.Lockfile
 			// plan.Skip per entry.
 			out = append(out, plan.Target{Name: record.Target(name), Err: err})
 		}
+	}
+	for i := range out {
+		t, ok := r.layouts[out[i].Name]
+		if !ok {
+			continue
+		}
+		for other, ot := range r.layouts {
+			if other != out[i].Name && slices.Contains(t.AlsoReadsSkillsFrom(), ot.Root()) {
+				out[i].ServedBy = append(out[i].ServedBy, other)
+			}
+		}
+		slices.Sort(out[i].ServedBy)
 	}
 	return out, writable
 }
@@ -753,11 +780,16 @@ func (r *syncRun) apply(
 	if lost := r.stillOurs(); lost != nil {
 		return nil, lost
 	}
+	states := profileStates(lockfiles, writable)
+	profileTargets := make(map[string][]record.Target, len(states))
+	for _, st := range states {
+		profileTargets[st.Slug] = st.Targets
+	}
 	applier, err := apply.New(apply.Config{
 		Home:         home,
 		Record:       rec,
 		RecordPath:   recordPath,
-		Profiles:     profileStates(lockfiles, writable),
+		Profiles:     states,
 		Bundles:      fetch,
 		Log:          r.s,
 		Force:        r.flags.force,
@@ -765,6 +797,9 @@ func (r *syncRun) apply(
 		Continue:     r.stillOurs,
 		Fingerprints: apply.TreeFingerprinter{},
 		Verifier:     apply.TreeFingerprinter{},
+		Components: &deliver.Deliverer{
+			Targets: r.layouts, Home: home, Force: r.flags.force, Log: r.s, ProfileTargets: profileTargets,
+		},
 		// Pruner is deliberately nil: prune does not exist yet, so a planned
 		// removal fails with ErrPruneUnavailable instead of silently not happening.
 	})
@@ -836,6 +871,12 @@ func describeRevisions(lockfiles []*hub.Lockfile) string {
 func (r *syncRun) fill(res *output.SyncResult, applied *apply.Result, fetch *bundleFetcher) {
 	for i := range applied.Installed {
 		inst := applied.Installed[i]
+		for _, sk := range inst.Skipped {
+			res.Skipped = append(res.Skipped, output.Skip{
+				Package: inst.Change.ID, Version: inst.Change.Version, Target: string(inst.Change.Target),
+				Component: string(sk.Kind) + " " + sk.Name, Reason: sk.Reason,
+			})
+		}
 		c := changeOf(inst.Change)
 		switch inst.Change.Op {
 		case plan.OpDowngrade:

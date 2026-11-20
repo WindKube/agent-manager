@@ -73,12 +73,11 @@ func nameOnlyTarget(root string) Target {
 
 // codexTarget is the R2-gated target: the constructor fails, so the plan must
 // say "this build cannot write codex", never "your profile excluded codex".
+// codexTarget stands in for a target this build knows and cannot write;
+// codex itself is writable now, so the refusal is synthetic.
 func codexTarget(t *testing.T) Target {
 	t.Helper()
-	_, err := layout.NewCodex(home, "")
-	require.Error(t, err)
-	require.ErrorIs(t, err, layout.ErrR2Unresolved)
-	return Target{Name: record.TargetCodex, Err: err}
+	return Target{Name: record.TargetCodex, Err: fmt.Errorf("codex: %w", layout.ErrR2Unresolved)}
 }
 
 // withdrawnTarget is the THIRD outcome: known, deliberately never implemented,
@@ -1209,4 +1208,65 @@ func TestARemovalIsRetainedAgainstACaseFoldedInstall(t *testing.T) {
 	require.NotEmpty(t, rm.RetainedBy,
 		"the record row goes, but the directory is another entry's live install and must not be unlinked")
 	require.Equal(t, "acme/x", rm.RetainedBy[0].ID)
+}
+
+func openCodeTarget(root string, servedBy ...record.Target) Target {
+	return Target{
+		Name:     record.TargetOpenCode,
+		ServedBy: servedBy,
+		Dest: func(id string, _ record.Kind) (string, error) {
+			ns, name, _ := strings.Cut(id, "/")
+			return filepath.Join(root, ns+"--"+name), nil
+		},
+	}
+}
+
+func TestASkillOpenCodeAlreadyLoadsFromAnotherTargetIsNotPlacedTwice(t *testing.T) {
+	t.Parallel()
+	targets := []Target{claudeCodeTarget(skillsRoot), openCodeTarget(home+"/.config/opencode/skills", record.TargetClaudeCode)}
+
+	p, err := Compute(Inputs{
+		Lockfiles: []*hub.Lockfile{lf("base", []string{"claude-code", "opencode"},
+			skill("acme/review", "1.0.0", 1), plugin("acme/kit", "1.0.0", 2))},
+		Targets: targets,
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		"claude-code acme/review base add none->1.0.0 dir=-",
+		"opencode acme/kit base add none->1.0.0 dir=-",
+	}, changeLines(p.Add), "a plugin decides per component, so it is still planned for opencode")
+	var served []Skip
+	for _, sk := range p.Skipped {
+		if sk.Reason == SkipServedBySharedRoot {
+			served = append(served, sk)
+		}
+	}
+	require.Len(t, served, 1)
+	require.Equal(t, "acme/review", served[0].ID)
+	require.Equal(t, record.TargetOpenCode, served[0].Target)
+	require.Contains(t, served[0].Detail, "claude-code")
+
+	alone, err := Compute(Inputs{
+		Lockfiles: []*hub.Lockfile{lf("base", []string{"opencode"}, skill("acme/review", "1.0.0", 1))},
+		Targets:   targets,
+	})
+	require.NoError(t, err)
+	require.Len(t, alone.Add, 1, "without the serving target in the profile, opencode gets its own copy")
+	require.Empty(t, alone.Skipped)
+}
+
+func TestAPartiallyDeliveredEntryIsReplayedAtTheSameVersion(t *testing.T) {
+	t.Parallel()
+	r := rec(t, map[string][]installedEntry{"base": {{id: "acme/review", version: "1.0.0", digestSeed: 1, fingerprint: true}}})
+	r.Profiles[0].Entries[0].Partial = true
+
+	p, err := Compute(Inputs{
+		Lockfiles: []*hub.Lockfile{lf("base", []string{"claude-code"}, skill("acme/review", "1.0.0", 1))},
+		Record:    r,
+		Targets:   []Target{claudeCodeTarget(skillsRoot)},
+	})
+	require.NoError(t, err)
+	require.Empty(t, p.Unchanged)
+	require.Len(t, p.Upgrade, 1)
+	require.Equal(t, OpReplace, p.Upgrade[0].Op)
 }

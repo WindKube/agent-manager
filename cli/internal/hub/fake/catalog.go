@@ -87,7 +87,8 @@ const (
 	slugPresigned      = "presigned-bundles"
 	slugPresignedStale = "presigned-stale"
 	slugFutureSkip     = "future-skip-reason"
-	slugUnwritable     = "unwritable-target"
+	slugBothTargets    = "both-targets"
+	slugPlugin         = "every-target-plugin"
 	slugMissing        = "no-such-profile"
 )
 
@@ -108,33 +109,24 @@ func catalog() []*pkg {
 		{ID: "contoso/offloaded", Version: "1.2.0", Publisher: "contoso/tools", Kind: "skill", serve: serveRedirect},
 		{ID: "contoso/offloaded-stale", Version: "1.2.0", Publisher: "contoso/tools", Kind: "skill", serve: serveRedirectStale},
 		{ID: "acme/code-review", Version: "2.4.0", Publisher: "acme/platform", Kind: "skill"}, // older rev, differs in content not just number
+		{ID: "acme/toolkit", Version: "1.0.0", Publisher: "acme/platform", Kind: "plugin"},
 	}
 	for _, p := range pkgs {
+		if p.Kind == hub.Plugin {
+			p.blob = packBundle(pluginFiles(p.ID, p.Version))
+			continue
+		}
 		p.blob = packBundle(skillFiles(p.ID, p.Version))
 	}
 	return pkgs
 }
 
 func profiles() []profileSpec {
-	// TWO target fixtures, and which profile gets which is load-bearing.
-	//
-	// An earlier version put both contract targets on every profile, reasoning
-	// that "the fake serves what the hub may serve" and that a fake naming only
-	// the shipped target could not exercise ErrR2Unresolved. The first half is
-	// right and the conclusion was wrong: because codex is unwritable by design,
-	// naming it on EVERY profile meant every profile the fake serves is refused,
-	// so the fake could not serve the happy path at all. The idempotence and
-	// interruption properties had no syncable profile to run against, and the
-	// sync verb's own tests had to stand up a rewriting reverse proxy to get
-	// one.
-	//
-	// The real hub's own seeded lockfile names claude-code only
-	// (internal/api/integration_test.go, storedLockfile), so that is the shipping
-	// case and it belongs on the profiles that model a working sync. The skip
-	// gets a profile of its own, named for it, so it is still exercised — by a
-	// test that asks for it rather than by every test incidentally.
+	// TWO target fixtures: most profiles name claude-code only, as the real
+	// hub's seeded lockfile does, so every directory-level assertion has one
+	// skills root to look at; one profile names two targets.
 	writable := []hub.LockfileTargets{"claude-code"}
-	unwritable := []hub.LockfileTargets{"claude-code", "codex"}
+	both := []hub.LockfileTargets{"claude-code", "codex"}
 	return []profileSpec{
 		{
 			slug: slugBaseline, name: "Platform baseline", visibility: "organisation",
@@ -228,15 +220,23 @@ func profiles() []profileSpec {
 			}},
 		},
 		{
-			// The ErrR2Unresolved case: a lockfile naming a target this client
-			// cannot write, alongside one it can. codex is reported as a SKIP
-			// naming the target — never silently dropped — while claude-code
-			// still installs.
-			slug: slugUnwritable, name: "Names an unwritable target", visibility: "organisation",
+			// One lockfile, two targets: each gets its own copy in its own root.
+			slug: slugBothTargets, name: "Names two targets", visibility: "organisation",
 			revisions: []revisionSpec{{
-				revision: 1, gate: "approval", policy: "pinned", targets: unwritable,
+				revision: 1, gate: "approval", policy: "pinned", targets: both,
 				entries: []entrySpec{
 					{pkgID: "acme/code-review@2.4.1", resolution: "pinned", verdict: "clean"},
+				},
+				skipped: []hub.LockfileSkip{},
+			}},
+		},
+		{
+			slug: slugPlugin, name: "A plugin for every target", visibility: "organisation",
+			revisions: []revisionSpec{{
+				revision: 1, gate: "approval", policy: "pinned",
+				targets: []hub.LockfileTargets{"claude-code", "codex", "opencode"},
+				entries: []entrySpec{
+					{pkgID: "acme/toolkit@1.0.0", resolution: "pinned", verdict: "clean"},
 				},
 				skipped: []hub.LockfileSkip{},
 			}},

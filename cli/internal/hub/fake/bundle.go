@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/klauspost/compress/zstd"
@@ -120,5 +121,15 @@ func skillFiles(id, version string) []bundleFile {
 		{Name: "SKILL.md", Body: "---\nname: " + id + "\nversion: " + version + "\n---\n\n# " + id + "\n"},
 		{Name: "references/usage.md", Body: "Usage notes for " + id + " " + version + ".\n"},
 		{Name: "scripts/check.sh", Body: "#!/bin/sh\necho " + id + "\n", Mode: 0o755},
+	}
+}
+
+// pluginFiles is an Agent Plugins tree: the root holds plugin.json and skills/.
+func pluginFiles(id, version string) []bundleFile {
+	_, name, _ := strings.Cut(id, "/")
+	return []bundleFile{
+		{Name: "plugin.json", Body: `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",` +
+			`"name":"` + name + `","version":"` + version + `","description":"fixture plugin"}`},
+		{Name: "skills/review/SKILL.md", Body: "---\nname: review\ndescription: Reviews.\n---\nReview " + id + "\n"},
 	}
 }

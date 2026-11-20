@@ -39,6 +39,10 @@ var ErrUnverifiable = errors.New("destination cannot be verified as unmodified")
 // ErrPruneUnavailable marks a planned removal with no Pruner wired.
 var ErrPruneUnavailable = errors.New("this build cannot execute a removal")
 
+// ErrComponentConflict marks a plugin component whose place is held by
+// something amctl did not write there for this entry.
+var ErrComponentConflict = errors.New("plugin component conflicts with what is already there")
+
 // ErrConfig marks an Applier that cannot be constructed.
 var ErrConfig = errors.New("invalid apply configuration")
 
@@ -70,6 +74,31 @@ type Pruner interface {
 	Remove(ctx context.Context, r plan.Removal) (bool, error)
 }
 
+// ComponentSkip is one plugin component a target does not receive, and why.
+type ComponentSkip struct {
+	Kind   record.ComponentKind
+	Name   string
+	Reason string
+}
+
+// Components places a plugin's parts outside its own directory.
+type Components interface {
+	// Prepare reads the plugin at stagedDir and checks every guard against
+	// what is on disk now; it writes nothing. prev is what this destination's
+	// entries already own, others is what every other entry owns.
+	Prepare(ctx context.Context, c plan.Change, stagedDir string, prev, others []record.Component) (Delivery, error)
+
+	// Remove deletes recorded components, returning those it had to keep.
+	Remove(ctx context.Context, target record.Target, comps []record.Component) ([]record.Component, error)
+}
+
+// Delivery is one prepared plugin placement; Apply runs after the plugin's
+// own directory is swapped in, and returns what it placed even on error.
+type Delivery interface {
+	Skipped() []ComponentSkip
+	Apply(ctx context.Context) ([]record.Component, error)
+}
+
 // ProfileState is what the record needs about a profile beyond the plan.
 type ProfileState struct {
 	Slug     string
@@ -88,6 +117,7 @@ type Config struct {
 	Fingerprints Fingerprinter
 	Verifier     Verifier
 	Pruner       Pruner
+	Components   Components // nil fails every plugin entry
 	Log          Logger
 
 	Force bool // overrides symlink/unrecorded/unverified refusals, always naming what it destroys
@@ -130,9 +160,10 @@ func (discardLog) Warnf(string, ...any)  {}
 func (discardLog) Debugf(string, ...any) {}
 
 type Installed struct {
-	Change plan.Change
-	Entry  record.Entry
-	Swap   SwapResult
+	Change  plan.Change
+	Entry   record.Entry
+	Swap    SwapResult
+	Skipped []ComponentSkip
 }
 
 // EntryError is one entry that did not land.
@@ -285,8 +316,8 @@ func (a *Applier) applyChange(ctx context.Context, c plan.Change, res *Result) {
 	}
 
 	inst, err := a.install(ctx, c, cont)
-	if err != nil {
-		res.Failed = append(res.Failed, EntryError{Change: c, Err: err})
+	if inst == nil {
+		res.Failed = append(res.Failed, EntryError{Change: c, Err: err, Refusal: isRefusal(err)})
 		return
 	}
 	if leftover := inst.Swap.LeftoverAside(); leftover != "" {
@@ -296,10 +327,20 @@ func (a *Applier) applyChange(ctx context.Context, c plan.Change, res *Result) {
 	}
 	res.Installed = append(res.Installed, *inst)
 	a.recordEntry(c, inst.Entry, res)
+	if err != nil {
+		// Partly delivered: recorded as Partial, so the next sync replays it.
+		res.Failed = append(res.Failed, EntryError{Change: c, Err: err})
+	}
 }
 
-// install is stage -> hash -> swap -> read modes; every failure before the
-// swap leaves the destination untouched (Swap step 3 rolls back its own).
+func isRefusal(err error) bool {
+	return errors.Is(err, ErrModified) || errors.Is(err, ErrUnrecorded) || errors.Is(err, ErrComponentConflict)
+}
+
+// install is stage -> hash -> (plugin: prepare components) -> swap -> read
+// modes -> (plugin: place components); every failure before the swap leaves
+// the destination untouched (Swap step 3 rolls back its own). A non-nil
+// Installed with an error is a plugin whose components only partly landed.
 func (a *Applier) install(ctx context.Context, c plan.Change, cont Contained) (*Installed, error) {
 	bundle, err := a.cfg.Bundles.Bundle(ctx, c)
 	if err != nil {
@@ -328,6 +369,20 @@ func (a *Applier) install(ctx context.Context, c plan.Change, cont Contained) (*
 		return nil, err
 	}
 
+	var delivery Delivery
+	if c.Kind == record.KindPlugin {
+		if a.cfg.Components == nil {
+			a.discard(c, staged)
+			return nil, fmt.Errorf("%w: plugin %s: this build has no component delivery wired", ErrConfig, c.ID)
+		}
+		prev, others := a.componentClaims(c)
+		delivery, err = a.cfg.Components.Prepare(ctx, c, staged.Path, prev, others)
+		if err != nil {
+			a.discard(c, staged)
+			return nil, err
+		}
+	}
+
 	swapped, err := Swap(staged.Path, c.Dest)
 	if err != nil {
 		a.discard(c, staged)
@@ -346,7 +401,7 @@ func (a *Applier) install(ctx context.Context, c plan.Change, cont Contained) (*
 	a.cfg.Log.Debugf("%s: installed %s at %s (resolved %s)", c.ID, c.Version, c.Dest, cont.Resolved)
 
 	fp = a.modes(c, fp)
-	return &Installed{
+	inst := &Installed{
 		Change: c,
 		Entry: record.Entry{
 			ID:          c.ID,
@@ -358,7 +413,39 @@ func (a *Applier) install(ctx context.Context, c plan.Change, cont Contained) (*
 			Fingerprint: fp,
 		},
 		Swap: swapped,
-	}, nil
+	}
+	if delivery == nil {
+		return inst, nil
+	}
+	inst.Skipped = delivery.Skipped()
+	comps, derr := delivery.Apply(ctx)
+	inst.Entry.Components = comps
+	if derr != nil {
+		inst.Entry.Partial = true
+		return inst, fmt.Errorf("plugin %s was only partly placed: %w", c.ID, derr)
+	}
+	return inst, nil
+}
+
+// componentClaims splits the record's components into those owned at this
+// destination (any profile: a shared install shares its parts) and the rest.
+func (a *Applier) componentClaims(c plan.Change) (prev, others []record.Component) {
+	seen := map[string]bool{}
+	refs := a.cfg.Record.Refs()
+	for i := range refs {
+		ref := &refs[i]
+		for _, comp := range ref.Entry.Components {
+			if ref.Entry.Dest != c.Dest {
+				others = append(others, comp)
+				continue
+			}
+			if !seen[comp.Identity()] {
+				seen[comp.Identity()] = true
+				prev = append(prev, comp)
+			}
+		}
+	}
+	return prev, others
 }
 
 // hash takes the content half of the fingerprint from the staged tree; a
@@ -507,6 +594,9 @@ func (a *Applier) verifyUnmodified(c plan.Change) error {
 		ID: c.ID, Version: c.From.Version, Digest: c.From.Digest,
 		Kind: c.Kind, Target: c.Target, Dest: c.Dest,
 	}
+	if recorded, ok := a.recordedEntry(c.Profile, c.Target, c.ID); ok {
+		prev.Fingerprint = recorded.Fingerprint
+	}
 	switch {
 	case !c.From.Fingerprinted:
 		return a.override(fmt.Errorf("%w: %s was recorded without an install fingerprint, so whether it has "+
@@ -636,6 +726,10 @@ func (a *Applier) applyRemovals(ctx context.Context, p plan.Plan, res *Result) {
 		if !r.RemovesFromDisk() {
 			// Another profile still claims this destination: drop the row, keep the tree.
 			res.Retained = append(res.Retained, r)
+			continue
+		}
+		if r.Kind == record.KindPlugin && a.cfg.Components != nil {
+			a.removePlugin(ctx, r, res)
 			continue
 		}
 		if a.cfg.Pruner == nil {

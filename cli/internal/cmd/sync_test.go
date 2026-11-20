@@ -2,11 +2,7 @@
 //
 // The fake serves the shipping case directly: Fixtures.Profile and the other
 // functional profiles name `["claude-code"]`, matching the real hub's own
-// seeded lockfile, and Fixtures.UnwritableTarget is a profile of its own
-// naming `["claude-code", "codex"]` so the unwritable-target refusal is
-// exercised by a test that asks for it.
-// TestTheUnwritableFixtureIsTheOnlyOneNamingCodex keeps that refusal test from
-// going vacuous if the fixtures drift.
+// seeded lockfile, and Fixtures.BothTargets names `["claude-code", "codex"]`.
 package cmd
 
 import (
@@ -465,53 +461,37 @@ func TestSyncUsesAStoredCredentialWhenTheEnvironmentHasNone(t *testing.T) {
 
 // ---------------------------------------------------------------- the codex refusal
 
-// TestALockfileNamingCodexIsSkippedAndClaudeCodeStillInstalls is GAP 2's
-// verb-level check for a target this build cannot write. It syncs
-// Fixtures.UnwritableTarget — the one profile naming both contract targets —
-// and asserts codex is reported as a skip, never silently, while claude-code
-// still installs: one target this build cannot write must not block the
-// other, the same way one poisoned package must not block its siblings.
-func TestALockfileNamingCodexIsSkippedAndClaudeCodeStillInstalls(t *testing.T) {
+// TestALockfileNamingTwoTargetsInstallsIntoBoth: one profile, two agents,
+// each with its own copy in its own skills root, and one sync report naming both.
+func TestALockfileNamingTwoTargetsInstallsIntoBoth(t *testing.T) {
 	tg := startSyncFake(t)
 	env := newSyncEnv(t, tg)
 
-	flags := syncFlags{profiles: []string{tg.Fixtures.UnwritableTarget}}
-	code, result, diag, err := env.run(t, output.FormatJSON, flags)
+	flags := syncFlags{profiles: []string{tg.Fixtures.BothTargets}}
+	code, result, _, err := env.run(t, output.FormatJSON, flags)
 	require.NoError(t, err)
 	require.Equal(t, CodeChanged, code)
-	require.Contains(t, diag.String(), "codex")
-	require.Contains(t, diag.String(), "cannot write")
 
-	// claude-code installed despite codex being unwritable.
 	require.Equal(t, []string{"acme--code-review"}, skillDirs(t, env.skillsRoot()))
+	require.Equal(t, []string{"acme--code-review"}, skillDirs(t, filepath.Join(env.home, ".agents", "skills")))
 
-	// The result document names the skip and the target it could not write, so
-	// a script does not have to parse the prose on stderr.
 	var doc struct {
-		Kind   string `json:"kind"`
 		Result struct {
 			Added []struct {
 				Target string `json:"target"`
 			} `json:"added"`
-			Skipped []struct {
-				Target string `json:"target"`
-				Reason string `json:"reason"`
-			} `json:"skipped"`
+			Skipped []json.RawMessage `json:"skipped"`
 		} `json:"result"`
 	}
-	dec := json.NewDecoder(strings.NewReader(result.String()))
-	require.NoError(t, dec.Decode(&doc))
-	require.False(t, dec.More())
-	require.Equal(t, "sync", doc.Kind)
-	require.Len(t, doc.Result.Added, 1)
+	require.NoError(t, json.Unmarshal([]byte(result.String()), &doc))
+	require.Len(t, doc.Result.Added, 2)
 	require.Equal(t, "claude-code", doc.Result.Added[0].Target)
-	require.Len(t, doc.Result.Skipped, 1)
-	require.Equal(t, "codex", doc.Result.Skipped[0].Target)
-	require.Equal(t, plan.SkipTargetUnwritable, doc.Result.Skipped[0].Reason)
+	require.Equal(t, "codex", doc.Result.Added[1].Target)
+	require.Empty(t, doc.Result.Skipped)
 
 	reports, cerr := tg.Control.SyncReports()
 	require.NoError(t, cerr)
-	require.Len(t, reports, 1, "a sync that installed something is reported")
+	require.Len(t, reports, 1)
 }
 
 // ------------------------------------------------- the withdrawn target
@@ -585,6 +565,12 @@ func TestSkippedTargetUnwritableEntriesCollapseToOneLine(t *testing.T) {
 	reg, err := layout.NewRegistry(layout.Config{HomeDir: filepath.Join(t.TempDir(), "home")})
 	require.NoError(t, err)
 	targets, _ := r.resolveTargets(reg, []*hub.Lockfile{lf})
+	// No target this build knows refuses today, so the unwritable one is made up.
+	for i := range targets {
+		if targets[i].Name == record.TargetCodex {
+			targets[i] = plan.Target{Name: record.TargetCodex, Err: fmt.Errorf("codex: %w", layout.ErrR2Unresolved)}
+		}
+	}
 	p, err := plan.Compute(plan.Inputs{Lockfiles: []*hub.Lockfile{lf}, Targets: targets})
 	require.NoError(t, err)
 	require.Len(t, p.Skipped, 3, "the plan itself still carries one skip per entry")
@@ -666,24 +652,16 @@ func TestAProfileWhoseTargetsAreAllWithdrawnIsRefused(t *testing.T) {
 	require.Empty(t, p.Add)
 }
 
-// TestTheUnwritableFixtureIsTheOnlyOneNamingCodex is what keeps the skip test
-// from going vacuous. TestALockfileNamingCodexIsSkippedAndClaudeCodeStillInstalls
-// would pass trivially if Fixtures.UnwritableTarget stopped naming codex only
-// because the skip moved earlier for some other reason, and every happy-path
-// test in this file would break confusingly if Fixtures.Profile started naming
-// it. Both halves are asserted against the served lockfile, not against the
-// fixture struct, because the served document is what the client actually
-// parses.
-func TestTheUnwritableFixtureIsTheOnlyOneNamingCodex(t *testing.T) {
+// TestOnlyTheTwoTargetFixtureNamesCodex: every other profile must name one
+// root, or directory-level assertions built on them would look in one of two.
+func TestOnlyTheTwoTargetFixtureNamesCodex(t *testing.T) {
 	tg := startSyncFake(t)
 
-	unwritable := readLockfile(t, tg, tg.Fixtures.UnwritableTarget)
-	require.Contains(t, unwritable["targets"], "codex",
-		"the skip fixture must really name codex, or the skip test proves nothing")
+	both := readLockfile(t, tg, tg.Fixtures.BothTargets)
+	require.Contains(t, both["targets"], "codex")
 
 	happy := readLockfile(t, tg, tg.Fixtures.Profile)
-	require.Equal(t, []any{"claude-code"}, happy["targets"],
-		"the functional profile must be syncable, or every test built on it is testing the refusal")
+	require.Equal(t, []any{"claude-code"}, happy["targets"])
 }
 
 func readLockfile(t *testing.T, tg fake.Target, slug string) map[string]any {
@@ -1590,12 +1568,31 @@ func (f *failPathTransport) RoundTrip(req *http.Request) (*http.Response, error)
 
 // ---------------------------------------------------------------- the fingerprint/prune gaps
 
-// TestAnUpgradeOfAnUnfingerprintedEntryRefusesUntilForced documents a real
-// consequence of the fingerprinter not existing yet, and asserts it fails in the safe
-// direction. internal/apply requires a POSITIVE unmodified verdict before it
-// overwrites, and an entry installed by this build carries no fingerprint, so
-// every upgrade refuses naming --force rather than assuming the destination is
-// untouched. Assuming unmodified is the direction that destroys somebody's edit.
+// TestAnUpgradeOfAnUnmodifiedEntryNeedsNoForce: the fingerprint recorded at
+// install is what the upgrade is verified against.
+func TestAnUpgradeOfAnUnmodifiedEntryNeedsNoForce(t *testing.T) {
+	tg := startSyncFake(t)
+	env := newSyncEnv(t, tg)
+
+	pinned := syncFlags{profiles: []string{tg.Fixtures.Profile}, revisions: []string{"6"}}
+	_, _, diag, err := env.run(t, output.FormatHuman, pinned)
+	require.NoError(t, err, diag.String())
+
+	code, _, diag, err := env.run(t, output.FormatHuman, baselineFlags(tg))
+	require.NoError(t, err, diag.String())
+	require.Equal(t, CodeChanged, code)
+	prof, _ := env.loadRecord(t).ProfileBySlug(tg.Fixtures.Profile)
+	for _, e := range prof.Entries {
+		if e.ID == "acme/code-review" {
+			require.Equal(t, "2.4.1", e.Version)
+		}
+	}
+}
+
+// TestAnUpgradeOfAnUnfingerprintedEntryRefusesUntilForced: internal/apply
+// requires a POSITIVE unmodified verdict before it overwrites, so an entry
+// recorded without a fingerprint refuses naming --force rather than being
+// assumed untouched. Assuming unmodified is the direction that destroys an edit.
 func TestAnUpgradeOfAnUnfingerprintedEntryRefusesUntilForced(t *testing.T) {
 	tg := startSyncFake(t)
 	env := newSyncEnv(t, tg)
@@ -1603,6 +1600,15 @@ func TestAnUpgradeOfAnUnfingerprintedEntryRefusesUntilForced(t *testing.T) {
 	pinned := syncFlags{profiles: []string{tg.Fixtures.Profile}, revisions: []string{"6"}}
 	_, _, diag, err := env.run(t, output.FormatHuman, pinned)
 	require.NoError(t, err, diag.String())
+
+	stripped := env.loadRecord(t)
+	for i := range stripped.Profiles {
+		for j := range stripped.Profiles[i].Entries {
+			stripped.Profiles[i].Entries[j].Fingerprint = record.Fingerprint{}
+		}
+	}
+	_, err = record.Save(env.recordPath(t), stripped)
+	require.NoError(t, err)
 
 	code, _, _, err := env.run(t, output.FormatHuman, baselineFlags(tg))
 	require.Error(t, err)
@@ -1786,4 +1792,35 @@ func requireSameContent(t *testing.T, what string, want, got map[string]treeEntr
 		w.ModTime, g.ModTime = time.Time{}, time.Time{}
 		require.Equal(t, w, g, "%s: %s came back different", what, path)
 	}
+}
+
+func TestAPluginIsDecomposedIntoEveryTargetsOwnLocations(t *testing.T) {
+	tg := startSyncFake(t)
+	env := newSyncEnv(t, tg)
+
+	flags := syncFlags{profiles: []string{tg.Fixtures.Plugin}}
+	code, result, diag, err := env.run(t, output.FormatJSON, flags)
+	require.NoError(t, err, diag.String())
+	require.Equal(t, CodeChanged, code)
+
+	require.Equal(t, []string{"acme--toolkit--review"}, skillDirs(t, env.skillsRoot()))
+	require.Equal(t, []string{"acme--toolkit--review"}, skillDirs(t, filepath.Join(env.home, ".agents", "skills")))
+	require.NoDirExists(t, filepath.Join(env.home, ".config", "opencode", "skills"))
+
+	var doc struct {
+		Result struct {
+			Added   []json.RawMessage `json:"added"`
+			Skipped []output.Skip     `json:"skipped"`
+		} `json:"result"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(result.String()), &doc))
+	require.Len(t, doc.Result.Added, 3)
+	require.Len(t, doc.Result.Skipped, 1)
+	require.Equal(t, "opencode", doc.Result.Skipped[0].Target)
+	require.Equal(t, "skill review", doc.Result.Skipped[0].Component)
+	require.Contains(t, doc.Result.Skipped[0].Reason, "served by")
+
+	code, _, diag, err = env.run(t, output.FormatHuman, flags)
+	require.NoError(t, err, diag.String())
+	require.Equal(t, CodeNoChanges, code)
 }

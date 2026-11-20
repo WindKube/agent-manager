@@ -162,7 +162,7 @@ type Request struct {
 
 	Version string // carried into the marker verbatim, never in the path
 
-	Kind record.Kind // only record.KindSkill is installable; KindPlugin refused structurally
+	Kind record.Kind // a plugin routes to amctl's own unpacked copy, see Config.PluginRoot
 }
 
 // Placement is every path one entry needs, derived and validated. Dest is
@@ -173,7 +173,7 @@ type Placement struct {
 	Version string
 	Kind    record.Kind
 
-	Root    string // the absolute directory the agent scans for skills
+	Root    string // the absolute directory the agent scans for skills, or the plugin root
 	DirName string // Root's child holding this entry
 	Dest    string // the entry root; the only path prune consults, with its aside sibling
 

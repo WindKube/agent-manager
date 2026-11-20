@@ -9,8 +9,8 @@ import (
 // Target `claude-code`: a skill is a directory named for its own identity
 // (not SKILL.md's frontmatter `name`) containing SKILL.md, under
 // $CLAUDE_CONFIG_DIR/skills (user scope, default ~/.claude) or
-// <project>/.claude/skills. Plugins are out of scope: Claude Code tracks
-// them in agent-owned shared state amctl cannot swap or prune as a directory.
+// <project>/.claude/skills. A plugin is never installed as a Claude Code
+// plugin (that is agent-owned marketplace state); its parts are placed one by one.
 const (
 	ClaudeCodeConfigDirEnv  = "CLAUDE_CONFIG_DIR" // only env var that relocates the user-scope root
 	ClaudeCodeConfigDirName = ".claude"

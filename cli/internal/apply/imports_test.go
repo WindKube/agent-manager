@@ -264,8 +264,11 @@ func boundaries() []boundary {
 				"allowlist so it fails CLOSED: a package added tomorrow cannot install anything " +
 				"until it is named here, with a reason. Note that Staged.OpenRoot hands out an " +
 				"*os.Root over a staged tree — a call-name scan cannot see writes through it, so " +
-				"this rule, not that scan, is what bounds them.",
-			check: onlyTheseMayImport([]string{"internal/cmd"}, func(p string) bool {
+				"this rule, not that scan, is what bounds them. internal/deliver is the second " +
+				"member: a plugin's components can only be placed once its bundle is read, so it " +
+				"implements apply.Components and is reached only through Applier.Apply, under the " +
+				"same containment, guard and record.",
+			check: onlyTheseMayImport([]string{"internal/cmd", "internal/deliver"}, func(p string) bool {
 				return p == cliModule+"/internal/apply"
 			}),
 		},
@@ -298,9 +301,11 @@ func boundaries() []boundary {
 				"that installing into a layout-derived destination actually requires: a RENAME, " +
 				"which is R3's swap, and internal/archive, which is how a tree arrives. A future " +
 				"edit that starts installing from the command layer trips this rule rather than " +
-				"shipping.",
+				"shipping. internal/deliver places plugin components, whose paths depend on the " +
+				"bundle's contents and so cannot come from the pure plan; every write it makes is " +
+				"contained by apply.Home and fingerprinted into the record.",
 			check: func(pkgs map[string]*pkgInfo, module string) []string {
-				allowed := map[string]bool{"internal/apply": true, "internal/archive": true}
+				allowed := map[string]bool{"internal/apply": true, "internal/archive": true, "internal/deliver": true}
 				var bad []string
 				for path, info := range pkgs {
 					if allowed[info.rel] || !info.imports[module+"/internal/layout"] || !info.mutates() {

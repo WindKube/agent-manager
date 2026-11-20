@@ -111,8 +111,11 @@ func runAPI(ctx context.Context) error {
 		DB: handle.DB(),
 		// A reader, not a bucket: only `worker fetcher` may write bundle bytes, and
 		// the api holds no value that could.
-		Bundles:  bucket.Reader(),
-		Sessions: auth.NewSessions(handle.DB()),
+		Bundles: bucket.Reader(),
+		Sessions: auth.Chain{
+			Sessions:      auth.NewSessions(handle.DB()),
+			ServiceTokens: auth.NewServiceTokens(handle.DB()),
+		},
 		// Verification of a signed-in person's ID token happens HERE, in the role
 		// that owns identity, rather than in the web role that received the callback
 		// (contracts/auth.md's preferred refinement). The verifier discovers on first

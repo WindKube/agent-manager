@@ -27,10 +27,11 @@
             "type": "string"
           },
           "actorKind": {
-            "description": "system is a worker with no person behind it, which a screen must not attribute to anybody.",
+            "description": "system is a worker with no person behind it, which a screen must not attribute to anybody; service-token is a scoped non-human credential, named by its token name.",
             "enum": [
               "identity",
-              "system"
+              "system",
+              "service-token"
             ],
             "examples": [
               "identity"
@@ -58,7 +59,8 @@
               "policy",
               "role",
               "category",
-              "secret"
+              "secret",
+              "token"
             ],
             "examples": [
               "approve"
@@ -102,7 +104,8 @@
               "mapping",
               "policy",
               "identity",
-              "device"
+              "device",
+              "service-token"
             ],
             "examples": [
               "version"
@@ -481,6 +484,45 @@
         "required": [
           "groupName",
           "role"
+        ],
+        "type": "object"
+      },
+      "CreateServiceTokenRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expiresAt": {
+            "description": "Required, and at most one year from now. There is no token that never expires.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "description": "What the token is for, shown in the list and the audit log.",
+            "examples": [
+              "release pipeline"
+            ],
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "scopes": {
+            "description": "sync:profile/\u003cslug\u003e to resolve, download and report syncs of one profile the creator can read, or read:catalog for read-only catalog, package and scan reads. There are no write scopes.",
+            "examples": [
+              [
+                "sync:profile/example/platform-engineer"
+              ]
+            ],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "scopes",
+          "expiresAt"
         ],
         "type": "object"
       },
@@ -4126,6 +4168,113 @@
         ],
         "type": "object"
       },
+      "ServiceToken": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "description": "The email or subject of the person who created it.",
+            "examples": [
+              "kwiatrzyk@example.com"
+            ],
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "description": "Accurate to about a minute. Absent until first use.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "examples": [
+              "release pipeline"
+            ],
+            "type": "string"
+          },
+          "revokedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "scopes": {
+            "examples": [
+              [
+                "sync:profile/example/platform-engineer"
+              ]
+            ],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "expired",
+              "revoked"
+            ],
+            "examples": [
+              "active"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "scopes",
+          "createdBy",
+          "createdAt",
+          "expiresAt",
+          "status"
+        ],
+        "type": "object"
+      },
+      "ServiceTokenCreated": {
+        "additionalProperties": false,
+        "properties": {
+          "secret": {
+            "description": "The bearer secret, prefixed amst_. Returned once; the hub stores only its hash.",
+            "examples": [
+              "amst_3q2-7wEXAMPLEonlyEXAMPLEonlyEXAMPLEonly"
+            ],
+            "type": "string"
+          },
+          "token": {
+            "$ref": "#/components/schemas/ServiceToken"
+          }
+        },
+        "required": [
+          "token",
+          "secret"
+        ],
+        "type": "object"
+      },
+      "ServiceTokenList": {
+        "additionalProperties": false,
+        "properties": {
+          "tokens": {
+            "description": "Most recently created first.",
+            "items": {
+              "$ref": "#/components/schemas/ServiceToken"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "tokens"
+        ],
+        "type": "object"
+      },
       "Session": {
         "additionalProperties": false,
         "properties": {
@@ -4532,7 +4681,8 @@
                 "mapping",
                 "policy",
                 "identity",
-                "device"
+                "device",
+                "service-token"
               ],
               "type": "string"
             }
@@ -4655,7 +4805,8 @@
                 "mapping",
                 "policy",
                 "identity",
-                "device"
+                "device",
+                "service-token"
               ],
               "type": "string"
             }
@@ -8906,6 +9057,196 @@
         ]
       }
     },
+    "/v1/service-tokens": {
+      "get": {
+        "description": "The caller's own tokens, or every token for a catalog-admin. Never carries a secret or its hash.",
+        "operationId": "listServiceTokens",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceTokenList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A service token cannot manage service tokens."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "The service tokens the caller may manage",
+        "tags": [
+          "service-tokens"
+        ]
+      },
+      "post": {
+        "description": "Mints a non-human bearer credential for CI and headless machines and writes one `token` audit row. The secret is returned in this response and never again. Every sync:profile scope must name a profile the caller can read now.",
+        "operationId": "createServiceToken",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateServiceTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceTokenCreated"
+                }
+              }
+            },
+            "description": "Created."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A service token cannot manage service tokens."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A scope is unknown or names a profile the caller cannot read, or the expiry is missing, past or more than a year away."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Create a scoped service token",
+        "tags": [
+          "service-tokens"
+        ]
+      }
+    },
+    "/v1/service-tokens/{id}": {
+      "delete": {
+        "description": "Effective on the token's next request, and writes one `token` audit row. The creator or a catalog-admin may revoke; revoking a revoked token is a no-op.",
+        "operationId": "revokeServiceToken",
+        "parameters": [
+          {
+            "description": "The token's id, as listed.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The token's id, as listed.",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A service token cannot manage service tokens."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such token, or not one the caller may manage."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Revoke a service token",
+        "tags": [
+          "service-tokens"
+        ]
+      }
+    },
     "/v1/sessions": {
       "post": {
         "description": "The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.",
@@ -9245,6 +9586,10 @@
     {
       "description": "Findings, their evidence, and the decisions taken on them.",
       "name": "scanner"
+    },
+    {
+      "description": "Scoped, expiring, non-human credentials for CI and headless machines.",
+      "name": "service-tokens"
     },
     {
       "description": "Probes a supervisor calls. Unauthenticated.",

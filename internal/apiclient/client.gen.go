@@ -20,14 +20,17 @@ import (
 
 // Defines values for AuditEntryActorKind.
 const (
-	AuditEntryActorKindIdentity AuditEntryActorKind = "identity"
-	AuditEntryActorKindSystem   AuditEntryActorKind = "system"
+	AuditEntryActorKindIdentity     AuditEntryActorKind = "identity"
+	AuditEntryActorKindServiceToken AuditEntryActorKind = "service-token"
+	AuditEntryActorKindSystem       AuditEntryActorKind = "system"
 )
 
 // Valid indicates whether the value is a known member of the AuditEntryActorKind enum.
 func (e AuditEntryActorKind) Valid() bool {
 	switch e {
 	case AuditEntryActorKindIdentity:
+		return true
+	case AuditEntryActorKindServiceToken:
 		return true
 	case AuditEntryActorKindSystem:
 		return true
@@ -49,6 +52,7 @@ const (
 	AuditEntryKindSecret   AuditEntryKind = "secret"
 	AuditEntryKindShare    AuditEntryKind = "share"
 	AuditEntryKindSync     AuditEntryKind = "sync"
+	AuditEntryKindToken    AuditEntryKind = "token"
 )
 
 // Valid indicates whether the value is a known member of the AuditEntryKind enum.
@@ -76,6 +80,8 @@ func (e AuditEntryKind) Valid() bool {
 		return true
 	case AuditEntryKindSync:
 		return true
+	case AuditEntryKindToken:
+		return true
 	default:
 		return false
 	}
@@ -83,16 +89,17 @@ func (e AuditEntryKind) Valid() bool {
 
 // Defines values for AuditEntrySubjectKind.
 const (
-	AuditEntrySubjectKindCategory AuditEntrySubjectKind = "category"
-	AuditEntrySubjectKindDevice   AuditEntrySubjectKind = "device"
-	AuditEntrySubjectKindFinding  AuditEntrySubjectKind = "finding"
-	AuditEntrySubjectKindIdentity AuditEntrySubjectKind = "identity"
-	AuditEntrySubjectKindMapping  AuditEntrySubjectKind = "mapping"
-	AuditEntrySubjectKindPackage  AuditEntrySubjectKind = "package"
-	AuditEntrySubjectKindPolicy   AuditEntrySubjectKind = "policy"
-	AuditEntrySubjectKindProfile  AuditEntrySubjectKind = "profile"
-	AuditEntrySubjectKindRevision AuditEntrySubjectKind = "revision"
-	AuditEntrySubjectKindVersion  AuditEntrySubjectKind = "version"
+	AuditEntrySubjectKindCategory     AuditEntrySubjectKind = "category"
+	AuditEntrySubjectKindDevice       AuditEntrySubjectKind = "device"
+	AuditEntrySubjectKindFinding      AuditEntrySubjectKind = "finding"
+	AuditEntrySubjectKindIdentity     AuditEntrySubjectKind = "identity"
+	AuditEntrySubjectKindMapping      AuditEntrySubjectKind = "mapping"
+	AuditEntrySubjectKindPackage      AuditEntrySubjectKind = "package"
+	AuditEntrySubjectKindPolicy       AuditEntrySubjectKind = "policy"
+	AuditEntrySubjectKindProfile      AuditEntrySubjectKind = "profile"
+	AuditEntrySubjectKindRevision     AuditEntrySubjectKind = "revision"
+	AuditEntrySubjectKindServiceToken AuditEntrySubjectKind = "service-token"
+	AuditEntrySubjectKindVersion      AuditEntrySubjectKind = "version"
 )
 
 // Valid indicates whether the value is a known member of the AuditEntrySubjectKind enum.
@@ -115,6 +122,8 @@ func (e AuditEntrySubjectKind) Valid() bool {
 	case AuditEntrySubjectKindProfile:
 		return true
 	case AuditEntrySubjectKindRevision:
+		return true
+	case AuditEntrySubjectKindServiceToken:
 		return true
 	case AuditEntrySubjectKindVersion:
 		return true
@@ -1776,6 +1785,27 @@ func (e RuntimeJobQueue) Valid() bool {
 	}
 }
 
+// Defines values for ServiceTokenStatus.
+const (
+	Active  ServiceTokenStatus = "active"
+	Expired ServiceTokenStatus = "expired"
+	Revoked ServiceTokenStatus = "revoked"
+)
+
+// Valid indicates whether the value is a known member of the ServiceTokenStatus enum.
+func (e ServiceTokenStatus) Valid() bool {
+	switch e {
+	case Active:
+		return true
+	case Expired:
+		return true
+	case Revoked:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SyncReportTargets.
 const (
 	SyncReportTargetsClaudeCode SyncReportTargets = "claude-code"
@@ -1871,16 +1901,17 @@ func (e ViewerRole) Valid() bool {
 
 // Defines values for ListAuditParamsSubjectKind.
 const (
-	ListAuditParamsSubjectKindCategory ListAuditParamsSubjectKind = "category"
-	ListAuditParamsSubjectKindDevice   ListAuditParamsSubjectKind = "device"
-	ListAuditParamsSubjectKindFinding  ListAuditParamsSubjectKind = "finding"
-	ListAuditParamsSubjectKindIdentity ListAuditParamsSubjectKind = "identity"
-	ListAuditParamsSubjectKindMapping  ListAuditParamsSubjectKind = "mapping"
-	ListAuditParamsSubjectKindPackage  ListAuditParamsSubjectKind = "package"
-	ListAuditParamsSubjectKindPolicy   ListAuditParamsSubjectKind = "policy"
-	ListAuditParamsSubjectKindProfile  ListAuditParamsSubjectKind = "profile"
-	ListAuditParamsSubjectKindRevision ListAuditParamsSubjectKind = "revision"
-	ListAuditParamsSubjectKindVersion  ListAuditParamsSubjectKind = "version"
+	ListAuditParamsSubjectKindCategory     ListAuditParamsSubjectKind = "category"
+	ListAuditParamsSubjectKindDevice       ListAuditParamsSubjectKind = "device"
+	ListAuditParamsSubjectKindFinding      ListAuditParamsSubjectKind = "finding"
+	ListAuditParamsSubjectKindIdentity     ListAuditParamsSubjectKind = "identity"
+	ListAuditParamsSubjectKindMapping      ListAuditParamsSubjectKind = "mapping"
+	ListAuditParamsSubjectKindPackage      ListAuditParamsSubjectKind = "package"
+	ListAuditParamsSubjectKindPolicy       ListAuditParamsSubjectKind = "policy"
+	ListAuditParamsSubjectKindProfile      ListAuditParamsSubjectKind = "profile"
+	ListAuditParamsSubjectKindRevision     ListAuditParamsSubjectKind = "revision"
+	ListAuditParamsSubjectKindServiceToken ListAuditParamsSubjectKind = "service-token"
+	ListAuditParamsSubjectKindVersion      ListAuditParamsSubjectKind = "version"
 )
 
 // Valid indicates whether the value is a known member of the ListAuditParamsSubjectKind enum.
@@ -1904,6 +1935,8 @@ func (e ListAuditParamsSubjectKind) Valid() bool {
 		return true
 	case ListAuditParamsSubjectKindRevision:
 		return true
+	case ListAuditParamsSubjectKindServiceToken:
+		return true
 	case ListAuditParamsSubjectKindVersion:
 		return true
 	default:
@@ -1913,16 +1946,17 @@ func (e ListAuditParamsSubjectKind) Valid() bool {
 
 // Defines values for ExportAuditParamsSubjectKind.
 const (
-	ExportAuditParamsSubjectKindCategory ExportAuditParamsSubjectKind = "category"
-	ExportAuditParamsSubjectKindDevice   ExportAuditParamsSubjectKind = "device"
-	ExportAuditParamsSubjectKindFinding  ExportAuditParamsSubjectKind = "finding"
-	ExportAuditParamsSubjectKindIdentity ExportAuditParamsSubjectKind = "identity"
-	ExportAuditParamsSubjectKindMapping  ExportAuditParamsSubjectKind = "mapping"
-	ExportAuditParamsSubjectKindPackage  ExportAuditParamsSubjectKind = "package"
-	ExportAuditParamsSubjectKindPolicy   ExportAuditParamsSubjectKind = "policy"
-	ExportAuditParamsSubjectKindProfile  ExportAuditParamsSubjectKind = "profile"
-	ExportAuditParamsSubjectKindRevision ExportAuditParamsSubjectKind = "revision"
-	ExportAuditParamsSubjectKindVersion  ExportAuditParamsSubjectKind = "version"
+	ExportAuditParamsSubjectKindCategory     ExportAuditParamsSubjectKind = "category"
+	ExportAuditParamsSubjectKindDevice       ExportAuditParamsSubjectKind = "device"
+	ExportAuditParamsSubjectKindFinding      ExportAuditParamsSubjectKind = "finding"
+	ExportAuditParamsSubjectKindIdentity     ExportAuditParamsSubjectKind = "identity"
+	ExportAuditParamsSubjectKindMapping      ExportAuditParamsSubjectKind = "mapping"
+	ExportAuditParamsSubjectKindPackage      ExportAuditParamsSubjectKind = "package"
+	ExportAuditParamsSubjectKindPolicy       ExportAuditParamsSubjectKind = "policy"
+	ExportAuditParamsSubjectKindProfile      ExportAuditParamsSubjectKind = "profile"
+	ExportAuditParamsSubjectKindRevision     ExportAuditParamsSubjectKind = "revision"
+	ExportAuditParamsSubjectKindServiceToken ExportAuditParamsSubjectKind = "service-token"
+	ExportAuditParamsSubjectKindVersion      ExportAuditParamsSubjectKind = "version"
 )
 
 // Valid indicates whether the value is a known member of the ExportAuditParamsSubjectKind enum.
@@ -1945,6 +1979,8 @@ func (e ExportAuditParamsSubjectKind) Valid() bool {
 	case ExportAuditParamsSubjectKindProfile:
 		return true
 	case ExportAuditParamsSubjectKindRevision:
+		return true
+	case ExportAuditParamsSubjectKindServiceToken:
 		return true
 	case ExportAuditParamsSubjectKindVersion:
 		return true
@@ -2158,7 +2194,7 @@ type AuditEntry struct {
 	// Examples: kwiatrzyk@example.com
 	Actor string `json:"actor"`
 
-	// ActorKind system is a worker with no person behind it, which a screen must not attribute to anybody.
+	// ActorKind system is a worker with no person behind it, which a screen must not attribute to anybody; service-token is a scoped non-human credential, named by its token name.
 	//
 	// Examples: identity
 	ActorKind AuditEntryActorKind `json:"actorKind"`
@@ -2197,7 +2233,7 @@ type AuditEntry struct {
 	Text string `json:"text"`
 }
 
-// AuditEntryActorKind system is a worker with no person behind it, which a screen must not attribute to anybody.
+// AuditEntryActorKind system is a worker with no person behind it, which a screen must not attribute to anybody; service-token is a scoped non-human credential, named by its token name.
 //
 // Examples: identity
 type AuditEntryActorKind string
@@ -2380,6 +2416,22 @@ type CreateMappingRequest struct {
 
 // CreateMappingRequestRole defines model for CreateMappingRequest.Role.
 type CreateMappingRequestRole string
+
+// CreateServiceTokenRequest defines model for CreateServiceTokenRequest.
+type CreateServiceTokenRequest struct {
+	// ExpiresAt Required, and at most one year from now. There is no token that never expires.
+	ExpiresAt time.Time `json:"expiresAt"`
+
+	// Name What the token is for, shown in the list and the audit log.
+	//
+	// Examples: release pipeline
+	Name string `json:"name"`
+
+	// Scopes sync:profile/<slug> to resolve, download and report syncs of one profile the creator can read, or read:catalog for read-only catalog, package and scan reads. There are no write scopes.
+	//
+	// Examples: ["sync:profile/example/platform-engineer"]
+	Scopes []string `json:"scopes"`
+}
 
 // DeviceAuthorization defines model for DeviceAuthorization.
 type DeviceAuthorization struct {
@@ -4181,6 +4233,49 @@ type ScannerSummary struct {
 	VersionsScanned int64 `json:"versionsScanned"`
 }
 
+// ServiceToken defines model for ServiceToken.
+type ServiceToken struct {
+	CreatedAt time.Time `json:"createdAt"`
+
+	// CreatedBy The email or subject of the person who created it.
+	//
+	// Examples: kwiatrzyk@example.com
+	CreatedBy string             `json:"createdBy"`
+	ExpiresAt time.Time          `json:"expiresAt"`
+	Id        openapi_types.UUID `json:"id"`
+
+	// LastUsedAt Accurate to about a minute. Absent until first use.
+	LastUsedAt *time.Time `json:"lastUsedAt,omitempty"`
+
+	// Name Examples: release pipeline
+	Name      string     `json:"name"`
+	RevokedAt *time.Time `json:"revokedAt,omitempty"`
+
+	// Scopes Examples: ["sync:profile/example/platform-engineer"]
+	Scopes []string `json:"scopes"`
+
+	// Status Examples: active
+	Status ServiceTokenStatus `json:"status"`
+}
+
+// ServiceTokenStatus Examples: active
+type ServiceTokenStatus string
+
+// ServiceTokenCreated defines model for ServiceTokenCreated.
+type ServiceTokenCreated struct {
+	// Secret The bearer secret, prefixed amst_. Returned once; the hub stores only its hash.
+	//
+	// Examples: amst_3q2-7wEXAMPLEonlyEXAMPLEonlyEXAMPLEonly
+	Secret string       `json:"secret"`
+	Token  ServiceToken `json:"token"`
+}
+
+// ServiceTokenList defines model for ServiceTokenList.
+type ServiceTokenList struct {
+	// Tokens Most recently created first.
+	Tokens []ServiceToken `json:"tokens"`
+}
+
 // Session defines model for Session.
 type Session struct {
 	// ExpiresAt When the session row expires. This is the value stored, and what a cookie's expiry must match.
@@ -4593,6 +4688,9 @@ type SetProfileSharingJSONRequestBody = ProfileSharing
 
 // SetProfileTargetsJSONRequestBody defines body for SetProfileTargets for application/json ContentType.
 type SetProfileTargetsJSONRequestBody = ProfileTargetSelection
+
+// CreateServiceTokenJSONRequestBody defines body for CreateServiceToken for application/json ContentType.
+type CreateServiceTokenJSONRequestBody = CreateServiceTokenRequest
 
 // CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
 type CreateSessionJSONRequestBody = SessionMintRequest
@@ -5200,6 +5298,38 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /v1/scanner/summary (the `ScannerSummary` operationId).
 	ScannerSummary(ctx context.Context, params *ScannerSummaryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListServiceTokens The service tokens the caller may manage
+	//
+	// The caller's own tokens, or every token for a catalog-admin. Never carries a secret or its hash.
+	//
+	// Corresponds with GET /v1/service-tokens (the `ListServiceTokens` operationId).
+	ListServiceTokens(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateServiceTokenWithBody Create a scoped service token
+	//
+	// Mints a non-human bearer credential for CI and headless machines and writes one `token` audit row. The secret is returned in this response and never again. Every sync:profile scope must name a profile the caller can read now.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/service-tokens (the `CreateServiceToken` operationId).
+	CreateServiceTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateServiceToken Create a scoped service token
+	//
+	// Mints a non-human bearer credential for CI and headless machines and writes one `token` audit row. The secret is returned in this response and never again. Every sync:profile scope must name a profile the caller can read now.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/service-tokens (the `CreateServiceToken` operationId).
+	CreateServiceToken(ctx context.Context, body CreateServiceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeServiceToken Revoke a service token
+	//
+	// Effective on the token's next request, and writes one `token` audit row. The creator or a catalog-admin may revoke; revoking a revoked token is a no-op.
+	//
+	// Corresponds with DELETE /v1/service-tokens/{id} (the `RevokeServiceToken` operationId).
+	RevokeServiceToken(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateSessionWithBody Mint a browser session from a verified ID token
 	//
@@ -6426,6 +6556,78 @@ func (c *Client) GetRuntime(ctx context.Context, reqEditors ...RequestEditorFn) 
 // Corresponds with GET /v1/scanner/summary (the `ScannerSummary` operationId).
 func (c *Client) ScannerSummary(ctx context.Context, params *ScannerSummaryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewScannerSummaryRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListServiceTokens The service tokens the caller may manage
+//
+// The caller's own tokens, or every token for a catalog-admin. Never carries a secret or its hash.
+//
+// Corresponds with GET /v1/service-tokens (the `ListServiceTokens` operationId).
+func (c *Client) ListServiceTokens(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListServiceTokensRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateServiceTokenWithBody Create a scoped service token
+//
+// Mints a non-human bearer credential for CI and headless machines and writes one `token` audit row. The secret is returned in this response and never again. Every sync:profile scope must name a profile the caller can read now.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/service-tokens (the `CreateServiceToken` operationId).
+func (c *Client) CreateServiceTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateServiceTokenRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateServiceToken Create a scoped service token
+//
+// Mints a non-human bearer credential for CI and headless machines and writes one `token` audit row. The secret is returned in this response and never again. Every sync:profile scope must name a profile the caller can read now.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/service-tokens (the `CreateServiceToken` operationId).
+func (c *Client) CreateServiceToken(ctx context.Context, body CreateServiceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateServiceTokenRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RevokeServiceToken Revoke a service token
+//
+// Effective on the token's next request, and writes one `token` audit row. The creator or a catalog-admin may revoke; revoking a revoked token is a no-op.
+//
+// Corresponds with DELETE /v1/service-tokens/{id} (the `RevokeServiceToken` operationId).
+func (c *Client) RevokeServiceToken(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeServiceTokenRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -8719,6 +8921,107 @@ func NewScannerSummaryRequest(server string, params *ScannerSummaryParams) (*htt
 	return req, nil
 }
 
+// NewListServiceTokensRequest constructs an http.Request for the ListServiceTokens method
+func NewListServiceTokensRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/service-tokens")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateServiceTokenRequest calls the generic CreateServiceToken builder with application/json body
+func NewCreateServiceTokenRequest(server string, body CreateServiceTokenJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateServiceTokenRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateServiceTokenRequestWithBody constructs an http.Request for the CreateServiceToken method, with any body, and a specified content type
+func NewCreateServiceTokenRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/service-tokens")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRevokeServiceTokenRequest constructs an http.Request for the RevokeServiceToken method
+func NewRevokeServiceTokenRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/service-tokens/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewCreateSessionRequest calls the generic CreateSession builder with application/json body
 func NewCreateSessionRequest(server string, body CreateSessionJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -9508,6 +9811,42 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /v1/scanner/summary (the `ScannerSummary` operationId).
 	ScannerSummaryWithResponse(ctx context.Context, params *ScannerSummaryParams, reqEditors ...RequestEditorFn) (*ScannerSummaryResponse, error)
+
+	// ListServiceTokensWithResponse The service tokens the caller may manage
+	//
+	// The caller's own tokens, or every token for a catalog-admin. Never carries a secret or its hash.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/service-tokens (the `ListServiceTokens` operationId).
+	ListServiceTokensWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListServiceTokensResponse, error)
+
+	// CreateServiceTokenWithBodyWithResponse Create a scoped service token
+	//
+	// Mints a non-human bearer credential for CI and headless machines and writes one `token` audit row. The secret is returned in this response and never again. Every sync:profile scope must name a profile the caller can read now.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/service-tokens (the `CreateServiceToken` operationId).
+	CreateServiceTokenWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateServiceTokenResponse, error)
+
+	// CreateServiceTokenWithResponse Create a scoped service token
+	//
+	// Mints a non-human bearer credential for CI and headless machines and writes one `token` audit row. The secret is returned in this response and never again. Every sync:profile scope must name a profile the caller can read now.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/service-tokens (the `CreateServiceToken` operationId).
+	CreateServiceTokenWithResponse(ctx context.Context, body CreateServiceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateServiceTokenResponse, error)
+
+	// RevokeServiceTokenWithResponse Revoke a service token
+	//
+	// Effective on the token's next request, and writes one `token` audit row. The creator or a catalog-admin may revoke; revoking a revoked token is a no-op.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/service-tokens/{id} (the `RevokeServiceToken` operationId).
+	RevokeServiceTokenWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeServiceTokenResponse, error)
 
 	// CreateSessionWithBodyWithResponse Mint a browser session from a verified ID token
 	//
@@ -13040,6 +13379,199 @@ func (r ScannerSummaryResponse) ContentType() string {
 	return ""
 }
 
+type ListServiceTokensResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ServiceTokenList
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListServiceTokensResponse) GetJSON200() *ServiceTokenList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListServiceTokensResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ListServiceTokensResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ListServiceTokensResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListServiceTokensResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListServiceTokensResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListServiceTokensResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListServiceTokensResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateServiceTokenResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *ServiceTokenCreated
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateServiceTokenResponse) GetJSON201() *ServiceTokenCreated {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CreateServiceTokenResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r CreateServiceTokenResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CreateServiceTokenResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r CreateServiceTokenResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateServiceTokenResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateServiceTokenResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateServiceTokenResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateServiceTokenResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RevokeServiceTokenResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r RevokeServiceTokenResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r RevokeServiceTokenResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r RevokeServiceTokenResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r RevokeServiceTokenResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r RevokeServiceTokenResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeServiceTokenResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeServiceTokenResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RevokeServiceTokenResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type CreateSessionResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -14330,6 +14862,66 @@ func (c *ClientWithResponses) ScannerSummaryWithResponse(ctx context.Context, pa
 		return nil, err
 	}
 	return ParseScannerSummaryResponse(rsp)
+}
+
+// ListServiceTokensWithResponse The service tokens the caller may manage
+//
+// The caller's own tokens, or every token for a catalog-admin. Never carries a secret or its hash.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/service-tokens (the `ListServiceTokens` operationId).
+func (c *ClientWithResponses) ListServiceTokensWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListServiceTokensResponse, error) {
+	rsp, err := c.ListServiceTokens(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListServiceTokensResponse(rsp)
+}
+
+// CreateServiceTokenWithBodyWithResponse Create a scoped service token
+//
+// Mints a non-human bearer credential for CI and headless machines and writes one `token` audit row. The secret is returned in this response and never again. Every sync:profile scope must name a profile the caller can read now.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/service-tokens (the `CreateServiceToken` operationId).
+func (c *ClientWithResponses) CreateServiceTokenWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateServiceTokenResponse, error) {
+	rsp, err := c.CreateServiceTokenWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateServiceTokenResponse(rsp)
+}
+
+// CreateServiceTokenWithResponse Create a scoped service token
+//
+// Mints a non-human bearer credential for CI and headless machines and writes one `token` audit row. The secret is returned in this response and never again. Every sync:profile scope must name a profile the caller can read now.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/service-tokens (the `CreateServiceToken` operationId).
+func (c *ClientWithResponses) CreateServiceTokenWithResponse(ctx context.Context, body CreateServiceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateServiceTokenResponse, error) {
+	rsp, err := c.CreateServiceToken(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateServiceTokenResponse(rsp)
+}
+
+// RevokeServiceTokenWithResponse Revoke a service token
+//
+// Effective on the token's next request, and writes one `token` audit row. The creator or a catalog-admin may revoke; revoking a revoked token is a no-op.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/service-tokens/{id} (the `RevokeServiceToken` operationId).
+func (c *ClientWithResponses) RevokeServiceTokenWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeServiceTokenResponse, error) {
+	rsp, err := c.RevokeServiceToken(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeServiceTokenResponse(rsp)
 }
 
 // CreateSessionWithBodyWithResponse Mint a browser session from a verified ID token
@@ -17219,6 +17811,157 @@ func ParseScannerSummaryResponse(rsp *http.Response) (*ScannerSummaryResponse, e
 			return nil, err
 		}
 		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListServiceTokensResponse parses an HTTP response from a ListServiceTokensWithResponse call
+func ParseListServiceTokensResponse(rsp *http.Response) (*ListServiceTokensResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListServiceTokensResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServiceTokenList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateServiceTokenResponse parses an HTTP response from a CreateServiceTokenWithResponse call
+func ParseCreateServiceTokenResponse(rsp *http.Response) (*CreateServiceTokenResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateServiceTokenResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest ServiceTokenCreated
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevokeServiceTokenResponse parses an HTTP response from a RevokeServiceTokenWithResponse call
+func ParseRevokeServiceTokenResponse(rsp *http.Response) (*RevokeServiceTokenResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeServiceTokenResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

@@ -50,7 +50,7 @@ where pkg.namespace = ? and pkg.name = ? and v.semver = ? and v.visible and %s`
 // findable: `visible` is commit-last (FR-008), so an in-flight publish is not a
 // 500 waiting to happen.
 func Bundle(ctx context.Context, db bun.IDB, p auth.Principal, namespace, name, version string) (BundleRef, error) {
-	readable, readableArgs := PackageReadable("pkg", p)
+	readable, readableArgs := bundleReadable(p)
 	args := append([]any{namespace, name, version}, readableArgs...)
 
 	var ref BundleRef
@@ -63,6 +63,22 @@ func Bundle(ctx context.Context, db bun.IDB, p auth.Principal, namespace, name, 
 		return BundleRef{}, fmt.Errorf("locate bundle %s/%s@%s: %w", namespace, name, version, err)
 	}
 	return ref, nil
+}
+
+// bundleReadable is PackageReadable, widened for a service token to a version
+// a revision of one of its sync-scoped profiles locks — still only where the
+// creator can read the package.
+func bundleReadable(p auth.Principal) (predicate string, args []any) {
+	if !p.IsServiceToken() || p.ServiceToken.Allows(auth.ScopeReadCatalog) {
+		return PackageReadable("pkg", p)
+	}
+	creator, creatorArgs := PackageReadable("pkg", p.ServiceToken.Creator)
+	profiles, profileArgs := Readable("prf", p)
+	predicate = "(" + creator + " and exists (select 1 from revision as rev " +
+		"join profile as prf on prf.id = rev.profile_id where " + profiles +
+		" and rev.lockfile -> 'entries' @> jsonb_build_array(jsonb_build_object(" +
+		"'id', pkg.namespace || '/' || pkg.name, 'version', v.semver))))"
+	return predicate, append(creatorArgs, profileArgs...)
 }
 
 // latestBundleRefSQL is detailSQL's own join (package.go): the LATEST VISIBLE

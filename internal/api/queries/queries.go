@@ -34,7 +34,19 @@ var ErrNotFound = errors.New("not found")
 // Three ways a profile becomes readable, and nothing else is one:
 // organisation visibility; a direct user membership naming this identity;
 // or a group membership naming one of the identity's mapped groups.
+//
+// A service token reads only the profiles its sync scopes name, and of those
+// only the ones its creator can read now.
 func Readable(alias string, p auth.Principal) (predicate string, args []any) {
+	if p.IsServiceToken() {
+		slugs := p.ServiceToken.Profiles()
+		if len(slugs) == 0 {
+			return "false", nil
+		}
+		creator, creatorArgs := Readable(alias, p.ServiceToken.Creator)
+		return "(" + alias + ".slug in (?) and " + creator + ")", append([]any{bun.List(slugs)}, creatorArgs...)
+	}
+
 	subject, args, matchable := subjectPredicate("m", p)
 
 	clauses := []string{alias + ".visibility = 'organisation'"}
@@ -58,7 +70,17 @@ func Readable(alias string, p auth.Principal) (predicate string, args []any) {
 // A package with no owner recorded matches only the first clause — the
 // migration that added the column leaves existing organisation-visibility
 // rows on that clause, never on the other two.
+//
+// A service token reads packages only with read:catalog, and then only what
+// its creator can read now. Bundle widens this for sync scopes.
 func PackageReadable(alias string, p auth.Principal) (predicate string, args []any) {
+	if p.IsServiceToken() {
+		if !p.ServiceToken.Allows(auth.ScopeReadCatalog) {
+			return "false", nil
+		}
+		return PackageReadable(alias, p.ServiceToken.Creator)
+	}
+
 	clauses := []string{alias + ".visibility = 'organisation'"}
 	if p.IdentityID != uuid.Nil {
 		clauses = append(clauses, alias+".owner_identity_id = ?")

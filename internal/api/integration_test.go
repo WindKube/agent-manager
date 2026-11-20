@@ -445,7 +445,7 @@ func liveHandler(t *testing.T, extraBlobs ...map[string][]byte) http.Handler {
 	return api.New(api.Deps{
 		DB:       db,
 		Bundles:  bucket.Reader(),
-		Sessions: auth.NewSessions(db),
+		Sessions: auth.Chain{Sessions: auth.NewSessions(db), ServiceTokens: auth.NewServiceTokens(db)},
 		Probes: []api.Probe{{Name: "database", Check: func(ctx context.Context) error {
 			return pool.Ping(ctx)
 		}}},

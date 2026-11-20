@@ -93,6 +93,7 @@ func humaConfig(opts Options) huma.Config {
 				{Name: "navigation", Description: "Counts the application shell renders."},
 				{Name: "profiles", Description: "What this identity may read, and how it resolves."},
 				{Name: "scanner", Description: "Findings, their evidence, and the decisions taken on them."},
+				{Name: "service-tokens", Description: "Scoped, expiring, non-human credentials for CI and headless machines."},
 				{Name: "system", Description: "Probes a supervisor calls. Unauthenticated."},
 			},
 		},

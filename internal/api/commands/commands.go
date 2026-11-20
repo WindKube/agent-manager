@@ -30,7 +30,14 @@ func writeAudit(ctx context.Context, tx bun.IDB, a audit.Entry) error {
 
 // identityAudit is the row a person's command writes: the email where the
 // principal has one, the subject otherwise.
+// A service token is recorded as itself, never as its creator.
 func identityAudit(p auth.Principal, kind models.AuditKind, action, text string, subject audit.Subject) audit.Entry {
+	if p.IsServiceToken() {
+		return audit.Entry{
+			Kind: kind, Action: action, Actor: p.ServiceToken.Name, ActorKind: models.ActorKindServiceToken,
+			Text: text, Source: p.Source, Subject: subject,
+		}
+	}
 	return audit.Entry{
 		Kind: kind, Action: action, Actor: memberRef(p), ActorKind: models.ActorKindIdentity,
 		Text: text, Source: p.Source, Subject: subject,

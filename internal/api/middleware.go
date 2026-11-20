@@ -145,6 +145,18 @@ func (s *Server) authenticate(ctx huma.Context, next func(huma.Context)) {
 		return
 	}
 
+	if op := ctx.Operation(); principal.IsServiceToken() && !serviceTokenMayCall(op, principal.ServiceToken) {
+		name := "this operation"
+		if op != nil {
+			name = op.OperationID
+		}
+		log := logging.From(ctx.Context())
+		log.Info().Str("serviceTokenId", principal.ServiceToken.ID.String()).Str("operation", name).
+			Msg("refused a service token outside its scopes")
+		_ = huma.WriteErr(s.api, ctx, http.StatusForbidden, "a service token may not call "+name+" with its scopes")
+		return
+	}
+
 	next(huma.WithValue(huma.WithValue(ctx, principalKey{}, principal), sessionTokenKey{}, token))
 }
 

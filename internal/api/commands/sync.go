@@ -39,6 +39,10 @@ func ReportSync(ctx context.Context, db bun.IDB, p auth.Principal, in contract.S
 			RevisionID: ref.RevisionID,
 			Host:       in.Host,
 		}
+		if p.IsServiceToken() {
+			event.IdentityID = p.ServiceToken.Creator.IdentityID
+			event.ServiceTokenID = &p.ServiceToken.ID
+		}
 		if _, err := tx.NewInsert().Model(event).Exec(ctx); err != nil {
 			return fmt.Errorf("record sync event: %w", err)
 		}
@@ -54,6 +58,9 @@ func ReportSync(ctx context.Context, db bun.IDB, p auth.Principal, in contract.S
 			audit.Revision(ref.RevisionID, ref.ProfileID, in.Profile, ref.Seq))
 		audit.Source = auth.CLISource(in.Host)
 		audit.Data = map[string]any{"host": in.Host, "targets": append([]string{}, in.Targets...)}
+		if p.IsServiceToken() {
+			audit.Data["serviceTokenId"] = p.ServiceToken.ID.String()
+		}
 		return writeAudit(ctx, tx, audit)
 	})
 }

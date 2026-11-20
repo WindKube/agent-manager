@@ -35,6 +35,7 @@ func (s *Server) register() {
 	s.registerStorage()
 	s.registerOrganization()
 	s.registerRuntime()
+	s.registerServiceTokens()
 }
 
 // publicSecurity is the empty security requirement that removes the document's
@@ -241,6 +242,7 @@ func (s *Server) registerSessions() {
 func (s *Server) registerPackages() {
 	huma.Register(s.api, huma.Operation{
 		OperationID: "listPackages",
+		Metadata:    allowServiceTokens(tokenReadCatalog),
 		Method:      http.MethodGet,
 		Path:        "/v1/packages",
 		Tags:        []string{"catalog"},
@@ -260,6 +262,7 @@ func (s *Server) registerPackages() {
 
 	huma.Register(s.api, huma.Operation{
 		OperationID: "getPackage",
+		Metadata:    allowServiceTokens(tokenReadCatalog),
 		Method:      http.MethodGet,
 		Path:        "/v1/packages/{namespace}/{name}",
 		Tags:        []string{"catalog"},
@@ -283,6 +286,7 @@ func (s *Server) registerPackages() {
 
 	huma.Register(s.api, huma.Operation{
 		OperationID: "listPackageFiles",
+		Metadata:    allowServiceTokens(tokenReadCatalog),
 		Method:      http.MethodGet,
 		Path:        "/v1/packages/{namespace}/{name}/files",
 		Tags:        []string{"catalog"},
@@ -305,6 +309,7 @@ func (s *Server) registerPackages() {
 
 	huma.Register(s.api, huma.Operation{
 		OperationID: "getPackageFile",
+		Metadata:    allowServiceTokens(tokenReadCatalog),
 		Method:      http.MethodGet,
 		Path:        "/v1/packages/{namespace}/{name}/files/content",
 		Tags:        []string{"catalog"},
@@ -331,6 +336,7 @@ func (s *Server) registerPackages() {
 
 	huma.Register(s.api, huma.Operation{
 		OperationID: "getPackageScan",
+		Metadata:    allowServiceTokens(tokenReadCatalog),
 		Method:      http.MethodGet,
 		Path:        "/v1/packages/{namespace}/{name}/scan",
 		Tags:        []string{"catalog"},
@@ -791,6 +797,7 @@ func (s *Server) registerProfiles() {
 
 	huma.Register(s.api, huma.Operation{
 		OperationID: "getRevision",
+		Metadata:    allowServiceTokens(tokenSyncProfile),
 		Method:      http.MethodGet,
 		Path:        "/v1/profiles/{slug}/revisions/{revision}",
 		Tags:        []string{"profiles"},
@@ -834,6 +841,7 @@ func (s *Server) registerProfiles() {
 func (s *Server) registerBundles() {
 	huma.Register(s.api, huma.Operation{
 		OperationID: "getBundle",
+		Metadata:    allowServiceTokens(tokenSyncProfile, tokenReadCatalog),
 		Method:      http.MethodGet,
 		Path:        "/v1/bundles/{publisher}/{name}/{version}",
 		Tags:        []string{"bundles"},
@@ -862,6 +870,7 @@ func (s *Server) registerBundles() {
 func (s *Server) registerSync() {
 	huma.Register(s.api, huma.Operation{
 		OperationID: "reportSync",
+		Metadata:    allowServiceTokens(tokenSyncProfile),
 		Method:      http.MethodPost,
 		Path:        "/v1/sync",
 		Tags:        []string{"profiles"},
@@ -1194,6 +1203,9 @@ type getRevisionOutput struct {
 
 func (s *Server) getRevision(ctx context.Context, in *getRevisionInput) (*getRevisionOutput, error) {
 	principal, _ := PrincipalFrom(ctx)
+	if err := requireProfileScope(principal, in.Slug); err != nil {
+		return nil, err
+	}
 
 	var seq *int
 	if in.Revision != "head" {
@@ -1264,6 +1276,9 @@ type reportSyncInput struct {
 
 func (s *Server) reportSync(ctx context.Context, in *reportSyncInput) (*struct{}, error) {
 	principal, _ := PrincipalFrom(ctx)
+	if err := requireProfileScope(principal, in.Body.Profile); err != nil {
+		return nil, err
+	}
 	if err := commands.ReportSync(ctx, s.deps.DB, principal, in.Body); err != nil {
 		return nil, fail(logging.From(ctx), err)
 	}

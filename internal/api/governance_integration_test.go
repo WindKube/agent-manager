@@ -895,3 +895,24 @@ func TestTheOpenFindingsBadgeCountsOnlyTheOnesAwaitingADecision(t *testing.T) {
 	require.Equal(t, after.OpenFindings-1, decided.OpenFindings,
 		"a decision must move the badge, or the badge is not reading the state the decision wrote")
 }
+
+// A re-acceptance moves the expiry, so the waiver notices already raised for
+// the old one must not suppress the notices for the new one.
+func TestReacceptingClearsTheWaiverNoticesOfThePreviousExpiry(t *testing.T) {
+	handler := liveHandler(t)
+	fixture := seedGovernance(t)
+
+	_, err := db.NewUpdate().Model((*models.Override)(nil)).
+		Set("expiring_notified_at = now()").Set("expired_notified_at = now()").
+		Where("finding_id = ?", fixture.approvedFinding).Exec(t.Context())
+	require.NoError(t, err)
+
+	rec := request(t, handler, http.MethodPost,
+		"/v1/findings/"+fixture.approvedFinding.String()+"/accept", an.token, `{"note":"extended","expiresInDays":20}`)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	var override models.Override
+	require.NoError(t, db.NewSelect().Model(&override).Where("finding_id = ?", fixture.approvedFinding).Scan(t.Context()))
+	require.Nil(t, override.ExpiringNotifiedAt)
+	require.Nil(t, override.ExpiredNotifiedAt)
+}

@@ -307,6 +307,23 @@ type Override struct {
 	// leaving it open — so "" here is a row from somewhere this hub did not
 	// write, not "never expires".
 	Expires string
+	// Lapse is "expired", "soon" within WaiverNoticeDays of the expiry, or "".
+	Lapse string
+}
+
+// WaiverNoticeDays mirrors the notifier's default waiver.expiring notice.
+const WaiverNoticeDays = 7
+
+// Lapse classifies an expiry for the warning beside it.
+func Lapse(at, now time.Time) string {
+	switch {
+	case !at.After(now):
+		return "expired"
+	case at.Sub(now) <= WaiverNoticeDays*24*time.Hour:
+		return "soon"
+	default:
+		return ""
+	}
 }
 
 // FindingDetail is the detail pane.

@@ -371,6 +371,7 @@ func findingOverride(from *apiclient.FindingOverride, now time.Time) *view.Overr
 	}
 	if from.ExpiresAt != nil {
 		out.Expires = view.Until(*from.ExpiresAt, now)
+		out.Lapse = view.Lapse(*from.ExpiresAt, now)
 	}
 	return out
 }

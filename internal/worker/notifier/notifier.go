@@ -51,6 +51,9 @@ func register(deps worker.Deps, workers *river.Workers) error {
 	if err := river.AddWorkerSafely(workers, &Dispatcher{db: deps.DB, enqueue: outbox.NewWriter()}); err != nil {
 		return err
 	}
+	if err := river.AddWorkerSafely(workers, &WaiverChecker{db: deps.DB, notice: cfg.WaiverNotice}); err != nil {
+		return err
+	}
 	return river.AddWorkerSafely(workers, NewDeliverer(deps.DB, deps.Fetch, cfg.WebhookTimeout))
 }
 
@@ -62,10 +65,17 @@ func periodic(worker.Config) ([]*river.PeriodicJob, error) {
 	if cfg.WebhookDispatchInterval < time.Second {
 		return nil, fmt.Errorf("%sWEBHOOK_DISPATCH_INTERVAL is %s; it must be at least 1s", config.EnvPrefix, cfg.WebhookDispatchInterval)
 	}
+	if cfg.WaiverCheckInterval < time.Minute || cfg.WaiverNotice <= 0 {
+		return nil, fmt.Errorf("%sWAIVER_CHECK_INTERVAL must be at least 1m and %sWAIVER_NOTICE positive",
+			config.EnvPrefix, config.EnvPrefix)
+	}
 	return []*river.PeriodicJob{
 		river.NewPeriodicJob(river.PeriodicInterval(cfg.WebhookDispatchInterval),
 			func() (river.JobArgs, *river.InsertOpts) { return Dispatch{}, nil },
 			&river.PeriodicJobOpts{ID: Dispatch{}.Kind(), RunOnStart: true}),
+		river.NewPeriodicJob(river.PeriodicInterval(cfg.WaiverCheckInterval),
+			func() (river.JobArgs, *river.InsertOpts) { return WaiverCheck{}, nil },
+			&river.PeriodicJobOpts{ID: WaiverCheck{}.Kind(), RunOnStart: true}),
 		river.NewPeriodicJob(river.PeriodicInterval(pruneInterval),
 			func() (river.JobArgs, *river.InsertOpts) { return Prune{}, nil },
 			&river.PeriodicJobOpts{ID: Prune{}.Kind(), RunOnStart: true}),

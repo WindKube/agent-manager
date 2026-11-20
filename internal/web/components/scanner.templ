@@ -364,7 +364,15 @@ templ overridePanel(override view.Override) {
 		<div class="am-kv">
 			<div class="am-kv-key">Expires</div>
 			if override.Expires != "" {
-				<div class="am-kv-val">{ override.Expires }</div>
+				<div class="am-kv-val">
+					{ override.Expires }
+					switch override.Lapse {
+						case "expired":
+							<span class="am-pill am-pill-dan" id="finding-override-lapse">waiver expired — the finding counts against the version again</span>
+						case "soon":
+							<span class="am-pill am-pill-warn" id="finding-override-lapse">waiver expires soon</span>
+					}
+				</div>
 			} else {
 				// Not "never". Every override this hub writes carries an expiry, so a
 				// row without one came from somewhere else, and saying "never" about it

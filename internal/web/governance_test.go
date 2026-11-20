@@ -642,3 +642,32 @@ func TestTheAuditExportForwardsTheFilter(t *testing.T) {
 	require.Contains(t, lines[0], `"subjectId":"community/slack-digest@0.5.1"`)
 	require.Contains(t, lines[1], `"complete":true`)
 }
+
+func TestAWaiverCloseToItsExpiryOrPastItSaysSo(t *testing.T) {
+	for _, tc := range []struct {
+		in       time.Duration
+		want     string
+		wantPill bool
+	}{
+		{in: 3 * 24 * time.Hour, want: "waiver expires soon", wantPill: true},
+		{in: -time.Hour, want: "waiver expired", wantPill: true},
+		{in: 40 * 24 * time.Hour},
+	} {
+		api, h := newServer(t)
+		approved := govFinding()
+		approved.State = apiclient.FindingSummaryStateApproved
+		detail := govDetail(approved)
+		detail.Override = &apiclient.FindingOverride{
+			Reviewer: "a-reviewer", Note: ptrTo("accepted"), DecidedAt: time.Now(), ExpiresAt: ptrTo(time.Now().Add(tc.in)),
+		}
+		oneFinding(api, approved, detail)
+		body := get(t, h, "/scanner?finding="+govFindingID).Body.String()
+
+		if !tc.wantPill {
+			require.NotContains(t, body, `id="finding-override-lapse"`)
+			continue
+		}
+		require.Contains(t, body, `id="finding-override-lapse"`)
+		require.Contains(t, body, tc.want)
+	}
+}

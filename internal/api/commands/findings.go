@@ -170,6 +170,9 @@ func AcceptFinding(ctx context.Context, db bun.IDB, p auth.Principal, in Decisio
 			Set("note = excluded.note").
 			Set("expires_at = excluded.expires_at").
 			Set("created_at = now()").
+			// A new expiry earns its own notices.
+			Set("expiring_notified_at = NULL").
+			Set("expired_notified_at = NULL").
 			Exec(ctx); txErr != nil {
 			return fmt.Errorf("record the override on finding %s: %w", in.FindingID, txErr)
 		}

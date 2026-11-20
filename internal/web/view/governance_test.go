@@ -270,3 +270,10 @@ func TestEvidenceWithNoLineDoesNotRenderATrailingColon(t *testing.T) {
 	require.Equal(t, "plugin.json", view.Evidence{Path: "plugin.json"}.Location())
 	require.Equal(t, "scripts/digest.sh:41", view.Evidence{Path: "scripts/digest.sh", Line: 41}.Location())
 }
+
+func TestLapseWarnsWithinTheNoticeWindow(t *testing.T) {
+	now := time.Date(2026, 11, 20, 12, 0, 0, 0, time.UTC)
+	require.Equal(t, "expired", view.Lapse(now, now))
+	require.Equal(t, "soon", view.Lapse(now.Add(7*24*time.Hour), now))
+	require.Empty(t, view.Lapse(now.Add(8*24*time.Hour), now))
+}

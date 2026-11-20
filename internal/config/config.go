@@ -157,6 +157,10 @@ type Notifier struct {
 	// WebhookDispatchInterval is how often new audit rows are fanned out,
 	// which is the floor of a webhook's latency.
 	WebhookDispatchInterval time.Duration `env:"WEBHOOK_DISPATCH_INTERVAL" envDefault:"10s"`
+	// WaiverCheckInterval is how often expiring and expired waivers are looked for.
+	WaiverCheckInterval time.Duration `env:"WAIVER_CHECK_INTERVAL" envDefault:"1h"`
+	// WaiverNotice is how long before expiry waiver.expiring is raised.
+	WaiverNotice time.Duration `env:"WAIVER_NOTICE" envDefault:"168h"`
 }
 
 type Migrate struct {

@@ -461,6 +461,13 @@ func githubError(resp *http.Response, repo repourl.Repository) error {
 		return nil
 	}
 
+	var rateLimited *github.RateLimitError
+	var abuse *github.AbuseRateLimitError
+	if errors.As(err, &rateLimited) || errors.As(err, &abuse) {
+		return fmt.Errorf("%w: %s: rate limited by the forge (set AGENT_MANAGER_GITHUB_TOKEN to raise the limit): %w",
+			ErrRemote, repo, err)
+	}
+
 	switch resp.StatusCode {
 	case http.StatusNotFound:
 		return fmt.Errorf("%w: %s (a private repository the hub holds no credential for answers the same way): %w",

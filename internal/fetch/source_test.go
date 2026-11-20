@@ -164,6 +164,12 @@ func TestGitSourceUsesTheTarballEndpointAndNeverAShell(t *testing.T) {
 		case "/repos/example/private/commits/HEAD":
 			w.WriteHeader(http.StatusForbidden)
 			_, _ = w.Write([]byte(`{"message":"Must have admin rights to Repository."}`))
+		case "/repos/example/throttled/git/ref/tags/HEAD":
+			w.Header().Set("X-RateLimit-Limit", "60")
+			w.Header().Set("X-RateLimit-Remaining", "0")
+			w.Header().Set("X-RateLimit-Reset", "4102444800")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"message":"API rate limit exceeded for 203.0.113.7."}`))
 		case "/repos/example/broken/commits/HEAD":
 			w.WriteHeader(http.StatusInternalServerError)
 			_, _ = w.Write([]byte(`{"message":"boom"}`))
@@ -233,6 +239,15 @@ func TestGitSourceUsesTheTarballEndpointAndNeverAShell(t *testing.T) {
 			Kind: fetch.SourceGit, URL: "https://github.com/example/private",
 		})
 		require.ErrorIs(t, err, fetch.ErrCredentialsRequired)
+	})
+
+	t.Run("a rate limit is the remote's refusal, not a credential problem", func(t *testing.T) {
+		_, err := source.Fetch(context.Background(), fetch.SourceRef{
+			Kind: fetch.SourceGit, URL: "https://github.com/example/throttled",
+		})
+		require.ErrorIs(t, err, fetch.ErrRemote)
+		require.NotErrorIs(t, err, fetch.ErrCredentialsRequired)
+		require.ErrorContains(t, err, "AGENT_MANAGER_GITHUB_TOKEN")
 	})
 
 	t.Run("any other refusal is reported as the remote's", func(t *testing.T) {

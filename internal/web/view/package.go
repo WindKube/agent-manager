@@ -301,16 +301,24 @@ type Component struct {
 	Target    string
 }
 
+// toolEvents are the hook events whose matcher selects a tool; an empty
+// matcher on any other event (SessionStart, Stop, ...) matches nothing tool-shaped.
+var toolEvents = map[string]bool{
+	"PreToolUse": true, "PostToolUse": true, "PostToolUseFailure": true, "PermissionRequest": true,
+}
+
 // Detail is the row's right-hand text: what a hook or MCP server runs or
 // reaches, and the note for anything else.
 func (c Component) Detail() string {
 	switch c.Kind {
 	case "hook":
-		matcher := c.Matcher
-		if matcher == "" {
-			matcher = "every tool"
+		parts := []string{c.Event}
+		switch {
+		case c.Matcher != "":
+			parts = append(parts, "matcher "+c.Matcher)
+		case toolEvents[c.Event]:
+			parts = append(parts, "matcher every tool")
 		}
-		parts := []string{c.Event, "matcher " + matcher}
 		if c.Target != "" {
 			parts = append(parts, c.Target)
 		}
@@ -355,7 +363,7 @@ func (p Package) ComponentGroups() []ComponentGroup {
 // kinds only where present.
 func (p Package) ContentsNote() string {
 	parts := []string{
-		strconv.Itoa(p.CountOf("skill")) + " skills",
+		plural(p.CountOf("skill"), "skill"),
 		strconv.Itoa(p.CountOf("mcp")) + " MCP",
 	}
 	for _, kind := range []string{"agent", "command", "hook"} {
@@ -363,7 +371,7 @@ func (p Package) ContentsNote() string {
 			parts = append(parts, plural(n, kind))
 		}
 	}
-	parts = append(parts, strconv.Itoa(p.CountOf("ext"))+" extensions")
+	parts = append(parts, plural(p.CountOf("ext"), "extension"))
 	return strings.Join(parts, " · ")
 }
 

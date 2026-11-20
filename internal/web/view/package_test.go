@@ -293,6 +293,7 @@ func TestComponentsAreGroupedByKindWithTheirSurface(t *testing.T) {
 		{Kind: "mcp", Name: "local", Note: "stdio", Transport: "stdio", Target: "npx -y pkg@1.2.3"},
 		{Kind: "hook", Name: "PreToolUse", Event: "PreToolUse", Target: "./guard.sh"},
 		{Kind: "hook", Name: "PostToolUse", Event: "PostToolUse", Matcher: "Edit"},
+		{Kind: "hook", Name: "SessionStart", Event: "SessionStart", Target: "./start.sh"},
 		{Kind: "agent", Name: "reviewer", Note: "Reviews."},
 	}}
 
@@ -302,11 +303,12 @@ func TestComponentsAreGroupedByKindWithTheirSurface(t *testing.T) {
 		labels = append(labels, group.Label)
 	}
 	require.Equal(t, []string{"Skills", "Agents", "Hooks", "MCP servers"}, labels, "empty kinds are omitted")
-	require.Len(t, groups[2].Components, 2)
+	require.Len(t, groups[2].Components, 3)
 
 	require.Equal(t, "PreToolUse · matcher every tool · ./guard.sh", groups[2].Components[0].Detail())
 	require.Equal(t, "PostToolUse · matcher Edit", groups[2].Components[1].Detail())
+	require.Equal(t, "SessionStart · ./start.sh", groups[2].Components[2].Detail(), "no tool matcher on a session event")
 	require.Equal(t, "stdio · npx -y pkg@1.2.3", groups[3].Components[0].Detail())
 	require.Equal(t, "Reviews.", groups[1].Components[0].Detail())
-	require.Equal(t, "1 skills · 1 MCP · 1 agent · 2 hooks · 0 extensions", p.ContentsNote())
+	require.Equal(t, "1 skill · 1 MCP · 1 agent · 3 hooks · 0 extensions", p.ContentsNote())
 }

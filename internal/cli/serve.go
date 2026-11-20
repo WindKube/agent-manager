@@ -21,6 +21,7 @@ import (
 	"agent-manager/internal/metrics"
 	"agent-manager/internal/outbox"
 	"agent-manager/internal/store"
+	"agent-manager/internal/tracing"
 )
 
 func newServeCmd() *cobra.Command {
@@ -70,6 +71,12 @@ func runAPI(ctx context.Context) error {
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	stopTracing, err := startTracing(ctx, "api", log)
+	if err != nil {
+		return err
+	}
+	defer stopTracing()
 
 	stopMetrics, err := metrics.Serve(ctx, cfg.MetricsBind, log)
 	if err != nil {
@@ -170,7 +177,7 @@ func runAPI(ctx context.Context) error {
 		DeviceCodeTTL:         cfg.DeviceCodeTTL,
 		DeviceTokenTTL:        cfg.DeviceTokenTTL,
 		SessionTTL:            cfg.SessionTTL,
-		Middleware:            []gin.HandlerFunc{metrics.HTTP()},
+		Middleware:            []gin.HandlerFunc{metrics.HTTP(), tracing.Gin("api", "/v1/health")},
 	})
 
 	return server.Run(ctx)

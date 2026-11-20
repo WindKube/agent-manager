@@ -316,6 +316,13 @@ tasks:
     cmds:
       - docker compose up --build
 
+  up:observability:
+    desc: The whole stack plus jaeger, with every role exporting traces to it
+    env:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+    cmds:
+      - docker compose --profile observability up --build
+
   infra:up:
     desc: "Only what the hub depends on and does not build (compose.infra.yaml)"
     # Detached, unlike `up`: the point of the infrastructure half is that it stays

@@ -21,4 +21,7 @@ type Outbox struct {
 	State          OutboxState     `bun:"state,type:outbox_state,notnull"`
 	CreatedAt      time.Time       `bun:"created_at,type:timestamptz,notnull,default:now()"`
 	DeliveredAt    *time.Time      `bun:"delivered_at,type:timestamptz,nullzero"`
+	// TraceParent is the W3C traceparent of the span that enqueued the job, so
+	// the job's own spans can link back to the request that caused it.
+	TraceParent string `bun:"traceparent,type:text,nullzero"`
 }

@@ -2,6 +2,7 @@ package outbox
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/rs/zerolog"
 	"github.com/uptrace/bun"
+	"go.opentelemetry.io/otel/propagation"
 
 	"agent-manager/internal/metrics"
 )
@@ -182,9 +184,10 @@ func (r *Relay) Drain(ctx context.Context) error {
 }
 
 type pendingRow struct {
-	id      uuid.UUID
-	kind    string
-	payload json.RawMessage
+	id          uuid.UUID
+	kind        string
+	payload     json.RawMessage
+	traceParent sql.NullString
 }
 
 // deliverBatch claims a batch, inserts it into River and marks it delivered,
@@ -208,7 +211,10 @@ func (r *Relay) deliverBatch(ctx context.Context) (int, error) {
 		for _, row := range rows {
 			args := queuedJob{kind: row.kind, payload: row.payload}
 			opts := &river.InsertOpts{Queue: Queue(Kind(row.kind)), MaxAttempts: MaxAttempts(Kind(row.kind))}
-			if err := r.queue.InsertJob(ctx, args, opts); err != nil {
+			// The insert runs under the enqueuing request's trace, so the queue
+			// middleware carries it into the job's metadata.
+			jobCtx := propagation.TraceContext{}.Extract(ctx, propagation.MapCarrier{"traceparent": row.traceParent.String})
+			if err := r.queue.InsertJob(jobCtx, args, opts); err != nil {
 				return fmt.Errorf("insert %s job %s into the queue: %w", row.kind, row.id, err)
 			}
 			ids = append(ids, row.id)
@@ -252,7 +258,7 @@ func (r *Relay) SampleLag(ctx context.Context) {
 
 func claim(ctx context.Context, tx bun.Tx, batch int) ([]pendingRow, error) {
 	// Ordering by the primary key is ordering by time: the id is a uuid v7.
-	sqlRows, err := tx.QueryContext(ctx, `select id, job_kind, payload
+	sqlRows, err := tx.QueryContext(ctx, `select id, job_kind, payload, traceparent
 		from outbox
 		where state = 'pending'
 		order by id
@@ -266,7 +272,7 @@ func claim(ctx context.Context, tx bun.Tx, batch int) ([]pendingRow, error) {
 	var out []pendingRow
 	for sqlRows.Next() {
 		var row pendingRow
-		if err := sqlRows.Scan(&row.id, &row.kind, &row.payload); err != nil {
+		if err := sqlRows.Scan(&row.id, &row.kind, &row.payload, &row.traceParent); err != nil {
 			return nil, fmt.Errorf("scan outbox row: %w", err)
 		}
 		out = append(out, row)

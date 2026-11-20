@@ -23,6 +23,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
+	"go.opentelemetry.io/otel/propagation"
 
 	"agent-manager/internal/store/models"
 )
@@ -176,6 +177,9 @@ func (Writer) Enqueue(ctx context.Context, tx bun.IDB, jobs ...Job) ([]uuid.UUID
 		return nil, nil
 	}
 
+	trace := propagation.MapCarrier{}
+	propagation.TraceContext{}.Inject(ctx, trace)
+
 	rows := make([]models.Outbox, 0, len(jobs))
 	ids := make([]uuid.UUID, 0, len(jobs))
 	for _, job := range jobs {
@@ -195,6 +199,7 @@ func (Writer) Enqueue(ctx context.Context, tx bun.IDB, jobs ...Job) ([]uuid.UUID
 			Payload:        payload,
 			IdempotencyKey: job.IdempotencyKey(),
 			State:          models.OutboxStatePending,
+			TraceParent:    trace.Get("traceparent"),
 		})
 	}
 

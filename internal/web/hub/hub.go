@@ -25,6 +25,7 @@ type Client struct {
 	// mintSecret buys exactly one operation: sent on that one request, never
 	// installed on the client, so nothing else this role calls can carry it.
 	mintSecret string
+	transport  http.RoundTripper
 }
 
 // Option tunes the client.
@@ -42,10 +43,22 @@ func WithSessionMintSecret(secret string) Option {
 	return func(c *Client) { c.mintSecret = secret }
 }
 
+// WithTransport sets the round tripper calls to the api go through; nil keeps
+// http.DefaultTransport.
+func WithTransport(rt http.RoundTripper) Option {
+	return func(c *Client) { c.transport = rt }
+}
+
 // New builds the client. It performs no I/O and does not reach the api, so
 // a hub whose api is not up yet still starts.
 func New(baseURL string, opts ...Option) (*Client, error) {
+	client := &Client{now: func() time.Time { return time.Now().UTC() }}
+	for _, opt := range opts {
+		opt(client)
+	}
+
 	api, err := apiclient.NewClientWithResponses(baseURL, apiclient.WithHTTPClient(&http.Client{
+		Transport: client.transport,
 		// A hop with no timeout is how a slow api turns into a web role with
 		// no free workers.
 		Timeout: 15 * time.Second,
@@ -53,11 +66,7 @@ func New(baseURL string, opts ...Option) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("build the api client for %s: %w", baseURL, err)
 	}
-
-	client := &Client{api: api, now: func() time.Time { return time.Now().UTC() }}
-	for _, opt := range opts {
-		opt(client)
-	}
+	client.api = api
 	return client, nil
 }
 

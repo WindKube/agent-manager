@@ -26,6 +26,8 @@ include:
 x-observability: &observability
   AGENT_MANAGER_LOG_LEVEL: info
   AGENT_MANAGER_LOG_FORMAT: console
+  # Empty leaves tracing off; `task up:observability` points it at jaeger.
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
 
 x-queue-url: &queue-url
   AGENT_MANAGER_RIVER_DATABASE_URL: >-

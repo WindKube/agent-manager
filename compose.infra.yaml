@@ -218,6 +218,15 @@ services:
       timeout: 3s
       retries: 5
 
+  # Traces, behind a profile so a plain `docker compose up` is unchanged. The
+  # roles export only when OTEL_EXPORTER_OTLP_ENDPOINT is set, which
+  # `task up:observability` does; the UI is on http://localhost:16686.
+  jaeger:
+    image: jaegertracing/jaeger:2.23.0
+    profiles: [observability]
+    ports:
+      - "16686:16686"
+
 volumes:
   postgres-data:
   minio-data:

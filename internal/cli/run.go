@@ -28,6 +28,7 @@ import (
 	"agent-manager/internal/outbox"
 	"agent-manager/internal/seed"
 	"agent-manager/internal/store/models"
+	"agent-manager/internal/tracing"
 	"agent-manager/internal/web"
 	"agent-manager/internal/web/hub"
 	"agent-manager/internal/web/view"
@@ -109,6 +110,12 @@ func runWeb(ctx context.Context) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	stopTracing, err := startTracing(ctx, "web", log)
+	if err != nil {
+		return err
+	}
+	defer stopTracing()
+
 	stopMetrics, err := metrics.Serve(ctx, cfg.MetricsBind, log)
 	if err != nil {
 		return err
@@ -120,7 +127,9 @@ func runWeb(ctx context.Context) error {
 	// identity whose ID token verified. Empty is not a fallback — the api
 	// refuses every mint when it holds no secret, and hub.MintSession
 	// refuses before the call when this side holds none.
-	client, err := hub.New(cfg.APIBaseURL, hub.WithSessionMintSecret(cfg.SessionMintSecret))
+	client, err := hub.New(cfg.APIBaseURL,
+		hub.WithSessionMintSecret(cfg.SessionMintSecret),
+		hub.WithTransport(tracing.Transport(http.DefaultTransport)))
 	if err != nil {
 		return err
 	}
@@ -158,7 +167,7 @@ func runWeb(ctx context.Context) error {
 		DevCredentialHint: cfg.DevCredentialHint,
 		DevCredentials:    devCredentials(cfg.DevCredentialHint),
 		RiverUI:           riverUI,
-		Middleware:        []gin.HandlerFunc{metrics.HTTP()},
+		Middleware:        []gin.HandlerFunc{metrics.HTTP(), tracing.Gin("web", "/healthz")},
 	})
 
 	return server.Run(ctx)
@@ -301,6 +310,12 @@ func runWorker(ctx context.Context, name string) error {
 	// being killed mid-job; River's graceful stop finishes in-flight jobs.
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	stopTracing, err := startTracing(ctx, name, logging.New("worker/"+name, cfg.LogLevel, cfg.LogFormat))
+	if err != nil {
+		return err
+	}
+	defer stopTracing()
 
 	return worker.Run(ctx, def, cfg)
 }

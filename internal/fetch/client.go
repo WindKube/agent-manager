@@ -17,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"agent-manager/internal/tracing"
 )
 
 // ErrBlocked marks a refusal by the outbound policy rather than a transport
@@ -93,7 +95,7 @@ func New(opts Options) (Client, error) {
 	c := &guardedClient{policy: policy{allow: allow}, resolver: resolver}
 	c.http = &http.Client{
 		Timeout: timeout,
-		Transport: &http.Transport{
+		Transport: tracing.OpaqueTransport(&http.Transport{
 			// Proxy stays nil: it would move every connection to the proxy's
 			// address, defeating the dial-time checks below.
 			Proxy:       nil,
@@ -104,7 +106,7 @@ func New(opts Options) (Client, error) {
 			TLSHandshakeTimeout:   10 * time.Second,
 			TLSClientConfig:       &tls.Config{RootCAs: opts.RootCAs, MinVersion: tls.VersionTLS12},
 			ExpectContinueTimeout: time.Second,
-		},
+		}),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= maxRedirects {
 				return fmt.Errorf("stopped after %d redirects", maxRedirects)

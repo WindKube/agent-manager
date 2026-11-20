@@ -9,6 +9,7 @@ import (
 
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
+	"github.com/riverqueue/river/rivertype"
 	"github.com/rs/zerolog"
 
 	"agent-manager/internal/logging"
@@ -70,6 +71,7 @@ func Run(ctx context.Context, def Definition, cfg Config) error {
 
 	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
 		Logger:       slog.New(zerolog.NewSlogHandler(log)),
+		Middleware:   []rivertype.Middleware{outbox.TraceMiddleware()},
 		PeriodicJobs: periodic,
 		Queues:       queues,
 		Workers:      workers,

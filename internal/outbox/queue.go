@@ -11,6 +11,8 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivermigrate"
+	"github.com/riverqueue/river/rivertype"
+	"github.com/riverqueue/rivercontrib/otelriver"
 )
 
 // The queue database is River's alone. Atlas describes the application
@@ -65,7 +67,10 @@ func NewInsertClient(pool *pgxpool.Pool, log *slog.Logger) (*river.Client[pgx.Tx
 		return nil, errors.New("queue pool is nil")
 	}
 
-	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{Logger: log})
+	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
+		Logger:     log,
+		Middleware: []rivertype.Middleware{TraceMiddleware()},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("build the insert-only river client: %w", err)
 	}
@@ -84,4 +89,14 @@ func (i riverInserter) InsertJob(ctx context.Context, args river.JobArgs, opts *
 		return fmt.Errorf("insert %s into the queue: %w", args.Kind(), err)
 	}
 	return nil
+}
+
+// TraceMiddleware carries the inserting span's W3C context into a job's
+// metadata and, on the worker side, opens a span per job linked back to it. A
+// link rather than a parent, because a job may run long after its request.
+func TraceMiddleware() rivertype.Middleware {
+	return otelriver.NewMiddleware(&otelriver.MiddlewareConfig{
+		EnableTracePropagation:      true,
+		EnableWorkSpanJobKindSuffix: true,
+	})
 }

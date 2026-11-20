@@ -667,6 +667,7 @@ func (e LockfileSchemaVersion) Valid() bool {
 const (
 	LockfileTargetsClaudeCode LockfileTargets = "claude-code"
 	LockfileTargetsCodex      LockfileTargets = "codex"
+	LockfileTargetsOpencode   LockfileTargets = "opencode"
 )
 
 // Valid indicates whether the value is a known member of the LockfileTargets enum.
@@ -675,6 +676,8 @@ func (e LockfileTargets) Valid() bool {
 	case LockfileTargetsClaudeCode:
 		return true
 	case LockfileTargetsCodex:
+		return true
+	case LockfileTargetsOpencode:
 		return true
 	default:
 		return false
@@ -1699,6 +1702,7 @@ func (e ProfileShareRole) Valid() bool {
 const (
 	ProfileTargetTargetClaudeCode ProfileTargetTarget = "claude-code"
 	ProfileTargetTargetCodex      ProfileTargetTarget = "codex"
+	ProfileTargetTargetOpencode   ProfileTargetTarget = "opencode"
 )
 
 // Valid indicates whether the value is a known member of the ProfileTargetTarget enum.
@@ -1707,6 +1711,8 @@ func (e ProfileTargetTarget) Valid() bool {
 	case ProfileTargetTargetClaudeCode:
 		return true
 	case ProfileTargetTargetCodex:
+		return true
+	case ProfileTargetTargetOpencode:
 		return true
 	default:
 		return false
@@ -1717,6 +1723,7 @@ func (e ProfileTargetTarget) Valid() bool {
 const (
 	ProfileTargetSelectionTargetsClaudeCode ProfileTargetSelectionTargets = "claude-code"
 	ProfileTargetSelectionTargetsCodex      ProfileTargetSelectionTargets = "codex"
+	ProfileTargetSelectionTargetsOpencode   ProfileTargetSelectionTargets = "opencode"
 )
 
 // Valid indicates whether the value is a known member of the ProfileTargetSelectionTargets enum.
@@ -1725,6 +1732,8 @@ func (e ProfileTargetSelectionTargets) Valid() bool {
 	case ProfileTargetSelectionTargetsClaudeCode:
 		return true
 	case ProfileTargetSelectionTargetsCodex:
+		return true
+	case ProfileTargetSelectionTargetsOpencode:
 		return true
 	default:
 		return false
@@ -1771,6 +1780,7 @@ func (e RuntimeJobQueue) Valid() bool {
 const (
 	SyncReportTargetsClaudeCode SyncReportTargets = "claude-code"
 	SyncReportTargetsCodex      SyncReportTargets = "codex"
+	SyncReportTargetsOpencode   SyncReportTargets = "opencode"
 )
 
 // Valid indicates whether the value is a known member of the SyncReportTargets enum.
@@ -1779,6 +1789,8 @@ func (e SyncReportTargets) Valid() bool {
 	case SyncReportTargetsClaudeCode:
 		return true
 	case SyncReportTargetsCodex:
+		return true
+	case SyncReportTargetsOpencode:
 		return true
 	default:
 		return false

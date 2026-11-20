@@ -1,0 +1,13 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "kit",
+  "version": "1.0.0",
+  "description": "Fixture plugin shared by the CLI and hub component readers.",
+  "extensions": {
+    "com.anthropic.claude-code": {
+      "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "echo started"}]}]},
+      "mcpServers": {"docs": {"type": "sse", "url": "https://docs.example.com/sse"}},
+      "commands": ["./extra"]
+    }
+  }
+}

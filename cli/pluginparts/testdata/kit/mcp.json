@@ -1,0 +1,7 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "fs": {"type": "stdio", "command": "npx", "args": ["-y", "@mcp/fs@1.2.3"], "env": {"FS_ROOT": "/srv"}},
+    "api": {"type": "streamable-http", "url": "https://api.example.com/mcp", "headers": {"X-Team": "core"}}
+  }
+}

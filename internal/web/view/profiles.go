@@ -207,11 +207,13 @@ var ProfileMemberKinds = []struct{ Value, Label string }{
 var targetLabels = map[string]string{
 	"claude-code": "Claude Code",
 	"codex":       "Codex",
+	"opencode":    "OpenCode",
 }
 
 var targetPaths = map[string]string{
 	"claude-code": "~/.claude/skills/",
-	"codex":       "~/.codex/prompts/",
+	"codex":       "~/.agents/skills/",
+	"opencode":    "~/.config/opencode/",
 }
 
 // ProfileTargetRow is one sync target and whether this profile enables it.

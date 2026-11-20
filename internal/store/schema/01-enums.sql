@@ -39,6 +39,6 @@ create type subject_kind as enum ('user', 'group');
 -- was never an install target in the sense the other two are. It will come back
 -- when there is a design for composing N packages into delimited, individually
 -- prunable regions of one file. See specs/002-agent-manager-cli/plan.md R2.
-create type sync_target_kind as enum ('claude-code', 'codex');
+create type sync_target_kind as enum ('claude-code', 'codex', 'opencode');
 create type verdict as enum ('scanning', 'clean', 'flagged', 'rejected');
 create type version_policy as enum ('floating-latest', 'pinned', 'range');

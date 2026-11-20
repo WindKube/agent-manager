@@ -748,6 +748,7 @@ func TestChangingSyncTargetsChangesTheClientInstructionAndNothingTheServerResolv
 	require.Equal(t, []contract.ProfileTarget{
 		{Target: string(models.SyncTargetKindClaudeCode)},
 		{Target: string(models.SyncTargetKindCodex)},
+		{Target: string(models.SyncTargetKindOpenCode)},
 	}, fresh.Targets)
 
 	both := sendJSON[contract.ProfileDetail](t, curator, http.MethodPut, profilePath(slug, "targets"),
@@ -755,6 +756,7 @@ func TestChangingSyncTargetsChangesTheClientInstructionAndNothingTheServerResolv
 	require.Equal(t, []contract.ProfileTarget{
 		{Target: string(models.SyncTargetKindClaudeCode), Enabled: true},
 		{Target: string(models.SyncTargetKindCodex), Enabled: true},
+		{Target: string(models.SyncTargetKindOpenCode)},
 	}, both.Targets, "the answer is in the vocabulary's order, not in the order they were sent")
 
 	first := publish(t, curator, slug, "both targets")
@@ -767,6 +769,7 @@ func TestChangingSyncTargetsChangesTheClientInstructionAndNothingTheServerResolv
 	require.Equal(t, []contract.ProfileTarget{
 		{Target: string(models.SyncTargetKindClaudeCode)},
 		{Target: string(models.SyncTargetKindCodex), Enabled: true},
+		{Target: string(models.SyncTargetKindOpenCode)},
 	}, one.Targets)
 
 	second := publish(t, curator, slug, "codex only")
@@ -775,12 +778,22 @@ func TestChangingSyncTargetsChangesTheClientInstructionAndNothingTheServerResolv
 		"a target change moved a resolved version, so it is not client-side (FR-039)")
 	require.Equal(t, first.Skipped, second.Skipped)
 
+	withOpenCode := sendJSON[contract.ProfileDetail](t, curator, http.MethodPut, profilePath(slug, "targets"),
+		`{"targets":["opencode","claude-code"]}`, http.StatusOK)
+	require.Equal(t, []contract.ProfileTarget{
+		{Target: string(models.SyncTargetKindClaudeCode), Enabled: true},
+		{Target: string(models.SyncTargetKindCodex)},
+		{Target: string(models.SyncTargetKindOpenCode), Enabled: true},
+	}, withOpenCode.Targets)
+	require.Equal(t, []string{"claude-code", "opencode"}, publish(t, curator, slug, "opencode").Targets)
+
 	// Emptying it is legal: the profile writes nothing until somebody chooses.
 	none := sendJSON[contract.ProfileDetail](t, curator, http.MethodPut, profilePath(slug, "targets"),
 		`{"targets":[]}`, http.StatusOK)
 	require.Equal(t, []contract.ProfileTarget{
 		{Target: string(models.SyncTargetKindClaudeCode)},
 		{Target: string(models.SyncTargetKindCodex)},
+		{Target: string(models.SyncTargetKindOpenCode)},
 	}, none.Targets)
 	require.Equal(t, []string{}, publish(t, curator, slug, "nothing").Targets)
 }

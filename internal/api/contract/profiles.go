@@ -81,7 +81,7 @@ type ProfileMember struct {
 }
 
 type ProfileTarget struct {
-	Target  string `json:"target" enum:"claude-code,codex" example:"claude-code"`
+	Target  string `json:"target" enum:"claude-code,codex,opencode" example:"claude-code"`
 	Enabled bool   `json:"enabled"`
 }
 
@@ -139,7 +139,7 @@ type ProfileShare struct {
 // ProfileTargetSelection, unlike sharing, IS a replacement: an omitted
 // target is updated to false rather than removed.
 type ProfileTargetSelection struct {
-	Targets []string `json:"targets" enum:"claude-code,codex" doc:"The agent directories a client should write. An omitted target is disabled. An empty list is legal and means the profile writes nothing until somebody chooses."`
+	Targets []string `json:"targets" enum:"claude-code,codex,opencode" doc:"The agent directories a client should write. An omitted target is disabled. An empty list is legal and means the profile writes nothing until somebody chooses."`
 }
 
 // RevisionPublish carries no revision number: the sequence is allocated

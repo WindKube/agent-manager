@@ -769,3 +769,11 @@ func TestProfileScreensRenderInBothThemes(t *testing.T) {
 		require.Contains(t, get(t, h, path+"?theme=light").Body.String(), `data-sm-theme="light"`)
 	}
 }
+
+func TestTheTargetPickerOffersOpenCode(t *testing.T) {
+	_, h := newServer(t)
+	body := html.UnescapeString(get(t, h, profileHref).Body.String())
+
+	require.Contains(t, body, "OpenCode")
+	require.Contains(t, body, "~/.config/opencode/")
+}

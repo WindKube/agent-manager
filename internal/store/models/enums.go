@@ -63,7 +63,7 @@ var enumTypes = map[string][]string{
 	PGEntryMode:         {"latest", "pinned", "range"},
 	PGMembershipRole:    {"owner", "maintainer", "reviewer", "consumer"},
 	PGSubjectKind:       {"user", "group"},
-	PGSyncTargetKind:    {"claude-code", "codex"},
+	PGSyncTargetKind:    {"claude-code", "codex", "opencode"},
 	PGOrgRole:           {"catalog-admin", "scanner-reviewer", "profile-consumer", "read-only"},
 	PGDeviceAuthState:   {"pending", "approved", "consumed", "expired", "denied"},
 	PGScanGate:          {"block", "approval", "warn-with-override"},
@@ -336,6 +336,7 @@ type SyncTargetKind string
 const (
 	SyncTargetKindClaudeCode SyncTargetKind = "claude-code"
 	SyncTargetKindCodex      SyncTargetKind = "codex"
+	SyncTargetKindOpenCode   SyncTargetKind = "opencode"
 )
 
 func (v SyncTargetKind) Valid() bool { return inEnum(PGSyncTargetKind, string(v)) }

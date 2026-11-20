@@ -56,6 +56,7 @@ func seedProfiles(d *Data, now time.Time) {
 			Targets: []apiclient.ProfileTarget{
 				{Target: apiclient.ProfileTargetTargetClaudeCode, Enabled: true},
 				{Target: apiclient.ProfileTargetTargetCodex, Enabled: false},
+				{Target: apiclient.ProfileTargetTargetOpencode, Enabled: false},
 			},
 			Revisions: []apiclient.ProfileRevision{
 				{Revision: 14, Note: ptr("pinned ADR Writer to 3.0.2"), PublishedAt: now.Add(-7 * day), PublishedBy: owner},
@@ -76,6 +77,7 @@ func seedProfiles(d *Data, now time.Time) {
 			Targets: []apiclient.ProfileTarget{
 				{Target: apiclient.ProfileTargetTargetClaudeCode, Enabled: false},
 				{Target: apiclient.ProfileTargetTargetCodex, Enabled: false},
+				{Target: apiclient.ProfileTargetTargetOpencode, Enabled: false},
 			},
 		},
 	}

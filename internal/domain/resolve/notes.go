@@ -7,9 +7,8 @@ import (
 	"agent-manager/internal/domain/signer"
 )
 
-// The sentences the profile screen renders under an entry. They live next
-// to the rules so there's no separate template restating what the gate
-// did. Every note carries FlagDetail verbatim: escape at render.
+// Notes are the sentences the profile screen renders under an entry. Every
+// note carries FlagDetail verbatim: escape at render.
 
 // dateLayout is date-only and UTC: an hour or a timezone isn't actionable.
 const dateLayout = "2006-01-02"
@@ -43,8 +42,7 @@ func lapsedOn(override *Override) string {
 	return override.ExpiresAt.UTC().Format(dateLayout)
 }
 
-// noteFlagged is empty for a clean version; nobody reads a note that says
-// nothing happened.
+// noteFlagged is empty for a clean version.
 func noteFlagged(gate Gate, candidate Candidate, verdict disposition) string {
 	if candidate.Verdict != VerdictFlagged {
 		return ""
@@ -71,7 +69,6 @@ func noteFlagged(gate Gate, candidate Candidate, verdict disposition) string {
 	}
 }
 
-// notePassedOver is the first half of a downgrade note.
 func notePassedOver(newest Candidate, reason Reason, resolved string) string {
 	switch reason {
 	case ReasonFlaggedBlockedByGate:

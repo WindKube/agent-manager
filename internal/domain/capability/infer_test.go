@@ -8,10 +8,8 @@ import (
 	"agent-manager/internal/domain/capability"
 )
 
-// The inference (T056, FR-018). Every input below is hand-built: the scanner
-// that will produce these artefacts does not exist yet (US4), and a test written
-// against its output would be testing the scanner's reading of a bundle rather
-// than this package's reading of a command.
+// Inputs are hand-built so these tests exercise Infer, not the scanner's
+// reading of a bundle.
 
 func script(name string, args ...string) capability.Command {
 	return capability.Command{File: "scripts/digest.sh", Line: 41, Name: name, Args: args}
@@ -54,8 +52,6 @@ func TestNetworkIsInferredFromCommandsAndInstructionURLs(t *testing.T) {
 			wantLevel: capability.LevelAllowlisted,
 		},
 		{
-			// FR-018 names instruction files alongside the shell AST: an instruction
-			// telling an agent to fetch something is network reach too.
 			name: "a URL in an instruction file counts even with no script at all",
 			artefacts: capability.Artefacts{URLs: []capability.URL{
 				{File: "SKILL.md", Line: 12, Raw: "https://api.github.com/repos/org/repo"},
@@ -72,9 +68,6 @@ func TestNetworkIsInferredFromCommandsAndInstructionURLs(t *testing.T) {
 			indefinite: true,
 		},
 		{
-			// The one that matters: a definite list plus one unresolvable target is
-			// not a definite list, and grading it Allowlisted would let a reviewer
-			// accept a set that is not the whole set.
 			name: "one unresolvable target contaminates an otherwise definite list",
 			artefacts: capability.Artefacts{Commands: []capability.Command{
 				script("curl", "https://slack.com/api/chat"),
@@ -85,9 +78,6 @@ func TestNetworkIsInferredFromCommandsAndInstructionURLs(t *testing.T) {
 			indefinite: true,
 		},
 		{
-			// `npm i -g @octoflow/notes-cli` — the design's f3 finding. The registry
-			// it contacts appears nowhere in the command, so recording no target
-			// would render as a network capability that reaches nothing.
 			name: "a package manager with no host is network reach with an indefinite target",
 			artefacts: capability.Artefacts{Commands: []capability.Command{
 				script("npm", "i", "-g", "@octoflow/notes-cli"),
@@ -125,10 +115,6 @@ func TestNetworkIsInferredFromCommandsAndInstructionURLs(t *testing.T) {
 	}
 }
 
-// A remote destination is a network target and not a local write scope. Filing
-// `deploy@files.example.dev:/srv/drop/` under filesystem.write would describe
-// the wrong risk on the wrong panel, and would also claim the package writes to
-// a directory that does not exist on the machine running it.
 func TestARemoteDestinationIsNotAFilesystemTarget(t *testing.T) {
 	rows := capability.Infer(capability.Artefacts{Commands: []capability.Command{
 		script("scp", "report.txt", "deploy@files.example.dev:/srv/drop/"),
@@ -139,9 +125,6 @@ func TestARemoteDestinationIsNotAFilesystemTarget(t *testing.T) {
 	require.Equal(t, []string{"report.txt"}, rowFor(t, rows, capability.FilesystemRead).Detail)
 }
 
-// A host is outside the package by definition, so Scoped is not a grade the
-// network capability can reach. This is a property of the model rather than a
-// threshold that happened not to be crossed, so it is asserted directly.
 func TestNetworkIsNeverScoped(t *testing.T) {
 	for _, artefacts := range []capability.Artefacts{
 		{Commands: []capability.Command{script("curl", "https://slack.com/api")}},
@@ -153,9 +136,6 @@ func TestNetworkIsNeverScoped(t *testing.T) {
 	}
 }
 
-// The false positive worth guarding: a bare word is not a host. `git clone repo`
-// must not produce network reach to a machine called `repo`, and `grep TODO
-// notes` must not either.
 func TestABareWordIsNotAHost(t *testing.T) {
 	rows := capability.Infer(capability.Artefacts{Commands: []capability.Command{
 		{File: "scripts/build.sh", Line: 3, Name: "echo", Args: []string{"building", "the", "thing"}},
@@ -193,8 +173,6 @@ func TestFilesystemScopeIsGradedByWhereTheTargetsAre(t *testing.T) {
 			wantPaths: []string{"/usr/share/dict/words"},
 		},
 		{
-			// The design's f2 finding, expressed as a capability rather than as a
-			// manifest field that cannot exist.
 			name: "a credential file is Review",
 			artefacts: capability.Artefacts{Commands: []capability.Command{
 				script("cat", "~/.aws/credentials"),
@@ -204,8 +182,6 @@ func TestFilesystemScopeIsGradedByWhereTheTargetsAre(t *testing.T) {
 			wantPaths: []string{"~/.aws/credentials"},
 		},
 		{
-			// The design's f4 finding: write access to the whole workspace where a
-			// report directory would be enough.
 			name: "a recursive glob is Review however definite it looks",
 			artefacts: capability.Artefacts{Commands: []capability.Command{
 				{Name: "tee", Args: []string{"**/report.md"}},
@@ -252,9 +228,6 @@ func TestFilesystemScopeIsGradedByWhereTheTargetsAre(t *testing.T) {
 	}
 }
 
-// `cp a b` reads a and writes b. Getting the direction wrong would file every
-// copy's source as a write target, which is the difference between "reads the
-// hook script it ships" and "writes to /etc".
 func TestATransferCommandReadsItsSourcesAndWritesItsDestination(t *testing.T) {
 	rows := capability.Infer(capability.Artefacts{Commands: []capability.Command{
 		{Name: "cp", Args: []string{"-r", "templates/base", "/opt/agent/templates"}},
@@ -264,8 +237,6 @@ func TestATransferCommandReadsItsSourcesAndWritesItsDestination(t *testing.T) {
 	require.Equal(t, []string{"/opt/agent/templates"}, rowFor(t, rows, capability.FilesystemWrite).Detail)
 }
 
-// sed is the one command whose direction is a flag, and it is common enough in
-// postinstall scripts that reading it as a read either way would hide a write.
 func TestSedWritesOnlyInPlace(t *testing.T) {
 	read := capability.Infer(capability.Artefacts{Commands: []capability.Command{
 		script("sed", "s/a/b/", "notes.md"),
@@ -280,7 +251,6 @@ func TestSedWritesOnlyInPlace(t *testing.T) {
 	require.NotContains(t, names(write), capability.FilesystemRead)
 }
 
-// FR-018, the one absolute in this file.
 func TestAShellCapabilityIsNeverBelowReview(t *testing.T) {
 	t.Run("the most harmless command imaginable still grades Review", func(t *testing.T) {
 		rows := capability.Infer(capability.Artefacts{Commands: []capability.Command{
@@ -290,8 +260,6 @@ func TestAShellCapabilityIsNeverBelowReview(t *testing.T) {
 	})
 
 	t.Run("a script the parser yielded no commands from is still a shell capability", func(t *testing.T) {
-		// The blind spot that matters: an empty or unparseable script would
-		// otherwise be graded clean by the absence of evidence.
 		rows := capability.Infer(capability.Artefacts{Files: []capability.File{
 			{Path: "scripts/postinstall.sh", Class: capability.ClassScript},
 		}})
@@ -306,10 +274,6 @@ func TestAShellCapabilityIsNeverBelowReview(t *testing.T) {
 	})
 }
 
-// The whole point of the R1 inversion: nothing in the manifest can reach the
-// inferred set. Infer takes no manifest, so this asserts the only thing left to
-// assert — that the artefacts alone decide, and identical bytes give identical
-// rows however they were assembled.
 func TestInferenceIsDeterministicAndOrderedByTheCapabilityVocabulary(t *testing.T) {
 	artefacts := capability.Artefacts{
 		Files: []capability.File{{Path: "scripts/digest.sh", Class: capability.ClassScript}},
@@ -330,8 +294,8 @@ func TestInferenceIsDeterministicAndOrderedByTheCapabilityVocabulary(t *testing.
 	require.Equal(t, first, capability.Infer(artefacts))
 }
 
-// The targets come from an untrusted bundle and land in a jsonb column and on a
-// page, so their number is not the bundle's to choose.
+// Targets come from an untrusted bundle, so the bundle must not choose how
+// many are stored.
 func TestTheTargetListIsCappedAndSaysSoWhenItTruncates(t *testing.T) {
 	commands := make([]capability.Command, 0, 200)
 	for i := range 200 {

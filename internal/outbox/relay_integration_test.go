@@ -1,9 +1,7 @@
 //go:build integration
 
-// Everything this package guarantees is transactional, so all of it is asserted
-// against a real Postgres and a real River. A fake would only ever confirm that
-// the fake behaves: "a rolled-back transaction enqueues nothing" is a statement
-// about Postgres, not about Go.
+// The package's guarantees are transactional, so they are asserted against a
+// real Postgres and River rather than fakes.
 package outbox_test
 
 import (
@@ -29,9 +27,8 @@ import (
 	"agent-manager/internal/store/storetest"
 )
 
-// One container, three databases. agent_manager holds the application schema,
-// river holds the queue and nothing else (principle IX), and atlas_dev is the
-// throwaway the T025 gate hands to Atlas.
+// One container, three databases: agent_manager, river, and atlas_dev as
+// Atlas's scratch database for the queue gate.
 var (
 	appURL     string
 	queueURL   string
@@ -41,9 +38,7 @@ var (
 	appPool   *pgxpool.Pool
 	queuePool *pgxpool.Pool
 
-	// noInfra explains why the suite could not run. Every test skips on it rather
-	// than failing: a machine with no Docker has nothing wrong with it, and a
-	// spurious red is a red nobody reads.
+	// noInfra makes every test skip rather than fail on a machine without Docker.
 	noInfra string
 )
 
@@ -87,8 +82,6 @@ func runSuite(m *testing.M) (int, error) {
 		return 0, migrateErr
 	}
 
-	// River's own migrator against its own database — the code path
-	// `agent-manager migrate queue` runs (T024).
 	applied, err := outbox.MigrateQueue(ctx, queueURL, nil)
 	if err != nil {
 		return 0, err
@@ -111,13 +104,7 @@ func runSuite(m *testing.M) (int, error) {
 	return m.Run(), nil
 }
 
-// ---------------------------------------------------------------------------
-// Principle IX — the outbox row and the mutation share one transaction
-// ---------------------------------------------------------------------------
-
-// The dual-write bug this exists to prevent, from the losing side. A mutation that
-// rolls back must leave no job behind — and neither must its notification, or the
-// relay would wake up and find nothing while a caller believed a job was queued.
+// A rolled-back mutation must leave neither a job nor a notification behind.
 func TestARolledBackTransactionEnqueuesNothing(t *testing.T) {
 	requireInfra(t)
 	ctx := context.Background()
@@ -132,16 +119,13 @@ func TestARolledBackTransactionEnqueuesNothing(t *testing.T) {
 	marker := uuid.NewString()
 	tx, err := handle.DB().BeginTx(ctx, nil)
 	require.NoError(t, err)
-	// A failure below must not leave the transaction holding a pooled connection.
 	defer func() { _ = tx.Rollback() }()
 
 	ids, err := outbox.NewWriter().Enqueue(ctx, tx, job(outbox.KindScan, marker))
 	require.NoError(t, err)
 	require.Len(t, ids, 1)
 
-	// The row is visible inside the transaction, so the insert really happened and
-	// the rollback below is what removes it.
-	// bun formats raw SQL with `?`, not with Postgres placeholders.
+	// Prove the insert happened, so the rollback is what removes it.
 	var inTx int
 	require.NoError(t, tx.QueryRowContext(ctx,
 		"select count(*) from outbox where id = ?", ids[0]).Scan(&inTx))
@@ -151,7 +135,6 @@ func TestARolledBackTransactionEnqueuesNothing(t *testing.T) {
 
 	require.Equal(t, 0, outboxRowCount(t, ctx, ids[0]), "a rolled-back mutation must leave no outbox row")
 
-	// Give the relay a few sweeps to prove it has nothing to find.
 	time.Sleep(300 * time.Millisecond)
 	require.Zero(t, riverJobCount(t, ctx, marker), "no job may reach the queue for a rolled-back mutation")
 
@@ -162,8 +145,6 @@ func TestARolledBackTransactionEnqueuesNothing(t *testing.T) {
 	})
 }
 
-// And from the winning side: a commit publishes the state change and its jobs
-// together, and the relay delivers without anything else prompting it.
 func TestACommittedTransactionAlwaysDelivers(t *testing.T) {
 	requireInfra(t)
 	ctx := context.Background()
@@ -183,8 +164,6 @@ func TestACommittedTransactionAlwaysDelivers(t *testing.T) {
 		return riverJobCount(t, ctx, marker) == 1
 	})
 
-	// The queue insert and the mark are one transaction, so a delivered job always
-	// has a delivered row behind it.
 	requireEventually(t, "the outbox row is marked delivered", func() bool {
 		state, _, ok := outboxState(t, ctx, marker)
 		return ok && state == "delivered"
@@ -194,9 +173,7 @@ func TestACommittedTransactionAlwaysDelivers(t *testing.T) {
 	require.NotNil(t, deliveredAt)
 }
 
-// River defaults an unset MaxAttempts to 25; this is what proves the relay
-// never leaves it unset, against the actual row River wrote rather than
-// against the InsertOpts value the relay merely intended to send.
+// Checked against the row River wrote, not the InsertOpts the relay intended.
 func TestQueuedJobsCapAtThreeAttemptsNotRiversDefaultTwentyFive(t *testing.T) {
 	requireInfra(t)
 	ctx := context.Background()
@@ -216,10 +193,8 @@ func TestQueuedJobsCapAtThreeAttemptsNotRiversDefaultTwentyFive(t *testing.T) {
 	require.Equal(t, outbox.MaxJobAttempts, riverJobMaxAttempts(t, ctx, marker))
 }
 
-// The property that makes a lost notification survivable, and the one most likely
-// to be quietly broken. The row is inserted with raw SQL, so no NOTIFY is ever
-// raised — the relay's listener is connected and idle. Only the sweep can deliver
-// this, and the notification counter proves that is what happened.
+// The row is inserted with raw SQL, so no NOTIFY is raised and only the sweep
+// can deliver it.
 func TestTheSweepAloneDeliversWhenTheNotificationIsMissed(t *testing.T) {
 	requireInfra(t)
 	ctx := context.Background()
@@ -247,9 +222,6 @@ func TestTheSweepAloneDeliversWhenTheNotificationIsMissed(t *testing.T) {
 	})
 }
 
-// The relay may run in several api replicas at once. `for update skip locked` is
-// what stops two of them delivering the same row, and a duplicate here would be
-// invisible in production until somebody counted scans.
 func TestTwoRelaysDrainingConcurrentlyDeliverEachRowExactlyOnce(t *testing.T) {
 	requireInfra(t)
 	ctx := context.Background()
@@ -267,8 +239,7 @@ func TestTwoRelaysDrainingConcurrentlyDeliverEachRowExactlyOnce(t *testing.T) {
 		return err
 	}))
 
-	// Counted rather than assumed: other tests in this suite leave pending rows
-	// behind on purpose, and the two relays will claim those too.
+	// Other tests leave pending rows behind, and these relays claim them too.
 	pending := pendingOutboxCount(t, ctx)
 	require.GreaterOrEqual(t, pending, int64(rows))
 
@@ -298,8 +269,6 @@ func TestTwoRelaysDrainingConcurrentlyDeliverEachRowExactlyOnce(t *testing.T) {
 	require.Zero(t, pendingOutboxCount(t, ctx), "nothing pending may be left behind")
 }
 
-// data-model.md: delivered rows pruned after 24 h. The boundary is computed by
-// Postgres, so a client clock cannot move it.
 func TestThePruneRemovesDeliveredRowsPastTheRetentionWindowAndNothingElse(t *testing.T) {
 	requireInfra(t)
 	ctx := context.Background()
@@ -318,14 +287,6 @@ func TestThePruneRemovesDeliveredRowsPastTheRetentionWindowAndNothingElse(t *tes
 	require.Equal(t, 1, outboxRowCount(t, ctx, pending), "the prune is keyed on state as well as age")
 }
 
-// ---------------------------------------------------------------------------
-// R5 — the idempotency key lives on the job's target row
-// ---------------------------------------------------------------------------
-
-// Delivery is at-least-once, so the handler must be able to recognise a
-// redelivery from the data. These are the two predicates that do it, and they
-// live in this package so the fetcher's answer and the scanner's cannot drift
-// apart. Nothing in the queue is consulted: the queue has no memory to consult.
 func TestARedeliveredJobIsANoOpBecauseItsTargetRowAlreadySaysSo(t *testing.T) {
 	requireInfra(t)
 	ctx := context.Background()
@@ -366,8 +327,7 @@ func TestARedeliveredJobIsANoOpBecauseItsTargetRowAlreadySaysSo(t *testing.T) {
 			want: true,
 		},
 		{
-			// The case a unique key on the queue would get wrong: a new rule pack must
-			// rescan the same version.
+			// A unique key on the queue would get this wrong.
 			name: "a scan at a newer pack version is work to do again",
 			job:  outbox.Job{Kind: outbox.KindScan, SubjectID: scanned, SubjectVersion: "2026.09.1"},
 			want: false,
@@ -385,8 +345,6 @@ func TestARedeliveredJobIsANoOpBecauseItsTargetRowAlreadySaysSo(t *testing.T) {
 		})
 	}
 
-	// And the redelivery really is a redelivery: the second row reaches the queue,
-	// which is exactly why the handler needs the guard above.
 	marker := uuid.NewString()
 	require.NoError(t, db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		scanJob := job(outbox.KindScan, marker)
@@ -402,12 +360,6 @@ func TestARedeliveredJobIsANoOpBecauseItsTargetRowAlreadySaysSo(t *testing.T) {
 		"the queue does not deduplicate, and it must not: the target row is the key")
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-// requireInfra skips when the container never came up. It is called by every test
-// in this package, including the R11 gate.
 func requireInfra(t *testing.T) {
 	t.Helper()
 	if noInfra != "" {
@@ -415,10 +367,8 @@ func requireInfra(t *testing.T) {
 	}
 }
 
-// dockerReachable tells "no Docker on this machine" (skip) apart from "Docker is
-// here and the container failed" (a real failure worth reporting). It is a cheap
-// probe on purpose: a full health check would need its own client and would fail
-// for its own reasons.
+// dockerReachable tells "no Docker" (skip) apart from "the container failed"
+// (a real failure).
 func dockerReachable() bool {
 	if os.Getenv("DOCKER_HOST") != "" {
 		return true
@@ -480,8 +430,6 @@ func startRelay(t *testing.T, cfg outbox.RelayConfig) *outbox.Relay {
 	return relay
 }
 
-// waitForSweep blocks until the relay has completed at least one sweep, so a test
-// that compares stats before and after is comparing against a running relay.
 func waitForSweep(t *testing.T, relay *outbox.Relay) {
 	t.Helper()
 	requireEventually(t, "the relay completes its first sweep", func() bool {
@@ -494,8 +442,6 @@ func requireEventually(t *testing.T, what string, cond func() bool) {
 	require.Eventually(t, cond, 15*time.Second, 20*time.Millisecond, what)
 }
 
-// insertPendingRowWithoutNotifying is the missed notification, reproduced exactly:
-// a committed pending row that no NOTIFY ever announced.
 func insertPendingRowWithoutNotifying(t *testing.T, ctx context.Context, kind outbox.Kind, marker string) uuid.UUID {
 	t.Helper()
 
@@ -526,10 +472,7 @@ func seedVersion(t *testing.T, ctx context.Context, semver string, digest []byte
 
 	pubID, pkgID, verID := models.NewID(), models.NewID(), models.NewID()
 
-	// A publisher slug is <namespace>/<team>, and publisher.namespace is generated
-	// from its first segment. package.namespace is not: it is denormalised and held
-	// to its publisher's by a composite foreign key, so it has to be written and it
-	// has to agree.
+	// package.namespace must match the publisher's generated namespace (composite FK).
 	namespace := "ns" + strings.ReplaceAll(pubID.String(), "-", "")
 
 	_, err := appPool.Exec(ctx,
@@ -546,8 +489,7 @@ func seedVersion(t *testing.T, ctx context.Context, semver string, digest []byte
 	sortKey, err := models.SemverSort(semver)
 	require.NoError(t, err)
 
-	// A version with no digest is one whose bytes have not been committed: that is
-	// the pre-fetch state the API creates before it enqueues the fetch job.
+	// No digest means the pre-fetch state.
 	verdict, objectKey := "scanning", ""
 	if digest != nil {
 		verdict, objectKey = "clean", "skills/example/p/"+semver+"/bundle.tar.zst"
@@ -588,8 +530,7 @@ func outboxState(t *testing.T, ctx context.Context, marker string) (string, *tim
 		state       *string
 		deliveredAt *time.Time
 	)
-	// Scalar subqueries, so a missing row comes back as "not there" rather than as
-	// no rows to scan.
+	// Scalar subqueries return nulls instead of no rows when the row is missing.
 	require.NoError(t, appPool.QueryRow(ctx,
 		`select (select state::text from outbox where payload->>'marker' = $1),
 		        (select delivered_at from outbox where payload->>'marker' = $1)`, marker,

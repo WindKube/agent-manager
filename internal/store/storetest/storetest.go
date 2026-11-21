@@ -1,9 +1,7 @@
 //go:build integration
 
-// Package storetest is the shared Postgres testcontainers harness for this
-// module's integration suites: one container running postgres:16-alpine,
-// migrations replayed from the checked-in directory, wired to either a raw
-// pool or a bun.DB with every model registered.
+// Package storetest is the shared Postgres testcontainers harness for the
+// integration suites.
 package storetest
 
 import (
@@ -26,9 +24,7 @@ type Postgres struct {
 	Endpoint string
 }
 
-// Run starts a postgres:16-alpine container with the bootstrap database,
-// user and password every suite in this module shares. Call the returned
-// func to terminate it.
+// Run starts a postgres:16-alpine container; call the returned func to terminate it.
 func Run(ctx context.Context) (*Postgres, func(), error) {
 	container, err := tcpostgres.Run(ctx, "postgres:16-alpine",
 		tcpostgres.WithDatabase("agent_manager"),
@@ -64,15 +60,14 @@ func (p *Postgres) Pool(ctx context.Context, database string) (*pgxpool.Pool, er
 	return pgxpool.New(ctx, p.DSN(database))
 }
 
-// CreateDatabase runs `create database <name>`, using admin as a connection
-// to a database that already exists on the same container.
+// CreateDatabase creates database name through admin, a pool on the same container.
 func CreateDatabase(ctx context.Context, admin *pgxpool.Pool, name string) error {
 	_, err := admin.Exec(ctx, "create database "+name)
 	return err
 }
 
-// ApplyMigrations replays the checked-in migration directory against pool:
-// what ships to production, not the desired state in internal/store/schema.
+// ApplyMigrations replays the checked-in migrations (what ships), not the
+// desired state in internal/store/schema.
 func ApplyMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	return migrations.Apply(ctx, func(ctx context.Context, sql string) error {
 		_, execErr := pool.Exec(ctx, sql)

@@ -18,11 +18,9 @@ type Sessions struct {
 
 func NewSessions(db bun.IDB) Sessions { return Sessions{db: db} }
 
-// sessionResolveSQL joins the session, its identity and mapped roles in one
-// statement, since this runs on every authenticated request. Two non-stylistic
-// details: `?` not `$1` (bun formats placeholders inline, so `$N` reaches
-// Postgres unbound), and the arrays render as JSON (pgx's stdlib driver
-// won't scan a Postgres array into a []string over database/sql).
+// sessionResolveSQL uses `?` because bun formats placeholders inline (`$N`
+// would reach Postgres unbound), and renders arrays as JSON because pgx's
+// stdlib driver won't scan a Postgres array into a []string.
 const sessionResolveSQL = `
 select
   i.id,
@@ -39,9 +37,8 @@ from session as s
 join identity as i on i.id = s.identity_id
 where s.token_hash = ? and s.expires_at > now()`
 
-// Resolve exchanges a raw bearer token for a principal. The token is hashed
-// before it reaches the query, so the plaintext never appears in a
-// statement, a query log or a database row.
+// Resolve exchanges a bearer token for a principal. The token is hashed before
+// the query so plaintext never reaches a statement, query log or row.
 func (s Sessions) Resolve(ctx context.Context, token string) (Principal, error) {
 	if token == "" {
 		return Principal{}, ErrUnauthenticated

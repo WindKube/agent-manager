@@ -1,8 +1,6 @@
-// Package pkgspec is this project's reading of the two published package
-// specifications: Agent Plugins (`plugin.json`, `mcp.json`) and Agent Skills
-// (`SKILL.md` frontmatter). Manifest validation, the spec-layout filter, and
-// component derivation all live here and nowhere else, so the api's
-// pre-submit preview and the fetcher's authoritative pass agree exactly.
+// Package pkgspec implements the Agent Plugins and Agent Skills specs:
+// manifest validation, the layout filter and component derivation. It is the
+// single implementation so the api preview and the fetcher agree exactly.
 package pkgspec
 
 import "strings"
@@ -15,8 +13,7 @@ const (
 	SkillsDir      = "skills"
 )
 
-// Kind is what a registered package is, decided by which manifest sits at
-// the package root.
+// Kind is decided by which manifest sits at the package root.
 type Kind string
 
 const (
@@ -33,9 +30,7 @@ func (k Kind) ManifestObject() string {
 	return PluginManifest
 }
 
-// ExtensionNamespace is this project's reverse-domain key inside the
-// manifest's `extensions` object: the spec assigns no semantics there, so
-// this namespace is ours to define.
+// ExtensionNamespace is this project's key inside the manifest's `extensions`.
 const ExtensionNamespace = "dev.agent-manager"
 
 func splitPath(p string) []string {

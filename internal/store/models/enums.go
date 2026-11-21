@@ -89,8 +89,7 @@ func inEnum(pgType, value string) bool {
 	return slices.Contains(enumTypes[pgType], value)
 }
 
-// EnumTypes returns the Postgres enum types the models reference, mapped to their
-// declared value sets.
+// EnumTypes returns a copy of each Postgres enum type's value set.
 func EnumTypes() map[string][]string {
 	out := make(map[string][]string, len(enumTypes))
 	for name, values := range enumTypes {
@@ -99,9 +98,8 @@ func EnumTypes() map[string][]string {
 	return out
 }
 
-// EnumDDL returns one `create type` statement per enum type, sorted by name.
-// Bun emits no DDL for enum types, so the migration layer prepends these before
-// the loader's `create table` output.
+// EnumDDL returns one `create type` statement per enum type, sorted by name;
+// Bun emits no DDL for enums, so the migration layer prepends these.
 func EnumDDL() []string {
 	names := make([]string, 0, len(enumTypes))
 	for name := range enumTypes {
@@ -210,8 +208,7 @@ const (
 
 func (v SignatureKind) Valid() bool { return inEnum(PGSignatureKind, string(v)) }
 
-// SignatureResult is the outcome of a verification attempt; null means "never
-// attempted".
+// SignatureResult is the outcome of a verification attempt; null means never attempted.
 type SignatureResult string
 
 const (
@@ -304,17 +301,13 @@ func (v MembershipRole) MayCurate() bool {
 }
 
 // MayShare reports whether this role may change who the profile is shared
-// with. Owner only: a maintainer who could re-share could widen an access
-// decision the owner made.
+// with; owner only, so a maintainer cannot widen the owner's access decision.
 func (v MembershipRole) MayShare() bool { return v == MembershipRoleOwner }
 
-// MayDelete reports whether this role may delete the profile outright.
-// Owner only, for the same reason as MayShare: deleting is a decision about
-// the profile's own existence, not its curation.
+// MayDelete reports whether this role may delete the profile (owner only).
 func (v MembershipRole) MayDelete() bool { return v == MembershipRoleOwner }
 
-// MayPublish reports whether this role may publish a revision: the sharpest
-// of the three, since a revision is what reaches machines.
+// MayPublish reports whether this role may publish a revision.
 func (v MembershipRole) MayPublish() bool {
 	return v == MembershipRoleOwner || v == MembershipRoleMaintainer
 }
@@ -401,13 +394,10 @@ const (
 	AuditKindPolicy   AuditKind = "policy"
 	AuditKindRole     AuditKind = "role"
 	AuditKindCategory AuditKind = "category"
-	// AuditKindSecret is identity-provider credential rotation: the credential
-	// itself never reaches a row here, only the fact that it moved.
+	// AuditKindSecret records IdP credential rotation, never the credential itself.
 	AuditKindSecret AuditKind = "secret"
-	// AuditKindToken is a service token's lifecycle: created, revoked, used.
-	AuditKindToken AuditKind = "token"
-	// AuditKindWebhook is a webhook subscription's lifecycle; the secret and
-	// the URL past its host never reach a row.
+	AuditKindToken  AuditKind = "token"
+	// AuditKindWebhook rows never hold the secret or the URL past its host.
 	AuditKindWebhook AuditKind = "webhook"
 )
 
@@ -455,8 +445,7 @@ const (
 
 func (v EvidenceRole) Valid() bool { return inEnum(PGEvidenceRole, string(v)) }
 
-// FetchSourceKind mirrors fetch.SourceKind, copied rather than imported since
-// this package must stay free of the fetch tree.
+// FetchSourceKind mirrors fetch.SourceKind; copied so this package stays free of the fetch tree.
 type FetchSourceKind string
 
 const (
@@ -467,8 +456,8 @@ const (
 
 func (v FetchSourceKind) Valid() bool { return inEnum(PGFetchSourceKind, string(v)) }
 
-// FetchOutcome is how one fetch attempt ended, mapped one-to-one to its cause
-// so nothing has to be recovered by parsing `detail`.
+// FetchOutcome is how one fetch attempt ended, one value per cause so nothing
+// is parsed out of `detail`.
 type FetchOutcome string
 
 const (

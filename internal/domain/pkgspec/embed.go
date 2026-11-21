@@ -9,18 +9,15 @@ import (
 	"strings"
 )
 
-// The published schemas are compiled into the binary rather than fetched, so
-// validation works offline and does not change under a released version of
-// this hub. skill-frontmatter.schema.json is project-authored because
-// agentskills.io publishes no schema at all.
+// Schemas are embedded so validation works offline and is fixed per release.
+// skill-frontmatter.schema.json is project-authored; agentskills.io publishes
+// none.
 //
 //go:embed schemas/*.schema.json
 var schemaFS embed.FS
 
-// The `$id` of every schema this package validates against. Dispatch is on
-// the document's own `$schema` value matching one of these exactly — a
-// manifest naming a schema we do not hold is refused, not validated against
-// a guess.
+// Schema `$id`s. A document's `$schema` must match one exactly; anything else
+// is refused rather than validated against a guess.
 const (
 	PluginSchema100 = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
 	PluginSchema110 = "https://agent-plugins.org/schemas/1.1.0/plugin.schema.json"
@@ -32,9 +29,8 @@ const (
 	SkillFrontmatterSchema = "https://agent-manager.invalid/schemas/agent-skills/skill-frontmatter.schema.json"
 )
 
-// schemaFiles maps each `$id` to the embedded file carrying it, written out
-// by hand rather than derived by scanning the directory: a file that stops
-// declaring the `$id` we dispatch on must be a build failure.
+// schemaFiles is written out by hand so a file that stops declaring its `$id`
+// fails the build.
 var schemaFiles = map[string]string{
 	PluginSchema100:        "schemas/1.0.0-plugin.schema.json",
 	PluginSchema110:        "schemas/1.1.0-plugin.schema.json",
@@ -57,8 +53,7 @@ func SchemaIDs() []string {
 	return out
 }
 
-// RawSchema returns the embedded bytes for one `$id`, exactly as vendored:
-// the lookahead transform is applied to a decoded copy, never to these bytes.
+// RawSchema returns the embedded bytes for one `$id`, exactly as vendored.
 func RawSchema(id string) ([]byte, error) {
 	name, ok := schemaFiles[id]
 	if !ok {
@@ -71,10 +66,8 @@ func RawSchema(id string) ([]byte, error) {
 	return raw, nil
 }
 
-// liftNameLookahead rewrites the published `name` pattern to its
-// RE2-expressible remainder, replacing the exact published string and
-// nothing else, and reporting how many replacements it made so the caller
-// can refuse a schema where the rule went missing (see name.go).
+// liftNameLookahead rewrites the exact published `name` pattern to its
+// RE2-expressible remainder and reports the replacement count (see name.go).
 func liftNameLookahead(doc any) (lifted any, replaced int) {
 	switch node := doc.(type) {
 	case map[string]any:

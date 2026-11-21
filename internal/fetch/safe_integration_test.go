@@ -11,12 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// R10 case 6 against the real internet. The hermetic variant in safe_test.go
-// proves the control is not vacuous by allowlisting a loopback address; this one
-// proves the default configuration — no allowlist, real DNS, real routing — lets
-// an ordinary public host through.
-//
-// task test:integration runs it. go test ./... does not.
+// The default configuration (no allowlist, real DNS and routing) lets an
+// ordinary public host through. Run by task test:integration only.
 func TestLegitimatePublicHostIsAllowed(t *testing.T) {
 	c, err := New(Options{Timeout: 20 * time.Second})
 	require.NoError(t, err)
@@ -34,8 +30,7 @@ func TestLegitimatePublicHostIsAllowed(t *testing.T) {
 	}
 }
 
-// The other half of the real-internet check: a public name that answers with a
-// private address must still be refused when nothing is stubbed.
+// A public name answering with a private address is refused with nothing stubbed.
 func TestRealLinkLocalMetadataIsRefused(t *testing.T) {
 	c, err := New(Options{Timeout: 5 * time.Second})
 	require.NoError(t, err)

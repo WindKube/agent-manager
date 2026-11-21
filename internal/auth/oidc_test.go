@@ -18,15 +18,8 @@ import (
 	"agent-manager/internal/auth"
 )
 
-// The identity provider here is minted in-process: a discovery document, a JWKS
-// and an RSA key this test signs with. No container and no vendor.
-//
-// That is deliberate rather than convenient. The signature, the JWKS fetch and
-// the expiry check are go-oidc's behaviour, and what this project owns is
-// everything after them — which claims are read, and that a provider which omits
-// `groups` is handled rather than crashed on. Pinning that to one vendor's
-// container would test the vendor. The live-provider check belongs to the layer
-// that writes compose.yaml, where the provider is a deployment choice.
+// provider is an in-process IdP: signature, JWKS and expiry are go-oidc's job;
+// this project owns which claims are read, which needs no vendor container.
 type provider struct {
 	server *httptest.Server
 	key    *rsa.PrivateKey
@@ -35,9 +28,6 @@ type provider struct {
 
 func newProvider(t *testing.T) *provider { return newProviderWithIssuer(t, "") }
 
-// newProviderWithIssuer mints an IdP whose discovery document advertises issuer
-// rather than its own URL. Empty means the two are the same, which is the
-// ordinary case.
 func newProviderWithIssuer(t *testing.T, issuer string) *provider {
 	t.Helper()
 
@@ -91,12 +81,8 @@ func (p *provider) sign(t *testing.T, key *rsa.PrivateKey, claims jwt.MapClaims)
 	return signed
 }
 
-// The subject is the one the local provider actually mints for the directory's
-// first user, measured 2026-08-31: Dex's `sub` is base64url of a protobuf pairing
-// the connector's user id (glauth's uidnumber, 5001) with the connector id
-// (`ldap`). It is opaque on purpose and this project never parses it — it is here
-// so a fixture and a real token look alike, and so nothing accidentally starts
-// assuming the email-shaped or UUID-shaped subjects other providers emit.
+// The subject the local provider really mints (opaque base64url protobuf), so
+// fixtures don't assume email- or UUID-shaped subjects.
 const localDirectorySubject = "CgQ1MDAxEgRsZGFw"
 
 func (p *provider) claims(audience string, extra map[string]any) jwt.MapClaims {
@@ -145,12 +131,8 @@ func TestVerifierAcceptsAnIDTokenAndReadsTheGroupsClaim(t *testing.T) {
 			wantName:   "Krzysztof Wiatrzyk",
 		},
 		{
-			// Measured behaviour of a real provider, twice, a year apart (001 R6 and
-			// 003 R1): a static-password user's ID token arrives with no `groups` at
-			// all, even with the scope requested. That is a token with no mapped
-			// role, not a malformed token, and it must not be an error here. The
-			// local stack avoids the shape by putting a directory behind the
-			// provider; a customer's provider may not.
+			// Real providers omit `groups` for static-password users; that is a token
+			// with no role, not an error.
 			name: "a provider that omits groups yields no groups and no error",
 			token: idp.sign(t, idp.key, idp.claims("agent-manager", map[string]any{
 				"email": "anowak@example.com",
@@ -238,18 +220,11 @@ func TestClaimsDisplayNameFallsBackInOrder(t *testing.T) {
 	}
 }
 
-// A provider whose metadata is served from a host other than the one its
-// `issuer` names (FR-106).
-//
-// The local stack no longer does this — its provider publishes one issuer that
-// every container reaches — so this is now purely the real-provider case, and
-// that is why it keeps a test rather than a comment: nothing in the stack a
-// developer runs would notice if it broke.
+// Metadata served from a host other than the issuer: only real providers do
+// this, so nothing in the local stack would notice if it broke.
 func TestDiscoveryMayBeFetchedFromAHostThatIsNotTheIssuer(t *testing.T) {
 	ctx := context.Background()
 
-	// What the token says, and the only value the `iss` claim is checked against.
-	// Nothing in this test can dial it, which is exactly the situation.
 	const configuredIssuer = "https://idp.example.dev"
 
 	idp := newProviderWithIssuer(t, configuredIssuer)
@@ -282,8 +257,6 @@ func TestDiscoveryMayBeFetchedFromAHostThatIsNotTheIssuer(t *testing.T) {
 	})
 
 	t.Run("a token from the discovery host is still rejected", func(t *testing.T) {
-		// The whole risk of the override is that `iss` stops being checked. It does
-		// not: the discovery host is not the issuer, so its own tokens fail.
 		claims := idp.claims("agent-manager", nil)
 		claims["iss"] = idp.server.URL
 
@@ -294,11 +267,8 @@ func TestDiscoveryMayBeFetchedFromAHostThatIsNotTheIssuer(t *testing.T) {
 	})
 }
 
-// The other half of the split, and the reason it is not built on
-// oidc.InsecureIssuerURLContext: that context value turns the issuer comparison
-// OFF, so a metadata host advertising an issuer neither side configured was
-// accepted, and its keys and token endpoint adopted. The document has to name
-// the configured issuer, not merely differ from its own URL.
+// The discovery document must name the configured issuer; InsecureIssuerURLContext
+// would have accepted a third issuer and adopted its keys.
 func TestDiscoveryIsRefusedWhenTheMetadataNamesADifferentIssuer(t *testing.T) {
 	idp := newProviderWithIssuer(t, "https://someone-elses-idp.example.dev")
 

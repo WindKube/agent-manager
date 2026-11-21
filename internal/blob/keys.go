@@ -20,9 +20,8 @@ const (
 	SkillsPrefix   = "skills"
 	ProfilesPrefix = "profiles"
 
-	// StagingPrefix holds a version's parts until index.json names them. It is a
-	// sibling of skills/ rather than a child so that listing the catalog can never
-	// walk half-written bytes.
+	// StagingPrefix holds a version's parts until index.json names them; it is a
+	// sibling of skills/ so catalog listings never see half-written bytes.
 	StagingPrefix = "_staging"
 
 	BundleObject        = "bundle.tar.zst"
@@ -34,13 +33,8 @@ const (
 	HeadObject          = "head.json"
 )
 
-// segmentPattern is what a single path segment may contain. Namespaces,
-// package names and semvers all arrive from user-supplied sources — an
-// uploaded manifest, a repository URL — so a key built from them is
-// untrusted input. Anything that could climb out of its prefix is rejected
-// rather than sanitised: a segment must start alphanumerically, which alone
-// rules out "", ".", ".." and a leading slash, and may then hold only
-// characters a semver or a slug legitimately needs.
+// segmentPattern rejects rather than sanitises untrusted key segments: a
+// leading alphanumeric rules out "", ".", ".." and a leading slash.
 var segmentPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]*$`)
 
 func validSegment(kind, s string) error {
@@ -122,9 +116,8 @@ func ProfileRevisionKey(slug string, seq int) (string, error) {
 	return prefix + "/r" + strconv.Itoa(seq) + ".json", nil
 }
 
-// ProfileHeadKey is profiles/<slug>/head.json — the pointer to the current
-// revision, written after the revision it names, for the same reason index.json
-// is written after a version's bytes.
+// ProfileHeadKey is profiles/<slug>/head.json, written after the revision it
+// names, like index.json.
 func ProfileHeadKey(slug string) (string, error) {
 	prefix, err := profilePrefix(slug)
 	if err != nil {

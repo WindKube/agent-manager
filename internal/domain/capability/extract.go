@@ -1,28 +1,24 @@
 package capability
 
-// These wrap the unexported judgements Infer already applies, exported so
-// the rule engine in internal/worker/scanner/checks doesn't carry a second,
-// divergent copy of security judgements like "which token names a host".
+// These export Infer's judgements so the scanner's rule engine doesn't carry
+// a divergent copy.
 
-// HostOf returns "" when the token names no host. An expansion is returned
-// verbatim rather than resolved, since resolving it would mean running the
-// script.
+// HostOf returns "" when the token names no host. Expansions are returned
+// verbatim, never resolved.
 func HostOf(token string) string { return hostOf(token) }
 
-// CommandTargets is the filesystem paths one command reads (write false) or
-// writes (write true), including its redirection targets.
+// CommandTargets returns the paths one command reads or writes, redirections
+// included.
 func CommandTargets(c Command, write bool) []string { return filesystemTargets(&c, write) }
 
-// InsidePackage: absolute paths, `~`-relative paths and anything that
-// climbs out with `..` are not.
+// InsidePackage is false for absolute, `~`-relative and `..`-escaping paths.
 func InsidePackage(target string) bool { return insideTree(target) }
 
 // Indefinite reports whether a token carries a shell expansion or template
-// placeholder, naming something only a running shell would know.
+// placeholder.
 func Indefinite(token string) bool { return isDynamic(token) }
 
 func Sensitive(target string) bool { return sensitivePath(target) }
 
-// OverBroad reports whether a target names a set nobody can enumerate by
-// reading the script — a recursive glob, or a glob at an absolute root.
+// OverBroad reports a recursive glob or a glob at an absolute root.
 func OverBroad(target string) bool { return overBroad(target) }

@@ -19,16 +19,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The R10 gate. Six cases: five things that must be refused and one that must
-// get through, because a control that refuses everything looks identical to one
-// that works.
-//
-// None of it touches the network. Cases 1, 3 and 6 use httptest servers; cases 2
-// and 4 use stubResolver, which is why Options.Resolver exists.
+// Five things that must be refused and one that must get through, since a
+// control refusing everything looks identical to one that works. No network:
+// httptest servers and stubResolver only.
 
-// publicIP is a routable address used only as a DNS answer. Nothing in this file
-// connects to it — if a regression ever tried, the short client timeout below
-// turns the hang into a failure instead of a wedged test run.
+// publicIP is only ever a DNS answer; the short client timeout turns any
+// accidental connect into a failure rather than a hang.
 const publicIP = "93.184.216.34"
 
 const testTimeout = 2 * time.Second
@@ -84,7 +80,6 @@ func newTestClient(t *testing.T, opts Options) Client {
 	return c
 }
 
-// addrOf returns an httptest server's "ip:port", suitable as an allowlist entry.
 func addrOf(t *testing.T, srv *httptest.Server) string {
 	t.Helper()
 	return strings.TrimPrefix(srv.URL, "http://")
@@ -99,8 +94,7 @@ func portOfServer(t *testing.T, srv *httptest.Server) int {
 	return n
 }
 
-// requireBlocked asserts the refusal came from the policy and not from a failed
-// connection. FR-002 and US1 scenario 5 rest on this distinction.
+// requireBlocked asserts the refusal came from the policy, not a failed connection.
 func requireBlocked(t *testing.T, err error, mustName string) {
 	t.Helper()
 	require.Error(t, err)
@@ -112,11 +106,7 @@ func requireBlocked(t *testing.T, err error, mustName string) {
 		"refusal should name the offending target %q, got %q", mustName, err.Error())
 }
 
-// --- R10 case 1 ---------------------------------------------------------------
-
 func TestRedirectToLoopbackIsRefusedAtTheHop(t *testing.T) {
-	// Counters are atomic because the handlers run on the server's goroutines
-	// and the assertions read them from the test's.
 	var victimHits atomic.Int32
 	victim := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		victimHits.Add(1)
@@ -131,9 +121,8 @@ func TestRedirectToLoopbackIsRefusedAtTheHop(t *testing.T) {
 	}))
 	defer origin.Close()
 
-	// Only the origin's exact ip:port is permitted, so the victim on a different
-	// port of the same loopback address falls back under the reserved-range rule.
-	// That is what makes the refusal a real one and not a spelling of "port 0".
+	// Only the origin's exact ip:port is allowlisted, so the victim on another port
+	// of the same loopback address is still refused.
 	require.NotEqual(t, portOfServer(t, origin), portOfServer(t, victim))
 	c := newTestClient(t, Options{Allowlist: []string{addrOf(t, origin)}})
 
@@ -147,10 +136,8 @@ func TestRedirectToLoopbackIsRefusedAtTheHop(t *testing.T) {
 	require.EqualValues(t, 0, victimHits.Load(), "the redirect target was reached")
 }
 
-// The end-to-end cases above are also caught by the connect-time check, so they
-// pass even with the per-hop check removed. This pins the hop check on its own:
-// it must refuse a hop before the transport is ever asked to dial it, which is
-// what "refused before any connection completes" (US1 scenario 5) requires.
+// The end-to-end cases are also caught at connect time, so this pins the
+// per-hop check on its own: refused before the transport is asked to dial.
 func TestEachRedirectHopIsCheckedBeforeItIsDialled(t *testing.T) {
 	gc, ok := newTestClient(t, Options{Allowlist: []string{"203.0.113.7:8443"}}).(*guardedClient)
 	require.True(t, ok)
@@ -176,7 +163,6 @@ func TestEachRedirectHopIsCheckedBeforeItIsDialled(t *testing.T) {
 		})
 	}
 
-	// Non-vacuity: a hop the policy permits must be followed.
 	t.Run("permits an allowlisted hop", func(t *testing.T) {
 		require.NoError(t, gc.http.CheckRedirect(hop("http://203.0.113.7:8443/bundle.tar.gz"), nil))
 	})
@@ -189,12 +175,9 @@ func TestEachRedirectHopIsCheckedBeforeItIsDialled(t *testing.T) {
 	})
 }
 
-// --- R10 case 2 ---------------------------------------------------------------
-
 func TestHostResolvingToPublicAndPrivateIsRefused(t *testing.T) {
-	// Both orderings, because the failure mode being guarded against is a control
-	// that refuses the private attempt and then connects over the public one.
-	// safeurl fails this case in exactly that way.
+	// Both orderings: the guarded failure refuses the private attempt and then
+	// connects over the public one, as safeurl does.
 	tests := []struct {
 		name    string
 		answer  []string
@@ -219,8 +202,6 @@ func TestHostResolvingToPublicAndPrivateIsRefused(t *testing.T) {
 		})
 	}
 }
-
-// --- R10 case 3 ---------------------------------------------------------------
 
 func TestRedirectToLinkLocalMetadataIsRefused(t *testing.T) {
 	tests := []struct {
@@ -251,8 +232,6 @@ func TestRedirectToLinkLocalMetadataIsRefused(t *testing.T) {
 	}
 }
 
-// --- R10 case 4 ---------------------------------------------------------------
-
 func TestDNSRebindingBetweenCheckAndConnectIsRefused(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -275,16 +254,13 @@ func TestDNSRebindingBetweenCheckAndConnectIsRefused(t *testing.T) {
 			}
 
 			requireBlocked(t, err, tt.offends)
-			// The point of the case: the first answer passed the pre-flight check,
-			// and the refusal came from the second lookup, the one whose addresses
-			// would actually have been connected to.
+			// The first answer passed pre-flight; the refusal must come from the second
+			// lookup, whose addresses would actually be dialled.
 			require.Equal(t, 2, res.lookups("rebind.invalid"),
 				"want a pre-flight lookup and a connect-time lookup")
 		})
 	}
 }
-
-// --- R10 case 5 ---------------------------------------------------------------
 
 func TestNonHTTPSchemesAreRefused(t *testing.T) {
 	tests := []struct {
@@ -327,11 +303,8 @@ func TestCredentialsInURLAreRefused(t *testing.T) {
 	require.NotContains(t, err.Error(), "hunter2", "the password must not reach an error string")
 }
 
-// --- R10 case 6 ---------------------------------------------------------------
-
 func TestLegitimateDestinationIsAllowed(t *testing.T) {
-	// Non-vacuity, without internet: the httptest server's address is explicitly
-	// permitted by configuration, so a control that refuses everything fails here.
+	// The server's address is allowlisted, so a control refusing everything fails here.
 	var served atomic.Pointer[string]
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
@@ -355,8 +328,7 @@ func TestLegitimateDestinationIsAllowed(t *testing.T) {
 }
 
 func TestLegitimateRedirectChainIsAllowed(t *testing.T) {
-	// The same non-vacuity proof for the redirect path: refusing every hop would
-	// pass case 1 and 3 while being useless.
+	// Refusing every hop would pass the redirect refusal tests while being useless.
 	final := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprint(w, "final")
 	}))
@@ -376,11 +348,9 @@ func TestLegitimateRedirectChainIsAllowed(t *testing.T) {
 	require.Equal(t, final.URL+"/bundle.tar.gz", resp.Request.URL.String())
 }
 
-// --- the ErrBlocked / transport-error distinction ------------------------------
-
 func TestTransportFailureIsNotAPolicyRefusal(t *testing.T) {
-	// US1 scenario 5 requires an SSRF refusal to be recorded as a fetch error and
-	// never as a finding, which only works if callers can tell the two apart.
+	// SSRF refusals must be distinguishable from transport errors so they're
+	// recorded as fetch errors, never findings.
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	addr := addrOf(t, srv)
 	srv.Close() // nothing is listening now
@@ -409,8 +379,6 @@ func TestRedirectCountIsCapped(t *testing.T) {
 	}
 	require.ErrorContains(t, err, "stopped after 5 redirects")
 }
-
-// --- the classifier on its own -------------------------------------------------
 
 func TestReservedReason(t *testing.T) {
 	tests := []struct {
@@ -445,9 +413,8 @@ func TestReservedReason(t *testing.T) {
 		{"::ffff:127.0.0.1", true},
 		{"::ffff:10.0.0.1", true},
 		{"::ffff:8.8.8.8", false},
-		// Embeddings that are not IPv4-mapped, so To4 does not normalise them and
-		// every net.IP.Is* predicate answers false. Only the CIDR table catches
-		// these.
+		// Not IPv4-mapped, so To4 doesn't normalise them and every Is* predicate is
+		// false; only the CIDR table catches these.
 		{"::7f00:1", true},
 		{"::127.0.0.1", true},
 		{"::a9fe:a9fe", true},
@@ -540,10 +507,8 @@ func TestDoRejectsARequestWithNoURL(t *testing.T) {
 
 var _ Resolver = (*net.Resolver)(nil)
 
-// Obfuscated loopback literals (127.1, 2130706433, 0x7f.0.0.1) are not addresses
-// net.ParseIP accepts, so they reach the resolver. Whatever the resolver makes of
-// them is then classified like any other answer — which is why the bypass class
-// closes without a table of spellings.
+// Obfuscated loopback literals reach the resolver, and its answers are
+// classified like any other, so no table of spellings is needed.
 func TestObfuscatedLoopbackLiteralsAreRefused(t *testing.T) {
 	hosts := []string{"127.1", "2130706433", "0x7f.0.0.1", "017700000001"}
 
@@ -577,10 +542,8 @@ func TestErrorsAreUnwrappable(t *testing.T) {
 		blocked.Error())
 }
 
-// The classifier answers "" for a public address, so anything it cannot reason
-// about must be refused explicitly rather than fall out of the bottom of the
-// switch. Options.Resolver is a public seam, and a resolver handing back a
-// net.IP of any other length used to be reported as reachable.
+// The classifier answers "" for public, so an address it can't reason about
+// must be refused explicitly rather than fall through.
 func TestClassifierFailsClosedOnAMalformedAddress(t *testing.T) {
 	for _, ip := range []net.IP{nil, {}, {10, 0, 0}, make(net.IP, 5), make(net.IP, 15), make(net.IP, 17)} {
 		t.Run(fmt.Sprintf("%d bytes", len(ip)), func(t *testing.T) {
@@ -590,12 +553,8 @@ func TestClassifierFailsClosedOnAMalformedAddress(t *testing.T) {
 	}
 }
 
-// R10 case 6 without the allowlist. Both httptest-backed "allowed" cases permit
-// their target through Options.Allowlist, and checkAddr consults the allowlist
-// before it consults anything else — so a policy that refused every address on
-// earth would still pass them. This drives the whole pre-flight chain (scheme,
-// credentials, host, port, resolve, classify) on the default configuration, which
-// is the configuration that actually ships.
+// The httptest "allowed" cases pass via the allowlist, which checkAddr consults
+// first; this drives the pre-flight chain on the shipped default configuration.
 func TestDefaultConfigurationPermitsALegitimateDestination(t *testing.T) {
 	tests := []string{
 		"http://mirror.test/plugin.json",
@@ -612,9 +571,7 @@ func TestDefaultConfigurationPermitsALegitimateDestination(t *testing.T) {
 			require.True(t, ok)
 			require.Empty(t, gc.policy.allow, "the allowlist must be empty or this proves nothing")
 
-			// checkURL rather than Get: with no allowlist the only addresses this
-			// package permits are public ones, and connecting to one would make the
-			// suite need the internet.
+			// checkURL rather than Get, so the suite doesn't need the internet.
 			require.NoError(t, gc.checkURL(context.Background(), mustParse(t, rawURL)))
 		})
 	}
@@ -627,10 +584,8 @@ func mustParse(t *testing.T, rawURL string) *url.URL {
 	return u
 }
 
-// net/http records the raw, origin-supplied Location header in url.Error.URL when
-// CheckRedirect refuses a hop, without stripping its password. A fetch error is
-// persisted and shown to an operator, so the refusal must not carry the secret an
-// attacker put in the header.
+// net/http records the raw Location (password included) in url.Error.URL when
+// CheckRedirect refuses a hop, and fetch errors are shown to operators.
 func TestCredentialsInARefusedRedirectAreNotLeaked(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -641,9 +596,8 @@ func TestCredentialsInARefusedRedirectAreNotLeaked(t *testing.T) {
 		{"credentials on a public target", "http://admin:hunter2@" + publicIP + "/x", true},
 		{"credentials on a loopback target", "http://admin:hunter2@127.0.0.1:22/x", true},
 		{"credentials on a scheme-relative target", "//admin:hunter2@10.0.0.5/x", true},
-		// net/http embeds an unparseable Location in the error message rather than
-		// in url.Error.URL, so redacting one field is not enough. It is a client
-		// error rather than a policy refusal, hence blocked:false.
+		// An unparseable Location lands in the message, not url.Error.URL; it is a
+		// client error, hence blocked:false.
 		{"credentials on an unparseable target", "http://admin:hunter2@exa mple.com/x", false},
 	}
 
@@ -670,9 +624,8 @@ func TestCredentialsInARefusedRedirectAreNotLeaked(t *testing.T) {
 	}
 }
 
-// The same guarantee on the path where the URL never parses: url.Redacted is not
-// available, and both the caller's string and net/url's own error repeat the
-// password verbatim.
+// On the unparseable-URL path url.Redacted isn't available and net/url's own
+// error repeats the password verbatim.
 func TestCredentialsInAnUnparseableURLAreNotLeaked(t *testing.T) {
 	tests := []string{
 		"http://admin:hunter2@exa mple.com/x",

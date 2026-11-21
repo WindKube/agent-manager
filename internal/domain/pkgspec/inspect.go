@@ -8,36 +8,30 @@ import (
 	"agent-manager/internal/bundle"
 )
 
-// Package is everything the ingestion path learns from a fetched tree. One
-// function produces it and two callers consume it: the api's pre-submit
-// preview and the fetcher's authoritative pass — a preview that said "schema
-// valid" and a fetch that then rejected the manifest would be a worse lie
-// than no preview at all.
+// Package is everything ingestion learns from a fetched tree. The api preview
+// and the fetcher share it so the preview can't disagree with the real fetch.
 type Package struct {
 	Kind Kind
 	Name string
 
-	// Semver is the manifest `version`, normalised, empty when the manifest
-	// carried none: `version` is optional, so registration supplies one and
-	// this is only the manifest's opinion.
+	// Semver is the manifest's normalised, optional `version`; registration
+	// supplies the authoritative one.
 	Semver string
 
 	Keywords       []string
 	ManifestObject string
 	ManifestBytes  []byte
 
-	// ManifestJSON is what `version.manifest` holds. For a plugin it is
-	// ManifestBytes; for a skill it is the frontmatter rendered as json,
-	// because the column is jsonb and a Markdown file is not json.
+	// ManifestJSON is what `version.manifest` holds; for a skill, the
+	// frontmatter rendered as json.
 	ManifestJSON json.RawMessage
 
 	Plugin *Plugin
 	Skill  *Skill
 	MCP    *MCPConfig
 
-	// Expected is `extensions["dev.agent-manager"]` when the publisher
-	// recorded one. Nil means every inferred capability is surfaced for
-	// review rather than passing silently.
+	// Expected is nil when the publisher recorded none, which surfaces every
+	// inferred capability for review.
 	Expected *AgentManagerExtension
 
 	Components []Component
@@ -46,12 +40,9 @@ type Package struct {
 }
 
 // Inspect filters a fetched tree to the spec layout, validates its manifests
-// and derives its components. The first result is non-nil whenever the
-// layout could be computed, even when err is non-nil — that lets the
-// pre-submit preview render the archive-contents panel with the manifest
-// line marked as failing, instead of showing the user an error and no entry
-// list. A caller that intends to publish must check err; a caller that
-// intends to display should use both.
+// and derives its components. The Package is non-nil whenever the layout could
+// be computed, even alongside an error, so the preview can still render it.
+// Publishers must check err.
 func Inspect(tree *bundle.Bundle, root string) (*Package, error) {
 	validator, err := Default()
 	if err != nil {
@@ -95,8 +86,8 @@ func InspectWith(validator *Validator, tree *bundle.Bundle, root string) (*Packa
 	return out, nil
 }
 
-// readManifests validates the root manifest and mcp.json, filling the
-// Package; the returned string is the note the panel shows against the manifest line.
+// readManifests validates the root manifest and mcp.json and returns the
+// panel note for the manifest line.
 func (p *Package) readManifests(validator *Validator, filtered *layout) (string, error) {
 	manifest, ok := filtered.files.Lookup(p.ManifestObject)
 	if !ok {
@@ -259,8 +250,6 @@ func mcpNote(filtered *layout) string {
 	return plural(len(probe.MCPServers), "server")
 }
 
-// supportEntry: SKILL.md plus its resource directories, with no group line
-// of their own above.
 func supportEntry(filtered *layout) *LayoutEntry {
 	if filtered.kind != KindSkill {
 		return nil

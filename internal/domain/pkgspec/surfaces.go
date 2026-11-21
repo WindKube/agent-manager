@@ -15,12 +15,9 @@ import (
 	"agent-manager/internal/bundle"
 )
 
-// Claude Code's plugin surfaces — hooks, agents, commands and its own
-// `.mcp.json` — have no place in the closed Agent Plugins layout, so they are
-// read from the client-extension directory and from the namespace object of
-// the same name in plugin.json, the only conformant homes for them. Parsing is
-// lenient: a malformed file is reported in Unreadable, never an ingestion
-// failure, because the spec assigns these files no semantics.
+// Claude Code's surfaces live in its client-extension directory and namespace
+// object, the only conformant homes for them. Parsing is lenient: a malformed
+// file lands in Unreadable, never an ingestion failure.
 
 // ClaudeCodeNamespace is the client-extension namespace Claude Code reads.
 const ClaudeCodeNamespace = "com.anthropic.claude-code"
@@ -451,8 +448,7 @@ func (f promptFrontmatter) tools() []string {
 	return append(toolList(f.AllowedTools), toolList(f.Tools)...)
 }
 
-// frontmatter reads a Markdown file's frontmatter leniently. A file with no
-// frontmatter has none to read and is not unreadable.
+// frontmatter reads leniently; a file with no frontmatter is not unreadable.
 func (r *surfaceReader) frontmatter(filePath string) (promptFrontmatter, bool) {
 	var out promptFrontmatter
 	file, ok := r.files.Lookup(filePath)

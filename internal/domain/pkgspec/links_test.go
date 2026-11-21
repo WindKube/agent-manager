@@ -13,14 +13,9 @@ import (
 	"agent-manager/internal/domain/pkgspec"
 )
 
-// A forge tarball of a real repository, which is where this came from: one
-// unpredictable wrapper directory, a symlink at the repository root, and the
-// package the caller asked for in a subdirectory the link is nowhere near.
-//
-// github.com/mattpocock/skills is the case that found it. Its AGENTS.md is a
-// symlink, and refusing the archive over a member made every version of that
-// repository permanently unimportable — including a request for
-// skills/engineering/code-review, which contains no link at all.
+// forgeTarball mimics a forge archive: a wrapper directory and links outside
+// the requested subdirectory (as in github.com/mattpocock/skills, whose
+// AGENTS.md symlink once made the whole repo unimportable).
 func forgeTarball(t *testing.T, members ...tarMember) *bundle.Bundle {
 	t.Helper()
 
@@ -82,9 +77,7 @@ func TestALinkOutsideThePackageRootIsNotThisPackagesProblem(t *testing.T) {
 }
 
 func TestALinkInsideThePackageRootIsReported(t *testing.T) {
-	// Here the missing path is the package's own, so saying nothing would leave
-	// someone to work out on their own why a file they can see in the
-	// repository is not in the stored version.
+	// The link is inside the package, so its omission must be reported.
 	tree := forgeTarball(t,
 		file("SKILL.md", skillManifest),
 		link("scripts/review.sh", "../../shared/review.sh"),

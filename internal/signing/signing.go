@@ -20,7 +20,6 @@ import (
 	"github.com/theupdateframework/go-tuf/v2/metadata/fetcher"
 )
 
-// Status is what a version's signature amounts to.
 type Status string
 
 const (
@@ -47,8 +46,6 @@ type Result struct {
 // transient condition, never a verdict on the bundle.
 var ErrTrustUnavailable = errors.New("sigstore trusted root unavailable")
 
-// refreshEvery is how long a TUF-fetched trusted root is used before it is
-// fetched again.
 const refreshEvery = 24 * time.Hour
 
 // Verifier checks bundles against one trust root.

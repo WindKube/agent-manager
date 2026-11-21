@@ -9,14 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The credential boundary is a property of the type, so it is tested as one.
-// Principle II: web must not even be able to read a datastore credential.
-//
-// The whole type is walked, embedded blocks included, so a field added to
-// Observability or OIDC is caught as well as one added to Web itself. Both the
-// field name and the variable it reads are checked, because the boundary is the
-// variable: a field called Store tagged `env:"DATABASE_URL"` hands web the
-// credential while passing any check that only looks at identifiers.
+// Walks embedded blocks too, and checks env tags rather than field names,
+// because the variable is the credential boundary.
 func TestWebHasNoDatastoreCredentialFields(t *testing.T) {
 	forbiddenFields := []string{"DatabaseURL", "RiverDatabaseURL", "BlobURL"}
 	forbiddenVars := []string{"DATABASE_URL", "RIVER_DATABASE_URL", "BLOB_URL"}
@@ -68,9 +62,7 @@ func TestTheNotifierHasNoObjectStoreField(t *testing.T) {
 	require.False(t, found, "the notifier signs and posts JSON; it never reads a bundle")
 }
 
-// The mint secret is the one value two roles must hold. If their tags drift
-// apart, both roles start, both look correctly configured, and every sign-in
-// fails at the mint — so the two tags are asserted to be the same variable.
+// Drifting tags would let both roles start while every sign-in fails at the mint.
 func TestBothRolesReadTheSessionMintSecretFromOneVariable(t *testing.T) {
 	api, found := reflect.TypeOf(API{}).FieldByName("SessionMintSecret")
 	require.True(t, found, "config.API must hold the session mint secret — it verifies it")
@@ -81,10 +73,8 @@ func TestBothRolesReadTheSessionMintSecretFromOneVariable(t *testing.T) {
 	require.Equal(t, api.Tag.Get("env"), web.Tag.Get("env"))
 }
 
-// An unset secret is refused at the mint, not at startup: a missing
-// web-integration secret must not also take down the reads, the health endpoint
-// and the device flow. That contract is only meaningful if an empty secret
-// reaches the mint, so loading without one has to succeed.
+// A missing secret is refused at the mint, not at startup, so it cannot take
+// down reads, health and the device flow.
 func TestTheSessionMintSecretHasNoDefaultAndDoesNotStopARoleStarting(t *testing.T) {
 	t.Setenv("AGENT_MANAGER_API_BASE_URL", "http://api:8081")
 	t.Setenv("AGENT_MANAGER_DATABASE_URL", "postgres://app/agent_manager")
@@ -100,7 +90,6 @@ func TestTheSessionMintSecretHasNoDefaultAndDoesNotStopARoleStarting(t *testing.
 	require.Empty(t, api.SessionMintSecret)
 }
 
-// FR-119: the hint is stated or it is off. Nothing infers it.
 func TestTheDevelopmentCredentialHintIsOffUnlessItIsAsked(t *testing.T) {
 	t.Setenv("AGENT_MANAGER_API_BASE_URL", "http://api:8081")
 	t.Setenv("AGENT_MANAGER_OIDC_ISSUER", "http://localhost:5556/dex")

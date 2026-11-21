@@ -1,30 +1,6 @@
-// The local identity provider's configuration — the two files under deploy/local
-// and the two compose files that point the hub at them — checked against the Go
-// constants they all have to agree with. No Docker, no build tag: this runs in
-// the ordinary `go test ./...` because the drift it catches is invisible at run
-// time.
-//
-// internal/seed/groups.go states the failure mode in full. The short version:
-// when the group names in deploy/local/glauth/glauth.cfg and the group_role_map
-// rows the seed writes disagree, nothing fails. Discovery answers, the password
-// is accepted, the token carries a `groups` claim, the session row is written,
-// and the resolve statement's `group_name = any (i.groups)` matches nothing. The
-// operator lands on a working page with no role and no error anywhere. So the
-// fixture is parsed and compared rather than annotated with a comment claiming
-// it matches.
-//
-// The compose half is here for the same reason, and it is the same failure. The
-// `groups` scope is load-bearing and its absence is silent: measured on the
-// shipped stack, the same client against the same directory gets
-// `groups=['eng-platform']` when the scope is asked for and no `groups` key at
-// all when it is not. So an explicit `AGENT_MANAGER_OIDC_SCOPES` without it
-// would produce a working login with no role and no error, and until this file
-// read that list nothing did — the integration suite spelled the scopes it
-// wanted in a literal of its own, which is precisely how a pinning test stops
-// pinning anything.
-//
-// The live half — that Dex actually emits these names, per user, in a real token
-// — is localidp_integration_test.go.
+// Checks the local IdP's config files (deploy/local, compose) against the Go
+// constants they must agree with. Drift here is silent at run time: mismatched
+// group names or a missing `groups` scope give a working login with no role.
 package auth_test
 
 import (
@@ -46,14 +22,8 @@ const (
 	composeInfraPath  = "../../compose.infra.yaml"
 )
 
-// The issuer Dex publishes and the two image versions plan.md pins. Every one of
-// them is also written in a compose file, and the tests below are what make that
-// a coupling rather than a claim: a comment saying two files agree is worth
-// nothing, which this layer has now learned twice.
-//
-// The issuer is container-reachable on purpose (R2), which is why the integration
-// suite reaches Dex on a mapped port and does not let go-oidc discover its own
-// endpoints — the discovery document names a host only containers resolve.
+// The issuer is container-reachable, so the integration suite reaches Dex on a
+// mapped port instead of letting go-oidc discover its endpoints.
 const (
 	issuer = "http://dex:5556/dex"
 
@@ -61,9 +31,6 @@ const (
 	glauthImage = "glauth/glauth:v2.4.0"
 )
 
-// glauthFixture is the subset of glauth.cfg that the coupling turns on. Fields
-// absent here (listen addresses, password hashes) are deliberately unasserted —
-// they are free to change.
 type glauthUser struct {
 	Name         string `toml:"name"`
 	Mail         string `toml:"mail"`
@@ -102,8 +69,6 @@ type dexFixture struct {
 		Public       bool     `yaml:"public"`
 		RedirectURIs []string `yaml:"redirectURIs"`
 	} `yaml:"staticClients"`
-	// A map, not a typed struct: the only assertion this file makes about static
-	// passwords is that there are none.
 	StaticPasswords []map[string]any `yaml:"staticPasswords"`
 	Connectors      []struct {
 		Type   string `yaml:"type"`
@@ -152,10 +117,7 @@ func loadDexFixture(t *testing.T) dexFixture {
 	return f
 }
 
-// The compose files are read as raw YAML rather than through `docker compose
-// config`, because what these assertions compare is what the files SAY against
-// what the Go constants say, and the ordinary build cannot assume a docker CLI.
-// internal/cli/compose_test.go owns the questions only Compose can answer.
+// Raw YAML rather than `docker compose config`: the ordinary build can't assume a docker CLI.
 func loadComposeOIDCEnv(t *testing.T) map[string]string {
 	t.Helper()
 
@@ -194,9 +156,6 @@ func loadComposeInfraImages(t *testing.T) map[string]string {
 	return images
 }
 
-// composeOIDCScopes is the scope list the shipped stack asks for, read from the
-// one file it is written in so that the integration suite can drive its logins
-// with it instead of with a literal of its own.
 func composeOIDCScopes(t *testing.T) string {
 	t.Helper()
 
@@ -221,9 +180,7 @@ func TestTheGlauthFixtureSpellsTheGroupNamesTheSeedMapsToRoles(t *testing.T) {
 			glauthFixturePath, want)
 	}
 
-	// The unmapped group is checked the same way and for the opposite reason: it
-	// must EXIST here and must map to nothing, which is what makes FR-117's screen
-	// reachable by signing in rather than by breaking something.
+	// The unmapped group must exist and map to nothing so the no-role screen is reachable.
 	require.Truef(t, names[seed.GroupUnmapped],
 		"%s defines no group named %q, so the directory user who is supposed to hold no role "+
 			"either fails to log in or arrives with no groups at all — which is the silent "+
@@ -233,11 +190,7 @@ func TestTheGlauthFixtureSpellsTheGroupNamesTheSeedMapsToRoles(t *testing.T) {
 		"internal/seed now maps %q to a role, so nobody in the local directory reaches the "+
 			"no-role screen", seed.GroupUnmapped)
 
-	// The users, their mails and the group each one resolves a role through, all
-	// read off seed.DirectoryUsers rather than spelled a second time. The mail
-	// matters as much as the group: Dex's user search is `username: mail`, so the
-	// mail is the login, and internal/seed asserts that no seeded identity row
-	// collides with these addresses.
+	// The mail is the login (Dex searches `username: mail`), so it matters as much as the group.
 	for _, want := range seed.DirectoryUsers {
 		t.Run(want.Username, func(t *testing.T) {
 			var found bool
@@ -253,11 +206,7 @@ func TestTheGlauthFixtureSpellsTheGroupNamesTheSeedMapsToRoles(t *testing.T) {
 						"this user's role through %q",
 					want.Username, u.PrimaryGroup, byGID[u.PrimaryGroup], want.Group)
 
-				// The secondary membership, which is a different kind of coupling: it
-				// carries no role, so a wrong gid here fails NOWHERE — the login works,
-				// the primary group still resolves the role, and the only thing lost is
-				// that the profile shared with eng-all stops being reachable by anybody
-				// who can actually sign in.
+				// A wrong secondary gid fails nowhere; it only makes the eng-all profile unreachable.
 				secondary := make([]string, 0, len(u.OtherGroups))
 				for _, gid := range u.OtherGroups {
 					secondary = append(secondary, byGID[gid])
@@ -279,9 +228,7 @@ func TestTheGlauthFixtureSpellsTheGroupNamesTheSeedMapsToRoles(t *testing.T) {
 	}
 }
 
-// The three attribute names in R1 that each cost an iteration to find. Every
-// wrong value here fails somewhere else entirely, so they are pinned rather than
-// left to a reader's judgement about which spelling looks more natural.
+// Each of these attribute spellings fails somewhere unrelated when wrong.
 func TestTheDexConnectorUsesTheAttributeNamesGlauthActuallyReturns(t *testing.T) {
 	f := loadDexFixture(t)
 
@@ -306,30 +253,18 @@ func TestTheDexConnectorUsesTheAttributeNamesGlauthActuallyReturns(t *testing.T)
 			"\"ou=eng-platform,…\" missing required attribute \"cn\"` AFTER the group was found, "+
 			"which is misleading because the search itself worked")
 
-	// The login. Anything else here and the two mails in glauth.cfg stop being
-	// credentials, and seed.DirectoryEmail* stops describing anything.
 	require.Equal(t, "mail", c.UserSearch.Username)
 	require.Equal(t, "mail", c.UserSearch.EmailAttr)
 }
 
-// A `groups:` key on a staticPasswords entry is accepted at boot with no warning,
-// logged nowhere, and silently ignored — 001's R6 measured it and 003's R1
-// re-measured it on v2.44.0. The cheapest way to keep someone from reaching for
-// it is to have no staticPasswords block to add it to.
+// Dex silently ignores `groups:` on staticPasswords entries, so the fixture has
+// no staticPasswords block to add it to.
 func TestTheDexFixtureDefinesNoStaticPasswords(t *testing.T) {
 	require.Empty(t, loadDexFixture(t).StaticPasswords)
 }
 
-// Dex's bindDN is assembled by hand out of four things — glauth's nameformat,
-// groupformat and baseDN, plus the bind account's primary group — and a wrong
-// bind fails with an HTTP 500 on login that names none of them.
-//
-// The DNs glauth actually SERVES interpose an ou=users component:
-// cn=kwiatrzyk,ou=eng-platform,ou=users,dc=example,dc=dev, as Dex's own error
-// messages show. Its bind handler is lenient about that component — both
-// spellings of the service account's DN authenticate, measured 2026-08-31 — which
-// is why this asserts the parts rather than one exact string. Do not "correct"
-// the bindDN in either direction expecting a behaviour change; there isn't one.
+// A wrong bindDN fails login with a bare HTTP 500. glauth accepts the DN with or
+// without its served ou=users component, so this asserts the parts, not one string.
 func TestTheDexBindDNNamesTheBindAccountGlauthDefines(t *testing.T) {
 	g := loadGlauthFixture(t)
 	d := loadDexFixture(t)
@@ -367,15 +302,12 @@ func TestTheDexBindDNNamesTheBindAccountGlauthDefines(t *testing.T) {
 	}
 	require.True(t, canSearch, "Dex's bind account must be able to search the directory")
 
-	// No mail, so this account can never authenticate a person and can never
-	// collide with a seeded identity row — the user search is `username: mail`.
+	// No mail, so the bind account can never be a login (the user search is on mail).
 	require.Empty(t, bind.Mail, "the bind account must not be a login")
 }
 
-// The reverse of the Keycloak arrangement this replaces, and the reason it is the
-// reverse is worth a test rather than a comment: Dex ignores the request Host
-// entirely, so a browser-reachable issuer would publish a token_endpoint and a
-// jwks_uri naming a host no container can resolve (R2).
+// Dex ignores the request Host, so a browser-reachable issuer would publish
+// endpoints no container can resolve.
 func TestTheDexIssuerIsTheContainerReachableURL(t *testing.T) {
 	f := loadDexFixture(t)
 
@@ -400,18 +332,12 @@ func TestTheDexIssuerIsTheContainerReachableURL(t *testing.T) {
 	require.Empty(t, f.StaticClients[cli].Secret)
 }
 
-// The scope list, which is the one piece of this configuration that fails
-// silently in both directions: Dex emits `groups` only for a client that asked
-// for it, and a client that asks for a scope the provider does not know is not
-// refused. So dropping `groups` from AGENT_MANAGER_OIDC_SCOPES yields a signed
-// token, a written session, a resolved identity and no role — measured, on the
-// shipped stack, same client and same directory. Nothing in the repository read
-// this list until now; the integration suite hard-coded the scopes it wanted.
+// Dropping `groups` from the scopes still yields a working login, just with no role.
 func TestTheComposeStackAsksForTheGroupsScope(t *testing.T) {
 	scopes := strings.Fields(composeOIDCScopes(t))
 
 	require.Contains(t, scopes, "groups",
-		"%s must request `groups`, because it is the sole input to group_role_map (FR-101) "+
+		"%s must request `groups`, because it is the sole input to group_role_map "+
 			"and the only claim in the token with authorisation weight. Without the scope the "+
 			"login still succeeds and the claim is simply absent, which is the hardest failure "+
 			"in this stack to diagnose — internal/seed/groups.go says why", composeAppPath)
@@ -420,11 +346,6 @@ func TestTheComposeStackAsksForTheGroupsScope(t *testing.T) {
 		"the email is the login the directory searches on and the identity row's key")
 }
 
-// The issuer is written twice, because the two files are read by different things
-// — Dex mints tokens from its own, the roles check the `iss` claim against
-// compose's — and a comment promising the two agree is what this file exists to
-// replace. The two clauses after it are what make the agreement mean the split R2
-// measured rather than a coincidence.
 func TestTheComposeStackAndTheDexFixtureNameTheSameIssuer(t *testing.T) {
 	oidc := loadComposeOIDCEnv(t)
 
@@ -432,9 +353,7 @@ func TestTheComposeStackAndTheDexFixtureNameTheSameIssuer(t *testing.T) {
 		"the `iss` claim is checked against AGENT_MANAGER_OIDC_ISSUER and minted from Dex's "+
 			"own `issuer`, so a difference here refuses every token the local stack issues")
 
-	// The browser override exists because the issuer above is container-reachable
-	// and a browser cannot resolve it (R2). If the two were equal the override
-	// would be dead configuration, and the split it documents would be gone.
+	// The browser override exists because a browser can't resolve the container-reachable issuer.
 	browser := oidc["AGENT_MANAGER_OIDC_BROWSER_BASE_URL"]
 	require.NotEmpty(t, browser, "the browser leg has no host it can reach without this")
 	require.NotEqual(t, oidc["AGENT_MANAGER_OIDC_ISSUER"], browser,
@@ -445,10 +364,7 @@ func TestTheComposeStackAndTheDexFixtureNameTheSameIssuer(t *testing.T) {
 			"would put the local stack back on the split-metadata path kept for real providers")
 }
 
-// The versions every measurement in research.md was taken against. They are
-// pinned as constants because the integration suite pulls them and charges the
-// discovery budget to them; compose.infra.yaml is what actually runs. If the two
-// drift, the numbers in research.md stop describing the stack.
+// The image versions the integration suite pulls must match what compose.infra.yaml runs.
 func TestTheComposeStackRunsTheImageVersionsTheMeasurementsDescribe(t *testing.T) {
 	images := loadComposeInfraImages(t)
 

@@ -6,9 +6,8 @@ import (
 	"strings"
 )
 
-// Infer reads the capability set off the scan artefacts and nothing else. A
-// capability appears only when something in the bytes puts it there; an
-// empty result is a real "reaches nothing", not a missing scan.
+// Infer derives capabilities from the scan artefacts alone; an empty result
+// means the package reaches nothing, not that the scan is missing.
 func Infer(a Artefacts) []Capability {
 	rows := make([]Capability, 0, len(Names))
 	for _, build := range []func(Artefacts) (Capability, bool){
@@ -23,17 +22,15 @@ func Infer(a Artefacts) []Capability {
 
 // ---- network -----------------------------------------------------------------
 
-// transferCommands move bytes over a network even with no resolvable host,
-// which is why they count as reach separately from "an argument was a URL".
+// transferCommands count as network reach even with no resolvable host.
 var transferCommands = map[string]struct{}{
 	"curl": {}, "wget": {}, "http": {}, "https": {}, "httpie": {}, "xh": {},
 	"nc": {}, "ncat": {}, "netcat": {}, "telnet": {}, "ftp": {}, "sftp": {},
 	"ssh": {}, "scp": {}, "rsync": {}, "git": {},
 }
 
-// registryCommands reach a default registry with no host written down
-// (`npm i -g x` talks to registry.npmjs.org, invisible in the command), so
-// they're network reach with an INDEFINITE target, not no target.
+// registryCommands reach a default registry with no host written down, so
+// they are network reach with an indefinite target.
 var registryCommands = map[string]struct{}{
 	"npm": {}, "npx": {}, "pnpm": {}, "yarn": {}, "bun": {},
 	"pip": {}, "pip3": {}, "pipx": {}, "uv": {}, "poetry": {},
@@ -43,8 +40,7 @@ var registryCommands = map[string]struct{}{
 	"aws": {}, "gcloud": {}, "az": {}, "gh": {},
 }
 
-// inferNetwork is never Scoped: Scoped means the target stays inside the
-// package, and a host is outside it by definition.
+// inferNetwork is never Scoped: a host is outside the package by definition.
 func inferNetwork(a Artefacts) (Capability, bool) {
 	row := Capability{Name: Network, Source: SourceInferred, Level: LevelAllowlisted}
 	found := false
@@ -108,10 +104,9 @@ func commandHosts(c *Command) []string {
 	return hosts
 }
 
-// hostOf requires a host be EXPLICIT — a scheme, a `user@`, or a `:port` — a
-// bare dotted word is never one, since that's also what every filename
-// looks like. Nothing is lost: a transfer command whose host this can't
-// name records an INDEFINITE target instead, which grades Review.
+// hostOf requires an explicit host (scheme, `user@` or `:port`), since a bare
+// dotted word is indistinguishable from a filename. Transfer commands with no
+// nameable host still grade Review via an indefinite target.
 func hostOf(token string) string {
 	token = strings.Trim(token, `"'`)
 	if token == "" {
@@ -142,8 +137,7 @@ func hostOf(token string) string {
 	return ""
 }
 
-// looksLikeHost validates a token whose CONTEXT already said is a host; it
-// is not a test for whether an arbitrary word is a hostname.
+// looksLikeHost validates a token already known by context to be a host.
 func looksLikeHost(token string) bool {
 	if isDynamic(token) {
 		return true
@@ -199,8 +193,7 @@ var writeCommands = map[string]struct{}{
 	"chmod": {}, "chown": {}, "ln": {}, "unlink": {}, "shred": {}, "dd": {},
 }
 
-// transferPairCommands read every path argument but the last and write the
-// last: `cp a b`, `mv a b`, `install -m 0644 src dst`, `rsync src dst`.
+// transferPairCommands read every path argument but the last and write the last.
 var transferPairCommands = map[string]struct{}{
 	"cp": {}, "mv": {}, "install": {}, "rsync": {}, "scp": {},
 }
@@ -216,8 +209,8 @@ func inferFilesystemWrite(a Artefacts) (Capability, bool) {
 	return inferFilesystem(a, FilesystemWrite)
 }
 
-// inferFilesystem grades: Scoped stays inside the package; Allowlisted is a
-// definite set of outside paths; Review is anything not definite at all.
+// inferFilesystem grades Scoped (inside the package), Allowlisted (a definite
+// set of outside paths) or Review (anything indefinite).
 func inferFilesystem(a Artefacts, name string) (Capability, bool) {
 	write := name == FilesystemWrite
 	row := Capability{Name: name, Source: SourceInferred, Level: LevelScoped}
@@ -295,10 +288,8 @@ func isPair(name string) bool {
 	return ok
 }
 
-// pairTargets splits over ARGUMENT positions, not the filtered path list:
-// the destination may not be a local path at all (`scp file deploy@host:/srv/`
-// has no local destination), so picking the last surviving path would file
-// the source as the thing being written.
+// pairTargets splits over argument positions, not the filtered path list,
+// because the destination may not be local (`scp file deploy@host:/srv/`).
 func pairTargets(args []string, write bool) []string {
 	operands := make([]string, 0, len(args))
 	for _, arg := range args {
@@ -402,8 +393,7 @@ func sensitivePath(target string) bool {
 	return false
 }
 
-// overBroad: a recursive glob, or a glob at the root of an absolute path,
-// names a set nobody can enumerate by reading the script.
+// overBroad reports a recursive glob or a glob at an absolute root.
 func overBroad(target string) bool {
 	if strings.Contains(target, "**") {
 		return true
@@ -415,7 +405,6 @@ func overBroad(target string) bool {
 	return strings.ContainsAny(first, "*?[") || strings.HasPrefix(target, "/")
 }
 
-// escapesTree is separate from insideTree so the level can say WHY.
 func escapesTree(target string) bool {
 	if strings.HasPrefix(target, "/") || strings.HasPrefix(target, "~") {
 		return false
@@ -424,8 +413,8 @@ func escapesTree(target string) bool {
 	return cleaned == ".." || strings.HasPrefix(cleaned, "../")
 }
 
-// insideTree does NOT require the file to exist in Artefacts.Files: a
-// script legitimately writes an output file the bundle doesn't ship.
+// insideTree does not require the file to exist in Artefacts.Files, since a
+// script may write output the bundle doesn't ship.
 func insideTree(target string) bool {
 	if strings.HasPrefix(target, "/") || strings.HasPrefix(target, "~") {
 		return false
@@ -435,8 +424,7 @@ func insideTree(target string) bool {
 
 // ---- shell --------------------------------------------------------------------
 
-// inferShell: a package that runs a shell can run anything the shell can,
-// so the level is Review with no analysis that could lower it.
+// inferShell is always Review: a shell can run anything.
 func inferShell(a Artefacts) (Capability, bool) {
 	if len(a.Commands) == 0 && !hasScript(a) {
 		return Capability{}, false
@@ -449,9 +437,8 @@ func inferShell(a Artefacts) (Capability, bool) {
 	return row, true
 }
 
-// hasScript covers a script the parser produced no commands from (empty,
-// or failed to parse): still a script, and reporting none would grade the
-// analysis's own blind spot as clean.
+// hasScript counts scripts that yielded no commands, so a parse failure is
+// not graded clean.
 func hasScript(a Artefacts) bool {
 	for _, file := range a.Files {
 		if file.Class == ClassScript {

@@ -7,21 +7,15 @@ import (
 	"strings"
 )
 
-// Components come from the file tree and never from the manifest: no field
-// in either published specification enumerates them. `skills/*/SKILL.md` is
-// a skill, an `mcp.json` entry is an MCP server, a reverse-domain directory
-// is a client extension — the whole vocabulary. A manifest naming a
-// component that is not on disk is a manifest validation failure, not a scan
-// finding; the only conformant way to name one is
-// `extensions["dev.agent-manager"].components`.
+// Components come from the file tree, never the manifest, since neither
+// published spec enumerates them.
 
-// ErrTreeInvalid means the file tree does not describe what its shape
-// claims. It is an ingestion failure like a bad manifest, not for the scanner.
+// ErrTreeInvalid means the file tree does not describe what its shape claims.
+// It is an ingestion failure, not a scan finding.
 var ErrTreeInvalid = errors.New("package tree is not a valid spec layout")
 
-// ComponentKind mirrors the `component_kind` enum, duplicated here rather
-// than imported because internal/domain may not depend on internal/store —
-// the domain owns the vocabulary and the store owns the column.
+// ComponentKind mirrors the `component_kind` enum; internal/domain may not
+// import internal/store.
 type ComponentKind string
 
 const (
@@ -59,14 +53,10 @@ func (l *layout) deriveComponents(validator *Validator) ([]Component, error) {
 		manifestPath := dir + "/" + SkillManifest
 		file, ok := l.files.Lookup(manifestPath)
 		if !ok {
-			// A directory under skills/ with no SKILL.md is a skill that
-			// isn't there; deriving one anyway would put a name in the
-			// catalog with nothing behind it.
 			return nil, fmt.Errorf("%w: %s has no %s", ErrTreeInvalid, dir, SkillManifest)
 		}
 
-		// Validated on the same terms as a standalone skill: a plugin cannot
-		// ship a skill the hub would refuse to register on its own.
+		// A plugin cannot ship a skill the hub would refuse on its own.
 		skill, err := validator.ValidateSkillFrontmatter(file.Data)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", manifestPath, err)

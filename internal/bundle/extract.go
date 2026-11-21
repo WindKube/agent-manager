@@ -23,9 +23,7 @@ const DefaultMaxCompressedBytes = archiveguard.DefaultMaxCompressedBytes
 // DefaultLimits returns every cap at its default.
 func DefaultLimits() Limits { return archiveguard.DefaultLimits() }
 
-// The four failure kinds a caller must be able to tell apart: a malformed
-// archive, an archive that busts a cap, a member we refuse outright, and an
-// extraction that ran out of wall clock.
+// The failure kinds a caller must tell apart.
 var (
 	ErrMalformed      = errors.New("malformed archive")
 	ErrTooLarge       = errors.New("archive exceeds extraction limits")
@@ -96,8 +94,7 @@ const (
 	RejectEmptyPath    = string(archiveguard.RejectEmptyPath)
 )
 
-// Error carries the kind, so a caller can report "malformed archive" versus "too large"
-// versus "rejected member", the specific cap or rule, and the offending member.
+// Error carries the kind, the specific cap or rule, and the offending member.
 type Error struct {
 	Kind   ErrorKind
 	Reason string
@@ -140,8 +137,7 @@ func rejected(reason, member string) *Error {
 	return &Error{Kind: KindRejectedMember, Reason: reason, Path: member}
 }
 
-// fromGuard translates an archiveguard.Violation into this package's Error. A
-// timeout's Reason is the budget itself, as it always was here.
+// fromGuard translates an archiveguard.Violation into this package's Error.
 func fromGuard(err error) error {
 	var v *archiveguard.Violation
 	if !errors.As(err, &v) {
@@ -167,9 +163,7 @@ type extractor struct {
 
 func newExtractor(ctx context.Context, lim Limits) (*extractor, context.CancelFunc) {
 	lim = lim.WithDefaults()
-	// The wall-clock cap is a deadline over the whole extraction, checked on every read,
-	// every member and every chunk: an archive can pass every size check and still take
-	// forever, and so can the peer feeding it to us.
+	// An archive can pass every size check and still take forever, as can its peer.
 	clock, cancel := archiveguard.StartClock(ctx, lim.MaxDuration)
 	return &extractor{
 		clock:  clock,
@@ -186,10 +180,8 @@ func (e *extractor) alive() error {
 	return fromGuard(e.clock.Err())
 }
 
-// clockFirst prefers the clock's verdict over a read failure. A read that failed because
-// the budget or the caller's context expired is a timeout or a cancellation, never a
-// malformed archive: without this, running out of time would be reported as an archive
-// defect and the upload blamed for it.
+// clockFirst prefers the clock's verdict over a read failure, so running out of
+// time is never blamed on the archive as malformed.
 func (e *extractor) clockFirst(err error) error {
 	if clockErr := e.alive(); clockErr != nil {
 		return clockErr
@@ -203,18 +195,13 @@ func (e *extractor) reader(r io.Reader) io.Reader {
 	return archiveguard.ClockReader(r, e.alive)
 }
 
-// Extract sniffs .zip or .tar.gz and extracts under lim. The archive is
-// buffered first: the compressed cap has to be enforced before extraction
-// begins, and zip needs random access anyway. Peak memory is the compressed
-// buffer plus the decompressed tree, so lim.MaxCompressedBytes and
-// lim.MaxDecompressedBytes are also the caller's memory budget per concurrent
-// extraction.
+// Extract sniffs .zip or .tar.gz and extracts under lim. The archive is buffered
+// first so the compressed cap applies before extraction (zip needs random access
+// anyway); peak memory is MaxCompressedBytes plus MaxDecompressedBytes.
 func Extract(ctx context.Context, r io.Reader, lim Limits) (*Bundle, error) {
 	lim = lim.WithDefaults()
-	// The wall-clock budget starts before the first byte is read. Buffering the upload is
-	// part of the extraction: a peer that trickles bytes would otherwise hold a goroutine
-	// and the whole compressed buffer for as long as it liked, with MaxDuration bounding
-	// only the work that happens after the last byte arrives.
+	// The clock starts before buffering so a trickling peer can't hold a goroutine
+	// and the buffer beyond MaxDuration.
 	e, cancel := newExtractor(ctx, lim)
 	defer cancel()
 
@@ -246,8 +233,6 @@ func (e *extractor) zip(ra io.ReaderAt, size int64) (*Bundle, error) {
 	if size > e.limits.MaxCompressedBytes {
 		return nil, tooLarge(CapCompressedSize, "")
 	}
-	// size is the ceiling on the ratio denominator, so it is set here from the real byte
-	// count and never from anything the archive declares about itself.
 	e.guard.SetArchiveSize(size)
 	zr, zipErr := zip.NewReader(e.guard.ReaderAt(ra), size)
 	if zipErr != nil {
@@ -267,8 +252,7 @@ func ExtractTarGz(ctx context.Context, r io.Reader, lim Limits) (*Bundle, error)
 }
 
 func (e *extractor) tarGz(r io.Reader) (*Bundle, error) {
-	// One byte past the cap is enough to know the archive is over it, and it stops the
-	// gzip reader from pulling an unbounded stream into memory.
+	// One byte past the cap is enough to detect it without reading an unbounded stream.
 	counted := e.guard.Reader(io.LimitReader(e.reader(r), e.limits.MaxCompressedBytes+1))
 	gz, gzErr := gzip.NewReader(counted)
 	if gzErr != nil {
@@ -280,8 +264,7 @@ func (e *extractor) tarGz(r io.Reader) (*Bundle, error) {
 	if walkErr == nil {
 		walkErr = e.drainTrailer(gz)
 	}
-	// Checked before walkErr: an oversized archive shows up as a truncated stream, and
-	// "too large" is the honest reason for it.
+	// Checked before walkErr: an oversized archive surfaces as a truncated stream.
 	if err := e.guard.CheckCompressed(); err != nil {
 		return nil, fromGuard(err)
 	}
@@ -350,9 +333,7 @@ func (e *extractor) walkTar(tr *tar.Reader) (*Bundle, error) {
 		if nextErr != nil {
 			return nil, e.clockFirst(malformed("cannot read tar header", nextErr))
 		}
-		// A global PAX header is archive metadata, not a member: it has no path of its own
-		// and git archive emits one on every tarball. Passing over it is not skipping a
-		// member.
+		// A global PAX header is archive metadata (git archive emits one), not a member.
 		if hdr.Typeflag == tar.TypeXGlobalHeader {
 			continue
 		}
@@ -374,14 +355,10 @@ func (e *extractor) walkTar(tr *tar.Reader) (*Bundle, error) {
 	}
 }
 
-// acceptMember applies every path rule and every member-kind rule. rule is what this
-// member's type breaks, or "" for a plain file or a directory. skip is true for anything
-// that contributes no file to the tree: a directory, or a dropped link.
-//
-// A symlink or a hardlink is dropped and recorded rather than refusing the archive
-// (archiveguard.Rule.Droppable): a bundle cannot represent either and nothing here writes
-// to a filesystem, while ordinary repositories carry them. Every other refused kind, and
-// every path-shape rejection, stays fatal.
+// acceptMember applies every path and member-kind rule. skip is true for
+// anything contributing no file: a directory or a dropped link. Symlinks and
+// hardlinks are dropped and recorded, since a bundle can't represent them and
+// ordinary repositories carry them; every other refusal is fatal.
 func (e *extractor) acceptMember(name string, mode fs.FileMode, rule archiveguard.Rule) (clean string, skip bool, err error) {
 	if rule != "" && !rule.Droppable() {
 		return "", false, fromGuard(archiveguard.RejectMember(rule, name))
@@ -389,14 +366,11 @@ func (e *extractor) acceptMember(name string, mode fs.FileMode, rule archiveguar
 	if countErr := e.guard.CountEntry(name); countErr != nil {
 		return "", false, fromGuard(countErr)
 	}
-	// A dropped member is validated like any other, so its recorded path is never an
-	// unchecked one.
 	clean, isDir, err := archiveguard.ValidatePath(name, e.limits)
 	if err != nil {
 		return "", false, fromGuard(err)
 	}
-	// Directories are implicit in a Bundle but still occupy a path, so a directory
-	// colliding with a file, or with another directory, is a duplicate like any other.
+	// Directories are implicit but still occupy a path, so collisions are duplicates.
 	if _, dup := e.seen[clean]; dup {
 		return "", false, rejected(RejectDuplicate, name)
 	}
@@ -410,9 +384,8 @@ func (e *extractor) acceptMember(name string, mode fs.FileMode, rule archiveguar
 
 const readChunk = 32 << 10
 
-// readMember streams one member into memory. It takes no size from the archive, not even
-// to pre-size the buffer: declared sizes are attacker-controlled, so every cap here is
-// measured against bytes the reader actually produced.
+// readMember streams one member into memory, trusting no declared size (not even
+// to pre-size the buffer): every cap is measured against bytes actually read.
 func (e *extractor) readMember(r io.Reader, member string) ([]byte, error) {
 	data := make([]byte, 0, readChunk)
 	chunk := make([]byte, readChunk)

@@ -9,9 +9,6 @@ import (
 	"agent-manager/internal/domain/pkgspec"
 )
 
-// US1 scenario 2's archive, verbatim: "an archive whose root contains
-// plugin.json, skills/, mcp.json, com.anthropic.claude-code/hooks/, .github/ and
-// README.md".
 func scenario2Tree(t *testing.T, prefix string) *bundle.Bundle {
 	t.Helper()
 
@@ -51,7 +48,6 @@ func TestTheSpecLayoutFilterReportsWhatItDropped(t *testing.T) {
 		}, pkg.Files.Paths())
 	})
 
-	// FR-005's second half. Dropping silently would pass every assertion above.
 	t.Run("every dropped path is reported, not merely absent", func(t *testing.T) {
 		require.Equal(t, []string{
 			".github/CODEOWNERS",
@@ -148,9 +144,8 @@ func TestReverseDomainDirectoriesAreClientExtensionsAndDottedFilesAreNot(t *test
 	require.Equal(t, []string{"com.anthropic.claude-code", "dev.agent-manager"}, kinds)
 }
 
-// T038: components come from the file tree, so a manifest that lists them is
-// irrelevant to derivation and a manifest that lists a MISSING one is a manifest
-// validation failure.
+// A manifest listing components is irrelevant to derivation, but listing a
+// missing one is a validation failure.
 func TestComponentsAreDerivedFromTheFileTree(t *testing.T) {
 	pkg, err := pkgspec.Inspect(scenario2Tree(t, ""), ".")
 	require.NoError(t, err)
@@ -169,8 +164,7 @@ func TestComponentsAreDerivedFromTheFileTree(t *testing.T) {
 }
 
 func TestAManifestDeclaringAComponentThatIsNotOnDiskIsAManifestFailure(t *testing.T) {
-	// The spec's edge case. A conformant manifest can only name a component under
-	// our own extension namespace, so that is where it is checked.
+	// A conformant manifest can only name components under our namespace.
 	manifest := withField(t, conformantPlugin, "extensions", `{"dev.agent-manager":{"components":["skills/does-not-exist"]}}`)
 
 	tree := scenario2Tree(t, "")
@@ -219,9 +213,7 @@ func TestAContainedSkillIsValidatedOnTheSameTermsAsAStandaloneOne(t *testing.T) 
 	require.Contains(t, err.Error(), "skills/k8s-manifest-review/SKILL.md")
 }
 
-// replaceFile rebuilds the bundle with one path's contents swapped. Bundle.Add
-// refuses a duplicate path by design (a version's identity is its tree), so there
-// is no in-place edit.
+// replaceFile rebuilds the bundle because Bundle.Add refuses duplicate paths.
 func replaceFile(t *testing.T, b *bundle.Bundle, path string, body []byte) {
 	t.Helper()
 

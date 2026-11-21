@@ -25,9 +25,8 @@ type OrgPolicy struct {
 	UpdatedAt             time.Time     `bun:"updated_at,type:timestamptz,notnull,default:now()"`
 }
 
-// AuditEvent is append-only. Nothing in Go enforces that: UPDATE and DELETE
-// are revoked from every database role, since a convention is bypassed by the
-// first person who needs to fix a typo.
+// AuditEvent is append-only, enforced by revoking UPDATE and DELETE from every
+// database role rather than by convention.
 type AuditEvent struct {
 	bun.BaseModel `bun:"table:audit_event,alias:aud"`
 
@@ -38,8 +37,7 @@ type AuditEvent struct {
 	Kind       AuditKind `bun:"kind,type:audit_kind,notnull"`
 	Text       string    `bun:"text,type:text,notnull"`
 	Source     string    `bun:"source,type:text,nullzero"`
-	// The subject columns are null only on rows written before they existed;
-	// build a row with audit.New, which refuses one without a subject.
+	// Subject columns are null only on legacy rows; build rows with audit.New.
 	SubjectKind AuditSubjectKind `bun:"subject_kind,type:audit_subject_kind,nullzero"`
 	SubjectID   string           `bun:"subject_id,type:text,nullzero"`
 	// Namespace is the package namespace of a package, version or finding
@@ -48,17 +46,15 @@ type AuditEvent struct {
 	Data      map[string]any `bun:"data,type:jsonb,notnull,default:'{}'"`
 }
 
-// FetchAttempt is one ingestion fetch and how it ended, successful or not: a
-// refused fetch (an SSRF refusal, a zip bomb) never produces a version row,
-// so this is the only place an operator can see it.
+// FetchAttempt is one ingestion fetch and its outcome; a refused fetch (SSRF,
+// zip bomb) produces no version row, so this is the only record of it.
 type FetchAttempt struct {
 	bun.BaseModel `bun:"table:fetch_attempt,alias:fat"`
 
 	ID         uuid.UUID       `bun:"id,pk,type:uuid,notnull"`
 	OccurredAt time.Time       `bun:"occurred_at,type:timestamptz,notnull,default:now()"`
 	SourceKind FetchSourceKind `bun:"source_kind,type:fetch_source_kind,notnull"`
-	// RequestedRef is user-supplied and echoed onto an operator's screen, so it
-	// is stored with credentials already redacted and rendered escaped.
+	// RequestedRef is user-supplied: stored with credentials redacted, rendered escaped.
 	RequestedRef string       `bun:"requested_ref,type:text,notnull"`
 	Outcome      FetchOutcome `bun:"outcome,type:fetch_outcome,notnull"`
 	// Detail is the redacted error message, null when Outcome is `ok`.

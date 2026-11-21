@@ -80,8 +80,6 @@ func makeZip(t *testing.T, members ...zipMember) []byte {
 
 const bombSize = 16 << 20
 
-// makeZipBomb builds a real bomb rather than committing a binary fixture: one member of
-// zeros that deflates about a thousand to one.
 func makeZipBomb(t *testing.T, uncompressed int64) []byte {
 	t.Helper()
 	var out bytes.Buffer
@@ -124,10 +122,8 @@ func writeZeros(t *testing.T, w io.Writer, n int64) {
 	}
 }
 
-// makeLyingZip hand-assembles a zip whose central directory and local header both declare
-// an uncompressed size of declared while the deflate stream really produces realSize
-// bytes. archive/zip's writer cannot produce this, and it is the case the caps must survive:
-// declared sizes are attacker-controlled.
+// makeLyingZip hand-assembles a zip whose headers declare a size other than what
+// the deflate stream produces; archive/zip's writer can't make one.
 func makeLyingZip(t *testing.T, declared uint32, realSize int64) []byte {
 	t.Helper()
 	var comp bytes.Buffer
@@ -196,9 +192,7 @@ func makeLyingZip(t *testing.T, declared uint32, realSize int64) []byte {
 	return out.Bytes()
 }
 
-// requireKind asserts the exact failure kind and reason, and that the other three kinds do
-// not also match: the caller has to be able to report "malformed archive" versus "too
-// large" versus "rejected member" without ambiguity.
+// requireKind asserts the exact kind and reason, and that no other kind matches.
 func requireKind(t *testing.T, err error, kind ErrorKind, reason string) {
 	t.Helper()
 	require.Error(t, err)
@@ -462,8 +456,7 @@ func TestExtractStopsTarGzBomb(t *testing.T) {
 }
 
 func TestExtractStopsBombBeforeTheDecompressedCap(t *testing.T) {
-	// The ratio has to be what stops the bomb: with the total cap raised far above the
-	// bomb's payload, only a continuous ratio check can catch it.
+	// Total cap raised far above the payload, so only the ratio check can stop it.
 	archive := makeZipBomb(t, bombSize)
 	_, err := Extract(context.Background(), bytes.NewReader(archive), Limits{
 		MaxDecompressedBytes: 1 << 30,
@@ -473,9 +466,7 @@ func TestExtractStopsBombBeforeTheDecompressedCap(t *testing.T) {
 }
 
 func TestExtractRejectsZipWithLyingDeclaredSize(t *testing.T) {
-	// The central directory and local header both claim one byte while the deflate stream
-	// really produces 40 MB. The archive must be refused, and must never hand back the
-	// payload.
+	// Both headers claim one byte while the stream produces 40 MB.
 	archive := makeLyingZip(t, 1, bombSize)
 	b, err := Extract(context.Background(), bytes.NewReader(archive), Limits{})
 	require.Nil(t, b)
@@ -486,8 +477,6 @@ func TestExtractRejectsZipWithLyingDeclaredSize(t *testing.T) {
 }
 
 func TestReadMemberEnforcesCapsAgainstRealBytes(t *testing.T) {
-	// Declared sizes are attacker-controlled, so they may only pre-size a buffer. Every
-	// cap is measured against bytes the reader actually produced.
 	for _, tc := range []struct {
 		name    string
 		real    int64
@@ -593,17 +582,14 @@ func TestExtractEmptyInput(t *testing.T) {
 }
 
 func TestExtractTarGzOversizeReportsTooLargeNotMalformed(t *testing.T) {
-	// Truncating an oversize stream makes it look malformed; "too large" is the honest
-	// reason and the one the caller has to surface.
+	// A truncated oversize stream looks malformed; "too large" is the honest reason.
 	_, err := ExtractTarGz(context.Background(), bytes.NewReader(benignTarGz(t)), Limits{MaxCompressedBytes: 40})
 	requireKind(t, err, KindTooLarge, CapCompressedSize)
 }
 
 func TestExtractPassesCallerContextFailureThrough(t *testing.T) {
-	// A shutdown or a request timeout is not an archive defect, so neither may surface as
-	// one of the four archive failure kinds — and a caller's deadline must never be
-	// reported as the extraction's own wall-clock cap, which would blame the upload for a
-	// budget that never expired.
+	// A shutdown or caller deadline is not an archive defect and must not be
+	// reported as the extraction's own wall-clock cap.
 	for _, tc := range []struct {
 		name string
 		ctx  func(*testing.T) context.Context
@@ -629,7 +615,7 @@ func TestExtractPassesCallerContextFailureThrough(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			// A generous MaxDuration, so anything reported as a timeout is a misattribution.
+			// Generous, so anything reported as a timeout is a misattribution.
 			_, err := Extract(tc.ctx(t), bytes.NewReader(benignTarGz(t)), Limits{MaxDuration: time.Hour})
 			require.ErrorIs(t, err, tc.want)
 			require.NotErrorIs(t, err, ErrTimeout)
@@ -643,8 +629,7 @@ func TestExtractPassesCallerContextFailureThrough(t *testing.T) {
 	}
 }
 
-// trickleReader feeds one byte per call after a delay: a peer that is slow rather than
-// large, which no size cap can bound.
+// trickleReader is slow rather than large, which no size cap can bound.
 type trickleReader struct {
 	data  []byte
 	pos   int
@@ -665,10 +650,8 @@ func (t *trickleReader) Read(p []byte) (int, error) {
 }
 
 func TestExtractWallClockBoundsASlowPeer(t *testing.T) {
-	// Buffering the upload is part of the extraction. Without the clock on the read, a
-	// peer that trickles bytes holds a goroutine and the whole compressed buffer for as
-	// long as it likes and the archive still extracts successfully, however small
-	// MaxDuration is.
+	// Without the clock on the read, a trickling peer holds the buffer indefinitely
+	// and still extracts successfully.
 	archive := benignTarGz(t)
 	const budget = 30 * time.Millisecond
 	slow := &trickleReader{data: archive, delay: time.Millisecond}
@@ -676,14 +659,12 @@ func TestExtractWallClockBoundsASlowPeer(t *testing.T) {
 	_, err := Extract(context.Background(), slow, Limits{MaxDuration: budget})
 	requireKind(t, err, KindTimeout, budget.String())
 
-	// The deadline was comfortably in the future at entry and expired while bytes were
-	// still arriving, so this is the continuous check and not the one at the door.
+	// The deadline expired mid-read, so this exercises the continuous check.
 	require.Positive(t, slow.pos, "the deadline tripped before a single byte was read")
 	require.Less(t, slow.pos, len(archive), "the whole archive was read despite the deadline")
 }
 
-// rawTarHeader builds one ustar header block by hand, so PAX extended headers that
-// archive/tar's writer refuses to emit are still reachable from a test.
+// rawTarHeader builds a ustar header by hand to reach PAX headers archive/tar won't emit.
 func rawTarHeader(name string, typeflag byte, size int64) []byte {
 	blk := make([]byte, 512)
 	copy(blk[0:100], name)
@@ -731,10 +712,8 @@ func padTarBlock(b []byte) []byte {
 	return b
 }
 
-// sparseTarGz hand-builds a GNU sparse 0.1 member. The hole map lives entirely in PAX
-// records, so the member's body is one byte while archive/tar hands back logical bytes of
-// zeros for it — an expansion that consumes no input at all and that no declared-size
-// check would see.
+// sparseTarGz hand-builds a GNU sparse 0.1 member whose one-byte body expands to
+// logical zeros, invisible to any declared-size check.
 func sparseTarGz(t *testing.T, logical int64) []byte {
 	t.Helper()
 	recs := paxRecords(t, map[string]string{
@@ -763,8 +742,7 @@ func sparseTarGz(t *testing.T, logical int64) []byte {
 }
 
 func TestExtractStopsSparseTarMember(t *testing.T) {
-	// A sparse member manufactures bytes out of nothing: the ratio guard is the only cap
-	// that can see it, because the archive consumes no input while producing the holes.
+	// Sparse holes produce bytes from no input; only the ratio guard sees them.
 	const logical = 200 << 20
 	archive := sparseTarGz(t, logical)
 	require.Less(t, len(archive), 1024, "the point of this case is a tiny archive with a huge logical member")
@@ -774,26 +752,18 @@ func TestExtractStopsSparseTarMember(t *testing.T) {
 }
 
 func TestExtractSparseTarMemberIsNotRefusedVacuously(t *testing.T) {
-	// The rejection above must come from the size, not from the sparse encoding itself.
 	const logical = 4096
 	_, err := Extract(context.Background(), bytes.NewReader(sparseTarGz(t, logical)), Limits{})
 	require.NoError(t, err)
 }
 
-// A symlink and a hardlink are left out of the tree rather than refusing the
-// archive over them. Refusing made every repository carrying one permanently
-// unimportable: a forge tarball of a repo with an AGENTS.md symlink at its root
-// failed even when the caller asked for a subdirectory the link is nowhere near.
-//
-// Nothing about the link is extracted and nothing follows it, so what is under
-// test is that the tree does not contain it, that the caller is told, and that
-// the rest of the archive still arrives.
+// Symlinks and hardlinks are dropped and reported, not fatal: refusing them made
+// any repo with, say, a root AGENTS.md symlink permanently unimportable.
 func TestALinkIsDroppedAndReportedRatherThanRefusingTheArchive(t *testing.T) {
 	t.Run("tar", func(t *testing.T) {
 		files, err := Extract(context.Background(), bytes.NewReader(makeTarGz(t,
 			tarMember{hdr: tar.Header{Name: "plugin.json", Mode: 0o644}, body: "{}"},
-			// The target escapes the tree, which is the case that made refusal
-			// look necessary. It is not read, so it cannot escape anything.
+			// The escaping target is never read, so it cannot escape anything.
 			tarMember{hdr: tar.Header{Typeflag: tar.TypeSymlink, Name: "AGENTS.md", Linkname: "../../etc/passwd"}},
 			tarMember{hdr: tar.Header{Typeflag: tar.TypeLink, Name: "hard", Linkname: "plugin.json"}},
 			tarMember{hdr: tar.Header{Name: "skills/one/SKILL.md", Mode: 0o644}, body: "# one"},
@@ -820,8 +790,7 @@ func TestALinkIsDroppedAndReportedRatherThanRefusingTheArchive(t *testing.T) {
 	})
 
 	t.Run("a device node still refuses the archive", func(t *testing.T) {
-		// No plugin or skill tree has a legitimate reason to carry one, so its
-		// presence says the archive is hostile or broken rather than ordinary.
+		// No plugin or skill tree legitimately carries one.
 		_, err := Extract(context.Background(), bytes.NewReader(makeTarGz(t,
 			tarMember{hdr: tar.Header{Name: "plugin.json", Mode: 0o644}, body: "{}"},
 			tarMember{hdr: tar.Header{Typeflag: tar.TypeChar, Name: "dev/null", Devmajor: 1, Devminor: 3}},
@@ -830,8 +799,7 @@ func TestALinkIsDroppedAndReportedRatherThanRefusingTheArchive(t *testing.T) {
 	})
 
 	t.Run("links count against the entry cap", func(t *testing.T) {
-		// Otherwise an archive of nothing but symlinks is unbounded work for a
-		// tree that comes out empty.
+		// Otherwise an all-symlink archive is unbounded work for an empty tree.
 		members := []tarMember{}
 		for i := 0; i <= 12; i++ {
 			members = append(members, tarMember{hdr: tar.Header{
@@ -843,8 +811,7 @@ func TestALinkIsDroppedAndReportedRatherThanRefusingTheArchive(t *testing.T) {
 	})
 
 	t.Run("an archive of only links is not a package", func(t *testing.T) {
-		// Extraction succeeds and the tree is empty; whether an empty tree is a
-		// package is the manifest check's call, not this layer's.
+		// An empty tree is the manifest check's problem, not this layer's.
 		files, err := Extract(context.Background(), bytes.NewReader(makeTarGz(t,
 			tarMember{hdr: tar.Header{Typeflag: tar.TypeSymlink, Name: "only", Linkname: "x"}},
 		)), Limits{})

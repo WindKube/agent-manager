@@ -14,7 +14,7 @@ import (
 )
 
 // Subject is what an audit row is about. Build one with the constructors
-// below, so the subject_id shape and the data keys stay one per kind.
+// below so the subject_id shape and data keys stay consistent per kind.
 //
 // Data keys a subject contributes:
 //
@@ -96,11 +96,8 @@ func Webhook(id uuid.UUID, name string) Subject {
 	return Subject{Kind: models.AuditSubjectWebhook, ID: id.String(), Data: map[string]any{"name": name}}
 }
 
-// Entry is one audit row to be written. Action is the machine-readable verb
-// (`registered`, `stored`, `scanned`, `deleted`, ...) that audit_kind is too
-// coarse to carry; it lands in data.action. Data holds the event's own keys
-// on top of the subject's: identifiers, versions, verdicts, never a secret or
-// a free-form note.
+// Entry is one audit row to be written. Action is the fine-grained verb stored
+// in data.action. Data must never hold a secret or a free-form note.
 type Entry struct {
 	Kind      models.AuditKind
 	Action    string

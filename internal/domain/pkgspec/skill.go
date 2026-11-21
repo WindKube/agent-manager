@@ -9,32 +9,28 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Skill is the YAML frontmatter of a `SKILL.md`: required `name` and
-// `description`, optional `license`, `metadata`, `compatibility`, and the
-// experimental `allowed-tools`. A key outside that set fails validation.
+// Skill is the YAML frontmatter of a `SKILL.md`. A key outside the declared
+// set fails validation.
 type Skill struct {
 	Name        string `yaml:"name"`
 	Description string `yaml:"description"`
 	License     string `yaml:"license,omitempty"`
 
-	// AllowedTools is experimental and is not an enforcement mechanism: the
-	// spec says it grants pre-approval but does not block others. It is
-	// recorded and displayed; the scanner's inferred capabilities are the
-	// actual control.
+	// AllowedTools grants pre-approval but blocks nothing, so it is only
+	// displayed; inferred capabilities are the actual control.
 	AllowedTools []string `yaml:"allowed-tools,omitempty"`
 
 	Metadata      map[string]any `yaml:"metadata,omitempty"`
 	Compatibility map[string]any `yaml:"compatibility,omitempty"`
 
-	// raw is the whole SKILL.md, stored beside the bundle: the manifest
-	// object for a standalone skill is the file, not the frontmatter.
+	// raw is the whole SKILL.md: a standalone skill's manifest object is the
+	// file, not the frontmatter.
 	raw []byte
 }
 
 func (s *Skill) Raw() []byte { return s.raw }
 
-// ManifestJSON renders the frontmatter as the jsonb `version.manifest`
-// column holds, since a Markdown file is not json.
+// ManifestJSON renders the frontmatter for the jsonb `version.manifest` column.
 func (s *Skill) ManifestJSON() (json.RawMessage, error) {
 	encoded, err := json.Marshal(map[string]any{
 		"name":          s.Name,
@@ -50,13 +46,11 @@ func (s *Skill) ManifestJSON() (json.RawMessage, error) {
 	return encoded, nil
 }
 
-// frontmatterFence is the only delimiter accepted: a SKILL.md fenced some
-// other way has no frontmatter, and guessing would admit a file whose first
-// lines happen to look like YAML.
+// frontmatterFence is the only accepted delimiter; guessing would admit any
+// file whose first lines look like YAML.
 var frontmatterFence = []byte("---")
 
-// maxFrontmatterBytes bounds the block before parsing: a YAML parser is a
-// poor place to discover a 25 MB file has no closing fence.
+// maxFrontmatterBytes bounds the block before it reaches the YAML parser.
 const maxFrontmatterBytes = 64 << 10
 
 func splitFrontmatter(raw []byte) ([]byte, error) {
@@ -89,11 +83,8 @@ func splitFrontmatter(raw []byte) ([]byte, error) {
 	return block, nil
 }
 
-// yamlToJSONDocument re-encodes a YAML block as a JSON document: a JSON
-// Schema validator applies JSON type rules, and YAML's differ (`1.0` is a
-// float in YAML and a string in JSON, `yes` is a bool in YAML 1.1), so
-// validating the YAML decoder's output directly would let schema and
-// decoder disagree about a value's type.
+// yamlToJSONDocument re-encodes YAML as JSON so the schema validator and the
+// decoder agree on value types (`1.0`, `yes`).
 func yamlToJSONDocument(block []byte) (any, error) {
 	var intermediate any
 	if err := yaml.Unmarshal(block, &intermediate); err != nil {

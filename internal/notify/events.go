@@ -1,29 +1,11 @@
-// Package notify is the outbound webhook vocabulary shared by the api, which
-// manages subscriptions, and the notifier role, which delivers: the event
-// types, how an audit row maps to one, the payload, the signature and the URL
-// rules. It holds no I/O of its own.
+// Package notify is the outbound webhook vocabulary shared by the api and the
+// notifier role. It holds no I/O of its own.
 package notify
 
 import "slices"
 
-// EventType is a webhook event type. Every one is derived from an audit row,
-// so an event exists exactly when its audit row does.
-//
-//	package.version.registered  fetch/registered      a version was registered and queued for fetching
-//	package.version.stored      fetch/stored          a version's bytes landed (data: digest, signature)
-//	package.version.fetch-failed fetch/fetch-failed   a fetch produced no bytes (data: reason)
-//	package.version.deleted     fetch/deleted         a version was withdrawn from the catalog
-//	package.deleted             fetch/deleted         a package was withdrawn from the catalog
-//	scan.completed              scan/scanned          a scan finished (data: verdict, ruleIds, timedOut)
-//	finding.accepted            approve/accepted      a finding was accepted (data: expiresAt)
-//	finding.rejected            approve/rejected      a finding was rejected, quarantining its version
-//	waiver.expiring             approve/waiver-expiring an accepted finding lapses within 7 days (data: expiresAt)
-//	waiver.expired              approve/waiver-expired  an accepted finding lapsed (data: expiresAt)
-//	profile.revision.published  profile/published     a profile revision was published
-//	policy.changed              policy/updated        the organisation policy changed
-//	service-token.created       token/created         a service token was created (data: scopes, expiresAt)
-//	service-token.revoked       token/revoked         a service token was revoked
-//	machine.forgotten           sync/forgotten        a machine was removed from the inventory
+// EventType is a webhook event type. Each is derived from an audit row, so an
+// event exists exactly when its audit row does.
 type EventType string
 
 const (
@@ -44,7 +26,6 @@ const (
 	MachineForgotten   EventType = "machine.forgotten"
 )
 
-// AllEvents is the wildcard a subscription may filter on instead of a list.
 const AllEvents = "*"
 
 // EventTypesEnum is the api's enum for an event filter entry; a test keeps it
@@ -76,7 +57,6 @@ var fromAudit = map[auditKey]EventType{
 	{"sync", "forgotten", "machine"}:          MachineForgotten,
 }
 
-// EventTypes lists every event type in a stable order.
 func EventTypes() []EventType {
 	out := make([]EventType, 0, len(fromAudit))
 	for _, t := range fromAudit {
@@ -86,8 +66,7 @@ func EventTypes() []EventType {
 	return out
 }
 
-// AuditKinds is every audit kind some event type is derived from, so the
-// dispatcher can skip the rest in SQL.
+// AuditKinds lets the dispatcher skip irrelevant audit kinds in SQL.
 func AuditKinds() []string {
 	var out []string
 	for k := range fromAudit {
@@ -106,7 +85,6 @@ func FromAudit(kind, action, subjectKind string) (EventType, bool) {
 	return t, ok
 }
 
-// Valid reports whether t is a known event type.
 func (t EventType) Valid() bool {
 	for _, known := range fromAudit {
 		if known == t {
@@ -117,8 +95,7 @@ func (t EventType) Valid() bool {
 }
 
 // Matches reports whether a subscription filter selects t in namespace. An
-// empty namespace filter selects every namespace; a non-empty one never
-// selects an event that has no namespace.
+// empty namespace filter selects every namespace.
 func Matches(eventTypes, namespaces []string, t EventType, namespace string) bool {
 	if !slices.Contains(eventTypes, AllEvents) && !slices.Contains(eventTypes, string(t)) {
 		return false

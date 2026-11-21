@@ -29,14 +29,9 @@ const (
 
 const testPluginManifest = `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"platform-toolkit","version":"1.3.0"}`
 
-// rewriteClient is a fetch.Client that sends every request to one test server,
-// keeping the path and headers the caller built.
-//
-// This is the seam that makes the go-github path testable without reaching
-// GitHub: the assertion that matters is which endpoint go-github built and how the
-// answer is classified, and both are visible here. It implements fetch.Client
-// rather than wrapping an http.Transport so the production client's own behaviour
-// is never partially bypassed — the SSRF suite in safe_test.go is what tests that.
+// rewriteClient sends every request to one test server, keeping the path and
+// headers the caller built. It implements fetch.Client rather than wrapping a
+// transport so the production client's SSRF behaviour is never partly bypassed.
 type rewriteClient struct {
 	server *httptest.Server
 	seen   []string
@@ -97,8 +92,8 @@ func TestUploadSourceExtractsUnderTheR3Caps(t *testing.T) {
 	})
 
 	t.Run("a lone directory with no manifest is not mistaken for a wrapper", func(t *testing.T) {
-		// A tree whose root holds only skills/ is a legitimate shape. Stripping it
-		// would publish the inside of a skill as if it were the package.
+		// A root holding only skills/ is legitimate; stripping it would publish a
+		// skill's insides as the package.
 		archive := zipArchive(t, map[string]string{"skills/x/SKILL.md": "---\nname: x\ndescription: y\n---\n"})
 		tree, err := source.Fetch(context.Background(), fetch.SourceRef{
 			Kind: fetch.SourceUpload, Archive: bytes.NewReader(archive),
@@ -119,8 +114,7 @@ func TestUploadSourceExtractsUnderTheR3Caps(t *testing.T) {
 		require.Equal(t, "plugins/platform-toolkit", tree.Root)
 	})
 
-	// The negative control: the caps are internal/bundle's and the source must not
-	// have its own reading of them.
+	// The caps are internal/bundle's; the source must not apply its own.
 	t.Run("a cap failure reaches the caller as a bundle error", func(t *testing.T) {
 		archive := zipArchive(t, map[string]string{"plugin.json": testPluginManifest, "big": strings.Repeat("a", 4096)})
 		_, err := source.Fetch(context.Background(), fetch.SourceRef{
@@ -201,7 +195,6 @@ func TestGitSourceUsesTheTarballEndpointAndNeverAShell(t *testing.T) {
 		require.Equal(t, testCommit, tree.Commit)
 		require.Equal(t, "https://github.com/example/platform-toolkit", tree.SourceURL)
 
-		// The forge's unpredictable `owner-repo-<sha>/` wrapper is what Root strips.
 		require.Equal(t, "example-platform-toolkit-9f1c2ab", tree.Root)
 		require.Equal(t, "git https://github.com/example/platform-toolkit.git@v1.3.0", tree.Origin)
 	})
@@ -216,8 +209,7 @@ func TestGitSourceUsesTheTarballEndpointAndNeverAShell(t *testing.T) {
 		require.Contains(t, tree.Origin, "(plugins/nested)")
 	})
 
-	// T045: each of these is a FETCH error with its own reason, and none of them is
-	// a scan finding.
+	// Each is a fetch error with its own reason, never a scan finding.
 	t.Run("a missing ref is a fetch error naming the ref", func(t *testing.T) {
 		_, err := source.Fetch(context.Background(), fetch.SourceRef{
 			Kind: fetch.SourceGit, URL: "https://github.com/example/platform-toolkit", Ref: "v9.9.9",
@@ -459,7 +451,6 @@ func TestRegistryRoutesByKindAndByShape(t *testing.T) {
 	})
 }
 
-// zipArchive builds a zip in memory.
 func zipArchive(t *testing.T, files map[string]string) []byte {
 	t.Helper()
 
@@ -475,8 +466,7 @@ func zipArchive(t *testing.T, files map[string]string) []byte {
 	return buf.Bytes()
 }
 
-// forgeTarball builds the shape a forge's tarball endpoint returns: every entry
-// under one `owner-repo-<sha>/` directory.
+// forgeTarball wraps every entry in one `owner-repo-<sha>/` directory, as a forge does.
 func forgeTarball(t *testing.T, wrapper string, files map[string]string) []byte {
 	t.Helper()
 

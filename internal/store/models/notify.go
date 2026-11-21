@@ -8,8 +8,7 @@ import (
 )
 
 // WebhookSubscription is one outbound webhook. Secret is the HMAC key: am_api
-// may write it but holds no SELECT on the column, so only the notifier, which
-// signs with it, can read it back.
+// may write it but cannot SELECT it; only the notifier reads it back.
 type WebhookSubscription struct {
 	bun.BaseModel `bun:"table:webhook_subscription,alias:whs"`
 
@@ -26,7 +25,7 @@ type WebhookSubscription struct {
 	CreatedByIdentityID uuid.UUID `bun:"created_by_identity_id,type:uuid,notnull"`
 	CreatedAt           time.Time `bun:"created_at,type:timestamptz,notnull,default:now()"`
 	UpdatedAt           time.Time `bun:"updated_at,type:timestamptz,notnull,default:now()"`
-	// The last attempt's outcome, kept on the row so the list needs no join.
+	// Last attempt's outcome, denormalised so listing needs no join.
 	LastDeliveryAt     *time.Time `bun:"last_delivery_at,type:timestamptz,nullzero"`
 	LastDeliveryStatus *int32     `bun:"last_delivery_status,type:integer,nullzero"`
 	LastDeliveryError  string     `bun:"last_delivery_error,type:text,nullzero"`
@@ -50,8 +49,7 @@ type WebhookDelivery struct {
 
 	ID             uuid.UUID `bun:"id,pk,type:uuid,notnull"`
 	SubscriptionID uuid.UUID `bun:"subscription_id,type:uuid,notnull"`
-	// EventID is the audit_event id the delivery carries, which is also the
-	// Webhook-Id the receiver deduplicates on.
+	// EventID is the audit_event id, also the Webhook-Id receivers dedupe on.
 	EventID   uuid.UUID `bun:"event_id,type:uuid,notnull"`
 	EventType string    `bun:"event_type,type:text,notnull"`
 	Attempt   int32     `bun:"attempt,type:integer,notnull"`

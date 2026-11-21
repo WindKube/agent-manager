@@ -23,9 +23,8 @@ import (
 
 const modelsPkg = "agent-manager/internal/store/models"
 
-// wantTables is the table list from data-model.md. It is spelled out rather than
-// derived so that adding a struct without adding it here fails, and so a reviewer
-// can diff this list against the document.
+// wantTables is spelled out rather than derived, so adding a struct without
+// adding it here fails.
 var wantTables = []string{
 	// Catalog
 	"publisher", "category", "package", "version", "version_tag", "component",
@@ -46,8 +45,7 @@ var wantTables = []string{
 	"outbox",
 }
 
-// builtinSQLTypes are the non-enum column types the models use. Anything else in
-// a `type:` option has to be a declared Postgres enum.
+// builtinSQLTypes are the non-enum column types; anything else must be a declared enum.
 var builtinSQLTypes = []string{
 	"bigint", "boolean", "bytea", "integer", "jsonb", "text", "text[]",
 	"timestamptz", "uuid",
@@ -56,8 +54,7 @@ var builtinSQLTypes = []string{
 func registerAll(t *testing.T) *schema.Tables {
 	t.Helper()
 	tables := schema.NewTables(pgdialect.New())
-	// Register panics on an unresolvable relation, so this call is itself the
-	// assertion that every join: target exists.
+	// Register panics on an unresolvable relation, so this asserts every join: target exists.
 	tables.Register(models.All()...)
 	return tables
 }
@@ -109,9 +106,6 @@ func TestEveryExportedStructIsARegisteredModel(t *testing.T) {
 	}
 	require.NotEmpty(t, exported)
 
-	// The Atlas loader turns every exported struct in this package into a Bun
-	// model, so an exported struct that is not in models.All would become an
-	// unintended table in the generated migration.
 	for _, name := range exported {
 		require.Truef(t, registered[name],
 			"exported struct %s is not in models.All: the Atlas loader would still emit a table for it", name)
@@ -169,8 +163,6 @@ func TestEveryEnumColumnNamesADeclaredPostgresType(t *testing.T) {
 		}
 	}
 
-	// Nothing is declared that no column uses: a stale enum type would be created
-	// by the migration and diffed forever.
 	for name := range declared {
 		require.Truef(t, found[name], "enum type %s is declared but no column uses it", name)
 	}
@@ -184,7 +176,6 @@ func TestEveryStringEnumFieldUsesAnEnumGoType(t *testing.T) {
 			if _, ok := declared[strings.ToLower(field.UserSQLType)]; !ok {
 				continue
 			}
-			// A plain string here would let an unchecked value reach an enum column.
 			require.NotEqualf(t, reflect.TypeFor[string](), field.IndirectType,
 				"%s.%s is a Postgres enum but a plain Go string", table.Name, field.Name)
 			zero := reflect.New(field.IndirectType).Elem().Interface()
@@ -240,16 +231,9 @@ func enumCases() []enumCase {
 	}
 }
 
-// TestFetchSourceKindHoldsExactlyTheSourceKindsTheFetcherCanProduce is the guard
-// the doc comment on models.FetchSourceKind promises. The enum is a hand-written
-// copy of fetch.SourceKind — models must stay free of the fetch tree because the
-// Atlas provider loads this package, and internal/fetch must not learn about the
-// database — and a copy nothing compares is a copy that goes stale. A fourth
-// source added over there would otherwise reach production as a failed insert on
-// fetch_attempt.source_kind, on the failure path, where nothing exercises it.
+// models.FetchSourceKind is a hand-written copy of fetch.SourceKind; this keeps
+// them in sync.
 func TestFetchSourceKindHoldsExactlyTheSourceKindsTheFetcherCanProduce(t *testing.T) {
-	// Transcribed from internal/fetch/source.go, not derived from it: this is the
-	// side of the comparison that has to be independent.
 	want := []string{
 		string(fetch.SourceUpload),
 		string(fetch.SourceGit),
@@ -262,20 +246,10 @@ func TestFetchSourceKindHoldsExactlyTheSourceKindsTheFetcherCanProduce(t *testin
 	}
 }
 
-// TestTheResolversPolicyEnumsHoldExactlyTheValuesTheColumnsDo is the guard the
-// doc comment on internal/domain/resolve promises. That package decides what the
-// scan gate does to every profile entry, and it may not import this one — the
-// constitution keeps internal/domain free of the store — so Gate, Mode and
-// Verdict over there are hand-written copies of three columns declared here.
-//
-// A copy nothing compares is a copy that goes stale, and this one goes stale in
-// the worst possible direction: a fourth gate added to the column would reach
-// resolve.Gate.Valid as an unrecognised value and be refused, so the profile
-// screen and the CLI would stop resolving anything at all the moment an admin
-// selected it.
+// internal/domain/resolve may not import the store, so its Gate, Mode and
+// Verdict are hand-written copies of these columns; a drifted value would make
+// resolution refuse everything.
 func TestTheResolversPolicyEnumsHoldExactlyTheValuesTheColumnsDo(t *testing.T) {
-	// Transcribed from internal/domain/resolve, not derived from it: this is the
-	// side of the comparison that has to be independent.
 	require.Equal(t, []string{
 		string(resolve.GateBlock),
 		string(resolve.GateApproval),
@@ -322,8 +296,7 @@ func TestEnumValidAcceptsOnlyItsOwnValues(t *testing.T) {
 			for _, v := range []string{"", " ", "unknown", strings.ToUpper(declared[c.pgType][0])} {
 				require.Falsef(t, c.valid(v), "%s should reject %q", c.pgType, v)
 			}
-			// Every other enum's values, which catches a Valid() wired to the wrong
-			// type name: a copy-paste that would let dist_tag accept "plugin".
+			// Catches a Valid() wired to the wrong type name.
 			for other, values := range declared {
 				if other == c.pgType {
 					continue
@@ -355,8 +328,7 @@ func TestEnumDDLCoversEveryTypeExactlyOnce(t *testing.T) {
 }
 
 func TestSemverSortOrdersVersions(t *testing.T) {
-	// Ascending semver precedence. Sorting the computed keys as plain strings must
-	// reproduce this order exactly.
+	// Ascending precedence; the keys sorted as strings must reproduce it.
 	ordered := []string{
 		"0.0.1",
 		"0.1.0",
@@ -457,22 +429,15 @@ func TestNewIDIsUUIDv7AndSortsByCreationTime(t *testing.T) {
 		ids = append(ids, id)
 	}
 
-	// v7 is time-ordered, which is why it is worth the extra call over v4: the
-	// primary key gives index locality and creation order for free.
 	for i := 1; i < len(ids); i++ {
 		prev, cur := ids[i-1].String(), ids[i].String()
 		require.Lessf(t, prev, cur, "uuid v7 %d (%s) does not sort after %s", i, cur, prev)
 	}
 }
 
-// TestBunEmitsNoForeignKeyWhereTheColumnIsPartOfThePrimaryKey pins a fact the
-// migration layer depends on. Bun only emits a FOREIGN KEY for a belongs-to or
-// has-one relation whose base columns are *not* primary keys (see
-// schema.Relation.References). data-model.md gives several tables a primary key
-// that is also a foreign key — `signature.version_id`, `override.finding_id` —
-// so those constraints cannot come from the struct tags and have to be added by
-// the migration's SQL layer. If this list shrinks because Bun changed, the
-// migration is adding a duplicate; if it grows, a foreign key went missing.
+// Bun emits no FOREIGN KEY when the base column is part of the primary key
+// (schema.Relation.References), so the migration's SQL layer adds these. If the
+// list shrinks the migration adds duplicates; if it grows, a key went missing.
 func TestBunEmitsNoForeignKeyWhereTheColumnIsPartOfThePrimaryKey(t *testing.T) {
 	want := []string{
 		"capability.version_id -> version.id",
@@ -499,7 +464,7 @@ func TestBunEmitsNoForeignKeyWhereTheColumnIsPartOfThePrimaryKey(t *testing.T) {
 			if rel.References() {
 				continue
 			}
-			// has-one points the other way round and never needs a key on this side.
+			// has-one points the other way and needs no key on this side.
 			if rel.Type == schema.HasOneRelation {
 				continue
 			}
@@ -527,19 +492,8 @@ func TestEveryRelationTargetIsARegisteredTable(t *testing.T) {
 	}
 }
 
-// FR-037's four roles, and what each one may do to the profile it is held on.
-//
-// A table rather than four one-line assertions, because what makes this an
-// authorisation model rather than three booleans is the SHAPE of the answers:
-// sharing is strictly narrower than curating, publishing is not something a
-// consumer does, and the empty role — which is what a reader of an
-// organisation-visible profile holds — grants nothing at all. Each of those is a
-// row somebody could change by accident while adding a fifth role.
-//
-// The last case is the one worth having. `Principal.Role` is legitimately empty
-// and so is a membership role, and a permission function that returned true for
-// the zero value would hand every reader of every organisation profile the right
-// to publish it.
+// The empty role is what every reader of an organisation profile holds, so it
+// must grant nothing.
 func TestWhatEachProfileRoleMayDo(t *testing.T) {
 	for _, tc := range []struct {
 		role                          models.MembershipRole
@@ -564,8 +518,7 @@ func TestWhatEachProfileRoleMayDo(t *testing.T) {
 		})
 	}
 
-	// Every value the column admits is answered above. A fifth role added to the
-	// enum without a row here would arrive holding nothing, silently.
+	// A new role in the enum must get a row above.
 	answered := []string{}
 	for _, role := range []models.MembershipRole{
 		models.MembershipRoleOwner, models.MembershipRoleMaintainer,

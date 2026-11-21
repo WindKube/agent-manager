@@ -1,14 +1,8 @@
-// Package blob is this project's object store. gocloud.dev/blob is the data
-// path — s3blob against MinIO/S3, memblob in unit tests, fileblob for a
-// container-free dev mode — and this package owns what gocloud does not
-// model: the key layout, sha256 digesting on write, and commit-last
-// visibility.
+// Package blob is the object store: gocloud.dev/blob for data, plus the key
+// layout, sha256-on-write and commit-last visibility.
 //
-// Reader and Writer are separate interfaces and separate implementations:
-// the scanner is handed a Reader whose dynamic type has no write method, so
-// there is no Writer to type-assert back to. One interface with both
-// halves, or a Reader backed by a type that also satisfies Writer, hands
-// that assertion straight back.
+// Reader and Writer are separate implementations so a role handed a Reader
+// cannot type-assert its way to a write method.
 package blob
 
 import (
@@ -25,17 +19,12 @@ import (
 	gcblob "gocloud.dev/blob"
 	"gocloud.dev/gcerrors"
 
-	// The three drivers this project supports, registered for blob.OpenBucket
-	// by their URL scheme: s3:// in compose and production, mem:// in unit
-	// tests, file:// for a container-free dev mode.
 	_ "gocloud.dev/blob/fileblob"
 	_ "gocloud.dev/blob/memblob"
 	_ "gocloud.dev/blob/s3blob"
 )
 
-// ErrNotFound is returned for a key the bucket does not hold. Callers match on
-// this rather than on a driver's error type, which is the whole reason the
-// gocloud error codes are translated here.
+// ErrNotFound is returned for a key the bucket does not hold, whatever the driver.
 var ErrNotFound = errors.New("object not found")
 
 // Attributes is the subset of an object's metadata this project reads.
@@ -45,8 +34,7 @@ type Attributes struct {
 	ModTime time.Time
 }
 
-// Reader is read-only access to the object store. It has no write method, by
-// design: see the package comment.
+// Reader is read-only access to the object store.
 type Reader interface {
 	NewReader(ctx context.Context, key string) (io.ReadCloser, error)
 	ReadAll(ctx context.Context, key string) ([]byte, error)
@@ -55,19 +43,16 @@ type Reader interface {
 	List(ctx context.Context, prefix string) ([]Attributes, error)
 }
 
-// Writer is write-only access to the object store. It has no read method, so
-// nothing on the write path can be tempted to verify a digest by re-reading the
-// object it just wrote.
+// Writer is write-only access, so nothing on the write path can verify a
+// digest by re-reading what it wrote.
 type Writer interface {
 	Write(ctx context.Context, key string, src io.Reader) (Object, error)
 	Copy(ctx context.Context, dstKey, srcKey string) error
 	Delete(ctx context.Context, key string) error
 }
 
-// Object is what one write produced. Digest is computed while the bytes
-// stream past: hashing by re-reading the object afterwards would double the
-// transfer and — worse — would hash whatever the bucket holds at that
-// moment rather than what this call wrote.
+// Object is what one write produced. Digest is computed while streaming, so it
+// covers exactly the bytes this call wrote, not whatever the bucket holds later.
 type Object struct {
 	Key    string
 	Size   int64
@@ -77,15 +62,10 @@ type Object struct {
 // Hex is the digest as the 64-character lowercase string the catalog stores.
 func (o Object) Hex() string { return hex.EncodeToString(o.Digest[:]) }
 
-// Bucket is the bootstrap's handle on one bucket. A role never holds this: the
-// bootstrap opens it and hands out the halves the role declared (see
-// internal/worker.Build).
+// Bucket is the bootstrap's handle; roles get only the halves they declared.
 type Bucket struct {
 	bucket *gcblob.Bucket
-	// name and region come off the URL Open was given: the host is the bucket
-	// name and `region` is the one query parameter compose.yaml's s3:// URL
-	// carries. Both are "" for mem:// and file://, which the Storage screen
-	// renders as unknown rather than guessing one.
+	// name and region come from the URL; both are "" for mem:// and file://.
 	name, region string
 }
 
@@ -106,25 +86,18 @@ func Open(ctx context.Context, bucketURL string) (*Bucket, error) {
 	return &Bucket{bucket: b, name: name, region: region}, nil
 }
 
-// Reader returns the read half. The returned value's dynamic type implements
-// Reader and nothing else.
+// Reader returns the read half; its dynamic type implements nothing else.
 func (b *Bucket) Reader() Reader { return reader{bucket: b.bucket} }
 
-// Writer returns the write half. Only the fetcher role is ever handed one
-// (constitution principle II).
+// Writer returns the write half. Only the fetcher role is ever handed one.
 func (b *Bucket) Writer() Writer { return writer{bucket: b.bucket} }
 
-// As reaches the driver's own client — an escape hatch used by the Storage
-// screen's bucket-settings report so no second S3 client is constructed. It
-// lives on *Bucket, not on Reader: a raw *s3.Client can write, so exposing
-// it through the read interface would hand every read-only role a way
-// around the credential split this package exists to enforce.
+// As reaches the driver's client. It lives on *Bucket, not Reader, because a raw
+// S3 client can write and would bypass the read-only credential split.
 func (b *Bucket) As(i any) bool { return b.bucket.As(i) }
 
-// Inspector is read access plus the raw-client escape hatch, Name and Region —
-// handed only to the Storage screen's query, the one caller that needs to
-// describe the bucket itself rather than merely read its objects. It excludes
-// Writer: holding this cannot reach a write, whatever As's driver client can do.
+// Inspector is read access plus As, Name and Region for the Storage screen. It
+// excludes Writer.
 type Inspector interface {
 	Reader
 	As(i any) bool
@@ -210,10 +183,8 @@ func (i inspector) As(v any) bool  { return i.bucket.As(v) }
 func (i inspector) Name() string   { return i.name }
 func (i inspector) Region() string { return i.region }
 
-// ListLimited lists at most limit objects under prefix and reports whether the
-// bucket held more. It exists beside List for the one caller with no bound on
-// the bucket it is describing: a production bucket can hold far more objects
-// than a report should ever hold in memory at once.
+// ListLimited lists at most limit objects under prefix and reports whether more
+// exist, so describing a large production bucket stays bounded in memory.
 func (r reader) ListLimited(ctx context.Context, prefix string, limit int) ([]Attributes, bool, error) {
 	it := r.bucket.List(&gcblob.ListOptions{Prefix: prefix})
 
@@ -240,10 +211,8 @@ type writer struct {
 	bucket *gcblob.Bucket
 }
 
-// Write streams src into key and digests it on the way past. The per-call
-// context is cancellable so a failed copy can abort the write rather than
-// commit a truncated object: gocloud's contract is that cancelling the
-// context passed to NewWriter aborts, and Close must be called either way.
+// Write streams src into key, digesting on the way. A failed copy cancels the
+// writer's context so gocloud aborts instead of committing a truncated object.
 func (w writer) Write(ctx context.Context, key string, src io.Reader) (Object, error) {
 	if src == nil {
 		return Object{}, fmt.Errorf("write %s: source reader is nil", key)

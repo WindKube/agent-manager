@@ -1,7 +1,5 @@
-// Package auth is the api role's identity plumbing: OIDC discovery and
-// ID-token verification, the `groups` claim to organisation-role mapping,
-// and opaque server-side sessions whose tokens are hashed at rest. Nothing
-// here is provider-specific.
+// Package auth is the api role's provider-agnostic identity plumbing: OIDC
+// verification, group-to-role mapping, and opaque sessions hashed at rest.
 package auth
 
 import (

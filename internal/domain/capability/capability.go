@@ -1,9 +1,6 @@
-// Package capability holds the two halves of the capability model:
-// INFERRED (what the scanner found in the bytes) and EXPECTED (what the
-// publisher's manifest declares). A level is how much trust a capability
-// demands from a human, not a permission the hub enforces — there is no
-// enforcement point anywhere in this system. Pure by construction: no
-// database, no blob, no HTTP.
+// Package capability holds the inferred (scanned) and expected (declared)
+// capability sets. A level is how much human trust a capability demands, never
+// an enforced permission.
 package capability
 
 import (
@@ -65,28 +62,25 @@ type Capability struct {
 	Source Source
 	Level  Level
 	Detail []string
-	// Indefinite: collapsing "reaches these hosts" with "AND something
-	// else" would turn an unknown into a clean bill of health.
+	// Indefinite marks that Detail is not the whole set.
 	Indefinite bool
 }
 
-// maxDetail bounds a row's target list: an untrusted bundle must not
-// choose the size of a jsonb column or a page.
+// maxDetail stops an untrusted bundle choosing the size of a row.
 const maxDetail = 64
 
-// finish sorts, deduplicates and caps a target list, and applies the shell
-// floor. Every constructed Capability goes through it.
+// finish tidies the target list and applies the level floors. Every
+// constructed Capability goes through it.
 func finish(c Capability) Capability {
 	c.Detail = tidy(c.Detail, &c.Indefinite)
 
-	// tidy can CREATE indefiniteness by truncating, so this runs after it.
+	// tidy can create indefiniteness by truncating, so this runs after it.
 	if c.Indefinite {
 		c.Level = stricter(c.Level, LevelReview)
 	}
 
-	// A shell capability is never below Review, applied to BOTH sources so
-	// the panel never shows `shell: Scoped` under Expected beside
-	// `shell: Review` under Inferred as if the scanner found a disagreement.
+	// Shell is never below Review, for both sources, so the panel never shows
+	// a false disagreement.
 	if c.Name == Shell {
 		c.Level = stricter(c.Level, LevelReview)
 	}
@@ -118,8 +112,7 @@ func tidy(values []string, truncated *bool) []string {
 	return out
 }
 
-// order sorts rows into Names' order, so the panel's rows don't move
-// between two scans of the same package.
+// order sorts rows into Names' order so rows are stable between scans.
 func order(rows []Capability) []Capability {
 	rank := make(map[string]int, len(Names))
 	for i, name := range Names {

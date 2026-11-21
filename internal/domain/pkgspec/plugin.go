@@ -8,10 +8,9 @@ import (
 	"strings"
 )
 
-// Plugin is `plugin.json`: the ten fields Agent Plugins 1.0.0 and 1.1.0
-// permit, under `additionalProperties: false`. Only `$schema` and `name` are
-// required. This struct is the whole field set — adding a field the schema
-// rejects would be a registry that accepts manifests no other client can read.
+// Plugin is `plugin.json`, the full field set Agent Plugins 1.0.0 and 1.1.0
+// permit under `additionalProperties: false`. Don't add fields the schema
+// rejects, or the registry accepts manifests no other client can read.
 type Plugin struct {
 	Schema      string          `json:"$schema"`
 	Name        string          `json:"name"`
@@ -26,21 +25,19 @@ type Plugin struct {
 	raw         json.RawMessage `json:"-"`
 }
 
-// PluginAuthor is the published `author` object: three optional string
-// fields, closed.
+// PluginAuthor is the published `author` object.
 type PluginAuthor struct {
 	Name  string `json:"name,omitempty"`
 	Email string `json:"email,omitempty"`
 	URL   string `json:"url,omitempty"`
 }
 
-// ExtensionSet is `extensions`: client-specific data keyed by reverse-domain
-// namespace. The spec assigns no semantics to namespace object contents, so
-// values stay raw here and only this project's own namespace is decoded.
+// ExtensionSet is `extensions`, keyed by reverse-domain namespace. Values stay
+// raw; only this project's namespace is decoded.
 type ExtensionSet map[string]json.RawMessage
 
-// Raw is the manifest bytes exactly as read: a re-encoded copy would lose
-// key order and any field this build has no struct member for.
+// Raw is the manifest bytes exactly as read, preserving key order and
+// unknown fields.
 func (p *Plugin) Raw() json.RawMessage { return p.raw }
 
 func (p *Plugin) Namespaces() []string {
@@ -52,19 +49,15 @@ func (p *Plugin) Namespaces() []string {
 	return out
 }
 
-// AgentManagerExtension is this project's namespace object,
-// `extensions["dev.agent-manager"]` — the only conformant home for anything
-// the design drew as a top-level manifest field.
+// AgentManagerExtension is `extensions["dev.agent-manager"]`, the only
+// conformant home for this project's manifest fields.
 type AgentManagerExtension struct {
-	// ExpectedCapabilities is what the publisher or a reviewer says this
-	// package should be able to reach. It is an expectation and never an
-	// enforced permission: nothing in this hub grants or denies on it. A
-	// finding is raised where the scanner's inferred set exceeds it.
+	// ExpectedCapabilities is an expectation, never an enforced permission; a
+	// finding is raised where the inferred set exceeds it.
 	ExpectedCapabilities []ExpectedCapability `json:"expectedCapabilities,omitempty"`
 
-	// Components lists tree paths the publisher asserts are present: the only
-	// way a manifest can name one missing from disk, which is a validation
-	// failure and not a scan finding.
+	// Components lists tree paths the publisher asserts are present; a missing
+	// one is a validation failure, not a scan finding.
 	Components []string `json:"components,omitempty"`
 }
 
@@ -76,9 +69,8 @@ type ExpectedCapability struct {
 	Detail []string `json:"detail,omitempty"`
 }
 
-// The capability names this project recognises. Closed, because an
-// unrecognised name would silently never match anything the scanner infers —
-// a control that looks present and does nothing.
+// Capability names are a closed set: an unrecognised name would silently
+// never match anything the scanner infers.
 const (
 	CapabilityNetwork         = "network"
 	CapabilityFilesystemRead  = "filesystem.read"
@@ -90,7 +82,7 @@ var capabilityNames = []string{
 	CapabilityNetwork, CapabilityFilesystemRead, CapabilityFilesystemWrite, CapabilityShell,
 }
 
-// The levels, matching the `capability_level` enum.
+// Levels match the `capability_level` enum.
 const (
 	LevelScoped      = "scoped"
 	LevelAllowlisted = "allowlisted"
@@ -100,18 +92,15 @@ const (
 var capabilityLevels = []string{LevelScoped, LevelAllowlisted, LevelReview}
 
 // AgentManager decodes this project's extension namespace. The second result
-// is false when the namespace is absent, which is not an error: a publisher
-// may record no expected set, and that is the case where every inferred
-// capability is surfaced for review.
+// is false, without error, when the namespace is absent.
 func (p *Plugin) AgentManager() (*AgentManagerExtension, bool, error) {
 	rawExt, ok := p.Extensions[ExtensionNamespace]
 	if !ok || len(rawExt) == 0 {
 		return nil, false, nil
 	}
 
-	// DisallowUnknownFields inside our own namespace, where the published
-	// schema checks nothing: without it a misspelled `expectedCapabilties` is
-	// an expected set that silently does not exist.
+	// The published schema checks nothing here, so a typo would otherwise
+	// silently drop the expected set.
 	decoder := json.NewDecoder(bytes.NewReader(rawExt))
 	decoder.DisallowUnknownFields()
 
@@ -147,9 +136,8 @@ func (p *Plugin) AgentManager() (*AgentManagerExtension, bool, error) {
 					capability.Level, strings.Join(capabilityLevels, ", ")),
 			})
 		}
-		// A shell capability is never below review, raised rather than
-		// refused: the publisher's understatement must not become a
-		// reviewer's blind spot.
+		// Shell is raised to review rather than refused, so an understated
+		// level can't hide it from reviewers.
 		if capability.Name == CapabilityShell {
 			capability.Level = LevelReview
 		}
@@ -157,9 +145,8 @@ func (p *Plugin) AgentManager() (*AgentManagerExtension, bool, error) {
 	return &ext, true, nil
 }
 
-// decodePlugin's DisallowUnknownFields mirrors `additionalProperties: false`
-// in Go too, so a future schema relaxation fails here instead of passing an
-// unknown field into the catalog.
+// decodePlugin mirrors `additionalProperties: false` so a future schema
+// relaxation can't pass an unknown field into the catalog.
 func decodePlugin(raw []byte, schemaID string) (*Plugin, error) {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
@@ -175,8 +162,7 @@ func decodePlugin(raw []byte, schemaID string) (*Plugin, error) {
 	return &plugin, nil
 }
 
-// escapePointer escapes a JSON Pointer token (RFC 6901): a pointer built
-// without escaping breaks the first time a key holds a slash or tilde.
+// escapePointer escapes a JSON Pointer token (RFC 6901).
 func escapePointer(token string) string {
 	token = strings.ReplaceAll(token, "~", "~0")
 	return strings.ReplaceAll(token, "/", "~1")

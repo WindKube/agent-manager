@@ -8,22 +8,15 @@ import (
 	"agent-manager/internal/domain/pkgspec"
 )
 
-// Expected is the capability set the publisher recorded, read out of a
-// stored `version.manifest`. It returns rows; it does not write them (the
-// scanner does, in the transaction that records the scan), so until a
-// version has been scanned there are rows of neither source.
-//
-// A nil result with a nil error is the normal case: a publisher may record
-// no expected set, in which case every discovered host is surfaced for
-// review rather than silently accepted.
+// Expected reads the publisher's capability set from a stored
+// `version.manifest`. Nil with no error means none was recorded.
 func Expected(manifest []byte) ([]Capability, error) {
 	raw, ok, err := extensionObject(manifest)
 	if err != nil || !ok {
 		return nil, err
 	}
 
-	// DisallowUnknownFields: nothing else checks this namespace object's
-	// contents, so a misspelled field would otherwise silently vanish.
+	// Nothing else checks this object, so a misspelled field would vanish.
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 
@@ -45,15 +38,13 @@ func Expected(manifest []byte) ([]Capability, error) {
 
 func expectedRow(declared pkgspec.ExpectedCapability) (Capability, error) {
 	if !known(declared.Name) {
-		// Fail closed rather than dropping the row: an unrecognised name can
-		// never match anything Infer produces.
+		// Fail closed: an unrecognised name can never match an inferred row.
 		return Capability{}, fmt.Errorf("expected capability %q is not one of %v",
 			declared.Name, Names)
 	}
 
 	level := Level(declared.Level)
 	if declared.Level == "" {
-		// No level named: the safe reading asks for a human.
 		level = LevelReview
 	}
 	if !level.Valid() {
@@ -69,10 +60,8 @@ func expectedRow(declared pkgspec.ExpectedCapability) (Capability, error) {
 	}), nil
 }
 
-// extensionObject looks in two places: Agent Plugins' `extensions` and
-// Agent Skills' `metadata`, since the two specs name their free-form
-// namespace object differently and a standalone skill has no `extensions`
-// key at all. Both are keyed by the same reverse-domain name.
+// extensionObject checks Agent Plugins' `extensions` and Agent Skills'
+// `metadata`, both keyed by the same namespace.
 func extensionObject(manifest []byte) (json.RawMessage, bool, error) {
 	if len(bytes.TrimSpace(manifest)) == 0 {
 		return nil, false, nil

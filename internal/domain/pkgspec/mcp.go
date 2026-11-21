@@ -6,17 +6,14 @@ import (
 	"sort"
 )
 
-// MCPConfig is `mcp.json`: `{$schema, mcpServers}`, both required, closed.
-// This file is identical between Agent Plugins 1.0.0 and 1.1.0 — 1.0.0
-// already required both fields.
+// MCPConfig is `mcp.json`, identical between Agent Plugins 1.0.0 and 1.1.0.
 type MCPConfig struct {
 	Schema     string               `json:"$schema"`
 	MCPServers map[string]MCPServer `json:"mcpServers"`
 }
 
-// MCPServer is one server entry: the published schema is a `oneOf` over
-// three shapes discriminated by `type`, flattened here — `Type` says which
-// fields are meaningful.
+// MCPServer flattens the schema's `oneOf` over three shapes; `Type` says
+// which fields are meaningful.
 type MCPServer struct {
 	Type string `json:"type"`
 
@@ -38,8 +35,7 @@ const (
 	MCPTypeSSE            = "sse"
 )
 
-// ServerNames returns the configured server keys, sorted, so a version's
-// component rows are stable.
+// ServerNames returns the server keys sorted, so component rows are stable.
 func (c *MCPConfig) ServerNames() []string {
 	out := make([]string, 0, len(c.MCPServers))
 	for name := range c.MCPServers {

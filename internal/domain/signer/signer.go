@@ -1,7 +1,6 @@
 // Package signer decides whether a version's recorded Sigstore signature is
-// one its package trusts. The fetcher records any Fulcio identity that
-// verifies; this is where that identity is bound to the package, at read
-// time, so changing a package's expected signer re-decides every version.
+// one its package trusts. Binding happens at read time, so changing a
+// package's expected signer re-decides every version.
 package signer
 
 import (
@@ -11,8 +10,8 @@ import (
 	"strings"
 )
 
-// Status is a signature as a reader should understand it. Only
-// StatusMatching is trustworthy.
+// Status is a signature's meaning to a reader. Only StatusMatching is
+// trustworthy.
 type Status string
 
 const (

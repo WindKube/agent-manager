@@ -1,8 +1,5 @@
-// Package queries is the read side of the api role. A query is read-only,
-// opens no transaction and is free to use purpose-built SQL instead of the
-// object mapper's relation loading. This is command/query separation in
-// code, not in infrastructure: no command bus, event sourcing, read
-// replica, or eventual consistency to design around.
+// Package queries is the read side of the api role: read-only, no
+// transactions, free to use purpose-built SQL.
 package queries
 
 import (
@@ -17,26 +14,14 @@ import (
 )
 
 // ErrNotFound is returned when a row does not exist or the caller may not
-// read it. One error for both, on purpose: distinguishing them would
-// enumerate the profiles a client must not be able to enumerate.
+// read it; one error for both so a client cannot enumerate private profiles.
 var ErrNotFound = errors.New("not found")
 
-// Readable renders the readability predicate for one principal, as a SQL
-// fragment over the given alias of table `profile`, plus its arguments in
-// order. It exists exactly once and every profile-scoped statement composes
-// it: three hand-written copies of an authorisation predicate is how one of
-// them silently drifts.
-//
-// It is a WHERE clause and never a filter applied to a fetched list, so an
-// unreadable profile is not merely hidden — it is never selected, never
-// counted, never returned to Go at all.
-//
-// Three ways a profile becomes readable, and nothing else is one:
-// organisation visibility; a direct user membership naming this identity;
-// or a group membership naming one of the identity's mapped groups.
-//
-// A service token reads only the profiles its sync scopes name, and of those
-// only the ones its creator can read now.
+// Readable renders the profile readability predicate for p as a SQL fragment
+// over alias, plus its args. Every profile-scoped statement must compose this
+// single copy, as a WHERE clause, so unreadable profiles are never selected
+// or counted. A service token reads only the profiles its sync scopes name
+// that its creator can read now.
 func Readable(alias string, p auth.Principal) (predicate string, args []any) {
 	if p.IsServiceToken() {
 		slugs := p.ServiceToken.Profiles()
@@ -57,22 +42,10 @@ func Readable(alias string, p auth.Principal) (predicate string, args []any) {
 	return "(" + strings.Join(clauses, " or ") + ")", args
 }
 
-// PackageReadable renders the readability predicate for one principal, as a
-// SQL fragment over the given alias of table `package`, plus its arguments
-// in order — the same WHERE-clause pattern Readable uses for profiles, so a
-// package this identity may not read is never selected, counted or
-// returned, not merely hidden after the fact.
-//
-// Three ways a package becomes readable, and nothing else is one: its
-// visibility is `organisation`; its owner_identity_id names this identity
-// (an owner never loses their own package to a group they later leave); or its
-// visibility is `team` and its owner shares an IdP group with this identity.
-// A package with no owner recorded matches only the first clause — the
-// migration that added the column leaves existing organisation-visibility
-// rows on that clause, never on the other two.
-//
-// A service token reads packages only with read:catalog, and then only what
-// its creator can read now. Bundle widens this for sync scopes.
+// PackageReadable is Readable for table `package`. The owner clause is
+// separate from the team clause so an owner never loses their own package to
+// a group they later leave. A service token needs read:catalog and then reads
+// only what its creator can read now; Bundle widens this for sync scopes.
 func PackageReadable(alias string, p auth.Principal) (predicate string, args []any) {
 	if p.IsServiceToken() {
 		if !p.ServiceToken.Allows(auth.ScopeReadCatalog) {
@@ -95,17 +68,10 @@ func PackageReadable(alias string, p auth.Principal) (predicate string, args []a
 	return "(" + strings.Join(clauses, " or ") + ")", args
 }
 
-// subjectPredicate renders "this membership row names this identity", over
-// the given alias of table `membership`, plus its arguments in order. It is
-// separate from Readable because Readable asks whether any row names the
-// caller, while the profile detail asks which role the rows that name them
-// carry — spelling the email/subject/group matching twice is how the two
-// come to disagree.
-//
-// matchable is false when the principal can match no membership row at all.
-// A caller must then leave the clause out altogether rather than emit a
-// subquery that is constantly false, keeping the emitted predicate for an
-// anonymous-ish identity down to the visibility test.
+// subjectPredicate renders "this membership row names this identity" over
+// alias. Readable and the profile detail share it so their matching cannot
+// disagree. matchable is false when p can match no row; callers then omit the
+// clause instead of emitting a constantly false subquery.
 func subjectPredicate(alias string, p auth.Principal) (predicate string, args []any, matchable bool) {
 	var clauses []string
 	if refs := p.Refs(); len(refs) > 0 {

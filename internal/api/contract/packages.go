@@ -95,7 +95,7 @@ type PackageRegistered struct {
 	ObjectKey string `json:"objectKey" example:"skills/example/platform-toolkit/1.3.0/bundle.tar.zst"`
 
 	Verdict string `json:"verdict" enum:"scanning,clean,flagged,rejected" doc:"Always scanning here: the scan has not run." example:"scanning"`
-	Visible bool   `json:"visible" doc:"Always false here. Commit-last (FR-008): the fetcher flips it."`
+	Visible bool   `json:"visible" doc:"Always false here. Commit-last: the fetcher flips it."`
 
 	Preview *PackagePreview `json:"preview,omitempty" doc:"Present for an upload, where the archive was inspected in-process before the version row was written."`
 }

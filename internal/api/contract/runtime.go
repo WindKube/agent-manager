@@ -14,10 +14,8 @@ type QueueJobCounts struct {
 	Completed int64 `json:"completed" example:"918"`
 	Discarded int64 `json:"discarded" example:"3"`
 	Cancelled int64 `json:"cancelled" example:"0"`
-	// Other is a job in a state this vocabulary does not name — River's
-	// `pending`, which this hub never assigns today, or a state a future
-	// River adds. Counted rather than dropped, so an unforeseen state is
-	// still visible on the total.
+	// Other counts states this vocabulary doesn't name (River's `pending`, or
+	// one a future River adds) so they still show on the total.
 	Other int64 `json:"other" example:"0"`
 }
 
@@ -46,15 +44,12 @@ type RuntimeJob struct {
 	ScheduledAt time.Time `json:"scheduledAt"`
 	// FinalizedAt is when a discarded job stopped retrying. Absent for a
 	// job still retrying.
-	FinalizedAt *time.Time `json:"finalizedAt,omitempty"`
-	// Errors is every attempt error River recorded on this row, oldest first.
-	Errors []JobAttemptError `json:"errors"`
+	FinalizedAt *time.Time        `json:"finalizedAt,omitempty"`
+	Errors      []JobAttemptError `json:"errors"`
 }
 
-// RuntimeErrors separates the one case that needs a person from the one
-// that does not: retries exhausted versus still retrying on its own. A
-// discarded job mixed into the same list as one still retrying is the
-// exact ambiguity this screen exists to remove.
+// RuntimeErrors separates jobs that need a person (retries exhausted) from
+// ones still retrying on their own.
 type RuntimeErrors struct {
 	// Discarded is retries exhausted: River will not run these again
 	// without manual intervention.
@@ -74,12 +69,9 @@ type RunBucket struct {
 type RuntimeReport struct {
 	Queues []QueueSummary `json:"queues" doc:"Job counts by River's own state, one entry per queue."`
 	Errors RuntimeErrors  `json:"errors"`
-	// RunHistory buckets jobs by their most recent attempt time, oldest
-	// bucket first. A job counts once, in the bucket of its LAST attempt —
-	// a job retried three times appears once, not three times, and a job
-	// River's own retention already reaped does not appear at all.
+	// RunHistory buckets jobs by their last attempt time, oldest first. A job
+	// counts once, and one River's retention already reaped not at all.
 	RunHistory []RunBucket `json:"runHistory"`
-	// BucketMinutes is the width of one RunHistory interval, in minutes —
-	// what makes the chart's axis readable rather than a row of unlabelled bars.
+	// BucketMinutes is the width of one RunHistory interval.
 	BucketMinutes int `json:"bucketMinutes" example:"60"`
 }

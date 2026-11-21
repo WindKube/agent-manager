@@ -1,12 +1,7 @@
 //go:build integration
 
-// The api role against a real Postgres.
-//
-// Everything asserted here is a guarantee the code cannot make on its own: that
-// the FR-044 predicate is SQL and not a Go filter, that a session row yields no
-// usable credential, that a command's audit row commits with its mutation, and
-// that a group with no mapping grants nothing. A handler-shaped test with a fake
-// store would pass against every one of those being broken.
+// The api role against a real Postgres: profile readability is filtered in SQL, a session row
+// yields no usable credential, audit rows commit with their mutation, and unmapped groups grant nothing.
 package api_test
 
 import (
@@ -50,17 +45,14 @@ var (
 	bundleBytes = []byte("not really zstd, but immutable bytes with a digest")
 	bundleSHA   = bytes.Repeat([]byte{0xab}, 32)
 
-	// A second team publishing into the SAME namespace. Both packages are reached
-	// through the same first path segment, which is what makes the segment a
-	// namespace rather than a publisher.
+	// A second team publishing into the same namespace, reached through the same first path segment.
 	siblingKey   = "skills/acme/threat-model/1.0.0/bundle.tar.zst"
 	siblingBytes = []byte("a different team's bytes, under the same namespace")
 	siblingSHA   = bytes.Repeat([]byte{0xcd}, 32)
 )
 
-// statements records every statement bun sends. It is how the FR-044 test proves
-// the filtering is in SQL: a fetch-then-filter implementation either issues more
-// statements than one, or issues one that returns more rows than it returns.
+// statements records every statement bun sends, so a test can prove readability filtering
+// happens in SQL rather than by fetch-then-filter.
 type statements struct {
 	mu      sync.Mutex
 	enabled bool
@@ -135,8 +127,7 @@ func runSuite(m *testing.M) (int, error) {
 		return 0, fmt.Errorf("create queue database: %w", err)
 	}
 
-	// The checked-in migrations, not the desired state: what ships is the
-	// migration directory, so that is what the api is tested against.
+	// The checked-in migrations, not the desired state, because the migration directory is what ships.
 	if applyErr := migrations.Apply(ctx, func(ctx context.Context, statement string) error {
 		_, execErr := pool.Exec(ctx, statement)
 		return execErr
@@ -157,15 +148,11 @@ func runSuite(m *testing.M) (int, error) {
 	}
 
 	code := m.Run()
-	// The boot test builds the binary once; ~40 MB of it does not need to outlive
-	// the run.
 	if binaryPath != "" {
 		_ = os.Remove(binaryPath)
 	}
 	return code, nil
 }
-
-// ---- fixtures ---------------------------------------------------------------
 
 type actor struct {
 	claims auth.Claims
@@ -175,19 +162,13 @@ type actor struct {
 var (
 	// kw is in a mapped group and holds a direct membership on one private profile.
 	kw actor
-	// an is in a different mapped group, which is what makes the FR-044 test a
-	// comparison of two identities rather than a check of one.
+	// an is in a different mapped group, so readability tests compare two identities.
 	an actor
-	// contractor is in a group with NO mapping. It exists to prove that an
-	// unmapped group grants nothing.
+	// contractor is in a group with no mapping, to prove an unmapped group grants nothing.
 	contractor actor
 
-	// curator, mate and punter exist for the profile write path and for nothing
-	// else. They are separate people rather than reuses of kw and an because the
-	// FR-044 assertions above compare those two identities' readable lists against
-	// exact sets: a test that created a profile readable by kw would change the
-	// answer to a question another test asks. Every profile they create is
-	// `private` and shared only with each other, so no list in this file moves.
+	// curator, mate and punter exist for the profile write path and are kept separate from kw and
+	// an, whose readable lists are asserted as exact sets. Everything they create is private.
 	curator actor
 	mate    actor
 	punter  actor
@@ -208,14 +189,8 @@ func seed(ctx context.Context) error {
 		}
 	}
 
-	// The singleton. Resolving a profile reads the gate out of it and there is no
-	// default: a hub whose policy row is missing has no gate, and queries.ErrNoPolicy
-	// refuses rather than guessing. `warn-with-override` is the value the
-	// representative dataset ships, so the fixture starts where an operator does.
-	// AllowPersonalProfiles is true here: most of this suite creates a profile
-	// without stating a visibility, which defaults to private, and the fixture's
-	// job is to exercise those tests' own feature rather than this toggle.
-	// org_integration_test.go's own downstream test turns it off and back on.
+	// Resolving a profile reads the gate from this singleton and there is no default, so the
+	// fixture must seed it. AllowPersonalProfiles is on because most tests create private profiles.
 	if err := insert(&models.OrgPolicy{
 		ID:                    models.OrgPolicySingletonID,
 		ScanGate:              models.ScanGateWarnWithOverride,
@@ -293,9 +268,8 @@ func seed(ctx context.Context) error {
 		}
 	}
 
-	// <namespace>/<team>: publisher.namespace is generated from the first segment
-	// and package.namespace is held to it by a composite foreign key, so the two
-	// cannot be seeded independently even here.
+	// publisher.namespace is generated from the first slug segment and package.namespace is held to
+	// it by a composite foreign key, so the two cannot be seeded independently.
 	publisher := &models.Publisher{ID: models.NewID(), Slug: "acme/platform", DisplayName: "Acme"}
 	if err := insert(publisher); err != nil {
 		return fmt.Errorf("seed publisher: %w", err)
@@ -336,10 +310,8 @@ func seed(ctx context.Context) error {
 		}
 	}
 
-	// A sibling team in the same namespace. Its package is addressed through the
-	// same `/v1/bundles/acme/...` prefix as the one above, which is the whole
-	// point: the first path segment names the namespace and the publisher table
-	// is not consulted at all.
+	// A sibling team in the same namespace: the first path segment names the namespace and the
+	// publisher table is not consulted.
 	sibling := &models.Publisher{ID: models.NewID(), Slug: "acme/security", DisplayName: "Acme Security"}
 	if err := insert(sibling); err != nil {
 		return fmt.Errorf("seed sibling publisher: %w", err)
@@ -371,9 +343,7 @@ func seed(ctx context.Context) error {
 		return fmt.Errorf("seed sibling version: %w", err)
 	}
 
-	// Sessions come from the real login command, so the fixtures exercise the
-	// path a browser takes rather than a hand-written INSERT that could diverge
-	// from it.
+	// Sessions come from the real login command so fixtures exercise the browser's path.
 	for target, claims := range map[*actor]auth.Claims{
 		&kw: {Subject: "sub-kw", Email: "kwiatrzyk@example.com", Name: "Krzysztof Wiatrzyk",
 			Groups: []string{"eng-platform"}},
@@ -420,11 +390,8 @@ func lockfileFor(slug string, seq int) contract.Lockfile {
 	}
 }
 
-// liveHandler is the real router over the real database and a real (in-memory)
-// bucket, so every test below goes through the middleware, the operation and the
-// query exactly as a client would. extraBlobs lets a file that needs its own
-// object key/bytes (a real packed bundle, say) add them to the same bucket
-// without every other caller having to know about them.
+// liveHandler is the real router over the real database and an in-memory bucket. extraBlobs
+// adds object keys a single test needs.
 func liveHandler(t *testing.T, extraBlobs ...map[string][]byte) http.Handler {
 	t.Helper()
 
@@ -468,8 +435,6 @@ func slugsOf(profiles []contract.Profile) []string {
 	return out
 }
 
-// ---- FR-044 ------------------------------------------------------------------
-
 func TestListProfilesEnumeratesExactlyWhatTheIdentityMayRead(t *testing.T) {
 	handler := liveHandler(t)
 
@@ -506,7 +471,6 @@ func TestListProfilesEnumeratesExactlyWhatTheIdentityMayRead(t *testing.T) {
 			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 			require.ElementsMatch(t, tc.want, slugsOf(body.Profiles))
 			require.NotContains(t, slugsOf(body.Profiles), tc.never)
-			// The profile nobody is a member of is enumerated for nobody.
 			require.NotContains(t, slugsOf(body.Profiles), "nobody-home")
 		})
 	}
@@ -514,14 +478,12 @@ func TestListProfilesEnumeratesExactlyWhatTheIdentityMayRead(t *testing.T) {
 	t.Run("two identities in different groups get different sets", func(t *testing.T) {
 		a := listSlugs(t, handler, kw)
 		b := listSlugs(t, handler, an)
-		require.NotEqual(t, a, b, "FR-044 is not a filtered view of one shared list")
+		require.NotEqual(t, a, b, "readability is not a filtered view of one shared list")
 	})
 }
 
-// canCurate is FR-126 at list scope. kw reads platform-baseline through
-// organisation visibility alone — no membership row names them there — while
-// kw-private is a profile they own outright, which is what makes this two
-// answers from ONE list rather than a single flag that happens to be false.
+// kw reads platform-baseline through organisation visibility alone and owns kw-private, so
+// canCurate must differ between two rows of one list.
 func TestTheListsCanCurateIsFalseForOrganisationVisibilityWithNoMembership(t *testing.T) {
 	rec := request(t, liveHandler(t), http.MethodGet, "/v1/profiles", kw.token, "")
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
@@ -554,14 +516,8 @@ func listSlugs(t *testing.T, handler http.Handler, who actor) []string {
 	return slugsOf(body.Profiles)
 }
 
-// The FR-044 wording is "a client sees exactly the profiles its identity may
-// read, and no others" — not "a filtered view of a larger list". This is the test
-// that tells the two implementations apart.
-//
-// Two independent sides: the statement the code actually sent (captured from
-// bun's hook) is re-executed through pgx, and its row count must equal the number
-// of profiles the handler returned. A fetch-then-filter implementation fails
-// either the one-statement assertion or the row-count one.
+// The statement bun actually sent is re-executed through pgx and its row count must equal the
+// number of profiles returned; fetch-then-filter fails either that or the one-statement check.
 func TestReadableProfilesFiltersInSQLRatherThanInGo(t *testing.T) {
 	ctx := context.Background()
 	principal := principalFor(t, kw)
@@ -592,8 +548,7 @@ func TestReadableProfilesFiltersInSQLRatherThanInGo(t *testing.T) {
 	require.Greater(t, total, returned, "the fixture must contain a profile this identity cannot read")
 }
 
-// The negative control for FR-044: widen one identity's access and only that
-// identity's list may change.
+// Negative control: widening one identity's access changes only that identity's list.
 func TestGrantingAGroupAccessChangesOnlyThatIdentitysList(t *testing.T) {
 	handler := liveHandler(t)
 	ctx := context.Background()
@@ -627,8 +582,6 @@ func TestGrantingAGroupAccessChangesOnlyThatIdentitysList(t *testing.T) {
 	require.NotContains(t, listSlugs(t, handler, contractor), "kw-private")
 }
 
-// ---- the groups claim to role mapping ---------------------------------------
-
 func TestGroupRoleMapIsTheOnlySourceOfARole(t *testing.T) {
 	ctx := context.Background()
 
@@ -660,8 +613,6 @@ func TestGroupRoleMapIsTheOnlySourceOfARole(t *testing.T) {
 	})
 }
 
-// ---- sessions ----------------------------------------------------------------
-
 func TestSessionTokenIsHashedAtRestAndCannotBeReplayed(t *testing.T) {
 	ctx := context.Background()
 
@@ -673,8 +624,7 @@ func TestSessionTokenIsHashedAtRestAndCannotBeReplayed(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, result.Token)
 
-	// Every column of the row, rendered as text. Not just token_hash: the point is
-	// that the plaintext is nowhere in the row, not that one column holds a hash.
+	// Every column rendered as text: the plaintext must be nowhere in the row, not just absent from token_hash.
 	var rendered string
 	require.NoError(t, pool.QueryRow(ctx,
 		`select to_jsonb(session)::text from session
@@ -728,8 +678,6 @@ func TestSessionTokenIsHashedAtRestAndCannotBeReplayed(t *testing.T) {
 	})
 }
 
-// ---- commands ----------------------------------------------------------------
-
 func TestReportSyncWritesOneSyncEventAndOneAuditRow(t *testing.T) {
 	handler := liveHandler(t)
 
@@ -750,7 +698,7 @@ func TestReportSyncWritesOneSyncEventAndOneAuditRow(t *testing.T) {
 		Scan(&text, &source))
 	require.Contains(t, text, "platform-baseline r2")
 	require.Contains(t, text, "claude-code")
-	// FR-050: a client source identifies the host.
+	// A client source identifies the host.
 	require.Equal(t, "cli / dev-laptop-01", source)
 }
 
@@ -768,8 +716,6 @@ func TestReportSyncRefusesAProfileTheIdentityCannotRead(t *testing.T) {
 	require.Equal(t, beforeAudit, countRows(t, "select count(*) from audit_event"),
 		"a refused command writes nothing, audit row included")
 }
-
-// ---- reads through the wire --------------------------------------------------
 
 func TestGetRevisionServesTheStoredLockfile(t *testing.T) {
 	handler := liveHandler(t)
@@ -796,7 +742,6 @@ func TestGetRevisionServesTheStoredLockfile(t *testing.T) {
 			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &lock))
 			require.Equal(t, tc.wantRevision, lock.Revision)
 			require.Equal(t, "1.0.0", lock.SchemaVersion)
-			// FR-036: the excluded package is reported with its reason.
 			require.Len(t, lock.Skipped, 1)
 			require.Equal(t, "flagged-awaiting-approval", lock.Skipped[0].Reason)
 		})
@@ -825,11 +770,8 @@ func TestGetBundleServesCleanBytesAndNeverARejectedVersion(t *testing.T) {
 		require.Equal(t, http.StatusNotFound, rec.Code)
 	})
 
-	// The regression this guards: the query matched publisher.slug for a while, and
-	// a slug is two segments, so every request 404'd. Matching one team's slug
-	// would fix that test and still lose this one — `acme/security` publishes
-	// threat-model, `acme/platform` publishes code-review, and both answer under
-	// the same first segment because that segment is the namespace.
+	// Bundles are matched by namespace, not publisher.slug: both teams answer under the same first
+	// segment.
 	t.Run("two teams in one namespace are both reachable through it", func(t *testing.T) {
 		rec := request(t, handler, http.MethodGet, "/v1/bundles/acme/threat-model/1.0.0", kw.token, "")
 		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
@@ -852,8 +794,6 @@ func TestHealthIsGreenAgainstRealDependencies(t *testing.T) {
 	require.Equal(t, "ok", body.Status)
 	require.NotEmpty(t, body.Checks)
 }
-
-// ---- helpers -----------------------------------------------------------------
 
 func countRows(t *testing.T, query string) int {
 	t.Helper()

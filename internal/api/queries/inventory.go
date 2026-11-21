@@ -213,8 +213,8 @@ func Machine(ctx context.Context, db bun.IDB, p auth.Principal, id uuid.UUID) (c
 	}
 	out.Machine = rows[0].wire()
 
-	// Installs and skips share one scoping: profiles p can read, and
-	// packages p can read where the row names one the hub holds.
+	// Installs and skips share one scoping: readable profiles, and readable
+	// packages where the row names one the hub holds.
 	profileReadable, profileArgs := Readable("pr", p)
 	packageReadable, packageArgs := PackageReadable("pkg", p)
 	if err := db.NewRaw(`

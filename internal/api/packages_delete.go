@@ -12,11 +12,8 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// Deleting from the catalog: withdrawing a version or a whole package, both
-// gated on catalog-admin like the hub's other administration surfaces
-// (/v1/runtime, /v1/storage, /v1/organization/*). See
-// internal/api/commands/packages_delete.go for what "delete" means here and
-// why: neither operation removes a row or a blob.
+// Withdrawing a version or a whole package, gated on catalog-admin. Neither
+// removes a row or a blob; see commands/packages_delete.go.
 
 type deleteVersionInput struct {
 	Namespace string `path:"namespace" doc:"The publishing namespace, as it appears in the catalog."`

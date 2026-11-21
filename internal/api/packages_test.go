@@ -20,9 +20,8 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The pre-submit preview (T041) needs no database and no bucket: it extracts,
-// filters, validates and derives, and writes nothing. That is the whole design —
-// a preview that needed the store would be a preview that could half-register.
+// The pre-submit preview needs no database or bucket: a preview that needed the
+// store could half-register.
 
 const conformantPluginManifest = `{
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
@@ -41,8 +40,8 @@ const conformantPluginManifest = `{
   }
 }`
 
-// scenario2Files is US1 acceptance scenario 2's archive, verbatim: a root holding
-// plugin.json, skills/, mcp.json, a client namespace, .github/ and README.md.
+// scenario2Files is an archive root holding plugin.json, skills/, mcp.json, a
+// client namespace, .github/ and README.md.
 func scenario2Files() map[string]string {
 	return map[string]string{
 		"plugin.json": conformantPluginManifest,
@@ -72,7 +71,6 @@ func zipOf(t *testing.T, files map[string]string) []byte {
 	return buf.Bytes()
 }
 
-// upload builds a multipart body with the archive part and any form values.
 func upload(t *testing.T, archive []byte, values map[string]string) (contentType string, body []byte) {
 	t.Helper()
 
@@ -112,10 +110,6 @@ func previewHandler(t *testing.T) http.Handler {
 	}}})
 }
 
-// ---------------------------------------------------------------------------
-// FR-005 / US1 scenario 2 — the panel says what it dropped
-// ---------------------------------------------------------------------------
-
 func TestThePreviewListsEveryEntryWithAMarkAndNamesWhatItDropped(t *testing.T) {
 	contentType, body := upload(t, zipOf(t, scenario2Files()), nil)
 	rec := postForm(t, previewHandler(t), "/v1/packages/preview", "token", contentType, body)
@@ -129,8 +123,7 @@ func TestThePreviewListsEveryEntryWithAMarkAndNamesWhatItDropped(t *testing.T) {
 	require.Equal(t, "platform-toolkit", preview.Name)
 	require.Equal(t, "1.3.0", preview.Version)
 
-	// The design's panel, in order. The last row is the requirement: a dropped
-	// path is REPORTED, grouped, before the user commits to registering.
+	// A dropped path is reported, grouped, before the user commits to registering.
 	require.Equal(t, []contract.PreviewEntry{
 		{Path: "plugin.json", Note: "schema valid", Kept: true, Mark: contract.MarkKept},
 		{Path: "skills/", Note: "2 skills", Kept: true, Mark: contract.MarkKept},
@@ -139,10 +132,9 @@ func TestThePreviewListsEveryEntryWithAMarkAndNamesWhatItDropped(t *testing.T) {
 		{Path: ".github/, README.md", Note: "outside spec, dropped", Kept: false, Mark: contract.MarkDropped},
 	}, preview.Entries)
 
-	// Grouped for display, complete for the record.
 	require.ElementsMatch(t, []string{".github/workflows/ci.yml", "README.md"}, preview.Dropped)
 
-	// Components come from the FILE TREE. No manifest field enumerates them.
+	// Components come from the file tree; no manifest field enumerates them.
 	require.Equal(t, []contract.PreviewComponent{
 		{Kind: "skill", Name: "k8s-manifest-review", Path: "skills/k8s-manifest-review", Note: "SKILL.md"},
 		{Kind: "skill", Name: "terraform-plan-review", Path: "skills/terraform-plan-review", Note: "SKILL.md + scripts/"},
@@ -151,8 +143,8 @@ func TestThePreviewListsEveryEntryWithAMarkAndNamesWhatItDropped(t *testing.T) {
 		{Kind: "ext", Name: "com.anthropic.claude-code", Path: "com.anthropic.claude-code", Note: "client extension: hooks/"},
 	}, preview.Components)
 
-	// FR-018a: the expected set is read from extensions["dev.agent-manager"] and
-	// from nowhere else, and `shell` is forced to review however it was declared.
+	// The expected set comes only from extensions["dev.agent-manager"], and `shell`
+	// is forced to review however it was declared.
 	require.Equal(t, []contract.PreviewCapability{
 		{Name: "network", Level: "allowlisted", Detail: []string{"registry.example.dev"}},
 		{Name: "shell", Level: "review", Detail: []string{"terraform"}},
@@ -162,16 +154,10 @@ func TestThePreviewListsEveryEntryWithAMarkAndNamesWhatItDropped(t *testing.T) {
 	require.Empty(t, preview.Problems)
 }
 
-// ---------------------------------------------------------------------------
-// US1 scenario 3 — the failure is reported against the schema path
-// ---------------------------------------------------------------------------
-
 func TestANonConformantManifestIsRefusedAgainstItsSchemaPathAndNothingIsCreated(t *testing.T) {
 	files := scenario2Files()
-	// `publisher` is one of the fields the DESIGN MOCKUP shows and the published
-	// schema does not permit; the schema's ten fields are closed by
-	// additionalProperties:false. This is the R1 trap: the local copy must not be
-	// relaxed to admit the mockup's vocabulary.
+	// `publisher` appears in the design mockup but the published schema forbids it;
+	// the local schema copy must not be relaxed to admit it.
 	files["plugin.json"] = strings.Replace(conformantPluginManifest,
 		`"name": "platform-toolkit",`,
 		`"name": "platform-toolkit",
@@ -180,7 +166,6 @@ func TestANonConformantManifestIsRefusedAgainstItsSchemaPathAndNothingIsCreated(
 	contentType, body := upload(t, zipOf(t, files), nil)
 	handler := previewHandler(t)
 
-	// The preview says why, with the keyword location that refused it.
 	rec := postForm(t, handler, "/v1/packages/preview", "token", contentType, body)
 	require.Equal(t, http.StatusOK, rec.Code)
 
@@ -192,9 +177,7 @@ func TestANonConformantManifestIsRefusedAgainstItsSchemaPathAndNothingIsCreated(
 	require.Equal(t, "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", preview.Problems[0].SchemaID)
 	require.Contains(t, preview.Problems[0].SchemaPath, "/additionalProperties")
 
-	// And the registration refuses BEFORE it opens a transaction, which is what
-	// "no version is created and nothing is written to object storage" means. The
-	// nil DB is the proof: a handler that reached the store would panic here.
+	// The registration refuses before opening a transaction; the nil DB would panic otherwise.
 	contentType, body = upload(t, zipOf(t, files), map[string]string{
 		"source": "upload", "publisher": "example",
 	})
@@ -207,10 +190,6 @@ func TestANonConformantManifestIsRefusedAgainstItsSchemaPathAndNothingIsCreated(
 	require.NotEmpty(t, problem.Errors)
 	require.Contains(t, problem.Errors[0].Value, "/additionalProperties")
 }
-
-// ---------------------------------------------------------------------------
-// The R3 caps, reached through the endpoint rather than asserted on the extractor
-// ---------------------------------------------------------------------------
 
 func TestThePreviewRefusesAnArchiveThatBreaksTheExtractionLimits(t *testing.T) {
 	handler := previewHandler(t)
@@ -248,13 +227,8 @@ func TestThePreviewRefusesAnArchiveThatBreaksTheExtractionLimits(t *testing.T) {
 	})
 }
 
-// ---------------------------------------------------------------------------
-// Who may register, and what a registration must carry
-// ---------------------------------------------------------------------------
-
 func TestRegistrationRefusesWhatItCannotResolveBeforeTouchingTheDatabase(t *testing.T) {
-	// Every case below must be refused by the handler, so the nil DB never gets
-	// dereferenced. A handler that opened a transaction first would panic.
+	// Every case must be refused before the nil DB is dereferenced.
 	handler := previewHandler(t)
 
 	for _, tc := range []struct {
@@ -308,8 +282,7 @@ func TestRegistrationRefusesWhatItCannotResolveBeforeTouchingTheDatabase(t *test
 	}
 }
 
-// tooManyTags is one more distinct tag than commands.MaxTagCount allows, so
-// the refusal below cannot be confused with the dedup that runs first.
+// tooManyTags has distinct tags so the refusal cannot be confused with the dedup that runs first.
 func tooManyTags() string {
 	tags := make([]string, commands.MaxTagCount+1)
 	for i := range tags {
@@ -331,9 +304,7 @@ func TestAReadOnlyIdentityCannotRegisterAPackage(t *testing.T) {
 	rec := postForm(t, readOnly, "/v1/packages", "token", contentType, body)
 	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
 
-	// The negative control: the same request from an identity with a role that is
-	// allowed gets past the check and fails later, on the database it was never
-	// given here.
+	// Negative control: an allowed role gets past the check and fails on the missing database.
 	require.NotEqual(t, http.StatusForbidden,
 		postForm(t, previewHandler(t), "/v1/packages", "token", contentType, body).Code)
 }

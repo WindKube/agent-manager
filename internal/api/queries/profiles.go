@@ -15,13 +15,10 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// listProfilesSQL: head revision and package count come from a lateral join
-// over `revision` rather than loading every revision of every profile and
-// counting in Go. The first %s is the role subquery — the same one
-// readProfile uses, so a bulk list and the detail screen never disagree on
-// what a membership row means — and the second is the readability
-// predicate. jsonb_array_length over the head revision's `entries` array
-// excludes skipped entries structurally, since `skipped` is a sibling array.
+// listProfilesSQL takes head revision and package count from a lateral join.
+// The first %s is the role subquery (shared with readProfile), the second the
+// readability predicate. Skipped entries live in a sibling array, so
+// jsonb_array_length(entries) excludes them.
 const listProfilesSQL = `
 select
   p.slug,
@@ -42,10 +39,6 @@ where %s
 order by p.name`
 
 // ReadableProfiles returns exactly the profiles this principal may read.
-//
-// The role behind CanCurate is one correlated subquery evaluated once per
-// row of THIS query, not a second request per profile: exactly the shape
-// readProfile already uses for one profile, applied to every readable row.
 func ReadableProfiles(ctx context.Context, db bun.IDB, p auth.Principal) ([]contract.Profile, error) {
 	predicate, args := Readable("p", p)
 
@@ -55,9 +48,7 @@ func ReadableProfiles(ctx context.Context, db bun.IDB, p auth.Principal) ([]cont
 		role = "(select min(m.role)::text from membership as m where m.profile_id = p.id and " + subject + ")"
 	}
 
-	// The role subquery is rendered before the WHERE clause, so its
-	// arguments come first — see readProfile, which the same ordering rule
-	// comes from.
+	// The role subquery precedes the WHERE clause, so its arguments come first.
 	query := fmt.Sprintf(listProfilesSQL, role, predicate)
 	queryArgs := append(append([]any{}, subjectArgs...), args...)
 
@@ -116,9 +107,7 @@ where p.slug = ? and ` + predicate
 	if err := json.Unmarshal(raw, &lock); err != nil {
 		return contract.Lockfile{}, fmt.Errorf("decode stored lockfile for %s: %w", slug, err)
 	}
-	// The contract types entries, skipped and targets as required arrays, and a nil
-	// Go slice marshals to null. A stored lockfile written before one of these
-	// existed must not turn into a document that violates its own schema.
+	// The contract requires these arrays, and an older stored lockfile may lack them.
 	if lock.Entries == nil {
 		lock.Entries = []contract.LockfileEntry{}
 	}
@@ -139,9 +128,8 @@ type RevisionRef struct {
 	Seq        int
 }
 
-// ReadableRevisionRef resolves a profile slug and revision number to ids, under
-// the same readability predicate as everything else. It takes a bun.IDB so a
-// command can call it inside its own transaction.
+// ReadableRevisionRef resolves a readable profile slug and revision number to
+// ids. It takes a bun.IDB so a command can call it inside its transaction.
 func ReadableRevisionRef(ctx context.Context, db bun.IDB, p auth.Principal, slug string, seq int) (RevisionRef, error) {
 	predicate, args := Readable("p", p)
 

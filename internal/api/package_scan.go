@@ -11,12 +11,8 @@ import (
 	"agent-manager/internal/logging"
 )
 
-// The package detail screen's security section (the owner's "collapsible
-// section... scan result and approval and comment"): the latest visible
-// version's scan, findings and any reviewer decision, scoped to one
-// package. It reads the same rows /v1/findings and /v1/findings/{id} do
-// (internal/api/queries/package_scan.go), so the two screens cannot render
-// two different ideas of a finding.
+// The package detail screen's security section. It reads the same rows as
+// /v1/findings, so the two screens cannot disagree about a finding.
 
 type getPackageScanInput struct {
 	Namespace string `path:"namespace" doc:"The publishing namespace — the FIRST segment of the publisher slug, as it appears in the catalog id. Not the whole slug." example:"example"`
@@ -27,9 +23,7 @@ type getPackageScanOutput struct {
 	Body contract.PackageScan
 }
 
-// getPackageScan refuses a rejected version exactly as GET
-// /v1/bundles/{publisher}/{name}/{version} does (FR-029): a version that is
-// never distributed does not have its scan detail served either.
+// getPackageScan refuses a rejected version, as the bundle download does.
 func (s *Server) getPackageScan(ctx context.Context, in *getPackageScanInput) (*getPackageScanOutput, error) {
 	principal, _ := PrincipalFrom(ctx)
 	scan, err := queries.PackageScan(ctx, s.deps.DB, principal, in.Namespace, in.Name)

@@ -13,19 +13,14 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The Organization screen's operations.
-//
-// Every operation here needs the admin role: this screen changes what every
-// other identity in the organisation may do, and a screen that hides an
-// action is not the same as a request that is refused when it arrives anyway.
+// The Organization screen's operations. All require catalog-admin: this screen
+// changes what every other identity may do.
 var orgAdminRoles = []models.OrgRole{models.OrgRoleCatalogAdmin}
 
 func (s *Server) requireOrgAdmin(ctx context.Context, action string) error {
 	principal, _ := PrincipalFrom(ctx)
 	return requireRole(principal.Role, action, orgAdminRoles...)
 }
-
-// ---- GET /v1/organization ------------------------------------------------------
 
 type getOrganizationOutput struct {
 	Body contract.Organization
@@ -63,8 +58,6 @@ func (s *Server) getOrganization(ctx context.Context, _ *struct{}) (*getOrganiza
 	return &getOrganizationOutput{Body: out}, nil
 }
 
-// ---- POST /v1/organization/identity/test ---------------------------------------
-
 type testIdentityConnectionOutput struct {
 	Body contract.IdentityConnectionTest
 }
@@ -76,8 +69,6 @@ func (s *Server) testIdentityConnection(ctx context.Context, _ *struct{}) (*test
 	return &testIdentityConnectionOutput{Body: commands.TestIdentityConnection(ctx, s.deps.Identity)}, nil
 }
 
-// ---- POST /v1/organization/identity/secret --------------------------------------
-
 func (s *Server) rotateClientSecret(ctx context.Context, _ *struct{}) (*struct{}, error) {
 	if err := s.requireOrgAdmin(ctx, "rotate the identity provider's client secret"); err != nil {
 		return nil, err
@@ -87,8 +78,6 @@ func (s *Server) rotateClientSecret(ctx context.Context, _ *struct{}) (*struct{}
 	}
 	return &struct{}{}, nil
 }
-
-// ---- PUT /v1/organization/policy -------------------------------------------------
 
 type updatePolicyInput struct {
 	Body contract.UpdatePolicyRequest
@@ -110,8 +99,6 @@ func (s *Server) updatePolicy(ctx context.Context, in *updatePolicyInput) (*upda
 	}
 	return &updatePolicyOutput{Body: policy}, nil
 }
-
-// ---- /v1/organization/mappings[/{id}] --------------------------------------------
 
 type listMappingsOutput struct {
 	Body []contract.GroupRoleMapping
@@ -162,8 +149,6 @@ func (s *Server) deleteGroupRoleMapping(ctx context.Context, in *deleteMappingIn
 	}
 	return &struct{}{}, nil
 }
-
-// ---- /v1/organization/categories[/{id}] ------------------------------------------
 
 type listCategoriesOutput struct {
 	Body []contract.OrganizationCategory
@@ -232,11 +217,8 @@ func (s *Server) deleteCategory(ctx context.Context, in *deleteCategoryInput) (*
 	return &struct{}{}, nil
 }
 
-// orgFailure maps this screen's domain errors onto the wire. A validation
-// failure is a 422; a name collision is a 409, the same reading
-// registerPackage's immutability conflict and findings' rejected-finding
-// conflict already use for "well formed, permitted, and refused by the
-// resource's own state".
+// orgFailure maps this screen's domain errors onto the wire: validation is a 422,
+// a name collision a 409.
 func orgFailure(ctx context.Context, err error) error {
 	switch {
 	case errors.Is(err, commands.ErrInvalidGate),

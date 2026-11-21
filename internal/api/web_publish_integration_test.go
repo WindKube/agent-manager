@@ -1,20 +1,7 @@
 //go:build integration
 
-// TestPublishingThroughTheWebScreenMatchesWhatTheWireContractServes is the
-// closest this module can come to running "the CLI's own operation" against a
-// revision the web screen just published (T090).
-//
-// The CLI lives in its own Go module (cli/go.mod forbids a replace directive
-// back to this one on purpose, so `go install .../cli@latest` keeps working for
-// everyone outside this tree), and its getRevision call is inside an internal
-// package of that module — unreachable from here regardless of archcheck, which
-// only governs imports within this module. What this test exercises instead is
-// the identical wire operation, GET /v1/profiles/{slug}/revisions/head, which is
-// the exact request the CLI's generated client sends and the exact contract
-// internal/apiclient and the CLI's client are both generated from (constitution
-// principle V). A real web.Server, backed by the real api over httptest, creates
-// a profile and publishes a revision; the test then reads that revision back
-// over the wire and asserts it matches what the screen displayed.
+// The CLI is a separate module this one cannot import, so this test reads a
+// web-published revision back via the same wire operation the CLI's client sends.
 package api_test
 
 import (
@@ -50,10 +37,7 @@ func TestPublishingThroughTheWebScreenMatchesWhatTheWireContractServes(t *testin
 		"slug": {slug}, "name": {"E2E web-to-CLI"}, "visibility": {"private"},
 	}, kw.token)
 
-	// The web screens offer no way to add a package to a profile yet (there is
-	// no "add to profile" action from the catalog), so the one live entry this
-	// test needs is seeded directly, the same way seed() populates the catalog
-	// this test already runs against.
+	// The web screens cannot add a package to a profile yet, so the entry is seeded directly.
 	packageID := packageIDFor(t, "acme", "code-review")
 	insertEntry(t, slug, packageID)
 

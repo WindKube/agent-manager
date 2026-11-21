@@ -11,9 +11,8 @@ type Profile struct {
 	Visibility   string `json:"visibility,omitempty" enum:"organisation,shared,private" doc:"How this profile came to be readable by this identity." example:"organisation"`
 	PackageCount int    `json:"packageCount" doc:"Packages in the head revision, excluding skipped entries." example:"12"`
 	HeadRevision int    `json:"headRevision" doc:"The most recent published revision number." example:"7"`
-	// CanCurate is FR-126 at list scope: owner or maintainer membership, so a
-	// caller can offer this profile as an add-to-profile target without a
-	// per-profile detail read just to find out.
+	// CanCurate lets a caller offer this profile as an add-to-profile target
+	// without a per-profile detail read.
 	CanCurate bool `json:"canCurate" doc:"Whether this identity's role on this profile lets it change what the profile holds."`
 }
 
@@ -30,8 +29,8 @@ type Lockfile struct {
 	Gate          string          `json:"gate" enum:"block,approval,warn-with-override" doc:"The org scan gate in force at resolution. Recorded so a lockfile explains itself later." example:"approval"`
 	DefaultPolicy string          `json:"defaultPolicy,omitempty" enum:"floating-latest,pinned,range" example:"pinned"`
 	Entries       []LockfileEntry `json:"entries" doc:"Packages this revision resolves to an exact version."`
-	Skipped       []LockfileSkip  `json:"skipped" doc:"FR-036: an excluded package is reported with its reason, never silently omitted."`
-	Targets       []string        `json:"targets" enum:"claude-code,codex,opencode" doc:"Which agent directories the CLI should write. Advisory to the client; the server stores nothing per target (FR-039)."`
+	Skipped       []LockfileSkip  `json:"skipped" doc:"An excluded package is reported with its reason, never silently omitted."`
+	Targets       []string        `json:"targets" enum:"claude-code,codex,opencode" doc:"Which agent directories the CLI should write. Advisory to the client; the server stores nothing per target."`
 }
 
 type LockfileProfile struct {
@@ -58,8 +57,6 @@ type LockfileOverride struct {
 	ExpiresAt time.Time `json:"expiresAt"`
 }
 
-// Verified stays false until cryptographic verification ships and must
-// never be rendered as a pass.
 type LockfileSignature struct {
 	Ref      string `json:"ref,omitempty" example:"sigstore:acme/code-review@2.4.1"`
 	Verified *bool  `json:"verified,omitempty" doc:"True only when the Sigstore bundle verified against the archive the hub downloaded AND its signer matches the package's expected signer. False covers a bundle that did not verify and one signed by anyone else, or with no expected signer configured; never render it as a pass."`
@@ -74,7 +71,7 @@ type LockfileSkip struct {
 
 type DeviceAuthorizeRequest struct {
 	ClientID string `json:"client_id" doc:"The CLI's registered OAuth client identifier." example:"agent-manager-cli"`
-	Host     string `json:"host" doc:"Hostname of the requesting machine. Bound to the authorisation and displayed to the approving human (FR-041), so approval is an informed act." example:"dev-laptop-01"`
+	Host     string `json:"host" doc:"Hostname of the requesting machine. Bound to the authorisation and displayed to the approving human, so approval is an informed act." example:"dev-laptop-01"`
 	Scope    string `json:"scope,omitempty" doc:"Space-delimited scopes. Omitted means the client's default scope." example:"profiles:read bundles:read"`
 }
 
@@ -90,9 +87,8 @@ type DeviceAuthorization struct {
 	Interval                int    `json:"interval" doc:"Minimum seconds between polls of /v1/device/token." example:"5"`
 }
 
-// DeviceTokenRequest arrives form-encoded, as RFC 8628 requires; the
-// operation declares the media type by hand since huma models an object
-// body as JSON.
+// DeviceTokenRequest arrives form-encoded, as RFC 8628 requires; the operation
+// declares the media type by hand since huma models an object body as JSON.
 type DeviceTokenRequest struct {
 	GrantType  string `json:"grant_type" const:"urn:ietf:params:oauth:grant-type:device_code" doc:"Fixed by RFC 8628 3.4. No other grant type is accepted here."`
 	DeviceCode string `json:"device_code" doc:"The device_code handed back by /v1/device/authorize."`

@@ -1,10 +1,7 @@
 //go:build integration
 
-// The package detail endpoint against a real Postgres (US3, T058, T062).
-//
-// The catalog fixtures are reused rather than a second seed written: the point of
-// T062 is that BOTH VARIANTS render for EVERY seeded package, and a fixture set
-// built for this file would be a set chosen to pass it.
+// The package detail endpoint against a real Postgres. It reuses the catalog fixtures,
+// since a seed written for this file would be chosen to pass it.
 package api_test
 
 import (
@@ -31,9 +28,7 @@ func detail(t *testing.T, handler http.Handler, token, id string) contract.Packa
 	return page
 }
 
-// T062. Every package the design seeds opens, and each one obeys the invariants
-// of its variant. Driven off designPackages rather than a list written here, so a
-// package added to the catalog fixtures cannot skip this by omission.
+// Driven off designPackages, so a package added to the catalog fixtures cannot skip this.
 func TestEverySeededPackageOpensAsTheVariantItIs(t *testing.T) {
 	handler := liveHandler(t)
 	seedCatalog(t)
@@ -55,10 +50,7 @@ func TestEverySeededPackageOpensAsTheVariantItIs(t *testing.T) {
 			require.Equal(t, string(spec.verdict), page.Verdict)
 			require.ElementsMatch(t, spec.tags, page.Tags)
 
-			// The variant split. A skill's manifest column holds SKILL.md
-			// frontmatter and a plugin's holds plugin.json, and the response names
-			// which of the two it is returning rather than leaving the caller to
-			// infer it from Kind.
+			// The response names which manifest it returns rather than leaving the caller to infer it.
 			if spec.kind == models.PackageKindSkill {
 				require.Equal(t, "SKILL.md", page.ManifestObject)
 			} else {
@@ -68,11 +60,7 @@ func TestEverySeededPackageOpensAsTheVariantItIs(t *testing.T) {
 			require.True(t, json.Valid([]byte(page.Manifest)),
 				"the column is jsonb for both kinds, so a skill's frontmatter is stored as json")
 
-			// Every seeded version is unscanned, so both capability lists are empty
-			// AND `scanned` is false. The two facts are asserted separately because
-			// they are separable: a scan that found nothing produces the same empty
-			// lists with `scanned` true, and reading emptiness as "never scanned"
-			// is the mistake this flag exists to prevent.
+			// Asserted separately: a clean scan also yields empty lists, but with `scanned` true.
 			require.False(t, page.Capabilities.Scanned)
 			require.Empty(t, page.Capabilities.Inferred)
 			require.Empty(t, page.Capabilities.Expected)
@@ -81,14 +69,13 @@ func TestEverySeededPackageOpensAsTheVariantItIs(t *testing.T) {
 			require.Equal(t, spec.semver, page.Versions[0].Version)
 			require.Equal(t, fmt.Sprintf("skills/%s/%s/%s/bundle.tar.zst",
 				namespaceOf(spec.publisher), spec.name, spec.semver), page.Versions[0].ObjectKey,
-				"FR-019 asks for the whole key, not a suffix")
+				"the whole key, not a suffix")
 			require.Regexp(t, `^sha256:[0-9a-f]{64}$`, page.Versions[0].Digest)
 		})
 	}
 }
 
-// The private package the catalog refuses to list is also not openable. Without
-// this the detail page would be a second, quieter definition of "published".
+// Otherwise the detail page would be a second, quieter definition of "published".
 func TestAPackageTheCatalogWillNotListIsNotOpenableEither(t *testing.T) {
 	handler := liveHandler(t)
 	seedCatalog(t)
@@ -97,8 +84,7 @@ func TestAPackageTheCatalogWillNotListIsNotOpenableEither(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
 }
 
-// One 404 for "no such package" and for "not yours". Distinguishing them would
-// confirm the existence of packages a caller may not see.
+// One 404 for "no such package" and "not yours", or the status confirms existence.
 func TestAnUnknownPackageAndAnUnreadableOneAreTheSame404(t *testing.T) {
 	handler := liveHandler(t)
 	seedCatalog(t)
@@ -114,15 +100,8 @@ func TestAnUnknownPackageAndAnUnreadableOneAreTheSame404(t *testing.T) {
 	}
 }
 
-// D1, and the reason this file exists at all. The design's "Used in profiles"
-// panel names every profile using the package unconditionally; three of the four
-// seeded profiles are private.
-//
-// Two identities with different memberships must see different lists, and the
-// profile neither of them can read must appear for neither. The pin count is
-// asserted in the same subtest and not a separate one, because the leak this
-// closes is the DIFFERENCE between a scoped list and an unscoped count: testing
-// them apart is what lets that difference survive.
+// "Used in profiles" must be scoped to what the caller can read. The pin count is asserted
+// in the same subtest because the leak is the difference between a scoped list and an unscoped count.
 func TestTheDependentsPanelAndThePinCountAreBothScopedToTheReader(t *testing.T) {
 	handler := liveHandler(t)
 	seedCatalog(t)
@@ -130,10 +109,7 @@ func TestTheDependentsPanelAndThePinCountAreBothScopedToTheReader(t *testing.T) 
 	const id = "example/platform-toolkit"
 	ctx := context.Background()
 
-	// platform-toolkit sits in all four seeded profiles, at `latest`. Pinning them
-	// all at its latest version is what makes the count non-zero; the entries are
-	// restored afterwards so the catalog's `uses` column, which counts these rows,
-	// is unaffected either way.
+	// Pinning makes the count non-zero; entries are restored so the catalog's `uses` column is unaffected.
 	var versionID, packageID string
 	require.NoError(t, pool.QueryRow(ctx,
 		`select ver.id::text, pkg.id::text from package pkg
@@ -202,9 +178,7 @@ func TestTheDependentsPanelAndThePinCountAreBothScopedToTheReader(t *testing.T) 
 	}
 }
 
-// The plugin variant's component list, and the skill variant's parent. Neither is
-// in the catalog fixtures — the catalog needs neither — so both are added here
-// and removed again.
+// The catalog fixtures have neither components nor parents, so both are added here and removed.
 func TestThePluginVariantListsItsComponentsAndTheSkillVariantNamesItsParent(t *testing.T) {
 	handler := liveHandler(t)
 	seedCatalog(t)
@@ -244,10 +218,7 @@ func TestThePluginVariantListsItsComponentsAndTheSkillVariantNamesItsParent(t *t
 		page := detail(t, handler, kw.token, "example/platform-toolkit")
 		require.Len(t, page.Components, 5)
 
-		// Ordered by the enum's declaration order — skill, mcp, ext — which is the
-		// design's order and not the alphabetical one. Sorting the text would put
-		// ext first, so this assertion is what holds `order by kind` to meaning the
-		// enum rather than the string.
+		// Enum declaration order (skill, mcp, ext), not alphabetical.
 		kinds := make([]string, 0, len(page.Components))
 		for _, component := range page.Components {
 			kinds = append(kinds, component.Kind)
@@ -261,16 +232,12 @@ func TestThePluginVariantListsItsComponentsAndTheSkillVariantNamesItsParent(t *t
 		require.Equal(t, "./guard.sh", hook.Target)
 		require.Empty(t, page.Components[2].Transport, "a row with no surface columns renders none")
 
-		// The catalog fixtures store a minimal manifest with no `$schema`, and the
-		// honest answer to "which spec version" is then none rather than a guess.
+		// No `$schema` in the manifest means no spec version rather than a guess.
 		require.Empty(t, page.Origin.SpecVersion)
 	})
 
 	t.Run("the spec version is read out of the manifest's $schema and nowhere else", func(t *testing.T) {
-		// Agent Plugins 1.0.0 has no `agentPluginsVersion` field — the design's
-		// manifest is non-conformant (R1) — so `$schema` is the only place either
-		// specification's version appears. Written here rather than into the shared
-		// fixtures because every other assertion in this file wants the minimal one.
+		// Agent Plugins 1.0.0 has no version field, so `$schema` is the only place the spec version appears.
 		_, updateErr := pool.Exec(ctx,
 			`update version set manifest = $1 where id = $2`,
 			`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",`+
@@ -290,9 +257,7 @@ func TestThePluginVariantListsItsComponentsAndTheSkillVariantNamesItsParent(t *t
 			"the description comes from the version's manifest — package has no such column")
 	})
 
-	// pii-redactor is seeded standalone. Making it a component of security-review-kit
-	// is the only way to reach the skill variant's parent branch, because nothing in
-	// the catalog fixtures sets parent_package_id.
+	// Nothing in the catalog fixtures sets parent_package_id.
 	_, err = pool.Exec(ctx,
 		`update package set parent_package_id = (
 		   select id from package where namespace = 'example' and name = 'security-review-kit')
@@ -310,9 +275,7 @@ func TestThePluginVariantListsItsComponentsAndTheSkillVariantNamesItsParent(t *t
 
 		require.Equal(t, "example/security-review-kit", page.Origin.ParentID)
 		require.Equal(t, "security-review-kit", page.Origin.ParentName)
-		// D3: there is no parent VERSION and the response carries none. The design's
-		// "distributed inside Platform Toolkit 1.3.0" would have to read the parent's
-		// current latest, which rewrites itself when the parent publishes.
+		// No parent version: it would have to be the parent's current latest, which moves on publish.
 		require.Empty(t, page.Origin.SpecVersion,
 			"agentskills.io publishes no schema, so a skill states no spec version")
 	})

@@ -11,9 +11,7 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// runtimeHandler is handed Deps with no queue, so anything that reached the
-// query would panic on a nil interface and answer 500 — a 403 is proof the
-// role check ran first.
+// runtimeHandler has no queue, so a 403 proves the role check ran before the query.
 func runtimeHandler(t *testing.T, principal auth.Principal) http.Handler {
 	t.Helper()
 	return handler(t, api.Deps{Sessions: resolver{principal: principal}})
@@ -26,8 +24,7 @@ func TestReadingTheRuntimeReportIsRefusedToEveryRoleButCatalogAdmin(t *testing.T
 		want int
 	}{
 		{
-			// Past the role check and into the query, which has no queue pool;
-			// getting past 403 is the assertion, not the 500.
+			// Getting past 403 is the assertion; the 500 comes from the missing queue.
 			name: "a catalog admin reads the runtime report",
 			role: models.OrgRoleCatalogAdmin,
 			want: http.StatusInternalServerError,
@@ -62,8 +59,6 @@ func TestReadingTheRuntimeReportIsRefusedToEveryRoleButCatalogAdmin(t *testing.T
 	}
 }
 
-// The refusal names what would have worked, so a person with no mapped group
-// can tell that from holding the wrong one.
 func TestTheRuntimeRefusalNamesTheRoleThatWouldHaveWorked(t *testing.T) {
 	h := runtimeHandler(t, auth.Principal{Subject: "sub-x", Role: models.OrgRoleReadOnly})
 

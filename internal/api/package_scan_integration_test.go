@@ -13,15 +13,8 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// GET /v1/packages/{namespace}/{name}/scan — the package detail screen's
-// security section, read against a real Postgres. It is the same rows
-// /v1/findings and /v1/findings/{id} read (queries/package_scan.go mirrors
-// findings.go's own SQL), so what is asserted here is the part a
-// handler-shaped test with a fake store cannot see: that the SUPERSEDED
-// version's finding never leaks in through the wrong join, that a clean
-// scan with no check matrix answers with an empty list rather than an
-// error, that an override's reviewer and note actually come back, and that
-// a rejected version is refused here exactly as getBundle refuses it.
+// GET /v1/packages/{namespace}/{name}/scan against a real Postgres: covers the
+// joins a fake store cannot, e.g. a superseded version's finding never leaking in.
 
 func packageScan(t *testing.T, handler http.Handler, path string) contract.PackageScan {
 	t.Helper()
@@ -70,11 +63,7 @@ func TestPackageScanNamesTheReviewerAndTheirNoteOnAnApprovedFinding(t *testing.T
 	require.NotEmpty(t, scan.Findings[0].Override.Reviewer)
 }
 
-// TestPackageScanTellsNeverScannedApartFromScannedClean is FR-025's other
-// half: designPackages seeds ten packages with no scan row at all, and the
-// screen's "not scanned yet" state must not be confused with "scanned, no
-// findings" — the two answer the same shape (Scanned/Checks/Findings) but
-// the boolean has to be the only thing telling them apart.
+// Never-scanned and scanned-clean share a shape; only Scanned tells them apart.
 func TestPackageScanTellsNeverScannedApartFromScannedClean(t *testing.T) {
 	seedCatalog(t)
 	handler := liveHandler(t)
@@ -86,9 +75,6 @@ func TestPackageScanTellsNeverScannedApartFromScannedClean(t *testing.T) {
 	require.Empty(t, scan.Findings)
 }
 
-// TestPackageScanRefusesARejectedVersionsScan is FR-029 at this door: a
-// rejected version's scan detail is refused exactly as getBundle refuses
-// its bytes and the files operations refuse its tree.
 func TestPackageScanRefusesARejectedVersionsScan(t *testing.T) {
 	seedPackageWithBundle(t, "pkgscantest", "rejected-latest", models.VerdictRejected,
 		"skills/pkgscantest/rejected-latest/1.0.0/bundle.tar.zst")

@@ -14,32 +14,16 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The Scanner screen's reads deliberately don't compose Readable(): a
-// finding hangs off a version, not a profile, and there is nothing here to
-// scope it by. What is scoped is the decision — accepting or rejecting a
-// finding is a scanner-reviewer act, enforced in the operation. These reads
-// also don't filter on package.visibility: a flagged package the catalog
-// hides would otherwise be unreachable and unclearable.
-
-// ScannerPeriod bounds the summary's window and is capped, since an
-// unbounded window turns a bounded aggregate into a full table scan.
+// Scanner summary window bounds; an unbounded window is a full table scan.
 const (
 	DefaultScannerPeriodDays = 30
 	MaxScannerPeriodDays     = 365
 )
 
-// scannerSummarySQL is one statement of four scalar subqueries rather than
-// four round trips or a join, since the four figures share no relation.
-//
-// `quarantined` is the latest visible flagged version count, not the
-// flagged version count: a version superseded by a newer release resolves
-// to nothing, so counting it would report a risk no profile is exposed to.
-// `rejected` is deliberately not counted: it is terminal, never served, so
-// not awaiting a decision.
-//
-// The median is the scan's own start to its own verdict, not
-// `version.created_at` (registration time), which would fold queue latency
-// into a figure captioned as scan time.
+// scannerSummarySQL is one round trip of independent scalar subqueries.
+// `quarantined` counts only latest visible versions, since a superseded one
+// exposes no profile. The median runs from scan start, not version creation,
+// so queue latency isn't reported as scan time.
 const scannerSummarySQL = `
 select
   (select count(distinct scn.version_id)
@@ -76,7 +60,7 @@ func ScannerSummary(ctx context.Context, db bun.IDB, periodDays int) (contract.S
 	}
 
 	out := contract.ScannerSummary{PeriodDays: periodDays}
-	// Both nullable: neither is zero, and "18s" and "no scans yet" differ.
+	// Nullable: "no scans yet" is not zero.
 	var (
 		expiry sql.NullTime
 		median sql.NullFloat64
@@ -96,26 +80,21 @@ func ScannerSummary(ctx context.Context, db bun.IDB, periodDays int) (contract.S
 	return out, nil
 }
 
-// FindingFilter is one findings-list request. State and Severity are empty
-// for "every one of them"; the screen's default view of open findings says
-// so by passing the filter rather than the API defaulting to one.
+// FindingFilter is one findings-list request. Empty State and Severity mean all.
 type FindingFilter struct {
 	State    models.FindingState
 	Severity models.FindingSeverity
 	Page     int
 	PageSize int
-	// Principal is whose readability applies. A finding names its package
-	// and quotes paths and snippets out of its bundle, so an unfiltered
-	// listing publishes a private package's contents to anyone signed in.
+	// Principal is whose readability applies: findings quote bundle contents,
+	// so an unfiltered list would leak private packages.
 	Principal auth.Principal
-	// EveryPackage lifts that filter for a caller who may already decide a
-	// finding. A reviewer who cannot see a private package's findings cannot
-	// review it at all, and a private package that escapes review entirely
-	// is the one outcome narrowing visibility must not buy.
+	// EveryPackage lifts that filter for a caller who may decide findings, so
+	// no private package escapes review.
 	EveryPackage bool
 }
 
-// The findings page and its cap, for the same reason as the catalog.
+// The findings page size and its cap.
 const (
 	DefaultFindingsPageSize = 20
 	MaxFindingsPageSize     = 100
@@ -151,11 +130,9 @@ from finding as fnd
 join version as ver on ver.id = fnd.version_id
 join package as pkg on pkg.id = ver.package_id`
 
-// findingOrder is severity first, then newest. `fnd.severity desc` sorts by
-// the enum's declaration order (high first) and is alias-qualified, not
-// cast to text: a bare `order by severity` binds to the cast output column
-// and sorts alphabetically instead — a shipped defect this codebase has
-// already had once in package.go. fnd.id breaks ties.
+// findingOrder is severity first (enum order), then newest. The alias
+// qualification matters: a bare `order by severity` binds to the ::text
+// output column and sorts alphabetically.
 const findingOrder = `order by fnd.severity desc, fnd.created_at desc, fnd.id`
 
 func (f FindingFilter) predicates() *predicates {
@@ -182,7 +159,6 @@ func Findings(ctx context.Context, db bun.IDB, filter FindingFilter) (contract.F
 		return contract.FindingsPage{}, err
 	}
 
-	// Same rule as the catalog's page clamp.
 	if pages := (total + filter.PageSize - 1) / filter.PageSize; total > 0 && filter.Page > pages {
 		filter.Page = pages
 	}
@@ -241,10 +217,8 @@ limit ? offset ?`
 }
 
 func findingCount(ctx context.Context, db bun.IDB, where *predicates) (int, error) {
-	// findingFrom, not a bare `from finding`: the readability predicate reads
-	// pkg.visibility, so the count has to reach `package` the same way the
-	// page does or it counts rows the page will not return. Both joins are
-	// inner and on non-null foreign keys, so they cannot change the total.
+	// findingFrom, not a bare `from finding`: the readability predicate needs
+	// `package`, and the count must match the page.
 	var total int
 	query := "select count(*)" + findingFrom + "\n" + where.where()
 	if err := db.QueryRowContext(ctx, query, where.args...).Scan(&total); err != nil {
@@ -253,9 +227,7 @@ func findingCount(ctx context.Context, db bun.IDB, where *predicates) (int, erro
 	return total, nil
 }
 
-// findingDetailSQL is the header of the detail pane, in one round trip. The
-// reviewer's name comes from `identity`, not the audit row that recorded
-// the decision, so the two cannot disagree about who decided.
+// findingDetailSQL is the header of the detail pane, in one round trip.
 const findingDetailSQL = `
 select
   fnd.id,
@@ -284,10 +256,8 @@ left join override as ovr on ovr.finding_id = fnd.id
 left join identity as idt on idt.id = ovr.reviewer_identity_id
 where fnd.id = ? and %s`
 
-// Finding answers the detail pane with three sequential statements: the
-// header above, every check the scan ran, and every evidence location.
-// Each is a cheap index lookup, unlike the scans Catalog and Package need
-// concurrency for.
+// Finding answers the detail pane: the header, every check the scan ran and
+// every evidence location, sequentially since each is a cheap index lookup.
 func Finding(ctx context.Context, db bun.IDB, id uuid.UUID, p auth.Principal, everyPackage bool) (contract.FindingDetail, error) {
 	var (
 		out       contract.FindingDetail
@@ -342,16 +312,8 @@ func Finding(ctx context.Context, db bun.IDB, id uuid.UUID, p auth.Principal, ev
 }
 
 // findingChecks reads every check the raising scan ran, passes included, so
-// the absence of a finding is distinguishable from the absence of a check.
-// The scan is the relation, not the finding, since a passing check has no
-// finding to hang off.
-//
-// Order groups by engine first, so the matrix reads as one block per
-// analyser. Within an engine it is check_id ascending; the `created_at` in front of it never
-// breaks a tie in practice, since the scanner writes the whole matrix in
-// one transaction and the column defaults to the transaction timestamp —
-// every row shares an instant, so the sort falls through to check_id and
-// the matrix renders alphabetically, not in registration order.
+// a missing finding is distinguishable from a missing check. Rows share one
+// transaction timestamp, so within an engine the order is effectively check_id.
 func findingChecks(ctx context.Context, db bun.IDB, id uuid.UUID) ([]contract.FindingCheck, error) {
 	const query = `
 select schk.check_id, schk.engine, schk.label, schk.explain, schk.result::text, schk.warn_count
@@ -381,8 +343,7 @@ order by schk.engine, schk.created_at, schk.check_id`
 	return checks, nil
 }
 
-// findingEvidence reads every location, cause first: `primary` sorts
-// before `supporting` in the enum's declaration order.
+// findingEvidence reads every location, `primary` first by enum order.
 func findingEvidence(ctx context.Context, db bun.IDB, id uuid.UUID) ([]contract.FindingEvidence, error) {
 	const query = `
 select fev.path, fev.line, coalesce(fev.quote, ''), fev.role::text

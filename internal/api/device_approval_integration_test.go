@@ -58,8 +58,7 @@ func TestLookupDeviceCodeShowsTheHostAndValidityBeforeConfirmation(t *testing.T)
 	require.Equal(t, "dev-laptop-06", body.RequestingHost)
 	require.Positive(t, body.ExpiresIn)
 
-	// A lookup is a read: it must not decide anything. The row is still pending
-	// and still approvable afterwards.
+	// A lookup must not decide anything; the row stays pending and approvable.
 	require.Equal(t, "pending", deviceState(t, out.UserCode))
 }
 
@@ -112,7 +111,6 @@ func TestTheThreeRefusalsAreDistinguishableAndTheFourthIsNot(t *testing.T) {
 		first := request(t, h, http.MethodPost, approvePath(out.UserCode), kw.token, "")
 		require.Equal(t, http.StatusOK, first.Code, first.Body.String())
 
-		// `an` is a different identity from `kw`, the one that just approved.
 		second := request(t, h, http.MethodPost, approvePath(out.UserCode), an.token, "")
 		require.Equal(t, http.StatusConflict, second.Code, second.Body.String())
 
@@ -180,7 +178,6 @@ func TestApprovalPathParameterNeverAppearsInTheRequestLog(t *testing.T) {
 			"a per-request log line must never carry the user code, matched or unmatched: %s", line)
 	}
 
-	// The route template is still there, so the fix is a redaction and not a
-	// silently dropped log line.
+	// The route template is still logged, so this is a redaction, not a dropped line.
 	require.Contains(t, logged.String(), "/v1/device/authorizations/:user_code")
 }

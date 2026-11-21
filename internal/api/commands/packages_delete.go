@@ -14,36 +14,11 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// Deleting from the catalog.
-//
-// Neither delete below removes a row. version.digest, version.object_key and
-// version.verdict are the write-once trio principle IV protects, and
-// 03-constraints.sql's own comment on package_latest_version_id_fkey already
-// assumes a version is never physically deleted ("the only way this reference
-// can block a delete is a delete that should not be happening"). A published
-// revision's lockfile is a jsonb snapshot with no foreign key of its own, and
-// a profile_entry can pin a version directly — a hard delete would either
-// trip a NO ACTION foreign key or silently rewrite a historical record the
-// schema was built not to allow.
-//
-// What "delete" means instead is what dist_tag = 'archived' already means,
-// unused by any code path until now: resolve.Candidate.Visible's own doc
-// comment states the exact semantics wanted here — "withdrawing a version
-// from the shelf isn't the same as withdrawing it from machines that chose
-// it." Archiving a version takes it out of poolFor's floating/range pool
-// (internal/domain/resolve/resolve.go) and, when it held the package's
-// `latest_version_id`, out of the catalog and the package detail screen —
-// both join through that column. An explicit pin or a revision that already
-// recorded this semver keeps resolving, because digest, object_key, verdict
-// and `visible` never change. Deleting a package is the same act applied to
-// every one of its versions, plus clearing `latest_version_id`, which is what
-// makes catalogFrom's own join stop finding the package at all — the same
-// 404 an unpublished package already answers with.
-//
-// This is also the only delete `serve api` could perform: principle II gives
-// object-store write access to `worker fetcher` alone, so this role holds no
-// credential to remove a blob even where a hard delete would otherwise be
-// safe. Blobs are never touched by either function below.
+// Catalog deletes archive (dist_tag = 'archived') rather than remove rows:
+// version digest/object_key/verdict are write-once, and revisions and pinned
+// entries still reference them. Archived versions leave the floating pool and
+// the catalog but keep resolving for explicit pins. Blobs are never touched;
+// only worker fetcher holds object-store write access.
 
 var (
 	ErrPackageNotFound = errors.New("no such package")
@@ -59,10 +34,8 @@ type VersionWithdrawal struct {
 	PinnedByProfiles int
 }
 
-// DeleteVersion archives one version. It refuses only on not-found or a
-// version already archived — a reference from a profile entry or a revision
-// is not a reason to refuse; it is the reason archiving exists instead of a
-// hard delete.
+// DeleteVersion archives one version. References from profile entries or
+// revisions are not a reason to refuse; they are why it archives.
 func DeleteVersion(ctx context.Context, db bun.IDB, p auth.Principal, namespace, name, semver string) (VersionWithdrawal, error) {
 	var out VersionWithdrawal
 	err := db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
@@ -118,9 +91,8 @@ type PackageWithdrawal struct {
 	VersionsArchived int
 }
 
-// DeletePackage archives every version of a package not archived already,
-// and clears latest_version_id so the catalog and the package detail
-// screen's own join — both keyed on that column — stop finding it.
+// DeletePackage archives every version of a package and clears
+// latest_version_id, which is what the catalog joins on.
 func DeletePackage(ctx context.Context, db bun.IDB, p auth.Principal, namespace, name string) (PackageWithdrawal, error) {
 	var out PackageWithdrawal
 	err := db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
@@ -178,10 +150,8 @@ func lookupPackage(ctx context.Context, tx bun.IDB, namespace, name string) (*mo
 	return pkg, nil
 }
 
-// promoteLatest hands `latest` and latest_version_id to the next newest
-// committed, non-archived version, mirroring the comparison
-// worker/fetcher/publish.go makes at publish time. No candidate is not an
-// error: package.latest_version_id is nullzero for exactly this case.
+// promoteLatest hands `latest` to the next newest visible, non-archived
+// version, or clears latest_version_id when there is none.
 func promoteLatest(ctx context.Context, tx bun.Tx, packageID, archivedID uuid.UUID) error {
 	var nextID uuid.UUID
 	err := tx.QueryRowContext(ctx, `
@@ -234,9 +204,8 @@ func pinNote(n int) string {
 	}
 }
 
-// catalogDeleteAudit reuses AuditKindFetch rather than a dedicated
-// audit_kind value: `fetch` is already this codebase's catalog-lifecycle
-// kind, and data.action says `deleted` for a consumer that needs it exact.
+// catalogDeleteAudit reuses AuditKindFetch, the catalog-lifecycle kind, rather
+// than a dedicated audit_kind value.
 func catalogDeleteAudit(p auth.Principal, text string, subject audit.Subject) audit.Entry {
 	return identityAudit(p, models.AuditKindFetch, "deleted", text, subject)
 }

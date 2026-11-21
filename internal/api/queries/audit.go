@@ -12,30 +12,19 @@ import (
 	"agent-manager/internal/api/contract"
 )
 
-// The table is append-only by revoked grant, so nothing here can be wrong
-// about history — but it is also the one table in this schema designed to
-// grow without bound, which shapes both reads: the page is bounded and the
-// export never holds more than one row in memory.
-//
-// Unfiltered, `audit_event_occurred_at_idx` on `("occurred_at" desc)` is the
-// access path — a forward scan of that index, stopped early by the page's
-// `limit`/`offset`. The `id` tiebreak is not in
-// the index and does not need to be: it only orders rows sharing an
-// instant, which Postgres finishes with an incremental sort per tied group.
-//
-// Both reads take the same AuditFilter, so the export is always the page's
-// full current scope. Each filter has its own index: a selective predicate
-// over a desc scan of occurred_at reads everything it rejects.
+// audit_event grows without bound, so the page is capped and the export
+// never holds more than one row in memory. Each filter needs its own index:
+// a selective predicate over a desc scan of occurred_at reads everything it
+// rejects.
 
-// The audit page and its cap: the page size arrives from a client.
+// The audit page size arrives from a client, hence the cap.
 const (
 	DefaultAuditPageSize = 50
 	MaxAuditPageSize     = 200
 )
 
-// AuditFilter narrows both reads. A package subject also matches the rows
-// about its versions and findings, which carry it as data.package, so a
-// package's history is one filter.
+// AuditFilter narrows both reads. A package subject also matches its
+// versions' and findings' rows, which carry it as data.package.
 type AuditFilter struct {
 	SubjectKind string
 	SubjectID   string
@@ -66,8 +55,7 @@ func (f AuditFilter) where() (clause string, args []any) {
 	return "\nwhere " + strings.Join(clauses, "\n  and "), args
 }
 
-// auditSelect is the row shape both reads share, so the page and the export
-// cannot come to describe the same row differently.
+// auditSelect is the row shape shared by the page and the export.
 const auditSelect = `
 select
   aud.id,
@@ -102,8 +90,7 @@ func Audit(ctx context.Context, db bun.IDB, filter AuditFilter, page, pageSize i
 	if err := db.QueryRowContext(ctx, "select count(*) from audit_event as aud"+where, args...).Scan(&total); err != nil {
 		return contract.AuditPage{}, fmt.Errorf("count the audit log: %w", err)
 	}
-	// Clamped and re-read at the last page rather than answered empty, as the
-	// catalog and the findings list are.
+	// Clamp to the last page rather than answer empty, as the catalog does.
 	if pages := (total + pageSize - 1) / pageSize; total > 0 && page > pages {
 		page = pages
 	}
@@ -129,19 +116,10 @@ func Audit(ctx context.Context, db bun.IDB, filter AuditFilter, page, pageSize i
 	return out, nil
 }
 
-// AuditExport streams the whole log to emit, one row at a time. It takes a
-// callback rather than returning a slice: `audit_event` is designed to grow
-// without bound, so a function returning `[]contract.AuditEntry` would hold
-// the whole log in the api's heap before a single byte reached the client.
-// The row travels straight from the driver's cursor to the caller's
-// encoder, so nothing accumulates. The count returned is the number
-// emitted, letting the caller close the stream with a sentinel saying how
-// many there were.
-//
-// The cost is a connection held for the length of the export, and no
-// statement timeout is imposed: cutting off an operator's export halfway
-// would produce a truncated file that looks complete, worse than a slow
-// one. It is authenticated, and that is the control.
+// AuditExport streams the whole log to emit one row at a time, so the
+// unbounded table never accumulates in memory, and returns the count emitted.
+// No statement timeout on purpose: a cut-off export would look complete.
+
 func AuditExport(ctx context.Context, db bun.IDB, filter AuditFilter, emit func(contract.AuditEntry) error) (int, error) {
 	where, args := filter.where()
 	rows, err := db.QueryContext(ctx, auditSelect+where+auditOrder, args...)

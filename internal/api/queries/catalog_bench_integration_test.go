@@ -1,16 +1,8 @@
 //go:build integration
 
-// T055 — the R12 gate, and SC-003.
-//
-// This is a measurement, not a smoke test. R12 says the `catalog_entry`
-// projection — principle VIII's single sanctioned projection — is built ONLY if
-// the base tables miss SC-003's 300 ms p95 at 10,000 packages and 50,000
-// versions. So the dataset is generated at that size, against the checked-in
-// migrations with the data-model.md indexes, and the R4 pair is timed.
-//
-// It stays in the suite afterwards, because the answer is only true of the query
-// as it stands: a filter added later that cannot use an index turns the decision
-// over without anybody noticing, and this is what would notice.
+// This is a measurement: the `catalog_entry` projection is built only if the
+// base tables miss a 300 ms p95 at 10,000 packages and 50,000 versions. It stays
+// in the suite so a later filter that cannot use an index gets noticed.
 package queries
 
 import (
@@ -34,33 +26,26 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The R12 dataset. These numbers are R12's, not a guess: changing one changes
-// what the gate below is evidence for.
+// The dataset size is what the gate below is evidence for; don't change it casually.
 const (
 	benchPackages = 10_000
 	benchVersions = 50_000
 	benchPerPkg   = benchVersions / benchPackages
 
-	// benchTags is the size of the tag vocabulary. It matters more than it looks:
-	// the tag facet unnests every matching version's tags and groups them, so a
-	// vocabulary of five would measure a group-by nobody will ever run.
+	// benchTags must be realistic: the tag facet groups every matching tag, so
+	// a tiny vocabulary would measure a trivial group-by.
 	benchTags = 200
 
-	// benchProfiles and benchEntriesPerProfile drive `uses`, which is aggregated
-	// over profile_entry on every catalog read.
+	// benchProfiles and benchEntriesPerProfil drive `uses`.
 	benchProfiles         = 50
 	benchEntriesPerProfil = 200
 )
 
-// scP95 is SC-003.
 const scP95 = 300 * time.Millisecond
 
 var (
 	benchDB *bun.DB
-	// benchQueue is River's own database, standing beside benchDB on the same
-	// container rather than a second one — the outbox suite already does this
-	// with three databases, and the runtime report has nothing to measure
-	// that needs its own container.
+	// benchQueue is River's own database on the same container as benchDB.
 	benchQueue *pgxpool.Pool
 )
 
@@ -120,8 +105,7 @@ func runBenchSuite(m *testing.M) (int, error) {
 		return 0, genErr
 	}
 
-	// River's own database, migrated by River's own migrator — the code path
-	// `agent-manager migrate queue` runs — never by Atlas.
+	// River's database is migrated by River's own migrator, never by Atlas.
 	if _, err = pool.Exec(ctx, "create database river"); err != nil {
 		return 0, fmt.Errorf("create the river database: %w", err)
 	}
@@ -138,9 +122,8 @@ func runBenchSuite(m *testing.M) (int, error) {
 	return m.Run(), nil
 }
 
-// generateCatalog builds the R12 dataset in SQL rather than row by row from Go:
-// 60,000 round trips would measure the driver, and the shape of the data is what
-// this is about.
+// generateCatalog builds the dataset in SQL, since 60,000 round trips from Go
+// would measure the driver.
 func generateCatalog(ctx context.Context, pool *pgxpool.Pool) error {
 	started := time.Now()
 
@@ -149,21 +132,14 @@ func generateCatalog(ctx context.Context, pool *pgxpool.Pool) error {
 		 select gen_random_uuid(), 'Category ' || g, 'category-' || g
 		 from generate_series(1, 5) as g`,
 
-		// Half the publishers verified, so the Verified filter is a real
-		// discriminator rather than a full scan that matches everything. Slugs are
-		// two-segment, and four namespaces across forty publishers so the
-		// composite foreign key on package has more than one publisher per
-		// namespace to resolve — which is the shape the real data has.
+		// Half verified so the Verified filter discriminates; several publishers
+		// per namespace, as in real data.
 		`insert into publisher (id, slug, display_name, verified)
 		 select gen_random_uuid(), 'ns' || (g % 4) || '/pub' || g, 'Publisher ' || g, (g % 2 = 0)
 		 from generate_series(1, 40) as g`,
 
-		// The namespace comes off the chosen publisher row rather than being
-		// recomputed from g: the composite foreign key resolves (publisher_id,
-		// namespace) against publisher, and the publishers are picked by their
-		// position in a slug-ordered list, which is not the order they were
-		// generated in. Recomputing would produce a namespace belonging to a
-		// different publisher for most rows.
+		// The namespace comes off the chosen publisher row: publishers are picked
+		// in slug order, so recomputing it from g would violate the composite FK.
 		fmt.Sprintf(`
 		 with pubs as (select id, namespace, row_number() over (order by slug) as rn from publisher),
 		      cats as (select array_agg(id order by name) as ids from category)
@@ -179,9 +155,7 @@ func generateCatalog(ctx context.Context, pool *pgxpool.Pool) error {
 		 join pubs on pubs.rn = 1 + (g %% 40)
 		 cross join cats`, benchPackages-1),
 
-		// Five versions per package. Tags are drawn so that a filter on one is
-		// selective and a filter on two is more so, which is the shape FR-013's
-		// conjunctive facet actually produces.
+		// Tags are drawn so one tag filter is selective and two are more so.
 		fmt.Sprintf(`
 		 insert into version (id, package_id, semver, semver_sort, object_key, digest, size_bytes,
 		                      manifest, tags, dist_tag, verdict, visible, created_at)
@@ -221,8 +195,7 @@ func generateCatalog(ctx context.Context, pool *pgxpool.Pool) error {
 		        'organisation'::profile_visibility, 'floating-latest'::version_policy
 		 from generate_series(1, %d) as g`, benchProfiles),
 
-		// Overlapping membership, so `uses` is not uniform: a sort by uses that
-		// cannot distinguish its rows is not measuring a sort.
+		// Overlapping membership, so a sort by `uses` has distinct values to sort.
 		fmt.Sprintf(`
 		 with profiles as (select array_agg(id order by slug) as ids from profile),
 		      packages as (select array_agg(id order by name) as ids from package)
@@ -236,8 +209,7 @@ func generateCatalog(ctx context.Context, pool *pgxpool.Pool) error {
 			benchProfiles, benchPackages, benchProfiles, benchPackages,
 			benchProfiles-1, benchEntriesPerProfil-1),
 
-		// The planner needs statistics before the first query, not after the
-		// hundredth. Without this the first measurements are of a cold planner.
+		// Statistics before the first query, so nothing measures a cold planner.
 		`analyze`,
 	}
 
@@ -251,12 +223,8 @@ func generateCatalog(ctx context.Context, pool *pgxpool.Pool) error {
 	return nil
 }
 
-// TestTheCatalogMeetsSC003AtTenThousandPackages is the gate.
-//
-// It measures the R4 pair the way a request issues it — both statements
-// concurrently, through queries.Catalog — and then each half on its own, because
-// "the pair is fast enough" and "which half would need the projection" are
-// different questions and only the second one is actionable.
+// TestTheCatalogMeetsSC003AtTenThousandPackages measures Catalog as a request
+// issues it, then each statement alone so a failure names the half to fix.
 func TestTheCatalogMeetsSC003AtTenThousandPackages(t *testing.T) {
 	ctx := t.Context()
 
@@ -286,8 +254,7 @@ func TestTheCatalogMeetsSC003AtTenThousandPackages(t *testing.T) {
 		}},
 	}
 
-	// Warm the cache once per workload before measuring. The question SC-003 asks
-	// is about a running hub, not about the first query after a restart.
+	// Warm the cache: the target is a running hub, not the first query after a restart.
 	for _, workload := range workloads {
 		_, err := Catalog(ctx, benchDB, workload.filter)
 		require.NoError(t, err)
@@ -317,7 +284,6 @@ func TestTheCatalogMeetsSC003AtTenThousandPackages(t *testing.T) {
 	t.Logf("  %-36s p50 %6s  p95 %6s  max %6s   (%d samples)", "ALL WORKLOADS",
 		round(percentile(all, 0.50)), round(overall), round(percentile(all, 1.0)), len(all))
 
-	// The two halves separately, so a failure names the statement to fix.
 	for _, half := range []struct {
 		name string
 		run  func(CatalogFilter) error
@@ -345,29 +311,15 @@ func TestTheCatalogMeetsSC003AtTenThousandPackages(t *testing.T) {
 	}
 
 	require.Lessf(t, overall, scP95,
-		"SC-003: p95 is %s at %d packages / %d versions, over 300 ms. R12's condition is met and "+
+		"p95 is %s at %d packages / %d versions, over 300 ms; "+
 			"catalog_entry must be built — synchronous on structural change, asynchronous on verdict "+
-			"change (constitution principle VIII).",
+			"change.",
 		round(overall), benchPackages, benchVersions)
 }
 
-// TestTheTagFilterIsExpressedInAFormTheGinIndexCanAnswer is the R12 gate's
-// companion, and it deliberately does not assert what the planner does.
-//
-// A p95 says nothing about WHY it passed, and asserting that the planner PICKS
-// an index is asserting the planner's mood. At 50,000 versions it does not pick
-// version_tags_gin — it seq-scans version — and it is right to: two tags match
-// ~2,300 rows out of 50,000 in a table that fits in shared_buffers, so the
-// bitmap heap scan buys nothing. That is worth knowing (03-constraints.sql says
-// the materialised tags column exists so the filter "is a GIN lookup", and at
-// this size it is not one) and it is not worth failing a build over.
-//
-// What is worth pinning is the OPERATOR, which is the part that can regress in
-// this package rather than in Postgres. `@>` is what a GIN index over text[]
-// answers; the obvious rewrite — tags && array[...] for OR, or unnest with a
-// group by for AND — either changes the semantics or cannot use the index at any
-// size. So the claim tested here is "the clause this code builds is one the
-// index CAN answer", proved by taking the planner's cheaper option away.
+// TestTheTagFilterIsExpressedInAFormTheGinIndexCanAnswer pins the operator, not
+// the planner's choice: at this size the planner rightly seq-scans, so the test
+// disables seqscan and checks the tag clause can still reach version_tags_gin.
 func TestTheTagFilterIsExpressedInAFormTheGinIndexCanAnswer(t *testing.T) {
 	filter := CatalogFilter{Tags: []string{"tier-1", "lang-3"}}.normalise()
 	where := filter.baseFilters()
@@ -378,18 +330,15 @@ func TestTheTagFilterIsExpressedInAFormTheGinIndexCanAnswer(t *testing.T) {
 		benchVersions, explain(t, false,
 			"select ver.id"+catalogFrom+"\n"+where.where(), where.args...))
 
-	// The predicate alone, against version alone: with the join gone there is no
-	// other index for the planner to reach for, so what comes back is an answer
-	// about the tag clause and nothing else.
+	// The predicate alone against version, so no other index can answer instead.
 	tagClause, tagArgs := filter.tagClause("tags")
 	require.Contains(t, explain(t, true, "select id from version where "+tagClause, tagArgs...),
 		"version_tags_gin",
 		"the tag filter must be able to reach the GIN index 03-constraints.sql put there for it")
 }
 
-// explain returns a plan. Forcing runs inside a transaction because enable_seqscan
-// is a session setting and benchDB is a pool: `set` and the statement it was meant
-// for can land on different connections, and `set local` cannot.
+// explain returns a plan. Forcing uses `set local` in a transaction because
+// benchDB is a pool and a plain `set` could land on another connection.
 func explain(t *testing.T, forced bool, statement string, args ...any) string {
 	t.Helper()
 
@@ -425,9 +374,7 @@ func count(t *testing.T, table string) int {
 	return n
 }
 
-// percentile is nearest-rank on a copy: the caller's slice is reused across
-// workloads and sorting it in place would reorder samples that are still being
-// appended to.
+// percentile is nearest-rank on a copy, since the caller keeps appending to samples.
 func percentile(samples []time.Duration, q float64) time.Duration {
 	if len(samples) == 0 {
 		return 0

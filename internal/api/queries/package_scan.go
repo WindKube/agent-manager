@@ -13,28 +13,20 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// PackageScan answers the package detail screen's security section: the
-// latest visible version's scan, whatever it found, and any reviewer
-// decision — the same rows the Scanner screen reads, scoped to one package
-// instead of paged across all of them.
-//
-// ErrRejected mirrors FR-029, exactly as LatestBundle's Distributable does: a
-// rejected version's scan detail is refused here too, not only its bytes.
+// ErrRejected refuses a rejected version's scan detail, just as
+// BundleRef.Distributable refuses its bytes.
 var ErrRejected = errors.New("this version was rejected and its scan is not served")
 
-// latestScanVersionSQL is LatestBundle's own predicate (bundles.go), reading
-// the version id and verdict instead of the object key: this is the other
-// door onto the same "latest visible version", and the two must not drift.
-// %s is PackageReadable, for exactly that reason — this statement once
-// hardcoded `visibility = 'organisation'`, which was the whole predicate
-// before team and private became reachable and afterwards 404'd an owner
-// looking at their own package's scan.
+// latestScanVersionSQL must match LatestBundle's predicate (bundles.go).
+// %s is PackageReadable.
 const latestScanVersionSQL = `
 select v.id, v.semver, v.verdict::text
 from package as pkg
 join version as v on v.id = pkg.latest_version_id and v.visible
 where pkg.namespace = ? and pkg.name = ? and %s`
 
+// PackageScan answers the package detail's security section: the latest
+// visible version's scan, its findings and any reviewer decisions.
 func PackageScan(ctx context.Context, db bun.IDB, p auth.Principal, namespace, name string) (contract.PackageScan, error) {
 	var (
 		versionID string
@@ -61,10 +53,7 @@ func PackageScan(ctx context.Context, db bun.IDB, p auth.Principal, namespace, n
 	scanID, err := packageScanRow(ctx, db, versionID, &out.Scan)
 	switch {
 	case errors.Is(err, ErrNotFound):
-		// Never scanned. Real and reachable, exactly as Capabilities.Scanned
-		// says on the rest of this page: the fetcher and the scanner are
-		// independent workers, and a version can be visible before its scan
-		// lands.
+		// Never scanned: a version can be visible before its scan lands.
 		return out, nil
 	case err != nil:
 		return contract.PackageScan{}, err
@@ -80,10 +69,8 @@ func PackageScan(ctx context.Context, db bun.IDB, p auth.Principal, namespace, n
 	return out, nil
 }
 
-// packageScanRow reads the LATEST scan of a version — a version can carry
-// more than one when it has been rescanned under a new rule-pack stamp —
-// and writes it into scan, returning the scan id the checks and findings
-// below hang off.
+// packageScanRow reads a version's latest scan (rescans add more) into scan
+// and returns its id.
 func packageScanRow(ctx context.Context, db bun.IDB, versionID string, scan *contract.FindingScan) (string, error) {
 	const query = `
 select id, pack_version, started_at, finished_at, verdict::text, timed_out
@@ -111,9 +98,7 @@ limit 1`
 	return scanID, nil
 }
 
-// packageScanChecks mirrors findingChecks' own ordering (findings.go): one
-// block per engine, so two analysers' rows never read as one undifferentiated
-// list.
+// packageScanChecks mirrors findingChecks' ordering: one block per engine.
 func packageScanChecks(ctx context.Context, db bun.IDB, scanID string) ([]contract.FindingCheck, error) {
 	const query = `
 select check_id, engine, label, result::text, warn_count
@@ -141,9 +126,8 @@ order by engine, created_at, check_id`
 	return checks, nil
 }
 
-// packageScanFindings reads every finding the scan raised, its override when
-// one was decided, and then attaches evidence in one further statement rather
-// than one round trip per finding.
+// packageScanFindings reads every finding the scan raised with its override,
+// then attaches evidence in one further statement.
 func packageScanFindings(ctx context.Context, db bun.IDB, scanID string) ([]contract.PackageScanFinding, error) {
 	const query = `
 select
@@ -205,9 +189,8 @@ order by fnd.severity desc, fnd.created_at desc, fnd.id`
 	return findings, nil
 }
 
-// attachPackageScanEvidence reads every location for every finding this scan
-// raised in one statement and groups it back onto its finding in Go, rather
-// than one round trip per finding.
+// attachPackageScanEvidence reads all of the scan's evidence in one statement
+// and groups it onto findings in Go.
 func attachPackageScanEvidence(ctx context.Context, db bun.IDB, scanID string, findings []contract.PackageScanFinding) error {
 	if len(findings) == 0 {
 		return nil

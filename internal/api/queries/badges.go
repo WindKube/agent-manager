@@ -10,35 +10,12 @@ import (
 	"agent-manager/internal/auth"
 )
 
-// The shell's badge counts are one operation returning the viewer's own
-// counts, called once per full page render and not at all on a fragment
-// update. Three counts, not three operations: the shell renders on every
-// screen, so three round trips would be three per page. These are indexed
-// counts over the base tables, not a materialised view.
-
-// badgeCountsSQL is one statement of three scalar subqueries, so the shell
-// costs one round trip. The first %s is PackageReadable over `package`, the
-// second is Readable over `profile`.
-//
-// `packages` reproduces the catalog's own base relation exactly — the
-// latest version pointer, `visible`, and the same readability predicate —
-// because a badge that counted differently from the list under it is a
-// badge nobody trusts twice. Both halves of the join condition matter for
-// the same reason they do elsewhere: commit-last means a half-published
-// version exists as an invisible row, and a package whose only version is
-// still being fetched has no pointer.
-//
-// `profiles` is the readability predicate and nothing else, so the badge is
-// exactly the length of the list the Profiles screen renders — a count
-// that included a profile the reader cannot open would leak the existence
-// of a private profile by arithmetic, the same hazard packageVersions'
-// pinned-by count documents at package scope.
-//
-// `openFindings` is served by `finding_open_version_idx`, a partial index
-// on `("version_id") where "state" = 'open'`: a count over it reads only
-// the index. The predicate here must stay exactly `state = 'open'` to
-// match the index's own; widen it and this becomes a sequential scan of
-// every finding ever raised.
+// badgeCountsSQL is one round trip of three scalar subqueries; the first %s
+// is PackageReadable over `package`, the second Readable over `profile`.
+// `packages` must match the catalog's base relation (latest pointer, visible,
+// readability) and `profiles` the Profiles list, or the badge disagrees with
+// the list or leaks private profiles by arithmetic. `openFindings` must stay
+// exactly `state = 'open'` to use the partial index finding_open_version_idx.
 const badgeCountsSQL = `
 select
   (select count(*)

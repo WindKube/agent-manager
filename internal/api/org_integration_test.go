@@ -15,20 +15,12 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The Organization screen's operations against a real Postgres.
-//
-// Three properties carry most of the weight here:
-//
-//   - getOrganization never carries the client secret, in any form;
-//   - every save writes exactly one audit row, and every refusal writes none;
-//   - a toggle changes what the NEXT resolution does, not merely its own row —
-//     proven here for require_signed_bundles, the one of the four not already
-//     covered by profile_gate_integration_test.go (the scan gate) or
-//     scanner_integration_test.go (rescan_on_new_version).
+// The Organization screen's operations against a real Postgres: the client secret never
+// leaves, every save writes one audit row and every refusal none, and a toggle changes
+// what the next resolution does.
 
-// TestGetOrganizationNeverCarriesTheClientSecretInAnyForm asserts on the RAW
-// body rather than on the decoded struct: a struct with no field for a secret
-// proves nothing about a handler that marshalled one straight from a map.
+// TestGetOrganizationNeverCarriesTheClientSecretInAnyForm asserts on the raw body: a struct
+// with no secret field proves nothing about a handler that marshalled a map.
 func TestGetOrganizationNeverCarriesTheClientSecretInAnyForm(t *testing.T) {
 	raw := send(t, kw, http.MethodGet, "/v1/organization", "", http.StatusOK)
 	body := strings.ToLower(string(raw))
@@ -39,9 +31,6 @@ func TestGetOrganizationNeverCarriesTheClientSecretInAnyForm(t *testing.T) {
 	require.NotNil(t, org.Provider.Scopes, "the provider panel reads a slice, never a stand-in for a secret")
 }
 
-// TestOnlyCatalogAdminMayAdministerTheOrganization proves hiding an action on
-// the screen is not the same guarantee as the api refusing one that arrives
-// anyway.
 func TestOnlyCatalogAdminMayAdministerTheOrganization(t *testing.T) {
 	require.Equal(t, models.OrgRoleCatalogAdmin, principalFor(t, kw).Role)
 
@@ -55,7 +44,6 @@ func TestOnlyCatalogAdminMayAdministerTheOrganization(t *testing.T) {
 		`{"name":"Nope"}`, http.StatusForbidden)
 }
 
-// currentPolicy reads org_policy directly, for tests that need to restore it.
 func currentPolicy(t *testing.T) contract.UpdatePolicyRequest {
 	t.Helper()
 	var out contract.UpdatePolicyRequest
@@ -76,7 +64,6 @@ func restorePolicy(t *testing.T, p contract.UpdatePolicyRequest) {
 	send(t, kw, http.MethodPut, "/v1/organization/policy", body, http.StatusOK)
 }
 
-// TestUpdatingThePolicyWritesExactlyOnePolicyAuditRow is the audit half.
 func TestUpdatingThePolicyWritesExactlyOnePolicyAuditRow(t *testing.T) {
 	before := currentPolicy(t)
 	t.Cleanup(func() { restorePolicy(t, before) })
@@ -92,7 +79,6 @@ func TestUpdatingThePolicyWritesExactlyOnePolicyAuditRow(t *testing.T) {
 	require.NotEmpty(t, actor)
 }
 
-// TestAnInvalidScanGateIsRefusedAndWritesNoRow is the validation half.
 func TestAnInvalidScanGateIsRefusedAndWritesNoRow(t *testing.T) {
 	beforeCount := auditRowCount(t)
 	send(t, kw, http.MethodPut, "/v1/organization/policy",
@@ -101,10 +87,8 @@ func TestAnInvalidScanGateIsRefusedAndWritesNoRow(t *testing.T) {
 	require.Equal(t, beforeCount, auditRowCount(t))
 }
 
-// TestRequireSignedBundlesExcludesAnUnsignedVersionFromTheNextResolution covers
-// the one toggle profile_gate_integration_test.go does not already: this is
-// the same version, read twice, with only org_policy changed between the two
-// reads (the pattern that file's own comment explains).
+// TestRequireSignedBundlesExcludesAnUnsignedVersionFromTheNextResolution reads the same
+// version twice with only org_policy changed in between.
 func TestRequireSignedBundlesExcludesAnUnsignedVersionFromTheNextResolution(t *testing.T) {
 	before := currentPolicy(t)
 	t.Cleanup(func() { restorePolicy(t, before) })
@@ -116,7 +100,6 @@ func TestRequireSignedBundlesExcludesAnUnsignedVersionFromTheNextResolution(t *t
 	newGateProfile(t, slug, "Signature gate")
 	setEntries(t, curator, slug, fmt.Sprintf(`[{"id":%q,"mode":"latest"}]`, pkg.id), http.StatusOK)
 
-	// Off: the version has no signature row at all, and resolves anyway.
 	send(t, kw, http.MethodPut, "/v1/organization/policy",
 		`{"scanGate":"warn-with-override","requireSignedBundles":false,"communityNeedsReview":false,`+
 			`"rescanOnNewVersion":false,"allowPersonalProfiles":false}`, http.StatusOK)
@@ -124,8 +107,6 @@ func TestRequireSignedBundlesExcludesAnUnsignedVersionFromTheNextResolution(t *t
 	require.Equal(t, "1.0.0", before2.Version)
 	require.Nil(t, before2.Skip)
 
-	// On: the same version, with the same bytes and the same verdict, is now
-	// excluded — the ONLY thing that moved is org_policy.
 	send(t, kw, http.MethodPut, "/v1/organization/policy",
 		`{"scanGate":"warn-with-override","requireSignedBundles":true,"communityNeedsReview":false,`+
 			`"rescanOnNewVersion":false,"allowPersonalProfiles":false}`, http.StatusOK)
@@ -135,9 +116,8 @@ func TestRequireSignedBundlesExcludesAnUnsignedVersionFromTheNextResolution(t *t
 			"whatever its verdict")
 }
 
-// TestRequireSignedBundlesResolvesOnlyTheExpectedSigner is the binding half:
-// the signature row never changes below, only the package's expected signer,
-// and each read re-decides the version from it.
+// TestRequireSignedBundlesResolvesOnlyTheExpectedSigner changes only the expected signer,
+// never the signature row, between reads.
 func TestRequireSignedBundlesResolvesOnlyTheExpectedSigner(t *testing.T) {
 	before := currentPolicy(t)
 	t.Cleanup(func() { restorePolicy(t, before) })
@@ -209,10 +189,6 @@ func TestRequireSignedBundlesResolvesOnlyTheExpectedSigner(t *testing.T) {
 	require.Contains(t, skipDetail(), "no expected signer configured")
 }
 
-// TestAllowPersonalProfilesGatesPrivateVisibilityCreation covers the toggle
-// profile_gate_integration_test.go and the require-signed-bundles test above
-// do not: off refuses a private-visibility create outright, on lets the same
-// request through, with nothing else about the request having changed.
 func TestAllowPersonalProfilesGatesPrivateVisibilityCreation(t *testing.T) {
 	before := currentPolicy(t)
 	t.Cleanup(func() { restorePolicy(t, before) })
@@ -260,9 +236,6 @@ func TestAnInvalidRoleIsRefusedAndWritesNoRow(t *testing.T) {
 	require.Equal(t, beforeCount, auditRowCount(t))
 }
 
-// TestDeletingAMappingWritesOneRoleAuditRowAndRemovesTheRow proves the delete
-// is real: the row is gone afterward, and a second delete of the same group
-// answers 404 rather than a silent no-op success.
 func TestDeletingAMappingWritesOneRoleAuditRowAndRemovesTheRow(t *testing.T) {
 	sendJSON[contract.GroupRoleMapping](t, kw, http.MethodPost, "/v1/organization/mappings",
 		`{"groupName":"eng-org-delete-test","role":"read-only"}`, http.StatusOK)
@@ -279,13 +252,9 @@ func TestDeletingAMappingWritesOneRoleAuditRowAndRemovesTheRow(t *testing.T) {
 		require.NotEqual(t, "eng-org-delete-test", m.GroupName, "the mapping must be gone after the delete")
 	}
 
-	// A second delete of the same, now-absent, group is a 404, not a repeat
-	// success.
 	send(t, kw, http.MethodDelete, "/v1/organization/mappings/eng-org-delete-test", "", http.StatusNotFound)
 }
 
-// TestCreatingACategoryWritesOneCategoryAuditRowAndACollidingNameConflicts
-// covers both halves: the write, and the refusal a duplicate name earns.
 func TestCreatingACategoryWritesOneCategoryAuditRowAndACollidingNameConflicts(t *testing.T) {
 	const name = "Org Screen Test Category"
 	t.Cleanup(func() {
@@ -303,7 +272,6 @@ func TestCreatingACategoryWritesOneCategoryAuditRowAndACollidingNameConflicts(t 
 	kind, _, _ := lastAuditRow(t)
 	require.Equal(t, "category", kind)
 
-	// The collision: same name again.
 	beforeCount = auditRowCount(t)
 	send(t, kw, http.MethodPost, "/v1/organization/categories",
 		fmt.Sprintf(`{"name":%q}`, name), http.StatusConflict)
@@ -318,8 +286,6 @@ func TestCreatingACategoryWritesOneCategoryAuditRowAndACollidingNameConflicts(t 
 	require.Equal(t, beforeCount+1, auditRowCount(t))
 }
 
-// TestDeletingACategoryWritesOneCategoryAuditRowAndRemovesTheRow proves an
-// unreferenced category can really be deleted.
 func TestDeletingACategoryWritesOneCategoryAuditRowAndRemovesTheRow(t *testing.T) {
 	const name = "Org Screen Delete Test Category"
 	category := sendJSON[contract.OrganizationCategory](t, kw, http.MethodPost, "/v1/organization/categories",
@@ -335,16 +301,13 @@ func TestDeletingACategoryWritesOneCategoryAuditRowAndRemovesTheRow(t *testing.T
 	send(t, kw, http.MethodDelete, "/v1/organization/categories/"+category.ID, "", http.StatusNotFound)
 }
 
-// TestDeletingACategoryStillAssignedToAPackageRefusesAndWritesNoRow proves the
-// refusal is the database's own foreign key, not a check this handler could
-// forget: the category is left assigned to a real package.
+// TestDeletingACategoryStillAssignedToAPackageRefusesAndWritesNoRow relies on the database's
+// foreign key, not a handler check.
 func TestDeletingACategoryStillAssignedToAPackageRefusesAndWritesNoRow(t *testing.T) {
 	const name = "Org Screen In-Use Test Category"
 	category := sendJSON[contract.OrganizationCategory](t, kw, http.MethodPost, "/v1/organization/categories",
 		fmt.Sprintf(`{"name":%q}`, name), http.StatusOK)
-	// Registered before seedGatePackage's own cleanup below, so t.Cleanup's LIFO
-	// order runs the package's cleanup FIRST: the category_id foreign key must be
-	// gone before this can delete the category row.
+	// Registered first so LIFO runs the package's cleanup before this deletes the category.
 	t.Cleanup(func() {
 		_, err := db.ExecContext(context.Background(), `delete from category where id = ?`, category.ID)
 		require.NoError(t, err)
@@ -361,17 +324,14 @@ func TestDeletingACategoryStillAssignedToAPackageRefusesAndWritesNoRow(t *testin
 	require.Equal(t, beforeCount, auditRowCount(t))
 }
 
-// TestRotatingTheClientSecretAlwaysRefusesAndWritesNoRow proves rotation is
-// genuinely impossible from this hub (see commands.ErrSecretRotationUnsupported),
-// so the refusal is the whole implementation and must never look like a write
-// that silently did nothing.
+// TestRotatingTheClientSecretAlwaysRefusesAndWritesNoRow: rotation is impossible from this hub
+// (commands.ErrSecretRotationUnsupported), so it must never look like a silent no-op write.
 func TestRotatingTheClientSecretAlwaysRefusesAndWritesNoRow(t *testing.T) {
 	beforeCount := auditRowCount(t)
 	send(t, kw, http.MethodPost, "/v1/organization/identity/secret", "", http.StatusConflict)
 	require.Equal(t, beforeCount, auditRowCount(t))
 }
 
-// lastAuditRow reads back the most recently written audit_event row.
 func lastAuditRow(t *testing.T) (kind, actor, text string) {
 	t.Helper()
 	require.NoError(t, pool.QueryRow(context.Background(),

@@ -17,16 +17,12 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// Adjudicating a scanner finding: two commands, not one with a flag.
-// Accept records a bounded exception (the version stays flagged, so the
-// org gate still governs it); Reject is terminal, setting the version's
-// verdict to `rejected`, which no gate can let through. Both write one
-// audit row of kind `approve` — `audit_kind` has no `reject` value.
+// Both finding decisions write an audit row of kind `approve`, since
+// `audit_kind` has no `reject` value.
 
 var ErrFindingNotFound = errors.New("no such finding")
 
-// ErrFindingRejected: rejection is terminal; an "un-reject" is a real
-// operation with its own audit trail, not something to fall into silently.
+// ErrFindingRejected: rejection is terminal.
 var ErrFindingRejected = errors.New("this finding was rejected, which is terminal")
 
 var ErrNoReviewer = errors.New("accepting a finding needs an identity to record as the reviewer")
@@ -43,9 +39,8 @@ const (
 // Decision is one adjudication request.
 type Decision struct {
 	FindingID uuid.UUID
-	// Note is required on an accept, optional on a reject; both are
-	// truncated rather than refused, so a long note doesn't lose the
-	// reviewer's decision along with the text.
+	// Note is required on an accept, optional on a reject; a long note is
+	// truncated rather than refused so the decision isn't lost.
 	Note string
 	// Days is ignored by Reject, which has no expiry to set.
 	Days int
@@ -84,10 +79,8 @@ func (s subject) auditSubject(findingID uuid.UUID) audit.Subject {
 	return audit.Finding(findingID, s.namespace, s.name, s.semver, s.ruleID)
 }
 
-// lockSubjectSQL reads the finding and its subject version, locking only
-// the finding row: two reviewers deciding at once would otherwise both
-// read `open` and both write. Locking `fnd` alone, not the package, avoids
-// serialising every decision about every version of it.
+// lockSubjectSQL locks only the finding row so two concurrent reviewers can't
+// both read `open`, without serialising every decision about the package.
 const lockSubjectSQL = `
 select
   fnd.state::text,
@@ -117,10 +110,9 @@ func lockSubject(ctx context.Context, tx bun.IDB, id uuid.UUID) (subject, error)
 	return out, nil
 }
 
-// AcceptFinding approves a finding and records the override that permits
-// it — state, override row and audit row in one transaction. The
-// version's verdict is deliberately not touched: the override is what the
-// gate reads, and rewriting it to `clean` would erase the finding.
+// AcceptFinding approves a finding and records its bounded override. The
+// version's verdict is left alone: the gate reads the override, and rewriting
+// the verdict to `clean` would erase the finding.
 func AcceptFinding(ctx context.Context, db bun.IDB, p auth.Principal, in Decision) (contract.FindingDecision, error) {
 	in = in.normalise()
 	if p.IdentityID == uuid.Nil {
@@ -146,8 +138,7 @@ func AcceptFinding(ctx context.Context, db bun.IDB, p auth.Principal, in Decisio
 		res, txErr := tx.NewUpdate().Model((*models.Finding)(nil)).
 			Set("state = ?", models.FindingStateApproved).
 			Set("updated_at = now()").
-			// Belt and braces over the row lock above: the terminal state
-			// stays refused by the database even if a refactor loses the lock.
+			// Belt and braces over the row lock.
 			Where("id = ? and state <> ?", in.FindingID, models.FindingStateRejected).
 			Exec(ctx)
 		if txErr != nil {
@@ -157,9 +148,8 @@ func AcceptFinding(ctx context.Context, db bun.IDB, p auth.Principal, in Decisio
 			return ErrFindingRejected
 		}
 
-		// Upsert: re-approving extends an expiring override, keyed by
-		// finding_id. The whole decision is replaced, since attributing a
-		// new decision to the previous reviewer would be a false record.
+		// Re-approving replaces the whole decision, reviewer included, so it
+		// is never attributed to the previous reviewer.
 		if _, txErr = tx.NewInsert().Model(&models.Override{
 			FindingID:          in.FindingID,
 			ReviewerIdentityID: p.IdentityID,
@@ -194,11 +184,9 @@ func AcceptFinding(ctx context.Context, db bun.IDB, p auth.Principal, in Decisio
 	return out, nil
 }
 
-// RejectFinding rejects a finding and quarantines its version for good:
-// verdict becomes `rejected`, which no gate can override. No override row
-// is written or removed — an existing one stays as the record of a
-// decision really taken, and stops counting since the summary only counts
-// `state = 'approved'`.
+// RejectFinding rejects a finding and quarantines its version for good. An
+// existing override row is kept as a record; it stops counting because the
+// summary counts only `state = 'approved'`.
 func RejectFinding(ctx context.Context, db bun.IDB, p auth.Principal, in Decision) (contract.FindingDecision, error) {
 	in = in.normalise()
 
@@ -209,24 +197,19 @@ func RejectFinding(ctx context.Context, db bun.IDB, p auth.Principal, in Decisio
 			return txErr
 		}
 		if !found.hasBytes {
-			// A schema constraint requires a version with no bytes stay
-			// `scanning`; unreachable in practice, so this is corruption
-			// rather than a client error, named instead of surfacing as one.
+			// Unreachable per a schema constraint, so this is corruption, not a
+			// client error.
 			return fmt.Errorf("version %s carries a finding but no digest, so it cannot be rejected",
 				found.ref())
 		}
 		if found.state == models.FindingStateRejected {
-			// Rejection is terminal: without this guard, a double-click
-			// would re-run both updates and log two rejections of one
-			// finding, and an audit log that invents decisions is worse
-			// than one that misses them.
+			// Without this, a double-click would log two rejections.
 			return ErrFindingRejected
 		}
 
 		res, txErr := tx.NewUpdate().Model((*models.Finding)(nil)).
 			Set("state = ?", models.FindingStateRejected).
 			Set("updated_at = now()").
-			// Belt and braces over the row lock, as in Accept.
 			Where("id = ? and state <> ?", in.FindingID, models.FindingStateRejected).
 			Exec(ctx)
 		if txErr != nil {
@@ -236,8 +219,7 @@ func RejectFinding(ctx context.Context, db bun.IDB, p auth.Principal, in Decisio
 			return ErrFindingRejected
 		}
 
-		// `verdict` alone: `version` has no updated_at, since the row is
-		// append-only apart from this one field.
+		// `version` has no updated_at: it is append-only apart from verdict.
 		if _, txErr = tx.NewUpdate().Model((*models.Version)(nil)).
 			Set("verdict = ?", models.VerdictRejected).
 			Where("id = ?", found.versionID).

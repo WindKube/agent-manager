@@ -18,29 +18,16 @@ import (
 	"agent-manager/internal/logging"
 )
 
-// The package files operations (US3/US5's "read before using it"): a file
-// listing and a separate content read, both scoped to a package's LATEST
-// VISIBLE version — the one every other panel on the detail screen
-// describes. Neither is cached: each answers from a fresh unpack of the
-// stored bundle, which is the cost of reading files nothing here stores a
-// byte-level list of.
-
-// maxRenderableFileBytes bounds getPackageFile's answer. 256 KiB is
-// generous for hand-written documentation — the largest seeded SKILL.md is
-// a few KB — while still bounding a worst-case render; a file over it is
-// refused outright rather than truncated, because a half-read SKILL.md that
-// looks complete is worse than an honest refusal.
+// maxRenderableFileBytes bounds getPackageFile's answer. A larger file is refused
+// rather than truncated: a half-read SKILL.md that looks complete is worse.
 const maxRenderableFileBytes = 256 << 10
 
-// errVersionRejected is packageTree's answer for FR-029: a rejected version
-// is never served, exactly as getBundle refuses one.
+// errVersionRejected: a rejected version is never served.
 var errVersionRejected = errors.New("this version was rejected and is never served")
 
-// packageTree resolves a package's latest visible version and unpacks its
-// bundle, under the same extraction caps the fetcher enforces on ingestion
-// (bundle.Limits{} takes its defaults) — a bundle read back out of object
-// storage is still bytes off a network, and what could not be extracted
-// must not become unpackable either.
+// packageTree resolves a package's latest visible version and unpacks its bundle
+// under the fetcher's extraction caps: stored bytes are still untrusted. Nothing is
+// cached; every call re-unpacks.
 func (s *Server) packageTree(ctx context.Context, p auth.Principal, namespace, name string) (*bundle.Bundle, error) {
 	ref, err := queries.LatestBundle(ctx, s.deps.DB, p, namespace, name)
 	if err != nil {
@@ -66,9 +53,6 @@ func (s *Server) packageTree(ctx context.Context, p auth.Principal, namespace, n
 	return tree, nil
 }
 
-// packageTreeError is the mapping packageTree's two named outcomes share
-// with fail's generic one, so listPackageFiles and getPackageFile answer
-// the same way to the same failures.
 func packageTreeError(ctx context.Context, err error) error {
 	if errors.Is(err, errVersionRejected) {
 		return huma.Error403Forbidden(errVersionRejected.Error())
@@ -76,12 +60,8 @@ func packageTreeError(ctx context.Context, err error) error {
 	return fail(logging.From(ctx), err)
 }
 
-// classifyFile is the three-way split the screen renders differently:
-// markdown goes through the sanitised markdown pipeline, text is shown
-// verbatim and escaped, binary is listed and never rendered. A NUL byte or
-// invalid UTF-8 in the first bytes is the same heuristic grep and git use to
-// tell text from binary; this hub renders text, so the classification is
-// read from the content once, not guessed from the extension.
+// classifyFile splits files into markdown, text and binary by content (NUL byte or
+// invalid UTF-8, as grep and git do), not by extension alone.
 func classifyFile(path string, data []byte) string {
 	sample := data
 	if len(sample) > 8000 {
@@ -105,10 +85,7 @@ type listPackageFilesOutput struct {
 	Body contract.PackageFileList
 }
 
-// listPackageFiles answers the files panel: every regular file the latest
-// visible version's bundle holds. It reads and re-unpacks that bundle on
-// every call — see the package doc comment — because nothing here stores a
-// byte-level file list to answer from instead.
+// listPackageFiles answers the files panel: every regular file in the latest visible version.
 func (s *Server) listPackageFiles(ctx context.Context, in *listPackageFilesInput) (*listPackageFilesOutput, error) {
 	principal, _ := PrincipalFrom(ctx)
 	tree, err := s.packageTree(ctx, principal, in.Namespace, in.Name)
@@ -125,11 +102,7 @@ func (s *Server) listPackageFiles(ctx context.Context, in *listPackageFilesInput
 			OverLimit: size > maxRenderableFileBytes,
 		})
 	}
-	// SKILL.md before plugin.json: a plugin's OWN manifest is JSON and not
-	// the document a person reads to understand what the package does: a
-	// standalone skill has only the first candidate, and a plugin bundled
-	// with a root SKILL.md of its own — not one of its skills' — should
-	// still open on it.
+	// A plugin's own manifest is JSON, not the document a person reads first.
 	for _, candidate := range []string{"SKILL.md", "plugin.json"} {
 		if tree.Has(candidate) {
 			body.Default = candidate
@@ -149,10 +122,8 @@ type getPackageFileOutput struct {
 	Body contract.PackageFileContent
 }
 
-// getPackageFile answers one file's content. Path is untrusted input off a
-// URL and is resolved against the archive's OWN member list (tree.Lookup, an
-// exact map lookup) — nothing here builds a filesystem path from it, so a
-// traversal or absolute path simply matches nothing and is a 404.
+// getPackageFile answers one file's content. Path is untrusted and only matched
+// against the archive's member list, never joined into a filesystem path.
 func (s *Server) getPackageFile(ctx context.Context, in *getPackageFileInput) (*getPackageFileOutput, error) {
 	principal, _ := PrincipalFrom(ctx)
 	tree, err := s.packageTree(ctx, principal, in.Namespace, in.Name)

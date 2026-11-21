@@ -1,13 +1,6 @@
 // Package api is the HTTP surface of the `serve api` role: a gin router carrying
-// huma operations, from which the OpenAPI 3.1 document is emitted.
-//
-// Constitution principle V: the document at /v1/openapi.json is generated from
-// the operation definitions in operations.go and is never hand-maintained. The
-// frozen machine-facing subset in specs/001-agent-manager-hub/contracts is a
-// contract this document must remain a superset of, not a file to copy.
-//
-// Principle VIII: reads live in queries/, writes in commands/, split from the
-// first handler. No command bus, no event sourcing, no read replica.
+// huma operations, from which the OpenAPI document is generated (never hand-maintained).
+// Reads live in queries/, writes in commands/.
 package api
 
 import (
@@ -31,32 +24,24 @@ import (
 )
 
 func init() {
-	// gin's mode is a package global read on every engine construction, so it is
-	// set once here rather than from New, where parallel callers would race.
+	// gin's mode is a package global read on every engine construction, so set it
+	// once here rather than from New, where parallel callers would race.
 	gin.SetMode(gin.ReleaseMode)
 
-	// One error shape across every operation, including the ones huma itself
-	// produces for request validation (see errors.go).
 	huma.NewError = newHumaError
 
-	// huma types arrays as `["array","null"]` by default, on the reasoning that a
-	// nil Go slice marshals to null. The frozen contract types them as `array` and
-	// lists them as required, so the fix is at the source instead: handlers emit an
-	// empty slice, never nil, and the document says what it means.
+	// The contract types arrays as non-null `array`; handlers emit empty slices, never nil.
 	huma.DefaultArrayNullable = false
 }
 
-// Probe is one dependency /v1/health reports on. The api role holds them rather
-// than reaching for the store or the bucket itself, so a role that gains a
-// dependency declares it here instead of the health handler growing a branch.
+// Probe is one dependency /v1/health reports on.
 type Probe struct {
 	Name  string
 	Check func(context.Context) error
 }
 
-// Deps is what the api role is handed. Every field is narrow on purpose
-// (principle VII): the api gets a blob *reader*, so there is no writer in scope
-// to assert back to — only `worker fetcher` may write bundle bytes.
+// Deps is what the api role is handed. Fields are deliberately narrow: the api gets
+// a blob reader only, since only `worker fetcher` may write bundle bytes.
 type Deps struct {
 	DB       bun.IDB
 	Bundles  blob.Reader
@@ -64,61 +49,36 @@ type Deps struct {
 	Probes   []Probe
 	Log      zerolog.Logger
 
-	// IDTokens verifies the ID token a session mint presents (FR-111). It is an
-	// interface and it may be nil: constructing a verifier performs OIDC discovery
-	// over the network, so whether that happens at boot, lazily, or not at all is
-	// the role bootstrap's decision — and a nil one refuses the mint rather than
-	// taking every other operation down with it.
+	// IDTokens verifies the ID token a session mint presents. It may be nil, in
+	// which case the mint is refused rather than taking other operations down.
 	IDTokens commands.IDTokenVerifier
-	// SessionMintSecret authenticates the one operation whose caller is a role
-	// rather than a person. It lives in Deps and not Options because it is a
-	// credential, and because Document() must emit the same bytes whatever a
-	// deployment holds.
-	//
-	// EMPTY means the mint is refused outright — no default, no development
-	// bypass. config.API deliberately does not mark the variable `required`, so
-	// that a missing web-integration secret does not also take down the reads, the
-	// health endpoint and the device flow; the consequence is that this is the only
-	// place the contract exists, and commands.SessionMint is where it is enforced.
+	// SessionMintSecret authenticates the role-to-role session mint. Empty means the
+	// mint is refused outright, with no development bypass; commands.SessionMint enforces it.
 	SessionMintSecret string
 
-	// Storage backs the Storage screen's bucket-settings and object-count report.
-	// It is read-and-describe only (blob.Inspector), not the full *blob.Bucket:
-	// this role holds no writer, whatever the driver's own client can do.
+	// Storage is read-and-describe only: this role holds no blob writer.
 	Storage blob.Inspector
 
-	// Identity is this role's own OIDC configuration, for the Organization
-	// screen's provider panel and connection test. It never carries the client
-	// secret: commands.IdentityConfig has no field for one.
+	// Identity is this role's OIDC configuration; it never carries the client secret.
 	Identity commands.IdentityConfig
 
-	// Queue backs the Runtime screen's job counts, errors and run history. It
-	// is River's own database, never the application schema (constitution
-	// principle IX): a *pgxpool.Pool to `river` already satisfies this narrow
-	// interface, and nothing here is bun.
+	// Queue is River's own database, never the application schema.
 	Queue queries.RuntimeQueue
 }
 
 // Options is the run-time configuration of the surface itself.
 type Options struct {
-	// Addr is the listen address, e.g. ":8081".
 	Addr string
-	// PublicBaseURL is the externally reachable base URL. It is emitted as the
-	// document's single server entry and is what the device flow's
-	// verification_uri is built from.
+	// PublicBaseURL is emitted as the document's server entry and is the base of
+	// the device flow's verification_uri.
 	PublicBaseURL string
-	// DeviceVerificationURL is the page a human opens to enter the device code —
-	// the web role's /cli screen, not this role's own origin.
+	// DeviceVerificationURL is the web role's /cli page where a human enters the device code.
 	DeviceVerificationURL string
-	// DeviceCodeTTL and DeviceTokenTTL are advertised by the device endpoints.
-	DeviceCodeTTL  time.Duration
-	DeviceTokenTTL time.Duration
-	// SessionTTL is how long a minted browser session lasts. The api decides it,
-	// not the web role: the row's expires_at is what a session actually is, and a
-	// caller that could choose it could choose forever.
-	SessionTTL time.Duration
-	// HealthTimeout caps how long a dependency probe may take before the role
-	// reports itself unready.
+	DeviceCodeTTL         time.Duration
+	DeviceTokenTTL        time.Duration
+	// SessionTTL is decided by the api, not the web role: a caller that could choose
+	// it could choose forever.
+	SessionTTL    time.Duration
 	HealthTimeout time.Duration
 	// Middleware runs ahead of everything else, instrumentation included.
 	Middleware []gin.HandlerFunc
@@ -138,60 +98,37 @@ func (o Options) withDefaults() Options {
 		o.DeviceTokenTTL = time.Hour
 	}
 	if o.SessionTTL <= 0 {
-		// The same default config.API carries. Duplicated deliberately: New is
-		// reachable from a test and from Document with no config in sight, and a
-		// zero here would otherwise reach commands.Login, which refuses it.
+		// Duplicates config.API's default: New is reachable without config, and
+		// commands.Login refuses a zero TTL.
 		o.SessionTTL = 12 * time.Hour
 	}
 	return o
 }
 
-// Server is the assembled surface. It owns no connections: everything it touches
-// arrives through Deps, which is what lets Document build the same routes with no
-// database in sight.
+// Server is the assembled surface. It owns no connections, which lets Document
+// build the same routes with no database.
 type Server struct {
 	deps   Deps
 	opts   Options
 	engine *gin.Engine
 	api    huma.API
-	// deviceLimiter caps how many device authorisations one caller may open. It is
-	// per process and therefore per replica; see device.go for what that costs.
+	// deviceLimiter is per process and therefore per replica; see device.go.
 	deviceLimiter *rateLimiter
-	// mintLimiter caps REFUSED session mints per caller address. Separate from
-	// deviceLimiter because it counts a different thing on a different budget; see
-	// limitSessionMint.
+	// mintLimiter counts only refused session mints per caller address.
 	mintLimiter *rateLimiter
 }
 
-// New assembles the router. It performs no I/O, so a zero Deps is a valid
-// argument and yields a server that emits the document and nothing else.
+// New assembles the router. It performs no I/O, so a zero Deps yields a server
+// that emits the document and nothing else.
 func New(deps Deps, opts Options) *Server {
 	opts = opts.withDefaults()
 
 	engine := gin.New()
-	// Off by default in gin, which answers a wrong method with 404. A client that
-	// used the wrong verb deserves to be told so.
 	engine.HandleMethodNotAllowed = true
-	// Route on the RAW path and unescape the captured values afterwards, so a path
-	// parameter may carry an encoded slash.
-	//
-	// It is load-bearing for profiles and it was measured, not assumed. A profile
-	// slug legitimately holds several segments — the representative dataset's are
-	// `example/platform-engineer`, and blob.ProfileRevisionKey validates each
-	// segment because the slug becomes an object-store prefix — while the frozen
-	// contract fixes the path template as `/v1/profiles/{slug}/revisions/{revision}`
-	// with ONE parameter, which gin matches against ONE segment. The generated
-	// clients already send `example%2Fplatform-engineer`: oapi-codegen's `simple`
-	// style escapes a path parameter, and the request's RawPath carries it. With
-	// gin's defaults the router reads URL.Path instead — the DECODED form, two
-	// segments — and answers 404, so every seeded profile was unreachable through
-	// its own revision endpoint. Measured against gin's router on 2026-08-31: with
-	// these two flags the same request routes and `slug` arrives decoded.
-	//
-	// It changes nothing for a parameter with no escape in it. gin falls back to
-	// URL.Path whenever RawPath is empty, which is every request whose path needed
-	// no encoding, so the unescaping applies only where a client actually escaped
-	// something.
+	// Route on the raw path and unescape captured values afterwards, so a path
+	// parameter may carry an encoded slash. Profile slugs hold several segments
+	// (e.g. `example/platform-engineer`) but the contract's revision path has one
+	// {slug} parameter; without this, gin matches the decoded path and returns 404.
 	engine.UseRawPath = true
 	engine.UnescapePathValues = true
 	engine.Use(opts.Middleware...)

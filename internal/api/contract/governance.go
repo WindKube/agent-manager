@@ -24,7 +24,7 @@ type ScannerSummary struct {
 
 type FindingSummary struct {
 	ID       string `json:"id" format:"uuid" doc:"The finding's identifier, as the detail and decision paths take it."`
-	RuleID   string `json:"ruleId" doc:"Stable rule identifier (FR-024)." example:"SH-NET-002"`
+	RuleID   string `json:"ruleId" doc:"Stable rule identifier." example:"SH-NET-002"`
 	Engine   string `json:"engine" doc:"The analyser that raised it. Two engines may use the same rule id, so a finding is identified by the pair." example:"rulepack"`
 	Severity string `json:"severity" enum:"low,medium,high" example:"high"`
 	State    string `json:"state" enum:"open,approved,rejected" example:"open"`
@@ -41,7 +41,7 @@ type FindingSummary struct {
 
 	RaisedAt time.Time `json:"raisedAt" doc:"When the scan that raised this finding recorded it."`
 
-	EvidencePath string `json:"evidencePath,omitempty" doc:"The PRIMARY location's path. Rendered escaped, always: it is bundle content (FR-055)." example:"scripts/digest.sh"`
+	EvidencePath string `json:"evidencePath,omitempty" doc:"The PRIMARY location's path. Rendered escaped, always: it is bundle content." example:"scripts/digest.sh"`
 	EvidenceLine *int   `json:"evidenceLine,omitempty" doc:"Absent when the finding names a file without a line." example:"41"`
 }
 
@@ -68,10 +68,10 @@ type FindingDetail struct {
 
 	// Evidence is EVERY location, not one: a finding legitimately has
 	// several, and the primary one is the row whose role says so.
-	Evidence []FindingEvidence `json:"evidence" doc:"Every location this finding points at, cause first. Rendered escaped, always (FR-055)."`
+	Evidence []FindingEvidence `json:"evidence" doc:"Every location this finding points at, cause first. Rendered escaped, always."`
 
 	// Checks includes passes: failures-only can't be told from nothing-ran.
-	Checks []FindingCheck `json:"checks" doc:"Every check the scan ran and its result, including the ones that passed (FR-025)."`
+	Checks []FindingCheck `json:"checks" doc:"Every check the scan ran and its result, including the ones that passed."`
 
 	Scan     FindingScan      `json:"scan"`
 	Override *FindingOverride `json:"override,omitempty" doc:"Present only when a reviewer has accepted this finding."`
@@ -90,9 +90,8 @@ type FindingCheck struct {
 	CheckID string `json:"checkId" example:"network-allowlist"`
 	Engine  string `json:"engine" doc:"The analyser this row belongs to, so the matrix can be read as \"the rule pack passed, the second engine failed\" rather than as one undifferentiated list." example:"rulepack"`
 	Label   string `json:"label" doc:"The check's own label, as the scan recorded it. A screen that mapped check ids to labels itself would stop naming a check added after it shipped." example:"Network allowlist"`
-	// Explain is what this check looks for, in general — not this scan's
-	// result, which is Result and WarnCount, the way Label is not the row's
-	// own result either. Denormalised for the same reason Label is.
+	// Explain is what this check looks for in general, not this scan's result.
+	// Denormalised for the same reason Label is.
 	Explain   string `json:"explain" doc:"What this check looks for, in general, as the scan recorded it." example:"Compares every host a script or an instruction file names against the version's declared network capability set, and flags one outside it."`
 	Result    string `json:"result" enum:"pass,fail,warn" example:"fail"`
 	WarnCount int    `json:"warnCount" doc:"How many warnings this check raised. Zero unless the result is warn." example:"2"`
@@ -103,7 +102,7 @@ type FindingScan struct {
 	StartedAt   time.Time  `json:"startedAt"`
 	FinishedAt  *time.Time `json:"finishedAt,omitempty" doc:"Absent while the scan is still in flight."`
 	Verdict     string     `json:"verdict" enum:"scanning,clean,flagged,rejected" example:"flagged"`
-	TimedOut    bool       `json:"timedOut" doc:"The scan exceeded its budget. Its verdict is not a clean bill of health (FR-031)."`
+	TimedOut    bool       `json:"timedOut" doc:"The scan exceeded its budget. Its verdict is not a clean bill of health."`
 }
 
 type FindingOverride struct {
@@ -114,7 +113,7 @@ type FindingOverride struct {
 }
 
 type FindingApproval struct {
-	Note          string `json:"note" minLength:"1" maxLength:"2000" doc:"Why this risk is accepted. Required: an override with no stated reason is an unexplained exception, and FR-028 asks for a recorded note." example:"Network call is to our own registry"`
+	Note          string `json:"note" minLength:"1" maxLength:"2000" doc:"Why this risk is accepted. Required: an override with no stated reason is an unexplained exception." example:"Network call is to our own registry"`
 	ExpiresInDays int    `json:"expiresInDays,omitempty" minimum:"1" maximum:"365" doc:"Days until the acceptance lapses. Defaults to 30 when omitted; never unlimited." example:"12"`
 }
 
@@ -139,7 +138,7 @@ type AuditEntry struct {
 	Actor      string    `json:"actor" doc:"The email or subject of the person, or the name of the system role, that acted." example:"kwiatrzyk@example.com"`
 	ActorKind  string    `json:"actorKind" enum:"identity,system,service-token" doc:"system is a worker with no person behind it, which a screen must not attribute to anybody; service-token is a scoped non-human credential, named by its token name." example:"identity"`
 	Kind       string    `json:"kind" enum:"fetch,scan,approve,profile,share,sync,login,policy,role,category,secret,token,webhook" example:"approve"`
-	Text       string    `json:"text" doc:"The human-readable record of what happened. It quotes package and profile names, so it is rendered escaped (FR-055)." example:"override granted for community/aws-cost-explainer@2.0.0"`
+	Text       string    `json:"text" doc:"The human-readable record of what happened. It quotes package and profile names, so it is rendered escaped." example:"override granted for community/aws-cost-explainer@2.0.0"`
 	Source     string    `json:"source,omitempty" doc:"web, cli / <host> or system." example:"web"`
 	// The subject fields are absent on rows written before they existed.
 	SubjectKind string         `json:"subjectKind,omitempty" enum:"package,version,finding,profile,revision,category,mapping,policy,identity,device,service-token,machine,webhook" doc:"What the row is about." example:"version"`
@@ -150,14 +149,13 @@ type AuditEntry struct {
 
 type AuditPage struct {
 	Entries  []AuditEntry `json:"entries" doc:"The requested page, most recent first."`
-	Total    int          `json:"total" doc:"Rows in the log. The export returns all of them (FR-051)." example:"512"`
+	Total    int          `json:"total" doc:"Rows in the log. The export returns all of them." example:"512"`
 	Page     int          `json:"page" example:"1"`
 	PageSize int          `json:"pageSize" example:"50"`
 }
 
-// AuditExportTrailer: a streamed response can't fail after headers are
-// sent, so a consumer reaching end-of-stream without this line has an
-// incomplete export.
+// AuditExportTrailer ends an export stream. A streamed response can't fail
+// after headers are sent, so a stream without this line is incomplete.
 type AuditExportTrailer struct {
 	Complete bool `json:"complete" doc:"Always true. Its ABSENCE is the signal: a stream that ends without this line was truncated."`
 	Rows     int  `json:"rows" doc:"How many audit rows precede this line." example:"512"`
@@ -166,7 +164,7 @@ type AuditExportTrailer struct {
 // Badges is the shell's counts, scoped to the caller.
 type Badges struct {
 	Packages int `json:"packages" doc:"Packages visible in the catalog — the same figure the catalog's own total reports with no filters applied." example:"10"`
-	Profiles int `json:"profiles" doc:"Profiles this identity may read, and no others (FR-044)." example:"4"`
+	Profiles int `json:"profiles" doc:"Profiles this identity may read, and no others." example:"4"`
 	// OpenFindings is global rather than per-identity because packages are
 	// org-visible: there is no per-caller scoping to apply.
 	OpenFindings int `json:"openFindings" doc:"Findings awaiting a decision." example:"4"`

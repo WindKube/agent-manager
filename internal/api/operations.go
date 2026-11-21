@@ -18,9 +18,7 @@ import (
 	"agent-manager/internal/logging"
 )
 
-// register declares the whole HTTP surface. This is the file the OpenAPI document
-// is emitted from (constitution principle V): an operation that is not here does
-// not exist, and one that is here cannot be undocumented.
+// register declares the whole HTTP surface; the OpenAPI document is emitted from it.
 func (s *Server) register() {
 	s.registerHealth()
 	s.registerDevice()
@@ -41,9 +39,8 @@ func (s *Server) register() {
 	s.registerWebhooks()
 }
 
-// publicSecurity is the empty security requirement that removes the document's
-// root requirement for one operation. It must be non-nil and empty: OpenAPI reads
-// an absent `security` as "inherit the root" and an empty array as "none".
+// publicSecurity removes the root security requirement for one operation. It must
+// be non-nil and empty: OpenAPI reads an absent `security` as "inherit the root".
 func publicSecurity() []map[string][]string { return []map[string][]string{} }
 
 func (s *Server) registerHealth() {
@@ -54,7 +51,7 @@ func (s *Server) registerHealth() {
 		Tags:        []string{"system"},
 		Summary:     "Liveness and readiness",
 		Description: "Liveness and readiness in one probe: 200 when every dependency this role needs is " +
-			"reachable, 503 otherwise. Has no authenticated variant and no client error case (FR-058).",
+			"reachable, 503 otherwise. Has no authenticated variant and no client error case.",
 		Security: publicSecurity(),
 		Responses: map[string]*huma.Response{
 			"200": {Description: "Serving."},
@@ -80,19 +77,11 @@ func (s *Server) registerDevice() {
 			"authorised until a human approves that user code, so the response is not a credential " +
 			"grant — it is a pending request.",
 		Security: publicSecurity(),
-		// The issuance cap is an operation middleware rather than a branch in the
-		// handler, so the 429 is answered before a statement is issued and the body
-		// stays empty, which is what the declared response says (device.go).
+		// A middleware, so the 429 is answered before any statement and with the empty body the response declares.
 		Middlewares: huma.Middlewares{s.limitDeviceAuthorize},
 		Responses: map[string]*huma.Response{
-			// 400 and 415 are the framework's own, not this handler's: the request
-			// body is `required: true` and JSON-only, so an absent body, a body that
-			// is not JSON and a body sent under another media type are all refused
-			// before deviceAuthorize runs. They are declared because they are what
-			// actually goes out — a generated client (internal/apiclient) leaves every
-			// typed response field nil for an undeclared status and returns no error,
-			// so a caller switching on those fields reads an undeclared 400 as
-			// "success, empty body". Same reasoning as deviceToken's 400 below.
+			// 400 and 415 come from huma's own validation. They are declared because a
+			// generated client reads an undeclared status as success with an empty body.
 			"400": s.errorResponse("The request body is missing or is not valid JSON."),
 			"415": s.errorResponse("The request body must be sent as application/json."),
 			"422": s.errorResponse("The request body is not a valid authorisation request."),
@@ -116,10 +105,10 @@ func (s *Server) registerDevice() {
 		Tags:        []string{"device"},
 		Summary:     "Poll for the issued token",
 		Description: "Standard RFC 8628 polling. A code that has expired, been consumed, or been approved " +
-			"by an identity other than the requester is refused and no token is issued (FR-042). " +
+			"by an identity other than the requester is refused and no token is issued. " +
 			"The issued token is a session for the identity that APPROVED the authorisation, so the " +
 			"machine holds exactly that person's access, re-derived from their groups on every " +
-			"request (FR-040, FR-044).",
+			"request.",
 		Security: publicSecurity(),
 		Responses: map[string]*huma.Response{
 			"400": {
@@ -128,25 +117,15 @@ func (s *Server) registerDevice() {
 					"the two are told apart by the response's content type.",
 				Content: map[string]*huma.MediaType{
 					"application/json": {Schema: s.schemaOf(contract.DeviceTokenError{}, "DeviceTokenError")},
-					// Declared because it is what actually goes out, not because a
-					// second shape is wanted here. The request body is `required: true`
-					// in the frozen contract, so an absent body is refused by the
-					// framework's own validation before this handler runs, and a
-					// response the document does not describe is worse than a second
-					// media type that it does.
+					// huma's own validation refuses an absent body with the project's error shape.
 					"application/problem+json": {Schema: s.schemaOf(contract.Error{}, "Error")},
 				},
 			},
-			// Declared because a fault here must not be reported as one of the RFC's
-			// five values: three of them are terminal, so answering a database outage
-			// with invalid_grant would tell every polling client to give up.
 			"500": s.errorResponse("The request could not be completed."),
 		},
 	}, s.deviceToken)
 
-	// RFC 8628 3.4 fixes this body as form-encoded, and huma models an object body
-	// as JSON only, so the media type is declared here instead. The schema still
-	// comes from contract.DeviceTokenRequest — it is emitted, not hand-written.
+	// RFC 8628 fixes this body as form-encoded, which huma cannot model for an object body.
 	s.declareRequestBody(http.MethodPost, "/v1/device/token", "application/x-www-form-urlencoded",
 		"The RFC 8628 token request, form-encoded as the RFC requires.",
 		s.schemaOf(contract.DeviceTokenRequest{}, "DeviceTokenRequest"))
@@ -163,7 +142,7 @@ func (s *Server) registerSessions() {
 			"can mint a session for any subject — its rules are contracts/auth.md's and its " +
 			"justification is the sole row of the plan's Complexity Tracking table. The web role " +
 			"owns the browser's origin and therefore the cookie; this role owns the relational " +
-			"schema and therefore the session row (FR-111), and this call is the whole of what " +
+			"schema and therefore the session row, and this call is the whole of what " +
 			"crosses that gap. " +
 			"It takes the RAW ID token and verifies it here, against the configured issuer, " +
 			"audience and signing keys: verification lives in the role that owns identity, the " +
@@ -173,8 +152,7 @@ func (s *Server) registerSessions() {
 			"development bypass, because an unauthenticated session mint is an account-takeover " +
 			"primitive. Refusals are rate-limited per caller address.",
 		Security: sessionMintSecurity(),
-		// The cap is an operation middleware rather than a branch in the handler, so
-		// a blocked caller is answered before the secret is compared at all.
+		// A middleware, so a blocked caller is answered before the secret is compared.
 		Middlewares: huma.Middlewares{s.limitSessionMint},
 		Responses: map[string]*huma.Response{
 			"200": {
@@ -184,10 +162,7 @@ func (s *Server) registerSessions() {
 					"application/json": {Schema: s.schemaOf(contract.Session{}, "Session")},
 				},
 			},
-			// Declared for the same reason the device flow declares its framework
-			// failures: a generated client leaves every typed response field nil for
-			// an undeclared status and returns no error, so a caller switching on
-			// those fields reads an undeclared 400 as "success, empty body".
+			// Declared because a generated client reads an undeclared status as success.
 			"400": s.errorResponse("The request body is missing or is not valid JSON."),
 			"401": s.errorResponse("The shared secret is missing or is not the one this hub holds."),
 			"415": s.errorResponse("The request body must be sent as application/json."),
@@ -209,7 +184,7 @@ func (s *Server) registerSessions() {
 		Summary:       "Sign out",
 		DefaultStatus: http.StatusNoContent,
 		Description: "Expires the session this request presented, server-side, and writes the sign-out " +
-			"audit row in the same transaction (FR-114, FR-115). Clearing the cookie is the " +
+			"audit row in the same transaction. Clearing the cookie is the " +
 			"caller's courtesy to the browser, not the mechanism: a replayed cookie is refused " +
 			"here afterwards, indistinguishably from a token that never existed. " +
 			"Exactly this session and no other — expiring every session the identity holds would " +
@@ -230,11 +205,11 @@ func (s *Server) registerSessions() {
 		Tags:        []string{"identity"},
 		Summary:     "Who this request is acting as",
 		Description: "The display name, email and role of the identity behind this request, plus whether " +
-			"any group it holds maps to a role AT ALL (FR-117) — signed in with no role is a " +
+			"any group it holds maps to a role AT ALL — signed in with no role is a " +
 			"screen state a person must be told about, never an empty catalog. " +
 			"Resolved on this request and not cached: the session resolver joins group_role_map " +
 			"every time, which is what makes an admin's mapping change take effect on the next " +
-			"request with nothing to invalidate (FR-118).",
+			"request with nothing to invalidate.",
 		Responses: map[string]*huma.Response{
 			"401": s.errorResponse("Missing, expired or invalid token. There is no anonymous viewer."),
 			"500": s.errorResponse("The request could not be completed."),
@@ -251,11 +226,11 @@ func (s *Server) registerPackages() {
 		Tags:        []string{"catalog"},
 		Summary:     "Browse, search and facet the catalog",
 		Description: "One page of the catalog with both facet option sets and the live total, from two " +
-			"statements issued concurrently (R4). The two facets count differently, and the " +
-			"asymmetry is FR-013's: CATEGORIES are disjunctive, so each option is counted with " +
+			"statements issued concurrently. The two facets count differently, and the " +
+			"asymmetry is this: CATEGORIES are disjunctive, so each option is counted with " +
 			"the category filter removed; TAGS are conjunctive, so each option is counted " +
 			"against the current results — the number selecting it actually yields. " +
-			"Browsing requires a session: public anonymous browsing is out of scope (spec.md).",
+			"Browsing requires a session: public anonymous browsing is out of scope.",
 		Responses: map[string]*huma.Response{
 			"401": s.errorResponse("No usable session. The caller must sign in; there is no anonymous view."),
 			"422": s.errorResponse("A filter value is outside its vocabulary."),
@@ -271,10 +246,10 @@ func (s *Server) registerPackages() {
 		Tags:        []string{"catalog"},
 		Summary:     "One package's detail",
 		Description: "Description, origin, tags, manifest, components, capabilities, version history and " +
-			"dependent profiles for one package (FR-016). The path is the package id, whose two " +
+			"dependent profiles for one package. The path is the package id, whose two " +
 			"segments are the namespace and the name. " +
 			"Two panels are scoped to the caller: the dependent profiles are exactly the ones this " +
-			"identity may read (FR-044), and each version's `pinnedBy` counts only those — an " +
+			"identity may read, and each version's `pinnedBy` counts only those — an " +
 			"unscoped count beside a scoped list would leak the existence of private profiles by " +
 			"arithmetic. " +
 			"`capabilities.scanned` distinguishes a version that was scanned and reaches nothing " +
@@ -299,7 +274,7 @@ func (s *Server) registerPackages() {
 			"— not a full file list, so this unpacks the bundle itself, under the same extraction " +
 			"caps the fetcher enforces on ingestion, and does so again on every call: nothing here " +
 			"stores a byte-level file list to answer from instead. A rejected version is never " +
-			"served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029). " +
+			"served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one. " +
 			"`default` names this version's own SKILL.md or plugin.json when the bundle has one at " +
 			"its root, since that is the file most worth reading first.",
 		Responses: map[string]*huma.Response{
@@ -350,7 +325,7 @@ func (s *Server) registerPackages() {
 			"`scanned` distinguishes a version scanned clean from one never scanned, exactly as " +
 			"getPackage's `capabilities.scanned` does: both produce an empty findings list. A " +
 			"rejected version is never served, exactly as GET " +
-			"/v1/bundles/{publisher}/{name}/{version} refuses one (FR-029).",
+			"/v1/bundles/{publisher}/{name}/{version} refuses one.",
 		Responses: map[string]*huma.Response{
 			"401": s.errorResponse("No usable session. The caller must sign in; there is no anonymous view."),
 			"403": s.errorResponse("This version was rejected and its scan detail is not served."),
@@ -365,7 +340,7 @@ func (s *Server) registerPackages() {
 		Path:        "/v1/packages/preview",
 		Tags:        []string{"packages"},
 		Summary:     "Validate an archive before registering it",
-		Description: "FR-005's pre-submit answer: every entry with a validation mark, the discarded paths " +
+		Description: "The pre-submit answer: every entry with a validation mark, the discarded paths " +
 			"named, the components the FILE TREE reveals, and — when a manifest fails — the " +
 			"schema path that refused it. Writes nothing, and runs the same validation the " +
 			"fetcher runs, so the panel a user approves is the tree that gets stored.",
@@ -389,7 +364,7 @@ func (s *Server) registerPackages() {
 			"writes the audit row, in one transaction. The response is an acknowledgement and not " +
 			"a published version: the bytes are fetched, validated, packed and committed by " +
 			"`worker fetcher`, which is the only role that may write them. A version becomes " +
-			"visible only once all of that has landed (FR-008).",
+			"visible only once all of that has landed.",
 		MaxBodyBytes: maxUploadBytes,
 		Responses: map[string]*huma.Response{
 			"202": {
@@ -400,7 +375,7 @@ func (s *Server) registerPackages() {
 			},
 			"401": s.errorResponse("Missing, expired or invalid token."),
 			"403": s.errorResponse("This identity may not register a package."),
-			"409": s.errorResponse("FR-007: this publisher/name@version already exists — published and " +
+			"409": s.errorResponse("This publisher/name@version already exists — published and " +
 				"immutable, or still resolving an earlier registration — and cannot be registered again."),
 			"413": s.errorResponse("The archive is larger than this hub accepts."),
 			"422": s.errorResponse("The registration is incomplete, or the uploaded archive was refused."),
@@ -467,7 +442,7 @@ func (s *Server) registerPackages() {
 		Path:        "/v1/packages/{namespace}/{name}/visibility",
 		Tags:        []string{"packages"},
 		Summary:     "Change who may see a package",
-		Description: "Organisation, team or private (FR-126), in one transaction with one audit row of " +
+		Description: "Organisation, team or private, in one transaction with one audit row of " +
 			"kind `share`. Team means the caller's own identity-provider groups: there is no " +
 			"team-membership entity here, so a package's team visibility is read against " +
 			"whichever groups its owner carried at registration. " +
@@ -556,8 +531,8 @@ func (s *Server) registerProfiles() {
 		Tags:        []string{"profiles"},
 		Summary:     "Profiles readable by this identity",
 		Description: "Returns exactly the profiles this identity may read via direct membership or group " +
-			"mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable " +
-			"profiles are not enumerated at all. Each row carries canCurate (FR-126), so a caller " +
+			"mapping, and no others. Not a filtered view of a larger list — unreadable " +
+			"profiles are not enumerated at all. Each row carries canCurate, so a caller " +
 			"choosing among them need not read every one's detail just to find out which allow it.",
 		Responses: map[string]*huma.Response{
 			"401": s.errorResponse("Missing, expired or invalid token."),
@@ -571,10 +546,10 @@ func (s *Server) registerProfiles() {
 		Path:        "/v1/profiles/{slug}",
 		Tags:        []string{"profiles"},
 		Summary:     "One profile, resolved under the org gate",
-		Description: "The profile detail screen (001 US5): every package the profile holds, what each one " +
+		Description: "The profile detail screen: every package the profile holds, what each one " +
 			"resolves to, its scan state, and what the gate did about it — INCLUDING the entries " +
-			"the gate excludes, which are reported with their reason and never silently omitted " +
-			"(FR-036). " +
+			"the gate excludes, which are reported with their reason and never silently omitted" +
+			". " +
 			"The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the " +
 			"same code the published lockfile and the CLI's sync go through. It is not restated " +
 			"in this query, because two implementations of the gate is how the screen and the " +
@@ -582,12 +557,12 @@ func (s *Server) registerProfiles() {
 			"`latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan " +
 			"badge; `version` / `verdict` are what the entry actually resolves to and are absent " +
 			"when it is excluded. The two differ exactly when the gate did something. " +
-			"`unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine " +
+			"`unpublishedChanges` exists because a pin toggled here reaches no machine " +
 			"until a revision is published, and this says a revision is owed.",
 		Responses: map[string]*huma.Response{
 			"401": s.errorResponse("Missing, expired or invalid token."),
 			"404": s.errorResponse("No such profile, or not readable by this identity. The two are " +
-				"deliberately one answer (FR-044)."),
+				"deliberately one answer."),
 			"500": s.errorResponse("The request could not be completed."),
 		},
 	}, s.getProfile)
@@ -605,7 +580,7 @@ func (s *Server) registerProfiles() {
 			"`membership`, so a profile created without one would be permanently uneditable. " +
 			"`forkOf` copies the named profile's entries as they stand at this instant and records " +
 			"the lineage. A fork NEVER inherits a revision the upstream publishes afterwards " +
-			"(FR-038) — not by configuration but by construction: nothing reads `forked_from_id` " +
+			"— not by configuration but by construction: nothing reads `forked_from_id` " +
 			"in the other direction. The upstream must be readable by this identity. " +
 			"Visibility defaults to `private`: a profile nobody has chosen to publish is not " +
 			"readable by the whole organisation. " +
@@ -634,9 +609,9 @@ func (s *Server) registerProfiles() {
 		Path:        "/v1/profiles/{slug}/entries",
 		Tags:        []string{"profiles"},
 		Summary:     "Set the packages a profile holds and how each one tracks versions",
-		Description: "Float or pin per package (FR-032), in one transaction with one audit row of kind " +
+		Description: "Float or pin per package, in one transaction with one audit row of kind " +
 			"`profile`. " +
-			"NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the " +
+			"NOT DURABLE UNTIL A REVISION IS PUBLISHED. This writes the " +
 			"draft — `profile_entry` — and nothing a machine syncs changes until " +
 			"POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now " +
 			"resolves, with `unpublished` set on every row that differs from the head revision. " +
@@ -698,18 +673,18 @@ func (s *Server) registerProfiles() {
 		Path:        "/v1/profiles/{slug}/sharing",
 		Tags:        []string{"profiles"},
 		Summary:     "Set the role each member and identity-provider group holds",
-		Description: "Individual members and IdP groups at the four levels FR-037 names — owner, " +
+		Description: "Individual members and IdP groups at four levels — owner, " +
 			"maintainer, reviewer, consumer — in one transaction with one audit row of kind " +
 			"`share`. " +
 			"An UPSERT of roles and not a replacement of the membership set: a subject the body " +
-			"does not name keeps the role it has. FR-037 is about roles, a demotion is an update " +
+			"does not name keeps the role it has. This is about roles: a demotion is an update " +
 			"of `role`, and `am_api` holds no DELETE on `membership`. " +
 			"A body that would leave the profile with NO OWNER is refused, because nothing could " +
 			"add one back — only an owner may change sharing. " +
 			"A group is matched against the `groups` claim on every request rather than expanded " +
 			"into people, so losing a mapped group takes effect at the next token refresh " +
-			"(FR-045) and a near-miss on the group's name silently grants nothing. " +
-			"Nothing here can make a fork inherit a revision (FR-038); sharing grants access to " +
+			"and a near-miss on the group's name silently grants nothing. " +
+			"Nothing here can make a fork inherit a revision; sharing grants access to " +
 			"this profile and creates no relationship between two of them. " +
 			"Requires owner on the profile.",
 		Responses: map[string]*huma.Response{
@@ -739,8 +714,8 @@ func (s *Server) registerProfiles() {
 		Description: "The enabled set, in full, with one audit row of kind `profile`. An omitted target is " +
 			"disabled rather than removed — `sync_target.enabled` is a column, which is how a " +
 			"replacement works with no DELETE grant. " +
-			"A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores " +
-			"(001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version " +
+			"A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores" +
+			". Nothing the resolver reads changes here and no version " +
 			"resolves differently; the list rides in the lockfile so a client knows where to put " +
 			"what it already resolved. " +
 			"An empty list is legal and means the profile writes nothing until somebody chooses. " +
@@ -770,16 +745,16 @@ func (s *Server) registerProfiles() {
 		Summary:       "Publish the next immutable revision",
 		DefaultStatus: http.StatusCreated,
 		Description: "Freezes the current resolution as a new sequential revision and writes one audit row " +
-			"of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. " +
+			"of kind `profile`. The body is the lockfile it wrote. " +
 			"The lockfile comes from the resolver, through the same code path the detail screen " +
-			"reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). " +
+			"reads, so a revision cannot freeze a resolution nobody was shown. " +
 			"THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated " +
 			"under a row lock on the profile so two racing publishes serialise into r15 and r16 " +
 			"with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. " +
 			"REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint " +
 			"rather than a branch (principle IV). " +
 			"Every previous revision stays readable for ever: `am_api` holds no DELETE on " +
-			"`revision` and no UPDATE path reaches one (FR-034). " +
+			"`revision` and no UPDATE path reaches one. " +
 			"Requires owner or maintainer on the profile — a consumer may not publish.",
 		Responses: map[string]*huma.Response{
 			"201": {
@@ -807,7 +782,7 @@ func (s *Server) registerProfiles() {
 		Summary:     "Fetch a resolved revision lockfile",
 		Description: "`revision` accepts `head` or an integer. The response body conforms to " +
 			"lockfile.schema.json, including the `skipped` array — a gate-excluded package is " +
-			"reported with its reason, never silently omitted (FR-036).",
+			"reported with its reason, never silently omitted.",
 		Responses: map[string]*huma.Response{
 			"401": s.errorResponse("Missing, expired or invalid token."),
 			"404": s.errorResponse("No such profile or revision, or not readable by this identity."),
@@ -826,7 +801,7 @@ func (s *Server) registerProfiles() {
 		Description: "Deletes the profile, its entries, its membership and its sync targets, in one " +
 			"transaction with one audit row of kind `profile`. Refuses with 409 when the profile " +
 			"holds any published revision — the foreign key from `revision` has no ON DELETE " +
-			"clause, so this is the database's own refusal, and it is deliberate: FR-034 forbids " +
+			"clause, so this is the database's own refusal, and it is deliberate: the design forbids " +
 			"deleting a revision, and a client may already have synced one. A profile that has " +
 			"never been published carries no such row and deletes cleanly. " +
 			"Requires owner on the profile.",
@@ -851,13 +826,12 @@ func (s *Server) registerBundles() {
 		Summary:     "Download an immutable version bundle",
 		Description: "Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The " +
 			"`Digest` header carries the sha256 the client MUST verify before writing anything to " +
-			"disk. A rejected version is never served regardless of gate (FR-029).",
+			"disk. A rejected version is never served regardless of gate.",
 		Responses: map[string]*huma.Response{
 			"200": {
 				Description: "Bundle bytes",
 				Content: map[string]*huma.MediaType{
-					// Declared rather than inferred: huma types a []byte body as a
-					// base64 string, and these bytes are served verbatim.
+					// huma would type a []byte body as base64; these bytes are served verbatim.
 					"application/zstd": {Schema: &huma.Schema{Type: huma.TypeString, Format: "binary"}},
 				},
 			},
@@ -878,7 +852,7 @@ func (s *Server) registerSync() {
 		Path:        "/v1/sync",
 		Tags:        []string{"profiles"},
 		Summary:     "Report a completed sync",
-		Description: "Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per " +
+		Description: "Writes one sync_event and one audit row of kind `sync`. One call per " +
 			"sync, not per package — install counts are aggregated server-side from the " +
 			"revision's contents. A report carrying `machineId` also upserts that machine and " +
 			"replaces its installs and skips for the profile in the same transaction; one without " +
@@ -903,7 +877,7 @@ func (s *Server) registerScanner() {
 		Summary:     "The Scanner screen's headline figures",
 		Description: "Versions that reached a verdict in the period, how many packages are quarantined, " +
 			"how many acceptances are still in force and when the first of them lapses, and the " +
-			"median time from a scan starting to its verdict (001 US4 scenario 1). " +
+			"median time from a scan starting to its verdict. " +
 			"`quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged " +
 			"versions: a superseded flagged version is not quarantining anything, because nothing " +
 			"resolves to it. " +
@@ -943,14 +917,14 @@ func (s *Server) registerScanner() {
 		Path:        "/v1/findings/{id}",
 		Tags:        []string{"scanner"},
 		Summary:     "One finding, its evidence and every check that ran",
-		Description: "The detail pane of 001 US4 scenario 2: severity, rule, subject, the prose " +
+		Description: "The detail pane: severity, rule, subject, the prose " +
 			"explanation, EVERY evidence location, and EVERY check the raising scan ran — passes " +
-			"included (FR-025). " +
+			"included. " +
 			"The passes are not padding. A pane showing only failures cannot be told apart from " +
 			"one where nothing else ran, so the absence of a finding would be indistinguishable " +
 			"from the absence of a check, which is the distinction the whole matrix exists for. " +
 			"Evidence and check labels are bundle content and identity-provider content " +
-			"respectively: every consumer renders them escaped (FR-055).",
+			"respectively: every consumer renders them escaped.",
 		Responses: map[string]*huma.Response{
 			"401": s.errorResponse("No usable session."),
 			"404": s.errorResponse("No such finding."),
@@ -967,8 +941,8 @@ func (s *Server) registerScanner() {
 		Summary:     "Accept a finding with a recorded note and an expiry",
 		Description: "Approves the finding, records the override carrying the reviewer's identity, their " +
 			"note and an expiry, and writes ONE audit row of kind `approve` — all in one " +
-			"transaction (FR-028, FR-050). " +
-			"The version's verdict is NOT changed. US4 scenario 3 makes the version distributable " +
+			"transaction. " +
+			"The version's verdict is NOT changed. Accepting makes the version distributable " +
 			"SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict " +
 			"to clean would make an accepted version indistinguishable from one that never had a " +
 			"finding, under every gate, for ever. " +
@@ -976,7 +950,7 @@ func (s *Server) registerScanner() {
 			"reviewer extending an expiring override does. " +
 			"A rejected finding cannot be accepted: rejection is terminal (409). " +
 			"Requires the scanner-reviewer role. The screen must also hide or disable the action " +
-			"for an identity that lacks it (FR-126) — this refusal is the backstop, not the " +
+			"for an identity that lacks it — this refusal is the backstop, not the " +
 			"mechanism.",
 		Responses: map[string]*huma.Response{
 			"200": {
@@ -1005,8 +979,8 @@ func (s *Server) registerScanner() {
 		Description: "Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE " +
 			"audit row — in one transaction. " +
 			"This is TERMINAL and it is not an accept with a different flag. A rejected version " +
-			"cannot be resolved by any profile REGARDLESS OF GATE and is never served at all " +
-			"(FR-029), so there is no expiry to set and no field in which to suggest there is one. " +
+			"cannot be resolved by any profile REGARDLESS OF GATE and is never served at all" +
+			", so there is no expiry to set and no field in which to suggest there is one. " +
 			"An override already recorded on the finding is left in place: it is the record of a " +
 			"decision that really was taken, it stops counting as active, and it can permit " +
 			"nothing once the verdict is terminal. " +
@@ -1041,10 +1015,10 @@ func (s *Server) registerAudit() {
 		Description: "One page of `audit_event`, ordered by when it happened, newest first, served by the " +
 			"index created for exactly that read. " +
 			"Optional filters narrow it to one subject or one package namespace; the export takes the " +
-			"same filters, so it always returns the page's full CURRENT SCOPE (FR-051). Rows written " +
+			"same filters, so it always returns the page's full CURRENT SCOPE. Rows written " +
 			"before subjects were recorded carry none and match no subject filter. " +
 			"Rows are append-only, enforced by revoked grants rather than by anything in this " +
-			"process (FR-052). `text` quotes package and profile names, so it is rendered escaped.",
+			"process. `text` quotes package and profile names, so it is rendered escaped.",
 		Responses: map[string]*huma.Response{
 			"401": s.errorResponse("Missing, expired or invalid token."),
 			"422": s.errorResponse("`page` or `pageSize` is outside its range, or a filter is invalid."),
@@ -1058,7 +1032,7 @@ func (s *Server) registerAudit() {
 		Path:        "/v1/audit/export",
 		Tags:        []string{"audit"},
 		Summary:     "Export the whole audit log",
-		Description: "FR-051: the full current scope, not the visible page — the whole log, or what the " +
+		Description: "The full current scope, not the visible page — the whole log, or what the " +
 			"same filters as listAudit select. Newline-delimited JSON, one " +
 			"row per line, streamed — the rows are never materialised, because `audit_event` is " +
 			"the one table in this schema designed to grow without bound. " +
@@ -1084,11 +1058,11 @@ func (s *Server) registerBadges() {
 		Tags:        []string{"navigation"},
 		Summary:     "The application shell's counts",
 		Description: "The three counts the sidebar renders, in one call: packages visible in the catalog, " +
-			"profiles THIS IDENTITY may read, and findings awaiting a decision (FR-121). " +
+			"profiles THIS IDENTITY may read, and findings awaiting a decision. " +
 			"One operation because the shell renders on every screen, so three would be three " +
 			"round trips per page. Three indexed counts over the base tables and not a " +
-			"projection: principle VIII sanctions exactly one and it is not spent here (research " +
-			"R5). " +
+			"projection: principle VIII sanctions exactly one and it is not spent here" +
+			". " +
 			"The profile count is the length of the list the Profiles screen shows and cannot be " +
 			"more: a count including a profile the reader cannot open would leak its existence by " +
 			"arithmetic.",
@@ -1106,9 +1080,9 @@ func (s *Server) registerDeviceApproval() {
 		Path:        "/v1/device/authorizations/{user_code}",
 		Tags:        []string{"device"},
 		Summary:     "Look up a pending device authorisation",
-		Description: "Shows the requesting host and remaining validity BEFORE the viewer confirms " +
-			"(FR-041), so approval is an informed act. Refuses distinguishably when the code is " +
-			"unknown, expired or already decided (FR-042). " +
+		Description: "Shows the requesting host and remaining validity BEFORE the viewer confirms" +
+			", so approval is an informed act. Refuses distinguishably when the code is " +
+			"unknown, expired or already decided. " +
 			"The path parameter is a bearer-equivalent secret for the length of its validity and " +
 			"is never logged verbatim (see the api role's correlation middleware).",
 		Responses: map[string]*huma.Response{
@@ -1126,9 +1100,9 @@ func (s *Server) registerDeviceApproval() {
 		Path:        "/v1/device/authorizations/{user_code}/approve",
 		Tags:        []string{"device"},
 		Summary:     "Approve a pending device authorisation",
-		Description: "The confirm action (US6). Moves the code from pending to approved in one " +
-			"transaction and writes the `login` audit row naming the host, source `cli / <host>` " +
-			"(FR-050). Single-use: a second approval of the same code refuses the same way any " +
+		Description: "The confirm action. Moves the code from pending to approved in one " +
+			"transaction and writes the `login` audit row naming the host, source `cli / <host>`" +
+			". Single-use: a second approval of the same code refuses the same way any " +
 			"already-decided code does.",
 		Responses: map[string]*huma.Response{
 			"401": s.errorResponse("Missing, expired or invalid token."),
@@ -1182,8 +1156,6 @@ func (s *Server) registerRuntime() {
 	}, s.getRuntime)
 }
 
-// ---- handlers ----------------------------------------------------------------
-
 type listProfilesOutput struct {
 	Body contract.ProfileList
 }
@@ -1235,9 +1207,8 @@ type getBundleInput struct {
 }
 
 type getBundleOutput struct {
-	// Content-Type is set by hand because huma writes a []byte body raw, without
-	// negotiating a type. hidden keeps it out of the document, where OpenAPI
-	// ignores a Content-Type response header anyway.
+	// Set by hand because huma writes a []byte body raw; hidden because OpenAPI
+	// ignores a Content-Type response header.
 	ContentType string `header:"Content-Type" hidden:"true"`
 	Digest      string `header:"Digest" pattern:"^sha-256=[A-Za-z0-9+/=]+$" doc:"RFC 3230 digest of the body. Verify before writing to disk."`
 	ETag        string `header:"ETag" doc:"The immutable version's entity tag. Safe to cache forever."`
@@ -1252,9 +1223,8 @@ func (s *Server) getBundle(ctx context.Context, in *getBundleInput) (*getBundleO
 	if err != nil {
 		return nil, fail(log, err)
 	}
-	// FR-029, and the reason this check is here rather than in the query: a
-	// rejected version is never served, so refusing it is a distribution decision
-	// and must not be confused with the org gate, which governs resolution.
+	// Checked here rather than in the query: refusing a rejected version is a
+	// distribution decision, distinct from the org gate, which governs resolution.
 	if !ref.Distributable() {
 		return nil, huma.Error403Forbidden("this version was rejected and is never served")
 	}
@@ -1292,9 +1262,6 @@ func (s *Server) reportSync(ctx context.Context, in *reportSyncInput) (*struct{}
 	}
 	return &struct{}{}, nil
 }
-
-// The device flow's two handlers, its request and response types and its rate
-// limit live in device.go.
 
 func (s *Server) registerOrganization() {
 	orgForbidden := s.errorResponse("This identity may not administer the organisation. Requires the catalog-admin role.")
@@ -1524,11 +1491,7 @@ func (s *Server) registerOrganization() {
 	}, s.deleteCategory)
 }
 
-// ---- document helpers -------------------------------------------------------
-
-// schemaOf registers a type in the document's schema registry and returns a
-// reference to it. Used where a response or request body cannot be inferred from
-// a handler signature, so the schema still comes from a Go type.
+// schemaOf registers a type in the document's schema registry and returns a reference to it.
 func (s *Server) schemaOf(v any, hint string) *huma.Schema {
 	return s.api.OpenAPI().Components.Schemas.Schema(reflect.TypeOf(v), true, hint)
 }
@@ -1544,8 +1507,7 @@ func (s *Server) errorResponse(description string) *huma.Response {
 }
 
 // declareRequestBody replaces an operation's request body with one media type and
-// schema. huma writes `{type: string, format: binary}` for a RawBody field, which
-// is right for bytes and wrong for a form.
+// schema; huma would describe a RawBody field as binary.
 func (s *Server) declareRequestBody(method, path, mediaType, description string, schema *huma.Schema) {
 	item := s.api.OpenAPI().Paths[path]
 	if item == nil {

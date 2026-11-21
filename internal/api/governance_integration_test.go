@@ -20,25 +20,11 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The two governance screens against a real Postgres.
-//
-// Everything asserted here is a guarantee the code cannot make on its own: that
-// the quarantined figure counts what is presently blocked rather than every
-// flagged row that ever existed, that the check matrix carries the passes, that
-// one decision writes exactly one audit row, that a rejection really does stop a
-// version being served, and that the export is the whole log rather than the
-// page. A handler-shaped test with a fake store would pass against every one of
-// those being broken.
-//
-// The fixture is built and torn down PER TEST rather than seeded once for the
-// file. It has to be: this suite shares one database, `task test` runs with
-// -shuffle=on, and catalog_integration_test.go asserts the unfiltered catalog
-// total is exactly ten. A package left behind here would fail a test in another
-// file, which is the least debuggable failure this suite can produce.
+// The two governance screens against a real Postgres. The fixture is built and torn down per
+// test because the suite shares one database under -shuffle=on and other files assert catalog totals.
 
-// govFixture is a small governed world: one package whose latest version is
-// flagged and whose previous version is ALSO flagged, and a second package whose
-// clean version carries an accepted finding.
+// govFixture is one package whose latest and previous versions are both flagged, and a second
+// package whose clean version carries an accepted finding.
 type govFixture struct {
 	quarantined     uuid.UUID // the latest flagged version
 	superseded      uuid.UUID // an older flagged version of the same package
@@ -49,12 +35,8 @@ type govFixture struct {
 	reviewer        uuid.UUID
 }
 
-// govChecks is one scan's whole matrix: two deviations and three passes.
-//
-// The three passes are the point of the fixture. FR-025 asks for every check that
-// ran precisely so the absence of a finding is distinguishable from the absence of
-// a check, and a fixture with only the failing check cannot tell a detail pane
-// that drops the passes from one that never had them.
+// govChecks is one scan's whole matrix: two deviations and three passes. The passes let a test
+// tell a detail pane that drops them from one that never had them.
 var govChecks = []struct {
 	id, label string
 	result    models.CheckResult
@@ -82,10 +64,8 @@ func seedGovernance(t *testing.T) govFixture {
 	}
 	insert(publisher)
 
-	// Torn down in dependency order, not by cascade: package.latest_version_id and
-	// version.package_id point at each other, so the pointer goes first. The
-	// catalog file's "the unfiltered total is ten" assertions depend on this
-	// running.
+	// Torn down in dependency order because package.latest_version_id and version.package_id
+	// point at each other.
 	t.Cleanup(func() {
 		for _, statement := range []string{
 			`update package set latest_version_id = null where publisher_id = ?`,
@@ -141,8 +121,7 @@ func seedGovernance(t *testing.T) govFixture {
 
 	riskyPkg := newPackage("risky-digest")
 	fixture := govFixture{
-		// The superseded flagged version. It is real history and it quarantines
-		// nothing, because nothing resolves to it.
+		// The superseded flagged version quarantines nothing, because nothing resolves to it.
 		superseded: newVersion(riskyPkg, "risky-digest", "0.9.0",
 			models.VerdictFlagged, models.DistTagNone, 45*24*time.Hour),
 		quarantined: newVersion(riskyPkg, "risky-digest", "1.0.0",
@@ -152,10 +131,8 @@ func seedGovernance(t *testing.T) govFixture {
 	fixture.clean = newVersion(cleanPkg, "tidy-report", "2.0.0",
 		models.VerdictClean, models.DistTagLatest, 3*time.Hour)
 
-	// Three scans, and the durations are chosen so the median is a value neither
-	// of them holds: 18 s and 12 s interpolate to 15 s, which is what tells a
-	// percentile apart from a "pick a row" implementation. The third finished 45
-	// days ago and is outside every window this file asks for.
+	// 18 s and 12 s interpolate to a median of 15 s, which tells a percentile apart from picking a
+	// row. The third scan is outside every window this file asks for.
 	newScan := func(version uuid.UUID, verdict models.Verdict, age, took time.Duration,
 		matrix bool) uuid.UUID {
 		started := now.Add(-age)
@@ -200,8 +177,7 @@ func seedGovernance(t *testing.T) govFixture {
 	fixture.approvedFinding = newFinding(cleanScan, fixture.clean, "GOV-FS-007",
 		models.FindingSeverityLow, models.FindingStateApproved, "scripts/report.sh", 9)
 
-	// One cause and two consequences. A schema holding one location per finding
-	// would drop the two, and this is what notices if the read does.
+	// One cause and two consequences, so a schema holding one location per finding would be caught.
 	for _, evidence := range []struct {
 		path string
 		at   int32
@@ -225,8 +201,6 @@ func seedGovernance(t *testing.T) govFixture {
 	})
 	return fixture
 }
-
-// ---- helpers ----------------------------------------------------------------
 
 func getJSON[T any](t *testing.T, handler http.Handler, token, path string) T {
 	t.Helper()
@@ -264,13 +238,8 @@ func versionVerdict(t *testing.T, id uuid.UUID) models.Verdict {
 	return verdict
 }
 
-// ---- T062: the summary -------------------------------------------------------
-
-// The inherited fact this asserts: the representative dataset carries three
-// flagged versions while the design's card reads 2, and the figure only resolves
-// if the count is of LATEST VISIBLE flagged versions. The fixture reproduces the
-// shape — one package with two flagged versions, one of them superseded — and the
-// delta must be one, not two.
+// Only latest visible flagged versions count: a package with two flagged versions, one
+// superseded, must move the figure by one.
 func TestTheQuarantinedFigureCountsWhatIsBlockedNowAndNotEveryFlaggedVersionEverRaised(t *testing.T) {
 	handler := liveHandler(t)
 
@@ -282,9 +251,7 @@ func TestTheQuarantinedFigureCountsWhatIsBlockedNowAndNotEveryFlaggedVersionEver
 		"two flagged versions were added and only one of them is the latest: a count of every "+
 			"flagged row would report a risk no profile is exposed to")
 
-	// The negative control: the superseded version really is flagged, so the
-	// assertion above is about the latest-version relation and not about the seed
-	// having quietly written something else.
+	// Negative control: the superseded version really is flagged.
 	require.Equal(t, models.VerdictFlagged, versionVerdict(t, fixture.superseded))
 	require.Equal(t, models.VerdictFlagged, versionVerdict(t, fixture.quarantined))
 }
@@ -306,8 +273,7 @@ func TestTheSummaryPeriodBoundsWhatItCounts(t *testing.T) {
 	require.Equal(t, 60, wider.PeriodDays)
 }
 
-// 18 s and 12 s interpolate to 15 s. A "middle row" implementation would answer
-// 12 or 18, and both would look plausible on a screen.
+// A "middle row" implementation would answer 12 or 18 s.
 func TestTheMedianScanTimeIsAPercentileAndNotAPickedRow(t *testing.T) {
 	handler := liveHandler(t)
 
@@ -322,9 +288,8 @@ func TestTheMedianScanTimeIsAPercentileAndNotAPickedRow(t *testing.T) {
 	require.InDelta(t, 15.0, *summary.MedianSeconds, 0.001)
 }
 
-// An active override is one on a finding that is still approved. The count and the
-// nearest expiry read the same predicate, so a decision that later reverses stops
-// counting in both.
+// An active override is one on a finding that is still approved; count and nearest expiry use
+// the same predicate.
 func TestActiveOverridesAreCountedWithTheirNearestExpiry(t *testing.T) {
 	handler := liveHandler(t)
 
@@ -336,8 +301,6 @@ func TestActiveOverridesAreCountedWithTheirNearestExpiry(t *testing.T) {
 	require.NotNil(t, after.NearestExpiry)
 	require.WithinDuration(t, time.Now().UTC().Add(12*24*time.Hour), *after.NearestExpiry, time.Minute)
 }
-
-// ---- T063: the findings list -------------------------------------------------
 
 func TestTheFindingsListFiltersBySeverityAndStateAndCarriesTheSubject(t *testing.T) {
 	handler := liveHandler(t)
@@ -360,9 +323,7 @@ func TestTheFindingsListFiltersBySeverityAndStateAndCarriesTheSubject(t *testing
 	require.NotNil(t, open.EvidenceLine)
 	require.Equal(t, 41, *open.EvidenceLine)
 
-	// An accepted finding leaves its version alone: the override is what lets it
-	// through, and a row that reported `clean` here would say the finding had gone
-	// away rather than been accepted.
+	// An accepted finding leaves its version flagged: the override lets it through.
 	approved := byID[fixture.approvedFinding.String()]
 	require.Equal(t, "approved", approved.State)
 	require.Equal(t, "clean", approved.Verdict)
@@ -410,9 +371,8 @@ func TestTheFindingsListFiltersBySeverityAndStateAndCarriesTheSubject(t *testing
 	}
 }
 
-// Severity descending means high first, and it means it through the Postgres enum
-// rather than alphabetically — alphabetical would read high, low, medium, which
-// looks sorted and is not.
+// Severity must sort through the Postgres enum; alphabetical (high, low, medium) looks sorted
+// and is not.
 func TestFindingsAreOrderedBySeverityThroughTheEnumAndNotAlphabetically(t *testing.T) {
 	handler := liveHandler(t)
 	seedGovernance(t)
@@ -436,11 +396,6 @@ func TestTheFindingsPageClampsAStalePageNumber(t *testing.T) {
 	require.Equal(t, page.Total, page.Page, "with one row per page the last page is the total")
 }
 
-// ---- T064: the detail pane ---------------------------------------------------
-
-// 001 US4 scenario 2, and the requirement it is easiest to satisfy wrongly. A
-// pane fed only the failing check cannot be told apart from one where nothing else
-// ran, so the passes are the assertion.
 func TestTheFindingDetailCarriesEveryCheckThatRanAndNotOnlyTheFailingOne(t *testing.T) {
 	handler := liveHandler(t)
 	fixture := seedGovernance(t)
@@ -449,7 +404,7 @@ func TestTheFindingDetailCarriesEveryCheckThatRanAndNotOnlyTheFailingOne(t *test
 		"/v1/findings/"+fixture.openFinding.String())
 
 	require.Len(t, detail.Checks, len(govChecks),
-		"every registered check the scan ran must be present, passes included (FR-025)")
+		"every registered check the scan ran must be present, passes included")
 
 	results := map[string]contract.FindingCheck{}
 	for _, check := range detail.Checks {
@@ -461,8 +416,7 @@ func TestTheFindingDetailCarriesEveryCheckThatRanAndNotOnlyTheFailingOne(t *test
 	require.Equal(t, "warn", results["shell-command-audit"].Result)
 	require.Equal(t, 2, results["shell-command-audit"].WarnCount)
 
-	// The label comes off the row rather than out of a map in the renderer, so a
-	// check registered after the screen shipped still has a name.
+	// The label comes off the row, so a check registered after the screen shipped still has a name.
 	require.Equal(t, "Network allowlist", results["network-allowlist"].Label)
 }
 
@@ -517,10 +471,7 @@ func TestAFindingThatDoesNotExistIsAFourOhFour(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
 }
 
-// ---- T065: accept ------------------------------------------------------------
-
-// SC-111 and FR-050: exactly one audit row per action. Two would be as wrong as
-// none, and it is the kind of defect that only shows up in the log nobody reads.
+// Exactly one audit row per action: two is as wrong as none.
 func TestAcceptingAFindingWritesTheStateTheOverrideAndExactlyOneAuditRow(t *testing.T) {
 	handler := liveHandler(t)
 	fixture := seedGovernance(t)
@@ -556,10 +507,8 @@ func TestAcceptingAFindingWritesTheStateTheOverrideAndExactlyOneAuditRow(t *test
 
 	require.Equal(t, models.FindingStateApproved, findingRow(t, fixture.openFinding).State)
 
-	// The version stays flagged. US4 scenario 3 makes it distributable SUBJECT TO
-	// THE GATE, and the override is what the gate reads; a verdict rewritten to
-	// clean would make an accepted version indistinguishable from one that never
-	// had a finding.
+	// The version stays flagged; the gate reads the override. Rewriting the verdict to clean would
+	// make an accepted version indistinguishable from one that never had a finding.
 	require.Equal(t, models.VerdictFlagged, versionVerdict(t, fixture.quarantined))
 	require.Equal(t, "flagged", decision.Verdict)
 
@@ -568,7 +517,7 @@ func TestAcceptingAFindingWritesTheStateTheOverrideAndExactlyOneAuditRow(t *test
 		Where("finding_id = ?", fixture.openFinding).Scan(t.Context()))
 	require.Equal(t, fixture.reviewer, override.ReviewerIdentityID)
 	require.Equal(t, "Egress is to our own collector", override.Note)
-	require.NotNil(t, override.ExpiresAt, "FR-028 asks for an expiry, and none is written null")
+	require.NotNil(t, override.ExpiresAt, "an expiry is required, and none is written null")
 }
 
 func TestAnAcceptanceWithNoStatedLifetimeGetsABoundedOneRatherThanNone(t *testing.T) {
@@ -583,13 +532,12 @@ func TestAnAcceptanceWithNoStatedLifetimeGetsABoundedOneRatherThanNone(t *testin
 	require.NoError(t, db.NewSelect().Model(&override).
 		Where("finding_id = ?", fixture.openFinding).Scan(t.Context()))
 	require.NotNil(t, override.ExpiresAt,
-		"an override with no expiry is a permanent exception, which FR-028 does not allow")
+		"an override with no expiry is a permanent exception, which is not allowed")
 	require.True(t, override.ExpiresAt.After(time.Now().UTC()))
 }
 
-// Re-accepting is what a reviewer extending an expiring override does. It must
-// replace the decision — including who made it — rather than fail on the primary
-// key or leave the previous reviewer's name against a new note.
+// Re-accepting replaces the decision, including the reviewer, rather than failing on the
+// primary key.
 func TestReacceptingReplacesTheDecisionRatherThanFailingOrDuplicatingIt(t *testing.T) {
 	handler := liveHandler(t)
 	fixture := seedGovernance(t)
@@ -618,12 +566,8 @@ func TestReacceptingReplacesTheDecisionRatherThanFailingOrDuplicatingIt(t *testi
 	require.True(t, override.ExpiresAt.After(time.Now().UTC().Add(30*24*time.Hour)))
 }
 
-// ---- T066: reject ------------------------------------------------------------
-
-// FR-029, and it is the whole of what makes reject different from accept: a
-// rejected version is not resolvable by any profile REGARDLESS OF GATE, so the
-// mechanism has to be something no gate consults. The verdict is that, and the
-// bundle refusal below is the observable consequence.
+// A rejected version is unresolvable by any profile regardless of gate, so the mechanism is the
+// verdict, which no gate consults.
 func TestRejectingAFindingQuarantinesTheVersionForGoodAndStopsItBeingServed(t *testing.T) {
 	handler := liveHandler(t)
 	fixture := seedGovernance(t)
@@ -644,25 +588,19 @@ func TestRejectingAFindingQuarantinesTheVersionForGoodAndStopsItBeingServed(t *t
 	require.Equal(t, models.VerdictRejected, versionVerdict(t, fixture.quarantined))
 	require.Equal(t, before+1, auditRowCount(t))
 
-	// The consequence a profile would feel. queries.BundleRef refuses a rejected
-	// version independently of the gate, so this 403 is FR-029 observable from
-	// outside.
+	// queries.BundleRef refuses a rejected version independently of the gate.
 	bundle := request(t, handler, http.MethodGet,
 		"/v1/bundles/gov/risky-digest/1.0.0", kw.token, "")
 	require.Equal(t, http.StatusForbidden, bundle.Code, bundle.Body.String())
 
-	// No override was written, and one on another finding would not have been
-	// removed either: am_api holds no DELETE on the table, and the row is the
-	// record of a decision that really was taken.
+	// No override was written, and am_api holds no DELETE on the table to remove one.
 	count, err := db.NewSelect().Model((*models.Override)(nil)).
 		Where("finding_id = ?", fixture.openFinding).Count(t.Context())
 	require.NoError(t, err)
 	require.Zero(t, count)
 }
 
-// Reject is terminal, which means accept cannot walk it back. An "un-reject" is a
-// real operation with real consequences and it is not this one wearing a different
-// body.
+// Reject is terminal; accept cannot walk it back.
 func TestARejectedFindingCannotBeAcceptedAfterwards(t *testing.T) {
 	handler := liveHandler(t)
 	fixture := seedGovernance(t)
@@ -681,9 +619,8 @@ func TestARejectedFindingCannotBeAcceptedAfterwards(t *testing.T) {
 	require.Equal(t, models.VerdictRejected, versionVerdict(t, fixture.quarantined))
 }
 
-// The role check is enforced against a real session and a real group mapping, not
-// against a hand-built principal: `contractor` is in a group that maps to nothing,
-// and FR-126's screen-level absence is not what stops the request.
+// contractor is in a group that maps to nothing, so this exercises the role check against a
+// real session rather than a hand-built principal.
 func TestAnIdentityWithoutTheReviewerRoleCannotDecideEvenWithARealSession(t *testing.T) {
 	handler := liveHandler(t)
 	fixture := seedGovernance(t)
@@ -697,8 +634,6 @@ func TestAnIdentityWithoutTheReviewerRoleCannotDecideEvenWithARealSession(t *tes
 	require.Equal(t, before, auditRowCount(t), "a refused request writes nothing")
 	require.Equal(t, models.FindingStateOpen, findingRow(t, fixture.openFinding).State)
 }
-
-// ---- T067 and T068: the audit log and its export -----------------------------
 
 func TestTheAuditPageIsNewestFirstAndPagesWithoutRepeatingARow(t *testing.T) {
 	handler := liveHandler(t)
@@ -726,13 +661,12 @@ func TestTheAuditPageIsNewestFirstAndPagesWithoutRepeatingARow(t *testing.T) {
 	}
 }
 
-// FR-051: the full current scope, not merely the visible page. The page size is
-// deliberately one, so an export that returned "the page" would return one row.
+// The export is the full current scope. The page size is one, so an export of "the page" would
+// return one row.
 func TestTheAuditExportIsTheWholeLogAndNotTheVisiblePage(t *testing.T) {
 	handler := liveHandler(t)
 	fixture := seedGovernance(t)
 
-	// A decision, so there is something in the log this test caused.
 	accept := request(t, handler, http.MethodPost,
 		"/v1/findings/"+fixture.openFinding.String()+"/accept", an.token,
 		`{"note":"for the log"}`)
@@ -754,21 +688,17 @@ func TestTheAuditExportIsTheWholeLogAndNotTheVisiblePage(t *testing.T) {
 	require.True(t, trailer.Complete)
 	require.Equal(t, len(rows), trailer.Rows)
 
-	// Newest first, like the page, and the same shape per row — the two reads share
-	// one select for exactly this reason.
+	// Newest first and the same row shape as the page, since both reads share one select.
 	for i := 1; i < len(rows); i++ {
 		require.False(t, rows[i].OccurredAt.After(rows[i-1].OccurredAt))
 	}
 	require.Equal(t, page.Entries[0].ID, rows[0].ID)
 }
 
-// The filters narrow the page and the export alike, and the rows carry their
-// subject on the wire.
 func TestTheAuditFiltersNarrowThePageAndTheExportAlike(t *testing.T) {
 	handler := liveHandler(t)
 	fixture := seedGovernance(t)
-	// The log is append-only and shared by the suite, so the package and the
-	// namespace are counted as deltas.
+	// The log is append-only and shared by the suite, so counts are deltas.
 	total := func(query string) int {
 		return getJSON[contract.AuditPage](t, handler, kw.token, "/v1/audit?"+query).Total
 	}
@@ -807,8 +737,7 @@ func TestTheAuditFiltersNarrowThePageAndTheExportAlike(t *testing.T) {
 	}
 }
 
-// readExport parses the NDJSON stream: every line an audit row, except the last,
-// which is the completeness sentinel.
+// readExport parses the NDJSON stream: audit rows followed by the completeness sentinel.
 func readExport(t *testing.T, body []byte) ([]contract.AuditEntry, *contract.AuditExportTrailer) {
 	t.Helper()
 
@@ -823,9 +752,8 @@ func readExport(t *testing.T, body []byte) ([]contract.AuditEntry, *contract.Aud
 		if line == "" {
 			continue
 		}
-		// The sentinel is told apart by the field it has and a row does not, rather
-		// than by being last: a consumer that assumed position would read a
-		// truncated export's final audit row as the sentinel.
+		// The sentinel is identified by its field, not by position, so a truncated export's last
+		// row is never mistaken for it.
 		if strings.Contains(line, `"complete"`) {
 			var parsed contract.AuditExportTrailer
 			require.NoError(t, json.Unmarshal([]byte(line), &parsed))
@@ -840,11 +768,7 @@ func readExport(t *testing.T, body []byte) ([]contract.AuditEntry, *contract.Aud
 	return rows, trailer
 }
 
-// ---- T069: the badges --------------------------------------------------------
-
-// The badge and the screen beside it must agree. A count that differed from the
-// list under it is a count nobody trusts twice, and the catalog's own total is the
-// only definition of "packages visible in the catalog" that exists.
+// The badge must equal the catalog's own total, the only definition of "visible packages".
 func TestThePackageBadgeIsTheCatalogsOwnTotal(t *testing.T) {
 	seedCatalog(t)
 	handler := liveHandler(t)
@@ -856,10 +780,8 @@ func TestThePackageBadgeIsTheCatalogsOwnTotal(t *testing.T) {
 	require.Positive(t, badges.Packages, "the fixture has packages, so this is not vacuously true")
 }
 
-// FR-044 at global scope. The profile badge is the length of the list the Profiles
-// screen shows: a count including a profile the reader cannot open would leak its
-// existence by arithmetic, which is the hazard the package detail's pinned-by
-// count already documents one screen down.
+// The profile badge is the length of the readable list; counting an unreadable profile would
+// leak its existence by arithmetic.
 func TestTheProfileBadgeIsExactlyWhatTheIdentityMayRead(t *testing.T) {
 	handler := liveHandler(t)
 
@@ -870,8 +792,7 @@ func TestTheProfileBadgeIsExactlyWhatTheIdentityMayRead(t *testing.T) {
 			"the badge and the list must be the same set for %s", who.claims.Email)
 	}
 
-	// The negative control: the three identities do not all read the same number,
-	// so the assertion above is about scoping and not about one shared total.
+	// Negative control: the identities read different numbers, so this is about scoping.
 	broad := getJSON[contract.Badges](t, handler, kw.token, "/v1/badges")
 	narrow := getJSON[contract.Badges](t, handler, contractor.token, "/v1/badges")
 	require.Greater(t, broad.Profiles, narrow.Profiles)
@@ -896,8 +817,8 @@ func TestTheOpenFindingsBadgeCountsOnlyTheOnesAwaitingADecision(t *testing.T) {
 		"a decision must move the badge, or the badge is not reading the state the decision wrote")
 }
 
-// A re-acceptance moves the expiry, so the waiver notices already raised for
-// the old one must not suppress the notices for the new one.
+// A re-acceptance moves the expiry, so notices raised for the old expiry must not suppress the
+// new ones.
 func TestReacceptingClearsTheWaiverNoticesOfThePreviousExpiry(t *testing.T) {
 	handler := liveHandler(t)
 	fixture := seedGovernance(t)

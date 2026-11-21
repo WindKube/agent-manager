@@ -11,9 +11,7 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// storageHandler is handed Deps with a nil database and a nil bucket, so
-// anything that reached the query would panic and answer 500 — a 403 is proof
-// the role check ran first.
+// storageHandler has no database or bucket, so a 403 proves the role check ran before the query.
 func storageHandler(t *testing.T, principal auth.Principal) http.Handler {
 	t.Helper()
 	return handler(t, api.Deps{Sessions: resolver{principal: principal}})
@@ -26,8 +24,7 @@ func TestReadingTheStorageReportIsRefusedToEveryRoleButCatalogAdmin(t *testing.T
 		want int
 	}{
 		{
-			// Past the role check and into the query, which has no database or
-			// bucket; getting past 403 is the assertion, not the 500.
+			// Getting past 403 is the assertion; the 500 comes from the missing database.
 			name: "a catalog admin reads the storage report",
 			role: models.OrgRoleCatalogAdmin,
 			want: http.StatusInternalServerError,
@@ -62,8 +59,6 @@ func TestReadingTheStorageReportIsRefusedToEveryRoleButCatalogAdmin(t *testing.T
 	}
 }
 
-// The refusal names what would have worked, so a person with no mapped group
-// can tell that from holding the wrong one.
 func TestTheStorageRefusalNamesTheRoleThatWouldHaveWorked(t *testing.T) {
 	h := storageHandler(t, auth.Principal{Subject: "sub-x", Role: models.OrgRoleReadOnly})
 

@@ -14,9 +14,7 @@ import (
 	"agent-manager/internal/api/contract"
 )
 
-// riverJob is what one test row needs. Not every river_job column: the ones
-// this suite never varies (priority, tags, metadata) are left at their
-// schema defaults, same as a job River itself would insert.
+// riverJob is the river_job columns this suite varies; the rest keep defaults.
 type riverJob struct {
 	State       string
 	Queue       string
@@ -30,10 +28,8 @@ type riverJob struct {
 	Errors []string
 }
 
-// insertRiverJob writes one row straight into River's own table — the same
-// table `agent-manager migrate queue` migrates and the worker roles work
-// jobs off of — and returns its id, so the test can find and clean up
-// exactly the rows it made.
+// insertRiverJob writes one row straight into river_job, returns its id and
+// deletes it on cleanup.
 func insertRiverJob(ctx context.Context, t *testing.T, job riverJob) int64 {
 	t.Helper()
 
@@ -64,9 +60,6 @@ func insertRiverJob(ctx context.Context, t *testing.T, job riverJob) int64 {
 	return id
 }
 
-// TestRuntimeCountsEveryRiverStateWithoutCollapsingAnyOfThem is the whole
-// point of using River's own vocabulary: seven states, seven counts, and a
-// state this hub never assigns (`pending`) still shown rather than dropped.
 func TestRuntimeCountsEveryRiverStateWithoutCollapsingAnyOfThem(t *testing.T) {
 	ctx := t.Context()
 	queue := fmt.Sprintf("test-counts-%d", time.Now().UnixNano())
@@ -81,8 +74,7 @@ func TestRuntimeCountsEveryRiverStateWithoutCollapsingAnyOfThem(t *testing.T) {
 		{State: "completed", Queue: queue, Kind: "fetch", Attempt: 1, MaxAttempts: 5, ScheduledAt: now, FinalizedAt: &terminal},
 		{State: "discarded", Queue: queue, Kind: "fetch", Attempt: 5, MaxAttempts: 5, ScheduledAt: now, FinalizedAt: &terminal},
 		{State: "cancelled", Queue: queue, Kind: "fetch", MaxAttempts: 5, ScheduledAt: now, FinalizedAt: &terminal},
-		// pending: a real River state this hub never assigns. It must still
-		// be counted, on Other, rather than vanishing from the total.
+		// A real River state this hub never assigns: counted on Other.
 		{State: "pending", Queue: queue, Kind: "fetch", MaxAttempts: 5, ScheduledAt: now},
 	} {
 		insertRiverJob(ctx, t, job)
@@ -111,9 +103,6 @@ func TestRuntimeCountsEveryRiverStateWithoutCollapsingAnyOfThem(t *testing.T) {
 		"a job in a state this vocabulary does not name must still be counted, not dropped")
 }
 
-// TestRuntimeAlwaysReportsFetchAndScanEvenAtZero is what keeps an idle queue
-// from reading as "not registered": the two worker-role queues are always on
-// the report, whether or not anything has ever run on them.
 func TestRuntimeAlwaysReportsFetchAndScanEvenAtZero(t *testing.T) {
 	report, err := Runtime(t.Context(), benchQueue, time.Now())
 	require.NoError(t, err)
@@ -126,10 +115,6 @@ func TestRuntimeAlwaysReportsFetchAndScanEvenAtZero(t *testing.T) {
 	require.True(t, names["scan"])
 }
 
-// TestRuntimeSeparatesDiscardedFromRetryingAndCarriesRiversRecordedErrors is
-// the discarded/retrying split: retries exhausted must never be mixed into
-// jobs still retrying on their own, and the error text on each must be
-// exactly what River recorded.
 func TestRuntimeSeparatesDiscardedFromRetryingAndCarriesRiversRecordedErrors(t *testing.T) {
 	ctx := t.Context()
 	now := time.Now().UTC()
@@ -166,8 +151,6 @@ func TestRuntimeSeparatesDiscardedFromRetryingAndCarriesRiversRecordedErrors(t *
 	require.NotNil(t, discardedRow, "the discarded job did not appear in Errors.Discarded")
 	require.NotNil(t, retryingRow, "the retrying job did not appear in Errors.Retrying")
 
-	// Never mixed: a discarded id must not also appear among the retrying
-	// jobs, and vice versa.
 	for _, row := range report.Errors.Retrying {
 		require.NotEqual(t, discardedID, row.ID, "a discarded job appeared in the retrying list")
 	}
@@ -186,10 +169,6 @@ func TestRuntimeSeparatesDiscardedFromRetryingAndCarriesRiversRecordedErrors(t *
 	require.Nil(t, retryingRow.FinalizedAt, "a job still retrying has not been finalized")
 }
 
-// TestRuntimeHistoryBucketsByTheMostRecentAttemptHourly is the run-history
-// chart's data: a job counts once, in the bucket of its LAST attempt, a
-// never-attempted job does not appear anywhere, and a quiet hour is a real
-// zero rather than a missing bucket.
 func TestRuntimeHistoryBucketsByTheMostRecentAttemptHourly(t *testing.T) {
 	ctx := t.Context()
 	now := time.Now().UTC().Truncate(time.Hour).Add(30 * time.Minute)
@@ -203,7 +182,6 @@ func TestRuntimeHistoryBucketsByTheMostRecentAttemptHourly(t *testing.T) {
 		State: "completed", Queue: "scan", Kind: "scan", Attempt: 1, MaxAttempts: 5,
 		ScheduledAt: threeHoursAgo, FinalizedAt: &threeHoursAgo, AttemptedAt: &threeHoursAgo,
 	})
-	// Never attempted: must not appear in any bucket.
 	insertRiverJob(ctx, t, riverJob{
 		State: "available", Queue: "fetch", Kind: "fetch", MaxAttempts: 5, ScheduledAt: now,
 	})
@@ -224,16 +202,12 @@ func TestRuntimeHistoryBucketsByTheMostRecentAttemptHourly(t *testing.T) {
 		totalScan += bucket.Scan
 	}
 	require.EqualValues(t, 1, found, "the target hour must appear exactly once")
-	// Exactly the two attempted jobs, across the whole window: the
-	// never-attempted job inserted above contributes to neither total.
+	// The never-attempted job contributes to neither total.
 	require.EqualValues(t, 1, totalFetch)
 	require.EqualValues(t, 1, totalScan)
 }
 
-// The pipeline does not stop while the report is being built. A job attempted
-// after `now` was read — a fetch that started a moment ago, or a clock a
-// little ahead — must not turn the whole report into a 500 because its hour is
-// one the window has not opened yet.
+// A job attempted after `now` was read must be left out, not fail the report.
 func TestRuntimeToleratesAJobAttemptedAfterTheWindowsLastBucket(t *testing.T) {
 	ctx := t.Context()
 	now := time.Now().UTC()

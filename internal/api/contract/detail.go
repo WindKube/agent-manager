@@ -7,16 +7,15 @@ type PackageDetail struct {
 	Name      string           `json:"name" doc:"The manifest name. No manifest field and no column carries a human title." example:"platform-toolkit"`
 	Kind      string           `json:"kind" enum:"plugin,skill" doc:"Decided by which manifest is at the tree root, never by a manifest field." example:"plugin"`
 	Publisher PackagePublisher `json:"publisher"`
-	Category  string           `json:"category,omitempty" doc:"The admin-curated category (FR-049). Empty when none was chosen." example:"Infrastructure"`
+	Category  string           `json:"category,omitempty" doc:"The admin-curated category. Empty when none was chosen." example:"Infrastructure"`
 
 	Visibility string `json:"visibility" enum:"organisation,team,private" doc:"Who may see this package." example:"organisation"`
 	// Owner is the identity that registered the package, empty on a
 	// package that predates the owner column. Display only: access is
 	// decided server-side, never by comparing this string.
 	Owner string `json:"owner,omitempty" example:"kwiatrzyk@example.com"`
-	// CanChangeVisibility is FR-126: the caller is the owner or a catalog
-	// admin. The control is shown to every reader and disabled otherwise,
-	// never hidden.
+	// CanChangeVisibility is true for the owner or a catalog admin. The control
+	// is shown to every reader and disabled otherwise, never hidden.
 	CanChangeVisibility bool `json:"canChangeVisibility"`
 
 	Description string `json:"description,omitempty" example:"Platform guardrails, ADR authoring and service scaffolding."`
@@ -36,10 +35,10 @@ type PackageDetail struct {
 	// Manifest is verbatim and unformatted: a Go map would reorder it.
 	Manifest string `json:"manifest"`
 
-	Components   []PackageComponent  `json:"components" doc:"Derived from the FILE TREE. No manifest field enumerates components (FR-017, R1)."`
+	Components   []PackageComponent  `json:"components" doc:"Derived from the FILE TREE. No manifest field enumerates components."`
 	Capabilities PackageCapabilities `json:"capabilities"`
 	Versions     []PackageVersion    `json:"versions" doc:"Every visible version, newest first."`
-	Dependents   []PackageDependent  `json:"dependents" doc:"Profiles using this package that the CALLER MAY READ, and no others (FR-044)."`
+	Dependents   []PackageDependent  `json:"dependents" doc:"Profiles using this package that the CALLER MAY READ, and no others."`
 }
 
 type PackagePublisher struct {
@@ -123,7 +122,7 @@ type PackageCapabilities struct {
 
 type PackageCapability struct {
 	Name   string   `json:"name" enum:"network,filesystem.read,filesystem.write,shell" example:"network"`
-	Level  string   `json:"level" enum:"scoped,allowlisted,review" doc:"How much trust it demands. A shell capability is never below review (FR-018)." example:"allowlisted"`
+	Level  string   `json:"level" enum:"scoped,allowlisted,review" doc:"How much trust it demands. A shell capability is never below review." example:"allowlisted"`
 	Detail []string `json:"detail" doc:"The scoping: hosts for network, paths for filesystem, command names for shell."`
 	// Indefinite means the analysis found targets it could not name; Detail
 	// is then a sample, not the whole set.

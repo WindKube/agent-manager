@@ -14,26 +14,16 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The profile surface's refusals, with no database.
-//
-// Everything here is decided before a statement is issued, which is why it can be
-// asserted without one — and why it must be. The handler is handed Deps with a
-// nil database, so anything that reached a query would panic on the nil handle
-// and answer 500; a 403 or a 422 from these cases is therefore proof the refusal
-// came first. Same construction as governance_test.go, for the same reason: a
-// test that needed a container to prove a role check is a test nobody runs on the
-// change that breaks it.
+// Profile refusals, with no database: a 403 or 422 here proves the refusal came
+// before any query, since reaching one would panic on the nil handle.
 
 func profileHandler(t *testing.T, principal auth.Principal) http.Handler {
 	t.Helper()
 	return handler(t, api.Deps{Sessions: resolver{principal: principal}})
 }
 
-// Creating a profile is the one profile operation authorised by the caller's
-// ORGANISATION role rather than by a membership, because there is no membership
-// to consult yet. It is refused to `read-only` for the reason registerPackage
-// refuses one: a contractor consumes what the organisation publishes and does not
-// create organisation state.
+// Creating a profile is authorised by the organisation role, since there is no
+// membership to consult yet; read-only callers consume and do not create.
 func TestCreatingAProfileIsRefusedToAnIdentityWithNoStandingToCreateOne(t *testing.T) {
 	body := `{"slug":"example/new-profile","name":"New profile"}`
 
@@ -45,8 +35,7 @@ func TestCreatingAProfileIsRefusedToAnIdentityWithNoStandingToCreateOne(t *testi
 		{
 			name: "a catalog admin creates profiles",
 			role: models.OrgRoleCatalogAdmin,
-			// Past the role check and into the command, which has no database. The
-			// status is not the assertion; getting past 403 is.
+			// Getting past 403 is the assertion; the status comes from the missing database.
 			want: http.StatusInternalServerError,
 		},
 		{
@@ -84,9 +73,6 @@ func TestCreatingAProfileIsRefusedToAnIdentityWithNoStandingToCreateOne(t *testi
 	}
 }
 
-// FR-126 asks a screen to state why an action is unavailable, and FR-117 exists
-// because a person holding no mapped group cannot otherwise tell that from
-// holding the wrong one. The refusal has to name what would have worked.
 func TestTheProfileCreationRefusalNamesTheRolesThatWouldHaveWorked(t *testing.T) {
 	h := profileHandler(t, auth.Principal{Subject: "sub-x", Role: models.OrgRoleReadOnly})
 
@@ -97,17 +83,13 @@ func TestTheProfileCreationRefusalNamesTheRolesThatWouldHaveWorked(t *testing.T)
 	var body contract.Error
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	require.Contains(t, body.Detail, "create a profile")
-	// All three, so dropping one from the allowed set is a red test rather than a
-	// silently narrower product: FR-126 asks the screen to state what WOULD work,
-	// and a list that quietly shed a role states it wrongly.
+	// All three, so dropping one from the allowed set fails the test.
 	require.Contains(t, body.Detail, "catalog-admin")
 	require.Contains(t, body.Detail, "scanner-reviewer")
 	require.Contains(t, body.Detail, "profile-consumer")
 }
 
-// Every profile operation inherits the document's root bearer requirement. An
-// operation that opted out with `security: []` would be public, and this is the
-// test that would notice one.
+// An operation that opted out with `security: []` would be public.
 func TestEveryProfileOperationNeedsASession(t *testing.T) {
 	h := handler(t, api.Deps{Sessions: resolver{err: auth.ErrUnauthenticated}})
 
@@ -129,13 +111,7 @@ func TestEveryProfileOperationNeedsASession(t *testing.T) {
 	}
 }
 
-// A value outside its vocabulary is refused by the document's own schema, before
-// a handler runs and therefore before any statement is issued.
-//
-// This is worth asserting rather than assuming: the enums live in struct tags,
-// and a tag dropped in a refactor produces an operation that accepts anything and
-// fails somewhere deeper — where the failure is a 500 rather than a 422 and the
-// message names a Postgres enum.
+// The enums live in struct tags; a dropped tag would turn this 422 into a 500 from a Postgres enum.
 func TestAProfileBodyOutsideItsVocabularyIsRefusedBeforeAnyStatement(t *testing.T) {
 	h := profileHandler(t, auth.Principal{
 		IdentityID: uuid.Must(uuid.NewV7()),
@@ -166,16 +142,8 @@ func TestAProfileBodyOutsideItsVocabularyIsRefusedBeforeAnyStatement(t *testing.
 	}
 }
 
-// A profile slug carries several segments — the representative dataset's are
-// `example/platform-engineer` — and the frozen contract gives the path template
-// ONE parameter for it. The two are reconcilable only if an encoded slash routes,
-// and this is the assertion that it does.
-//
-// It is worth its own test because the failure is total and silent: with gin's
-// defaults every one of these paths answers 404 "no operation at ...", which
-// reads as a missing route rather than as a slug that could not fit through one.
-// api.go records the measurement; this is what would catch the flags being
-// dropped.
+// A profile slug has several segments but the path template has one parameter,
+// so an encoded slash must route; with gin's defaults every path here is a 404.
 func TestAProfileSlugOfSeveralSegmentsReachesItsOperations(t *testing.T) {
 	h := profileHandler(t, auth.Principal{
 		IdentityID: uuid.Must(uuid.NewV7()),
@@ -184,8 +152,7 @@ func TestAProfileSlugOfSeveralSegmentsReachesItsOperations(t *testing.T) {
 		Role:       models.OrgRoleCatalogAdmin,
 	})
 
-	// The escaped form is what the generated clients send: oapi-codegen's `simple`
-	// style escapes a path parameter, so the slash arrives as %2F on the wire.
+	// oapi-codegen's `simple` style escapes path parameters, so the slash arrives as %2F.
 	for _, tc := range []struct{ method, path, body string }{
 		{http.MethodGet, "/v1/profiles/example%2Fplatform-engineer", ""},
 		{http.MethodPut, "/v1/profiles/example%2Fplatform-engineer/entries", `{"entries":[]}`},
@@ -193,23 +160,18 @@ func TestAProfileSlugOfSeveralSegmentsReachesItsOperations(t *testing.T) {
 			`{"members":[{"kind":"user","ref":"a@example.dev","role":"owner"}]}`},
 		{http.MethodPut, "/v1/profiles/example%2Fplatform-engineer/targets", `{"targets":[]}`},
 		{http.MethodPost, "/v1/profiles/example%2Fplatform-engineer/revisions", `{}`},
-		// The operation this configuration was actually broken for before now.
 		{http.MethodGet, "/v1/profiles/example%2Fplatform-engineer/revisions/head", ""},
 	} {
 		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
 			rec := request(t, h, tc.method, tc.path, "token", tc.body)
-			// Deps carry no database, so reaching the query is a 500. Anything but a
-			// 404 proves the router matched; a 404 is the whole failure.
+			// Anything but a 404 proves the router matched.
 			require.Equal(t, http.StatusInternalServerError, rec.Code, rec.Body.String())
 		})
 	}
 }
 
-// The publish operation answers 201 and names the revision it created in a
-// Location header, because the caller could not choose the number: it is
-// allocated inside the transaction and a concurrent publish may hold the one they
-// expected. An operation that returned 200 and no location would leave a client
-// guessing head+1.
+// The revision number is allocated inside the transaction, so the caller learns
+// it from Location rather than guessing head+1.
 func TestPublishingIsDeclaredAsACreationThatNamesWhatItCreated(t *testing.T) {
 	document := api.Document(api.Options{})
 
@@ -223,8 +185,7 @@ func TestPublishingIsDeclaredAsACreationThatNamesWhatItCreated(t *testing.T) {
 	require.NotNil(t, created.Content["application/json"])
 	require.Contains(t, created.Headers, "Location")
 
-	// And the detail operation is the one T089's gate-mode test reads. It is
-	// asserted here so the surface it needs cannot be renamed without notice.
+	// The gate-mode test reads the detail operation, so it must not be renamed silently.
 	detail := document.Paths["/v1/profiles/{slug}"]
 	require.NotNil(t, detail, "the profile detail operation is not registered")
 	require.NotNil(t, detail.Get)

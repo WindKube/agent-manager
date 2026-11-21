@@ -22,44 +22,23 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The profile write path: one transaction and one audit row per command.
-// Shared shape: the profile is read under a row lock so an unreadable
-// profile is a not-found and every check decides against one state; the
-// caller's membership role decides what they may do, not their
-// organisation role (except creating a profile, gated on org role since
-// there's no membership yet to consult).
-//
-// Two commands DO delete now: RemoveProfileEntry takes one package out
-// (am_api holds DELETE on profile_entry for exactly this), and DeleteProfile
-// removes a profile that has never been published (am_api also holds DELETE
-// on profile, membership and sync_target). Neither touches `revision`:
-// am_api still holds no DELETE there, FR-034 still forbids it outright, and
-// DeleteProfile relies on the database's own foreign key to refuse a
-// profile that has one — see DeleteProfile.
-//
-// Deliberately absent: any way a fork could learn about the upstream's
-// later revisions. ForkOf copies entries once; nothing follows that
-// lineage column the other way.
+// Profile commands lock the profile row so every check decides against one
+// state, and gate on the caller's membership role rather than org role.
+// Revisions are never deleted.
 
-// ErrProfileExists: a profile's slug is unique across the organisation
-// and is also its URL, so this is a conflict, not a validation failure.
+// ErrProfileExists is a conflict, not a validation failure: the slug is the URL.
 var ErrProfileExists = errors.New("a profile with this slug already exists")
 
 var ErrProfileRefused = errors.New("the profile change was refused")
 
-// ErrProfileHasRevisions is DeleteProfile's refusal for a profile that has
-// ever been published: FR-034 forbids deleting a revision, and a client may
-// already have synced one, so this is a permanent conflict with the
-// profile's own history rather than something to fix and retry.
+// ErrProfileHasRevisions refuses deleting a published profile: revisions are
+// never deleted and a client may already have synced one.
 var ErrProfileHasRevisions = errors.New("this profile has published revisions and cannot be deleted")
 
-// uniqueProfileSlugConstraint is named here because Postgres reports the
-// constraint, not the requirement, and a bare "duplicate key" explains nothing.
 const uniqueProfileSlugConstraint = "profile_slug_key"
 
-// NotPermittedError is a typed refusal by membership role rather than a
-// sentinel, since the 403 body must distinguish "not a member" from
-// "wrong kind of member" — those have different remedies.
+// NotPermittedError is typed so the 403 body can tell "not a member" from
+// "wrong kind of member".
 type NotPermittedError struct {
 	Action string
 	Needs  string
@@ -79,8 +58,7 @@ func notPermitted(action, needs string, held models.MembershipRole) error {
 	return &NotPermittedError{Action: action, Needs: needs, Held: held}
 }
 
-// refused wraps a caller-fixable refusal so the operation can answer 422
-// with the sentence, not a status alone.
+// refused wraps a caller-fixable refusal answered as 422 with the sentence.
 func refused(format string, args ...any) error {
 	return fmt.Errorf("%w: %s", ErrProfileRefused, fmt.Sprintf(format, args...))
 }
@@ -93,8 +71,7 @@ type ProfileCreation struct {
 	OwnerTeam     string
 	Visibility    models.ProfileVisibility
 	DefaultPolicy models.VersionPolicy
-	// ForkOf is the slug of the profile whose entries are copied, empty
-	// for a profile built from nothing.
+	// ForkOf is the slug of the profile whose entries are copied, if any.
 	ForkOf string
 }
 
@@ -105,8 +82,7 @@ func (c ProfileCreation) normalise() ProfileCreation {
 	c.OwnerTeam = strings.TrimSpace(c.OwnerTeam)
 	c.ForkOf = strings.TrimSpace(c.ForkOf)
 	if c.Visibility == "" {
-		// Private, not organisation: defaulting the other way makes a
-		// mistake visible to everyone before anybody notices.
+		// Private, so a mistake isn't visible to everyone.
 		c.Visibility = models.ProfileVisibilityPrivate
 	}
 	if c.DefaultPolicy == "" {
@@ -115,9 +91,8 @@ func (c ProfileCreation) normalise() ProfileCreation {
 	return c
 }
 
-// CreateProfile creates a profile and makes its creator the owner. This
-// membership is not a courtesy: a profile created without one would be
-// permanently uneditable, with no DELETE on `membership` to repair it.
+// CreateProfile creates a profile and makes its creator the owner; without
+// that membership the profile would be permanently uneditable.
 func CreateProfile(ctx context.Context, db bun.IDB, p auth.Principal,
 	in ProfileCreation,
 ) (contract.Profile, error) {
@@ -140,8 +115,7 @@ func CreateProfile(ctx context.Context, db bun.IDB, p auth.Principal,
 			return contract.Profile{}, refused("private profiles are disabled by organisation policy")
 		}
 	}
-	// Validated by the same function that will later build the object key,
-	// rather than a second pattern that could be looser.
+	// Validated by the function that builds the object key, not a looser copy.
 	if _, err := blob.ProfileRevisionKey(in.Slug, 1); err != nil {
 		return contract.Profile{}, refused("%s", err.Error())
 	}
@@ -165,8 +139,7 @@ func CreateProfile(ctx context.Context, db bun.IDB, p auth.Principal,
 	err := db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		forked := ""
 		if in.ForkOf != "" {
-			// Forking is a way of reading, so a profile the readability
-			// predicate hides must not be forkable either.
+			// Forking is reading, so an unreadable profile isn't forkable.
 			upstream, txErr := queries.Profile(ctx, tx, p, in.ForkOf)
 			if txErr != nil {
 				return txErr
@@ -196,8 +169,7 @@ func CreateProfile(ctx context.Context, db bun.IDB, p auth.Principal,
 		copied := 0
 		if profile.ForkedFromID != nil {
 			var txErr error
-			// The upstream's current entries, copied once: the whole of
-			// what a fork inherits, never a later revision.
+			// Copied once; a fork never inherits later revisions.
 			if copied, txErr = copyEntries(ctx, tx, *profile.ForkedFromID, profile.ID); txErr != nil {
 				return txErr
 			}
@@ -224,13 +196,10 @@ func CreateProfile(ctx context.Context, db bun.IDB, p auth.Principal,
 		Slug:       profile.Slug,
 		Name:       profile.Name,
 		Visibility: string(profile.Visibility),
-		// The membership inserted above is always Owner, since a caller who
-		// forked or created a profile is the one identity guaranteed one.
-		CanCurate: true,
+		CanCurate:  true,
 	}, nil
 }
 
-// copyEntries duplicates one profile's entries onto another.
 func copyEntries(ctx context.Context, tx bun.IDB, from, to uuid.UUID) (int, error) {
 	res, err := tx.ExecContext(ctx, `
 insert into profile_entry (profile_id, package_id, mode, pinned_version_id, range_expr, position)
@@ -243,10 +212,8 @@ from profile_entry where profile_id = ?`, to, from)
 	return int(copied), nil
 }
 
-// SetProfileEntries replaces the profile's ordered set of packages. The
-// change is not durable until a revision is published: `profile_entry` is
-// the draft, the head revision's lockfile is what machines have, and
-// nothing here touches the latter.
+// SetProfileEntries replaces the profile's ordered set of packages in the
+// draft; machines see it only once a revision is published.
 func SetProfileEntries(ctx context.Context, db bun.IDB, p auth.Principal,
 	slug string, in contract.ProfileEntries,
 ) error {
@@ -284,11 +251,9 @@ func SetProfileEntries(ctx context.Context, db bun.IDB, p auth.Principal,
 	})
 }
 
-// entryRowsFor turns the request into rows, refusing everything the
-// database would otherwise refuse less legibly — plus one thing it would
-// not refuse at all: an entry the profile holds that the body omits. With
-// no DELETE on `profile_entry`, silently keeping it would answer 200 to a
-// request whose stored result disagrees with what was sent.
+// entryRowsFor turns the request into rows, refusing legibly what the database
+// would refuse, plus an omitted held entry: silently keeping it would answer
+// 200 to a request whose stored result disagrees with what was sent.
 func entryRowsFor(ctx context.Context, tx bun.IDB, profileID uuid.UUID, slug string,
 	settings []contract.ProfileEntrySetting,
 ) ([]models.ProfileEntry, int, error) {
@@ -340,8 +305,7 @@ func entryRowsFor(ctx context.Context, tx bun.IDB, profileID uuid.UUID, slug str
 			}
 			row.RangeExpr = version
 		case models.EntryModeLatest:
-			// Neither pin nor range: the upsert writes both columns on
-			// every row, so this is what clears a pin on "unpin".
+			// Leaving both empty is what clears a pin on "unpin".
 		}
 
 		was, existed := held[row.PackageID]
@@ -366,7 +330,6 @@ func entryRowsFor(ctx context.Context, tx bun.IDB, profileID uuid.UUID, slug str
 	return rows, changed, nil
 }
 
-// heldEntry is one entry as it stands, for counting changes.
 type heldEntry struct {
 	id        string
 	mode      models.EntryMode
@@ -428,10 +391,8 @@ func packageID(ctx context.Context, tx bun.IDB, namespace, name string) (uuid.UU
 	return id, nil
 }
 
-// versionID resolves a pin. `visible` is deliberately not required:
-// withdrawing a version from the catalog doesn't withdraw it from
-// profiles that already chose it. `digest is not null` is required: a
-// version whose bytes never landed can't be pinned to.
+// versionID resolves a pin. `visible` isn't required (withdrawing from the
+// catalog doesn't withdraw from profiles); a digest is.
 func versionID(ctx context.Context, tx bun.IDB, pkg uuid.UUID, id, semver string) (uuid.UUID, error) {
 	if semver == "" {
 		return uuid.Nil, refused("%s is pinned, so it needs the version to pin to", id)
@@ -446,13 +407,8 @@ func versionID(ctx context.Context, tx bun.IDB, pkg uuid.UUID, id, semver string
 	return version, nil
 }
 
-// RemoveProfileEntry takes one package out of a profile.
-//
-// SetProfileEntries deliberately refuses a whole-set body that OMITS an
-// entry the profile holds (entryRowsFor), to catch a client acting on stale
-// state — that refusal stays exactly as strict. This is the explicit,
-// addressed removal the screen now offers instead of loosening it: a
-// targeted delete of the one row named, nothing else.
+// RemoveProfileEntry takes one package out of a profile. It is the explicit
+// removal, so SetProfileEntries can keep refusing a body that omits an entry.
 func RemoveProfileEntry(ctx context.Context, db bun.IDB, p auth.Principal, slug, id string) error {
 	namespace, name, ok := strings.Cut(id, "/")
 	if !ok || namespace == "" || name == "" {
@@ -490,9 +446,8 @@ func RemoveProfileEntry(ctx context.Context, db bun.IDB, p auth.Principal, slug,
 	})
 }
 
-// SetProfileSharing sets the role each named subject holds. An upsert, not
-// a replacement: a subject the body omits keeps its role, since there's
-// no DELETE on `membership`. A demotion is an update of `role`.
+// SetProfileSharing upserts the role each named subject holds; an omitted
+// subject keeps its role.
 func SetProfileSharing(ctx context.Context, db bun.IDB, p auth.Principal,
 	slug string, in contract.ProfileSharing,
 ) error {
@@ -522,11 +477,8 @@ func SetProfileSharing(ctx context.Context, db bun.IDB, p auth.Principal,
 	})
 }
 
-// membershipRowsFor validates the body and enforces the one invariant
-// sharing has: the profile keeps an owner. With no DELETE on membership,
-// demoting the last owner would leave a profile unrepairable through the
-// API — the check is against the resulting set, so an owner the body
-// doesn't mention still counts.
+// membershipRowsFor validates the body and enforces that the profile keeps an
+// owner, counted over the resulting set; otherwise it would be unrepairable.
 func membershipRowsFor(ctx context.Context, tx bun.IDB, profileID uuid.UUID,
 	shares []contract.ProfileShare,
 ) ([]models.Membership, error) {
@@ -575,7 +527,6 @@ func membershipRowsFor(ctx context.Context, tx bun.IDB, profileID uuid.UUID,
 	return rows, nil
 }
 
-// ownersUntouched counts the owners this request does not rewrite.
 func ownersUntouched(ctx context.Context, tx bun.IDB, profileID uuid.UUID,
 	named map[string]bool,
 ) (int, error) {
@@ -612,10 +563,7 @@ func describeShares(shares []contract.ProfileShare) string {
 }
 
 // SetProfileTargets records which agent directories a client should write.
-// It changes nothing the server resolves — a target affects only what a
-// client writes locally, so the row it touches is a boolean the resolver
-// never reads. A full replacement despite no DELETE grant, since
-// `enabled` is a column: an omitted target is simply set false.
+// An omitted target is set disabled; the resolver never reads these rows.
 func SetProfileTargets(ctx context.Context, db bun.IDB, p auth.Principal,
 	slug string, in contract.ProfileTargetSelection,
 ) error {
@@ -671,12 +619,9 @@ func SetProfileTargets(ctx context.Context, db bun.IDB, p auth.Principal,
 	})
 }
 
-// PublishRevision freezes the current resolution as the next revision.
-// The lockfile comes through the same queries.ResolveProfileFacts the
-// detail screen calls, so a revision can't freeze a resolution the screen
-// never displayed. The sequence is server-allocated under a row lock, and
-// `unique (profile_id, seq)` refuses a duplicate outright — republishing
-// is refused by the database, not by a branch.
+// PublishRevision freezes the current resolution as the next revision, via
+// the same queries.ResolveProfileFacts the detail screen uses. The seq is
+// allocated under the row lock; `unique (profile_id, seq)` backs it up.
 func PublishRevision(ctx context.Context, db bun.IDB, p auth.Principal,
 	slug, note string,
 ) (contract.Lockfile, error) {
@@ -692,10 +637,8 @@ func PublishRevision(ctx context.Context, db bun.IDB, p auth.Principal,
 			return notPermitted("publish a revision of", "owner or maintainer", facts.Role)
 		}
 
-		// A statement of its own, after the lock is held, so it sees a
-		// publish that committed while this one waited — getting that
-		// wrong wouldn't corrupt anything (the unique index still
-		// refuses a duplicate), just turn a serialised publish into a 500.
+		// Read after the lock is held, so it sees a publish that committed
+		// while this one waited.
 		var head int32
 		if txErr = tx.QueryRowContext(ctx,
 			`select coalesce(max(seq), 0) from revision where profile_id = ?`,
@@ -727,8 +670,7 @@ func PublishRevision(ctx context.Context, db bun.IDB, p auth.Principal,
 			Seq:       seq,
 			Note:      note,
 			Lockfile:  encoded,
-			// The key the mirrored copy would live under; this role writes
-			// the row only, since it holds a blob reader and no writer.
+			// This role only writes the row; it holds no blob writer.
 			ObjectKey: key,
 			CreatedBy: memberRef(p),
 		}).Exec(ctx); txErr != nil {
@@ -748,14 +690,9 @@ func PublishRevision(ctx context.Context, db bun.IDB, p auth.Principal,
 	return lockfile, nil
 }
 
-// DeleteProfile permanently removes a profile that has never been
-// published. A profile with any revision is refused rather than cascaded:
-// FR-034 forbids deleting a revision outright, and a revision is what a
-// client may already have synced, so cascading would either orphan that
-// history or force removing a revision to avoid it — neither is
-// acceptable. The database's own foreign key is what catches this, the
-// same shape DeleteCategory already relies on for "still in use": not a
-// pre-check, so there is no race between checking and deleting.
+// DeleteProfile permanently removes a profile that has never been published.
+// The revision foreign key refuses the rest, so there is no check-then-delete
+// race.
 func DeleteProfile(ctx context.Context, db bun.IDB, p auth.Principal, slug string) error {
 	return db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		facts, err := queries.LockProfile(ctx, tx, p, slug)
@@ -766,10 +703,7 @@ func DeleteProfile(ctx context.Context, db bun.IDB, p auth.Principal, slug strin
 			return notPermitted("delete", "owner", facts.Role)
 		}
 
-		// Children first: profile_entry, membership and sync_target carry no
-		// history worth keeping once the profile they belong to is gone, and
-		// am_api holds DELETE on exactly these three. revision and sync_event
-		// do not appear here on purpose — see the function comment.
+		// am_api holds DELETE on exactly these three; revision is left to the FK.
 		if _, err := tx.NewDelete().Model((*models.ProfileEntry)(nil)).
 			Where("profile_id = ?", facts.ID).Exec(ctx); err != nil {
 			return fmt.Errorf("clear the entries of %s before deleting it: %w", slug, err)
@@ -797,8 +731,7 @@ func DeleteProfile(ctx context.Context, db bun.IDB, p auth.Principal, slug strin
 	})
 }
 
-// memberRef is the value a membership row or an audit actor names this
-// principal by: the email where there is one, the subject otherwise.
+// memberRef is the principal's email, or its subject when there is none.
 func memberRef(p auth.Principal) string {
 	if p.Email != "" {
 		return p.Email
@@ -806,7 +739,6 @@ func memberRef(p auth.Principal) string {
 	return p.Subject
 }
 
-// counted renders "1 entry" / "4 entries" for an audit line.
 func counted(n int, one, many string) string {
 	if n == 1 {
 		return fmt.Sprintf("%d %s", n, one)

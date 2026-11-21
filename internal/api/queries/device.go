@@ -65,9 +65,7 @@ from device_authorization
 where user_code = ?`
 
 // LookupDeviceCode classifies a user code for display before it is decided.
-// It performs no write: expiry here is a read-time classification against the
-// database's clock, not the state transition commands.ConsumeDevice performs
-// when a row is actually swept.
+// It performs no write; expiry is judged against the database's clock.
 func LookupDeviceCode(ctx context.Context, db bun.IDB, userCode string) (PendingDeviceAuthorization, DeviceCodeStatus, error) {
 	code := normaliseUserCode(userCode)
 	if code == "" {

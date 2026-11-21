@@ -17,9 +17,8 @@ import (
 )
 
 const (
-	// maxStorageObjects bounds the listing this report walks. A production bucket
-	// can hold far more objects than a report should hold in memory at once; past
-	// this cap the count and size are a lower bound and Truncated says so.
+	// maxStorageObjects bounds the listing; past it the totals are a lower
+	// bound and Truncated says so.
 	maxStorageObjects = 10_000
 	recentFetchLimit  = 20
 )
@@ -62,25 +61,21 @@ func Storage(ctx context.Context, db bun.IDB, bucket blob.Inspector) (contract.S
 	}
 	report.RecentFetches = fetches
 
-	// models.SyncEvent carries no cache-hit figure, so there is nothing to
-	// compute a rate from; unknown, not zero.
+	// No cache-hit figure is recorded, so the rate is unknown, not zero.
 	report.ReadCacheHitRate = nil
 
 	return report, nil
 }
 
-// bucketSettings reads the bucket's own settings through the raw S3 client, so
-// no second client is constructed. A store that is not S3 — memblob in a unit
-// test — cannot produce one, which is deliberately the same answer a real
-// bucket gives when the api's read-only key lacks a permission: every setting
-// below is unknown either way.
+// bucketSettings reads the bucket's settings through the raw S3 client. A
+// non-S3 store or a missing permission leaves a setting unknown.
 func bucketSettings(ctx context.Context, bucket blob.Inspector) contract.BucketSettings {
 	settings := contract.BucketSettings{
 		Versioning: unknownSetting(),
 		ObjectLock: unknownSetting(),
 		Encryption: unknownSetting(),
 		Retention:  unknownSetting(),
-		// This role's own credential, not the bucket's report, so always known.
+		// This role's own credential, so always known.
 		WriteAccess: contract.BucketSetting{Known: true, Value: "read-only; only the fetcher role can write"},
 	}
 

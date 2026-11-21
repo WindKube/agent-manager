@@ -14,23 +14,10 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// Deleting from the catalog, against a real Postgres.
-//
-// Three properties carry the weight here, none of which a handler-shaped test
-// with a fake store could prove: that the FK layer in 03-constraints.sql
-// really does let an archive-in-place through where a hard delete of either
-// row would be refused (package_latest_version_id_fkey is NO ACTION,
-// on purpose, for exactly a version); that a profile entry pinned at the
-// archived version and a published revision that already named it both keep
-// resolving through GET /v1/bundles afterwards, so neither is silently
-// orphaned; and that the api refuses the request before
-// commands.DeleteVersion/DeletePackage ever runs, for an identity that does
-// not hold catalog-admin.
+// Catalog deletes against a real Postgres: archive-in-place must pass the FK layer
+// a hard delete would trip, and pinned or published references must keep resolving.
 
-// seedDeletableWidget creates a fresh publisher, package and two committed
-// versions under their own namespace, so this file's tests share no state
-// with the package seed() builds or with each other. v1 is the older,
-// non-latest version; v2 is the package's current latest.
+// seedDeletableWidget creates an isolated package with v1 and v2, v2 being latest.
 func seedDeletableWidget(t *testing.T, namespace string) (pkg *models.Package, v1, v2 *models.Version) {
 	t.Helper()
 	ctx := t.Context()
@@ -88,11 +75,8 @@ func packageLatestVersionID(t *testing.T, packageID string) *string {
 	return id
 }
 
-// TestDeleteVersionArchivesItAndKeepsAPinAndARevisionResolvable is the
-// referenced case: the version DELETE targets is both pinned by a profile
-// entry and named in a published revision's lockfile, and it is the
-// package's current latest. Archiving it must promote the next version to
-// latest, and must not orphan either reference.
+// The deleted version is latest, pinned and in a lockfile: archiving it must
+// promote the next version and orphan neither reference.
 func TestDeleteVersionArchivesItAndKeepsAPinAndARevisionResolvable(t *testing.T) {
 	ctx := t.Context()
 	pkg, v1, v2 := seedDeletableWidget(t, "catdel-pin")
@@ -132,12 +116,9 @@ func TestDeleteVersionArchivesItAndKeepsAPinAndARevisionResolvable(t *testing.T)
 	require.NotNil(t, got)
 	require.Equal(t, v1.ID.String(), *got, "latest_version_id follows the promotion")
 
-	// Not orphaned: the version this profile entry pins, and this revision's
-	// lockfile names, still resolves.
 	send(t, kw, http.MethodGet, "/v1/bundles/catdel-pin/widget/2.0.0", "", http.StatusOK)
 
-	// The profile entry itself is untouched — reading it to decide safety is
-	// this branch's job; changing it is the profile screen's.
+	// The profile entry itself is untouched; changing it is the profile screen's job.
 	var mode, pinnedID string
 	require.NoError(t, pool.QueryRow(context.Background(),
 		`select mode::text, pinned_version_id::text from profile_entry where profile_id = $1 and package_id = $2`,
@@ -152,8 +133,7 @@ func TestDeleteVersionArchivesItAndKeepsAPinAndARevisionResolvable(t *testing.T)
 	require.Contains(t, text, "deleted version 2.0.0 of catdel-pin/widget")
 	require.Contains(t, text, "pinned by 1 profile entry")
 
-	// The package still resolves — v1 carries latest now — and still lists
-	// the archived version rather than hiding it from the history.
+	// The archived version stays in the history rather than being hidden.
 	detail := sendJSON[contract.PackageDetail](t, kw, http.MethodGet, "/v1/packages/catdel-pin/widget", "", http.StatusOK)
 	require.Equal(t, "1.0.0", detail.Version)
 	var sawArchived bool
@@ -166,10 +146,8 @@ func TestDeleteVersionArchivesItAndKeepsAPinAndARevisionResolvable(t *testing.T)
 	require.True(t, sawArchived, "the withdrawn version stays in the history, marked archived")
 }
 
-// TestDeletePackageArchivesEveryVersionAndTheCatalogStopsFindingIt is the
-// package-scoped delete: every version archives, latest_version_id clears,
-// and the package's own detail read — which joins through that column —
-// answers exactly as it would for a package with no published version.
+// The detail read joins through latest_version_id, so after it clears it must
+// answer as for a package with no published version.
 func TestDeletePackageArchivesEveryVersionAndTheCatalogStopsFindingIt(t *testing.T) {
 	pkg, v1, v2 := seedDeletableWidget(t, "catdel-pkg")
 
@@ -186,8 +164,7 @@ func TestDeletePackageArchivesEveryVersionAndTheCatalogStopsFindingIt(t *testing
 
 	send(t, kw, http.MethodGet, "/v1/packages/catdel-pkg/widget", "", http.StatusNotFound)
 
-	// Neither version's bytes vanished: both still resolve for whatever
-	// already recorded them.
+	// Both versions' bytes still resolve for whatever already recorded them.
 	send(t, kw, http.MethodGet, "/v1/bundles/catdel-pkg/widget/1.0.0", "", http.StatusOK)
 	send(t, kw, http.MethodGet, "/v1/bundles/catdel-pkg/widget/2.0.0", "", http.StatusOK)
 
@@ -198,8 +175,6 @@ func TestDeletePackageArchivesEveryVersionAndTheCatalogStopsFindingIt(t *testing
 	require.Contains(t, text, "archived 2 version(s)")
 }
 
-// TestDeleteRefusesWithoutCatalogAdminRole proves the refusal happens in the
-// api, not merely that the web screen would grey the button out.
 func TestDeleteRefusesWithoutCatalogAdminRole(t *testing.T) {
 	pkg, _, v2 := seedDeletableWidget(t, "catdel-role")
 
@@ -215,8 +190,6 @@ func TestDeleteRefusesWithoutCatalogAdminRole(t *testing.T) {
 	require.Equal(t, v2.ID.String(), *got)
 }
 
-// TestDeleteRefusesNotFoundAndAlreadyWithdrawn covers the two ordinary
-// refusals that are not about references at all.
 func TestDeleteRefusesNotFoundAndAlreadyWithdrawn(t *testing.T) {
 	seedDeletableWidget(t, "catdel-conflict")
 
@@ -230,9 +203,8 @@ func TestDeleteRefusesNotFoundAndAlreadyWithdrawn(t *testing.T) {
 	send(t, kw, http.MethodDelete, "/v1/packages/catdel-conflict/widget", "", http.StatusConflict)
 }
 
-// lastCatalogDeleteAudit reads back the most recent row of the kind these two
-// commands write. See commands.writeCatalogDeleteAudit for why that is
-// `fetch` rather than a dedicated kind.
+// lastCatalogDeleteAudit reads the latest `fetch` audit row; see
+// commands.writeCatalogDeleteAudit for why that kind.
 func lastCatalogDeleteAudit(t *testing.T) (kind, actor, text string) {
 	t.Helper()
 	require.NoError(t, pool.QueryRow(context.Background(),

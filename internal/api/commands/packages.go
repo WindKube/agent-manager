@@ -25,38 +25,31 @@ import (
 	"agent-manager/internal/worker/fetcher"
 )
 
-// The registration refusals live beside the shared registration in
-// fetcher.Register; these names are what the api's error mapping reads.
+// Registration refusals live in fetcher.Register; the api's error mapping reads these.
 var (
 	ErrRegistration = fetcher.ErrRegistration
 	ErrImmutable    = fetcher.ErrImmutable
 )
 
 const (
-	// MaxTagCount bounds a registration's own tags. High enough for real
-	// use, low enough that the catalog's tag facet stays a facet.
-	MaxTagCount = 20
-	// MaxTagLength bounds one tag. Every tag in internal/seed and
-	// internal/web/fakeapi is well under this.
+	// MaxTagCount is low enough that the catalog's tag facet stays a facet.
+	MaxTagCount  = 20
 	MaxTagLength = 40
 )
 
-// tagRE is a tag's character set: what the catalog's tag facet and pill
-// already render as plain mono text, with no separator character a
-// comma-separated field could confuse for another tag.
+// tagRE excludes any separator a comma-separated field could confuse for
+// another tag.
 var tagRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]*$`)
 
-// Registration is one registration request, reduced to what the command
-// needs.
+// Registration is one registration request, reduced to what the command needs.
 type Registration struct {
 	Source       fetch.SourceKind
 	URL          string
 	Ref          string
 	Subdirectory string
 
-	// Publisher is the slug, `example/platform` or just `example`. Namespace
-	// is derived in normalise, never supplied directly, since it's what the
-	// object key is built from.
+	// Publisher is `example/platform` or `example`. Namespace is derived in
+	// normalise, never supplied, since the object key is built from it.
 	Publisher string
 	Namespace string
 	Name      string
@@ -66,30 +59,23 @@ type Registration struct {
 	Category   string
 	Visibility models.PackageVisibility
 
-	// Keywords seed version.tags so the catalog can filter a version the
-	// fetcher hasn't finished yet. Keywords is the archive's own manifest
-	// keywords (upload only); Tags is what the publisher typed on the
-	// form. Both are unioned into version.tags here, and unioned again
-	// with the fetched manifest's keywords at publish — never replaced,
-	// in either direction.
+	// Keywords (the archive manifest's, upload only) and Tags (typed by the
+	// publisher) seed version.tags so the catalog can filter a version the
+	// fetcher hasn't finished; publish unions rather than replaces them.
 	Keywords []string
-	// Tags is validated and deduplicated in normalise, matching
-	// fetcher.VersionTags's own rule rather than a second one.
-	Tags []string
+	Tags     []string
 
 	ArchiveName string
 	Archive     []byte
-	// SigstoreBundle is a bundle uploaded beside the archive (upload only).
+	// SigstoreBundle is uploaded beside the archive (upload only).
 	SigstoreBundle []byte
 	Preview        *contract.PackagePreview
 }
 
-// RegisterPackage is publisher, package, version, the `fetch` job and the
-// audit row in one transaction: the version row must exist before the job
-// that fills it in is enqueued, so an outbox row committing without its
-// version would be a job with nothing to work on. Nothing here writes
-// bytes — `worker fetcher` is the only role that may — so the archive
-// travels in the outbox payload.
+// RegisterPackage writes publisher, package, version, the `fetch` job and the
+// audit row in one transaction, so a job never commits without its version.
+// Only `worker fetcher` may write bytes, so the archive travels in the outbox
+// payload.
 func RegisterPackage(ctx context.Context, db bun.IDB, p auth.Principal, in Registration) (contract.PackageRegistered, error) {
 	in, err := in.normalise()
 	if err != nil {
@@ -163,15 +149,11 @@ func (in Registration) normalise() (Registration, error) {
 	in.Name = strings.ToLower(strings.TrimSpace(in.Name))
 
 	if in.Publisher == "" {
-		// No source carries a publisher, and guessing one would make the
-		// object key — which is permanent — a guess.
+		// Guessing would make the permanent object key a guess.
 		return in, fmt.Errorf("%w: a registration needs a publisher", ErrRegistration)
 	}
 
-	// One or two segments mirrors the schema's own constraint, stated here
-	// so the caller learns what's wrong instead of reading a 23514. Either
-	// shape gives the namespace a non-empty first segment; what's refused is
-	// an empty segment or a third one.
+	// Mirrors the schema's constraint so the caller gets a reason, not a 23514.
 	namespace, team, ok := strings.Cut(in.Publisher, "/")
 	if namespace == "" || (ok && (team == "" || strings.Contains(team, "/"))) {
 		return in, fmt.Errorf(
@@ -243,12 +225,9 @@ func (in Registration) normalise() (Registration, error) {
 	return in, nil
 }
 
-// normaliseTags trims and drops empties before deduping, so "aws" and
-// " aws " are the same tag, and dedupes before counting, so typing the same
-// tag twice never refuses a registration that would otherwise pass. Unlike
-// Decision.Note, which truncates, an over-long or ill-formed tag is refused:
-// prose surviving a cut is still readable, but a truncated or stripped tag is
-// a silent lie about what was registered.
+// normaliseTags dedupes before counting, so a repeated tag never trips the
+// limit. Unlike Decision.Note, a bad tag is refused rather than truncated: a
+// truncated tag would silently misstate what was registered.
 func normaliseTags(raw []string) ([]string, error) {
 	trimmed := make([]string, 0, len(raw))
 	for _, tag := range raw {
@@ -287,8 +266,8 @@ func deriveFromURL(in Registration) (name, version string) {
 	return name, version
 }
 
-// upsertPublisher creates the namespace on first use. `verified` is left
-// alone: it is a catalog admin's decision, never inferred from a registration.
+// upsertPublisher creates the namespace on first use. `verified` is a catalog
+// admin's decision, never inferred from a registration.
 func upsertPublisher(ctx context.Context, tx bun.IDB, slug string) (uuid.UUID, error) {
 	var id uuid.UUID
 	err := tx.NewSelect().Model((*models.Publisher)(nil)).
@@ -309,8 +288,8 @@ func upsertPublisher(ctx context.Context, tx bun.IDB, slug string) (uuid.UUID, e
 	return id, nil
 }
 
-// resolveCategory looks up an admin-curated category by name or slug. An
-// unknown one is refused rather than created: the vocabulary is curated.
+// resolveCategory refuses an unknown category rather than creating it: the
+// vocabulary is curated.
 func resolveCategory(ctx context.Context, tx bun.IDB, nameOrSlug string) (*uuid.UUID, error) {
 	if nameOrSlug == "" {
 		return nil, nil
@@ -327,15 +306,12 @@ func resolveCategory(ctx context.Context, tx bun.IDB, nameOrSlug string) (*uuid.
 	return &id, nil
 }
 
-// upsertPackage finds or creates the named package. The kind written here
-// is provisional for a URL source; the fetcher settles it once the
-// manifest is in hand. An existing package keeps its kind.
+// upsertPackage finds or creates the named package. The kind is provisional
+// for a URL source until the fetcher reads the manifest.
 func upsertPackage(ctx context.Context, tx bun.IDB, publisherID uuid.UUID, categoryID *uuid.UUID,
 	p auth.Principal, in Registration,
 ) (*models.Package, error) {
-	// Looked up by (namespace, name), matching the unique index — not by
-	// (publisher_id, name), which would miss a name owned by a sibling
-	// team in the same namespace.
+	// By (namespace, name), the unique index, so a sibling team's name is found.
 	existing := new(models.Package)
 	err := tx.NewSelect().Model(existing).
 		Where("namespace = ? and name = ?", in.Namespace, in.Name).
@@ -366,16 +342,12 @@ func upsertPackage(ctx context.Context, tx bun.IDB, publisherID uuid.UUID, categ
 		CategoryID:  categoryID,
 		Visibility:  in.Visibility,
 	}
-	// Recorded at creation, so a new package's first registration is not
-	// audited as a change of source.
+	// Recorded at creation, so the first registration isn't audited as a source change.
 	source := fetch.ProvenanceOf(fetch.SourceRef{Kind: in.Source, URL: in.URL, Ref: in.Ref, Subdirectory: in.Subdirectory})
 	pkg.SourceKind, pkg.SourceURL, pkg.SourceRef, pkg.SourceSubdirectory =
 		models.FetchSourceKind(source.Kind), source.URL, source.Ref, source.Subdirectory
-	// The owner is the authenticated actor, never a value the request body
-	// could name — an identity registering a package it does not control
-	// itself would be exactly the hole an owner column exists to close.
-	// Set once, at creation: a later registration of the same
-	// publisher/name reuses the existing row above and never reassigns it.
+	// The owner is the authenticated actor, never a body value, and is set
+	// only at creation.
 	if p.IdentityID != uuid.Nil {
 		pkg.OwnerIdentityID = &p.IdentityID
 	}
@@ -385,9 +357,7 @@ func upsertPackage(ctx context.Context, tx bun.IDB, publisherID uuid.UUID, categ
 	return pkg, nil
 }
 
-// isUniqueViolation reports whether err is Postgres 23505 on the named
-// constraint, checked by sqlstate rather than message since messages are
-// localised and reworded between releases.
+// isUniqueViolation checks sqlstate 23505 rather than the localised message.
 func isUniqueViolation(err error, constraint string) bool {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) {
@@ -396,11 +366,8 @@ func isUniqueViolation(err error, constraint string) bool {
 	return pgErr.Code == "23505" && pgErr.ConstraintName == constraint
 }
 
-// PackageNotPermittedError is a visibility or tracking change refused to an identity
-// that is neither the package's owner nor a catalog admin, mirroring
-// NotPermittedError's shape for the same reason: the caller can already see
-// the package (it answered 200, not 404), so the only useful thing left to
-// say is who may act on it.
+// PackageNotPermittedError refuses a package change to a reader who is
+// neither owner nor catalog admin; it names who may act instead.
 type PackageNotPermittedError struct {
 	Owner string
 	// Change names what was refused; empty is visibility.
@@ -420,10 +387,8 @@ func (e *PackageNotPermittedError) Error() string {
 		"catalog admin, and " + who
 }
 
-// SetPackageSigner sets or, with both fields empty, clears the signer a
-// package's versions must be signed by to resolve while the org requires
-// signatures. Gated like SetPackageVisibility; no version is re-verified,
-// since the binding is evaluated at every resolution.
+// SetPackageSigner sets or, with both fields empty, clears the expected
+// signer. No version is re-verified: the binding is evaluated at resolution.
 func SetPackageSigner(ctx context.Context, db bun.IDB, p auth.Principal,
 	namespace, name string, want signer.Expected,
 ) error {
@@ -537,11 +502,8 @@ func SetPackageTracking(ctx context.Context, db bun.IDB, p auth.Principal,
 	})
 }
 
-// SetPackageVisibility changes an existing package's visibility. FR-126 and
-// constitution principle IV: this is a state change distinct from
-// registration, gated the same way and audited the same way. Reusing
-// AuditKindShare rather than adding a new enum value: both record a
-// decision about who may see something, and this is the smaller change.
+// SetPackageVisibility changes an existing package's visibility, audited as
+// AuditKindShare since both record who may see something.
 func SetPackageVisibility(ctx context.Context, db bun.IDB, p auth.Principal,
 	namespace, name string, visibility models.PackageVisibility,
 ) error {
@@ -566,14 +528,8 @@ func SetPackageVisibility(ctx context.Context, db bun.IDB, p auth.Principal,
 		if pkg.Visibility == visibility {
 			return nil
 		}
-		// team and private are both enforced by comparing a reader against
-		// the OWNER (queries.PackageReadable): an owner-less package narrowed
-		// to either would match nobody, ever, including the catalog admin who
-		// just narrowed it — a self-inflicted version of the exact leak this
-		// whole feature exists to close, just pointed at invisibility instead.
-		// Only reachable here at all because a catalog admin may act on a
-		// package whose owner is nil; the owner branch above already implies
-		// a non-nil owner.
+		// team and private compare readers against the owner, so an owner-less
+		// package narrowed to either would be visible to nobody.
 		if visibility != models.PackageVisibilityOrganisation && pkg.OwnerIdentityID == nil {
 			return fmt.Errorf("%w: %s/%s has no recorded owner, so only organisation visibility is safe for it",
 				ErrRegistration, namespace, name)

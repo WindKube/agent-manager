@@ -2470,7 +2470,7 @@ type AuditEntry struct {
 	// Examples: version
 	SubjectKind *AuditEntrySubjectKind `json:"subjectKind,omitempty"`
 
-	// Text The human-readable record of what happened. It quotes package and profile names, so it is rendered escaped (FR-055).
+	// Text The human-readable record of what happened. It quotes package and profile names, so it is rendered escaped.
 	//
 	// Examples: override granted for community/aws-cost-explainer@2.0.0
 	Text string `json:"text"`
@@ -2500,7 +2500,7 @@ type AuditPage struct {
 	// PageSize Examples: 50
 	PageSize int64 `json:"pageSize"`
 
-	// Total Rows in the log. The export returns all of them (FR-051).
+	// Total Rows in the log. The export returns all of them.
 	//
 	// Examples: 512
 	Total int64 `json:"total"`
@@ -2518,7 +2518,7 @@ type Badges struct {
 	// Examples: 10
 	Packages int64 `json:"packages"`
 
-	// Profiles Profiles this identity may read, and no others (FR-044).
+	// Profiles Profiles this identity may read, and no others.
 	//
 	// Examples: 4
 	Profiles int64 `json:"profiles"`
@@ -2556,7 +2556,7 @@ type CatalogFacetOption struct {
 
 // CatalogPackage defines model for CatalogPackage.
 type CatalogPackage struct {
-	// Category The admin-curated category (FR-049). Empty when none was chosen.
+	// Category The admin-curated category. Empty when none was chosen.
 	//
 	// Examples: Infrastructure
 	Category *string `json:"category,omitempty"`
@@ -2585,7 +2585,7 @@ type CatalogPackage struct {
 	// UpdatedAt When the latest visible version was published.
 	UpdatedAt time.Time `json:"updatedAt"`
 
-	// Uses Profiles containing this package, derived at query time and never self-reported (R8).
+	// Uses Profiles containing this package, derived at query time and never self-reported.
 	//
 	// Examples: 42
 	Uses int64 `json:"uses"`
@@ -2600,7 +2600,7 @@ type CatalogPackage struct {
 	// Examples: 1.3.0
 	Version string `json:"version"`
 
-	// Visibility Who may see this package (FR-016).
+	// Visibility Who may see this package.
 	//
 	// Examples: organisation
 	Visibility CatalogPackageVisibility `json:"visibility"`
@@ -2614,7 +2614,7 @@ type CatalogPackageKind string
 // Examples: clean
 type CatalogPackageVerdict string
 
-// CatalogPackageVisibility Who may see this package (FR-016).
+// CatalogPackageVisibility Who may see this package.
 //
 // Examples: organisation
 type CatalogPackageVisibility string
@@ -2638,7 +2638,7 @@ type CatalogPage struct {
 	// Tags Tags reachable from the current result set, alphabetically.
 	Tags []CatalogFacetOption `json:"tags"`
 
-	// Total Packages matching every filter, across all pages. This is FR-015's live count.
+	// Total Packages matching every filter, across all pages.
 	//
 	// Examples: 10
 	Total int64 `json:"total"`
@@ -2736,7 +2736,7 @@ type DeviceAuthorizeRequest struct {
 	// Examples: agent-manager-cli
 	ClientId string `json:"client_id"`
 
-	// Host Hostname of the requesting machine. Bound to the authorisation and displayed to the approving human (FR-041), so approval is an informed act.
+	// Host Hostname of the requesting machine. Bound to the authorisation and displayed to the approving human, so approval is an informed act.
 	//
 	// Examples: dev-laptop-01
 	Host string `json:"host"`
@@ -2862,7 +2862,7 @@ type FindingApproval struct {
 	// Examples: 12
 	ExpiresInDays *int64 `json:"expiresInDays,omitempty"`
 
-	// Note Why this risk is accepted. Required: an override with no stated reason is an unexplained exception, and FR-028 asks for a recorded note.
+	// Note Why this risk is accepted. Required: an override with no stated reason is an unexplained exception.
 	//
 	// Examples: Network call is to our own registry
 	Note string `json:"note"`
@@ -2921,7 +2921,7 @@ type FindingDecisionVerdict string
 
 // FindingDetail defines model for FindingDetail.
 type FindingDetail struct {
-	// Checks Every check the scan ran and its result, including the ones that passed (FR-025).
+	// Checks Every check the scan ran and its result, including the ones that passed.
 	Checks []FindingCheck `json:"checks"`
 
 	// Detail Why this was raised, in prose.
@@ -2932,7 +2932,7 @@ type FindingDetail struct {
 	// Examples: rulepack
 	Engine string `json:"engine"`
 
-	// Evidence Every location this finding points at, cause first. Rendered escaped, always (FR-055).
+	// Evidence Every location this finding points at, cause first. Rendered escaped, always.
 	Evidence []FindingEvidence  `json:"evidence"`
 	Id       openapi_types.UUID `json:"id"`
 
@@ -3029,7 +3029,7 @@ type FindingScan struct {
 	PackVersion string    `json:"packVersion"`
 	StartedAt   time.Time `json:"startedAt"`
 
-	// TimedOut The scan exceeded its budget. Its verdict is not a clean bill of health (FR-031).
+	// TimedOut The scan exceeded its budget. Its verdict is not a clean bill of health.
 	TimedOut bool `json:"timedOut"`
 
 	// Verdict Examples: flagged
@@ -3054,7 +3054,7 @@ type FindingSummary struct {
 	// Examples: 41
 	EvidenceLine *int64 `json:"evidenceLine,omitempty"`
 
-	// EvidencePath The PRIMARY location's path. Rendered escaped, always: it is bundle content (FR-055).
+	// EvidencePath The PRIMARY location's path. Rendered escaped, always: it is bundle content.
 	//
 	// Examples: scripts/digest.sh
 	EvidencePath *string `json:"evidencePath,omitempty"`
@@ -3070,7 +3070,7 @@ type FindingSummary struct {
 	// RaisedAt When the scan that raised this finding recorded it.
 	RaisedAt time.Time `json:"raisedAt"`
 
-	// RuleId Stable rule identifier (FR-024).
+	// RuleId Stable rule identifier.
 	//
 	// Examples: SH-NET-002
 	RuleId string `json:"ruleId"`
@@ -3195,10 +3195,10 @@ type Lockfile struct {
 	Revision      int64                 `json:"revision"`
 	SchemaVersion LockfileSchemaVersion `json:"schemaVersion"`
 
-	// Skipped FR-036: an excluded package is reported with its reason, never silently omitted.
+	// Skipped An excluded package is reported with its reason, never silently omitted.
 	Skipped []LockfileSkip `json:"skipped"`
 
-	// Targets Which agent directories the CLI should write. Advisory to the client; the server stores nothing per target (FR-039).
+	// Targets Which agent directories the CLI should write. Advisory to the client; the server stores nothing per target.
 	Targets []LockfileTargets `json:"targets"`
 }
 
@@ -3520,7 +3520,7 @@ type PackageCapability struct {
 	Detail     []string `json:"detail"`
 	Indefinite *bool    `json:"indefinite,omitempty"`
 
-	// Level How much trust it demands. A shell capability is never below review (FR-018).
+	// Level How much trust it demands. A shell capability is never below review.
 	//
 	// Examples: allowlisted
 	Level PackageCapabilityLevel `json:"level"`
@@ -3529,7 +3529,7 @@ type PackageCapability struct {
 	Name PackageCapabilityName `json:"name"`
 }
 
-// PackageCapabilityLevel How much trust it demands. A shell capability is never below review (FR-018).
+// PackageCapabilityLevel How much trust it demands. A shell capability is never below review.
 //
 // Examples: allowlisted
 type PackageCapabilityLevel string
@@ -3618,15 +3618,15 @@ type PackageDetail struct {
 	CanChangeVisibility bool                `json:"canChangeVisibility"`
 	Capabilities        PackageCapabilities `json:"capabilities"`
 
-	// Category The admin-curated category (FR-049). Empty when none was chosen.
+	// Category The admin-curated category. Empty when none was chosen.
 	//
 	// Examples: Infrastructure
 	Category *string `json:"category,omitempty"`
 
-	// Components Derived from the FILE TREE. No manifest field enumerates components (FR-017, R1).
+	// Components Derived from the FILE TREE. No manifest field enumerates components.
 	Components []PackageComponent `json:"components"`
 
-	// Dependents Profiles using this package that the CALLER MAY READ, and no others (FR-044).
+	// Dependents Profiles using this package that the CALLER MAY READ, and no others.
 	Dependents []PackageDependent `json:"dependents"`
 
 	// Description Examples: Platform guardrails, ADR authoring and service scaffolding.
@@ -3827,7 +3827,7 @@ type PackageRegistered struct {
 	Version   string             `json:"version"`
 	VersionId openapi_types.UUID `json:"versionId"`
 
-	// Visible Always false here. Commit-last (FR-008): the fetcher flips it.
+	// Visible Always false here. Commit-last: the fetcher flips it.
 	Visible bool `json:"visible"`
 }
 
@@ -3841,7 +3841,7 @@ type PackageRegisteredVerdict string
 
 // PackageScan defines model for PackageScan.
 type PackageScan struct {
-	// Checks Every check the scan ran, passes included (FR-025).
+	// Checks Every check the scan ran, passes included.
 	Checks []FindingCheck `json:"checks"`
 
 	// Findings Every finding this scan raised against this version.
@@ -4185,7 +4185,7 @@ type ProfileCreate struct {
 	DefaultPolicy *ProfileCreateDefaultPolicy `json:"defaultPolicy,omitempty"`
 	Description   *string                     `json:"description,omitempty"`
 
-	// ForkOf Slug of a profile to fork. Its entries are COPIED at this instant; the fork never sees an upstream revision published afterwards (FR-038). The upstream must be readable by this identity.
+	// ForkOf Slug of a profile to fork. Its entries are COPIED at this instant; the fork never sees an upstream revision published afterwards. The upstream must be readable by this identity.
 	//
 	// Examples: example/sre-oncall
 	ForkOf *string `json:"forkOf,omitempty"`
@@ -4201,7 +4201,7 @@ type ProfileCreate struct {
 	// Examples: example/platform-engineer
 	Slug string `json:"slug"`
 
-	// Visibility Defaults to private. A new profile is not readable by the whole organisation until somebody says so (FR-037, FR-044).
+	// Visibility Defaults to private. A new profile is not readable by the whole organisation until somebody says so.
 	//
 	// Examples: organisation
 	Visibility *ProfileCreateVisibility `json:"visibility,omitempty"`
@@ -4210,23 +4210,23 @@ type ProfileCreate struct {
 // ProfileCreateDefaultPolicy Examples: floating-latest
 type ProfileCreateDefaultPolicy string
 
-// ProfileCreateVisibility Defaults to private. A new profile is not readable by the whole organisation until somebody says so (FR-037, FR-044).
+// ProfileCreateVisibility Defaults to private. A new profile is not readable by the whole organisation until somebody says so.
 //
 // Examples: organisation
 type ProfileCreateVisibility string
 
 // ProfileDetail defines model for ProfileDetail.
 type ProfileDetail struct {
-	// DefaultPolicy The profile's own default, which a per-entry mode overrides (FR-032).
+	// DefaultPolicy The profile's own default, which a per-entry mode overrides.
 	//
 	// Examples: floating-latest
 	DefaultPolicy ProfileDetailDefaultPolicy `json:"defaultPolicy"`
 	Description   *string                    `json:"description,omitempty"`
 
-	// Entries Every package this profile holds, in the profile's own order — INCLUDING the ones the gate excludes, which are reported and never silently omitted (FR-036).
+	// Entries Every package this profile holds, in the profile's own order — INCLUDING the ones the gate excludes, which are reported and never silently omitted.
 	Entries []ProfileEntry `json:"entries"`
 
-	// ForkedFrom Slug of the profile this was forked from. Lineage only: a fork never inherits the upstream's future revisions (FR-038).
+	// ForkedFrom Slug of the profile this was forked from. Lineage only: a fork never inherits the upstream's future revisions.
 	//
 	// Examples: example/sre-oncall
 	ForkedFrom *string `json:"forkedFrom,omitempty"`
@@ -4239,7 +4239,7 @@ type ProfileDetail struct {
 	// Examples: 14
 	HeadRevision int64 `json:"headRevision"`
 
-	// Members Individual members and identity-provider groups, with the role each holds (FR-037).
+	// Members Individual members and identity-provider groups, with the role each holds.
 	Members []ProfileMember `json:"members"`
 
 	// Name Examples: Platform Engineer
@@ -4250,10 +4250,10 @@ type ProfileDetail struct {
 	// Examples: example/platform
 	OwnerTeam *string `json:"ownerTeam,omitempty"`
 
-	// Permissions What this identity may do here. FR-126: a screen disables what it may not do rather than offering it and being refused.
+	// Permissions What this identity may do here. A screen disables what it may not do rather than offering it and being refused.
 	Permissions ProfilePermissions `json:"permissions"`
 
-	// Revisions Published history, most recent first. Previous revisions stay readable for ever (FR-034).
+	// Revisions Published history, most recent first. Previous revisions stay readable for ever.
 	Revisions []ProfileRevision `json:"revisions"`
 
 	// Role This identity's role on this profile. Absent when they read it through organisation visibility rather than a membership.
@@ -4272,7 +4272,7 @@ type ProfileDetail struct {
 	Visibility ProfileDetailVisibility `json:"visibility"`
 }
 
-// ProfileDetailDefaultPolicy The profile's own default, which a per-entry mode overrides (FR-032).
+// ProfileDetailDefaultPolicy The profile's own default, which a per-entry mode overrides.
 //
 // Examples: floating-latest
 type ProfileDetailDefaultPolicy string
@@ -4342,13 +4342,13 @@ type ProfileEntry struct {
 	// Examples: >=1.4.0 <2.0.0
 	Range *string `json:"range,omitempty"`
 
-	// Skip Present exactly when outcome is skipped. The same shape the lockfile publishes, so the screen and the CLI report an exclusion identically (FR-036).
+	// Skip Present exactly when outcome is skipped. The same shape the lockfile publishes, so the screen and the CLI report an exclusion identically.
 	Skip *LockfileSkip `json:"skip,omitempty"`
 
 	// Unpublished This row would resolve differently from the head revision's lockfile. Nothing reaches a machine until a revision is published.
 	Unpublished bool `json:"unpublished"`
 
-	// Verdict The RESOLVED version's verdict. The vocabulary is narrower than the catalog's on purpose: a rejected version never resolves, under any gate (FR-029).
+	// Verdict The RESOLVED version's verdict. The vocabulary is narrower than the catalog's on purpose: a rejected version never resolves, under any gate.
 	Verdict *ProfileEntryVerdict `json:"verdict,omitempty"`
 
 	// Version What this entry resolves to. Absent exactly when the entry is excluded.
@@ -4371,7 +4371,7 @@ type ProfileEntryMode string
 // ProfileEntryOutcome Examples: warned
 type ProfileEntryOutcome string
 
-// ProfileEntryVerdict The RESOLVED version's verdict. The vocabulary is narrower than the catalog's on purpose: a rejected version never resolves, under any gate (FR-029).
+// ProfileEntryVerdict The RESOLVED version's verdict. The vocabulary is narrower than the catalog's on purpose: a rejected version never resolves, under any gate.
 type ProfileEntryVerdict string
 
 // ProfileEntryRemoval defines model for ProfileEntryRemoval.
@@ -4442,7 +4442,7 @@ type ProfilePermissions struct {
 	// Delete May delete the profile outright. Owner only. Deleting is refused separately, by the api, when the profile holds a published revision — this bit is the role check alone.
 	Delete bool `json:"delete"`
 
-	// Publish May publish a revision. Owner or maintainer — a consumer may not (FR-037).
+	// Publish May publish a revision. Owner or maintainer — a consumer may not.
 	Publish bool `json:"publish"`
 
 	// Share May change who the profile is shared with. Owner only: who can see a profile is not a curation decision.
@@ -4904,7 +4904,7 @@ type Viewer struct {
 	// Groups The groups claim as the provider sent it, unfiltered. Shown on the no-role screen so a person can say which groups they hold when asking for access.
 	Groups []string `json:"groups"`
 
-	// HasRole Whether any group this identity holds maps to a role at all (FR-117). False is a screen state, not an error.
+	// HasRole Whether any group this identity holds maps to a role at all. False is a screen state, not an error.
 	HasRole bool `json:"hasRole"`
 
 	// Role The most privileged role this identity's groups map to. Absent when none of them maps to anything.
@@ -5089,23 +5089,23 @@ type ListMachinesParamsStale string
 
 // ListPackagesParams defines parameters for ListPackages.
 type ListPackagesParams struct {
-	// Q Case-insensitive substring, matched against name, id, publisher and tags (FR-010).
+	// Q Case-insensitive substring, matched against name, id, publisher and tags.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 
-	// Kind Mutually exclusive single selection (FR-011).
+	// Kind Mutually exclusive single selection.
 	Kind *ListPackagesParamsKind `form:"kind,omitempty" json:"kind,omitempty"`
 
 	// Status Mutually exclusive single selection. Verified means a verified publisher AND a clean verdict, both.
 	Status *ListPackagesParamsStatus `form:"status,omitempty" json:"status,omitempty"`
 
-	// Category Repeatable. Selected categories narrow DISJUNCTIVELY (FR-013).
+	// Category Repeatable. Selected categories narrow DISJUNCTIVELY.
 	Category *[]string `form:"category,omitempty" json:"category,omitempty"`
 
-	// Tag Repeatable. Selected tags narrow CONJUNCTIVELY (FR-013).
+	// Tag Repeatable. Selected tags narrow CONJUNCTIVELY.
 	Tag  *[]string               `form:"tag,omitempty" json:"tag,omitempty"`
 	Sort *ListPackagesParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
 
-	// Dir Descending first, ascending on a second click (FR-014).
+	// Dir Descending first, ascending on a second click.
 	Dir *ListPackagesParamsDir `form:"dir,omitempty" json:"dir,omitempty"`
 
 	// Page Clamped into range: a page past the end returns the last one.
@@ -5130,7 +5130,7 @@ type RegisterPackageMultipartBody struct {
 	// Archive Required when source is upload, and refused otherwise. huma treats a form field as required unless told otherwise, which is what required:"false" is doing on every optional field here.
 	Archive *openapi_types.File `json:"archive,omitempty"`
 
-	// Category A category name or slug from the admin-curated vocabulary (FR-049).
+	// Category A category name or slug from the admin-curated vocabulary.
 	//
 	// Examples: Infrastructure
 	Category *string `json:"category,omitempty"`
@@ -5158,7 +5158,7 @@ type RegisterPackageMultipartBody struct {
 	// SigstoreBundle Optional, upload only: a Sigstore bundle (.sigstore.json) over the archive's exact bytes, as cosign sign-blob --bundle writes it. The fetcher verifies it and records the signer; a git or archive-url source is checked for a bundle published beside it instead.
 	SigstoreBundle *openapi_types.File `json:"sigstoreBundle,omitempty"`
 
-	// Source Which of FR-001's three shapes this is.
+	// Source Which of the three source shapes this is.
 	//
 	// Examples: git
 	Source *RegisterPackageMultipartBodySource `json:"source,omitempty"`
@@ -5212,7 +5212,7 @@ type GetPackageFileParams struct {
 
 // ScannerSummaryParams defines parameters for ScannerSummary.
 type ScannerSummaryParams struct {
-	// Days The window the scanned count and the median are computed over. The design's card says 30 days; the parameter is what keeps that caption a value rather than a constant (FR-121).
+	// Days The window the scanned count and the median are computed over. The design's card says 30 days; the parameter is what keeps that caption a value rather than a constant.
 	Days *int64 `form:"days,omitempty" json:"days,omitempty"`
 }
 
@@ -5364,42 +5364,42 @@ type ClientInterface interface {
 
 	// ListAudit The audit log, paged, most recent first
 	//
-	// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. Optional filters narrow it to one subject or one package namespace; the export takes the same filters, so it always returns the page's full CURRENT SCOPE (FR-051). Rows written before subjects were recorded carry none and match no subject filter. Rows are append-only, enforced by revoked grants rather than by anything in this process (FR-052). `text` quotes package and profile names, so it is rendered escaped.
+	// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. Optional filters narrow it to one subject or one package namespace; the export takes the same filters, so it always returns the page's full CURRENT SCOPE. Rows written before subjects were recorded carry none and match no subject filter. Rows are append-only, enforced by revoked grants rather than by anything in this process. `text` quotes package and profile names, so it is rendered escaped.
 	//
 	// Corresponds with GET /v1/audit (the `ListAudit` operationId).
 	ListAudit(ctx context.Context, params *ListAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ExportAudit Export the whole audit log
 	//
-	// FR-051: the full current scope, not the visible page — the whole log, or what the same filters as listAudit select. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
+	// The full current scope, not the visible page — the whole log, or what the same filters as listAudit select. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
 	//
 	// Corresponds with GET /v1/audit/export (the `ExportAudit` operationId).
 	ExportAudit(ctx context.Context, params *ExportAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetBadges The application shell's counts
 	//
-	// The three counts the sidebar renders, in one call: packages visible in the catalog, profiles THIS IDENTITY may read, and findings awaiting a decision (FR-121). One operation because the shell renders on every screen, so three would be three round trips per page. Three indexed counts over the base tables and not a projection: principle VIII sanctions exactly one and it is not spent here (research R5). The profile count is the length of the list the Profiles screen shows and cannot be more: a count including a profile the reader cannot open would leak its existence by arithmetic.
+	// The three counts the sidebar renders, in one call: packages visible in the catalog, profiles THIS IDENTITY may read, and findings awaiting a decision. One operation because the shell renders on every screen, so three would be three round trips per page. Three indexed counts over the base tables and not a projection: principle VIII sanctions exactly one and it is not spent here. The profile count is the length of the list the Profiles screen shows and cannot be more: a count including a profile the reader cannot open would leak its existence by arithmetic.
 	//
 	// Corresponds with GET /v1/badges (the `GetBadges` operationId).
 	GetBadges(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetBundle Download an immutable version bundle
 	//
-	// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate (FR-029).
+	// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate.
 	//
 	// Corresponds with GET /v1/bundles/{publisher}/{name}/{version} (the `GetBundle` operationId).
 	GetBundle(ctx context.Context, publisher string, name string, version string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// LookupDeviceCode Look up a pending device authorisation
 	//
-	// Shows the requesting host and remaining validity BEFORE the viewer confirms (FR-041), so approval is an informed act. Refuses distinguishably when the code is unknown, expired or already decided (FR-042). The path parameter is a bearer-equivalent secret for the length of its validity and is never logged verbatim (see the api role's correlation middleware).
+	// Shows the requesting host and remaining validity BEFORE the viewer confirms, so approval is an informed act. Refuses distinguishably when the code is unknown, expired or already decided. The path parameter is a bearer-equivalent secret for the length of its validity and is never logged verbatim (see the api role's correlation middleware).
 	//
 	// Corresponds with GET /v1/device/authorizations/{user_code} (the `LookupDeviceCode` operationId).
 	LookupDeviceCode(ctx context.Context, userCode string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ApproveDeviceCode Approve a pending device authorisation
 	//
-	// The confirm action (US6). Moves the code from pending to approved in one transaction and writes the `login` audit row naming the host, source `cli / <host>` (FR-050). Single-use: a second approval of the same code refuses the same way any already-decided code does.
+	// The confirm action. Moves the code from pending to approved in one transaction and writes the `login` audit row naming the host, source `cli / <host>`. Single-use: a second approval of the same code refuses the same way any already-decided code does.
 	//
 	// Corresponds with POST /v1/device/authorizations/{user_code}/approve (the `ApproveDeviceCode` operationId).
 	ApproveDeviceCode(ctx context.Context, userCode string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5424,7 +5424,7 @@ type ClientInterface interface {
 
 	// DeviceTokenWithBody Poll for the issued token
 	//
-	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
+	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -5433,7 +5433,7 @@ type ClientInterface interface {
 
 	// DeviceTokenWithFormdataBody Poll for the issued token
 	//
-	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
+	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.
 	//
 	// Takes a body of the `application/x-www-form-urlencoded` content type.
 	//
@@ -5449,14 +5449,14 @@ type ClientInterface interface {
 
 	// GetFinding One finding, its evidence and every check that ran
 	//
-	// The detail pane of 001 US4 scenario 2: severity, rule, subject, the prose explanation, EVERY evidence location, and EVERY check the raising scan ran — passes included (FR-025). The passes are not padding. A pane showing only failures cannot be told apart from one where nothing else ran, so the absence of a finding would be indistinguishable from the absence of a check, which is the distinction the whole matrix exists for. Evidence and check labels are bundle content and identity-provider content respectively: every consumer renders them escaped (FR-055).
+	// The detail pane: severity, rule, subject, the prose explanation, EVERY evidence location, and EVERY check the raising scan ran — passes included. The passes are not padding. A pane showing only failures cannot be told apart from one where nothing else ran, so the absence of a finding would be indistinguishable from the absence of a check, which is the distinction the whole matrix exists for. Evidence and check labels are bundle content and identity-provider content respectively: every consumer renders them escaped.
 	//
 	// Corresponds with GET /v1/findings/{id} (the `GetFinding` operationId).
 	GetFinding(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// AcceptFindingWithBody Accept a finding with a recorded note and an expiry
 	//
-	// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.
+	// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction. The version's verdict is NOT changed. Accepting makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it — this refusal is the backstop, not the mechanism.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -5465,7 +5465,7 @@ type ClientInterface interface {
 
 	// AcceptFinding Accept a finding with a recorded note and an expiry
 	//
-	// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.
+	// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction. The version's verdict is NOT changed. Accepting makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it — this refusal is the backstop, not the mechanism.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -5474,7 +5474,7 @@ type ClientInterface interface {
 
 	// RejectFindingWithBody Reject a finding and quarantine its version for good
 	//
-	// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
+	// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all, so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -5483,7 +5483,7 @@ type ClientInterface interface {
 
 	// RejectFinding Reject a finding and quarantine its version for good
 	//
-	// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
+	// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all, so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -5492,7 +5492,7 @@ type ClientInterface interface {
 
 	// Health Liveness and readiness
 	//
-	// Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case (FR-058).
+	// Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case.
 	//
 	// Corresponds with GET /v1/health (the `Health` operationId).
 	Health(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5641,14 +5641,14 @@ type ClientInterface interface {
 
 	// ListPackages Browse, search and facet the catalog
 	//
-	// One page of the catalog with both facet option sets and the live total, from two statements issued concurrently (R4). The two facets count differently, and the asymmetry is FR-013's: CATEGORIES are disjunctive, so each option is counted with the category filter removed; TAGS are conjunctive, so each option is counted against the current results — the number selecting it actually yields. Browsing requires a session: public anonymous browsing is out of scope (spec.md).
+	// One page of the catalog with both facet option sets and the live total, from two statements issued concurrently. The two facets count differently, and the asymmetry is this: CATEGORIES are disjunctive, so each option is counted with the category filter removed; TAGS are conjunctive, so each option is counted against the current results — the number selecting it actually yields. Browsing requires a session: public anonymous browsing is out of scope.
 	//
 	// Corresponds with GET /v1/packages (the `ListPackages` operationId).
 	ListPackages(ctx context.Context, params *ListPackagesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RegisterPackageWithBody Register a package from a URL or an upload
 	//
-	// Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed (FR-008).
+	// Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -5657,7 +5657,7 @@ type ClientInterface interface {
 
 	// PreviewPackageWithBody Validate an archive before registering it
 	//
-	// FR-005's pre-submit answer: every entry with a validation mark, the discarded paths named, the components the FILE TREE reveals, and — when a manifest fails — the schema path that refused it. Writes nothing, and runs the same validation the fetcher runs, so the panel a user approves is the tree that gets stored.
+	// The pre-submit answer: every entry with a validation mark, the discarded paths named, the components the FILE TREE reveals, and — when a manifest fails — the schema path that refused it. Writes nothing, and runs the same validation the fetcher runs, so the panel a user approves is the tree that gets stored.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -5673,14 +5673,14 @@ type ClientInterface interface {
 
 	// GetPackage One package's detail
 	//
-	// Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package (FR-016). The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read (FR-044), and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
+	// Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package. The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read, and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
 	//
 	// Corresponds with GET /v1/packages/{namespace}/{name} (the `GetPackage` operationId).
 	GetPackage(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListPackageFiles The bundle's file tree, to read before using it
 	//
-	// Every regular file the LATEST VISIBLE version's bundle holds. The `component` table records only the significant components — a skill's directory, an MCP server — not a full file list, so this unpacks the bundle itself, under the same extraction caps the fetcher enforces on ingestion, and does so again on every call: nothing here stores a byte-level file list to answer from instead. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029). `default` names this version's own SKILL.md or plugin.json when the bundle has one at its root, since that is the file most worth reading first.
+	// Every regular file the LATEST VISIBLE version's bundle holds. The `component` table records only the significant components — a skill's directory, an MCP server — not a full file list, so this unpacks the bundle itself, under the same extraction caps the fetcher enforces on ingestion, and does so again on every call: nothing here stores a byte-level file list to answer from instead. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one. `default` names this version's own SKILL.md or plugin.json when the bundle has one at its root, since that is the file most worth reading first.
 	//
 	// Corresponds with GET /v1/packages/{namespace}/{name}/files (the `ListPackageFiles` operationId).
 	ListPackageFiles(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5694,7 +5694,7 @@ type ClientInterface interface {
 
 	// GetPackageScan The latest visible version's scan result, to show beside the package
 	//
-	// The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029).
+	// The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one.
 	//
 	// Corresponds with GET /v1/packages/{namespace}/{name}/scan (the `GetPackageScan` operationId).
 	GetPackageScan(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5744,7 +5744,7 @@ type ClientInterface interface {
 
 	// SetPackageVisibilityWithBody Change who may see a package
 	//
-	// Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
+	// Organisation, team or private, in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -5753,7 +5753,7 @@ type ClientInterface interface {
 
 	// SetPackageVisibility Change who may see a package
 	//
-	// Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
+	// Organisation, team or private, in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -5762,14 +5762,14 @@ type ClientInterface interface {
 
 	// ListProfiles Profiles readable by this identity
 	//
-	// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate (FR-126), so a caller choosing among them need not read every one's detail just to find out which allow it.
+	// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others. Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate, so a caller choosing among them need not read every one's detail just to find out which allow it.
 	//
 	// Corresponds with GET /v1/profiles (the `ListProfiles` operationId).
 	ListProfiles(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateProfileWithBody Create a profile, or fork one
 	//
-	// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
+	// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -5778,7 +5778,7 @@ type ClientInterface interface {
 
 	// CreateProfile Create a profile, or fork one
 	//
-	// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
+	// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -5787,21 +5787,21 @@ type ClientInterface interface {
 
 	// DeleteProfile Delete a profile
 	//
-	// Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: FR-034 forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.
+	// Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: the design forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.
 	//
 	// Corresponds with DELETE /v1/profiles/{slug} (the `DeleteProfile` operationId).
 	DeleteProfile(ctx context.Context, slug string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetProfile One profile, resolved under the org gate
 	//
-	// The profile detail screen (001 US5): every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted (FR-036). The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
+	// The profile detail screen: every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted. The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` exists because a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
 	//
 	// Corresponds with GET /v1/profiles/{slug} (the `GetProfile` operationId).
 	GetProfile(ctx context.Context, slug string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SetProfileEntriesWithBody Set the packages a profile holds and how each one tracks versions
 	//
-	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
+	// Float or pin per package, in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED. This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -5810,7 +5810,7 @@ type ClientInterface interface {
 
 	// SetProfileEntries Set the packages a profile holds and how each one tracks versions
 	//
-	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
+	// Float or pin per package, in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED. This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -5837,7 +5837,7 @@ type ClientInterface interface {
 
 	// PublishRevisionWithBody Publish the next immutable revision
 	//
-	// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.
+	// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile`. The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown. THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one. Requires owner or maintainer on the profile — a consumer may not publish.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -5846,7 +5846,7 @@ type ClientInterface interface {
 
 	// PublishRevision Publish the next immutable revision
 	//
-	// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.
+	// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile`. The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown. THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one. Requires owner or maintainer on the profile — a consumer may not publish.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -5855,14 +5855,14 @@ type ClientInterface interface {
 
 	// GetRevision Fetch a resolved revision lockfile
 	//
-	// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted (FR-036).
+	// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted.
 	//
 	// Corresponds with GET /v1/profiles/{slug}/revisions/{revision} (the `GetRevision` operationId).
 	GetRevision(ctx context.Context, slug string, revision string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SetProfileSharingWithBody Set the role each member and identity-provider group holds
 	//
-	// Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
+	// Individual members and IdP groups at four levels — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. This is about roles: a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision; sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -5871,7 +5871,7 @@ type ClientInterface interface {
 
 	// SetProfileSharing Set the role each member and identity-provider group holds
 	//
-	// Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
+	// Individual members and IdP groups at four levels — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. This is about roles: a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision; sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -5880,7 +5880,7 @@ type ClientInterface interface {
 
 	// SetProfileTargetsWithBody Choose which agent directories a client writes
 	//
-	// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
+	// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores. Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -5889,7 +5889,7 @@ type ClientInterface interface {
 
 	// SetProfileTargets Choose which agent directories a client writes
 	//
-	// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
+	// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores. Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -5905,7 +5905,7 @@ type ClientInterface interface {
 
 	// ScannerSummary The Scanner screen's headline figures
 	//
-	// Versions that reached a verdict in the period, how many packages are quarantined, how many acceptances are still in force and when the first of them lapses, and the median time from a scan starting to its verdict (001 US4 scenario 1). `quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged versions: a superseded flagged version is not quarantining anything, because nothing resolves to it. `nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when there is nothing to report — no active override and no finished scan are different statements from "expires now" and "instant".
+	// Versions that reached a verdict in the period, how many packages are quarantined, how many acceptances are still in force and when the first of them lapses, and the median time from a scan starting to its verdict. `quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged versions: a superseded flagged version is not quarantining anything, because nothing resolves to it. `nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when there is nothing to report — no active override and no finished scan are different statements from "expires now" and "instant".
 	//
 	// Corresponds with GET /v1/scanner/summary (the `ScannerSummary` operationId).
 	ScannerSummary(ctx context.Context, params *ScannerSummaryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5944,7 +5944,7 @@ type ClientInterface interface {
 
 	// CreateSessionWithBody Mint a browser session from a verified ID token
 	//
-	// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
+	// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row, and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -5953,7 +5953,7 @@ type ClientInterface interface {
 
 	// CreateSession Mint a browser session from a verified ID token
 	//
-	// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
+	// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row, and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -5962,7 +5962,7 @@ type ClientInterface interface {
 
 	// DeleteSession Sign out
 	//
-	// Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction (FR-114, FR-115). Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.
+	// Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction. Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.
 	//
 	// Corresponds with DELETE /v1/sessions/current (the `DeleteSession` operationId).
 	DeleteSession(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5976,7 +5976,7 @@ type ClientInterface interface {
 
 	// ReportSyncWithBody Report a completed sync
 	//
-	// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
+	// Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -5985,7 +5985,7 @@ type ClientInterface interface {
 
 	// ReportSync Report a completed sync
 	//
-	// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
+	// Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -5994,7 +5994,7 @@ type ClientInterface interface {
 
 	// GetViewer Who this request is acting as
 	//
-	// The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL (FR-117) — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate (FR-118).
+	// The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate.
 	//
 	// Corresponds with GET /v1/viewer (the `GetViewer` operationId).
 	GetViewer(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -6064,7 +6064,7 @@ type ClientInterface interface {
 
 // ListAudit The audit log, paged, most recent first
 //
-// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. Optional filters narrow it to one subject or one package namespace; the export takes the same filters, so it always returns the page's full CURRENT SCOPE (FR-051). Rows written before subjects were recorded carry none and match no subject filter. Rows are append-only, enforced by revoked grants rather than by anything in this process (FR-052). `text` quotes package and profile names, so it is rendered escaped.
+// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. Optional filters narrow it to one subject or one package namespace; the export takes the same filters, so it always returns the page's full CURRENT SCOPE. Rows written before subjects were recorded carry none and match no subject filter. Rows are append-only, enforced by revoked grants rather than by anything in this process. `text` quotes package and profile names, so it is rendered escaped.
 //
 // Corresponds with GET /v1/audit (the `ListAudit` operationId).
 func (c *Client) ListAudit(ctx context.Context, params *ListAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6081,7 +6081,7 @@ func (c *Client) ListAudit(ctx context.Context, params *ListAuditParams, reqEdit
 
 // ExportAudit Export the whole audit log
 //
-// FR-051: the full current scope, not the visible page — the whole log, or what the same filters as listAudit select. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
+// The full current scope, not the visible page — the whole log, or what the same filters as listAudit select. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
 //
 // Corresponds with GET /v1/audit/export (the `ExportAudit` operationId).
 func (c *Client) ExportAudit(ctx context.Context, params *ExportAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6098,7 +6098,7 @@ func (c *Client) ExportAudit(ctx context.Context, params *ExportAuditParams, req
 
 // GetBadges The application shell's counts
 //
-// The three counts the sidebar renders, in one call: packages visible in the catalog, profiles THIS IDENTITY may read, and findings awaiting a decision (FR-121). One operation because the shell renders on every screen, so three would be three round trips per page. Three indexed counts over the base tables and not a projection: principle VIII sanctions exactly one and it is not spent here (research R5). The profile count is the length of the list the Profiles screen shows and cannot be more: a count including a profile the reader cannot open would leak its existence by arithmetic.
+// The three counts the sidebar renders, in one call: packages visible in the catalog, profiles THIS IDENTITY may read, and findings awaiting a decision. One operation because the shell renders on every screen, so three would be three round trips per page. Three indexed counts over the base tables and not a projection: principle VIII sanctions exactly one and it is not spent here. The profile count is the length of the list the Profiles screen shows and cannot be more: a count including a profile the reader cannot open would leak its existence by arithmetic.
 //
 // Corresponds with GET /v1/badges (the `GetBadges` operationId).
 func (c *Client) GetBadges(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6115,7 +6115,7 @@ func (c *Client) GetBadges(ctx context.Context, reqEditors ...RequestEditorFn) (
 
 // GetBundle Download an immutable version bundle
 //
-// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate (FR-029).
+// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate.
 //
 // Corresponds with GET /v1/bundles/{publisher}/{name}/{version} (the `GetBundle` operationId).
 func (c *Client) GetBundle(ctx context.Context, publisher string, name string, version string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6132,7 +6132,7 @@ func (c *Client) GetBundle(ctx context.Context, publisher string, name string, v
 
 // LookupDeviceCode Look up a pending device authorisation
 //
-// Shows the requesting host and remaining validity BEFORE the viewer confirms (FR-041), so approval is an informed act. Refuses distinguishably when the code is unknown, expired or already decided (FR-042). The path parameter is a bearer-equivalent secret for the length of its validity and is never logged verbatim (see the api role's correlation middleware).
+// Shows the requesting host and remaining validity BEFORE the viewer confirms, so approval is an informed act. Refuses distinguishably when the code is unknown, expired or already decided. The path parameter is a bearer-equivalent secret for the length of its validity and is never logged verbatim (see the api role's correlation middleware).
 //
 // Corresponds with GET /v1/device/authorizations/{user_code} (the `LookupDeviceCode` operationId).
 func (c *Client) LookupDeviceCode(ctx context.Context, userCode string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6149,7 +6149,7 @@ func (c *Client) LookupDeviceCode(ctx context.Context, userCode string, reqEdito
 
 // ApproveDeviceCode Approve a pending device authorisation
 //
-// The confirm action (US6). Moves the code from pending to approved in one transaction and writes the `login` audit row naming the host, source `cli / <host>` (FR-050). Single-use: a second approval of the same code refuses the same way any already-decided code does.
+// The confirm action. Moves the code from pending to approved in one transaction and writes the `login` audit row naming the host, source `cli / <host>`. Single-use: a second approval of the same code refuses the same way any already-decided code does.
 //
 // Corresponds with POST /v1/device/authorizations/{user_code}/approve (the `ApproveDeviceCode` operationId).
 func (c *Client) ApproveDeviceCode(ctx context.Context, userCode string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6204,7 +6204,7 @@ func (c *Client) DeviceAuthorize(ctx context.Context, body DeviceAuthorizeJSONRe
 
 // DeviceTokenWithBody Poll for the issued token
 //
-// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
+// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.
 //
 // Takes any type of body and a specified content type.
 //
@@ -6223,7 +6223,7 @@ func (c *Client) DeviceTokenWithBody(ctx context.Context, contentType string, bo
 
 // DeviceTokenWithFormdataBody Poll for the issued token
 //
-// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
+// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.
 //
 // Takes a body of the `application/x-www-form-urlencoded` content type.
 //
@@ -6259,7 +6259,7 @@ func (c *Client) ListFindings(ctx context.Context, params *ListFindingsParams, r
 
 // GetFinding One finding, its evidence and every check that ran
 //
-// The detail pane of 001 US4 scenario 2: severity, rule, subject, the prose explanation, EVERY evidence location, and EVERY check the raising scan ran — passes included (FR-025). The passes are not padding. A pane showing only failures cannot be told apart from one where nothing else ran, so the absence of a finding would be indistinguishable from the absence of a check, which is the distinction the whole matrix exists for. Evidence and check labels are bundle content and identity-provider content respectively: every consumer renders them escaped (FR-055).
+// The detail pane: severity, rule, subject, the prose explanation, EVERY evidence location, and EVERY check the raising scan ran — passes included. The passes are not padding. A pane showing only failures cannot be told apart from one where nothing else ran, so the absence of a finding would be indistinguishable from the absence of a check, which is the distinction the whole matrix exists for. Evidence and check labels are bundle content and identity-provider content respectively: every consumer renders them escaped.
 //
 // Corresponds with GET /v1/findings/{id} (the `GetFinding` operationId).
 func (c *Client) GetFinding(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6276,7 +6276,7 @@ func (c *Client) GetFinding(ctx context.Context, id openapi_types.UUID, reqEdito
 
 // AcceptFindingWithBody Accept a finding with a recorded note and an expiry
 //
-// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.
+// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction. The version's verdict is NOT changed. Accepting makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it — this refusal is the backstop, not the mechanism.
 //
 // Takes any type of body and a specified content type.
 //
@@ -6295,7 +6295,7 @@ func (c *Client) AcceptFindingWithBody(ctx context.Context, id openapi_types.UUI
 
 // AcceptFinding Accept a finding with a recorded note and an expiry
 //
-// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.
+// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction. The version's verdict is NOT changed. Accepting makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it — this refusal is the backstop, not the mechanism.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -6314,7 +6314,7 @@ func (c *Client) AcceptFinding(ctx context.Context, id openapi_types.UUID, body 
 
 // RejectFindingWithBody Reject a finding and quarantine its version for good
 //
-// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
+// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all, so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
 //
 // Takes any type of body and a specified content type.
 //
@@ -6333,7 +6333,7 @@ func (c *Client) RejectFindingWithBody(ctx context.Context, id openapi_types.UUI
 
 // RejectFinding Reject a finding and quarantine its version for good
 //
-// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
+// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all, so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -6352,7 +6352,7 @@ func (c *Client) RejectFinding(ctx context.Context, id openapi_types.UUID, body 
 
 // Health Liveness and readiness
 //
-// Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case (FR-058).
+// Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case.
 //
 // Corresponds with GET /v1/health (the `Health` operationId).
 func (c *Client) Health(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6691,7 +6691,7 @@ func (c *Client) UpdatePolicy(ctx context.Context, body UpdatePolicyJSONRequestB
 
 // ListPackages Browse, search and facet the catalog
 //
-// One page of the catalog with both facet option sets and the live total, from two statements issued concurrently (R4). The two facets count differently, and the asymmetry is FR-013's: CATEGORIES are disjunctive, so each option is counted with the category filter removed; TAGS are conjunctive, so each option is counted against the current results — the number selecting it actually yields. Browsing requires a session: public anonymous browsing is out of scope (spec.md).
+// One page of the catalog with both facet option sets and the live total, from two statements issued concurrently. The two facets count differently, and the asymmetry is this: CATEGORIES are disjunctive, so each option is counted with the category filter removed; TAGS are conjunctive, so each option is counted against the current results — the number selecting it actually yields. Browsing requires a session: public anonymous browsing is out of scope.
 //
 // Corresponds with GET /v1/packages (the `ListPackages` operationId).
 func (c *Client) ListPackages(ctx context.Context, params *ListPackagesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6708,7 +6708,7 @@ func (c *Client) ListPackages(ctx context.Context, params *ListPackagesParams, r
 
 // RegisterPackageWithBody Register a package from a URL or an upload
 //
-// Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed (FR-008).
+// Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed.
 //
 // Takes any type of body and a specified content type.
 //
@@ -6727,7 +6727,7 @@ func (c *Client) RegisterPackageWithBody(ctx context.Context, contentType string
 
 // PreviewPackageWithBody Validate an archive before registering it
 //
-// FR-005's pre-submit answer: every entry with a validation mark, the discarded paths named, the components the FILE TREE reveals, and — when a manifest fails — the schema path that refused it. Writes nothing, and runs the same validation the fetcher runs, so the panel a user approves is the tree that gets stored.
+// The pre-submit answer: every entry with a validation mark, the discarded paths named, the components the FILE TREE reveals, and — when a manifest fails — the schema path that refused it. Writes nothing, and runs the same validation the fetcher runs, so the panel a user approves is the tree that gets stored.
 //
 // Takes any type of body and a specified content type.
 //
@@ -6763,7 +6763,7 @@ func (c *Client) DeletePackage(ctx context.Context, namespace string, name strin
 
 // GetPackage One package's detail
 //
-// Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package (FR-016). The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read (FR-044), and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
+// Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package. The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read, and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
 //
 // Corresponds with GET /v1/packages/{namespace}/{name} (the `GetPackage` operationId).
 func (c *Client) GetPackage(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6780,7 +6780,7 @@ func (c *Client) GetPackage(ctx context.Context, namespace string, name string, 
 
 // ListPackageFiles The bundle's file tree, to read before using it
 //
-// Every regular file the LATEST VISIBLE version's bundle holds. The `component` table records only the significant components — a skill's directory, an MCP server — not a full file list, so this unpacks the bundle itself, under the same extraction caps the fetcher enforces on ingestion, and does so again on every call: nothing here stores a byte-level file list to answer from instead. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029). `default` names this version's own SKILL.md or plugin.json when the bundle has one at its root, since that is the file most worth reading first.
+// Every regular file the LATEST VISIBLE version's bundle holds. The `component` table records only the significant components — a skill's directory, an MCP server — not a full file list, so this unpacks the bundle itself, under the same extraction caps the fetcher enforces on ingestion, and does so again on every call: nothing here stores a byte-level file list to answer from instead. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one. `default` names this version's own SKILL.md or plugin.json when the bundle has one at its root, since that is the file most worth reading first.
 //
 // Corresponds with GET /v1/packages/{namespace}/{name}/files (the `ListPackageFiles` operationId).
 func (c *Client) ListPackageFiles(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6814,7 +6814,7 @@ func (c *Client) GetPackageFile(ctx context.Context, namespace string, name stri
 
 // GetPackageScan The latest visible version's scan result, to show beside the package
 //
-// The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029).
+// The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one.
 //
 // Corresponds with GET /v1/packages/{namespace}/{name}/scan (the `GetPackageScan` operationId).
 func (c *Client) GetPackageScan(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6924,7 +6924,7 @@ func (c *Client) DeleteVersion(ctx context.Context, namespace string, name strin
 
 // SetPackageVisibilityWithBody Change who may see a package
 //
-// Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
+// Organisation, team or private, in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
 //
 // Takes any type of body and a specified content type.
 //
@@ -6943,7 +6943,7 @@ func (c *Client) SetPackageVisibilityWithBody(ctx context.Context, namespace str
 
 // SetPackageVisibility Change who may see a package
 //
-// Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
+// Organisation, team or private, in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -6962,7 +6962,7 @@ func (c *Client) SetPackageVisibility(ctx context.Context, namespace string, nam
 
 // ListProfiles Profiles readable by this identity
 //
-// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate (FR-126), so a caller choosing among them need not read every one's detail just to find out which allow it.
+// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others. Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate, so a caller choosing among them need not read every one's detail just to find out which allow it.
 //
 // Corresponds with GET /v1/profiles (the `ListProfiles` operationId).
 func (c *Client) ListProfiles(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6979,7 +6979,7 @@ func (c *Client) ListProfiles(ctx context.Context, reqEditors ...RequestEditorFn
 
 // CreateProfileWithBody Create a profile, or fork one
 //
-// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
+// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
 //
 // Takes any type of body and a specified content type.
 //
@@ -6998,7 +6998,7 @@ func (c *Client) CreateProfileWithBody(ctx context.Context, contentType string, 
 
 // CreateProfile Create a profile, or fork one
 //
-// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
+// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -7017,7 +7017,7 @@ func (c *Client) CreateProfile(ctx context.Context, body CreateProfileJSONReques
 
 // DeleteProfile Delete a profile
 //
-// Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: FR-034 forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.
+// Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: the design forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.
 //
 // Corresponds with DELETE /v1/profiles/{slug} (the `DeleteProfile` operationId).
 func (c *Client) DeleteProfile(ctx context.Context, slug string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -7034,7 +7034,7 @@ func (c *Client) DeleteProfile(ctx context.Context, slug string, reqEditors ...R
 
 // GetProfile One profile, resolved under the org gate
 //
-// The profile detail screen (001 US5): every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted (FR-036). The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
+// The profile detail screen: every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted. The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` exists because a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
 //
 // Corresponds with GET /v1/profiles/{slug} (the `GetProfile` operationId).
 func (c *Client) GetProfile(ctx context.Context, slug string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -7051,7 +7051,7 @@ func (c *Client) GetProfile(ctx context.Context, slug string, reqEditors ...Requ
 
 // SetProfileEntriesWithBody Set the packages a profile holds and how each one tracks versions
 //
-// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
+// Float or pin per package, in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED. This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
 //
 // Takes any type of body and a specified content type.
 //
@@ -7070,7 +7070,7 @@ func (c *Client) SetProfileEntriesWithBody(ctx context.Context, slug string, con
 
 // SetProfileEntries Set the packages a profile holds and how each one tracks versions
 //
-// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
+// Float or pin per package, in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED. This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -7127,7 +7127,7 @@ func (c *Client) RemoveProfileEntry(ctx context.Context, slug string, body Remov
 
 // PublishRevisionWithBody Publish the next immutable revision
 //
-// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.
+// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile`. The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown. THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one. Requires owner or maintainer on the profile — a consumer may not publish.
 //
 // Takes any type of body and a specified content type.
 //
@@ -7146,7 +7146,7 @@ func (c *Client) PublishRevisionWithBody(ctx context.Context, slug string, conte
 
 // PublishRevision Publish the next immutable revision
 //
-// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.
+// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile`. The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown. THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one. Requires owner or maintainer on the profile — a consumer may not publish.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -7165,7 +7165,7 @@ func (c *Client) PublishRevision(ctx context.Context, slug string, body PublishR
 
 // GetRevision Fetch a resolved revision lockfile
 //
-// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted (FR-036).
+// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted.
 //
 // Corresponds with GET /v1/profiles/{slug}/revisions/{revision} (the `GetRevision` operationId).
 func (c *Client) GetRevision(ctx context.Context, slug string, revision string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -7182,7 +7182,7 @@ func (c *Client) GetRevision(ctx context.Context, slug string, revision string, 
 
 // SetProfileSharingWithBody Set the role each member and identity-provider group holds
 //
-// Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
+// Individual members and IdP groups at four levels — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. This is about roles: a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision; sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
 //
 // Takes any type of body and a specified content type.
 //
@@ -7201,7 +7201,7 @@ func (c *Client) SetProfileSharingWithBody(ctx context.Context, slug string, con
 
 // SetProfileSharing Set the role each member and identity-provider group holds
 //
-// Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
+// Individual members and IdP groups at four levels — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. This is about roles: a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision; sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -7220,7 +7220,7 @@ func (c *Client) SetProfileSharing(ctx context.Context, slug string, body SetPro
 
 // SetProfileTargetsWithBody Choose which agent directories a client writes
 //
-// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
+// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores. Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
 //
 // Takes any type of body and a specified content type.
 //
@@ -7239,7 +7239,7 @@ func (c *Client) SetProfileTargetsWithBody(ctx context.Context, slug string, con
 
 // SetProfileTargets Choose which agent directories a client writes
 //
-// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
+// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores. Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -7275,7 +7275,7 @@ func (c *Client) GetRuntime(ctx context.Context, reqEditors ...RequestEditorFn) 
 
 // ScannerSummary The Scanner screen's headline figures
 //
-// Versions that reached a verdict in the period, how many packages are quarantined, how many acceptances are still in force and when the first of them lapses, and the median time from a scan starting to its verdict (001 US4 scenario 1). `quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged versions: a superseded flagged version is not quarantining anything, because nothing resolves to it. `nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when there is nothing to report — no active override and no finished scan are different statements from "expires now" and "instant".
+// Versions that reached a verdict in the period, how many packages are quarantined, how many acceptances are still in force and when the first of them lapses, and the median time from a scan starting to its verdict. `quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged versions: a superseded flagged version is not quarantining anything, because nothing resolves to it. `nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when there is nothing to report — no active override and no finished scan are different statements from "expires now" and "instant".
 //
 // Corresponds with GET /v1/scanner/summary (the `ScannerSummary` operationId).
 func (c *Client) ScannerSummary(ctx context.Context, params *ScannerSummaryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -7364,7 +7364,7 @@ func (c *Client) RevokeServiceToken(ctx context.Context, id openapi_types.UUID, 
 
 // CreateSessionWithBody Mint a browser session from a verified ID token
 //
-// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
+// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row, and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
 //
 // Takes any type of body and a specified content type.
 //
@@ -7383,7 +7383,7 @@ func (c *Client) CreateSessionWithBody(ctx context.Context, contentType string, 
 
 // CreateSession Mint a browser session from a verified ID token
 //
-// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
+// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row, and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -7402,7 +7402,7 @@ func (c *Client) CreateSession(ctx context.Context, body CreateSessionJSONReques
 
 // DeleteSession Sign out
 //
-// Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction (FR-114, FR-115). Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.
+// Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction. Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.
 //
 // Corresponds with DELETE /v1/sessions/current (the `DeleteSession` operationId).
 func (c *Client) DeleteSession(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -7436,7 +7436,7 @@ func (c *Client) GetStorage(ctx context.Context, reqEditors ...RequestEditorFn) 
 
 // ReportSyncWithBody Report a completed sync
 //
-// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
+// Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 //
 // Takes any type of body and a specified content type.
 //
@@ -7455,7 +7455,7 @@ func (c *Client) ReportSyncWithBody(ctx context.Context, contentType string, bod
 
 // ReportSync Report a completed sync
 //
-// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
+// Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -7474,7 +7474,7 @@ func (c *Client) ReportSync(ctx context.Context, body ReportSyncJSONRequestBody,
 
 // GetViewer Who this request is acting as
 //
-// The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL (FR-117) — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate (FR-118).
+// The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate.
 //
 // Corresponds with GET /v1/viewer (the `GetViewer` operationId).
 func (c *Client) GetViewer(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -10493,7 +10493,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListAuditWithResponse The audit log, paged, most recent first
 	//
-	// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. Optional filters narrow it to one subject or one package namespace; the export takes the same filters, so it always returns the page's full CURRENT SCOPE (FR-051). Rows written before subjects were recorded carry none and match no subject filter. Rows are append-only, enforced by revoked grants rather than by anything in this process (FR-052). `text` quotes package and profile names, so it is rendered escaped.
+	// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. Optional filters narrow it to one subject or one package namespace; the export takes the same filters, so it always returns the page's full CURRENT SCOPE. Rows written before subjects were recorded carry none and match no subject filter. Rows are append-only, enforced by revoked grants rather than by anything in this process. `text` quotes package and profile names, so it is rendered escaped.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -10502,7 +10502,7 @@ type ClientWithResponsesInterface interface {
 
 	// ExportAuditWithResponse Export the whole audit log
 	//
-	// FR-051: the full current scope, not the visible page — the whole log, or what the same filters as listAudit select. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
+	// The full current scope, not the visible page — the whole log, or what the same filters as listAudit select. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -10511,7 +10511,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetBadgesWithResponse The application shell's counts
 	//
-	// The three counts the sidebar renders, in one call: packages visible in the catalog, profiles THIS IDENTITY may read, and findings awaiting a decision (FR-121). One operation because the shell renders on every screen, so three would be three round trips per page. Three indexed counts over the base tables and not a projection: principle VIII sanctions exactly one and it is not spent here (research R5). The profile count is the length of the list the Profiles screen shows and cannot be more: a count including a profile the reader cannot open would leak its existence by arithmetic.
+	// The three counts the sidebar renders, in one call: packages visible in the catalog, profiles THIS IDENTITY may read, and findings awaiting a decision. One operation because the shell renders on every screen, so three would be three round trips per page. Three indexed counts over the base tables and not a projection: principle VIII sanctions exactly one and it is not spent here. The profile count is the length of the list the Profiles screen shows and cannot be more: a count including a profile the reader cannot open would leak its existence by arithmetic.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -10520,7 +10520,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetBundleWithResponse Download an immutable version bundle
 	//
-	// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate (FR-029).
+	// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -10529,7 +10529,7 @@ type ClientWithResponsesInterface interface {
 
 	// LookupDeviceCodeWithResponse Look up a pending device authorisation
 	//
-	// Shows the requesting host and remaining validity BEFORE the viewer confirms (FR-041), so approval is an informed act. Refuses distinguishably when the code is unknown, expired or already decided (FR-042). The path parameter is a bearer-equivalent secret for the length of its validity and is never logged verbatim (see the api role's correlation middleware).
+	// Shows the requesting host and remaining validity BEFORE the viewer confirms, so approval is an informed act. Refuses distinguishably when the code is unknown, expired or already decided. The path parameter is a bearer-equivalent secret for the length of its validity and is never logged verbatim (see the api role's correlation middleware).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -10538,7 +10538,7 @@ type ClientWithResponsesInterface interface {
 
 	// ApproveDeviceCodeWithResponse Approve a pending device authorisation
 	//
-	// The confirm action (US6). Moves the code from pending to approved in one transaction and writes the `login` audit row naming the host, source `cli / <host>` (FR-050). Single-use: a second approval of the same code refuses the same way any already-decided code does.
+	// The confirm action. Moves the code from pending to approved in one transaction and writes the `login` audit row naming the host, source `cli / <host>`. Single-use: a second approval of the same code refuses the same way any already-decided code does.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -10565,7 +10565,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeviceTokenWithBodyWithResponse Poll for the issued token
 	//
-	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
+	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -10574,7 +10574,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeviceTokenWithFormdataBodyWithResponse Poll for the issued token
 	//
-	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
+	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.
 	//
 	// Takes a body of the `application/x-www-form-urlencoded` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -10592,7 +10592,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetFindingWithResponse One finding, its evidence and every check that ran
 	//
-	// The detail pane of 001 US4 scenario 2: severity, rule, subject, the prose explanation, EVERY evidence location, and EVERY check the raising scan ran — passes included (FR-025). The passes are not padding. A pane showing only failures cannot be told apart from one where nothing else ran, so the absence of a finding would be indistinguishable from the absence of a check, which is the distinction the whole matrix exists for. Evidence and check labels are bundle content and identity-provider content respectively: every consumer renders them escaped (FR-055).
+	// The detail pane: severity, rule, subject, the prose explanation, EVERY evidence location, and EVERY check the raising scan ran — passes included. The passes are not padding. A pane showing only failures cannot be told apart from one where nothing else ran, so the absence of a finding would be indistinguishable from the absence of a check, which is the distinction the whole matrix exists for. Evidence and check labels are bundle content and identity-provider content respectively: every consumer renders them escaped.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -10601,7 +10601,7 @@ type ClientWithResponsesInterface interface {
 
 	// AcceptFindingWithBodyWithResponse Accept a finding with a recorded note and an expiry
 	//
-	// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.
+	// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction. The version's verdict is NOT changed. Accepting makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it — this refusal is the backstop, not the mechanism.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -10610,7 +10610,7 @@ type ClientWithResponsesInterface interface {
 
 	// AcceptFindingWithResponse Accept a finding with a recorded note and an expiry
 	//
-	// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.
+	// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction. The version's verdict is NOT changed. Accepting makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it — this refusal is the backstop, not the mechanism.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -10619,7 +10619,7 @@ type ClientWithResponsesInterface interface {
 
 	// RejectFindingWithBodyWithResponse Reject a finding and quarantine its version for good
 	//
-	// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
+	// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all, so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -10628,7 +10628,7 @@ type ClientWithResponsesInterface interface {
 
 	// RejectFindingWithResponse Reject a finding and quarantine its version for good
 	//
-	// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
+	// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all, so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -10637,7 +10637,7 @@ type ClientWithResponsesInterface interface {
 
 	// HealthWithResponse Liveness and readiness
 	//
-	// Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case (FR-058).
+	// Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -10808,7 +10808,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListPackagesWithResponse Browse, search and facet the catalog
 	//
-	// One page of the catalog with both facet option sets and the live total, from two statements issued concurrently (R4). The two facets count differently, and the asymmetry is FR-013's: CATEGORIES are disjunctive, so each option is counted with the category filter removed; TAGS are conjunctive, so each option is counted against the current results — the number selecting it actually yields. Browsing requires a session: public anonymous browsing is out of scope (spec.md).
+	// One page of the catalog with both facet option sets and the live total, from two statements issued concurrently. The two facets count differently, and the asymmetry is this: CATEGORIES are disjunctive, so each option is counted with the category filter removed; TAGS are conjunctive, so each option is counted against the current results — the number selecting it actually yields. Browsing requires a session: public anonymous browsing is out of scope.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -10817,7 +10817,7 @@ type ClientWithResponsesInterface interface {
 
 	// RegisterPackageWithBodyWithResponse Register a package from a URL or an upload
 	//
-	// Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed (FR-008).
+	// Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -10826,7 +10826,7 @@ type ClientWithResponsesInterface interface {
 
 	// PreviewPackageWithBodyWithResponse Validate an archive before registering it
 	//
-	// FR-005's pre-submit answer: every entry with a validation mark, the discarded paths named, the components the FILE TREE reveals, and — when a manifest fails — the schema path that refused it. Writes nothing, and runs the same validation the fetcher runs, so the panel a user approves is the tree that gets stored.
+	// The pre-submit answer: every entry with a validation mark, the discarded paths named, the components the FILE TREE reveals, and — when a manifest fails — the schema path that refused it. Writes nothing, and runs the same validation the fetcher runs, so the panel a user approves is the tree that gets stored.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -10844,7 +10844,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetPackageWithResponse One package's detail
 	//
-	// Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package (FR-016). The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read (FR-044), and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
+	// Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package. The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read, and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -10853,7 +10853,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListPackageFilesWithResponse The bundle's file tree, to read before using it
 	//
-	// Every regular file the LATEST VISIBLE version's bundle holds. The `component` table records only the significant components — a skill's directory, an MCP server — not a full file list, so this unpacks the bundle itself, under the same extraction caps the fetcher enforces on ingestion, and does so again on every call: nothing here stores a byte-level file list to answer from instead. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029). `default` names this version's own SKILL.md or plugin.json when the bundle has one at its root, since that is the file most worth reading first.
+	// Every regular file the LATEST VISIBLE version's bundle holds. The `component` table records only the significant components — a skill's directory, an MCP server — not a full file list, so this unpacks the bundle itself, under the same extraction caps the fetcher enforces on ingestion, and does so again on every call: nothing here stores a byte-level file list to answer from instead. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one. `default` names this version's own SKILL.md or plugin.json when the bundle has one at its root, since that is the file most worth reading first.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -10871,7 +10871,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetPackageScanWithResponse The latest visible version's scan result, to show beside the package
 	//
-	// The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029).
+	// The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -10925,7 +10925,7 @@ type ClientWithResponsesInterface interface {
 
 	// SetPackageVisibilityWithBodyWithResponse Change who may see a package
 	//
-	// Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
+	// Organisation, team or private, in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -10934,7 +10934,7 @@ type ClientWithResponsesInterface interface {
 
 	// SetPackageVisibilityWithResponse Change who may see a package
 	//
-	// Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
+	// Organisation, team or private, in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -10943,7 +10943,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListProfilesWithResponse Profiles readable by this identity
 	//
-	// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate (FR-126), so a caller choosing among them need not read every one's detail just to find out which allow it.
+	// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others. Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate, so a caller choosing among them need not read every one's detail just to find out which allow it.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -10952,7 +10952,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateProfileWithBodyWithResponse Create a profile, or fork one
 	//
-	// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
+	// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -10961,7 +10961,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateProfileWithResponse Create a profile, or fork one
 	//
-	// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
+	// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -10970,7 +10970,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteProfileWithResponse Delete a profile
 	//
-	// Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: FR-034 forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.
+	// Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: the design forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -10979,7 +10979,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetProfileWithResponse One profile, resolved under the org gate
 	//
-	// The profile detail screen (001 US5): every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted (FR-036). The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
+	// The profile detail screen: every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted. The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` exists because a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -10988,7 +10988,7 @@ type ClientWithResponsesInterface interface {
 
 	// SetProfileEntriesWithBodyWithResponse Set the packages a profile holds and how each one tracks versions
 	//
-	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
+	// Float or pin per package, in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED. This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -10997,7 +10997,7 @@ type ClientWithResponsesInterface interface {
 
 	// SetProfileEntriesWithResponse Set the packages a profile holds and how each one tracks versions
 	//
-	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
+	// Float or pin per package, in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED. This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -11024,7 +11024,7 @@ type ClientWithResponsesInterface interface {
 
 	// PublishRevisionWithBodyWithResponse Publish the next immutable revision
 	//
-	// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.
+	// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile`. The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown. THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one. Requires owner or maintainer on the profile — a consumer may not publish.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -11033,7 +11033,7 @@ type ClientWithResponsesInterface interface {
 
 	// PublishRevisionWithResponse Publish the next immutable revision
 	//
-	// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.
+	// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile`. The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown. THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one. Requires owner or maintainer on the profile — a consumer may not publish.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -11042,7 +11042,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetRevisionWithResponse Fetch a resolved revision lockfile
 	//
-	// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted (FR-036).
+	// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -11051,7 +11051,7 @@ type ClientWithResponsesInterface interface {
 
 	// SetProfileSharingWithBodyWithResponse Set the role each member and identity-provider group holds
 	//
-	// Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
+	// Individual members and IdP groups at four levels — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. This is about roles: a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision; sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -11060,7 +11060,7 @@ type ClientWithResponsesInterface interface {
 
 	// SetProfileSharingWithResponse Set the role each member and identity-provider group holds
 	//
-	// Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
+	// Individual members and IdP groups at four levels — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. This is about roles: a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision; sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -11069,7 +11069,7 @@ type ClientWithResponsesInterface interface {
 
 	// SetProfileTargetsWithBodyWithResponse Choose which agent directories a client writes
 	//
-	// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
+	// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores. Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -11078,7 +11078,7 @@ type ClientWithResponsesInterface interface {
 
 	// SetProfileTargetsWithResponse Choose which agent directories a client writes
 	//
-	// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
+	// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores. Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -11096,7 +11096,7 @@ type ClientWithResponsesInterface interface {
 
 	// ScannerSummaryWithResponse The Scanner screen's headline figures
 	//
-	// Versions that reached a verdict in the period, how many packages are quarantined, how many acceptances are still in force and when the first of them lapses, and the median time from a scan starting to its verdict (001 US4 scenario 1). `quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged versions: a superseded flagged version is not quarantining anything, because nothing resolves to it. `nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when there is nothing to report — no active override and no finished scan are different statements from "expires now" and "instant".
+	// Versions that reached a verdict in the period, how many packages are quarantined, how many acceptances are still in force and when the first of them lapses, and the median time from a scan starting to its verdict. `quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged versions: a superseded flagged version is not quarantining anything, because nothing resolves to it. `nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when there is nothing to report — no active override and no finished scan are different statements from "expires now" and "instant".
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -11141,7 +11141,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateSessionWithBodyWithResponse Mint a browser session from a verified ID token
 	//
-	// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
+	// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row, and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -11150,7 +11150,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateSessionWithResponse Mint a browser session from a verified ID token
 	//
-	// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
+	// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row, and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -11159,7 +11159,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteSessionWithResponse Sign out
 	//
-	// Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction (FR-114, FR-115). Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.
+	// Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction. Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -11177,7 +11177,7 @@ type ClientWithResponsesInterface interface {
 
 	// ReportSyncWithBodyWithResponse Report a completed sync
 	//
-	// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
+	// Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -11186,7 +11186,7 @@ type ClientWithResponsesInterface interface {
 
 	// ReportSyncWithResponse Report a completed sync
 	//
-	// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
+	// Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -11195,7 +11195,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetViewerWithResponse Who this request is acting as
 	//
-	// The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL (FR-117) — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate (FR-118).
+	// The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -15859,7 +15859,7 @@ func (r RotateWebhookSecretResponse) ContentType() string {
 
 // ListAuditWithResponse The audit log, paged, most recent first
 //
-// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. Optional filters narrow it to one subject or one package namespace; the export takes the same filters, so it always returns the page's full CURRENT SCOPE (FR-051). Rows written before subjects were recorded carry none and match no subject filter. Rows are append-only, enforced by revoked grants rather than by anything in this process (FR-052). `text` quotes package and profile names, so it is rendered escaped.
+// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. Optional filters narrow it to one subject or one package namespace; the export takes the same filters, so it always returns the page's full CURRENT SCOPE. Rows written before subjects were recorded carry none and match no subject filter. Rows are append-only, enforced by revoked grants rather than by anything in this process. `text` quotes package and profile names, so it is rendered escaped.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -15874,7 +15874,7 @@ func (c *ClientWithResponses) ListAuditWithResponse(ctx context.Context, params 
 
 // ExportAuditWithResponse Export the whole audit log
 //
-// FR-051: the full current scope, not the visible page — the whole log, or what the same filters as listAudit select. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
+// The full current scope, not the visible page — the whole log, or what the same filters as listAudit select. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -15889,7 +15889,7 @@ func (c *ClientWithResponses) ExportAuditWithResponse(ctx context.Context, param
 
 // GetBadgesWithResponse The application shell's counts
 //
-// The three counts the sidebar renders, in one call: packages visible in the catalog, profiles THIS IDENTITY may read, and findings awaiting a decision (FR-121). One operation because the shell renders on every screen, so three would be three round trips per page. Three indexed counts over the base tables and not a projection: principle VIII sanctions exactly one and it is not spent here (research R5). The profile count is the length of the list the Profiles screen shows and cannot be more: a count including a profile the reader cannot open would leak its existence by arithmetic.
+// The three counts the sidebar renders, in one call: packages visible in the catalog, profiles THIS IDENTITY may read, and findings awaiting a decision. One operation because the shell renders on every screen, so three would be three round trips per page. Three indexed counts over the base tables and not a projection: principle VIII sanctions exactly one and it is not spent here. The profile count is the length of the list the Profiles screen shows and cannot be more: a count including a profile the reader cannot open would leak its existence by arithmetic.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -15904,7 +15904,7 @@ func (c *ClientWithResponses) GetBadgesWithResponse(ctx context.Context, reqEdit
 
 // GetBundleWithResponse Download an immutable version bundle
 //
-// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate (FR-029).
+// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -15919,7 +15919,7 @@ func (c *ClientWithResponses) GetBundleWithResponse(ctx context.Context, publish
 
 // LookupDeviceCodeWithResponse Look up a pending device authorisation
 //
-// Shows the requesting host and remaining validity BEFORE the viewer confirms (FR-041), so approval is an informed act. Refuses distinguishably when the code is unknown, expired or already decided (FR-042). The path parameter is a bearer-equivalent secret for the length of its validity and is never logged verbatim (see the api role's correlation middleware).
+// Shows the requesting host and remaining validity BEFORE the viewer confirms, so approval is an informed act. Refuses distinguishably when the code is unknown, expired or already decided. The path parameter is a bearer-equivalent secret for the length of its validity and is never logged verbatim (see the api role's correlation middleware).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -15934,7 +15934,7 @@ func (c *ClientWithResponses) LookupDeviceCodeWithResponse(ctx context.Context, 
 
 // ApproveDeviceCodeWithResponse Approve a pending device authorisation
 //
-// The confirm action (US6). Moves the code from pending to approved in one transaction and writes the `login` audit row naming the host, source `cli / <host>` (FR-050). Single-use: a second approval of the same code refuses the same way any already-decided code does.
+// The confirm action. Moves the code from pending to approved in one transaction and writes the `login` audit row naming the host, source `cli / <host>`. Single-use: a second approval of the same code refuses the same way any already-decided code does.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -15979,7 +15979,7 @@ func (c *ClientWithResponses) DeviceAuthorizeWithResponse(ctx context.Context, b
 
 // DeviceTokenWithBodyWithResponse Poll for the issued token
 //
-// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
+// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -15994,7 +15994,7 @@ func (c *ClientWithResponses) DeviceTokenWithBodyWithResponse(ctx context.Contex
 
 // DeviceTokenWithFormdataBodyWithResponse Poll for the issued token
 //
-// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
+// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.
 //
 // Takes a body of the `application/x-www-form-urlencoded` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16024,7 +16024,7 @@ func (c *ClientWithResponses) ListFindingsWithResponse(ctx context.Context, para
 
 // GetFindingWithResponse One finding, its evidence and every check that ran
 //
-// The detail pane of 001 US4 scenario 2: severity, rule, subject, the prose explanation, EVERY evidence location, and EVERY check the raising scan ran — passes included (FR-025). The passes are not padding. A pane showing only failures cannot be told apart from one where nothing else ran, so the absence of a finding would be indistinguishable from the absence of a check, which is the distinction the whole matrix exists for. Evidence and check labels are bundle content and identity-provider content respectively: every consumer renders them escaped (FR-055).
+// The detail pane: severity, rule, subject, the prose explanation, EVERY evidence location, and EVERY check the raising scan ran — passes included. The passes are not padding. A pane showing only failures cannot be told apart from one where nothing else ran, so the absence of a finding would be indistinguishable from the absence of a check, which is the distinction the whole matrix exists for. Evidence and check labels are bundle content and identity-provider content respectively: every consumer renders them escaped.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -16039,7 +16039,7 @@ func (c *ClientWithResponses) GetFindingWithResponse(ctx context.Context, id ope
 
 // AcceptFindingWithBodyWithResponse Accept a finding with a recorded note and an expiry
 //
-// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.
+// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction. The version's verdict is NOT changed. Accepting makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it — this refusal is the backstop, not the mechanism.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16054,7 +16054,7 @@ func (c *ClientWithResponses) AcceptFindingWithBodyWithResponse(ctx context.Cont
 
 // AcceptFindingWithResponse Accept a finding with a recorded note and an expiry
 //
-// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.
+// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction. The version's verdict is NOT changed. Accepting makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it — this refusal is the backstop, not the mechanism.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16069,7 +16069,7 @@ func (c *ClientWithResponses) AcceptFindingWithResponse(ctx context.Context, id 
 
 // RejectFindingWithBodyWithResponse Reject a finding and quarantine its version for good
 //
-// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
+// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all, so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16084,7 +16084,7 @@ func (c *ClientWithResponses) RejectFindingWithBodyWithResponse(ctx context.Cont
 
 // RejectFindingWithResponse Reject a finding and quarantine its version for good
 //
-// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
+// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all, so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16099,7 +16099,7 @@ func (c *ClientWithResponses) RejectFindingWithResponse(ctx context.Context, id 
 
 // HealthWithResponse Liveness and readiness
 //
-// Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case (FR-058).
+// Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -16384,7 +16384,7 @@ func (c *ClientWithResponses) UpdatePolicyWithResponse(ctx context.Context, body
 
 // ListPackagesWithResponse Browse, search and facet the catalog
 //
-// One page of the catalog with both facet option sets and the live total, from two statements issued concurrently (R4). The two facets count differently, and the asymmetry is FR-013's: CATEGORIES are disjunctive, so each option is counted with the category filter removed; TAGS are conjunctive, so each option is counted against the current results — the number selecting it actually yields. Browsing requires a session: public anonymous browsing is out of scope (spec.md).
+// One page of the catalog with both facet option sets and the live total, from two statements issued concurrently. The two facets count differently, and the asymmetry is this: CATEGORIES are disjunctive, so each option is counted with the category filter removed; TAGS are conjunctive, so each option is counted against the current results — the number selecting it actually yields. Browsing requires a session: public anonymous browsing is out of scope.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -16399,7 +16399,7 @@ func (c *ClientWithResponses) ListPackagesWithResponse(ctx context.Context, para
 
 // RegisterPackageWithBodyWithResponse Register a package from a URL or an upload
 //
-// Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed (FR-008).
+// Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16414,7 +16414,7 @@ func (c *ClientWithResponses) RegisterPackageWithBodyWithResponse(ctx context.Co
 
 // PreviewPackageWithBodyWithResponse Validate an archive before registering it
 //
-// FR-005's pre-submit answer: every entry with a validation mark, the discarded paths named, the components the FILE TREE reveals, and — when a manifest fails — the schema path that refused it. Writes nothing, and runs the same validation the fetcher runs, so the panel a user approves is the tree that gets stored.
+// The pre-submit answer: every entry with a validation mark, the discarded paths named, the components the FILE TREE reveals, and — when a manifest fails — the schema path that refused it. Writes nothing, and runs the same validation the fetcher runs, so the panel a user approves is the tree that gets stored.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16444,7 +16444,7 @@ func (c *ClientWithResponses) DeletePackageWithResponse(ctx context.Context, nam
 
 // GetPackageWithResponse One package's detail
 //
-// Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package (FR-016). The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read (FR-044), and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
+// Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package. The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read, and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -16459,7 +16459,7 @@ func (c *ClientWithResponses) GetPackageWithResponse(ctx context.Context, namesp
 
 // ListPackageFilesWithResponse The bundle's file tree, to read before using it
 //
-// Every regular file the LATEST VISIBLE version's bundle holds. The `component` table records only the significant components — a skill's directory, an MCP server — not a full file list, so this unpacks the bundle itself, under the same extraction caps the fetcher enforces on ingestion, and does so again on every call: nothing here stores a byte-level file list to answer from instead. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029). `default` names this version's own SKILL.md or plugin.json when the bundle has one at its root, since that is the file most worth reading first.
+// Every regular file the LATEST VISIBLE version's bundle holds. The `component` table records only the significant components — a skill's directory, an MCP server — not a full file list, so this unpacks the bundle itself, under the same extraction caps the fetcher enforces on ingestion, and does so again on every call: nothing here stores a byte-level file list to answer from instead. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one. `default` names this version's own SKILL.md or plugin.json when the bundle has one at its root, since that is the file most worth reading first.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -16489,7 +16489,7 @@ func (c *ClientWithResponses) GetPackageFileWithResponse(ctx context.Context, na
 
 // GetPackageScanWithResponse The latest visible version's scan result, to show beside the package
 //
-// The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029).
+// The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -16579,7 +16579,7 @@ func (c *ClientWithResponses) DeleteVersionWithResponse(ctx context.Context, nam
 
 // SetPackageVisibilityWithBodyWithResponse Change who may see a package
 //
-// Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
+// Organisation, team or private, in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16594,7 +16594,7 @@ func (c *ClientWithResponses) SetPackageVisibilityWithBodyWithResponse(ctx conte
 
 // SetPackageVisibilityWithResponse Change who may see a package
 //
-// Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
+// Organisation, team or private, in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16609,7 +16609,7 @@ func (c *ClientWithResponses) SetPackageVisibilityWithResponse(ctx context.Conte
 
 // ListProfilesWithResponse Profiles readable by this identity
 //
-// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate (FR-126), so a caller choosing among them need not read every one's detail just to find out which allow it.
+// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others. Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate, so a caller choosing among them need not read every one's detail just to find out which allow it.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -16624,7 +16624,7 @@ func (c *ClientWithResponses) ListProfilesWithResponse(ctx context.Context, reqE
 
 // CreateProfileWithBodyWithResponse Create a profile, or fork one
 //
-// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
+// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16639,7 +16639,7 @@ func (c *ClientWithResponses) CreateProfileWithBodyWithResponse(ctx context.Cont
 
 // CreateProfileWithResponse Create a profile, or fork one
 //
-// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
+// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16654,7 +16654,7 @@ func (c *ClientWithResponses) CreateProfileWithResponse(ctx context.Context, bod
 
 // DeleteProfileWithResponse Delete a profile
 //
-// Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: FR-034 forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.
+// Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: the design forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -16669,7 +16669,7 @@ func (c *ClientWithResponses) DeleteProfileWithResponse(ctx context.Context, slu
 
 // GetProfileWithResponse One profile, resolved under the org gate
 //
-// The profile detail screen (001 US5): every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted (FR-036). The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
+// The profile detail screen: every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted. The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` exists because a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -16684,7 +16684,7 @@ func (c *ClientWithResponses) GetProfileWithResponse(ctx context.Context, slug s
 
 // SetProfileEntriesWithBodyWithResponse Set the packages a profile holds and how each one tracks versions
 //
-// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
+// Float or pin per package, in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED. This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16699,7 +16699,7 @@ func (c *ClientWithResponses) SetProfileEntriesWithBodyWithResponse(ctx context.
 
 // SetProfileEntriesWithResponse Set the packages a profile holds and how each one tracks versions
 //
-// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
+// Float or pin per package, in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED. This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16744,7 +16744,7 @@ func (c *ClientWithResponses) RemoveProfileEntryWithResponse(ctx context.Context
 
 // PublishRevisionWithBodyWithResponse Publish the next immutable revision
 //
-// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.
+// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile`. The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown. THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one. Requires owner or maintainer on the profile — a consumer may not publish.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16759,7 +16759,7 @@ func (c *ClientWithResponses) PublishRevisionWithBodyWithResponse(ctx context.Co
 
 // PublishRevisionWithResponse Publish the next immutable revision
 //
-// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.
+// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile`. The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown. THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one. Requires owner or maintainer on the profile — a consumer may not publish.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16774,7 +16774,7 @@ func (c *ClientWithResponses) PublishRevisionWithResponse(ctx context.Context, s
 
 // GetRevisionWithResponse Fetch a resolved revision lockfile
 //
-// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted (FR-036).
+// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -16789,7 +16789,7 @@ func (c *ClientWithResponses) GetRevisionWithResponse(ctx context.Context, slug 
 
 // SetProfileSharingWithBodyWithResponse Set the role each member and identity-provider group holds
 //
-// Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
+// Individual members and IdP groups at four levels — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. This is about roles: a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision; sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16804,7 +16804,7 @@ func (c *ClientWithResponses) SetProfileSharingWithBodyWithResponse(ctx context.
 
 // SetProfileSharingWithResponse Set the role each member and identity-provider group holds
 //
-// Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
+// Individual members and IdP groups at four levels — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. This is about roles: a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision; sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16819,7 +16819,7 @@ func (c *ClientWithResponses) SetProfileSharingWithResponse(ctx context.Context,
 
 // SetProfileTargetsWithBodyWithResponse Choose which agent directories a client writes
 //
-// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
+// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores. Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16834,7 +16834,7 @@ func (c *ClientWithResponses) SetProfileTargetsWithBodyWithResponse(ctx context.
 
 // SetProfileTargetsWithResponse Choose which agent directories a client writes
 //
-// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
+// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores. Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16864,7 +16864,7 @@ func (c *ClientWithResponses) GetRuntimeWithResponse(ctx context.Context, reqEdi
 
 // ScannerSummaryWithResponse The Scanner screen's headline figures
 //
-// Versions that reached a verdict in the period, how many packages are quarantined, how many acceptances are still in force and when the first of them lapses, and the median time from a scan starting to its verdict (001 US4 scenario 1). `quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged versions: a superseded flagged version is not quarantining anything, because nothing resolves to it. `nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when there is nothing to report — no active override and no finished scan are different statements from "expires now" and "instant".
+// Versions that reached a verdict in the period, how many packages are quarantined, how many acceptances are still in force and when the first of them lapses, and the median time from a scan starting to its verdict. `quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged versions: a superseded flagged version is not quarantining anything, because nothing resolves to it. `nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when there is nothing to report — no active override and no finished scan are different statements from "expires now" and "instant".
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -16939,7 +16939,7 @@ func (c *ClientWithResponses) RevokeServiceTokenWithResponse(ctx context.Context
 
 // CreateSessionWithBodyWithResponse Mint a browser session from a verified ID token
 //
-// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
+// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row, and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16954,7 +16954,7 @@ func (c *ClientWithResponses) CreateSessionWithBodyWithResponse(ctx context.Cont
 
 // CreateSessionWithResponse Mint a browser session from a verified ID token
 //
-// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
+// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row, and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -16969,7 +16969,7 @@ func (c *ClientWithResponses) CreateSessionWithResponse(ctx context.Context, bod
 
 // DeleteSessionWithResponse Sign out
 //
-// Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction (FR-114, FR-115). Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.
+// Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction. Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -16999,7 +16999,7 @@ func (c *ClientWithResponses) GetStorageWithResponse(ctx context.Context, reqEdi
 
 // ReportSyncWithBodyWithResponse Report a completed sync
 //
-// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
+// Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -17014,7 +17014,7 @@ func (c *ClientWithResponses) ReportSyncWithBodyWithResponse(ctx context.Context
 
 // ReportSyncWithResponse Report a completed sync
 //
-// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
+// Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -17029,7 +17029,7 @@ func (c *ClientWithResponses) ReportSyncWithResponse(ctx context.Context, body R
 
 // GetViewerWithResponse Who this request is acting as
 //
-// The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL (FR-117) — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate (FR-118).
+// The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate.
 //
 // Returns a wrapper object for the known response body format(s).
 //

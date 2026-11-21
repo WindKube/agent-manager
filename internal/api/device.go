@@ -20,36 +20,21 @@ import (
 	"agent-manager/internal/logging"
 )
 
-// The RFC 8628 device authorisation endpoints (T088, T089).
-//
-// Both are unauthenticated by definition — a machine with no credential is what
-// the flow exists to serve — so everything here is reachable by anyone who can
-// reach the hub, and is written on that assumption.
+// The RFC 8628 device authorisation endpoints. Both are unauthenticated by
+// definition, so everything here is written for callers who hold no credential.
 
-// deviceTokenInterval is the minimum gap between polls the authorize response
-// advertises, and the same value slow_down is decided against. A constant rather
-// than an Option: it is a term of the contract the CLI implements, not a
-// deployment knob, and an operator who lowered it would silently make every
-// deployed CLI's polling look compliant when it is not.
+// deviceTokenInterval is a constant rather than an option: it is a term of the
+// contract the CLI implements, not a deployment knob.
 const deviceTokenInterval = 5 * time.Second
 
-// deviceGrantType is fixed by RFC 8628 §3.4 and by the frozen contract's `const`
-// on DeviceTokenRequest.grant_type.
 const deviceGrantType = "urn:ietf:params:oauth:grant-type:device_code"
 
-// maxHostLength is the longest requesting host this hub will bind. 253 is the
-// maximum length of a DNS name; anything longer is not a hostname.
+// maxHostLength is the maximum length of a DNS name.
 const maxHostLength = 253
 
-// deviceTokenError is the RFC 8628 error envelope on its way to the wire.
-//
-// It is a huma.StatusError so that a refusal travels back through the ordinary
-// `return nil, err` path, and it marshals as contract.DeviceTokenError so that
-// the emitted schema and the bytes on the wire have one source. It deliberately
-// does NOT implement huma.ContentTypeFilter: contract.Error does, which is what
-// turns every other failure in this API into application/problem+json, and this
-// one response is the single documented exception — a polling client parses these
-// field names (see internal/api/contract/error.go).
+// deviceTokenError is the RFC 8628 error envelope. It deliberately does not
+// implement huma.ContentTypeFilter, so it is the one response not served as
+// application/problem+json: polling clients parse these field names.
 type deviceTokenError struct{ code string }
 
 func (e deviceTokenError) GetStatus() int { return http.StatusBadRequest }
@@ -60,10 +45,8 @@ func (e deviceTokenError) MarshalJSON() ([]byte, error) {
 	return json.Marshal(contract.DeviceTokenError{Error: e.code})
 }
 
-// The five values the frozen contract's enum admits, and no sixth. OAuth's
-// `invalid_request` is not among them, so a malformed token request is reported as
-// invalid_grant — terminal, which is the right instruction for a client whose
-// request will not become well-formed by being repeated.
+// The five values the contract's enum admits. OAuth's `invalid_request` is not
+// among them, so a malformed token request is reported as terminal invalid_grant.
 var (
 	errAuthorizationPending = deviceTokenError{code: "authorization_pending"}
 	errSlowDown             = deviceTokenError{code: "slow_down"}
@@ -72,41 +55,20 @@ var (
 	errInvalidGrant         = deviceTokenError{code: "invalid_grant"}
 )
 
-// ---- rate limit --------------------------------------------------------------
-
-// The 429 on POST /v1/device/authorize, which the frozen contract declares and
-// which commands.userCodeLength's entropy note requires: 40 bits of user code is
-// only enough while the number of LIVE codes stays small, and without a cap an
-// attacker can raise that number himself.
-//
-// rateLimiter itself now lives in middleware.go: a second operation caps a second
-// thing with it, and machinery two operations share is request plumbing rather
-// than part of the device flow.
-
+// The 429 cap on device authorisation: 40 bits of user code are only enough while
+// the number of live codes stays small.
 const (
-	// deviceAuthorizeBurst codes per window per client address. Roomy enough for a
-	// team behind one NAT doing first-run installs, small enough that the live-code
-	// population an attacker can create stays negligible against 2^40.
-	deviceAuthorizeBurst = 30
-	// deviceAuthorizeWindow is the fixed window the burst is counted in.
+	// Roomy enough for a team behind one NAT, small against 2^40.
+	deviceAuthorizeBurst  = 30
 	deviceAuthorizeWindow = time.Minute
-	// deviceAuthorizeMaxKeys bounds the limiter's memory. This endpoint is
-	// unauthenticated, so the key space is whatever addresses reach the hub.
+	// Bounds the limiter's memory; the endpoint is unauthenticated.
 	deviceAuthorizeMaxKeys = 4096
 )
 
-// limitDeviceAuthorize is the operation's own middleware, so the cap applies to
-// this one operation and nothing else.
-//
-// The key is the peer address and NOT X-Forwarded-For. A client-settable header
-// as a rate-limit key is a rate limit with a bypass switch, and this hub has no
-// declared trusted-proxy configuration to make the header safe to read. What that
-// costs: behind a reverse proxy every caller shares one key, which makes the limit
-// hub-wide rather than per client. That is the failure direction that refuses too
-// much rather than too little.
-//
-// It writes the 429 itself rather than returning an error, because the response is
-// declared with no body schema and huma's error path would attach one.
+// limitDeviceAuthorize keys on the peer address, not X-Forwarded-For, since a
+// client-settable key is a bypass and no trusted proxy is configured; behind a proxy
+// the limit becomes hub-wide. It writes the 429 itself because the response
+// declares no body schema and huma's error path would attach one.
 func (s *Server) limitDeviceAuthorize(ctx huma.Context, next func(huma.Context)) {
 	ok, retryAfter := s.deviceLimiter.allow(peerAddress(ctx.RemoteAddr()), time.Now())
 	if ok {
@@ -120,8 +82,6 @@ func (s *Server) limitDeviceAuthorize(ctx huma.Context, next func(huma.Context))
 	ctx.SetHeader("Retry-After", strconv.Itoa(seconds))
 	ctx.SetStatus(http.StatusTooManyRequests)
 }
-
-// ---- POST /v1/device/authorize ----------------------------------------------
 
 type deviceAuthorizeInput struct {
 	Body contract.DeviceAuthorizeRequest
@@ -156,8 +116,7 @@ func (s *Server) deviceAuthorize(ctx context.Context, in *deviceAuthorizeInput) 
 		return nil, fail(log, err)
 	}
 
-	// The user code, the host and the expiry — never the device code. The
-	// plaintext leaves this process exactly once, in the response body.
+	// Never log the device code; its plaintext leaves this process only in the response body.
 	log.Info().
 		Str("user_code", result.UserCode).
 		Str("requesting_host", host).
@@ -175,16 +134,9 @@ func (s *Server) deviceAuthorize(ctx context.Context, in *deviceAuthorizeInput) 
 	}}, nil
 }
 
-// validHost refuses a requesting host rather than sanitising one.
-//
-// This value is bound to the authorisation, written into an audit row and
-// rendered to the approving human so that approval is an informed act (FR-041).
-// Anything outside the set a hostname can be made of is refused for the reason
-// the correlation-id pattern refuses instead of trimming, and the reason the
-// archive extractor refuses hostile entries: a repaired value is a value nobody
-// can reason about afterwards. Letters, digits, dot, dash, underscore and colon —
-// underscore because Windows and Docker hostnames carry them, colon for a bare
-// IPv6 literal.
+// validHost refuses rather than sanitises: the host is shown to the approving human
+// and audited, and a repaired value is one nobody can reason about. Underscore is
+// allowed for Windows and Docker hostnames, colon for bare IPv6 literals.
 func validHost(host string) error {
 	if host == "" {
 		return errors.New("host must not be empty")
@@ -203,22 +155,15 @@ func validHost(host string) error {
 	return nil
 }
 
-// verificationURIs builds the two URLs the response advertises.
-//
-// Both are derived from the CONFIGURED verification URL and never from the
-// request's Host header — a client-supplied Host would let a caller choose the
-// address a human is then told to open, a phishing primitive handed out by the
-// login endpoint itself.
+// verificationURIs derives both URLs from the configured verification URL, never
+// the request's Host header, which would let a caller choose where a human is sent.
 func (s *Server) verificationURIs(userCode string) (verification, complete string) {
 	verification = strings.TrimSuffix(s.opts.DeviceVerificationURL, "/")
 	return verification, verification + "?user_code=" + url.QueryEscape(userCode)
 }
 
-// ---- POST /v1/device/token --------------------------------------------------
-
-// deviceTokenInput takes the body as raw bytes because RFC 8628 §3.4 fixes it as
-// form-encoded and huma models an object body as JSON. The document still
-// declares the real schema — see declareRequestBody in operations.go.
+// deviceTokenInput takes raw bytes because RFC 8628 fixes the body as form-encoded;
+// declareRequestBody in operations.go documents the real schema.
 type deviceTokenInput struct {
 	RawBody []byte `contentType:"application/x-www-form-urlencoded"`
 }
@@ -234,8 +179,6 @@ func (s *Server) deviceToken(ctx context.Context, in *deviceTokenInput) (*device
 	if err != nil {
 		return nil, errInvalidGrant
 	}
-	// RFC 8628 §3.4 fixes the grant type, and the frozen contract declares it as a
-	// `const`. Anything else is not this grant and never becomes it.
 	if form.Get("grant_type") != deviceGrantType {
 		return nil, errInvalidGrant
 	}
@@ -258,8 +201,7 @@ func (s *Server) deviceToken(ctx context.Context, in *deviceTokenInput) (*device
 		return nil, deviceTokenFailure(log, err)
 	}
 
-	// The host and the expiry. Not the token, not the device code (FR-007's rule in
-	// the CLI is the same rule here: no credential reaches any output stream).
+	// Never log the token or device code.
 	log.Info().
 		Str("requesting_host", result.Host).
 		Time("expires_at", result.ExpiresAt).
@@ -269,29 +211,12 @@ func (s *Server) deviceToken(ctx context.Context, in *deviceTokenInput) (*device
 		AccessToken: result.AccessToken,
 		TokenType:   "Bearer",
 		ExpiresIn:   int(s.opts.DeviceTokenTTL.Seconds()),
-		// refresh_token is omitted, not empty.
-		//
-		// This build issues none, and the field's own description says it is
-		// "present only when the client may refresh without a second human
-		// approval" — which this build cannot offer honestly. There is no column to
-		// record a refresh grant in, so a refresh token would have to be either a
-		// second `session` row that renews itself without any human in the loop, or
-		// a self-contained token the middleware does not know how to verify. Both
-		// are a second credential system, and FR-045 — group loss takes effect at
-		// the next token refresh — is only checkable if a refresh re-reads the
-		// identity, which is what a fresh human approval already does.
-		//
-		// The cost, stated plainly: a CLI must be re-approved by a human once every
-		// DEVICE_TOKEN_TTL (one hour by default). An operator who finds that too
-		// coarse raises DEVICE_TOKEN_TTL; the honest fix is a refresh grant with a
-		// row to record it in, which is a migration.
+		// refresh_token is omitted: this build has no refresh grant, so a CLI is
+		// re-approved by a human once every DEVICE_TOKEN_TTL.
 	}}, nil
 }
 
-// ---- GET /v1/device/authorizations/{user_code} and its approval --------------
-//
-// Both need a browser session and nothing beyond it: approving a machine's login
-// is not an organisation-role decision, so neither handler calls requireRole.
+// Approving a machine's login needs a browser session but no organisation role.
 
 type lookupDeviceCodeInput struct {
 	UserCode string `path:"user_code" doc:"The code the CLI printed."`
@@ -341,10 +266,8 @@ func (s *Server) approveDeviceCode(ctx context.Context, in *approveDeviceCodeInp
 	host, err := commands.ApproveDevice(ctx, s.deps.DB, principal, in.UserCode)
 	if err != nil {
 		if errors.Is(err, commands.ErrUserCodeUndecidable) {
-			// A separate, non-authoritative read taken after the refusal, purely to
-			// word the response: the approval already stood or fell on the
-			// transactional guard above, and this lookup only picks which message to
-			// print.
+			// Non-authoritative read, only to word the refusal; the approval already failed
+			// on the transactional guard.
 			_, status, lookupErr := queries.LookupDeviceCode(ctx, s.deps.DB, in.UserCode)
 			if lookupErr != nil {
 				return nil, fail(log, lookupErr)
@@ -357,9 +280,6 @@ func (s *Server) approveDeviceCode(ctx context.Context, in *approveDeviceCodeInp
 }
 
 // deviceCodeRefusal renders the three distinguishable device-code refusals.
-// There is no fourth case for approval by a different identity:
-// device_authorization binds a host, never a requester identity, so that reads
-// exactly like DeviceCodeDecided.
 func deviceCodeRefusal(status queries.DeviceCodeStatus) error {
 	switch status {
 	case queries.DeviceCodeExpired:
@@ -371,15 +291,9 @@ func deviceCodeRefusal(status queries.DeviceCodeStatus) error {
 	}
 }
 
-// deviceTokenFailure maps a command's sentinel onto the one RFC 8628 value that
-// tells a polling client what to do next.
-//
-// Only authorization_pending and slow_down are non-terminal; the other three must
-// stop the client. Anything the switch does not recognise is NOT one of the five —
-// it is this server having failed — and it becomes a 500 rather than
-// invalid_grant. Reporting a database outage as invalid_grant would tell every
-// polling CLI to give up and every user to start again, for a fault none of them
-// caused.
+// deviceTokenFailure maps a command's sentinel onto an RFC 8628 value. Anything
+// unrecognised is a server fault and becomes a 500, not invalid_grant, which would
+// tell every polling CLI to give up.
 func deviceTokenFailure(log zerolog.Logger, err error) error {
 	switch {
 	case errors.Is(err, commands.ErrDeviceCodePending):

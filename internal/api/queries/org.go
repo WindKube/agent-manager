@@ -12,15 +12,8 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The Organization screen's reads.
-//
-// The provider panel is NOT here: issuer, client id and scopes are this role's
-// own configuration, and the device endpoint comes from a live discovery fetch.
-// Neither is a database read, so both are assembled by the handler.
-
-// Policy reads org_policy's mutable half. ErrNoPolicy mirrors
-// profile_detail.go's: the singleton row missing is a broken deployment, not a
-// default to fall back on.
+// Policy reads org_policy's mutable half. A missing singleton row is a broken
+// deployment, hence ErrNoPolicy rather than a default.
 func Policy(ctx context.Context, db bun.IDB) (contract.OrganizationPolicy, error) {
 	var out contract.OrganizationPolicy
 	err := db.QueryRowContext(ctx,
@@ -40,8 +33,7 @@ func Policy(ctx context.Context, db bun.IDB) (contract.OrganizationPolicy, error
 	return out, nil
 }
 
-// GroupRoleMappings reads every group-to-role mapping, alphabetically: the
-// screen's table has no other order to preserve.
+// GroupRoleMappings reads every group-to-role mapping, alphabetically.
 func GroupRoleMappings(ctx context.Context, db bun.IDB) ([]contract.GroupRoleMapping, error) {
 	rows, err := db.QueryContext(ctx,
 		`select group_name, role::text from group_role_map order by group_name`)
@@ -65,8 +57,6 @@ func GroupRoleMappings(ctx context.Context, db bun.IDB) ([]contract.GroupRoleMap
 }
 
 // Categories reads the curated vocabulary with per-category package counts.
-// The count joins package on category_id and is exactly the figure the
-// screen's table shows beside each name.
 func Categories(ctx context.Context, db bun.IDB) ([]contract.OrganizationCategory, error) {
 	rows, err := db.QueryContext(ctx,
 		`select cat.id::text, cat.name, cat.slug,

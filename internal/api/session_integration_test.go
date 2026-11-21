@@ -19,22 +19,13 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The session mint, sign-out and the viewer against a real Postgres (T032–T036).
-//
-// What is here and not in the container-free tests is everything a fake store
-// would have let pass: that the mint writes exactly one audit row inside its own
-// transaction, that the shared secret reaches no statement and therefore no row,
-// that sign-out expires the row rather than merely answering 204, and that a
-// role follows a mapping change under a session that was already open.
+// The session mint, sign-out and the viewer against a real Postgres.
 
-// theMintSecret is what these tests configure. It is distinctive so that finding
-// it in a statement or a row is unambiguous rather than a substring coincidence.
+// theMintSecret is distinctive so finding it in a statement or row is unambiguous.
 const theMintSecret = "integration-session-mint-secret-8f3a"
 
-// mintingHandler is liveHandler plus the two things the mint needs: the shared
-// secret and a verifier that returns the claims it is given instead of reaching a
-// provider. Nothing here is testing go-oidc; what is being tested is what the api
-// does with a token that verified.
+// mintingHandler is liveHandler plus the shared secret and a verifier that
+// returns the claims it is given instead of reaching a provider.
 func mintingHandler(t *testing.T, claims auth.Claims) http.Handler {
 	t.Helper()
 
@@ -83,9 +74,6 @@ func TestAMintedSessionIsUsableAndWritesExactlyOneLoginAuditRow(t *testing.T) {
 	require.True(t, session.ExpiresAt.After(time.Now().UTC()),
 		"a session that is already expired is not a session")
 
-	// The token the response carried resolves — which is the only claim worth
-	// making about it, and the one a hand-written INSERT into `session` would have
-	// got wrong.
 	viewer := request(t, h, http.MethodGet, "/v1/viewer", session.Token, "")
 	require.Equal(t, http.StatusOK, viewer.Code, viewer.Body.String())
 
@@ -93,12 +81,11 @@ func TestAMintedSessionIsUsableAndWritesExactlyOneLoginAuditRow(t *testing.T) {
 	require.NoError(t, json.Unmarshal(viewer.Body.Bytes(), &body))
 	require.Equal(t, "Mint One", body.DisplayName)
 	require.Equal(t, "mint-one@example.com", body.Email)
-	// eng-platform maps to catalog-admin in this suite's group_role_map, and the
-	// role came from that map rather than from anything the mint was told.
+	// The role comes from this suite's group_role_map, not from the mint request.
 	require.Equal(t, "catalog-admin", body.Role)
 	require.True(t, body.HasRole)
 
-	// Exactly one, and inside the mint's own transaction (FR-050, FR-115).
+	// Exactly one, inside the mint's own transaction.
 	require.Equal(t, before+1,
 		countRows(t, "select count(*) from audit_event where actor = 'mint-one@example.com'"))
 
@@ -112,13 +99,7 @@ func TestAMintedSessionIsUsableAndWritesExactlyOneLoginAuditRow(t *testing.T) {
 	require.Equal(t, "login", kind)
 }
 
-// TestTheSharedSecretReachesNoStatementAndSoNoRow is the strong half of T032's
-// third assertion.
-//
-// "The secret never appears in an audit row" is asserted by proving something
-// wider: it appears in no statement this mint issued at all, so it is not in the
-// audit row, not in the identity row and not in the session row. A per-column
-// check on one table would pass while a future column carried it.
+// Asserting on every statement rather than per column also catches a future column carrying the secret.
 func TestTheSharedSecretReachesNoStatementAndSoNoRow(t *testing.T) {
 	h := mintingHandler(t, auth.Claims{
 		Subject: "sub-mint-2", Email: "mint-two@example.com", Name: "Mint Two",
@@ -135,8 +116,7 @@ func TestTheSharedSecretReachesNoStatementAndSoNoRow(t *testing.T) {
 		require.NotContains(t, statement, theMintSecret)
 	}
 
-	// And the row itself, rendered whole. Belt and braces, because the statement
-	// sweep above depends on the recorder being wired and this does not.
+	// The sweep above depends on the recorder being wired; this check does not.
 	var rendered string
 	require.NoError(t, pool.QueryRow(context.Background(),
 		`select to_jsonb(audit_event)::text from audit_event
@@ -161,21 +141,18 @@ func TestSigningOutExpiresTheRowAndWritesItsOwnAuditRow(t *testing.T) {
 	out := request(t, h, http.MethodDelete, "/v1/sessions/current", session.Token, "")
 	require.Equal(t, http.StatusNoContent, out.Code, out.Body.String())
 
-	// Server-side, which is the whole of FR-114: the row's expiry moved, and the
-	// cookie the browser still holds is worth nothing.
+	// Server-side: the row's expiry moved, so the cookie the browser holds is worthless.
 	require.Equal(t, 1, countRows(t,
 		`select count(*) from session s join identity i on i.id = s.identity_id
 		 where i.subject = 'sub-mint-3' and s.expires_at <= now()`))
 
-	// A replay is refused, and is indistinguishable from a token that never
-	// existed.
+	// A replay is indistinguishable from a token that never existed.
 	replay := request(t, h, http.MethodGet, "/v1/viewer", session.Token, "")
 	require.Equal(t, http.StatusUnauthorized, replay.Code)
 	again := request(t, h, http.MethodDelete, "/v1/sessions/current", session.Token, "")
 	require.Equal(t, http.StatusUnauthorized, again.Code)
 
-	// Exactly one more row for the sign-out, and none for the two refusals: a
-	// refused request changed nothing, so it accounts for nothing.
+	// One row for the sign-out, none for the refusals.
 	require.Equal(t, before+1, countRows(t,
 		"select count(*) from audit_event where actor = 'mint-three@example.com'"))
 
@@ -188,10 +165,7 @@ func TestSigningOutExpiresTheRowAndWritesItsOwnAuditRow(t *testing.T) {
 	require.Equal(t, auth.SourceWeb, source)
 }
 
-// TestTheViewersRoleFollowsTheGroupMapWithNothingToInvalidate is FR-118, and it
-// is the assertion the requirement actually needs: not that a cache is
-// invalidated, but that there is no cache. The session is opened once and never
-// reissued; the mapping changes underneath it three times.
+// There is no role cache: the session is never reissued while its mapping changes three times.
 func TestTheViewersRoleFollowsTheGroupMapWithNothingToInvalidate(t *testing.T) {
 	const group = "eng-fr118"
 
@@ -214,8 +188,7 @@ func TestTheViewersRoleFollowsTheGroupMapWithNothingToInvalidate(t *testing.T) {
 		return body
 	}
 
-	// An unmapped group grants nothing, and says so rather than defaulting to the
-	// least-privileged role (FR-117).
+	// An unmapped group grants nothing rather than defaulting to the least-privileged role.
 	unmapped := viewerNow()
 	require.False(t, unmapped.HasRole)
 	require.Empty(t, unmapped.Role)
@@ -230,7 +203,6 @@ func TestTheViewersRoleFollowsTheGroupMapWithNothingToInvalidate(t *testing.T) {
 		require.NoError(t, cleanupErr)
 	})
 
-	// The same token, no re-issue, no sign-out, no restart.
 	mapped := viewerNow()
 	require.True(t, mapped.HasRole)
 	require.Equal(t, "scanner-reviewer", mapped.Role)
@@ -239,9 +211,7 @@ func TestTheViewersRoleFollowsTheGroupMapWithNothingToInvalidate(t *testing.T) {
 		Where("group_name = ?", group).Exec(context.Background())
 	require.NoError(t, err)
 
-	// And back, because a revoked mapping has to take effect in the same one
-	// request a granted one does. A cache that expired would pass the grant and
-	// fail this.
+	// A revocation must take effect as immediately as a grant.
 	revoked := viewerNow()
 	require.False(t, revoked.HasRole)
 	require.Empty(t, revoked.Role)

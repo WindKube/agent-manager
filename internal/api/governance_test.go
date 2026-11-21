@@ -14,17 +14,10 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The governance surface's authorisation and its refusals, with no database.
-//
-// Every case here is decided before a statement is issued, which is exactly why
-// it can be asserted without one — and why it must be: FR-126 is satisfied by a
-// screen that hides a button, and this is the layer that has to refuse the request
-// the hidden button could still have sent. A test that needed a container to prove
-// a role check would be a test nobody runs on the change that breaks it.
+// Governance refusals, with no database: a hidden button can still send the
+// request, so this layer must refuse it, and proving that must not need a container.
 
-// governanceHandler is a router whose Deps hold NO database. Any operation that
-// reached a query would panic on the nil handle, so a 403 or a 422 from here is
-// proof the refusal happened first.
+// governanceHandler has no database, so a 403 or 422 proves the refusal came before any query.
 func governanceHandler(t *testing.T, principal auth.Principal) http.Handler {
 	t.Helper()
 	return handler(t, api.Deps{Sessions: resolver{principal: principal}})
@@ -41,8 +34,7 @@ func TestAdjudicatingAFindingIsRefusedToEveryRoleButTheReviewers(t *testing.T) {
 		{
 			name: "a scanner reviewer is who the operation is for",
 			role: models.OrgRoleScannerReviewer,
-			// Past the role check and into the command, which has no database. The
-			// status is not the assertion here; getting past 403 is.
+			// Getting past 403 is the assertion; the status comes from the missing database.
 			want: http.StatusInternalServerError,
 		},
 		{
@@ -82,9 +74,8 @@ func TestAdjudicatingAFindingIsRefusedToEveryRoleButTheReviewers(t *testing.T) {
 	}
 }
 
-// The refusal has to name what the action needed, or a person holding no mapped
-// group cannot tell that from holding the wrong one — which is the confusion
-// FR-117 exists to remove and FR-126 asks the screen to state.
+// The refusal names what the action needed, so holding no mapped group is
+// distinguishable from holding the wrong one.
 func TestTheRefusalNamesTheRoleTheActionNeeded(t *testing.T) {
 	h := governanceHandler(t, auth.Principal{Subject: "sub-x", Role: models.OrgRoleReadOnly})
 	id := uuid.Must(uuid.NewV7()).String()
@@ -98,9 +89,7 @@ func TestTheRefusalNamesTheRoleTheActionNeeded(t *testing.T) {
 	require.Contains(t, body.Detail, "catalog-admin")
 }
 
-// A path parameter that is not a uuid is refused as a malformed request and not
-// as a missing finding: a 404 is a claim about the data, and this request never
-// named a finding at all.
+// A non-uuid path parameter is malformed, not a missing finding: a 404 would be a claim about the data.
 func TestAMalformedFindingIDIsRefusedBeforeAnyStatement(t *testing.T) {
 	h := governanceHandler(t, auth.Principal{
 		IdentityID: uuid.Must(uuid.NewV7()),
@@ -120,9 +109,6 @@ func TestAMalformedFindingIDIsRefusedBeforeAnyStatement(t *testing.T) {
 	}
 }
 
-// An accept with no note is refused. FR-028 asks for a RECORDED note, and an
-// override whose reason is the empty string is an unexplained exception that
-// nothing later can reconstruct.
 func TestAcceptingWithoutANoteIsRefused(t *testing.T) {
 	h := governanceHandler(t, auth.Principal{
 		IdentityID: uuid.Must(uuid.NewV7()),
@@ -137,10 +123,7 @@ func TestAcceptingWithoutANoteIsRefused(t *testing.T) {
 	}
 }
 
-// Every governance operation inherits the document's root bearer requirement.
-// None of them is public, and the emitted document is what says so — an operation
-// that forgot to declare security would be authenticated by default, and this is
-// the test that would notice one that opted out.
+// Catches a governance operation that opted out of the root bearer requirement.
 func TestEveryGovernanceOperationNeedsASession(t *testing.T) {
 	h := handler(t, api.Deps{Sessions: resolver{err: auth.ErrUnauthenticated}})
 	id := uuid.Must(uuid.NewV7()).String()
@@ -162,10 +145,8 @@ func TestEveryGovernanceOperationNeedsASession(t *testing.T) {
 	}
 }
 
-// The export declares its own 200 with a media type and a schema. huma infers a
-// response body from the handler's return type and a StreamResponse has none, so
-// an undeclared 200 would leave a generated client with no field for it and no
-// error either — the failure mode operations.go warns about in the device flow.
+// huma cannot infer a body for a StreamResponse, so an undeclared 200 would
+// silently leave generated clients with no field for it.
 func TestTheAuditExportDeclaresItsStreamedResponse(t *testing.T) {
 	document := api.Document(api.Options{})
 

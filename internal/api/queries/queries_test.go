@@ -10,10 +10,8 @@ import (
 	"agent-manager/internal/auth"
 )
 
-// The FR-044 predicate is the one piece of authorisation logic in this package
-// that is pure, so it gets a container-free test of its own. The integration
-// suite proves it filters in SQL; this proves which clauses it emits, which is
-// what a refactor is most likely to quietly drop.
+// The integration suite proves Readable filters in SQL; this pins which clauses
+// it emits, which a refactor is most likely to drop.
 func TestReadablePredicateEmitsOneClausePerWayIn(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
@@ -71,8 +69,7 @@ func TestReadablePredicateEmitsOneClausePerWayIn(t *testing.T) {
 			}
 			require.Len(t, args, tc.wantArgs)
 
-			// Both ways in share one subquery, and a principal that can match no
-			// membership row gets none at all.
+			// One shared subquery, or none when no membership row can match.
 			wantSubqueries := 0
 			if tc.wantArgs > 0 {
 				wantSubqueries = 1

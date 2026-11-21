@@ -1,13 +1,6 @@
-// Command openapigen writes the api role's OpenAPI document to a file.
-//
-// This is the generator half of constitution principle V: `task gen:client` runs
-// it and then points oapi-codegen at the result, so the typed client the web role
-// uses is generated from the document the api EMITS — not from the frozen
-// contract file, and never from a hand-written copy.
-//
-// It opens no connection: api.Document builds the whole surface from the
-// operation definitions with a zero Deps, which is what makes the output
-// reproducible on any machine and in CI.
+// Command openapigen writes the api role's OpenAPI document to a file, which
+// `task gen:client` feeds to oapi-codegen. It opens no connection, so the output
+// is reproducible anywhere.
 package main
 
 import (
@@ -30,8 +23,7 @@ func main() {
 }
 
 func run(out string) error {
-	// No servers and no deployment-specific anything: the committed document must
-	// be byte-identical wherever this runs, or `task gen:check` flaps.
+	// The committed document must be byte-identical wherever this runs, or `task gen:check` flaps.
 	encoded, err := json.MarshalIndent(api.Document(api.Options{}), "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal document: %w", err)

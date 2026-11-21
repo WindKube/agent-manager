@@ -116,7 +116,7 @@
             "type": "string"
           },
           "text": {
-            "description": "The human-readable record of what happened. It quotes package and profile names, so it is rendered escaped (FR-055).",
+            "description": "The human-readable record of what happened. It quotes package and profile names, so it is rendered escaped.",
             "examples": [
               "override granted for community/aws-cost-explainer@2.0.0"
             ],
@@ -158,7 +158,7 @@
             "type": "integer"
           },
           "total": {
-            "description": "Rows in the log. The export returns all of them (FR-051).",
+            "description": "Rows in the log. The export returns all of them.",
             "examples": [
               512
             ],
@@ -194,7 +194,7 @@
             "type": "integer"
           },
           "profiles": {
-            "description": "Profiles this identity may read, and no others (FR-044).",
+            "description": "Profiles this identity may read, and no others.",
             "examples": [
               4
             ],
@@ -284,7 +284,7 @@
         "additionalProperties": false,
         "properties": {
           "category": {
-            "description": "The admin-curated category (FR-049). Empty when none was chosen.",
+            "description": "The admin-curated category. Empty when none was chosen.",
             "examples": [
               "Infrastructure"
             ],
@@ -334,7 +334,7 @@
             "type": "string"
           },
           "uses": {
-            "description": "Profiles containing this package, derived at query time and never self-reported (R8).",
+            "description": "Profiles containing this package, derived at query time and never self-reported.",
             "examples": [
               42
             ],
@@ -362,7 +362,7 @@
             "type": "string"
           },
           "visibility": {
-            "description": "Who may see this package (FR-016).",
+            "description": "Who may see this package.",
             "enum": [
               "organisation",
               "team",
@@ -428,7 +428,7 @@
             "type": "array"
           },
           "total": {
-            "description": "Packages matching every filter, across all pages. This is FR-015's live count.",
+            "description": "Packages matching every filter, across all pages.",
             "examples": [
               10
             ],
@@ -666,7 +666,7 @@
             "type": "string"
           },
           "host": {
-            "description": "Hostname of the requesting machine. Bound to the authorisation and displayed to the approving human (FR-041), so approval is an informed act.",
+            "description": "Hostname of the requesting machine. Bound to the authorisation and displayed to the approving human, so approval is an informed act.",
             "examples": [
               "dev-laptop-01"
             ],
@@ -897,7 +897,7 @@
             "type": "integer"
           },
           "note": {
-            "description": "Why this risk is accepted. Required: an override with no stated reason is an unexplained exception, and FR-028 asks for a recorded note.",
+            "description": "Why this risk is accepted. Required: an override with no stated reason is an unexplained exception.",
             "examples": [
               "Network call is to our own registry"
             ],
@@ -1018,7 +1018,7 @@
         "additionalProperties": false,
         "properties": {
           "checks": {
-            "description": "Every check the scan ran and its result, including the ones that passed (FR-025).",
+            "description": "Every check the scan ran and its result, including the ones that passed.",
             "items": {
               "$ref": "#/components/schemas/FindingCheck"
             },
@@ -1036,7 +1036,7 @@
             "type": "string"
           },
           "evidence": {
-            "description": "Every location this finding points at, cause first. Rendered escaped, always (FR-055).",
+            "description": "Every location this finding points at, cause first. Rendered escaped, always.",
             "items": {
               "$ref": "#/components/schemas/FindingEvidence"
             },
@@ -1237,7 +1237,7 @@
             "type": "string"
           },
           "timedOut": {
-            "description": "The scan exceeded its budget. Its verdict is not a clean bill of health (FR-031).",
+            "description": "The scan exceeded its budget. Its verdict is not a clean bill of health.",
             "type": "boolean"
           },
           "verdict": {
@@ -1284,7 +1284,7 @@
             "type": "integer"
           },
           "evidencePath": {
-            "description": "The PRIMARY location's path. Rendered escaped, always: it is bundle content (FR-055).",
+            "description": "The PRIMARY location's path. Rendered escaped, always: it is bundle content.",
             "examples": [
               "scripts/digest.sh"
             ],
@@ -1308,7 +1308,7 @@
             "type": "string"
           },
           "ruleId": {
-            "description": "Stable rule identifier (FR-024).",
+            "description": "Stable rule identifier.",
             "examples": [
               "SH-NET-002"
             ],
@@ -1593,14 +1593,14 @@
             "type": "string"
           },
           "skipped": {
-            "description": "FR-036: an excluded package is reported with its reason, never silently omitted.",
+            "description": "An excluded package is reported with its reason, never silently omitted.",
             "items": {
               "$ref": "#/components/schemas/LockfileSkip"
             },
             "type": "array"
           },
           "targets": {
-            "description": "Which agent directories the CLI should write. Advisory to the client; the server stores nothing per target (FR-039).",
+            "description": "Which agent directories the CLI should write. Advisory to the client; the server stores nothing per target.",
             "items": {
               "enum": [
                 "claude-code",
@@ -2303,7 +2303,7 @@
             "type": "boolean"
           },
           "level": {
-            "description": "How much trust it demands. A shell capability is never below review (FR-018).",
+            "description": "How much trust it demands. A shell capability is never below review.",
             "enum": [
               "scoped",
               "allowlisted",
@@ -2482,21 +2482,21 @@
             "$ref": "#/components/schemas/PackageCapabilities"
           },
           "category": {
-            "description": "The admin-curated category (FR-049). Empty when none was chosen.",
+            "description": "The admin-curated category. Empty when none was chosen.",
             "examples": [
               "Infrastructure"
             ],
             "type": "string"
           },
           "components": {
-            "description": "Derived from the FILE TREE. No manifest field enumerates components (FR-017, R1).",
+            "description": "Derived from the FILE TREE. No manifest field enumerates components.",
             "items": {
               "$ref": "#/components/schemas/PackageComponent"
             },
             "type": "array"
           },
           "dependents": {
-            "description": "Profiles using this package that the CALLER MAY READ, and no others (FR-044).",
+            "description": "Profiles using this package that the CALLER MAY READ, and no others.",
             "items": {
               "$ref": "#/components/schemas/PackageDependent"
             },
@@ -2917,7 +2917,7 @@
             "type": "string"
           },
           "visible": {
-            "description": "Always false here. Commit-last (FR-008): the fetcher flips it.",
+            "description": "Always false here. Commit-last: the fetcher flips it.",
             "type": "boolean"
           }
         },
@@ -2938,7 +2938,7 @@
         "additionalProperties": false,
         "properties": {
           "checks": {
-            "description": "Every check the scan ran, passes included (FR-025).",
+            "description": "Every check the scan ran, passes included.",
             "items": {
               "$ref": "#/components/schemas/FindingCheck"
             },
@@ -3604,7 +3604,7 @@
             "type": "string"
           },
           "forkOf": {
-            "description": "Slug of a profile to fork. Its entries are COPIED at this instant; the fork never sees an upstream revision published afterwards (FR-038). The upstream must be readable by this identity.",
+            "description": "Slug of a profile to fork. Its entries are COPIED at this instant; the fork never sees an upstream revision published afterwards. The upstream must be readable by this identity.",
             "examples": [
               "example/sre-oncall"
             ],
@@ -3636,7 +3636,7 @@
             "type": "string"
           },
           "visibility": {
-            "description": "Defaults to private. A new profile is not readable by the whole organisation until somebody says so (FR-037, FR-044).",
+            "description": "Defaults to private. A new profile is not readable by the whole organisation until somebody says so.",
             "enum": [
               "organisation",
               "shared",
@@ -3658,7 +3658,7 @@
         "additionalProperties": false,
         "properties": {
           "defaultPolicy": {
-            "description": "The profile's own default, which a per-entry mode overrides (FR-032).",
+            "description": "The profile's own default, which a per-entry mode overrides.",
             "enum": [
               "floating-latest",
               "pinned",
@@ -3673,14 +3673,14 @@
             "type": "string"
           },
           "entries": {
-            "description": "Every package this profile holds, in the profile's own order — INCLUDING the ones the gate excludes, which are reported and never silently omitted (FR-036).",
+            "description": "Every package this profile holds, in the profile's own order — INCLUDING the ones the gate excludes, which are reported and never silently omitted.",
             "items": {
               "$ref": "#/components/schemas/ProfileEntry"
             },
             "type": "array"
           },
           "forkedFrom": {
-            "description": "Slug of the profile this was forked from. Lineage only: a fork never inherits the upstream's future revisions (FR-038).",
+            "description": "Slug of the profile this was forked from. Lineage only: a fork never inherits the upstream's future revisions.",
             "examples": [
               "example/sre-oncall"
             ],
@@ -3706,7 +3706,7 @@
             "type": "integer"
           },
           "members": {
-            "description": "Individual members and identity-provider groups, with the role each holds (FR-037).",
+            "description": "Individual members and identity-provider groups, with the role each holds.",
             "items": {
               "$ref": "#/components/schemas/ProfileMember"
             },
@@ -3727,10 +3727,10 @@
           },
           "permissions": {
             "$ref": "#/components/schemas/ProfilePermissions",
-            "description": "What this identity may do here. FR-126: a screen disables what it may not do rather than offering it and being refused."
+            "description": "What this identity may do here. A screen disables what it may not do rather than offering it and being refused."
           },
           "revisions": {
-            "description": "Published history, most recent first. Previous revisions stay readable for ever (FR-034).",
+            "description": "Published history, most recent first. Previous revisions stay readable for ever.",
             "items": {
               "$ref": "#/components/schemas/ProfileRevision"
             },
@@ -3909,14 +3909,14 @@
           },
           "skip": {
             "$ref": "#/components/schemas/LockfileSkip",
-            "description": "Present exactly when outcome is skipped. The same shape the lockfile publishes, so the screen and the CLI report an exclusion identically (FR-036)."
+            "description": "Present exactly when outcome is skipped. The same shape the lockfile publishes, so the screen and the CLI report an exclusion identically."
           },
           "unpublished": {
             "description": "This row would resolve differently from the head revision's lockfile. Nothing reaches a machine until a revision is published.",
             "type": "boolean"
           },
           "verdict": {
-            "description": "The RESOLVED version's verdict. The vocabulary is narrower than the catalog's on purpose: a rejected version never resolves, under any gate (FR-029).",
+            "description": "The RESOLVED version's verdict. The vocabulary is narrower than the catalog's on purpose: a rejected version never resolves, under any gate.",
             "enum": [
               "scanning",
               "clean",
@@ -4070,7 +4070,7 @@
             "type": "boolean"
           },
           "publish": {
-            "description": "May publish a revision. Owner or maintainer — a consumer may not (FR-037).",
+            "description": "May publish a revision. Owner or maintainer — a consumer may not.",
             "type": "boolean"
           },
           "share": {
@@ -5148,7 +5148,7 @@
             "type": "array"
           },
           "hasRole": {
-            "description": "Whether any group this identity holds maps to a role at all (FR-117). False is a screen state, not an error.",
+            "description": "Whether any group this identity holds maps to a role at all. False is a screen state, not an error.",
             "type": "boolean"
           },
           "role": {
@@ -5434,7 +5434,7 @@
   "paths": {
     "/v1/audit": {
       "get": {
-        "description": "One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. Optional filters narrow it to one subject or one package namespace; the export takes the same filters, so it always returns the page's full CURRENT SCOPE (FR-051). Rows written before subjects were recorded carry none and match no subject filter. Rows are append-only, enforced by revoked grants rather than by anything in this process (FR-052). `text` quotes package and profile names, so it is rendered escaped.",
+        "description": "One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. Optional filters narrow it to one subject or one package namespace; the export takes the same filters, so it always returns the page's full CURRENT SCOPE. Rows written before subjects were recorded carry none and match no subject filter. Rows are append-only, enforced by revoked grants rather than by anything in this process. `text` quotes package and profile names, so it is rendered escaped.",
         "operationId": "listAudit",
         "parameters": [
           {
@@ -5560,7 +5560,7 @@
     },
     "/v1/audit/export": {
       "get": {
-        "description": "FR-051: the full current scope, not the visible page — the whole log, or what the same filters as listAudit select. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.",
+        "description": "The full current scope, not the visible page — the whole log, or what the same filters as listAudit select. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.",
         "operationId": "exportAudit",
         "parameters": [
           {
@@ -5671,7 +5671,7 @@
     },
     "/v1/badges": {
       "get": {
-        "description": "The three counts the sidebar renders, in one call: packages visible in the catalog, profiles THIS IDENTITY may read, and findings awaiting a decision (FR-121). One operation because the shell renders on every screen, so three would be three round trips per page. Three indexed counts over the base tables and not a projection: principle VIII sanctions exactly one and it is not spent here (research R5). The profile count is the length of the list the Profiles screen shows and cannot be more: a count including a profile the reader cannot open would leak its existence by arithmetic.",
+        "description": "The three counts the sidebar renders, in one call: packages visible in the catalog, profiles THIS IDENTITY may read, and findings awaiting a decision. One operation because the shell renders on every screen, so three would be three round trips per page. Three indexed counts over the base tables and not a projection: principle VIII sanctions exactly one and it is not spent here. The profile count is the length of the list the Profiles screen shows and cannot be more: a count including a profile the reader cannot open would leak its existence by arithmetic.",
         "operationId": "getBadges",
         "responses": {
           "200": {
@@ -5713,7 +5713,7 @@
     },
     "/v1/bundles/{publisher}/{name}/{version}": {
       "get": {
-        "description": "Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate (FR-029).",
+        "description": "Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate.",
         "operationId": "getBundle",
         "parameters": [
           {
@@ -5827,7 +5827,7 @@
     },
     "/v1/device/authorizations/{user_code}": {
       "get": {
-        "description": "Shows the requesting host and remaining validity BEFORE the viewer confirms (FR-041), so approval is an informed act. Refuses distinguishably when the code is unknown, expired or already decided (FR-042). The path parameter is a bearer-equivalent secret for the length of its validity and is never logged verbatim (see the api role's correlation middleware).",
+        "description": "Shows the requesting host and remaining validity BEFORE the viewer confirms, so approval is an informed act. Refuses distinguishably when the code is unknown, expired or already decided. The path parameter is a bearer-equivalent secret for the length of its validity and is never logged verbatim (see the api role's correlation middleware).",
         "operationId": "lookupDeviceCode",
         "parameters": [
           {
@@ -5911,7 +5911,7 @@
     },
     "/v1/device/authorizations/{user_code}/approve": {
       "post": {
-        "description": "The confirm action (US6). Moves the code from pending to approved in one transaction and writes the `login` audit row naming the host, source `cli / \u003chost\u003e` (FR-050). Single-use: a second approval of the same code refuses the same way any already-decided code does.",
+        "description": "The confirm action. Moves the code from pending to approved in one transaction and writes the `login` audit row naming the host, source `cli / \u003chost\u003e`. Single-use: a second approval of the same code refuses the same way any already-decided code does.",
         "operationId": "approveDeviceCode",
         "parameters": [
           {
@@ -6077,7 +6077,7 @@
     },
     "/v1/device/token": {
       "post": {
-        "description": "Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).",
+        "description": "Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.",
         "operationId": "deviceToken",
         "requestBody": {
           "content": {
@@ -6249,7 +6249,7 @@
     },
     "/v1/findings/{id}": {
       "get": {
-        "description": "The detail pane of 001 US4 scenario 2: severity, rule, subject, the prose explanation, EVERY evidence location, and EVERY check the raising scan ran — passes included (FR-025). The passes are not padding. A pane showing only failures cannot be told apart from one where nothing else ran, so the absence of a finding would be indistinguishable from the absence of a check, which is the distinction the whole matrix exists for. Evidence and check labels are bundle content and identity-provider content respectively: every consumer renders them escaped (FR-055).",
+        "description": "The detail pane: severity, rule, subject, the prose explanation, EVERY evidence location, and EVERY check the raising scan ran — passes included. The passes are not padding. A pane showing only failures cannot be told apart from one where nothing else ran, so the absence of a finding would be indistinguishable from the absence of a check, which is the distinction the whole matrix exists for. Evidence and check labels are bundle content and identity-provider content respectively: every consumer renders them escaped.",
         "operationId": "getFinding",
         "parameters": [
           {
@@ -6324,7 +6324,7 @@
     },
     "/v1/findings/{id}/accept": {
       "post": {
-        "description": "Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.",
+        "description": "Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction. The version's verdict is NOT changed. Accepting makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it — this refusal is the backstop, not the mechanism.",
         "operationId": "acceptFinding",
         "parameters": [
           {
@@ -6447,7 +6447,7 @@
     },
     "/v1/findings/{id}/reject": {
       "post": {
-        "description": "Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.",
+        "description": "Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all, so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.",
         "operationId": "rejectFinding",
         "parameters": [
           {
@@ -6560,7 +6560,7 @@
     },
     "/v1/health": {
       "get": {
-        "description": "Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case (FR-058).",
+        "description": "Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case.",
         "operationId": "health",
         "responses": {
           "200": {
@@ -7574,16 +7574,16 @@
     },
     "/v1/packages": {
       "get": {
-        "description": "One page of the catalog with both facet option sets and the live total, from two statements issued concurrently (R4). The two facets count differently, and the asymmetry is FR-013's: CATEGORIES are disjunctive, so each option is counted with the category filter removed; TAGS are conjunctive, so each option is counted against the current results — the number selecting it actually yields. Browsing requires a session: public anonymous browsing is out of scope (spec.md).",
+        "description": "One page of the catalog with both facet option sets and the live total, from two statements issued concurrently. The two facets count differently, and the asymmetry is this: CATEGORIES are disjunctive, so each option is counted with the category filter removed; TAGS are conjunctive, so each option is counted against the current results — the number selecting it actually yields. Browsing requires a session: public anonymous browsing is out of scope.",
         "operationId": "listPackages",
         "parameters": [
           {
-            "description": "Case-insensitive substring, matched against name, id, publisher and tags (FR-010).",
+            "description": "Case-insensitive substring, matched against name, id, publisher and tags.",
             "explode": false,
             "in": "query",
             "name": "q",
             "schema": {
-              "description": "Case-insensitive substring, matched against name, id, publisher and tags (FR-010).",
+              "description": "Case-insensitive substring, matched against name, id, publisher and tags.",
               "examples": [
                 "terraform"
               ],
@@ -7591,13 +7591,13 @@
             }
           },
           {
-            "description": "Mutually exclusive single selection (FR-011).",
+            "description": "Mutually exclusive single selection.",
             "explode": false,
             "in": "query",
             "name": "kind",
             "schema": {
               "default": "all",
-              "description": "Mutually exclusive single selection (FR-011).",
+              "description": "Mutually exclusive single selection.",
               "enum": [
                 "all",
                 "plugin",
@@ -7624,12 +7624,12 @@
             }
           },
           {
-            "description": "Repeatable. Selected categories narrow DISJUNCTIVELY (FR-013).",
+            "description": "Repeatable. Selected categories narrow DISJUNCTIVELY.",
             "explode": true,
             "in": "query",
             "name": "category",
             "schema": {
-              "description": "Repeatable. Selected categories narrow DISJUNCTIVELY (FR-013).",
+              "description": "Repeatable. Selected categories narrow DISJUNCTIVELY.",
               "items": {
                 "type": "string"
               },
@@ -7637,12 +7637,12 @@
             }
           },
           {
-            "description": "Repeatable. Selected tags narrow CONJUNCTIVELY (FR-013).",
+            "description": "Repeatable. Selected tags narrow CONJUNCTIVELY.",
             "explode": true,
             "in": "query",
             "name": "tag",
             "schema": {
-              "description": "Repeatable. Selected tags narrow CONJUNCTIVELY (FR-013).",
+              "description": "Repeatable. Selected tags narrow CONJUNCTIVELY.",
               "items": {
                 "type": "string"
               },
@@ -7664,13 +7664,13 @@
             }
           },
           {
-            "description": "Descending first, ascending on a second click (FR-014).",
+            "description": "Descending first, ascending on a second click.",
             "explode": false,
             "in": "query",
             "name": "dir",
             "schema": {
               "default": "desc",
-              "description": "Descending first, ascending on a second click (FR-014).",
+              "description": "Descending first, ascending on a second click.",
               "enum": [
                 "desc",
                 "asc"
@@ -7752,7 +7752,7 @@
         ]
       },
       "post": {
-        "description": "Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed (FR-008).",
+        "description": "Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed.",
         "operationId": "registerPackage",
         "requestBody": {
           "content": {
@@ -7808,7 +7808,7 @@
                     "type": "string"
                   },
                   "category": {
-                    "description": "A category name or slug from the admin-curated vocabulary (FR-049).",
+                    "description": "A category name or slug from the admin-curated vocabulary.",
                     "examples": [
                       "Infrastructure"
                     ],
@@ -7854,7 +7854,7 @@
                     "type": "string"
                   },
                   "source": {
-                    "description": "Which of FR-001's three shapes this is.",
+                    "description": "Which of the three source shapes this is.",
                     "enum": [
                       "upload",
                       "git",
@@ -7953,7 +7953,7 @@
                 }
               }
             },
-            "description": "FR-007: this publisher/name@version already exists — published and immutable, or still resolving an earlier registration — and cannot be registered again."
+            "description": "This publisher/name@version already exists — published and immutable, or still resolving an earlier registration — and cannot be registered again."
           },
           "413": {
             "content": {
@@ -7994,7 +7994,7 @@
     },
     "/v1/packages/preview": {
       "post": {
-        "description": "FR-005's pre-submit answer: every entry with a validation mark, the discarded paths named, the components the FILE TREE reveals, and — when a manifest fails — the schema path that refused it. Writes nothing, and runs the same validation the fetcher runs, so the panel a user approves is the tree that gets stored.",
+        "description": "The pre-submit answer: every entry with a validation mark, the discarded paths named, the components the FILE TREE reveals, and — when a manifest fails — the schema path that refused it. Writes nothing, and runs the same validation the fetcher runs, so the panel a user approves is the tree that gets stored.",
         "operationId": "previewPackage",
         "requestBody": {
           "content": {
@@ -8174,7 +8174,7 @@
         ]
       },
       "get": {
-        "description": "Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package (FR-016). The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read (FR-044), and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.",
+        "description": "Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package. The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read, and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.",
         "operationId": "getPackage",
         "parameters": [
           {
@@ -8254,7 +8254,7 @@
     },
     "/v1/packages/{namespace}/{name}/files": {
       "get": {
-        "description": "Every regular file the LATEST VISIBLE version's bundle holds. The `component` table records only the significant components — a skill's directory, an MCP server — not a full file list, so this unpacks the bundle itself, under the same extraction caps the fetcher enforces on ingestion, and does so again on every call: nothing here stores a byte-level file list to answer from instead. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029). `default` names this version's own SKILL.md or plugin.json when the bundle has one at its root, since that is the file most worth reading first.",
+        "description": "Every regular file the LATEST VISIBLE version's bundle holds. The `component` table records only the significant components — a skill's directory, an MCP server — not a full file list, so this unpacks the bundle itself, under the same extraction caps the fetcher enforces on ingestion, and does so again on every call: nothing here stores a byte-level file list to answer from instead. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one. `default` names this version's own SKILL.md or plugin.json when the bundle has one at its root, since that is the file most worth reading first.",
         "operationId": "listPackageFiles",
         "parameters": [
           {
@@ -8468,7 +8468,7 @@
     },
     "/v1/packages/{namespace}/{name}/scan": {
       "get": {
-        "description": "The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029).",
+        "description": "The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one.",
         "operationId": "getPackageScan",
         "parameters": [
           {
@@ -8922,7 +8922,7 @@
     },
     "/v1/packages/{namespace}/{name}/visibility": {
       "put": {
-        "description": "Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.",
+        "description": "Organisation, team or private, in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.",
         "operationId": "setPackageVisibility",
         "parameters": [
           {
@@ -9052,7 +9052,7 @@
     },
     "/v1/profiles": {
       "get": {
-        "description": "Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate (FR-126), so a caller choosing among them need not read every one's detail just to find out which allow it.",
+        "description": "Returns exactly the profiles this identity may read via direct membership or group mapping, and no others. Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate, so a caller choosing among them need not read every one's detail just to find out which allow it.",
         "operationId": "listProfiles",
         "responses": {
           "200": {
@@ -9092,7 +9092,7 @@
         ]
       },
       "post": {
-        "description": "Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.",
+        "description": "Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.",
         "operationId": "createProfile",
         "requestBody": {
           "content": {
@@ -9204,7 +9204,7 @@
     },
     "/v1/profiles/{slug}": {
       "delete": {
-        "description": "Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: FR-034 forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.",
+        "description": "Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: the design forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.",
         "operationId": "deleteProfile",
         "parameters": [
           {
@@ -9282,7 +9282,7 @@
         ]
       },
       "get": {
-        "description": "The profile detail screen (001 US5): every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted (FR-036). The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.",
+        "description": "The profile detail screen: every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted. The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` exists because a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.",
         "operationId": "getProfile",
         "parameters": [
           {
@@ -9328,7 +9328,7 @@
                 }
               }
             },
-            "description": "No such profile, or not readable by this identity. The two are deliberately one answer (FR-044)."
+            "description": "No such profile, or not readable by this identity. The two are deliberately one answer."
           },
           "500": {
             "content": {
@@ -9349,7 +9349,7 @@
     },
     "/v1/profiles/{slug}/entries": {
       "put": {
-        "description": "Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.",
+        "description": "Float or pin per package, in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED. This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.",
         "operationId": "setProfileEntries",
         "parameters": [
           {
@@ -9573,7 +9573,7 @@
     },
     "/v1/profiles/{slug}/revisions": {
       "post": {
-        "description": "Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.",
+        "description": "Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile`. The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown. THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one. Requires owner or maintainer on the profile — a consumer may not publish.",
         "operationId": "publishRevision",
         "parameters": [
           {
@@ -9693,7 +9693,7 @@
     },
     "/v1/profiles/{slug}/revisions/{revision}": {
       "get": {
-        "description": "`revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted (FR-036).",
+        "description": "`revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted.",
         "operationId": "getRevision",
         "parameters": [
           {
@@ -9778,7 +9778,7 @@
     },
     "/v1/profiles/{slug}/sharing": {
       "put": {
-        "description": "Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.",
+        "description": "Individual members and IdP groups at four levels — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. This is about roles: a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision; sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.",
         "operationId": "setProfileSharing",
         "parameters": [
           {
@@ -9890,7 +9890,7 @@
     },
     "/v1/profiles/{slug}/targets": {
       "put": {
-        "description": "The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.",
+        "description": "The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores. Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.",
         "operationId": "setProfileTargets",
         "parameters": [
           {
@@ -10054,17 +10054,17 @@
     },
     "/v1/scanner/summary": {
       "get": {
-        "description": "Versions that reached a verdict in the period, how many packages are quarantined, how many acceptances are still in force and when the first of them lapses, and the median time from a scan starting to its verdict (001 US4 scenario 1). `quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged versions: a superseded flagged version is not quarantining anything, because nothing resolves to it. `nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when there is nothing to report — no active override and no finished scan are different statements from \"expires now\" and \"instant\".",
+        "description": "Versions that reached a verdict in the period, how many packages are quarantined, how many acceptances are still in force and when the first of them lapses, and the median time from a scan starting to its verdict. `quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged versions: a superseded flagged version is not quarantining anything, because nothing resolves to it. `nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when there is nothing to report — no active override and no finished scan are different statements from \"expires now\" and \"instant\".",
         "operationId": "scannerSummary",
         "parameters": [
           {
-            "description": "The window the scanned count and the median are computed over. The design's card says 30 days; the parameter is what keeps that caption a value rather than a constant (FR-121).",
+            "description": "The window the scanned count and the median are computed over. The design's card says 30 days; the parameter is what keeps that caption a value rather than a constant.",
             "explode": false,
             "in": "query",
             "name": "days",
             "schema": {
               "default": 30,
-              "description": "The window the scanned count and the median are computed over. The design's card says 30 days; the parameter is what keeps that caption a value rather than a constant (FR-121).",
+              "description": "The window the scanned count and the median are computed over. The design's card says 30 days; the parameter is what keeps that caption a value rather than a constant.",
               "format": "int64",
               "maximum": 365,
               "minimum": 1,
@@ -10312,7 +10312,7 @@
     },
     "/v1/sessions": {
       "post": {
-        "description": "The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.",
+        "description": "The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row, and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.",
         "operationId": "createSession",
         "requestBody": {
           "content": {
@@ -10419,7 +10419,7 @@
     },
     "/v1/sessions/current": {
       "delete": {
-        "description": "Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction (FR-114, FR-115). Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.",
+        "description": "Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction. Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.",
         "operationId": "deleteSession",
         "responses": {
           "204": {
@@ -10506,7 +10506,7 @@
     },
     "/v1/sync": {
       "post": {
-        "description": "Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.",
+        "description": "Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.",
         "operationId": "reportSync",
         "requestBody": {
           "content": {
@@ -10571,7 +10571,7 @@
     },
     "/v1/viewer": {
       "get": {
-        "description": "The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL (FR-117) — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate (FR-118).",
+        "description": "The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate.",
         "operationId": "getViewer",
         "responses": {
           "200": {

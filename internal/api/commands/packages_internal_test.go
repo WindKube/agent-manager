@@ -43,12 +43,12 @@ func TestNormaliseAcceptsAOneSegmentPublisherAndDerivesItsNamespace(t *testing.T
 // reaches the schema's own check constraint.
 func TestNormaliseRefusesAPublisherThatIsNotOneOrTwoNonEmptySegments(t *testing.T) {
 	for _, publisher := range []string{
-		"",      // no publisher at all
-		"/team", // empty namespace
-		"team/", // empty team
-		"a/b/c", // three segments
-		"/",     // only slashes
-		"//",    // only slashes
+		"",
+		"/team",
+		"team/",
+		"a/b/c",
+		"/",
+		"//",
 	} {
 		t.Run("rejects "+publisher, func(t *testing.T) {
 			_, err := validRegistration(publisher).normalise()

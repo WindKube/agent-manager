@@ -15,28 +15,19 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The registration endpoint over the real database. What is asserted here is what
-// the container-free tests cannot reach: that the transaction commits, that the
-// unique index behind FR-007 is what refuses the second attempt, and that the
-// refusal arrives as a 409 rather than as a 500 with a constraint name in it.
+// The registration endpoint over the real database: the transaction commits, and
+// the unique index refuses a second attempt as a 409, not a 500 naming the constraint.
 
 func TestRegisteringAnUploadReturns202AndThenRefusesTheSameVersionWith409(t *testing.T) {
 	handler := liveHandler(t)
 
-	// The vocabulary a catalog admin curated (FR-049). It is seeded here rather
-	// than in the suite's fixtures because only this file needs one.
 	_, err := pool.Exec(t.Context(),
 		`insert into category (id, name, slug) values (gen_random_uuid(), 'Infrastructure', 'infrastructure')
 		  on conflict (slug) do nothing`)
 	require.NoError(t, err)
 
-	// `uploads`, not `example`: the catalog fixtures this branch adds already
-	// publish example/platform-toolkit@1.3.0, and `unique (namespace, name)`
-	// scopes the rendered id to the namespace rather than to a publisher row, so
-	// the two cannot both own that id any more. That is the constraint working —
-	// this file takes its own namespace instead of the constraint being relaxed.
-	// The object key and the rendered id are still built from the first segment
-	// alone, which is what the assertions below spell out.
+	// `uploads`, not `example`: the catalog fixtures already own
+	// example/platform-toolkit and `unique (namespace, name)` forbids a second owner.
 	contentType, body := upload(t, zipOf(t, scenario2Files()), map[string]string{
 		"source":     "upload",
 		"publisher":  "uploads/platform",
@@ -54,16 +45,13 @@ func TestRegisteringAnUploadReturns202AndThenRefusesTheSameVersionWith409(t *tes
 	require.Equal(t, "plugin", registered.Kind, "and on the kind, which is which manifest sits at the root")
 	require.Equal(t, "skills/uploads/platform-toolkit/1.3.0/bundle.tar.zst", registered.ObjectKey)
 	require.Equal(t, "scanning", registered.Verdict)
-	require.False(t, registered.Visible, "FR-008: nothing is readable until the fetcher has committed")
+	require.False(t, registered.Visible, "nothing is readable until the fetcher has committed")
 	require.NotEmpty(t, registered.VersionID)
 
-	// The preview rides the response, so the modal can show what was accepted
-	// without a second call.
 	require.NotNil(t, registered.Preview)
 	require.True(t, registered.Preview.Valid)
 	require.Contains(t, registered.Preview.Dropped, "README.md")
 
-	// The row, the job and the audit row are all there — one transaction.
 	// The category resolved to the curated row rather than being created.
 	var categoryID *string
 	require.NoError(t, pool.QueryRow(t.Context(),
@@ -86,10 +74,7 @@ func TestRegisteringAnUploadReturns202AndThenRefusesTheSameVersionWith409(t *tes
 	require.Equal(t, 1, jobs)
 	require.Equal(t, 1, audits)
 
-	// The same publisher/name@version again, with no fetcher running in this
-	// suite to complete the first attempt: FR-007 still refuses it, and the
-	// refusal says the version is unresolved rather than falsely claiming it
-	// already published — nothing here ran `worker fetcher`, so it has not.
+	// No fetcher runs in this suite, so the refusal must say unresolved, not already published.
 	contentType, body = upload(t, zipOf(t, scenario2Files()), map[string]string{
 		"source": "upload", "publisher": "uploads/platform",
 	})
@@ -105,16 +90,13 @@ func TestRegisteringAnUploadReturns202AndThenRefusesTheSameVersionWith409(t *tes
 	require.NotContains(t, problem.Detail, "version_package_semver",
 		"the constraint name is an implementation detail, not a message for a publisher")
 
-	// And nothing was added by the refused attempt.
 	require.NoError(t, pool.QueryRow(t.Context(),
 		`select count(*) from outbox where job_kind = 'fetch' and idempotency_key = 'fetch:' || $1 || ':1.3.0'`,
 		registered.VersionID).Scan(&jobs))
 	require.Equal(t, 1, jobs)
 }
 
-// The registration writes the publisher's tags onto the row before the
-// fetcher has run at all — this is the seed publish later unions with the
-// manifest's keywords, not a value the fetcher invents from nothing.
+// The registration's tags are the seed that publish later unions with the manifest's keywords.
 func TestRegistrationSeedsTheVersionsTagsBeforeAnyFetchRuns(t *testing.T) {
 	handler := liveHandler(t)
 
@@ -138,12 +120,8 @@ func TestRegistrationSeedsTheVersionsTagsBeforeAnyFetchRuns(t *testing.T) {
 			"the catalog")
 }
 
-// seedPublishedVersion writes a package and a committed version directly,
-// bypassing RegisterPackage and worker fetcher both, so a re-registration
-// attempt exercises FR-007's refusal against a version already sitting in
-// the state named rather than one this test pushed through the real
-// pipeline to reach. It returns the publisher slug a colliding registration
-// must submit.
+// seedPublishedVersion writes a package and version directly, bypassing the
+// pipeline, and returns the publisher slug a colliding registration must submit.
 func seedPublishedVersion(t *testing.T, namespace, name, semver string, verdict models.Verdict) string {
 	t.Helper()
 	ctx := t.Context()
@@ -183,9 +161,7 @@ func seedPublishedVersion(t *testing.T, namespace, name, semver string, verdict 
 	return slug
 }
 
-// reRegister submits a git-source registration naming an existing publisher,
-// package and version directly, so the test controls exactly which row it
-// collides with without building an archive.
+// reRegister uses a git source so the test picks the colliding row without building an archive.
 func reRegister(t *testing.T, handler http.Handler, publisher, name, version string) *contract.Error {
 	t.Helper()
 
@@ -231,10 +207,8 @@ func TestReRegisteringARejectedVersionReturns409NamingTheVerdict(t *testing.T) {
 	require.Contains(t, problem.Detail, "immutable")
 }
 
-// A concurrent pair of identical registrations still has to lose the race to
-// the unique index rather than to a SELECT, so this drives the collision
-// through the insert-time catch instead of the pre-flight one above, and
-// asserts what actually matters: never a 500, and never the constraint name.
+// Concurrent registrations collide at the unique index rather than the
+// pre-flight SELECT; the loser must never see a 500 or the constraint name.
 func TestConcurrentDuplicateRegistrationsNeverLeakARawConstraintViolation(t *testing.T) {
 	handler := liveHandler(t)
 
@@ -268,11 +242,10 @@ func TestConcurrentDuplicateRegistrationsNeverLeakARawConstraintViolation(t *tes
 		}
 	}
 	require.Equal(t, 1, accepted, "exactly one of the identical concurrent registrations wins")
-	require.Equal(t, attempts-1, conflicted, "every loser is refused with FR-007's 409, not a raw error")
+	require.Equal(t, attempts-1, conflicted, "every loser is refused with a 409, not a raw error")
 }
 
-// FR-049: the vocabulary is curated by a catalog admin, so a registration that
-// names a category nobody created is refused rather than creating one.
+// Categories are curated by a catalog admin, so an unknown one is refused rather than created.
 func TestRegisteringAgainstAnUncuratedCategoryIsRefused(t *testing.T) {
 	handler := liveHandler(t)
 

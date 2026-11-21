@@ -13,14 +13,8 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// Shares benchDB, the container catalog_bench_integration_test.go's TestMain
-// already starts and migrates, rather than a second container this test needs
-// nothing more than.
-//
-// memblob is the point of the bucket half: it cannot produce an *s3.Client, so
-// it is the same answer a real bucket gives the api's read-only key when a
-// setting call is refused, proving the unknown path with no live S3 account
-// needed.
+// Shares benchDB from catalog_bench_integration_test.go's TestMain. memblob
+// cannot produce an *s3.Client, which exercises the unknown-settings path.
 func TestStorageCountsByPrefixAndReportsUnknownSettingsOverAPlainBucket(t *testing.T) {
 	ctx := t.Context()
 
@@ -47,8 +41,7 @@ func TestStorageCountsByPrefixAndReportsUnknownSettingsOverAPlainBucket(t *testi
 	_, err = benchDB.NewInsert().Model(attempt).Exec(ctx)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		// context.Background(), not ctx: t.Context() is already cancelled by the
-		// time Cleanup runs.
+		// t.Context() is already cancelled when Cleanup runs.
 		_, delErr := benchDB.NewDelete().Model((*models.FetchAttempt)(nil)).
 			Where("id = ?", attempt.ID).Exec(context.Background())
 		require.NoError(t, delErr)
@@ -68,19 +61,16 @@ func TestStorageCountsByPrefixAndReportsUnknownSettingsOverAPlainBucket(t *testi
 	require.EqualValues(t, 2, counts["skills"])
 	require.EqualValues(t, 1, counts["profiles"])
 
-	// A setting the bucket cannot answer is Known: false, never a guessed default
-	// (Value left empty and never, say, "disabled").
+	// An unanswerable setting is Known: false, never a guessed default.
 	require.False(t, report.Bucket.Versioning.Known)
 	require.Empty(t, report.Bucket.Versioning.Value)
 	require.False(t, report.Bucket.ObjectLock.Known)
 	require.False(t, report.Bucket.Encryption.Known)
 	require.False(t, report.Bucket.Retention.Known)
-	// WriteAccess is this role's own credential, not the bucket's report, so it is
-	// always known — even here, where nothing else is.
+	// WriteAccess is this role's own credential, so always known.
 	require.True(t, report.Bucket.WriteAccess.Known)
 	require.NotEmpty(t, report.Bucket.WriteAccess.Value)
 
-	// sync_event carries no cache-hit column, so this is unknown and not zero.
 	require.Nil(t, report.ReadCacheHitRate)
 
 	var found bool

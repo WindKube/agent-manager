@@ -14,9 +14,8 @@ type runtimeOutput struct {
 	Body contract.RuntimeReport
 }
 
-// getRuntime answers GET /v1/runtime, gated to catalog-admin like the hub's
-// other administration screens: queue depth, retry state and runner errors
-// are operational detail, not something every viewer should read.
+// getRuntime answers GET /v1/runtime, gated to catalog-admin: queue and runner
+// errors are operational detail.
 func (s *Server) getRuntime(ctx context.Context, _ *struct{}) (*runtimeOutput, error) {
 	principal, _ := PrincipalFrom(ctx)
 	if err := requireRole(principal.Role, "read the runtime report", models.OrgRoleCatalogAdmin); err != nil {

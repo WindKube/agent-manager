@@ -4,29 +4,21 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
-// Document metadata. The title and version are the api's identity in every
-// generated client, so they are constants here rather than configuration: a
-// deployment that renamed its own contract would produce clients that disagree
-// about what they are talking to.
+// Document metadata. Constants rather than configuration: they are the api's
+// identity in every generated client.
 const (
 	DocumentTitle   = "Agent Manager"
 	DocumentVersion = "1.0.0"
 
-	// OpenAPIPath is the prefix huma hangs the document off. It serves
-	// /v1/openapi.json (3.1, the emitted document), /v1/openapi.yaml, and the
-	// downgraded /v1/openapi-3.0.json for tools that cannot read 3.1.
+	// OpenAPIPath serves /v1/openapi.json (3.1), /v1/openapi.yaml, and a downgraded
+	// /v1/openapi-3.0.json for tools that cannot read 3.1.
 	OpenAPIPath = "/v1/openapi"
 
-	// BearerScheme is the security scheme name the frozen contract uses.
 	BearerScheme = "bearerAuth"
 )
 
-// humaConfig builds the configuration the document is emitted from.
-//
-// It is deliberately not huma.DefaultConfig: that one installs a schema-link
-// transformer which adds a `$schema` property to every response body, and the
-// machine-facing surface is frozen. It also mounts a docs UI that loads a
-// renderer from a CDN, which this project has no business doing.
+// humaConfig is deliberately not huma.DefaultConfig, which adds a `$schema`
+// property to every response body and mounts a CDN-loaded docs UI.
 func humaConfig(opts Options) huma.Config {
 	cfg := huma.Config{
 		OpenAPI: &huma.OpenAPI{
@@ -48,11 +40,7 @@ func humaConfig(opts Options) huma.Config {
 					BearerScheme: {
 						Type:   "http",
 						Scheme: "bearer",
-						// `opaque`, and the frozen contract now says the same. It said JWT
-						// on both sides until the device flow made the claim reachable:
-						// auth.NewToken is 256 crypto/rand bits in base64url — one segment,
-						// no header, no claims. The field is a hint to a client author and
-						// nothing else, so a wrong hint is worse than an absent one.
+						// auth.NewToken is random bytes, not a JWT.
 						BearerFormat: "opaque",
 						Description: "The `access_token` issued by /v1/device/token, or a web session token, " +
 							"sent as `Authorization: Bearer <token>`. The token is OPAQUE — one " +
@@ -60,13 +48,7 @@ func humaConfig(opts Options) huma.Config {
 							"not decode one and do not read `exp` from it: a token's lifetime is the " +
 							"`expires_in` returned beside it.",
 					},
-					// The session mint's own scheme, declared rather than left implicit.
-					// It is a second authentication mechanism in a codebase that
-					// deliberately had one, and a document that described the most
-					// privileged call in the system as unauthenticated — which is what
-					// `security: []` would have said — would be worse than the extra
-					// entry. See contracts/auth.md and the plan's Complexity Tracking
-					// table.
+					// Declared so the document does not describe the most privileged call as unauthenticated.
 					SessionMintScheme: {
 						Type: "apiKey",
 						In:   "header",
@@ -79,10 +61,8 @@ func humaConfig(opts Options) huma.Config {
 					},
 				},
 			},
-			// Every operation is authenticated unless it says otherwise with an
-			// empty `security: []`, which is the OpenAPI way to remove the root
-			// requirement, or with a requirement of its own. Defaulting the other way
-			// round means a new operation is public until somebody remembers.
+			// Every operation is authenticated unless it overrides this, so a new operation
+			// is never public by accident.
 			Security: []map[string][]string{{BearerScheme: {}}},
 			Tags: []*huma.Tag{
 				{Name: "audit", Description: "What happened, who caused it, and the export of all of it."},
@@ -108,17 +88,14 @@ func humaConfig(opts Options) huma.Config {
 		Transformers:  []huma.Transformer{stampCorrelation},
 	}
 
-	// The served document names the hub it is served from; the committed one names
-	// nothing, so `task gen:client` is byte-stable regardless of where it runs.
+	// The committed document names no server, so `task gen:client` is byte-stable.
 	if opts.PublicBaseURL != "" {
 		cfg.Servers = []*huma.Server{{URL: opts.PublicBaseURL, Description: "This hub"}}
 	}
 	return cfg
 }
 
-// Document emits the OpenAPI document without opening a single connection. It is
-// what `task gen:client` generates the typed client from and what the superset
-// test compares against the frozen contract.
+// Document emits the OpenAPI document without opening any connection.
 func Document(opts Options) *huma.OpenAPI {
 	srv := New(Deps{}, opts)
 	return srv.api.OpenAPI()

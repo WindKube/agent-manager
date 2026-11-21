@@ -15,17 +15,9 @@ type healthOutput struct {
 	Body   contract.Health
 }
 
-// health probes every declared dependency and reports 503 if any is unreachable
-// (FR-058). Liveness and readiness are one endpoint on purpose: a role that
-// cannot reach its database is not serving, whatever its process state says.
-//
-// Probes run concurrently and share one deadline, so an unreachable dependency
-// costs one timeout rather than one per probe.
-//
-// The body names the dependency but never quotes the driver's error. This
-// endpoint is unauthenticated, and a connection error's text carries the host,
-// the user and sometimes the whole DSN — the detail goes to the log, where the
-// operator already has credentials.
+// health probes every dependency concurrently under one deadline and reports 503
+// if any is unreachable; liveness and readiness are deliberately one endpoint. The
+// body never quotes driver errors (they may carry the DSN) since this endpoint is unauthenticated.
 func (s *Server) health(ctx context.Context, _ *struct{}) (*healthOutput, error) {
 	ctx, cancel := context.WithTimeout(ctx, s.opts.HealthTimeout)
 	defer cancel()

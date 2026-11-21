@@ -14,9 +14,8 @@ import (
 	"agent-manager/internal/auth"
 )
 
-// serviceTokenAllowlist is every operation a service token may call. Changing
-// it is a security decision: a new operation must stay off it unless a
-// read-only, scoped use for tokens is argued for.
+// serviceTokenAllowlist is every operation a service token may call. Adding to
+// it is a security decision.
 var serviceTokenAllowlist = map[string][]string{
 	"getRevision":      {"sync:profile"},
 	"getBundle":        {"sync:profile", "read:catalog"},
@@ -76,9 +75,7 @@ func TestOnlyTheAllowlistAcceptsServiceTokens(t *testing.T) {
 
 var pathParam = regexp.MustCompile(`\{[^}]+\}`)
 
-// A token holding every scope there is still gets 403 from every operation
-// off the allowlist, before its handler runs: the handlers here have no
-// database, so reaching one would not be a 403.
+// The handlers here have no database, so a 403 proves the refusal came before the handler.
 func TestEveryOperationOffTheAllowlistRefusesAServiceToken(t *testing.T) {
 	everything := auth.Principal{Source: auth.SourceServiceToken, ServiceToken: &auth.ServiceTokenGrant{
 		ID: uuid.New(), Name: "ci",

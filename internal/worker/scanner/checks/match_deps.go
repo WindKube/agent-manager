@@ -8,9 +8,8 @@ import (
 	"agent-manager/internal/worker/scanner/rules"
 )
 
-// matchDependencies is the `dep-manifest` matcher: it reads dependency
-// declarations out of the three manifests real trees carry, and judges the
-// specifier rather than the text of the file.
+// matchDependencies is the `dep-manifest` matcher: it judges specifiers in
+// package.json, requirements.txt and go.mod.
 func matchDependencies(b *Bundle, rule rules.Rule) []hit {
 	var hits []hit
 	for _, file := range b.Artefacts.Files {
@@ -52,8 +51,7 @@ type dependency struct {
 	text       string
 }
 
-// npmDependencyFields are the four dependency maps npm resolves at install
-// time. `bundledDependencies` is absent: those ship inside the tarball.
+// npmDependencyFields omits `bundledDependencies`, which ship inside the tarball.
 var npmDependencyFields = []string{
 	"dependencies", "devDependencies", "optionalDependencies", "peerDependencies",
 }
@@ -91,9 +89,7 @@ func npmDependencies(b *Bundle, filePath string) []dependency {
 	return out
 }
 
-// pipRequirement splits `package[extra]==1.2.3 ; marker` into its name and the
-// rest. Anything not matching is not a requirement line — a `-r other.txt`, a
-// `--index-url`, a comment.
+// pipRequirement splits `package[extra]==1.2.3 ; marker` into its name and the rest.
 var pipRequirement = regexp.MustCompile(`^([A-Za-z0-9._-]+)(\[[^\]]*\])?\s*(.*)$`)
 
 func pipDependencies(b *Bundle, filePath string) []dependency {
@@ -146,12 +142,9 @@ func goDependencies(b *Bundle, filePath string) []dependency {
 	return out
 }
 
-// rangeOperators are the npm specifiers that resolve to a set rather than to one
-// release.
 var rangeOperators = []string{"^", "~", ">", "<", "=>", ">=", "<=", "||", " - ", "*", "x"}
 
-// unpinned reports whether a dependency specifier names one exact release,
-// conservative toward flagging: an unreadable specifier is unpinned.
+// unpinned treats an unreadable specifier as unpinned.
 func unpinned(value string) bool {
 	_, constraint, found := strings.Cut(value, "@")
 	if !found {
@@ -163,15 +156,14 @@ func unpinned(value string) bool {
 	case constraint == "":
 		return true
 	case strings.HasPrefix(constraint, "=="):
-		// pip's exact pin, the only pip notation that names one release.
+		// pip's exact pin.
 		return false
 	case strings.HasPrefix(constraint, "v") && !strings.ContainsAny(constraint, "^~<>*|"):
-		// go.mod, whose require lines are always exact.
+		// go.mod require lines are always exact.
 		return false
 	}
 
-	// A git, http or file specifier resolves to whatever that reference
-	// holds, and is flagged even when commit-pinned.
+	// Git, http and file specifiers are flagged even when commit-pinned.
 	if strings.Contains(constraint, "://") || strings.HasPrefix(constraint, "git") ||
 		strings.HasPrefix(constraint, "github:") || strings.HasPrefix(constraint, "file:") {
 		return true
@@ -186,7 +178,6 @@ func unpinned(value string) bool {
 			return true
 		}
 	}
-	// Anything left with three numeric segments is an exact npm pin.
 	return !exactSemver.MatchString(constraint)
 }
 

@@ -21,19 +21,11 @@ import (
 	"agent-manager/internal/auth"
 )
 
-// The device flow's container-free half (T088, T089). Everything here is either a
-// pure function or a refusal the surface makes before it needs a database; the
-// grant, the transitions and the concurrency are in device_integration_test.go.
-
-// userCodePattern is copied from the FROZEN contract
-// (specs/001-agent-manager-hub/contracts/openapi.yaml), not from the Go struct
-// tag. Deriving it from the tag would compare the generator against the same
-// string the generator's schema was built from, and the whole point is that the
-// two sides are independent.
+// userCodePattern is copied from the frozen contract rather than derived from the
+// struct tag, so the generator is checked against an independent source.
 var userCodePattern = regexp.MustCompile(`^[0-9A-HJ-NP-TV-Z]{4}-[0-9A-HJ-NP-TV-Z]{4}$`)
 
-// formRequest posts an RFC 8628 form body. The shared `request` helper labels
-// every body application/json, and this endpoint's is form-encoded per §3.4.
+// formRequest posts an RFC 8628 form body; the shared `request` helper always sends JSON.
 func formRequest(t *testing.T, h http.Handler, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
 
@@ -48,9 +40,7 @@ func TestUserCodeMatchesTheFrozenPatternAndNeverCarriesAnAmbiguousGlyph(t *testi
 	const samples = 20000
 	const glyphs = 8
 
-	// One counter per position per glyph. Uniformity is asserted per POSITION
-	// rather than over the whole string, because a generator that biases one
-	// position looks fine in an aggregate count.
+	// Counted per position: a generator that biases one position looks fine in aggregate.
 	seen := make([]map[rune]int, glyphs)
 	for i := range seen {
 		seen[i] = map[rune]int{}
@@ -62,10 +52,7 @@ func TestUserCodeMatchesTheFrozenPatternAndNeverCarriesAnAmbiguousGlyph(t *testi
 		require.Regexp(t, userCodePattern, code)
 		require.Equal(t, "-", string(code[4]), "the separator is part of the shape")
 
-		// I, L, O and U: the four Crockford excludes. The frozen pattern rejects
-		// three of them on its own, so L is the one only the generator can get
-		// wrong — and the one a "generate base32 then substitute" implementation
-		// leaves in.
+		// The Crockford excludes; the pattern alone already rejects all but L.
 		require.NotContains(t, code, "I")
 		require.NotContains(t, code, "L")
 		require.NotContains(t, code, "O")
@@ -78,11 +65,8 @@ func TestUserCodeMatchesTheFrozenPatternAndNeverCarriesAnAmbiguousGlyph(t *testi
 		}
 	}
 
-	// 32 glyphs over 20000 draws is 625 expected per glyph per position. A glyph
-	// the generator can never emit at some position is the failure this catches —
-	// exactly what a modulo over a non-power-of-two alphabet, or a substitution
-	// table, produces — and the threshold is loose enough that no fair generator
-	// trips it.
+	// 625 expected per glyph per position; catches a glyph that can never be emitted
+	// (modulo bias, substitution tables) with a threshold no fair generator trips.
 	const alphabetSize = 32
 	for position, counts := range seen {
 		require.Lenf(t, counts, alphabetSize,
@@ -94,8 +78,6 @@ func TestUserCodeMatchesTheFrozenPatternAndNeverCarriesAnAmbiguousGlyph(t *testi
 	}
 
 	t.Run("the pattern is not vacuous", func(t *testing.T) {
-		// The negative control. Without it a broken regexp that matches everything
-		// would make every assertion above pass.
 		for _, bad := range []string{"HKQ2-9FTI", "HIQ2-9FTL", "HKQ2-9FTO", "HKQ2-9FTU", "HKQ29FTL", "hkq2-9ftl", ""} {
 			require.NotRegexp(t, userCodePattern, bad)
 		}
@@ -110,13 +92,10 @@ func TestDeviceCodeHashBindsTheClientIDAndYieldsNoUsableCredential(t *testing.T)
 	require.Equal(t, same, commands.DeviceCodeHash("agent-manager-cli", code),
 		"the same pair must hash to the same row key, or no poll would ever find its row")
 
-	// The frozen contract says client_id "must be the same client_id that opened
-	// the authorisation". No column carries it, so it is hashed in: a different
-	// client_id computes a different key and matches no row.
+	// No column carries client_id, so it is hashed in: a different client matches no row.
 	require.NotEqual(t, same, commands.DeviceCodeHash("some-other-client", code))
 
-	// The NUL separator, asserted rather than assumed: without it ("ab","c") and
-	// ("a","bc") would be one authorisation.
+	// The separator: without it ("ab","c") and ("a","bc") would be one authorisation.
 	require.NotEqual(t,
 		commands.DeviceCodeHash("ab", "c"),
 		commands.DeviceCodeHash("a", "bc"))
@@ -125,8 +104,7 @@ func TestDeviceCodeHashBindsTheClientIDAndYieldsNoUsableCredential(t *testing.T)
 }
 
 func TestDeviceAuthorizeRefusesAHostItWouldOtherwiseBindAndRender(t *testing.T) {
-	// No database: every case below is refused before the handler needs one, which
-	// is itself the assertion — validation happens before a statement is issued.
+	// No database: validation must refuse before any statement is issued.
 	for _, tc := range []struct {
 		name, body string
 		want       int
@@ -139,7 +117,7 @@ func TestDeviceAuthorizeRefusesAHostItWouldOtherwiseBindAndRender(t *testing.T) 
 			http.StatusUnprocessableEntity,
 		},
 		{
-			"a host carrying markup, which FR-055 would have to escape on the approval page",
+			"a host carrying markup, which the approval page has to escape",
 			`{"client_id":"agent-manager-cli","host":"<script>alert(1)</script>"}`,
 			http.StatusUnprocessableEntity,
 		},
@@ -151,9 +129,7 @@ func TestDeviceAuthorizeRefusesAHostItWouldOtherwiseBindAndRender(t *testing.T) 
 		{"an empty client_id", `{"client_id":"","host":"dev-laptop-01"}`, http.StatusUnprocessableEntity},
 		{"a missing client_id", `{"host":"dev-laptop-01"}`, http.StatusUnprocessableEntity},
 		{
-			// The negative control: a host this hub accepts must NOT be refused, or
-			// every row above would pass against a handler that rejects everything.
-			// With no database configured it gets as far as asking for one.
+			// Negative control: with no database a valid host gets as far as needing one.
 			"a plausible host is not refused by validation",
 			`{"client_id":"agent-manager-cli","host":"dev-laptop-01.corp.example"}`,
 			http.StatusInternalServerError,
@@ -172,15 +148,11 @@ func TestDeviceAuthorizeRefusesAHostItWouldOtherwiseBindAndRender(t *testing.T) 
 }
 
 func TestDeviceAuthorizeIsRateLimitedWithAnEmptyBodyAndARetryAfter(t *testing.T) {
-	// One handler, so one limiter: every other test builds its own and cannot
-	// exhaust this one.
 	h := handler(t, api.Deps{})
 	const body = `{"client_id":"agent-manager-cli","host":"dev-laptop-01"}`
 
-	// 40 bits of user code is only enough while the number of LIVE codes stays
-	// small, so the cap on how many a caller may open is part of the entropy
-	// argument and not a nicety. Poll until it bites rather than hard-coding the
-	// burst, which would make the test a copy of the constant.
+	// 40 bits of user code is only enough while live codes stay few, so the cap is part
+	// of the entropy argument. Poll rather than hard-code the burst.
 	var limited *httptest.ResponseRecorder
 	for range 200 {
 		rec := request(t, h, http.MethodPost, "/v1/device/authorize", "", body)
@@ -202,10 +174,8 @@ func TestDeviceAuthorizeIsRateLimitedWithAnEmptyBodyAndARetryAfter(t *testing.T)
 func TestDeviceTokenRefusesAMalformedRequestWithTheRFCEnvelope(t *testing.T) {
 	const grant = "urn:ietf:params:oauth:grant-type:device_code"
 
-	// Every case is invalid_grant and not invalid_request: the frozen enum has no
-	// invalid_request value, and of the five it does have, invalid_grant is the
-	// terminal one — right for a request that will not become well-formed by being
-	// repeated.
+	// invalid_grant, not invalid_request: the frozen enum has no invalid_request, and
+	// invalid_grant is the terminal one.
 	for _, tc := range []struct{ name, body string }{
 		{"no grant type", "device_code=abc&client_id=agent-manager-cli"},
 		{"the authorization_code grant", "grant_type=authorization_code&device_code=abc&client_id=x"},
@@ -225,10 +195,8 @@ func TestDeviceTokenRefusesAMalformedRequestWithTheRFCEnvelope(t *testing.T) {
 	}
 
 	t.Run("a request with no body never enters the flow", func(t *testing.T) {
-		// The frozen contract makes the request body required, so an absent body is
-		// refused by the framework's own validation before this handler runs. It is
-		// therefore the project's error shape and not the RFC envelope, and the
-		// document says so on the 400 rather than describing only one of the two.
+		// The framework refuses a missing required body before the handler runs, so this
+		// is the project's error shape, not the RFC envelope.
 		rec := formRequest(t, handler(t, api.Deps{}), "/v1/device/token", "")
 		require.Equal(t, http.StatusBadRequest, rec.Code)
 		require.Equal(t, "application/problem+json",
@@ -240,9 +208,6 @@ func TestDeviceTokenRefusesAMalformedRequestWithTheRFCEnvelope(t *testing.T) {
 	})
 
 	t.Run("a well-formed request is not refused by parsing", func(t *testing.T) {
-		// The negative control: with no database the well-formed request reaches the
-		// point of needing one, which proves the rows above failed on their content
-		// and not on the shape of the request.
 		rec := formRequest(t, handler(t, api.Deps{}), "/v1/device/token",
 			"grant_type="+grant+"&device_code=abc&client_id=agent-manager-cli")
 		require.Equal(t, http.StatusInternalServerError, rec.Code, rec.Body.String())
@@ -257,9 +222,7 @@ func TestDeviceOperationsStayPublicAndDeclareNo501(t *testing.T) {
 		require.NotNil(t, item)
 		require.NotNil(t, item.Post)
 
-		// `security: []` and not an absent security block: an absent one inherits
-		// the document's root bearer requirement, which would make the login flow
-		// require a login.
+		// `security: []`, not absent: an absent block inherits the root bearer requirement.
 		require.NotNil(t, item.Post.Security, path)
 		require.Empty(t, item.Post.Security, path)
 
@@ -272,9 +235,7 @@ func TestDeviceOperationsStayPublicAndDeclareNo501(t *testing.T) {
 		"the issuance cap the entropy argument depends on must stay declared")
 }
 
-// The handler is reached with no principal at all, which is what the device flow
-// is for. Asserted here because a middleware change that started requiring one
-// would break the only way a machine can ever get a credential.
+// A middleware change requiring a principal would break the only way a machine gets a credential.
 func TestDeviceAuthorizeRunsWithNoPrincipal(t *testing.T) {
 	h := handler(t, api.Deps{Sessions: resolver{err: context.Canceled}})
 	rec := request(t, h, http.MethodPost, "/v1/device/authorize", "",
@@ -283,13 +244,8 @@ func TestDeviceAuthorizeRunsWithNoPrincipal(t *testing.T) {
 }
 
 func TestDeviceOperationsDeclareEveryStatusAMalformedRequestCanProduce(t *testing.T) {
-	// The document is the contract a generated client is built from, and
-	// oapi-codegen leaves every typed response field nil for a status the document
-	// does not declare — returning no error — so a caller that switches on those
-	// fields rather than on HTTPResponse.StatusCode reads an undeclared refusal as
-	// a successful empty response. These four requests are the ones the framework
-	// refuses before either handler runs, and each one's status must be in the
-	// document.
+	// oapi-codegen leaves typed response fields nil for an undeclared status, so a client
+	// would read an undeclared framework refusal as a successful empty response.
 	doc := api.Document(api.Options{})
 	h := handler(t, api.Deps{})
 
@@ -314,8 +270,6 @@ func TestDeviceOperationsDeclareEveryStatusAMalformedRequestCanProduce(t *testin
 				"POST %s answered %s and the document does not declare it (declares %v)",
 				tc.path, status, slices.Sorted(maps.Keys(doc.Paths[tc.path].Post.Responses)))
 
-			// And the declared media type has to be the one on the wire, or a client
-			// generated from the document parses the body into the wrong shape.
 			sent := strings.Split(rec.Header().Get("Content-Type"), ";")[0]
 			require.Contains(t, doc.Paths[tc.path].Post.Responses[status].Content, sent,
 				"POST %s answered %s as %s, which the document's %s does not describe",
@@ -324,20 +278,12 @@ func TestDeviceOperationsDeclareEveryStatusAMalformedRequestCanProduce(t *testin
 	}
 
 	t.Run("the check is not vacuous", func(t *testing.T) {
-		// The negative control: a status no operation declares must fail the same
-		// lookup, or the assertions above would pass against an empty response map.
 		require.NotContains(t, doc.Paths["/v1/device/authorize"].Post.Responses, "418")
 	})
 }
 
 func TestTheIssuedTokenIsOpaqueAndTheDocumentSaysSo(t *testing.T) {
-	// Two sides of one claim, asserted together so they cannot drift apart: what the
-	// token IS, and what the document SAYS it is. Both said JWT until this layer
-	// landed and made the claim reachable — no client could obtain such a token
-	// while /v1/device/token returned 501, so nothing had ever checked it. If tokens
-	// ever do become JWTs the first half fails; if the document goes back to
-	// claiming they are while they are not, the second half fails. Asserting only
-	// one side would let either change land alone.
+	// What the token is and what the document says it is, asserted together so neither drifts alone.
 	for range 64 {
 		token, err := auth.NewToken()
 		require.NoError(t, err)

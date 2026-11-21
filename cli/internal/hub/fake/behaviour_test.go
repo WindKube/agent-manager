@@ -1,17 +1,7 @@
 package fake_test
 
-// These tests are in `package fake_test` ON PURPOSE.
-//
-// The same behavioural suite must be able to run against the fake and
-// against a real compose stack. The mechanism is that a behavioural test
-// accepts a fake.Target — a URL, a token, a client, fixture names and an
-// operator hook — and never a *fake.Hub. Being outside `package fake` makes
-// that a compile error rather than a convention: nothing unexported is
-// reachable from here, so no case written in this file can quietly depend on
-// the fake's internals.
-//
-// When these cases move into a shared suite, the signature to keep is
-// `func(t *testing.T, tg fake.Target)`.
+// External test package so no case can depend on the fake's internals and the suite can also run
+// against a real hub through fake.Target.
 
 import (
 	"bytes"
@@ -36,26 +26,18 @@ import (
 
 const grantDeviceCode = "urn:ietf:params:oauth:grant-type:device_code"
 
-// fastPolls shortens the advertised poll interval to its 1s floor — the contract's
-// `interval` is an integer number of seconds, so nothing shorter can be advertised
-// honestly. The client still reads the value off the wire; nothing under test
-// learns the number from here.
+// fastPolls shortens the advertised poll interval to its 1s floor, since the contract's interval is whole seconds.
 func fastPolls() fake.Options { return fake.Options{PollInterval: time.Second} }
 
 type client struct {
-	t  *testing.T
-	tg fake.Target
-	// follow decides whether redirects are followed. Both settings matter: the
-	// redirect-leak case is about what happens on the hop.
+	t      *testing.T
+	tg     fake.Target
 	follow bool
 }
 
 func newClient(t *testing.T, tg fake.Target) *client { return &client{t: t, tg: tg} }
 
-// result is a response with its body already read and closed. No *http.Response
-// leaves these helpers: one that did would leave every caller owning a Close, and
-// a leaked body in a test suite this size eventually shows up as an unrelated
-// timeout on someone else's machine.
+// result is a response with its body already read and closed, so no caller owns a Close.
 type result struct {
 	Status int
 	Header http.Header
@@ -126,16 +108,12 @@ func poll(t *testing.T, c *client, deviceCode string) result {
 func requireTokenError(t *testing.T, resp result, want hub.DeviceTokenErrorError) {
 	t.Helper()
 	require.Equal(t, http.StatusBadRequest, resp.Status)
-	// application/json, not problem+json: this one route answers with the OAuth
-	// error object.
 	require.True(t, strings.HasPrefix(resp.Header.Get("Content-Type"), "application/json"),
 		"got %q", resp.Header.Get("Content-Type"))
 	got := decode[hub.DeviceTokenError](t, resp)
 	require.NotNil(t, got.Error)
 	require.Equal(t, want, *got.Error)
 }
-
-// ---- device flow
 
 func TestDeviceFlow(t *testing.T) {
 	t.Run("a first poll is authorization_pending and never slow_down", func(t *testing.T) {
@@ -192,8 +170,7 @@ func TestDeviceFlow(t *testing.T) {
 		require.Equal(t, hub.Bearer, tok.TokenType)
 		require.Positive(t, tok.ExpiresIn)
 		require.Nil(t, tok.RefreshToken)
-		// Opaque. A test that read an expiry out of the token would pass here and
-		// fail against the real hub, whose bearerFormat is `opaque`.
+		// Opaque, as the real hub's bearerFormat is.
 		require.NotContains(t, tok.AccessToken, ".")
 
 		require.Equal(t, http.StatusOK, newClient(t, tg).get("/v1/profiles", tok.AccessToken).Status)
@@ -221,8 +198,7 @@ func TestDeviceFlow(t *testing.T) {
 
 		auth := authorize(t, c)
 		require.NoError(t, tg.Control.DenyDevice(auth.UserCode))
-		// Twice, back to back: a terminal state must beat slow_down, or a client
-		// gets told to keep polling a grant that can never succeed.
+		// Twice, back to back: a terminal state must beat slow_down.
 		requireTokenError(t, poll(t, c, auth.DeviceCode), hub.AccessDenied)
 		requireTokenError(t, poll(t, c, auth.DeviceCode), hub.AccessDenied)
 	})
@@ -251,9 +227,7 @@ func TestDeviceFlow(t *testing.T) {
 		requireTokenError(t, poll(t, c, auth.DeviceCode), hub.ExpiredToken)
 	})
 
-	// RFC 8628 3.4 fixes the token body as form-encoded and the real hub
-	// enforces it. A fake that also accepted JSON would let a client ship that
-	// the real hub rejects.
+	// RFC 8628 3.4 fixes the token body as form-encoded and the real hub enforces it.
 	t.Run("a JSON body on the token endpoint is refused", func(t *testing.T) {
 		h := fake.New(fastPolls())
 		defer h.Close()
@@ -300,8 +274,6 @@ func TestDeviceFlow(t *testing.T) {
 	})
 }
 
-// ---- auth classification
-
 func TestAuthenticationClasses(t *testing.T) {
 	h := fake.New(fake.Options{})
 	defer h.Close()
@@ -340,12 +312,8 @@ func TestAuthenticationClasses(t *testing.T) {
 	})
 }
 
-// ---- bundles
-
-// The bearer must not reach the pre-signed target. Both halves are here,
-// and the first is the one that matters — net/http's own default PRESERVES
-// Authorization on a same-host redirect, so this asserts the fake would catch a
-// client that relied on that default.
+// net/http's default preserves Authorization on a same-host redirect, so the fake must catch a client
+// that relied on it.
 func TestPresignedRedirect(t *testing.T) {
 	h := fake.New(fake.Options{})
 	defer h.Close()
@@ -365,8 +333,7 @@ func TestPresignedRedirect(t *testing.T) {
 		require.Equal(t, http.StatusTemporaryRedirect, r.Status)
 		loc, err := url.Parse(r.Header.Get("Location"))
 		require.NoError(t, err)
-		// Same host on purpose: net/http drops Authorization across hosts already,
-		// so a cross-host fixture would pass even with a broken redirect-leak defence.
+		// Same host on purpose: net/http drops Authorization across hosts already.
 		require.True(t, loc.Host == "" || loc.Host == mustHost(t, tg.BaseURL))
 		require.NotEmpty(t, loc.Query().Get("X-Amz-Signature"))
 	})
@@ -376,7 +343,7 @@ func TestPresignedRedirect(t *testing.T) {
 		leaky.follow = true // net/http's default behaviour, which preserves the header
 		r := leaky.get(path, tg.Token)
 		require.Equal(t, http.StatusBadRequest, r.Status,
-			"the pre-signed target accepted a request carrying Authorization; FR-016 is untestable")
+			"the pre-signed target accepted a request carrying Authorization, so a redirect leak is untestable")
 		require.Contains(t, string(r.Body), "Authorization")
 	})
 
@@ -456,9 +423,7 @@ func TestAnUnknownBundleVersionIs404(t *testing.T) {
 		newClient(t, tg).get("/v1/bundles/nope/nothing/1.0.0", tg.Token).Status)
 }
 
-// The bytes must be a real bundle, not plaintext under a hand-written
-// header: otherwise internal/archive and the digest check are never
-// exercised and every test above them is decorative.
+// The bytes must be a real bundle, or internal/archive and the digest check are never exercised.
 func TestServedBundlesExtractUnderTheRealCaps(t *testing.T) {
 	h := fake.New(fake.Options{})
 	defer h.Close()
@@ -483,8 +448,6 @@ func requireFile(t *testing.T, path string) {
 	require.NotEmpty(t, b)
 }
 
-// ---- profiles and revisions
-
 func TestRevisions(t *testing.T) {
 	h := fake.New(fake.Options{})
 	defer h.Close()
@@ -499,8 +462,7 @@ func TestRevisions(t *testing.T) {
 		require.Equal(t, tg.Fixtures.HeadRevision, head.Revision)
 		require.Equal(t, tg.Fixtures.PriorRevision, prior.Revision)
 		require.NotEqual(t, len(head.Entries), len(prior.Entries))
-		// `head` is a request, never a stored value. The body always names the
-		// number it resolved to.
+		// The body always names the number `head` resolved to.
 		require.Positive(t, head.Revision)
 	})
 
@@ -536,8 +498,6 @@ func TestRevisions(t *testing.T) {
 		require.True(t, found)
 	})
 }
-
-// ---- sync
 
 func TestReportSync(t *testing.T) {
 	h := fake.New(fake.Options{})
@@ -602,17 +562,12 @@ func TestReportSync(t *testing.T) {
 	})
 }
 
-// ---- the fake claims to support every case
-
 func TestTheFakeFillsInEveryFixture(t *testing.T) {
 	h := fake.New(fake.Options{})
 	defer h.Close()
 	f := h.Target().Fixtures
 
-	// An empty field is the protocol for "this hub cannot express that case",
-	// and a suite is then required to skip. The FAKE must express all of them,
-	// or the suite skips silently and the whole point of behavioural parity is
-	// lost.
+	// An empty field makes the suite skip, so the fake itself must express every case.
 	require.NotEmpty(t, f.Profile)
 	require.NotEmpty(t, f.DigestMismatch)
 	require.NotEmpty(t, f.ForbiddenBundle)
@@ -631,8 +586,6 @@ func TestTLSVariantServesHTTPS(t *testing.T) {
 	defer h.Close()
 	tg := h.Target()
 	require.True(t, strings.HasPrefix(tg.BaseURL, "https://"))
-	// The CLI refuses a plaintext hub without an explicit flag, so the
-	// suite's default hub must be reachable over TLS with the client the Target
-	// hands out and no system trust store involved.
+	// Reachable over TLS with the Target's client and no system trust store.
 	require.Equal(t, http.StatusOK, newClient(t, tg).get("/v1/profiles", tg.Token).Status)
 }

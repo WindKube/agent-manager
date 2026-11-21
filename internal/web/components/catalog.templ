@@ -6,9 +6,8 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// CatalogScreen is the whole catalog. The initial render is complete — rows,
-// counts and both facet option lists — so the first paint costs no round trip and
-// the screen works with the signals never having been touched.
+// CatalogScreen's initial render is complete, so the first paint costs no round
+// trip.
 templ CatalogScreen(c Catalog) {
 	<div data-signals={ c.Signals() }>
 		<div class="am-header">
@@ -143,8 +142,8 @@ templ facet(f Facet) {
 	</div>
 }
 
-// FacetOptions is the payload sent when a menu opens, and re-sent with the counts
-// after a round trip. Filtering it is entirely client-side from here on.
+// FacetOptions is sent when a menu opens and re-sent after a round trip; filtering
+// is client-side.
 templ FacetOptions(f Facet) {
 	for _, option := range f.Options {
 		<div
@@ -197,8 +196,7 @@ templ CatalogTable(page view.CatalogPage) {
 		</a>
 	}
 	if page.SignedOut {
-		// Distinct copy AND a distinct class, because the whole risk here is a
-		// reader — or a test — mistaking this for a catalog that has no packages.
+		// Distinct copy and class, so nobody mistakes this for an empty catalog.
 		<div class="am-empty am-empty-auth" id="catalog-signed-out">
 			Sign in to browse the catalog. The hub has no anonymous view.
 		</div>
@@ -222,16 +220,13 @@ templ CatalogTable(page view.CatalogPage) {
 	}
 }
 
-// CatalogCount is patched alongside the table so the live count of FR-015 stays
-// in step with it.
+// CatalogCount is patched alongside the table so the live count stays in step.
 templ CatalogCount(page view.CatalogPage) {
 	<div class="am-count" id="catalog-count">{ page.ResultCount() }</div>
 }
 
-// CatalogNotice is where a registration's outcome lands once the modal has
-// closed. The wrapper is always rendered so the patch has something to replace,
-// and it is on this screen rather than in the modal because the modal is gone by
-// the time there is anything to say.
+// CatalogNotice is where a registration's outcome lands after the modal closes;
+// the wrapper always renders so the patch has a target.
 templ CatalogNotice(notice *view.Notice) {
 	<div id="catalog-notice">
 		if notice != nil {

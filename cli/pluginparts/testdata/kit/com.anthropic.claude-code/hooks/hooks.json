@@ -1,0 +1,7 @@
+{
+  "description": "guards",
+  "hooks": {
+    "PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "guard check", "timeout": 30}]}],
+    "PostToolUse": [{"hooks": [{"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/post.sh"}]}]
+  }
+}

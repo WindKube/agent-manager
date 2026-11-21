@@ -10,36 +10,14 @@ import templruntime "github.com/a-h/templ/runtime"
 
 import "agent-manager/internal/web/view"
 
-// The registration modal (US1, T046, design lines 189-278).
+// The registration modal submits through the web role's own routes; the browser
+// never addresses the api. Every signal is underscore-prefixed, so datastar never
+// sends them and only attaching a file or pressing the button fetches.
 //
-// It submits through the web role's own two routes, which forward to
-// POST /v1/packages/preview and POST /v1/packages over internal/apiclient. The
-// browser never addresses the api directly: the web role is the hop, and
-// internal/archcheck is what keeps that the only door.
-//
-// Every signal here is underscore-prefixed, which is what keeps the R7 budget
-// intact: datastar excludes those from every request, so opening the modal,
-// switching tabs and typing a URL cost zero round trips. The debounced listener
-// on the catalog also filters on an include list that names none of them, so
-// there are two independent reasons no keystroke in here can fetch. The two
-// requests this modal does make are both a deliberate act — attaching a file and
-// pressing the button — and neither is signal-driven.
-//
-// Visibility is driven by data-style:display and NOT by data-show. data-show
-// REMOVES the display property when its expression is truthy, which on a flex
-// container leaves the element at display:block; and both attributes install a
-// MutationObserver on the style attribute, so using them together on one element
-// is two writers fighting over one property. The inline display:none is the state
-// before the script runs.
-//
-// The key is colon-delimited because datastar parses an attribute as
-// <plugin>:<key>: `data-style-display` resolves to a plugin named
-// "style-display", which is not registered, so it is dropped in silence and the
-// modal stays at its inline display:none however the signal moves.
-//
-// FR-055: every manifest-derived string below — a path, a note, a name, a schema
-// path — is interpolated by templ and therefore escaped. Nothing in this file
-// calls templ.Raw, and internal/archcheck fails the build if it ever does.
+// Visibility uses data-style:display, not data-show: data-show removes display on a
+// flex container (leaving block), and both on one element fight over one property.
+// The key must be colon-delimited, since `data-style-display` names an unregistered
+// plugin and is dropped silently.
 func ImportModal(im Import) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -68,7 +46,7 @@ func ImportModal(im Import) templ.Component {
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(ImportSubmitExpr())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 55, Col: 90}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 33, Col: 90}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
 		if templ_7745c5c3_Err != nil {
@@ -86,7 +64,7 @@ func ImportModal(im Import) templ.Component {
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(ImportTabClassExpr(tab.ID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 78, Col: 45}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 56, Col: 45}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 			if templ_7745c5c3_Err != nil {
@@ -99,7 +77,7 @@ func ImportModal(im Import) templ.Component {
 			var templ_7745c5c3_Var4 string
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(ImportTabSelectedExpr(tab.ID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 79, Col: 61}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 57, Col: 61}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
 			if templ_7745c5c3_Err != nil {
@@ -112,7 +90,7 @@ func ImportModal(im Import) templ.Component {
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(ImportTabExpr(tab.ID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 80, Col: 43}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 58, Col: 43}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 			if templ_7745c5c3_Err != nil {
@@ -125,7 +103,7 @@ func ImportModal(im Import) templ.Component {
 			var templ_7745c5c3_Var6 string
 			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(tab.Label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 81, Col: 17}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 59, Col: 17}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 			if templ_7745c5c3_Err != nil {
@@ -143,7 +121,7 @@ func ImportModal(im Import) templ.Component {
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.ResolveAttributeValue(ImportAttachExpr())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 99, Col: 41}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 77, Col: 41}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var7)
 		if templ_7745c5c3_Err != nil {
@@ -169,7 +147,7 @@ func ImportModal(im Import) templ.Component {
 			var templ_7745c5c3_Var8 string
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(option.Value)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 192, Col: 35}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 170, Col: 35}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 			if templ_7745c5c3_Err != nil {
@@ -182,7 +160,7 @@ func ImportModal(im Import) templ.Component {
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(option.Label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 192, Col: 52}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 170, Col: 52}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
@@ -205,7 +183,7 @@ func ImportModal(im Import) templ.Component {
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue(name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 200, Col: 27}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 178, Col: 27}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
 			if templ_7745c5c3_Err != nil {
@@ -218,7 +196,7 @@ func ImportModal(im Import) templ.Component {
 			var templ_7745c5c3_Var11 string
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 200, Col: 36}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 178, Col: 36}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
@@ -242,7 +220,7 @@ func ImportModal(im Import) templ.Component {
 				var templ_7745c5c3_Var12 string
 				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.ResolveAttributeValue(option.Value)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 209, Col: 36}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 187, Col: 36}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var12)
 				if templ_7745c5c3_Err != nil {
@@ -255,7 +233,7 @@ func ImportModal(im Import) templ.Component {
 				var templ_7745c5c3_Var13 string
 				templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.ResolveAttributeValue(option.Reason)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 209, Col: 69}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 187, Col: 69}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var13)
 				if templ_7745c5c3_Err != nil {
@@ -268,7 +246,7 @@ func ImportModal(im Import) templ.Component {
 				var templ_7745c5c3_Var14 string
 				templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(option.Label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 209, Col: 86}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 187, Col: 86}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 				if templ_7745c5c3_Err != nil {
@@ -286,7 +264,7 @@ func ImportModal(im Import) templ.Component {
 				var templ_7745c5c3_Var15 string
 				templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.ResolveAttributeValue(option.Value)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 211, Col: 36}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 189, Col: 36}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var15)
 				if templ_7745c5c3_Err != nil {
@@ -299,7 +277,7 @@ func ImportModal(im Import) templ.Component {
 				var templ_7745c5c3_Var16 string
 				templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(option.Label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 211, Col: 53}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 189, Col: 53}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 				if templ_7745c5c3_Err != nil {
@@ -317,14 +295,14 @@ func ImportModal(im Import) templ.Component {
 		}
 		for _, option := range im.Visibilities {
 			if option.Disabled {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "  <span style=\"font-size:11.5px;color:var(--fg3)\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, " <span style=\"font-size:11.5px;color:var(--fg3)\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var17 string
 				templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(option.Label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 219, Col: 69}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 196, Col: 69}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 				if templ_7745c5c3_Err != nil {
@@ -337,7 +315,7 @@ func ImportModal(im Import) templ.Component {
 				var templ_7745c5c3_Var18 string
 				templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(option.Reason)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 219, Col: 88}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 196, Col: 88}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 				if templ_7745c5c3_Err != nil {
@@ -356,7 +334,7 @@ func ImportModal(im Import) templ.Component {
 		var templ_7745c5c3_Var19 string
 		templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.ResolveAttributeValue(ImportTagsLimit())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 233, Col: 35}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 209, Col: 35}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var19)
 		if templ_7745c5c3_Err != nil {
@@ -377,7 +355,7 @@ func ImportModal(im Import) templ.Component {
 		var templ_7745c5c3_Var20 string
 		templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.ResolveAttributeValue(ImportBusySignal)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 247, Col: 39}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 223, Col: 39}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var20)
 		if templ_7745c5c3_Err != nil {
@@ -390,7 +368,7 @@ func ImportModal(im Import) templ.Component {
 		var templ_7745c5c3_Var21 string
 		templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.ResolveAttributeValue(ImportSubmitDisabledExpr())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 248, Col: 53}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 224, Col: 53}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var21)
 		if templ_7745c5c3_Err != nil {
@@ -403,7 +381,7 @@ func ImportModal(im Import) templ.Component {
 		var templ_7745c5c3_Var22 string
 		templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue(ImportSubmitExpr())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 249, Col: 40}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 225, Col: 40}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
 		if templ_7745c5c3_Err != nil {
@@ -417,10 +395,8 @@ func ImportModal(im Import) templ.Component {
 	})
 }
 
-// ImportPreviewPanel is FR-005's panel and the target the preview round trip
-// patches. The wrapper is always rendered so the patch has something to replace;
-// the panel inside it is absent until a tree has actually been inspected,
-// because a blank report is a claim about no tree at all.
+// ImportPreviewPanel is the preview patch target. The wrapper always renders; the
+// panel inside is absent until a tree was inspected, since a blank report is a claim.
 func ImportPreviewPanel(preview *view.ImportPreview) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -460,9 +436,8 @@ func ImportPreviewPanel(preview *view.ImportPreview) templ.Component {
 	})
 }
 
-// ImportResultBanner is what came back from the registration. A refusal renders
-// the api's own problem detail: the person who submitted the form is the one who
-// can act on it.
+// ImportResultBanner renders the api's problem detail on refusal, for the person
+// who can act on it.
 func ImportResultBanner(result *view.ImportResult) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -519,7 +494,7 @@ func ImportResultBanner(result *view.ImportResult) templ.Component {
 				var templ_7745c5c3_Var27 string
 				templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(result.ID)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 278, Col: 33}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 251, Col: 33}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 				if templ_7745c5c3_Err != nil {
@@ -532,7 +507,7 @@ func ImportResultBanner(result *view.ImportResult) templ.Component {
 				var templ_7745c5c3_Var28 string
 				templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(result.Version)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 278, Col: 52}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 251, Col: 52}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 				if templ_7745c5c3_Err != nil {
@@ -550,7 +525,7 @@ func ImportResultBanner(result *view.ImportResult) templ.Component {
 				var templ_7745c5c3_Var29 string
 				templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(result.Message)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 280, Col: 27}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 253, Col: 27}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 				if templ_7745c5c3_Err != nil {
@@ -574,8 +549,7 @@ func ImportResultBanner(result *view.ImportResult) templ.Component {
 	})
 }
 
-// importPreview is FR-005's panel: every entry with a mark, and the dropped paths
-// named, before the user commits to registering.
+// importPreview marks every entry and names dropped paths before the user commits.
 func importPreview(p view.ImportPreview) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -609,7 +583,7 @@ func importPreview(p view.ImportPreview) templ.Component {
 			var templ_7745c5c3_Var31 string
 			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(p.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 294, Col: 31}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 266, Col: 31}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 			if templ_7745c5c3_Err != nil {
@@ -622,7 +596,7 @@ func importPreview(p view.ImportPreview) templ.Component {
 			var templ_7745c5c3_Var32 string
 			templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(p.Version)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 294, Col: 45}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 266, Col: 45}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 			if templ_7745c5c3_Err != nil {
@@ -645,7 +619,7 @@ func importPreview(p view.ImportPreview) templ.Component {
 			var templ_7745c5c3_Var33 string
 			templ_7745c5c3_Var33, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(ImportMarkStyle(entry))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 299, Col: 40}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 271, Col: 40}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 			if templ_7745c5c3_Err != nil {
@@ -658,7 +632,7 @@ func importPreview(p view.ImportPreview) templ.Component {
 			var templ_7745c5c3_Var34 string
 			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(entry.Glyph())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 299, Col: 58}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 271, Col: 58}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 			if templ_7745c5c3_Err != nil {
@@ -671,7 +645,7 @@ func importPreview(p view.ImportPreview) templ.Component {
 			var templ_7745c5c3_Var35 string
 			templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(entry.Path)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 300, Col: 128}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 272, Col: 128}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 			if templ_7745c5c3_Err != nil {
@@ -684,7 +658,7 @@ func importPreview(p view.ImportPreview) templ.Component {
 			var templ_7745c5c3_Var36 string
 			templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(entry.Note)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 301, Col: 78}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 273, Col: 78}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 			if templ_7745c5c3_Err != nil {
@@ -703,7 +677,7 @@ func importPreview(p view.ImportPreview) templ.Component {
 			var templ_7745c5c3_Var37 string
 			templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(problem.Where())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 306, Col: 73}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 278, Col: 73}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 			if templ_7745c5c3_Err != nil {
@@ -716,7 +690,7 @@ func importPreview(p view.ImportPreview) templ.Component {
 			var templ_7745c5c3_Var38 string
 			templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(problem.Message)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 307, Col: 69}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/import.templ`, Line: 279, Col: 69}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 			if templ_7745c5c3_Err != nil {

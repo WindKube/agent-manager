@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -16,15 +15,11 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The profile methods, with the api stubbed and the assertions on the WIRE — the
-// escaped path it receives, the bytes of the body it is sent, the raw JSON it
-// answers with. Same reasoning as the catalog's and the governance tests:
-// asserting against apiclient's structs would let a mapping bug here cancel out
-// against the same bug in the test.
+// Assertions are on the wire (escaped path, body bytes, raw JSON) so a mapping bug
+// cannot cancel out against the same bug in the test.
 
-// The detail body below is the shape the design's example/platform-engineer has:
-// a clean floating entry, a flagged one the gate let through on an override, and
-// a pin at a version the gate refused.
+// The design's example/platform-engineer: a clean floating entry, a flagged one let
+// through on an override, and a pin the gate refused.
 const profileDetailBody = `{
   "slug":"example/platform-engineer","name":"Platform Engineer",
   "description":"What a platform engineer's machine gets.",
@@ -82,8 +77,7 @@ func TestTheProfileDetailReachesTheScreenAsFactsAndNotAsSentences(t *testing.T) 
 	require.Equal(t, "maintainer", detail.Role)
 	require.True(t, detail.UnpublishedChanges)
 
-	// FR-126's answer, carried as three booleans so a screen disables a control
-	// rather than offering one that will be refused.
+	// Booleans so a screen disables a control rather than offering a refused one.
 	require.True(t, detail.Permissions.Curate)
 	require.False(t, detail.Permissions.Share)
 	require.True(t, detail.Permissions.Publish)
@@ -94,20 +88,19 @@ func TestTheProfileDetailReachesTheScreenAsFactsAndNotAsSentences(t *testing.T) 
 	require.Empty(t, detail.Members[1].DisplayName,
 		"a membership may name somebody this hub has never seen sign in")
 
-	require.Equal(t, []hub.ProfileTarget{
+	require.Equal(t, []view.ProfileTargetRow{
 		{Target: "claude-code", Enabled: true},
 		{Target: "codex", Enabled: false},
 	}, detail.Targets, "the whole vocabulary arrives, so the screen holds no copy of the enum")
 
 	require.Len(t, detail.Revisions, 2)
 	require.Equal(t, 14, detail.Revisions[0].Revision)
-	require.Equal(t, time.Date(2026, 8, 27, 14, 2, 0, 0, time.UTC), detail.Revisions[0].PublishedAt.UTC())
+	require.Equal(t, "2026-08-27 14:02 UTC", detail.Revisions[0].PublishedAt)
 	require.Empty(t, detail.Revisions[1].Note)
 }
 
-// The two version pairs answer different questions, and collapsing them would
-// lose the only thing the row is trying to say: what the catalog offers, and what
-// the gate then did about it.
+// The two version pairs answer different questions: what the catalog offers, and
+// what the gate did about it.
 func TestARowKeepsTheCatalogsOfferingApartFromWhatTheEntryResolvesTo(t *testing.T) {
 	client := clientAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
 		writeCatalog(w, profileDetailBody)
@@ -118,15 +111,14 @@ func TestARowKeepsTheCatalogsOfferingApartFromWhatTheEntryResolvesTo(t *testing.
 	require.Len(t, detail.Entries, 3)
 
 	flagged := detail.Entries[1]
-	require.Equal(t, "flagged", flagged.LatestVerdict, "the Scan badge is the catalog's verdict")
+	require.Equal(t, view.VerdictFlagged, flagged.LatestVerdict, "the Scan badge is the catalog's verdict")
 	require.Equal(t, "0.5.1", flagged.Version)
-	require.Equal(t, "overridden", flagged.Outcome)
+	require.Equal(t, view.OutcomeOverridden, flagged.Outcome)
 	require.True(t, flagged.Unpublished)
 	require.NotNil(t, flagged.Override)
 	require.Equal(t, "ewojcik@example.com", flagged.Override.Reviewer)
 
-	// FR-036: an excluded entry is reported with its reason. It keeps its mode —
-	// a pin the gate refused is still a pin — and resolves to nothing.
+	// An excluded entry keeps its mode and reason and resolves to nothing.
 	excluded := detail.Entries[2]
 	require.Equal(t, "pinned", excluded.Mode)
 	require.Equal(t, "2.0.0", excluded.PinnedVersion)
@@ -135,13 +127,12 @@ func TestARowKeepsTheCatalogsOfferingApartFromWhatTheEntryResolvesTo(t *testing.
 	require.NotNil(t, excluded.Skip)
 	require.Equal(t, "version-rejected", excluded.Skip.Reason)
 	require.Equal(t, "2.0.0", excluded.Skip.WouldHaveResolvedTo)
-	require.Equal(t, "rejected", excluded.LatestVerdict,
+	require.Equal(t, view.VerdictRejected, excluded.LatestVerdict,
 		"the row still shows what the catalog holds, or the reader cannot see why it was excluded")
 }
 
-// resolve.Override models "does not lapse" as a nil pointer; the lockfile schema
-// makes `expiresAt` required, so the two meet at the zero instant. A screen handed
-// that would say an override that never expires expired in the year 1.
+// resolve.Override's "does not lapse" is the zero instant in the lockfile schema;
+// a screen must not say it expired in year 1.
 func TestAnOverrideThatDoesNotLapseIsNotOneThatExpiredInTheYearOne(t *testing.T) {
 	client := clientAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
 		writeCatalog(w, `{
@@ -161,13 +152,12 @@ func TestAnOverrideThatDoesNotLapseIsNotOneThatExpiredInTheYearOne(t *testing.T)
 	detail, err := client.Profile(t.Context(), "example/platform-engineer")
 	require.NoError(t, err)
 	require.NotNil(t, detail.Entries[0].Override)
-	require.Nil(t, detail.Entries[0].Override.ExpiresAt,
+	require.Empty(t, detail.Entries[0].Override.Expires,
 		"the zero instant is the absence of an expiry, and must not reach a screen as a date")
 }
 
-// The one defect the api half found reaches this side too: a profile slug carries
-// several segments, and it must arrive as ONE escaped path segment or the api
-// routes it as two and answers 404.
+// A multi-segment slug must arrive as one escaped path segment, or the api routes
+// it as two and answers 404.
 func TestAProfileSlugOfSeveralSegmentsIsSentAsOnePathSegment(t *testing.T) {
 	const slug = "example/platform-engineer"
 
@@ -196,10 +186,7 @@ func TestAProfileSlugOfSeveralSegmentsIsSentAsOnePathSegment(t *testing.T) {
 				return err
 			}},
 		{"publishing a revision", "/v1/profiles/example%2Fplatform-engineer/revisions",
-			func(c *hub.Client) error {
-				_, err := c.PublishRevision(t.Context(), slug, "")
-				return err
-			}},
+			func(c *hub.Client) error { return c.PublishRevision(t.Context(), slug, "") }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var got string
@@ -223,12 +210,8 @@ func TestAProfileSlugOfSeveralSegmentsIsSentAsOnePathSegment(t *testing.T) {
 	}
 }
 
-// An empty slug is not a profile, and it is answered here rather than sent.
-//
-// GET /v1/profiles/ carries no slug: gin answers it with a 301 to /v1/profiles —
-// measured against the api's own router — net/http follows it, and the client
-// would decode the LIST of every readable profile into a ProfileDetail. Nothing
-// about that body raises an error; the screen would get a blank profile and a nil.
+// An empty slug is refused here: GET /v1/profiles/ gets a 301 to the list, which
+// net/http follows and decodes into a blank ProfileDetail without error.
 func TestAnEmptySlugIsAnsweredAsNoProfileRatherThanBecomingTheWholeList(t *testing.T) {
 	reached := false
 	client := clientAgainst(t, func(w http.ResponseWriter, r *http.Request) {
@@ -246,31 +229,26 @@ func TestAnEmptySlugIsAnsweredAsNoProfileRatherThanBecomingTheWholeList(t *testi
 	require.Empty(t, detail.Slug)
 	require.False(t, reached, "the api was asked for a profile with no slug")
 
-	_, err = client.PublishRevision(t.Context(), "", "note")
+	err = client.PublishRevision(t.Context(), "", "note")
 	require.ErrorIs(t, err, view.ErrNotFound)
 	require.False(t, reached)
 }
 
-// FR-044: a profile this identity may not read answers exactly as one that does
-// not exist, and this side must not try to tell them apart — on the mutating
-// paths either, where anything else would confirm the slug is taken.
+// A missing and an unreadable profile are one answer, on mutating paths too,
+// where anything else would confirm the slug is taken.
 func TestAProfileThatIsMissingAndOneThisIdentityMayNotReadAreOneAnswer(t *testing.T) {
 	for name, call := range profileCalls(t.Context()) {
 		t.Run(name, func(t *testing.T) {
 			client := clientAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusNotFound)
 			})
-			// The sentinel itself and not something carrying it: this is a screen
-			// rather than a failure, and it goes back the way Package and Finding
-			// hand it back rather than under a sentence that reads like a fault.
+			// The bare sentinel: a screen state, not a wrapped fault.
 			require.Equal(t, view.ErrNotFound, call(client))
 		})
 	}
 }
 
-// FR-126 again, on every profile path: a role refusal is a screen state with a
-// reason and not a bad gateway, and it is not the signed-out state either —
-// signing in again does not acquire a role.
+// A role refusal on every profile path is neither signed out nor a bad gateway.
 func TestARoleRefusalOnAProfileIsNeitherSignedOutNorUnavailable(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -293,9 +271,8 @@ func TestARoleRefusalOnAProfileIsNeitherSignedOutNorUnavailable(t *testing.T) {
 	}
 }
 
-// A refusal the api explained is the one answer a screen must quote rather than
-// reword. Every one of these sentences names the thing that was wrong, and this
-// role does not enforce any of the rules that produced them.
+// An explained refusal must reach the screen verbatim; this role enforces none of
+// the rules behind it.
 func TestARefusalTheApiExplainedArrivesWithItsExplanation(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -352,8 +329,7 @@ func TestARefusalTheApiExplainedArrivesWithItsExplanation(t *testing.T) {
 	}
 }
 
-// A refusal whose body this role cannot read is still a refusal, and it must say
-// something bounded rather than echo an upstream string into a browser.
+// An unreadable refusal body still yields a bounded sentence, never the upstream string.
 func TestARefusalWithNoReadableDetailStillSaysSomethingOfItsOwn(t *testing.T) {
 	client := clientAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnprocessableEntity)
@@ -368,9 +344,7 @@ func TestARefusalWithNoReadableDetailStillSaysSomethingOfItsOwn(t *testing.T) {
 	require.Contains(t, refused.Detail, "Unprocessable Entity")
 }
 
-// The api being unreachable is the fourth state, and it is none of the other
-// three: the caller renders it as a bad gateway, so it must not be mistaken for a
-// refusal it could explain to somebody.
+// An unreachable api must not be mistaken for a refusal it could explain.
 func TestAnApiThatIsDownIsNotARefusalNorASignedOutScreen(t *testing.T) {
 	server := httptest.NewServer(http.NotFoundHandler())
 	address := server.URL
@@ -393,10 +367,8 @@ func TestAnApiThatIsDownIsNotARefusalNorASignedOutScreen(t *testing.T) {
 	}
 }
 
-// Every optional half of the create form is omitted when it is empty, which is
-// what makes the api's defaults apply: private, floating-latest. An empty string
-// is not a polite way of saying nothing — it is outside all three enums and would
-// be refused.
+// Empty optional create fields are omitted so the api's defaults apply; an empty
+// string is outside every enum and would be refused.
 func TestTheUnfilledHalvesOfACreateFormAreOmittedRatherThanSentBlank(t *testing.T) {
 	var bodies []string
 	client := clientAgainst(t, func(w http.ResponseWriter, r *http.Request) {
@@ -430,8 +402,7 @@ func TestTheUnfilledHalvesOfACreateFormAreOmittedRatherThanSentBlank(t *testing.
 	require.Contains(t, bodies[1], `"forkOf":"example/sre-oncall"`)
 }
 
-// `latest` carries no version, and a mode that sent an empty one would be
-// claiming a pin at "".
+// `latest` carries no version; an empty one would claim a pin at "".
 func TestAFloatingEntrySendsNoVersionAndAPinnedOneSendsIts(t *testing.T) {
 	var body string
 	client := clientAgainst(t, func(w http.ResponseWriter, r *http.Request) {
@@ -449,15 +420,12 @@ func TestAFloatingEntrySendsNoVersionAndAPinnedOneSendsIts(t *testing.T) {
 
 	require.Contains(t, body, `{"id":"example/adr-writer","mode":"pinned","version":"3.0.2"}`)
 	require.Contains(t, body, `{"id":"community/slack-digest","mode":"latest"}`)
-	// encoding/json escapes the angle brackets on the way out and the api decodes
-	// them straight back, so the constraint on the wire is the escaped form.
+	// encoding/json escapes angle brackets, so the wire carries the escaped form.
 	require.Contains(t, body,
 		`{"id":"community/finops","mode":"range","version":"\u003e=1.4.0 \u003c2.0.0"}`)
 }
 
-// An empty set is a legal choice on both of these paths and must travel as `[]`.
-// A nil slice marshals to `null`, which is not an empty array to a validator: the
-// request would come back malformed instead of answered.
+// An empty set must travel as `[]`; `null` would be rejected as malformed.
 func TestChoosingNothingIsSentAsAnEmptyListAndNotAsNull(t *testing.T) {
 	var body string
 	client := clientAgainst(t, func(w http.ResponseWriter, r *http.Request) {
@@ -477,9 +445,8 @@ func TestChoosingNothingIsSentAsAnEmptyListAndNotAsNull(t *testing.T) {
 	require.NotContains(t, body, "null")
 }
 
-// Sharing is an upsert of roles: the body names only the subjects being changed,
-// and a group's name travels exactly as the identity provider spells it, because
-// it is compared against the claim and a near miss grants nothing.
+// Sharing upserts only the named subjects, and a group name travels exactly as the
+// identity provider spells it, since a near miss grants nothing.
 func TestSharingSendsOnlyTheSubjectsWhoseRoleIsChanging(t *testing.T) {
 	var body string
 	client := clientAgainst(t, func(w http.ResponseWriter, r *http.Request) {
@@ -496,63 +463,25 @@ func TestSharingSendsOnlyTheSubjectsWhoseRoleIsChanging(t *testing.T) {
 		strings.TrimSpace(body))
 }
 
-func TestPublishingReportsTheNumberTheServerChoseAndWhatItLeftOut(t *testing.T) {
-	var body string
+func TestPublishingPostsTheNoteAndTakesA201AsSuccess(t *testing.T) {
+	var method, path, body string
 	client := clientAgainst(t, func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
-		body = string(raw)
-		w.Header().Set("Location", "/v1/profiles/example%2Fplatform-engineer/revisions/15")
-		writeCreated(w, `{
-		  "schemaVersion":"1.0.0",
-		  "profile":{"slug":"example/platform-engineer","name":"Platform Engineer",
-		             "visibility":"organisation"},
-		  "revision":15,"note":"pinned ADR Writer to 3.0.2",
-		  "resolvedAt":"2026-08-31T10:00:00Z","gate":"warn-with-override",
-		  "defaultPolicy":"floating-latest",
-		  "entries":[
-		    {"id":"example/adr-writer","kind":"skill","version":"3.0.2",
-		     "digest":"sha256:1111111111111111111111111111111111111111111111111111111111111111",
-		     "objectKey":"bundles/example/adr-writer/3.0.2/bundle.tar.zst",
-		     "resolution":"pinned","verdict":"clean"},
-		    {"id":"community/slack-digest","kind":"plugin","version":"0.5.1",
-		     "digest":"sha256:2222222222222222222222222222222222222222222222222222222222222222",
-		     "objectKey":"bundles/community/slack-digest/0.5.1/bundle.tar.zst",
-		     "resolution":"latest","verdict":"flagged",
-		     "override":{"reviewer":"ewojcik@example.com","note":"our own collector",
-		                 "expiresAt":"2026-09-12T09:00:00Z"}}
-		  ],
-		  "skipped":[{"id":"community/finops","reason":"version-rejected",
-		              "detail":"SH-FS-007 in scripts/collect.sh","wouldHaveResolvedTo":"2.0.0"}],
-		  "targets":["claude-code"]
-		}`)
+		method, path, body = r.Method, r.URL.EscapedPath(), string(raw)
+		writeCreated(w, `{"schemaVersion":"1.0.0","revision":15,"gate":"warn-with-override",
+		                  "resolvedAt":"2026-08-31T10:00:00Z","entries":[],"skipped":[],
+		                  "targets":[],"profile":{"slug":"example/platform-engineer",
+		                  "name":"Platform Engineer"}}`)
 	})
 
-	published, err := client.PublishRevision(t.Context(), "example/platform-engineer",
-		"pinned ADR Writer to 3.0.2")
+	err := client.PublishRevision(t.Context(), "example/platform-engineer", "pinned ADR Writer to 3.0.2")
 	require.NoError(t, err)
+	require.Equal(t, http.MethodPost, method)
+	require.Equal(t, "/v1/profiles/example%2Fplatform-engineer/revisions", path)
 	require.Contains(t, body, `"note":"pinned ADR Writer to 3.0.2"`)
-
-	require.Equal(t, 15, published.Revision,
-		"the number is the server's, and this is the only place a screen may learn which one it got")
-	require.Equal(t, "warn-with-override", published.Gate)
-	require.Equal(t, time.Date(2026, 8, 31, 10, 0, 0, 0, time.UTC), published.ResolvedAt.UTC())
-
-	require.Len(t, published.Entries, 2)
-	require.Equal(t, "3.0.2", published.Entries[0].Version)
-	require.Equal(t, "pinned", published.Entries[0].Resolution)
-	require.NotNil(t, published.Entries[1].Override)
-	require.NotNil(t, published.Entries[1].Override.ExpiresAt)
-
-	// FR-036: a revision that excluded a package says so. A publish confirmation
-	// that dropped this would announce a clean publish of an incomplete profile.
-	require.Len(t, published.Skipped, 1)
-	require.Equal(t, "community/finops", published.Skipped[0].ID)
-	require.Equal(t, "version-rejected", published.Skipped[0].Reason)
-	require.Equal(t, "SH-FS-007 in scripts/collect.sh", published.Skipped[0].Detail)
 }
 
-// A publish with nothing to say sends no note rather than an empty one, so the
-// history does not fill with blank captions.
+// A publish with no note sends none, so history has no blank captions.
 func TestAPublishWithNoNoteSendsNoNoteField(t *testing.T) {
 	var body string
 	client := clientAgainst(t, func(w http.ResponseWriter, r *http.Request) {
@@ -563,24 +492,19 @@ func TestAPublishWithNoNoteSendsNoNoteField(t *testing.T) {
 		                  "targets":[],"profile":{"slug":"example/new","name":"New"}}`)
 	})
 
-	published, err := client.PublishRevision(t.Context(), "example/new", "")
-	require.NoError(t, err)
+	require.NoError(t, client.PublishRevision(t.Context(), "example/new", ""))
 	require.Equal(t, `{}`, strings.TrimSpace(body))
-	require.Empty(t, published.Note)
-	require.Empty(t, published.Skipped)
 }
 
-// writeCreated answers a 201 with a JSON body. The content type has to be set
-// BEFORE the status line or net/http sniffs one, and the generated client decodes
-// a 201 only when it is told the body is JSON.
+// writeCreated sets the content type before the status line, or net/http sniffs
+// one and the generated client won't decode the 201 as JSON.
 func writeCreated(w http.ResponseWriter, body string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	writeCatalog(w, body)
 }
 
-// profileCalls is every profile method, so the error-path tests cover the whole
-// door rather than the one method whose branch somebody remembered to write.
+// profileCalls is every profile method, so error-path tests cover all of them.
 func profileCalls(ctx context.Context) map[string]func(*hub.Client) error {
 	const slug = "example/platform-engineer"
 	return map[string]func(*hub.Client) error{
@@ -605,8 +529,7 @@ func profileCalls(ctx context.Context) map[string]func(*hub.Client) error {
 			return err
 		},
 		"publishing a revision": func(c *hub.Client) error {
-			_, err := c.PublishRevision(ctx, slug, "note")
-			return err
+			return c.PublishRevision(ctx, slug, "note")
 		},
 	}
 }

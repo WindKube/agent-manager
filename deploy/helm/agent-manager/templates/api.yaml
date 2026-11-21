@@ -1,0 +1,16 @@
+{{ include "am.deployment" (dict "root" . "role" "api" "args" (list "serve" "api") "port" .Values.api.port "readinessPath" "/v1/health"
+    "extraEnv" (list (dict "name" "AGENT_MANAGER_API_ADDR" "value" (printf ":%v" .Values.api.port)))) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "am.fullname" . }}-api
+  labels:
+    {{- include "am.labels" (dict "root" . "role" "api") | nindent 4 }}
+spec:
+  selector:
+    {{- include "am.selectorLabels" (dict "root" . "role" "api") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.api.port }}
+      targetPort: http

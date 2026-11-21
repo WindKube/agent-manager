@@ -1,6 +1,3 @@
-// These tests run against memblob, so they need no container (R13). Everything
-// asserted here is a guarantee this package adds on top of gocloud: the key
-// layout, sha256-on-write, and commit-last visibility.
 package blob_test
 
 import (
@@ -40,14 +37,8 @@ func parts(bundle []byte) blob.VersionParts {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Principle II, Go half — the reader has no writer to assert back to
-// ---------------------------------------------------------------------------
-
-// The scanner role is handed Deps.BlobRead and nothing else. If the value behind
-// that interface also satisfied blob.Writer, one type assertion would hand the
-// scanner a publish credential, and the contract's claim that the Go type system
-// enforces this boundary would be false.
+// If the value behind the scanner's Reader also satisfied blob.Writer, one type
+// assertion would hand the scanner a publish credential.
 func TestTheReadHalfCannotBeAssertedBackToTheWriteHalf(t *testing.T) {
 	bucket := newBucket(t)
 
@@ -57,12 +48,9 @@ func TestTheReadHalfCannotBeAssertedBackToTheWriteHalf(t *testing.T) {
 	require.False(t, isWriter,
 		"blob.Reader's dynamic type must not implement blob.Writer, or the scanner can assert its way to a writer")
 
-	// The mirror case, so the split is not accidentally one-directional.
 	_, isReader := bucket.Writer().(blob.Reader)
 	require.False(t, isReader, "blob.Writer's dynamic type must not implement blob.Reader")
 
-	// And the read path is complete on its own: a Catalog is constructible from a
-	// Reader alone, which is what a scanner-shaped construction looks like.
 	catalog := blob.NewCatalog(read)
 	require.NotNil(t, catalog)
 
@@ -70,15 +58,8 @@ func TestTheReadHalfCannotBeAssertedBackToTheWriteHalf(t *testing.T) {
 	require.ErrorIs(t, err, blob.ErrNotFound)
 }
 
-// ---------------------------------------------------------------------------
-// FR-007 — sha256 on write, streaming
-// ---------------------------------------------------------------------------
-
-// The digest must come from the bytes as they pass, not from re-reading the
-// object: a re-read doubles the transfer and hashes whatever the bucket holds at
-// that moment rather than what this call wrote. The source here is read exactly
-// once and is neither an io.Seeker nor an io.ReaderAt, so a rewind was not
-// available to the implementation.
+// The source is read once and can't seek, so the digest must come from the
+// streamed bytes.
 func TestSha256IsComputedWhileTheBytesStreamPastAndTheSourceIsReadExactlyOnce(t *testing.T) {
 	ctx := context.Background()
 	bucket := newBucket(t)
@@ -99,15 +80,8 @@ func TestSha256IsComputedWhileTheBytesStreamPastAndTheSourceIsReadExactlyOnce(t 
 	require.NotImplements(t, (*io.ReaderAt)(nil), src)
 }
 
-// ---------------------------------------------------------------------------
-// FR-008 — commit-last visibility
-// ---------------------------------------------------------------------------
-
-// The load-bearing test. It does not merely check that the version is readable at
-// the end: it watches every object write and asserts that the write which made
-// the version visible was index.json, and that the bundle was fully readable the
-// instant that happened. Writing the pointer first flips visibility on a version
-// whose bytes are not there yet, which is exactly what this catches.
+// Asserts the write that made the version visible was index.json, and the
+// bundle was fully readable at that instant.
 func TestAVersionBecomesVisibleOnlyOnTheIndexWriteAndIsFullyReadableTheInstantItDoes(t *testing.T) {
 	ctx := context.Background()
 	bucket := newBucket(t)
@@ -144,9 +118,8 @@ func TestAVersionBecomesVisibleOnlyOnTheIndexWriteAndIsFullyReadableTheInstantIt
 
 	require.NoError(t, watch.readErr, "the bundle must be readable the instant the version becomes visible")
 	require.Equal(t, payload, watch.readBytes,
-		"a version that is visible but whose bytes are absent or partial is exactly what FR-008 forbids")
+		"a version must never be visible while its bytes are absent or partial")
 
-	// And the whole tree is where the design says it is.
 	entry, err := catalog.Entry(ctx, ref)
 	require.NoError(t, err)
 	require.Equal(t, "skills/example/terraform-module-review/2.4.1/bundle.tar.zst", entry.Bundle)
@@ -161,23 +134,18 @@ func TestAVersionBecomesVisibleOnlyOnTheIndexWriteAndIsFullyReadableTheInstantIt
 	require.NoError(t, err)
 	require.Equal(t, ref.Semver, latest.Semver)
 
-	// Staging is gone once the pointer is live, so a listing of the catalog holds
-	// only committed objects.
 	staged, err := bucket.Reader().List(ctx, blob.StagingPrefix)
 	require.NoError(t, err)
 	require.Empty(t, staged, "the staging prefix must be empty after a successful commit")
 }
 
-// An interrupted write must leave nothing readable. Each case interrupts for
-// real — a cancelled context, a source that dies mid-stream, a failed promote, a
-// failed pointer write — rather than skipping a step, and the last case is the
-// dangerous one: every part has landed and only index.json is missing.
+// Each case interrupts for real; the last is the dangerous one, where every part
+// landed and only index.json is missing.
 func TestAnInterruptedCommitLeavesNothingReadable(t *testing.T) {
 	payload := []byte("the bundle bytes")
 
 	for _, tc := range []struct {
-		name string
-		// interrupt returns the writer to commit through and the parts to commit.
+		name      string
 		interrupt func(t *testing.T, cancel context.CancelFunc, w blob.Writer) (blob.Writer, blob.VersionParts)
 	}{
 		{
@@ -224,8 +192,6 @@ func TestAnInterruptedCommitLeavesNothingReadable(t *testing.T) {
 			_, err := blob.NewCommitter(bucket.Reader(), write).Commit(ctx, ref, p)
 			require.Error(t, err, "the interruption must be reported, not swallowed")
 
-			// Readability is defined by the pointer, so this is the assertion that
-			// matters: whatever bytes did land, no read path can reach the version.
 			probe := context.Background()
 
 			visible, err := catalog.Visible(probe, ref)
@@ -245,9 +211,7 @@ func TestAnInterruptedCommitLeavesNothingReadable(t *testing.T) {
 	}
 }
 
-// The second half of the same guarantee: an interrupted publish must not damage
-// what is already committed. A reader holding v1.0.0 keeps reading it while
-// v2.4.1 fails.
+// An interrupted publish must not damage an already committed version.
 func TestAnInterruptedCommitLeavesAnAlreadyCommittedVersionReadable(t *testing.T) {
 	ctx := context.Background()
 	bucket := newBucket(t)
@@ -283,13 +247,7 @@ func TestAnInterruptedCommitLeavesAnAlreadyCommittedVersionReadable(t *testing.T
 	require.Equal(t, "1.0.0", idx.Latest)
 }
 
-// ---------------------------------------------------------------------------
-// Principle IX — at-least-once delivery reaches the object store too
-// ---------------------------------------------------------------------------
-
-// A fetch job is delivered at least once, so the fetcher may be asked to publish
-// a version whose bytes are already on record. The index naming it IS that
-// record, so the redelivery writes nothing at all.
+// A redelivered fetch of a committed version writes nothing.
 func TestARedeliveredCommitForAVersionWithCommittedBytesIsANoOp(t *testing.T) {
 	ctx := context.Background()
 	bucket := newBucket(t)
@@ -304,9 +262,7 @@ func TestARedeliveredCommitForAVersionWithCommittedBytesIsANoOp(t *testing.T) {
 	before, err := bucket.Reader().List(ctx, "")
 	require.NoError(t, err)
 
-	// The redelivery carries different bytes on purpose: if the committer wrote
-	// anything, the digest on record would move and FR-007's "never republish with
-	// different bytes" would be broken here rather than in the database.
+	// Different bytes on purpose: any write would move the digest on record.
 	counted := &countingWriter{inner: bucket.Writer()}
 	redelivered, err := blob.NewCommitter(bucket.Reader(), counted).
 		Commit(ctx, ref, parts([]byte("tampered bytes")))
@@ -330,10 +286,8 @@ func TestARedeliveredCommitForAVersionWithCommittedBytesIsANoOp(t *testing.T) {
 	require.Equal(t, hex.EncodeToString(digest[:]), entry.Digest, "the original digest must survive the redelivery")
 }
 
-// R13 — the three drivers this project ships with must all be linked. A dropped
-// blank import compiles, passes every memblob test, and then fails at run time in
-// compose with "no driver registered for s3", which is the worst place to find
-// out. Opening a bucket contacts nothing, so this stays a unit test.
+// A dropped blank driver import compiles and passes every memblob test, then
+// fails in compose with "no driver registered for s3".
 func TestEveryShippedDriverSchemeOpens(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -358,7 +312,6 @@ func TestEveryShippedDriverSchemeOpens(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	// fileblob is a deployment mode, not just a scheme, so it gets a round trip.
 	t.Run("fileblob round-trips a committed version", func(t *testing.T) {
 		bucket, err := blob.Open(ctx, "file://"+dir)
 		require.NoError(t, err)
@@ -377,10 +330,6 @@ func TestEveryShippedDriverSchemeOpens(t *testing.T) {
 		require.Equal(t, payload, got)
 	})
 }
-
-// ---------------------------------------------------------------------------
-// The key layout, and the fact that it is built from untrusted strings
-// ---------------------------------------------------------------------------
 
 func TestTheKeyLayoutIsTheDesignsLayout(t *testing.T) {
 	for _, tc := range []struct {
@@ -409,16 +358,13 @@ func TestTheKeyLayoutIsTheDesignsLayout(t *testing.T) {
 	require.Equal(t, "profiles/example/platform-engineer/head.json", head)
 }
 
-// A publisher slug, a package name and a semver all reach this package from a
-// user-supplied manifest or repository URL, so a key built from them is untrusted
-// input (principle III). Every one of these would climb out of its prefix.
+// Key segments come from untrusted manifests and URLs; each of these would
+// escape its prefix.
 func TestAKeySegmentThatCouldEscapeItsPrefixIsRejected(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		segment string
-		// legalSlug marks the one shape a profile slug may legitimately carry: the
-		// design's profiles/example/platform-engineer/ is a two-segment slug, so a
-		// slash is validated per segment there rather than refused outright.
+		// legalSlug: profile slugs may be multi-segment, validated per segment.
 		legalSlug bool
 	}{
 		{name: "parent directory", segment: ".."},
@@ -446,7 +392,6 @@ func TestAKeySegmentThatCouldEscapeItsPrefixIsRejected(t *testing.T) {
 		})
 	}
 
-	// The shapes that must keep working, or the rule is too tight to publish with.
 	for _, tc := range []struct {
 		name string
 		ref  blob.VersionRef
@@ -488,8 +433,7 @@ func TestCommitRejectsAnIncompleteVersion(t *testing.T) {
 			parts: parts([]byte("bytes")),
 		},
 		{
-			// An arbitrary manifest name would let the manifest be promoted over the
-			// bundle key, which is a version overwriting its own bytes.
+			// Would let the manifest be promoted over the bundle key.
 			name: "a manifest object that is neither plugin.json nor SKILL.md",
 			ref:  ref,
 			parts: blob.VersionParts{
@@ -551,10 +495,6 @@ func TestSetLatestMovesThePointerOnlyToACommittedVersion(t *testing.T) {
 	require.ErrorIs(t, err, blob.ErrNotFound)
 }
 
-// ---------------------------------------------------------------------------
-// Doubles
-// ---------------------------------------------------------------------------
-
 type countingReader struct {
 	data     []byte
 	off      int
@@ -600,9 +540,8 @@ type step struct {
 	visible bool
 }
 
-// visibilityWatcher checks, after every single object write, whether the version
-// has become readable. That is the only way to test an ordering guarantee: the
-// end state of a correct and an incorrect implementation is identical.
+// visibilityWatcher checks readability after every write: an ordering guarantee
+// can't be tested from the end state.
 type visibilityWatcher struct {
 	t       *testing.T
 	inner   blob.Writer
@@ -720,11 +659,8 @@ func keysOf(attrs []blob.Attributes) []string {
 	return out
 }
 
-// The rename this field went through is only half a fix; the other half is that
-// passing the old value still fails loudly. A publisher slug is two segments and a
-// namespace is one, so handing a slug to a key builder must be an error at the
-// boundary rather than a five-segment key nobody notices until a bundle lands
-// somewhere no reader looks.
+// A two-segment publisher slug passed as a namespace must fail at the boundary,
+// not build a five-segment key nobody reads.
 func TestAPublisherSlugIsNotANamespaceAndIsRefusedAsOne(t *testing.T) {
 	t.Parallel()
 

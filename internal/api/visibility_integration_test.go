@@ -1,12 +1,7 @@
 //go:build integration
 
-// Package visibility enforcement against a real Postgres (feat/package-visibility).
-//
-// Every path here answers a caller who is not the package's owner the same way
-// it answers a request for a package that plain does not exist: queries.ErrNotFound,
-// one 404, no distinguishable message. That symmetry is asserted directly rather
-// than trusted, because a hub that told the two apart would leak existence by
-// status code alone.
+// Package visibility against a real Postgres. A package the caller may not read must
+// answer exactly like a nonexistent one, or the status code leaks its existence.
 package api_test
 
 import (
@@ -25,11 +20,8 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// probePackage seeds a publisher, a package at the given visibility and
-// owner, and one clean, visible version with a REAL packed bundle — so the
-// catalog, detail, bundle and file read paths can all be exercised against
-// the same row. Torn down via dropOnCleanup so it cannot perturb another
-// test's catalog totals or facet counts.
+// probePackage seeds a package with one clean version and a real packed bundle, so every
+// read path can be exercised on one row. Torn down so other tests' counts stay intact.
 func probePackage(t *testing.T, namespace, name string, visibility models.PackageVisibility,
 	owner *uuid.UUID,
 ) (id, key string, packed []byte) {
@@ -66,9 +58,7 @@ func probePackage(t *testing.T, namespace, name string, visibility models.Packag
 	return namespace + "/" + name, key, packed
 }
 
-// T-owner-1: registration cannot set an owner other than the authenticated
-// actor — there is no field on the form that names one, and this proves the
-// row that lands is the caller's own identity regardless.
+// Registration has no field naming an owner; the row must carry the caller's identity.
 func TestRegistrationRecordsTheAuthenticatedActorAsOwnerNeverARequestValue(t *testing.T) {
 	handler := liveHandler(t)
 
@@ -92,9 +82,6 @@ func TestRegistrationRecordsTheAuthenticatedActorAsOwnerNeverARequestValue(t *te
 		"the owner is the authenticated actor — the form carries no field that could name anyone else")
 }
 
-// T-private-1: a private package is invisible to everyone but its owner, in
-// the catalog list, by search, and by a direct request for its detail — and
-// the direct request answers exactly as a nonexistent package would.
 func TestAPrivatePackageIsInvisibleToEveryoneButItsOwner(t *testing.T) {
 	owner := principalFor(t, an).IdentityID
 	id, _, _ := probePackage(t, "privateprobe", "secret-skill", models.PackageVisibilityPrivate, &owner)
@@ -123,9 +110,8 @@ func TestAPrivatePackageIsInvisibleToEveryoneButItsOwner(t *testing.T) {
 		"and the same message — a different one would leak existence by wording instead of status")
 }
 
-// T-team-1: "team" means the package owner's own identity-provider groups.
-// curator shares kw's eng-platform group and sees it; an (eng-security) and
-// contractor (an unmapped group) do not.
+// "team" means the owner's identity-provider groups: curator shares kw's eng-platform;
+// an and contractor do not.
 func TestATeamPackageIsVisibleOnlyToIdentitiesSharingTheOwnersGroup(t *testing.T) {
 	owner := principalFor(t, kw).IdentityID
 	id, _, _ := probePackage(t, "teamprobe", "shared-skill", models.PackageVisibilityTeam, &owner)
@@ -147,10 +133,7 @@ func TestATeamPackageIsVisibleOnlyToIdentitiesSharingTheOwnersGroup(t *testing.T
 	require.Equal(t, http.StatusOK, ownerSees.Code, ownerSees.Body.String())
 }
 
-// T-bundle-1: the bundle download endpoint follows the same refusal
-// GET /v1/bundles/{publisher}/{name}/{version} already gives a rejected
-// version (FR-029) — before this fix, queries.Bundle applied NO visibility
-// filter at all.
+// The bundle download refuses an unreadable package the same way it refuses a rejected version.
 func TestBundleDownloadRefusesAPrivatePackageNotOwnedByTheCaller(t *testing.T) {
 	owner := principalFor(t, an).IdentityID
 	id, key, packed := probePackage(t, "bundleprobe", "guarded-skill", models.PackageVisibilityPrivate, &owner)
@@ -164,9 +147,6 @@ func TestBundleDownloadRefusesAPrivatePackageNotOwnedByTheCaller(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, refused.Code, refused.Body.String())
 }
 
-// T-files-1: the file-listing and file-content endpoints both resolve
-// through queries.LatestBundle, so a caller who cannot read the package
-// cannot read its files either — the same 404 the detail screen gives.
 func TestPackageFileEndpointsRefuseAPrivatePackageNotOwnedByTheCaller(t *testing.T) {
 	owner := principalFor(t, an).IdentityID
 	id, key, packed := probePackage(t, "filesprobe", "guarded-files", models.PackageVisibilityPrivate, &owner)
@@ -184,9 +164,7 @@ func TestPackageFileEndpointsRefuseAPrivatePackageNotOwnedByTheCaller(t *testing
 	require.Equal(t, http.StatusNotFound, refusedContent.Code, refusedContent.Body.String())
 }
 
-// T-owner-2: a package seeded before this column existed carries no owner,
-// and must stay visible to everyone rather than becoming invisible or
-// accidentally private. designPackages predates owner_identity_id entirely.
+// A package with no recorded owner (designPackages predates the column) stays visible to everyone.
 func TestAnOwnerLessOrganisationPackagePredatingTheColumnStaysVisibleToEveryone(t *testing.T) {
 	seedCatalog(t)
 	handler := liveHandler(t)
@@ -204,9 +182,6 @@ func TestAnOwnerLessOrganisationPackagePredatingTheColumnStaysVisibleToEveryone(
 	}
 }
 
-// T-change-1: FR-126 and constitution principle IV — changing an existing
-// package's visibility is gated to its owner or a catalog admin, refuses
-// everyone else naming who may act, and writes exactly one audit row.
 func TestChangingVisibilityIsGatedToTheOwnerOrACatalogAdminAndWritesOneAuditRow(t *testing.T) {
 	owner := principalFor(t, curator).IdentityID // curator: eng-platform, not a catalog admin
 	id, _, _ := probePackage(t, "visctl", "governed-skill", models.PackageVisibilityOrganisation, &owner)
@@ -232,16 +207,18 @@ func TestChangingVisibilityIsGatedToTheOwnerOrACatalogAdminAndWritesOneAuditRow(
 	require.Equal(t, curator.claims.Email, who)
 	require.Contains(t, text, id)
 
+	hidden := send(t, an, http.MethodPut, path, `{"visibility":"organisation"}`, http.StatusNotFound)
+	require.NotContains(t, string(hidden), owner.String(), "a caller who cannot read the package learns nothing about it")
+	send(t, an, http.MethodPut, "/v1/packages/"+id+"/tracking", `{"trackUpstream":false}`, http.StatusNotFound)
+
 	// A catalog admin may act on a package it does not own.
 	back := sendJSON[contract.PackageDetail](t, kw, http.MethodPut, path,
 		`{"visibility":"organisation"}`, http.StatusOK)
 	require.Equal(t, "organisation", back.Visibility)
 }
 
-// T-change-2: an owner-less package may not be narrowed past organisation —
-// team and private are both enforced by matching a reader against the
-// OWNER, so narrowing one with no owner would make it invisible to
-// everyone, including the catalog admin who just narrowed it.
+// Team and private match readers against the owner, so narrowing an owner-less package
+// would make it invisible to everyone.
 func TestAnOwnerLessPackageMayNotBeNarrowedPastOrganisation(t *testing.T) {
 	id, _, _ := probePackage(t, "noownerctl", "adrift-skill", models.PackageVisibilityOrganisation, nil)
 	path := "/v1/packages/" + id + "/visibility"
@@ -252,14 +229,8 @@ func TestAnOwnerLessPackageMayNotBeNarrowedPastOrganisation(t *testing.T) {
 	require.Contains(t, refusal.Detail, "no recorded owner")
 }
 
-// T-profile-1: a package already resolved into a shared profile must stop
-// resolving there the instant its visibility narrows past what the reader
-// may see — a private package in a shared profile is a leak through a
-// different door if the resolver still hands over its version, digest and
-// verdict to a reader who could no longer open the package directly. The
-// entry stays LISTED (a curator may still see which packages the profile
-// names) but resolves to nothing, the same generic "nothing to resolve"
-// state an unpublished package already produces.
+// A shared profile must not resolve a package the reader can no longer open, or it leaks
+// through a different door. The entry stays listed but resolves to nothing.
 func TestNarrowingAPackagesVisibilityAfterItIsInAProfileStopsItResolvingForOtherReaders(t *testing.T) {
 	owner := principalFor(t, kw).IdentityID
 	id, _, _ := probePackage(t, "narrowprobe", "narrows-in-profile", models.PackageVisibilityOrganisation, &owner)
@@ -293,13 +264,7 @@ func TestNarrowingAPackagesVisibilityAfterItIsInAProfileStopsItResolvingForOther
 		"private means visible to the owner, not invisible to everyone including them")
 }
 
-// TestPackageScanRefusesAPrivatePackageNotOwnedByTheCaller covers the read
-// path that arrived in a branch below this one and so was not on this
-// feature's own list. Its statement hardcoded `visibility = 'organisation'`
-// — the whole predicate before team and private became reachable, and
-// afterwards a 404 for an owner reading their own package's scan. Findings
-// quote paths and snippets out of the bundle, so this door has to answer the
-// same way the bundle's own does.
+// Findings quote the bundle, so the scan endpoint must refuse the same way the bundle does.
 func TestPackageScanRefusesAPrivatePackageNotOwnedByTheCaller(t *testing.T) {
 	owner := principalFor(t, an).IdentityID
 	probePackage(t, "scanvisprobe", "secret-scan", models.PackageVisibilityPrivate, &owner)
@@ -321,8 +286,6 @@ func TestPackageScanRefusesAPrivatePackageNotOwnedByTheCaller(t *testing.T) {
 	require.Equal(t, wantProblem.Detail, gotProblem.Detail)
 }
 
-// TestPackageScanOfATeamPackageFollowsTheOwnersGroups is the team half: the
-// scan door must read the same group overlap the catalog and the bundle do.
 func TestPackageScanOfATeamPackageFollowsTheOwnersGroups(t *testing.T) {
 	owner := principalFor(t, an).IdentityID
 	probePackage(t, "scanteamprobe", "team-scan", models.PackageVisibilityTeam, &owner)
@@ -336,17 +299,8 @@ func TestPackageScanOfATeamPackageFollowsTheOwnersGroups(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, outside.Code, outside.Body.String())
 }
 
-// TestFindingsOfAPrivatePackageReachReviewersAndNobodyElse is the read path
-// this feature's own list missed. A finding names its package and quotes a
-// path and a line out of that package's bundle, and /v1/findings carried no
-// role gate and no readability predicate, so narrowing a package to private
-// would have hidden it from the catalog while still publishing its contents
-// to every signed-in identity.
-//
-// The widening for a reviewer is deliberate and is asserted here rather than
-// left implicit: `kw` is a catalog admin and is not the owner, and it must
-// still see the finding, because a private package whose findings no reviewer
-// can read is a private package that escapes security review altogether.
+// A finding quotes its package's bundle, so it must follow the package's visibility.
+// Reviewers are deliberately widened: otherwise a private package escapes security review.
 func TestFindingsOfAPrivatePackageReachReviewersAndNobodyElse(t *testing.T) {
 	ctx := context.Background()
 	owner := principalFor(t, an).IdentityID

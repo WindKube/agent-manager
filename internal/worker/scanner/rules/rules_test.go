@@ -12,11 +12,6 @@ import (
 	"agent-manager/internal/worker/scanner/rules"
 )
 
-// The contract copy. go:embed cannot reach outside its own package directory and
-// the contract has to stay with the feature's other contracts, so the loader
-// validates against a copy — and this is what stops the copy drifting. A change
-// to the contract that is not copied across fails here rather than producing a
-// loader that validates rules against a schema nobody agreed to.
 func TestTheEmbeddedSchemaIsByteIdenticalToTheContract(t *testing.T) {
 	embedded, err := rules.RawSchema()
 	require.NoError(t, err)
@@ -35,8 +30,7 @@ func TestTheShippedPackLoadsAndAddressesOnlyKnownChecks(t *testing.T) {
 	require.Positive(t, pack.Len())
 	require.Equal(t, rules.BuiltinOrigin, pack.Origin())
 
-	// The pack version is what `scan.pack_version` holds and what the api compares
-	// to answer "rescan needed", so its shape is a contract with that query.
+	// The api compares this shape to answer "rescan needed".
 	require.Regexp(t, regexp.MustCompile(`^\d{4}\.\d{2}\.\d{2}\+[0-9a-f]{12}$`), pack.Version())
 	require.True(t, strings.HasPrefix(pack.Version(), pack.Declared()+"+"))
 
@@ -54,10 +48,6 @@ func TestTheShippedPackLoadsAndAddressesOnlyKnownChecks(t *testing.T) {
 	}
 }
 
-// The pack version carries a digest of the rule content, and this is why: a rule
-// tuned without bumping the declared version still moves the key, so the next scan
-// of an already-scanned version runs instead of being suppressed by its own
-// idempotency guard.
 func TestEditingARuleMovesThePackVersion(t *testing.T) {
 	first, err := rules.Load(minimalPack(t, "curl"), "test")
 	require.NoError(t, err)
@@ -106,6 +96,29 @@ func TestLoadRefusesAPackThatCannotWork(t *testing.T) {
 			message: "host-not-in-expected",
 		},
 		{
+			name: "a launcher pin judged on something other than a launched package",
+			mutate: func(m fstest.MapFS) {
+				m["rules/SH-NET-002.yaml"] = rule(t,
+					"kind: shell-ast\n  command: [npx]\n  extract: matched-text\n  condition: launcher-unpinned")
+			},
+			message: "launcher-unpinned",
+		},
+		{
+			name: "a declared-host check on something other than a host",
+			mutate: func(m fstest.MapFS) {
+				m["rules/SH-NET-002.yaml"] = rule(t,
+					"kind: plugin-surface\n  extract: granted-tool\n  condition: host-not-declared")
+			},
+			message: "host-not-declared",
+		},
+		{
+			name: "a plugin-surface rule with a shell extractor",
+			mutate: func(m fstest.MapFS) {
+				m["rules/SH-NET-002.yaml"] = rule(t, "kind: plugin-surface\n  extract: path-argument")
+			},
+			message: "no reading under match.kind plugin-surface",
+		},
+		{
 			name: "a shell rule that matches every command unconditionally",
 			mutate: func(m fstest.MapFS) {
 				m["rules/SH-NET-002.yaml"] = rule(t, "kind: shell-ast\n  extract: matched-text\n  condition: always")
@@ -151,9 +164,7 @@ func TestLoadRefusesAPackThatCannotWork(t *testing.T) {
 			message: "does not conform",
 		},
 		{
-			// Whitespace satisfies the schema's minLength, which is why this is
-			// asserted in Go rather than left to the schema alone: a rule that
-			// only LOOKS like it carries a title is how one ships with none.
+			// Whitespace satisfies the schema's minLength, so Go checks it.
 			name: "a title that is whitespace only",
 			mutate: func(m fstest.MapFS) {
 				m["rules/SH-NET-002.yaml"] = &fstest.MapFile{Data: []byte(strings.ReplaceAll(
@@ -190,7 +201,6 @@ func TestPathScopeUnderstandsRecursiveGlobs(t *testing.T) {
 	require.NoError(t, err)
 	loaded := pack.All()[0]
 
-	// No paths means every file the matcher understands.
 	require.True(t, loaded.Match.InScope("scripts/anything.sh"))
 
 	scoped, err := rules.Load(scopedPack(t, `["**/*.md", "package.json"]`), "test")
@@ -232,13 +242,9 @@ func TestOpenFailsOnAMountedPackThatDoesNotLoad(t *testing.T) {
 	require.NoError(t, os.Mkdir(dir+"/rules", 0o700))
 	require.NoError(t, os.WriteFile(dir+"/rules/SH-NET-002.yaml", []byte("id: SH-NET-002\n"), 0o600))
 
-	// A directory somebody is editing must never fall back silently: running
-	// different rules from the ones on disk is what costs a real finding.
 	_, _, err := rules.Open(dir)
 	require.ErrorIs(t, err, rules.ErrPack)
 }
-
-// ---- helpers ----------------------------------------------------------------
 
 func minimalPack(t *testing.T, command string) fstest.MapFS {
 	t.Helper()
@@ -257,9 +263,7 @@ func scopedPack(t *testing.T, paths string) fstest.MapFS {
 	return pack
 }
 
-// rule renders one valid rule document with its match block replaced. The
-// defaults are the ones the schema requires, so a test only writes the part it is
-// about.
+// rule renders a valid rule document with the given match block.
 func rule(t *testing.T, match string) *fstest.MapFile {
 	t.Helper()
 	body := `id: SH-NET-002

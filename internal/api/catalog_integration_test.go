@@ -1,12 +1,7 @@
 //go:build integration
 
-// The catalog against a real Postgres (US2, T054, SC-004).
-//
-// Every expectation below is HAND-DERIVED from docs/design/agent-manager.dc.html
-// items() at lines 867-920 and written out as a literal set. It is deliberately
-// not computed from the seed by a second Go implementation of the same filters:
-// two sides that share an author share a misreading, and FR-013's asymmetry is
-// exactly the kind of thing both sides would get wrong together.
+// The catalog against a real Postgres. Expectations are hand-derived from the design and written
+// as literal sets, not computed by a second implementation of the filters that would share any misreading.
 package api_test
 
 import (
@@ -27,15 +22,9 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The design's ten packages, transcribed.
-//
-// Three strings are at work and only two of them are columns. `publisher` here is
-// the whole slug — the owning team, `example/security` — and it is what carries
-// `verified`. The namespace is its FIRST segment, and namespace/name is both the
-// id the design renders (`example/pii-redactor`) and the prefix of the object key.
-// Transcribing the design's eight publishers rather than collapsing them to two
-// is the point: with one publisher per namespace the query could pass while
-// treating the slug as the namespace, and every assertion here would still hold.
+// designPackages are the design's ten packages. publisher is the whole team slug and carries
+// verified; the namespace is its first segment. Keeping eight publishers rather than collapsing
+// them stops a query that treats the slug as the namespace from passing.
 var designPackages = []struct {
 	publisher string
 	name      string
@@ -44,11 +33,9 @@ var designPackages = []struct {
 	semver    string
 	verdict   models.Verdict
 	tags      []string
-	// age is the version's age at seed time, chosen so every package has a
-	// distinct one: `order by updated` must be a total order or the assertion on
-	// it is asserting the tiebreak instead.
+	// age is distinct per package so ordering by updated is a total order, not a test of the tiebreak.
 	age time.Duration
-	// profiles is how many profiles contain the package, which is `uses`.
+	// profiles is how many profiles contain the package, which is uses.
 	profiles int
 }{
 	{"community/octoflow", "release-toolkit", models.PackageKindPlugin, "Developer workflow", "1.2.7",
@@ -73,16 +60,13 @@ var designPackages = []struct {
 		models.VerdictClean, []string{"adr", "docs", "review"}, 504 * time.Hour, 3},
 }
 
-// designCategories is the vocabulary in the design's order (line 1005). The
-// catalog returns it in that order, which it can only do because uuid v7 sorts
-// by creation and `category` has no position column — so these are inserted in
-// this order deliberately, not incidentally.
+// designCategories is the vocabulary in the design's order. They are inserted in this order on
+// purpose: category has no position column and uuid v7 sorts by creation.
 var designCategories = []string{
 	"Infrastructure", "Security & compliance", "Data", "Developer workflow", "Documentation",
 }
 
-// restrictedPackage is not in the design. It exists to prove the one thing
-// `package.visibility` can currently enforce.
+// restrictedPackage is not in the design; it proves what package.visibility can enforce.
 const restrictedPackage = "example/internal-only"
 
 func namespaceOf(slug string) string {
@@ -112,9 +96,7 @@ func seedCatalog(t *testing.T) {
 			categories[name] = row.ID
 		}
 
-		// FR-011's Verified/Community split is this flag and nothing else. It is
-		// never inferred from the slug prefix, which is why the seed sets it here
-		// and the query reads only the column.
+		// The Verified/Community split is this flag only, never inferred from the slug prefix.
 		publishers := map[string]uuid.UUID{}
 		for _, spec := range []struct {
 			slug, display string
@@ -144,10 +126,7 @@ func seedCatalog(t *testing.T) {
 			categoryID := categories[spec.category]
 			pkg := &models.Package{
 				ID: models.NewID(), PublisherID: publishers[spec.publisher],
-				// Not free-form: a composite foreign key holds this to the first
-				// segment of the publisher's own slug, so the seed cannot invent a
-				// namespace the publisher does not belong to and neither can a
-				// registration.
+				// A composite foreign key holds this to the first segment of the publisher's slug.
 				Namespace: namespaceOf(spec.publisher), Name: spec.name,
 				Kind: spec.kind, CategoryID: &categoryID, Visibility: models.PackageVisibilityOrganisation,
 			}
@@ -155,9 +134,7 @@ func seedCatalog(t *testing.T) {
 
 			version := &models.Version{
 				ID: models.NewID(), PackageID: pkg.ID, Semver: spec.semver, SemverSort: spec.semver,
-				// The key is namespaced, not published-by: skills/example/... for a
-				// package of example/platform. Getting this wrong is invisible until
-				// two teams in one namespace publish the same name.
+				// The key is namespaced, not per publisher, so two teams in one namespace share a prefix.
 				ObjectKey: fmt.Sprintf("skills/%s/%s/%s/bundle.tar.zst",
 					namespaceOf(spec.publisher), spec.name, spec.semver),
 				Digest: bundleSHA, Manifest: json.RawMessage(`{"name":"` + spec.name + `"}`),
@@ -179,7 +156,6 @@ func seedCatalog(t *testing.T) {
 			}
 		}
 
-		// The private one, which no anonymous reader may see.
 		restricted := &models.Package{
 			ID: models.NewID(), PublisherID: publishers["example/platform"],
 			Namespace: "example", Name: "internal-only",
@@ -200,8 +176,7 @@ func seedCatalog(t *testing.T) {
 	})
 }
 
-// profileIDs returns the suite's four seeded profiles, in a fixed order, so
-// `uses` is reproducible.
+// profileIDs returns the suite's four seeded profiles in a fixed order, so uses is reproducible.
 func profileIDs(t *testing.T) []uuid.UUID {
 	t.Helper()
 
@@ -251,8 +226,6 @@ func query(pairs ...string) url.Values {
 	return values
 }
 
-// ---- T054 --------------------------------------------------------------------
-
 func TestEveryFilterCombinationReturnsExactlyTheSeededPackagesThatMatch(t *testing.T) {
 	seedCatalog(t)
 	handler := liveHandler(t)
@@ -286,9 +259,7 @@ func TestEveryFilterCombinationReturnsExactlyTheSeededPackagesThatMatch(t *testi
 				"community/aws-cost-explainer", "example/pii-redactor"},
 		},
 		{
-			// US2 scenario 3. slack-digest is NOT here even though nothing about its
-			// publisher disqualifies it, and neither is anything under community/
-			// even when its verdict is clean.
+			// slack-digest and anything under community/ are excluded even when otherwise clean.
 			name:  "status verified is a verified publisher AND a clean verdict",
 			query: query("status", "verified", "pageSize", "50"),
 			want: []string{"example/platform-toolkit", "example/security-review-kit",
@@ -324,33 +295,26 @@ func TestEveryFilterCombinationReturnsExactlyTheSeededPackagesThatMatch(t *testi
 				"community/postgres-migration-guard", "community/aws-cost-explainer"},
 		},
 		{
-			// FR-010 lists the publisher and the id separately, and this needle shows
-			// why: `community/dbtools` is in no id at all. A haystack built from the
-			// id alone answers this with nothing.
+			// This needle is in no id, only in a publisher slug.
 			name:  "search matches the publisher slug, which appears in no id",
 			query: query("q", "community/dbtools"),
 			want:  []string{"community/postgres-migration-guard"},
 		},
 		{
-			// And the mirror: this needle is in no publisher slug. adr-writer belongs
-			// to example/architecture, so a haystack built from the slug alone answers
-			// this with nothing.
+			// And the mirror: this needle is in no publisher slug.
 			name:  "search matches the id, which appears in no publisher slug",
 			query: query("q", "example/adr"),
 			want:  []string{"example/adr-writer"},
 		},
 		{
-			// The needle must be inside ONE field. Concatenating the four into a
-			// single string and matching that would answer this with the package,
-			// because "redactor" ends its id and "example" starts its publisher
-			// slug — a match the reader cannot see in anything on the row.
+			// The needle must be inside one field: matching against the fields concatenated would find
+			// "redactor" + "example" across the id/publisher boundary.
 			name:  "a needle spanning two fields matches nothing",
 			query: query("q", "redactor example"),
 			want:  []string{},
 		},
 		{
-			// The same trap between two tags of one package. pii-redactor carries
-			// exactly ["pii","security"], and this is neither of them.
+			// The same trap between two tags of one package.
 			name:  "a needle spanning two tags of the same package matches nothing",
 			query: query("q", "pii security"),
 			want:  []string{},
@@ -361,8 +325,7 @@ func TestEveryFilterCombinationReturnsExactlyTheSeededPackagesThatMatch(t *testi
 			want:  []string{"example/security-review-kit", "example/pii-redactor"},
 		},
 		{
-			// FR-010 asks for a substring, not a pattern. `%` is an ILIKE wildcard
-			// and would match everything if the needle reached one unescaped.
+			// Search is a substring, not a pattern: % must be escaped for ILIKE.
 			name:  "a wildcard in the search text is a literal",
 			query: query("q", "%"),
 			want:  []string{},
@@ -392,7 +355,7 @@ func TestEveryFilterCombinationReturnsExactlyTheSeededPackagesThatMatch(t *testi
 			page := catalog(t, liveHandler(t), kw.token, tc.query)
 			require.ElementsMatch(t, tc.want, idsOf(page))
 			require.Equal(t, len(tc.want), page.Total,
-				"the live count of FR-015 must agree with the rows")
+				"the live count must agree with the rows")
 		})
 	}
 
@@ -404,23 +367,19 @@ func TestEveryFilterCombinationReturnsExactlyTheSeededPackagesThatMatch(t *testi
 		require.Equal(t, "example/adr-writer", row.ID)
 		require.Equal(t, "example/architecture", row.Publisher)
 		require.Equal(t, "adr-writer", row.Name)
-		// The one that would go unnoticed: concatenating the publisher and the name
-		// gives example/architecture/adr-writer, which is neither the id the design
-		// renders nor a key any bundle was written under.
+		// publisher/name is neither the design's id nor any bundle key.
 		require.NotEqual(t, row.Publisher+"/"+row.Name, row.ID)
 	})
 
 	t.Run("a package with no latest version pointer is not in the catalog", func(t *testing.T) {
-		// acme/code-review is seeded by the suite with two VISIBLE versions and no
-		// latest_version_id, which is what a half-published package looks like
-		// between the fetcher's writes (FR-008).
+		// acme/code-review has visible versions but no latest_version_id, like a half-published package
+		// between the fetcher's writes.
 		page := catalog(t, handler, kw.token, query("pageSize", "50"))
 		require.NotContains(t, idsOf(page), "acme/code-review")
 	})
 }
 
-// FR-013's asymmetry, which is the one thing on this screen that looks like a
-// bug to anyone who has not read the requirement.
+// Tags combine with AND and categories with OR; this asymmetry is intentional.
 func TestTagsNarrowConjunctivelyAndCategoriesNarrowDisjunctively(t *testing.T) {
 	seedCatalog(t)
 	handler := liveHandler(t)
@@ -453,8 +412,7 @@ func TestTagsNarrowConjunctivelyAndCategoriesNarrowDisjunctively(t *testing.T) {
 	})
 
 	t.Run("two tags nothing carries together return nothing, unlike two categories", func(t *testing.T) {
-		// The sharpest form of the asymmetry: the same shape of request, one
-		// widening to five and the other narrowing to zero.
+		// The same shape of request, one widening to five and the other narrowing to zero.
 		tags := catalog(t, handler, kw.token, query("tag", "terraform", "tag", "docs", "pageSize", "50"))
 		categories := catalog(t, handler, kw.token,
 			query("category", "Infrastructure", "category", "Documentation", "pageSize", "50"))
@@ -464,8 +422,7 @@ func TestTagsNarrowConjunctivelyAndCategoriesNarrowDisjunctively(t *testing.T) {
 	})
 }
 
-// The facet counts, and the second half of the same asymmetry: each facet counts
-// the way its own combining rule makes meaningful.
+// Each facet counts the way its own combining rule makes meaningful.
 func TestFacetCountsAreComputedTheWayEachFacetCombines(t *testing.T) {
 	seedCatalog(t)
 	handler := liveHandler(t)
@@ -477,10 +434,9 @@ func TestFacetCountsAreComputedTheWayEachFacetCombines(t *testing.T) {
 		for _, option := range page.Categories {
 			names = append(names, option.Value)
 		}
-		require.Equal(t, designCategories, names, "FR-049's vocabulary, in the design's order")
+		require.Equal(t, designCategories, names, "the vocabulary, in the design's order")
 
-		// Two of them match no plugin at all and are still listed, because a menu
-		// that hides its empty options cannot tell you they are empty.
+		// Empty categories are still listed, so the menu can show they are empty.
 		require.Equal(t, 0, countOf(t, page.Categories, "Data"))
 		require.Equal(t, 0, countOf(t, page.Categories, "Documentation"))
 		require.Equal(t, 2, countOf(t, page.Categories, "Developer workflow"))
@@ -490,8 +446,7 @@ func TestFacetCountsAreComputedTheWayEachFacetCombines(t *testing.T) {
 		unfiltered := catalog(t, handler, kw.token, query())
 		filtered := catalog(t, handler, kw.token, query("category", "Data"))
 
-		// Selecting Data must not zero every other category: they are combined with
-		// OR, so each count says what selecting it as well would add.
+		// Categories combine with OR, so each count says what selecting it as well would add.
 		require.Equal(t, 1, filtered.Total)
 		for _, name := range designCategories {
 			require.Equalf(t, countOf(t, unfiltered.Categories, name), countOf(t, filtered.Categories, name),
@@ -512,9 +467,7 @@ func TestFacetCountsAreComputedTheWayEachFacetCombines(t *testing.T) {
 		unfiltered := catalog(t, handler, kw.token, query())
 		filtered := catalog(t, handler, kw.token, query("tag", "aws"))
 
-		// `review` is on three packages overall, but only one of them also carries
-		// `aws`. With AND semantics, one is the number selecting it would yield;
-		// three would be a promise the next click breaks.
+		// With AND semantics, the count is what selecting the tag would yield: one, not its overall three.
 		require.Equal(t, 3, countOf(t, unfiltered.Tags, "review"))
 		require.Equal(t, 1, countOf(t, filtered.Tags, "review"))
 		require.Equal(t, 3, countOf(t, filtered.Tags, "aws"), "the selected tag counts the result set")
@@ -543,8 +496,7 @@ func sortedAscending(values []string) bool {
 	return true
 }
 
-// FR-014. Descending first is the default, and `uses` is derived from profile
-// membership at query time — nothing writes a counter on a catalog read (R8).
+// uses is derived from profile membership at query time; nothing writes a counter on a catalog read.
 func TestSortingIsDescendingFirstAndUsesIsDerived(t *testing.T) {
 	seedCatalog(t)
 	handler := liveHandler(t)
@@ -586,8 +538,7 @@ func TestSortingIsDescendingFirstAndUsesIsDerived(t *testing.T) {
 	})
 
 	t.Run("a catalog read writes nothing", func(t *testing.T) {
-		// R8: no write on the hottest path. A counter incremented on view would
-		// both lie and put a write in front of every browse.
+		// No write on the hottest path: a view counter would both lie and add a write to every browse.
 		before := auditCount(t)
 		catalog(t, handler, kw.token, query("q", "terraform"))
 		require.Equal(t, before, auditCount(t))
@@ -621,20 +572,13 @@ func TestPagingClampsInsteadOfAnsweringWithAnEmptyTable(t *testing.T) {
 	last := catalog(t, handler, kw.token, query("sort", "name", "dir", "asc", "pageSize", "4", "page", "3"))
 	require.Len(t, last.Packages, 2)
 
-	// A stale page number in a URL, after a narrowing filter, shows the last page
-	// rather than an empty one.
+	// A stale page number after a narrowing filter shows the last page rather than an empty one.
 	beyond := catalog(t, handler, kw.token, query("sort", "name", "dir", "asc", "pageSize", "4", "page", "99"))
 	require.Equal(t, 3, beyond.Page)
 	require.Equal(t, idsOf(last), idsOf(beyond))
 }
 
-// The one thing package.visibility can enforce today. It is also why the
-// operation admits an anonymous caller at all.
-// spec.md's Out of Scope names "public anonymous browsing" alongside
-// multi-tenancy. The operation therefore declares no security of its own and
-// inherits the document's root bearer requirement — which is also the safe
-// direction for a mistake to fall in, since an operation that says nothing is
-// authenticated.
+// Anonymous browsing is out of scope, so the operation inherits the root bearer requirement.
 func TestBrowsingTheCatalogRequiresASession(t *testing.T) {
 	seedCatalog(t)
 	handler := liveHandler(t)
@@ -655,10 +599,8 @@ func TestBrowsingTheCatalogRequiresASession(t *testing.T) {
 		require.Equal(t, 10, page.Total)
 	})
 
-	// The negative control for the assertion above: 401 must come from the missing
-	// session and not from the handler being unreachable for some other reason, so
-	// the same request with a session must succeed — which the subtest above proves
-	// — and an operation that IS public must still answer without one.
+	// Negative control: the 401 must come from the missing session, so a public operation still
+	// answers without one.
 	t.Run("a public operation still answers with no token", func(t *testing.T) {
 		rec := request(t, handler, http.MethodGet, "/v1/health", "", "")
 		require.Equal(t, http.StatusOK, rec.Code,
@@ -666,15 +608,8 @@ func TestBrowsingTheCatalogRequiresASession(t *testing.T) {
 	})
 }
 
-// TestTheModalOffersTheWholePackageVisibilityVocabulary binds two real
-// artifacts that are otherwise free to drift: the package_visibility enum as
-// the LIVE database defines it, and the option list the modal actually
-// renders. Team and private are both real now — the enforcement lives in
-// queries.PackageReadable — so every value is offered to every viewer;
-// "team" is disabled rather than removed for a viewer with no groups
-// (FR-126), since the api would refuse it for them anyway (see
-// commands.SetPackageVisibility's owner-less guard for the read side of the
-// same reasoning).
+// TestTheModalOffersTheWholePackageVisibilityVocabulary binds the live package_visibility enum
+// to the modal's options. "team" is disabled, not removed, for a viewer with no groups.
 func TestTheModalOffersTheWholePackageVisibilityVocabulary(t *testing.T) {
 	ctx := t.Context()
 
@@ -692,7 +627,7 @@ func TestTheModalOffersTheWholePackageVisibilityVocabulary(t *testing.T) {
 	}
 
 	noGroups := view.ImportVisibilityOptions(nil)
-	require.Len(t, noGroups, len(vocabulary), "FR-126: disabled, never removed")
+	require.Len(t, noGroups, len(vocabulary), "disabled, never removed")
 	for _, option := range noGroups {
 		if option.Value == "team" {
 			require.True(t, option.Disabled, "team would match nobody for a groupless registrant")
@@ -703,12 +638,8 @@ func TestTheModalOffersTheWholePackageVisibilityVocabulary(t *testing.T) {
 	}
 }
 
-// A hub that leaks a private package is a worse failure than one that hides
-// it. restrictedPackage predates the owner column and names no owner, so
-// queries.PackageReadable's owner-match clause can never fire for it — it
-// must stay hidden from every caller, including ones who could otherwise own
-// a package. Migrating in a column must not turn a pre-existing private row
-// into anybody's default reader.
+// restrictedPackage predates the owner column, so queries.PackageReadable's owner match can never
+// fire for it; adding the column must not make a private row readable by anyone.
 func TestAnOwnerLessPrivatePackageStaysHiddenFromEveryone(t *testing.T) {
 	seedCatalog(t)
 	handler := liveHandler(t)

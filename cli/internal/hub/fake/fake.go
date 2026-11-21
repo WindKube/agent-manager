@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,80 +17,60 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/hub"
 )
 
-// ErrUnsupported is a [Control]'s honest answer for an operation the hub
-// behind it can't perform; the suite must skip with a named reason, not
-// treat it as a pass.
+// ErrUnsupported is a [Control]'s answer for an operation the hub behind it can't perform; the suite
+// must skip, not pass.
 var ErrUnsupported = errors.New("this hub cannot be driven that way")
 
-// Control is the human-and-operator half of a hub, kept off Target's other
-// fields so a behavioural test never needs a *fake.Hub to run against a
-// real compose-stack adapter too.
+// Control is the human-and-operator half of a hub, so a behavioural test never needs a *fake.Hub.
 type Control interface {
 	ApproveDevice(userCode string) error
 	DenyDevice(userCode string) error // terminal
-	// ExpireDevice ages the authorisation NOW, producing expired_token or
-	// (after approval) the never-collected case. Likely [ErrUnsupported] on
-	// a real hub.
+	// ExpireDevice ages the authorisation now. Likely [ErrUnsupported] on a real hub.
 	ExpireDevice(userCode string) error
-	// SetHealthy distinguishes unauthorised from broken; unreachable needs
-	// no control, just close the listener.
+	// SetHealthy distinguishes unauthorised from broken.
 	SetHealthy(bool) error
 	// SyncReports lets a suite assert exactly one row was written per sync.
 	SyncReports() ([]hub.SyncReport, error)
+	// MintServiceToken returns an `amst_` token that may sync only profiles,
+	// as a hub service token scoped to sync:profile/<slug> does.
+	MintServiceToken(profiles ...string) (string, error)
 }
 
-// staleSignature matches no package, so the object-store handler refuses it
-// like a real store refuses an expired one; fixed, not random, so a failing
-// test reads without rerunning.
+// staleSignature matches no package, so the object-store handler refuses it like an expired one.
 const staleSignature = "s1Gn4tur3-thAt-h4s-3xp1r3d"
 
-// Fixtures names seeded content a test may address. Empty means the suite
-// must skip, not improvise a slug: an invented one 404s against the real
-// hub for the wrong reason.
+// Fixtures names seeded content a test may address. Empty means the suite must skip, not improvise a
+// slug that 404s for the wrong reason.
 type Fixtures struct {
-	// Profile is healthy; HeadRevision/PriorRevision differ in content, not
-	// just number.
+	// Profile's HeadRevision and PriorRevision differ in content, not just number.
 	Profile       string
 	HeadRevision  int64
 	PriorRevision int64
 
-	// SharedNamespaceIDs: two ids, one namespace, two publishers — catches
-	// an implementation that keyed off publisher instead.
+	// SharedNamespaceIDs share one namespace across two publishers.
 	SharedNamespaceIDs []string
 
 	DigestMismatch   string // one entry's digest is really some other bundle's
 	ForbiddenBundle  string // middle entry answers 403; the others still install
 	ForbiddenEntryID string
-	// PresignedBundle answers 307 same-host, so a cross-host redirect leak
-	// defence alone wouldn't catch a same-host leak.
+	// PresignedBundle answers 307 to the same host, where net/http alone would leak the token.
 	PresignedBundle string
-	// StalePresignedBundle's second entry gets a store 403 behind a hub 307;
-	// a hub 403 and a store 403 must not be read as the same failure.
+	// StalePresignedBundle's second entry gets a store 403 behind a hub 307.
 	StalePresignedBundle  string
 	StalePresignedEntryID string
-	// UnknownSkipReason is a profile whose skipped array carries a reason value
-	// this build has never seen. It must be reported verbatim.
+	// UnknownSkipReason's skipped array carries a reason this build has never seen.
 	UnknownSkipReason string
-	// UnwritableTarget is a profile whose lockfile names a target this client
-	// cannot write (codex, gated on gate R2's unmade measurement) alongside one
-	// it can. Codex must be reported as a SKIP naming the target, never
-	// silently dropped, while claude-code still installs: one target this
-	// build cannot write must not block the profile's other target.
-	//
-	// It is a profile of its own rather than a property of every profile. The
-	// earlier fixture named codex on all of them, which meant no profile the fake
-	// served could be synced at all — see the note in catalog.go's profiles().
-	UnwritableTarget string
+	BothTargets       string
+	Plugin            string
 
 	MissingProfile string // 404
 }
 
-// Target is everything a behavioural test gets: no *fake.Hub.
+// Target is everything a behavioural test gets.
 type Target struct {
 	BaseURL string
 	Token   string
-	// HTTPClient trusts the fake's self-signed cert; a suite must use this,
-	// not build its own, or the TLS variant fails for an unrelated reason.
+	// HTTPClient trusts the fake's self-signed cert.
 	HTTPClient *http.Client
 	Fixtures   Fixtures
 	Control    Control
@@ -98,14 +79,12 @@ type Target struct {
 // Options configures the fake. Every zero value is a working default.
 type Options struct {
 	Now func() time.Time // only the device flow reads it; nil means time.Now
-	// PollInterval is both the advertised interval and the slow_down
-	// window — never two numbers, since a sub-second gap while advertising
-	// 0 would punish an obedient client. Default 5s, rounded up, 1s floor.
+	// PollInterval is both the advertised interval and the slow_down window, so an obedient client is
+	// never punished. Default 5s, rounded up, 1s floor.
 	PollInterval  time.Duration
 	DeviceCodeTTL time.Duration // authorize response's expires_in; default 15m
 	TokenTTL      time.Duration // access token's expires_in; default 1h
-	// TLS serves a self-signed cert; the CLI refuses plaintext without an
-	// explicit flag, so the normal-path test wants this on.
+	// TLS serves a self-signed cert.
 	TLS bool
 }
 
@@ -130,10 +109,13 @@ type tokenInfo struct {
 	expiresAt time.Time
 	clientID  string
 	host      string
+	// profiles is set for a service token: it may sync these and nothing else.
+	profiles []string
 }
 
-// Hub is the running fake. Tests construct it; they do NOT pass it around —
-// pass [Hub.Target] instead. See doc.go.
+func (t tokenInfo) serviceToken() bool { return t.profiles != nil }
+
+// Hub is the running fake. Tests pass [Hub.Target] around, not the Hub.
 type Hub struct {
 	opts Options
 	srv  *httptest.Server
@@ -173,9 +155,7 @@ func New(opts Options) *Hub {
 	}
 	h.buildLockfiles()
 
-	// The seed token stands in for "the operator already logged this machine in".
-	// It is minted the same way the device flow mints one — opaque, random — so no
-	// test can accidentally depend on a shape only the seed has.
+	// Minted like a device-flow token so no test can depend on a shape only the seed has.
 	h.seedToken = randomToken()
 	h.tokens[h.seedToken] = tokenInfo{expiresAt: h.opts.Now().Add(h.opts.TokenTTL), clientID: "agent-manager-cli", host: "seed"}
 
@@ -185,14 +165,10 @@ func New(opts Options) *Hub {
 	mux.HandleFunc("GET /v1/health", h.health)
 	mux.HandleFunc("GET /v1/profiles", h.listProfiles)
 	mux.HandleFunc("GET /v1/profiles/{slug}/revisions/{revision}", h.getRevision)
-	// The path parameter is SPELLED `publisher` in the frozen contract and holds
-	// the NAMESPACE. Its own description says so and the name does not. Naming the
-	// wildcard `namespace` here is deliberate: this is the bug that shipped three
-	// times on the hub side, and the fake must not be a fourth place it can hide.
+	// The contract spells this parameter `publisher` but it holds the namespace.
 	mux.HandleFunc("GET /v1/bundles/{namespace}/{name}/{version}", h.getBundle)
 	mux.HandleFunc("POST /v1/sync", h.reportSync)
-	// Not a hub route. It stands in for the object store the 307 points at, on
-	// the SAME host, which is the only shape that can catch a redirect leak.
+	// Stands in for the object store the 307 points at, on the same host so a redirect leak is visible.
 	mux.HandleFunc("GET /objects/{key...}", h.presigned)
 
 	if h.opts.TLS {
@@ -208,7 +184,6 @@ func (h *Hub) Close() { h.srv.Close() }
 // URL is the base URL, no trailing slash.
 func (h *Hub) URL() string { return h.srv.URL }
 
-// Target is the only value a behavioural test should ever see.
 func (h *Hub) Target() Target {
 	baseline, _ := h.profileSpec(slugBaseline)
 	return Target{
@@ -228,13 +203,12 @@ func (h *Hub) Target() Target {
 			StalePresignedBundle:  slugPresignedStale,
 			StalePresignedEntryID: "contoso/offloaded-stale",
 			UnknownSkipReason:     slugFutureSkip,
-			UnwritableTarget:      slugUnwritable,
+			BothTargets:           slugBothTargets,
+			Plugin:                slugPlugin,
 			MissingProfile:        slugMissing,
 		},
 	}
 }
-
-// ---- lockfile construction
 
 func (h *Hub) profileSpec(slug string) (profileSpec, bool) {
 	for _, p := range h.profiles {
@@ -311,8 +285,6 @@ func lockKey(slug string, rev int64) string {
 	return slug + "/" + strconv.FormatInt(rev, 10)
 }
 
-// ---- handlers
-
 func (h *Hub) health(w http.ResponseWriter, _ *http.Request) {
 	h.mu.Lock()
 	ok := h.healthy
@@ -330,14 +302,17 @@ func (h *Hub) health(w http.ResponseWriter, _ *http.Request) {
 		}}
 		status = http.StatusServiceUnavailable
 	}
-	// No auth on this route, by contract: it is the probe that tells
-	// "unreachable" from "unauthorised", so requiring a token would defeat its
-	// purpose.
+	// No auth by contract: this probe tells "unreachable" from "unauthorised".
 	writeJSON(w, status, "application/json", body)
 }
 
 func (h *Hub) listProfiles(w http.ResponseWriter, r *http.Request) {
-	if !h.authorized(w, r) {
+	info, ok := h.authorized(w, r)
+	if !ok {
+		return
+	}
+	if info.serviceToken() {
+		writeProblem(w, http.StatusForbidden, "Forbidden", "a service token may not call listProfiles with its scopes")
 		return
 	}
 	out := hub.ProfileList{Profiles: make([]hub.Profile, 0, len(h.profiles))}
@@ -347,9 +322,7 @@ func (h *Hub) listProfiles(w http.ResponseWriter, r *http.Request) {
 		out.Profiles = append(out.Profiles, hub.Profile{
 			Slug: p.slug, Name: p.name,
 			HeadRevision: head,
-			// "excluding skipped entries", per the contract: the count is entries,
-			// not entries+skipped, and getting that backwards is invisible until
-			// somebody compares the number with what installed.
+			// Excludes skipped entries, per the contract.
 			PackageCount: int64(len(lf.Entries)),
 			Visibility:   ptr(hub.ProfileVisibility(p.visibility)),
 		})
@@ -357,12 +330,11 @@ func (h *Hub) listProfiles(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, "application/json", out)
 }
 
-// The contract writes this as ^(head|[0-9]+)$; \d is Go's ASCII-only digit class
-// and therefore the same set.
 var revisionPattern = regexp.MustCompile(`^(head|\d+)$`)
 
 func (h *Hub) getRevision(w http.ResponseWriter, r *http.Request) {
-	if !h.authorized(w, r) {
+	info, ok := h.authorized(w, r)
+	if !ok {
 		return
 	}
 	slug := r.PathValue("slug")
@@ -372,7 +344,10 @@ func (h *Hub) getRevision(w http.ResponseWriter, r *http.Request) {
 			"revision must match ^(head|[0-9]+)$")
 		return
 	}
-	if _, ok := h.profileSpec(slug); !ok {
+	if !inScope(w, info, slug) {
+		return
+	}
+	if _, known := h.profileSpec(slug); !known {
 		writeProblem(w, http.StatusNotFound, "Not Found", "no such profile")
 		return
 	}
@@ -397,16 +372,14 @@ func (h *Hub) getRevision(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Hub) getBundle(w http.ResponseWriter, r *http.Request) {
-	if !h.authorized(w, r) {
+	info, ok := h.authorized(w, r)
+	if !ok {
 		return
 	}
-	// The namespace, not the publisher slug. A publisher slug is two segments and
-	// could not fit in one path element; an id that is not exactly two non-empty
-	// segments is an error the CLI must raise rather than paper over.
 	id := r.PathValue("namespace") + "/" + r.PathValue("name")
 	key := id + "@" + r.PathValue("version")
 	p, ok := h.pkgs[key]
-	if !ok {
+	if !ok || (info.serviceToken() && !h.locked(info.profiles, key)) {
 		writeProblem(w, http.StatusNotFound, "Not Found", "no such package version")
 		return
 	}
@@ -415,17 +388,13 @@ func (h *Hub) getBundle(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusForbidden, "Forbidden",
 			"version rejected by the organisation's scan gate")
 	case serveRedirectStale:
-		// The same 307, with a signature the store will not accept. See
-		// serveRedirectStale.
+		// The same 307, with a signature the store will not accept.
 		loc := "/objects/" + p.objectKey() + "?X-Amz-Expires=60&X-Amz-Signature=" + url.QueryEscape(staleSignature)
 		w.Header().Set("Location", loc)
 		w.WriteHeader(http.StatusTemporaryRedirect)
 	case serveRedirect:
 		loc := "/objects/" + p.objectKey() + "?X-Amz-Expires=60&X-Amz-Signature=" + url.QueryEscape(h.signatures[key])
-		// 307, not 302: the method must survive. The Location is on THIS host on
-		// purpose — net/http strips Authorization across hosts already, so a
-		// cross-host redirect cannot catch the redirect-leak bug it is meant to
-		// catch.
+		// Same host on purpose: net/http strips Authorization across hosts already.
 		w.Header().Set("Location", loc)
 		w.WriteHeader(http.StatusTemporaryRedirect)
 	default:
@@ -433,10 +402,8 @@ func (h *Hub) getBundle(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// presigned stands in for the object store the 307 points at. It refuses a
-// request carrying an Authorization header, matching real pre-signed stores
-// like S3 — so a client that leaks the bearer to the redirect target gets an
-// ordinary 400, testable without reaching inside the fake.
+// presigned stands in for the object store. Like S3, it answers 400 to a request carrying Authorization,
+// so a leaked bearer is visible from outside the fake.
 func (h *Hub) presigned(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Authorization") != "" {
 		writeProblem(w, http.StatusBadRequest, "Bad Request",
@@ -461,9 +428,7 @@ func (h *Hub) presigned(w http.ResponseWriter, r *http.Request) {
 
 func writeBundle(w http.ResponseWriter, b blob) {
 	w.Header().Set("Content-Type", "application/zstd")
-	// RFC 3230: `sha-256=<standard base64>`. Derived from the bytes below, never
-	// written by hand — a fake whose header and body can disagree is a fake that
-	// cannot test the digest check.
+	// Derived from the bytes served, so header and body cannot disagree by accident.
 	w.Header().Set("Digest", b.HeaderDigest())
 	w.Header().Set("ETag", b.ETag())
 	w.Header().Set("Content-Length", strconv.Itoa(len(b.Bytes)))
@@ -472,7 +437,8 @@ func writeBundle(w http.ResponseWriter, b blob) {
 }
 
 func (h *Hub) reportSync(w http.ResponseWriter, r *http.Request) {
-	if !h.authorized(w, r) {
+	info, ok := h.authorized(w, r)
+	if !ok {
 		return
 	}
 	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
@@ -495,9 +461,7 @@ func (h *Hub) reportSync(w http.ResponseWriter, r *http.Request) {
 		writeProblem(w, http.StatusUnprocessableEntity, "Unprocessable Entity", "host is required")
 		return
 	case body.Revision < 1:
-		// `head` is not a revision here. The client must have replaced it with the
-		// number it resolved against and a fake that accepted a string
-		// would let that bug through.
+		// The client must report the resolved number, not `head`.
 		writeProblem(w, http.StatusUnprocessableEntity, "Unprocessable Entity",
 			"revision must be a positive integer")
 		return
@@ -512,6 +476,9 @@ func (h *Hub) reportSync(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if !inScope(w, info, body.Profile) {
+		return
+	}
 	if _, ok := h.profileSpec(body.Profile); !ok {
 		writeProblem(w, http.StatusNotFound, "Not Found", "no such profile")
 		return
@@ -520,34 +487,59 @@ func (h *Hub) reportSync(w http.ResponseWriter, r *http.Request) {
 	h.mu.Lock()
 	h.reports = append(h.reports, body)
 	h.mu.Unlock()
-	// 204: no body, by contract. One call per sync, never one per package.
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ---- auth
-
-// authorized enforces the bearer on the five authenticated routes. An absent,
-// malformed, unknown or expired token is 401 and they are NOT distinguished in the
-// body: telling a caller which of those it was is a probing oracle, and the
-// four failure classes are decided by status code, not by prose.
-func (h *Hub) authorized(w http.ResponseWriter, r *http.Request) bool {
+// authorized enforces the bearer. Every bad token is the same 401, since distinguishing them would be
+// a probing oracle.
+func (h *Hub) authorized(w http.ResponseWriter, r *http.Request) (tokenInfo, bool) {
 	raw := r.Header.Get("Authorization")
 	token, ok := strings.CutPrefix(raw, "Bearer ")
 	if !ok || token == "" {
 		writeProblem(w, http.StatusUnauthorized, "Unauthorized", "a bearer token is required")
-		return false
+		return tokenInfo{}, false
 	}
 	h.mu.Lock()
 	info, known := h.tokens[token]
 	h.mu.Unlock()
 	if !known || h.opts.Now().After(info.expiresAt) {
 		writeProblem(w, http.StatusUnauthorized, "Unauthorized", "the bearer token is not valid")
-		return false
+		return tokenInfo{}, false
 	}
-	return true
+	return info, true
 }
 
-// ---- responses
+// inScope answers a service token outside its profiles with the hub's 403,
+// before anything about the profile is looked up.
+func inScope(w http.ResponseWriter, info tokenInfo, slug string) bool {
+	if !info.serviceToken() || slices.Contains(info.profiles, slug) {
+		return true
+	}
+	writeProblem(w, http.StatusForbidden, "Forbidden",
+		"this service token is not scoped to profile "+slug+"; it needs sync:profile/"+slug)
+	return false
+}
+
+// locked reports whether any revision of profiles locks the bundle key.
+func (h *Hub) locked(profiles []string, key string) bool {
+	for _, slug := range profiles {
+		for k, body := range h.lockfiles {
+			if rev, ok := strings.CutPrefix(k, slug+"/"); !ok || strings.Contains(rev, "/") {
+				continue
+			}
+			var lf hub.Lockfile
+			if json.Unmarshal(body, &lf) != nil {
+				continue
+			}
+			for i := range lf.Entries {
+				if lf.Entries[i].Id+"@"+lf.Entries[i].Version == key {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
 
 func writeJSON(w http.ResponseWriter, status int, contentType string, body any) {
 	w.Header().Set("Content-Type", contentType)
@@ -569,8 +561,6 @@ func (h *Hub) decodeLockfile(slug string, rev int64) hub.Lockfile {
 	return lf
 }
 
-// ---- Control, implemented over the fake's own state
-
 type control struct{ h *Hub }
 
 func (c control) SetHealthy(ok bool) error {
@@ -578,6 +568,17 @@ func (c control) SetHealthy(ok bool) error {
 	defer c.h.mu.Unlock()
 	c.h.healthy = ok
 	return nil
+}
+
+func (c control) MintServiceToken(profiles ...string) (string, error) {
+	token := "amst_" + randomToken()
+	c.h.mu.Lock()
+	defer c.h.mu.Unlock()
+	c.h.tokens[token] = tokenInfo{
+		expiresAt: c.h.opts.Now().Add(c.h.opts.TokenTTL), host: "service-token",
+		profiles: append([]string{}, profiles...),
+	}
+	return token, nil
 }
 
 func (c control) SyncReports() ([]hub.SyncReport, error) {

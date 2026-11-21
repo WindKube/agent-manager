@@ -1,26 +1,8 @@
-// The superset gate. This file is the entire reason
-// specs/001-agent-manager-hub/contracts/openapi.yaml exists.
+// The emitted document must stay a superset of the frozen contract, because the CLI
+// ships separately and cannot be redeployed in step with the hub.
 //
-// The CLI ships separately from the hub and cannot be redeployed in step with
-// it, so the machine-facing operations are frozen in that file and the document
-// this package EMITS must remain a superset of it: every frozen path, method,
-// operationId, parameter, request and response media type, response header and
-// schema property must still be there, with the same types, patterns, enums,
-// consts and required sets.
-//
-// What "superset" permits, deliberately:
-//
-//   - operations, responses, media types and properties the frozen file does not
-//     mention (the web-facing surface is inventoried there but not specified);
-//   - keywords the frozen file omits — `format: int64` on an integer, a
-//     `description`, an `additionalProperties: false`, `contentMediaType` beside
-//     `format: binary`;
-//   - `servers`, which the emitted document fills in from the deployment's own
-//     base URL and leaves out of the committed artefact so `task gen:client` is
-//     byte-stable wherever it runs.
-//
-// What it forbids: a frozen operation changing shape. That is a release event for
-// the CLI, not a commit.
+// Additions (operations, properties, keywords like format or description) are allowed;
+// a frozen operation changing shape is a CLI release event, not a commit.
 package api_test
 
 import (
@@ -44,7 +26,7 @@ const frozenContract = "../../specs/001-agent-manager-hub/contracts/openapi.yaml
 func TestEmittedDocumentIsOpenAPI31(t *testing.T) {
 	emitted := emittedDocument(t)
 	require.Equal(t, "3.1.0", emitted.root["openapi"],
-		"the served document must be OpenAPI 3.1 (constitution principle V)")
+		"the served document must be OpenAPI 3.1")
 }
 
 func TestEmittedDocumentIsASupersetOfTheFrozenContract(t *testing.T) {
@@ -82,8 +64,7 @@ func TestEmittedDocumentIsASupersetOfTheFrozenContract(t *testing.T) {
 		}
 	}
 
-	// The addendum's rule: a two-sided check that extracted nothing is a check
-	// that has silently stopped testing anything.
+	// A check that extracted nothing has silently stopped testing anything.
 	require.GreaterOrEqual(t, seen, 7,
 		"expected at least the seven frozen operations, walked %d", seen)
 }
@@ -116,9 +97,7 @@ func requireOperationSuperset(t *testing.T, frozen, emitted document, name strin
 
 	require.Equal(t, frozenOp["operationId"], emittedOp["operationId"], "%s changed operationId", name)
 
-	// `security: []` is how OpenAPI removes the document's root requirement. An
-	// operation the frozen contract publishes as unauthenticated must stay
-	// unauthenticated, and one it publishes as authenticated must stay guarded.
+	// `security: []` removes the root requirement; public and guarded operations must stay so.
 	frozenSecurity, frozenHasSecurity := frozenOp["security"]
 	emittedSecurity, emittedHasSecurity := emittedOp["security"]
 	if frozenHasSecurity && isEmptyList(frozenSecurity) {
@@ -220,13 +199,8 @@ func requireResponsesSuperset(t *testing.T, frozen, emitted document, name strin
 	}
 }
 
-// requireSchemaSuperset compares one schema against the frozen one.
-//
-// Keyword by keyword rather than by deep equality: the emitted document is
-// allowed to say MORE about a value (a format, a description, an
-// additionalProperties) and is not allowed to say anything DIFFERENT. Enums and
-// consts are compared for equality in both directions — widening a response enum
-// breaks a client's switch just as narrowing it does.
+// requireSchemaSuperset compares keyword by keyword: the emitted schema may say more but
+// nothing different. Enums must match exactly, since widening breaks a client's switch too.
 func requireSchemaSuperset(t *testing.T, frozen, emitted document, where string, frozenSchema, emittedSchema any) {
 	t.Helper()
 
@@ -270,8 +244,6 @@ func requireSchemaSuperset(t *testing.T, frozen, emitted document, where string,
 	}
 }
 
-// ---- document loading -------------------------------------------------------
-
 // document is a parsed OpenAPI document plus the directory its relative $refs
 // resolve against.
 type document struct {
@@ -279,10 +251,7 @@ type document struct {
 	dir  string
 }
 
-// resolve follows a $ref. Local refs walk this document; a relative file ref
-// (the frozen contract points at ./lockfile.schema.json) is loaded from disk,
-// which is what lets the lockfile's own schema be compared property by property
-// rather than skipped as unresolvable.
+// resolve follows a $ref, loading relative file refs (./lockfile.schema.json) from disk.
 func (d document) resolve(v any) any {
 	for range 8 {
 		node, ok := v.(map[string]any)
@@ -329,9 +298,7 @@ func frozenDocument(t *testing.T) document {
 	var parsed map[string]any
 	require.NoError(t, yaml.Unmarshal(raw, &parsed))
 
-	// Round-tripped through JSON so both sides of every comparison hold float64
-	// numbers and string keys. It also fails loudly on a non-string key rather
-	// than comparing against something the emitted document can never contain.
+	// Round-tripped through JSON so both sides hold float64 numbers and string keys.
 	return document{root: normalise(t, parsed), dir: filepath.Dir(frozenContract)}
 }
 
@@ -389,15 +356,8 @@ func dig(root map[string]any, path ...string) any {
 	return next
 }
 
-// TestTheResolverProducesExactlyTheSkipReasonsTheFrozenSchemaAdmits closes the
-// loop the rest of this file opens.
-//
-// internal/domain/resolve is the one place the scan gate is applied (003 T078),
-// so it is the only thing that can put a `reason` into a lockfile. The CLI ships
-// separately from the hub and reports an unrecognised reason verbatim rather than
-// dropping it — which is the right behaviour and also means a seventh reason
-// invented here would reach a user as an untranslated slug, on the exclusion
-// path, where nothing exercises it. The schema is the side that must not move.
+// The resolver is the only source of lockfile skip reasons, and the separately shipped
+// CLI would show a new one as an untranslated slug.
 func TestTheResolverProducesExactlyTheSkipReasonsTheFrozenSchemaAdmits(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join(filepath.Dir(frozenContract), "lockfile.schema.json"))
 	require.NoError(t, err)

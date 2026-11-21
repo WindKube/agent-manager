@@ -6,10 +6,9 @@ import (
 	"agent-manager/internal/worker/scanner/rules"
 )
 
-// engineClient builds the second engine from the role's config, or nil when no
-// engine is configured. A configured engine that will not build is a startup
-// error: running the rule pack alone because a url was mistyped is the failure
-// this role must not have.
+// engineClient returns nil when no engine is configured. A configured engine
+// that fails to build is a startup error so a mistyped URL never silently
+// degrades to the rule pack alone.
 func engineClient(cfg config.Scanner) (engine.Client, error) {
 	if cfg.ScanEngineURL == "" {
 		return nil, nil

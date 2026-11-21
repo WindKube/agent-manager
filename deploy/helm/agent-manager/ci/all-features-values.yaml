@@ -1,0 +1,42 @@
+# Every optional feature on, for `task helm:lint`.
+scanEngine:
+  enabled: true
+ingress:
+  enabled: true
+  className: nginx
+  tls:
+    - hosts: [agent-manager.example.com, hub.agent-manager.example.com]
+      secretName: agent-manager-tls
+metrics:
+  serviceMonitor:
+    enabled: true
+    labels:
+      release: prometheus
+tracing:
+  otlpEndpoint: http://otel-collector.monitoring:4318
+  sampler: parentbased_traceidratio
+  samplerArg: "0.1"
+networkPolicy:
+  publicFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+  metricsFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+  postgres:
+    to:
+      - ipBlock:
+          cidr: 10.20.0.0/16
+    ports: [5432]
+api:
+  env:
+    AGENT_MANAGER_PUBLIC_BASE_URL: https://hub.agent-manager.example.com
+    AGENT_MANAGER_OIDC_ISSUER: https://id.example.com
+  secretEnv:
+    AGENT_MANAGER_DATABASE_URL: postgres://am_api:x@db:5432/agent_manager
+    AGENT_MANAGER_RIVER_DATABASE_URL: postgres://am_queue:x@db:5432/river
+    AGENT_MANAGER_BLOB_URL: s3://bucket?region=eu-west-1
+web:
+  existingSecret: web-credentials

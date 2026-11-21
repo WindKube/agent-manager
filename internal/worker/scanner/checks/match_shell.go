@@ -5,9 +5,8 @@ import (
 	"agent-manager/internal/worker/scanner/rules"
 )
 
-// matchShell is the `shell-ast` matcher: it reads the commands the parser
-// recovered, not the text of the script, and judges host/path arguments
-// through internal/domain/capability's own extractors.
+// matchShell is the `shell-ast` matcher: it judges parsed commands, not script
+// text, using internal/domain/capability's extractors.
 func matchShell(b *Bundle, rule rules.Rule) []hit {
 	wanted := make(map[string]struct{}, len(rule.Match.Command))
 	for _, name := range rule.Match.Command {
@@ -41,8 +40,7 @@ func matchShell(b *Bundle, rule rules.Rule) []hit {
 	return hits
 }
 
-// extractFromCommand yields the values a condition will judge: at least one
-// per selected command, "" when the extractor found nothing, so a
+// extractFromCommand yields "" when the URL extractor finds nothing, so a
 // fail-closed condition still sees an unresolvable target.
 func extractFromCommand(command *Command, extract rules.Extract) []string {
 	switch extract {
@@ -68,6 +66,12 @@ func extractFromCommand(command *Command, extract rules.Extract) []string {
 
 	case rules.ExtractMatchedText:
 		return []string{command.Name}
+
+	case rules.ExtractLauncherPackage:
+		if spec := launchedPackage(command.Name, command.Args); spec != "" {
+			return []string{command.Name + " " + spec}
+		}
+		return nil
 
 	default:
 		return nil

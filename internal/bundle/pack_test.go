@@ -44,8 +44,7 @@ func TestPackIsDeterministic(t *testing.T) {
 }
 
 func TestPackIgnoresInsertionOrder(t *testing.T) {
-	// FR-007 makes the digest a version's identity, so the same tree assembled in a
-	// different order has to produce the same bytes.
+	// The digest is a version's identity, so assembly order must not change the bytes.
 	reversed := New()
 	require.NoError(t, reversed.Add("scripts/run.sh", 0o755, []byte("#!/bin/sh\necho hi\n")))
 	require.NoError(t, reversed.Add("plugin.json", 0o644, []byte(`{"name":"demo"}`)))

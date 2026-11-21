@@ -93,12 +93,9 @@ func Load(path, hub string) (*Record, error) {
 	return &r, nil
 }
 
-// Save writes r to path atomically and reports whether it actually wrote —
-// nothing, when the encoded bytes already match what's on disk, which is why
-// the record is normalised first. Must be called after the swap, never
-// before. Writes temp-file, fsync, rename, fsync-directory: the temp name
-// keeps an interrupted write invisible to Load, and the fsync before rename
-// stops a crash leaving the final name present but zero length.
+// Save writes r to path atomically (temp file, fsync, rename, fsync dir) and
+// reports whether it wrote; it skips the write when the normalised bytes match
+// what's on disk. Must be called after the swap, never before.
 func Save(path string, r *Record) (bool, error) {
 	r.normalize()
 	if err := r.Validate(); err != nil {
@@ -178,7 +175,6 @@ func collectTemps(dir string) {
 		if e.IsDir() || !strings.HasPrefix(e.Name(), tempPrefix) {
 			continue
 		}
-		// Best effort — a leaked temp is collected next time.
 		_ = os.Remove(filepath.Join(dir, e.Name()))
 	}
 }

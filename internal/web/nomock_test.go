@@ -4,49 +4,24 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	"agent-manager/internal/apiclient"
 	"agent-manager/internal/web"
 	"agent-manager/internal/web/components"
-	"agent-manager/internal/web/fixture"
-	"agent-manager/internal/web/hub"
 )
 
-// TestEverySidebarEntryIsARealScreen walks every entry of components.Nav, in both
-// themes, with a signed-in fixture viewer, and fails on the three ways a screen
-// can look finished while lying: placeholder copy, an identity nobody resolved,
-// or a badge that is not a number the badge source actually answered.
-//
-// This is deliberately not a router test for one screen at a time — the whole
-// point of Nav is that it is the STRUCTURE every screen is reached through, so
-// this test is the one place that structure is walked exhaustively rather than by
-// whoever remembers to add a new entry to it.
+// TestEverySidebarEntryIsARealScreen walks every components.Nav entry in both
+// themes and fails on placeholder copy, an unresolved identity, or a badge that is
+// not the number the api answered.
 func TestEverySidebarEntryIsARealScreen(t *testing.T) {
-	// Non-zero counts, so a badge that renders "10" or "4" here is provably the
-	// number this source answered rather than the design's compiled-in figures.
-	source := &governance{badges: hub.Badges{Packages: 7, Profiles: 3, OpenFindings: 2}}
-	h := web.New(web.Deps{
-		Catalog:      fixture.New(),
-		Scanner:      source,
-		Audit:        source,
-		Badges:       source,
-		Storage:      source,
-		Runtime:      source,
-		Profiles:     &profiles{},
-		Organization: &organization{},
-		Device:       &device{},
-		Viewers:      fixture.SignedInViewers(),
-		Log:          zerolog.Nop(),
-	}, web.Options{HubURL: "http://localhost:8082"}).Handler()
+	// Non-zero counts, so a rendered badge provably came from the api.
+	api, h := newServerWith(t, web.Options{HubURL: "http://localhost:8082"})
+	api.Data.Badges = apiclient.Badges{Packages: 7, Profiles: 3, OpenFindings: 2}
 
-	// The literal `placeholder=` HTML attribute (a search box's hint text) is not
-	// this: the pattern below requires the word to stand on its own, the way
-	// "screen not built" or "this is a placeholder" would use it in copy.
+	// The pattern excludes the `placeholder=` HTML attribute.
 	placeholder := regexp.MustCompile(`(?i)not built|coming soon|\bplaceholder\b(?:[^=]|$)`)
-	// The identity the sidebar carried before FR-116/FR-118 replaced it with a
-	// per-request viewer. Any of these strings on a routed page again would mean
-	// something other than the request decided who is looking.
+	// The design's compiled-in identity; the sidebar must show the per-request viewer.
 	compiledIn := []string{"Krzysztof W.", "Platform / Admin"}
 
 	badgeIDs := map[string]bool{"catalog": true, "profiles": true, "scanner": true}
@@ -75,10 +50,7 @@ func TestEverySidebarEntryIsARealScreen(t *testing.T) {
 	}
 }
 
-// assertBadgeIsComputedOrAbsent checks the one nav entry under test carries
-// either no badge at all, or a badge holding digits only — never the compiled-in
-// "10" / "4" / "4" the design shipped with, rendered as a literal that happened to
-// still be right.
+// assertBadgeIsComputedOrAbsent requires no badge or a digits-only one.
 func assertBadgeIsComputedOrAbsent(t *testing.T, body, href string) {
 	t.Helper()
 

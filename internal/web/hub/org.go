@@ -13,10 +13,6 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The Organization screen's door to the api. Returns view types directly, as
-// hub/package.go does: this screen holds almost no rendering decisions of
-// its own, so a second hub-owned copy of the same fields buys nothing.
-
 // Organization reads GET /v1/organization.
 func (c *Client) Organization(ctx context.Context) (view.Organization, error) {
 	resp, err := c.api.GetOrganizationWithResponse(ctx)
@@ -61,6 +57,8 @@ func policyOf(body *apiclient.OrganizationPolicy) view.OrganizationPolicy {
 		CommunityNeedsReview:  body.CommunityNeedsReview,
 		RescanOnNewVersion:    body.RescanOnNewVersion,
 		AllowPersonalProfiles: body.AllowPersonalProfiles,
+
+		PackagesWithoutExpectedSigner: int(body.PackagesWithoutExpectedSigner),
 	}
 }
 
@@ -117,6 +115,9 @@ func (c *Client) DeleteMapping(ctx context.Context, groupName string) error {
 	if err != nil {
 		return fmt.Errorf("remove mapping %q: %w", groupName, err)
 	}
+	if resp.StatusCode() == http.StatusNoContent {
+		return nil
+	}
 	return orgError(resp.HTTPResponse, resp.Body)
 }
 
@@ -158,8 +159,7 @@ func (c *Client) UpdateCategory(ctx context.Context, id, name string) (view.Orga
 	}, nil
 }
 
-// DeleteCategory deletes DELETE /v1/organization/categories/{id}. Refuses with
-// a 409 when a package still carries the category.
+// DeleteCategory refuses with a 409 when a package still carries the category.
 func (c *Client) DeleteCategory(ctx context.Context, id string) error {
 	parsed, err := uuid.Parse(id)
 	if err != nil {
@@ -169,12 +169,14 @@ func (c *Client) DeleteCategory(ctx context.Context, id string) error {
 	if err != nil {
 		return fmt.Errorf("delete category %s: %w", id, err)
 	}
+	if resp.StatusCode() == http.StatusNoContent {
+		return nil
+	}
 	return orgError(resp.HTTPResponse, resp.Body)
 }
 
-// orgError adds this screen's validation and conflict cases to
-// governanceError, with the api's own detail text: the reason a save or a
-// mapping is refused is specific to what was submitted.
+// orgError adds validation and conflict cases to governanceError, carrying the
+// api's detail because the reason is specific to what was submitted.
 func orgError(resp *http.Response, body []byte) error {
 	if resp != nil {
 		switch resp.StatusCode {

@@ -42,13 +42,11 @@ func (r SwapResult) LeftoverAside() string {
 	return ""
 }
 
-// Swap installs the staged tree at staging as dest, atomically per entry, by
-// a five-step rename sequence, entirely through an *os.Root on dest's parent
-// so no symlink above the destination can steer a step outside it. Swap
-// never branches on whether dest exists (ENOENT at step 2 covers "no old
-// version" without a TOCTOU window), never falls back to a cross-device
-// copy, and never follows or refuses a symlink at dest — it renames the
-// link aside like anything else and leaves refusing it to the caller.
+// Swap atomically installs the staged tree at staging as dest by a five-step
+// rename sequence through an *os.Root on dest's parent, so no symlink above
+// dest can steer a step outside it. It never checks whether dest exists
+// (ENOENT at step 2 avoids a TOCTOU window), never copies across devices, and
+// renames a symlink at dest aside like anything else.
 func Swap(staging, dest string) (SwapResult, error) {
 	parent, name, err := splitDest(dest)
 	if err != nil {
@@ -125,7 +123,6 @@ func crossDevice(err error, staging, dest string) error {
 		ErrCrossDevice, staging, dest, err)
 }
 
-// isCrossDevice reports whether err is a cross-filesystem rename.
 func isCrossDevice(err error) bool {
 	return err != nil && errors.Is(err, syscall.EXDEV)
 }

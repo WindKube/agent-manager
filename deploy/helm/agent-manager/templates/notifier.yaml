@@ -1,0 +1,2 @@
+{{- include "am.forbid" (dict "root" . "role" "notifier" "names" (list "AGENT_MANAGER_BLOB_URL" "AWS_ACCESS_KEY_ID" "AWS_SECRET_ACCESS_KEY")) }}
+{{ include "am.deployment" (dict "root" . "role" "notifier" "args" (list "worker" "run" "notifier")) }}

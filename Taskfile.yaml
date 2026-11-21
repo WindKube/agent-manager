@@ -155,6 +155,20 @@ tasks:
         chmod +x {{.BIN}}/atlas
         printf '%s' '{{.ATLAS_VERSION}}' > {{.BIN}}/.atlas.version
 
+  helm:lint:
+    desc: "Lint and render deploy/helm with defaults and with every optional feature on (needs helm; not part of lint)"
+    dir: deploy/helm
+    cmds:
+      - helm lint --strict agent-manager
+      - helm lint --strict agent-manager -f agent-manager/ci/all-features-values.yaml
+      - helm template am agent-manager > /dev/null
+      - helm template am agent-manager -f agent-manager/ci/all-features-values.yaml > /dev/null
+      # The chart's own credential guard: web must refuse a datastore credential.
+      - "! helm template am agent-manager --set web.secretEnv.AGENT_MANAGER_DATABASE_URL=x > /dev/null 2>&1"
+      # Replicas beyond one must share a cookie key.
+      - "! helm template am agent-manager --set web.replicas=2 > /dev/null 2>&1"
+      - helm template am agent-manager --set web.replicas=2 --set web.secretEnv.AGENT_MANAGER_WEB_COOKIE_KEY=x > /dev/null
+
   migrate:schema:
     desc: "Bun models -> internal/store/schema/02-tables.sql (layer 2 of the desired state)"
     cmds:
@@ -315,6 +329,13 @@ tasks:
     desc: The whole stack
     cmds:
       - docker compose up --build
+
+  up:observability:
+    desc: The whole stack plus jaeger, with every role exporting traces to it
+    env:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318
+    cmds:
+      - docker compose --profile observability up --build
 
   infra:up:
     desc: "Only what the hub depends on and does not build (compose.infra.yaml)"

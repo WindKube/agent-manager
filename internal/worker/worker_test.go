@@ -1,7 +1,5 @@
-// These tests are container-free: every case here declares Blob and/or Outbound
-// and leaves DB at AccessNone, so Build touches memblob and nothing else. The
-// database paths are asserted through their failure modes, which is where the
-// guarantee lives.
+// Container-free: DB stays AccessNone, so the database paths are asserted only
+// through their failure modes.
 package worker_test
 
 import (
@@ -29,14 +27,7 @@ func build(t *testing.T, def worker.Definition, cfg worker.Config) *worker.Built
 	return built
 }
 
-// ---------------------------------------------------------------------------
-// contracts/worker.md — an undeclared capability is nil
-// ---------------------------------------------------------------------------
-
-// The scanner's shape. Its BlobWrite must be nil, and — the half a nil check
-// alone would miss — the reader it does get must not be assertable to a writer.
-// Together those two are what makes the contract's claim that the Go type system
-// enforces this boundary true rather than aspirational.
+// The reader must also not be type-assertable to a writer, which a nil check alone would miss.
 func TestARoleDeclaringBlobReadGetsANilBlobWriteAndNoWriterInScope(t *testing.T) {
 	built := build(t,
 		definition("scanner-shaped", worker.Needs{Blob: worker.AccessRead}),
@@ -50,7 +41,6 @@ func TestARoleDeclaringBlobReadGetsANilBlobWriteAndNoWriterInScope(t *testing.T)
 	require.False(t, isWriter,
 		"the reader handed to the role must not satisfy blob.Writer, or a nil BlobWrite is one type assertion from irrelevant")
 
-	// Everything else it did not declare is nil too, not a zero-value stub.
 	require.Nil(t, built.Deps.DB)
 	require.Nil(t, built.Deps.Fetch)
 	require.Nil(t, built.Queue(), "no database access means no queue pool")
@@ -64,8 +54,6 @@ func TestARoleDeclaringBlobReadWriteGetsBothHalves(t *testing.T) {
 	require.NotNil(t, built.Deps.BlobRead)
 	require.NotNil(t, built.Deps.BlobWrite, "the fetcher is the one role with object-store write access")
 
-	// The two halves are usable together, which is what the commit-last publisher
-	// needs, and they are still separate values.
 	committer := blob.NewCommitter(built.Deps.BlobRead, built.Deps.BlobWrite)
 	require.NotNil(t, committer)
 }
@@ -91,13 +79,6 @@ func TestOutboundIsConstructedOnlyWhenDeclared(t *testing.T) {
 		"the scanner never gets an outbound client: a check that reached the network would not be static analysis")
 }
 
-// ---------------------------------------------------------------------------
-// contracts/worker.md — a declared credential that is missing fails fast
-// ---------------------------------------------------------------------------
-
-// A missing credential must stop the process at startup. The alternative is a
-// container that comes up and silently does half its job, which is the failure
-// mode nothing ever notices.
 func TestBuildFailsFastWhenConfigLacksADeclaredCredential(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -124,8 +105,6 @@ func TestBuildFailsFastWhenConfigLacksADeclaredCredential(t *testing.T) {
 			want:  "AGENT_MANAGER_DATABASE_URL is empty",
 		},
 		{
-			// The queue URL is a separate credential, and a worker that could start
-			// without it would be a worker that never works a job.
 			name:  "db declared, no queue url",
 			needs: worker.Needs{DB: worker.AccessRead},
 			cfg:   worker.Config{DatabaseURL: "postgres://u:p@127.0.0.1:5432/agent_manager"},
@@ -154,8 +133,6 @@ func TestBuildRejectsANamelessDefinition(t *testing.T) {
 }
 
 func TestRunRefusesADefinitionThatCouldNeverWorkAJob(t *testing.T) {
-	// Both of these are startup failures rather than a process that idles forever
-	// looking busy.
 	err := worker.Run(context.Background(), definition("queueless", worker.Needs{}), worker.Config{})
 	require.ErrorContains(t, err, "declares no queues")
 

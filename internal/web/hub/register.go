@@ -13,13 +13,10 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The registration half of the modal. Both operations take a multipart body
-// carrying a file, which oapi-codegen only generates WithBody variants for,
-// so the body is assembled here and streamed through an io.Pipe rather than
-// buffered, since holding the whole upload twice buys nothing.
+// oapi-codegen generates only WithBody variants for multipart uploads, so the body
+// is assembled here and streamed through an io.Pipe rather than buffered twice.
 
-// Preview is the pre-submit report, from POST /v1/packages/preview. It
-// writes nothing on the hub.
+// Preview is the pre-submit report; it writes nothing on the hub.
 func (c *Client) Preview(ctx context.Context, archive view.Archive) (view.ImportPreview, error) {
 	contentType, body := multipartBody(func(form *multipart.Writer) error {
 		return writeArchive(form, archive)
@@ -33,8 +30,7 @@ func (c *Client) Preview(ctx context.Context, archive view.Archive) (view.Import
 
 	var preview apiclient.PackagePreview
 	if err := json.Unmarshal(resp.Body, &preview); err != nil || resp.HTTPResponse.StatusCode != http.StatusOK {
-		// A refusal that is not a preview is still an answer the modal must
-		// show, so it becomes an invalid preview carrying the problem detail.
+		// A non-preview refusal still shows, as an invalid preview with the detail.
 		return view.ImportPreview{
 			Problems: []view.ImportProblem{{Message: detailOf(resp.Body, resp.HTTPResponse)}},
 		}, nil
@@ -42,9 +38,8 @@ func (c *Client) Preview(ctx context.Context, archive view.Archive) (view.Import
 	return importPreview(preview), nil
 }
 
-// Register submits the modal to POST /v1/packages. A refusal is a result,
-// not an error: the problem detail belongs in front of the person who
-// submitted the form. Only a transport failure is an error.
+// Register submits the modal. A refusal is a result for the person who submitted
+// the form; only a transport failure is an error.
 func (c *Client) Register(ctx context.Context, registration view.Registration) (view.ImportResult, error) {
 	contentType, body := multipartBody(func(form *multipart.Writer) error {
 		return writeRegistration(form, registration)
@@ -67,8 +62,7 @@ func (c *Client) Register(ctx context.Context, registration view.Registration) (
 
 	result := view.ImportResult{
 		Registered: true,
-		// The banner shows namespace/name: the first segment of the
-		// publisher slug, never the whole slug.
+		// namespace/name uses only the first segment of the publisher slug.
 		ID:      namespaceOf(registered.Publisher) + "/" + registered.Name,
 		Version: registered.Version,
 	}
@@ -84,14 +78,12 @@ func namespaceOf(slug string) string {
 	return namespace
 }
 
-// writeRegistration mirrors internal/api's registrationForm field for field.
-// An empty optional field is omitted rather than sent blank, since huma's
-// form decoding cannot tell "" from absent.
+// writeRegistration mirrors internal/api's registrationForm. Empty optional fields
+// are omitted because huma's form decoding cannot tell "" from absent.
 func writeRegistration(form *multipart.Writer, r view.Registration) error {
 	source := "upload"
 	if r.Tab == view.ImportURL {
-		// An empty source asks internal/fetch to decide git vs archive-url
-		// from the URL's shape.
+		// Empty lets internal/fetch pick git vs archive-url from the URL's shape.
 		source = ""
 	}
 
@@ -133,9 +125,8 @@ func writeArchive(form *multipart.Writer, archive view.Archive) error {
 	return nil
 }
 
-// multipartBody streams a multipart body. The content type is read before
-// the goroutine starts, since reading it after the writer is in flight would
-// be a race for no reason.
+// multipartBody streams a multipart body. The content type is read before the
+// writer goroutine starts to avoid a race.
 func multipartBody(write func(*multipart.Writer) error) (string, io.ReadCloser) {
 	reader, writer := io.Pipe()
 	form := multipart.NewWriter(writer)
@@ -146,8 +137,7 @@ func multipartBody(write func(*multipart.Writer) error) (string, io.ReadCloser) 
 		if err == nil {
 			err = form.Close()
 		}
-		// CloseWithError(nil) is CloseWithError(io.EOF): a clean finish and a
-		// failure both terminate the reader.
+		// CloseWithError(nil) is io.EOF, so success and failure both end the reader.
 		_ = writer.CloseWithError(err)
 	}()
 
@@ -180,12 +170,11 @@ func importPreview(preview apiclient.PackagePreview) view.ImportPreview {
 	return out
 }
 
-// detailOf reads the api's RFC 9457 problem detail and falls back to the
-// status line rather than the raw body: an undecodable body would put an
-// unbounded upstream string in front of a browser.
+// detailOf falls back to the status line rather than the raw body, which could
+// put an unbounded upstream string in front of a browser.
 func detailOf(body []byte, resp *http.Response) string {
-	// A 401 must not be worded like a finding about the archive: registration
-	// is fully authenticated, so a signed-out person needs to be told to sign in.
+	// Registration is authenticated, so a 401 must say sign in, not read like a
+	// finding about the archive.
 	if resp != nil && resp.StatusCode == http.StatusUnauthorized {
 		return "Sign in to register a package."
 	}

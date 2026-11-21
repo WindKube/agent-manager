@@ -10,12 +10,9 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The Connect-the-CLI screen's door to the api, through the generated client
-// and nothing else.
-
-// The three distinguishable device-code refusals. There is no separate
-// wrong-identity case: device_authorization binds a host, never a requester
-// identity, so the api answers that exactly like ErrDeviceCodeDecided.
+// The device-code refusals. There is no wrong-identity case: a device
+// authorization binds a host, never a requester, so the api answers that like
+// ErrDeviceCodeDecided.
 var (
 	ErrDeviceCodeUnknown = errors.New("no such device authorisation")
 	ErrDeviceCodeExpired = errors.New("this code has expired")
@@ -51,8 +48,7 @@ func (c *Client) ApproveDeviceCode(ctx context.Context, userCode string) (string
 	return resp.JSON200.RequestingHost, nil
 }
 
-// deviceCodeError adds the three device-code refusals to statusError, which
-// already turns a 401 into view.ErrSignedOut.
+// deviceCodeError adds the device-code refusals to statusError.
 func deviceCodeError(resp *http.Response, body []byte) error {
 	if resp != nil {
 		switch resp.StatusCode {

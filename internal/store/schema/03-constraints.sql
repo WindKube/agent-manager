@@ -216,6 +216,21 @@ create index "outbox_pending_created_at_idx" on "outbox" ("created_at") where "s
 
 create index "audit_event_occurred_at_idx" on "audit_event" ("occurred_at" desc);
 
+create index "audit_event_subject_idx" on "audit_event" ("subject_kind", "subject_id", "occurred_at" desc);
+
+-- A package's history also reads the rows about its versions and findings,
+-- which name it in data.package.
+create index "audit_event_package_idx" on "audit_event" (("data" ->> 'package'), "occurred_at" desc);
+
+create index "audit_event_namespace_idx" on "audit_event" ("namespace", "occurred_at" desc);
+
+-- Every row written since the subject columns exist names its subject. NOT
+-- VALID is what keeps the rows written before them (both columns null, never
+-- backfilled) legal: Postgres checks it on every insert and never rescans.
+alter table "audit_event"
+  add constraint "audit_event_subject_required"
+  check ("subject_kind" is not null and "subject_id" is not null) not valid;
+
 -- The finding detail pane reads every location for one finding, so the child
 -- table needs the parent lookup its foreign key does not give it.
 create index "finding_evidence_finding_idx" on "finding_evidence" ("finding_id");
@@ -240,3 +255,117 @@ create index "fetch_attempt_occurred_at_idx" on "fetch_attempt" ("occurred_at" d
 -- tsvector on `version` would put a package-level search on a per-version row and
 -- would spend the allowance without the measurement, so the index is deferred
 -- with catalog_entry rather than aimed at a column that does not exist.
+
+-- A recorded commit is a full lowercase sha: a short or mixed-case one would
+-- compare unequal to itself and hide a moved tag.
+alter table "version"
+  add constraint "version_source_commit_is_a_sha"
+  check ("source_commit" ~ '^[0-9a-f]{40}$');
+
+-- Only a git source has tags to follow.
+alter table "package"
+  add constraint "package_tracks_only_git"
+  check (not "track_upstream" or "source_kind" = 'git');
+
+-- A verified signature always names who signed it and what it was checked
+-- against; an unsigned row has no verdict to carry.
+alter table "signature"
+  add constraint "signature_verified_names_a_signer"
+  check ("result" is distinct from 'verified'
+         or ("signer_issuer" is not null and "signer_identity" is not null
+             and "bundle" is not null and "artifact_digest" is not null));
+
+alter table "signature"
+  add constraint "signature_none_has_no_result"
+  check ("kind" <> 'none' or "result" is null);
+
+-- An expected signer is an issuer and an identity pattern together, each
+-- bounded as internal/domain/signer bounds them.
+alter table "package"
+  add constraint "package_expected_signer_is_whole"
+  check (("expected_signer_issuer" is null) = ("expected_signer_identity" is null)
+         and coalesce(char_length("expected_signer_issuer"), 0) <= 512
+         and coalesce(char_length("expected_signer_identity"), 0) <= 512);
+
+-- A service token always has a scope, a bounded name, a sha256 hash and an
+-- expiry within a year of creation: there is no "never expires".
+alter table "service_token"
+  add constraint "service_token_has_a_scope"
+  check (cardinality("scopes") >= 1);
+
+alter table "service_token"
+  add constraint "service_token_name_is_bounded"
+  check (char_length(btrim("name")) between 1 and 100);
+
+alter table "service_token"
+  add constraint "service_token_hash_is_sha256"
+  check (octet_length("token_hash") = 32);
+
+alter table "service_token"
+  add constraint "service_token_expiry_is_bounded"
+  check ("expires_at" > "created_at" and "expires_at" <= "created_at" + interval '1 year');
+
+create index "service_token_created_by_idx" on "service_token" ("created_by_identity_id", "created_at" desc);
+
+-- Fleet inventory. machine_install's keys are its primary key, so the loader
+-- emits none of these three foreign keys.
+alter table "machine_install"
+  add constraint "machine_install_machine_id_fkey"
+  foreign key ("machine_id") references "machine" ("id")
+  on update no action on delete no action;
+
+alter table "machine_install"
+  add constraint "machine_install_profile_id_fkey"
+  foreign key ("profile_id") references "profile" ("id")
+  on update no action on delete no action;
+
+alter table "machine_install"
+  add constraint "machine_install_package_id_fkey"
+  foreign key ("package_id") references "package" ("id")
+  on update no action on delete no action;
+
+alter table "machine"
+  add constraint "machine_fields_are_bounded"
+  check (char_length(btrim("hostname")) between 1 and 255
+         and coalesce(char_length("os"), 0) <= 32
+         and coalesce(char_length("arch"), 0) <= 32
+         and coalesce(char_length("amctl_version"), 0) <= 64);
+
+-- A whole-entry skip names nothing more; a component skip names its target,
+-- its component and why.
+alter table "machine_skip"
+  add constraint "machine_skip_component_is_whole"
+  check (("component" is null) = ("reason" is null) and ("component" is null) = ("target" is null)
+         and char_length("entry") between 1 and 256
+         and coalesce(char_length("component"), 0) <= 256
+         and coalesce(char_length("reason"), 0) <= 1024);
+
+create index "machine_install_package_version_idx" on "machine_install" ("package_id", "version_id");
+create index "machine_skip_machine_profile_idx" on "machine_skip" ("machine_id", "profile_id");
+create index "machine_last_identity_idx" on "machine" ("last_identity_id");
+
+-- Webhooks.
+alter table "webhook_subscription"
+  add constraint "webhook_subscription_name_is_bounded"
+  check (char_length(btrim("name")) between 1 and 100);
+
+alter table "webhook_subscription"
+  add constraint "webhook_subscription_url_is_https"
+  check ("url" like 'https://%' and char_length("url") <= 2048);
+
+alter table "webhook_subscription"
+  add constraint "webhook_subscription_has_an_event_type"
+  check (cardinality("event_types") between 1 and 50 and cardinality("namespaces") <= 50);
+
+alter table "webhook_subscription"
+  add constraint "webhook_subscription_secret_is_32_bytes"
+  check (octet_length("secret") = 32);
+
+alter table "webhook_delivery"
+  add constraint "webhook_delivery_fields_are_bounded"
+  check ("attempt" >= 1 and coalesce(char_length("response_body"), 0) <= 1024
+         and coalesce(char_length("error"), 0) <= 1024);
+
+create index "webhook_delivery_subscription_idx" on "webhook_delivery" ("subscription_id", "occurred_at" desc);
+create index "webhook_delivery_occurred_at_idx" on "webhook_delivery" ("occurred_at");
+create index "webhook_dispatch_dispatched_at_idx" on "webhook_dispatch" ("dispatched_at");

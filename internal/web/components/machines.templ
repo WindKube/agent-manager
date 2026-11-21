@@ -1,0 +1,230 @@
+package components
+
+import (
+	"strconv"
+
+	"agent-manager/internal/web/view"
+)
+
+// MachinesScreen is the fleet inventory: every machine that reported a sync,
+// filterable by what it has installed.
+templ MachinesScreen(m view.Machines) {
+	<div class="am-header">
+		<div class="am-header-text">
+			<h1 class="am-h1">Machines</h1>
+			<p class="am-lede">
+				Every machine that reported a sync, what it has installed and when it last reported.
+				A machine that has not reported for { strconv.Itoa(m.StaleAfterDays) } days is stale.
+			</p>
+		</div>
+	</div>
+	if m.Notice != nil {
+		<div class={ NoticeClass(*m.Notice) } id="machines-notice">{ m.Notice.Text }</div>
+	}
+	@machineFilters(m.Query)
+	if m.Refused {
+		<div class="am-empty am-empty-auth" id="machines-refused">
+			This credential may not read the machine inventory.
+		</div>
+	} else if m.Unavailable {
+		<div class="am-notice am-notice-dan" id="machines-unavailable">
+			<p class="am-note">The hub's api did not answer, so machines cannot be listed. Retry in a moment.</p>
+		</div>
+	} else if m.Missing {
+		<div class="am-empty" id="machines-missing">
+			No such package, version or profile, or not one you can read.
+		</div>
+	} else {
+		<section class="am-gov-card" id="machines-list">
+			<div class="am-section-head">
+				<div class="am-section-title">Machines</div>
+				<div class="am-section-note">{ view.MachineCount(m.Total) }</div>
+			</div>
+			<div class="am-org-row am-org-row-head">
+				<div>Machine</div>
+				<div>Profile</div>
+				<div>Last seen</div>
+				<div>Reported by</div>
+			</div>
+			for _, row := range m.Rows {
+				<div class="am-org-row" id={ "machine-" + row.ID }>
+					<div>
+						<a href={ templ.SafeURL(row.Href()) }>{ row.Hostname }</a>
+						<span class="am-toggle-note">{ row.Platform() }</span>
+					</div>
+					<div class="am-org-cell-mono">{ row.Revision() }</div>
+					<div>
+						{ row.LastSeen }
+						if row.Stale {
+							<span class="am-pill am-pill-warn">stale</span>
+						}
+					</div>
+					<div class="am-toggle-note">{ row.Reporter() }</div>
+				</div>
+			}
+			if len(m.Rows) == 0 {
+				<div class="am-empty" id="machines-empty">
+					if m.Query.Filtered() {
+						No machine you can see matches these filters.
+					} else {
+						No machine you can see has reported a sync yet.
+					}
+				</div>
+			}
+			if m.Pages() > 1 {
+				<div class="am-pager">
+					<span>Page { strconv.Itoa(m.Page) } of { strconv.Itoa(m.Pages()) }</span>
+					if m.Page > 1 {
+						<a class="am-pager-link" href={ templ.SafeURL(m.Query.Href(m.Page - 1)) }>Previous</a>
+					} else {
+						<span class="am-pager-link am-pager-off">Previous</span>
+					}
+					if m.Page < m.Pages() {
+						<a class="am-pager-link" href={ templ.SafeURL(m.Query.Href(m.Page + 1)) }>Next</a>
+					} else {
+						<span class="am-pager-link am-pager-off">Next</span>
+					}
+				</div>
+			}
+		</section>
+	}
+}
+
+// machineFilters is a plain GET form: every filter lives in the URL.
+templ machineFilters(q view.MachineQuery) {
+	<form method="get" action="/machines" class="am-org-form-row" id="machines-filters">
+		<input class="am-input" type="text" name="package" value={ q.Package } placeholder="namespace/name" aria-label="Package"/>
+		<input class="am-input" type="text" name="version" value={ q.Version } placeholder="version" aria-label="Version"/>
+		<input class="am-input" type="text" name="profile" value={ q.Profile } placeholder="profile" aria-label="Profile"/>
+		<select class="am-input" name="stale" aria-label="Staleness">
+			<option value="" selected?={ q.Stale == "" }>Any age</option>
+			<option value="false" selected?={ q.Stale == "false" }>Reporting</option>
+			<option value="true" selected?={ q.Stale == "true" }>Stale</option>
+		</select>
+		<button type="submit" class="am-btn">Filter</button>
+		if q.Filtered() {
+			<a class="am-chip" href="/machines">Clear filters</a>
+		}
+	</form>
+}
+
+// MachineScreen is one machine: what it reported, what it holds per target,
+// and what its last sync of each profile did not place.
+templ MachineScreen(d view.MachineDetail) {
+	if d.Missing {
+		<div class="am-empty" id="machine-missing">No such machine, or not one you may see.</div>
+	} else if d.Refused {
+		<div class="am-empty am-empty-auth" id="machine-refused">This credential may not read the machine inventory.</div>
+	} else if d.Unavailable {
+		<div class="am-notice am-notice-dan" id="machine-unavailable">
+			<p class="am-note">The hub's api did not answer, so this machine cannot be shown. Retry in a moment.</p>
+		</div>
+	} else {
+		<div class="am-header">
+			<div class="am-header-text">
+				<h1 class="am-h1">
+					{ d.Machine.Hostname }
+					if d.Machine.Stale {
+						<span class="am-pill am-pill-warn" id="machine-stale">stale</span>
+					}
+				</h1>
+				<p class="am-lede">{ d.Machine.Platform() }</p>
+			</div>
+			<div class="am-actions">
+				<form method="post" action={ templ.SafeURL(d.ForgetHref()) }>
+					<button type="submit" class="am-btn">Forget machine</button>
+				</form>
+			</div>
+		</div>
+		<div class="am-screen-body">
+			<section class="am-gov-card" id="machine-facts">
+				<div class="am-gov-body am-gov-body-stack">
+					<div class="am-kv">
+						<div class="am-kv-key">Last seen</div>
+						<div class="am-kv-val">{ d.Machine.LastSeen }</div>
+					</div>
+					<div class="am-kv">
+						<div class="am-kv-key">Last sync</div>
+						<div class="am-mono am-kv-val">{ d.Machine.Revision() }</div>
+					</div>
+					<div class="am-kv">
+						<div class="am-kv-key">Reported by</div>
+						<div class="am-kv-val">{ d.Machine.Reporter() }</div>
+					</div>
+					<div class="am-kv">
+						<div class="am-kv-key">Machine id</div>
+						<div class="am-mono am-kv-val">{ d.Machine.ID }</div>
+					</div>
+				</div>
+			</section>
+			<section class="am-gov-card" id="machine-installs">
+				<div class="am-section-head">
+					<div class="am-section-title">Installed</div>
+					<div class="am-section-note">{ strconv.Itoa(len(d.Installs)) }</div>
+				</div>
+				for _, group := range d.ByTarget() {
+					<div class="am-org-row am-org-row-head" id={ "machine-target-" + group.Target }>
+						<div>{ group.Target }</div>
+						<div>Version</div>
+						<div>Profile</div>
+						<div></div>
+					</div>
+					for _, inst := range group.Installs {
+						<div class="am-org-row">
+							<div><a class="am-mono" href={ view.PackageHref(inst.Package) }>{ inst.Package }</a></div>
+							<div class="am-org-cell-mono">{ inst.Version }</div>
+							<div class="am-org-cell-mono">{ inst.Profile }</div>
+							<div></div>
+						</div>
+					}
+				}
+				if len(d.Installs) == 0 {
+					<div class="am-empty" id="machine-no-installs">Nothing you can read is installed here.</div>
+				}
+			</section>
+			<section class="am-gov-card" id="machine-skips">
+				<div class="am-section-head">
+					<div class="am-section-title">Skipped</div>
+					<div class="am-section-note">{ strconv.Itoa(len(d.Skipped)) }</div>
+				</div>
+				for _, sk := range d.Skipped {
+					<div class="am-org-row">
+						<div class="am-org-cell-mono">{ sk.What() }</div>
+						<div class="am-org-cell-mono">{ sk.Profile }</div>
+						<div class="am-toggle-note">{ sk.Reason }</div>
+						<div></div>
+					</div>
+				}
+				if len(d.Skipped) == 0 {
+					<div class="am-empty" id="machine-no-skips">The last sync of each profile placed everything.</div>
+				}
+			</section>
+		</div>
+	}
+}
+
+// AffectedMachinesPanel answers "which machines run this", per version on a
+// package and for one version on a finding.
+templ AffectedMachinesPanel(a view.AffectedMachines) {
+	<section class="am-section" id="affected-machines">
+		<div class="am-section-head">
+			<div class="am-section-title">Affected machines</div>
+			if !a.Unavailable {
+				<div class="am-section-note"><a href={ templ.SafeURL(a.Href()) }>{ a.Count() }</a></div>
+			}
+		</div>
+		if a.Unavailable {
+			<p class="am-note" id="affected-unavailable">The hub's api did not answer, so machines could not be counted.</p>
+		} else if a.Version == "" {
+			for _, v := range a.Versions {
+				<div class="am-kv">
+					<div class="am-mono am-kv-key">{ v.Version }</div>
+					<div class="am-kv-val"><a href={ templ.SafeURL(a.VersionHref(v.Version)) }>{ view.MachineCount(v.Machines) }</a></div>
+				</div>
+			}
+			if len(a.Versions) == 0 {
+				<p class="am-note">No machine you can see has this package installed.</p>
+			}
+		}
+	</section>
+}

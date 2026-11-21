@@ -18,18 +18,8 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// T015 — the compose split (FR-130, FR-132, SC-110).
-//
-// The split is a claim about two files that only Compose can settle: that the
-// infrastructure half is a whole project on its own, that the argument-free
-// command still sees both halves, and that the host ports now handed out from two
-// files do not collide. None of it is visible from a Go build, and all of it
-// breaks silently — an unresolvable alias, a service quietly redefined, a port
-// claimed twice: each shows up at boot as a missing container, not as a parse
-// error anyone reads.
-//
-// Integration-tagged because it needs the docker CLI. It runs `config`, which
-// parses and merges and starts nothing.
+// These tests check the compose.yaml / compose.infra.yaml split, which breaks
+// silently at boot rather than at parse time. They only run `config`.
 
 const (
 	rootComposeFile  = "compose.yaml"
@@ -47,26 +37,19 @@ func TestTheInfrastructureComposeFileIsAWholeProjectAlone(t *testing.T) {
 	require.NoError(t, err, services)
 	require.ElementsMatch(t,
 		[]string{
-			"postgres", "minio", "minio-init", "dex", "glauth", "migrate",
-			// Third-party, built by nothing here, and reads only the queue
-			// database — and unprofiled, so `up` on this file alone brings it.
+			"postgres", "postgres-init", "minio", "minio-init", "dex", "glauth", "migrate",
+			// Reads only the queue database, and is unprofiled so `up` on this file brings it.
 			"queue-ui",
 		},
 		lines(services),
-		"FR-129 fixes what infrastructure means; this is the list")
+		"this is what infrastructure means")
 }
 
 func TestBothComposeFilesNameTheSameProject(t *testing.T) {
 	root := repoRootForCompose(t)
 
-	// The other half of "a whole project alone": started by itself the infra file
-	// has to land in the project the roles come up in afterwards, or they get a
-	// different network and cannot resolve `postgres`.
-	//
-	// Read from the raw keys, because the rendered name is not evidence. Delete
-	// `name` and Compose fills it in from the directory — which in a normal clone
-	// of this repo is also `agent-manager`, so asserting on `config` output holds
-	// everywhere except in the `am/` clone of the one person it protects.
+	// Otherwise the roles land on a different network and cannot resolve `postgres`.
+	// Raw keys, because Compose defaults the rendered name from the directory.
 	app := declaredProjectName(t, root, rootComposeFile)
 	require.NotEmpty(t, app, "%s declares no name, so it takes whatever the directory is called", rootComposeFile)
 	require.Equal(t, app, declaredProjectName(t, root, infraComposeFile),
@@ -77,20 +60,15 @@ func TestTheArgumentFreeCommandStillSeesBothComposeFiles(t *testing.T) {
 	root := repoRootForCompose(t)
 	requireDockerCLI(t)
 
-	// No -f and no profile: the single documented command (FR-132).
+	// No -f and no profile: the single documented command.
 	out, err := compose(t, root, "config", "--services")
 	require.NoError(t, err, out)
 	seen := lines(out)
 
-	// One name from each file, so a broken `include:` fails here rather than at
-	// `up` — the whole reason R4 chose `include:` over COMPOSE_FILE.
 	require.Contains(t, seen, "postgres", "compose.infra.yaml is not being included")
 	require.Contains(t, seen, "api", "compose.yaml's own services are missing")
 
-	// And the stronger version: every service either file declares is reachable,
-	// profiles included. The profile list is read back from Compose rather than
-	// hard-coded, so removing the `workers` profile in a later layer does not
-	// have to touch this test.
+	// Every declared service is reachable, with all profiles enabled.
 	profiles, err := compose(t, root, "config", "--profiles")
 	require.NoError(t, err, profiles)
 
@@ -109,10 +87,7 @@ func TestTheArgumentFreeCommandStillSeesBothComposeFiles(t *testing.T) {
 func TestNoServiceIsDeclaredInBothComposeFiles(t *testing.T) {
 	root := repoRootForCompose(t)
 
-	// Needs no docker: Compose MERGES a service declared in both files, keeping
-	// the including file's values and reporting nothing at all. So a service left
-	// behind by an incomplete move is invisible to `config` — the only place it
-	// can be caught is the raw keys of the two files.
+	// Compose silently merges a service declared in both files, so only the raw keys can catch it.
 	app := declaredServices(t, root, rootComposeFile)
 	infra := declaredServices(t, root, infraComposeFile)
 
@@ -129,17 +104,10 @@ func TestNoTwoServicesClaimTheSameHostPort(t *testing.T) {
 	root := repoRootForCompose(t)
 	requireDockerCLI(t)
 
-	// Compose does not police this. postgres republished as "8082:5432" alongside
-	// api renders cleanly and `config` exits 0; it fails at `up`, on whichever
-	// service loses the race, and the ports are spread over two files now so
-	// whoever edits one cannot see the other's. 003's quickstart really did put
-	// the api and the River UI both on 8082.
+	// `config` accepts a duplicate host port; it only fails at `up`.
 	profiles, err := compose(t, root, "config", "--profiles")
 	require.NoError(t, err, profiles)
 
-	// Every combination, not just everything-enabled. A profile can only add
-	// services, so the full set ought to be a superset of the rest — but that is
-	// Compose's rule rather than this repo's, and a subset costs one `config`.
 	for _, enabled := range profileCombinations(lines(profiles)) {
 		t.Run(profileRunName(enabled), func(t *testing.T) {
 			args := []string{}
@@ -162,8 +130,7 @@ func TestNoTwoServicesClaimTheSameHostPort(t *testing.T) {
 			claims := map[string][]string{}
 			for name, service := range doc.Services {
 				for _, port := range service.Ports {
-					// An unpublished port is not a claim on port 0: postgres asks
-					// for an ephemeral host port, and two of those cannot collide.
+					// Ephemeral host ports cannot collide.
 					if port.Published == "" || port.Published == "0" {
 						continue
 					}
@@ -187,21 +154,8 @@ func TestNoTwoServicesClaimTheSameHostPort(t *testing.T) {
 	}
 }
 
-// TestExactlyTwoServicesHoldTheSessionMintSecret is contracts/auth.md's count,
-// asserted on the MERGED configuration rather than on the anchor.
-//
-// The anchor is not the property. Compose merges, includes and interpolates, so
-// what a container gets is not what the file reads — a service could pick the
-// value up from an `<<:` somebody widened, from an env_file, or from a second
-// anchor with the same string in it, and the file would still look right.
-//
-// Both halves of the count matter and they fail differently. Fewer than two and
-// The dashboard's own prefix and the prefix the web role serves it under are
-// two settings in two files that have to be one value. They cannot be derived
-// from each other — one is a Go constant compiled into the role, the other is
-// an environment variable on a third-party image — so the only thing that
-// keeps them together is this assertion. Wrong, and the embedded dashboard
-// renders a frame of 404s while every other test passes.
+// The dashboard's PATH_PREFIX and the web role's embed prefix live in two places
+// that cannot be derived from each other; this assertion is what keeps them equal.
 func TestTheQueueDashboardIsServedUnderThePrefixTheWebRoleEmbedsIt(t *testing.T) {
 	root := repoRootForCompose(t)
 	requireDockerCLI(t)
@@ -230,11 +184,9 @@ func TestTheQueueDashboardIsServedUnderThePrefixTheWebRoleEmbedsIt(t *testing.T)
 			"network, and the host mapping is for a browser")
 }
 
-// sign-in fails at the mint with both roles looking correctly configured. More
-// than two and there is a third process on this network that can ask the api to
-// open a session for any identity it can produce a token for — which is the whole
-// of the mint's authentication, so a worker holding it is a worker that can mint
-// itself an administrator's session.
+// Asserted on the merged configuration, not the YAML anchor, since merges,
+// includes and env_files can hand the secret to a service the file does not show.
+// Any third holder could mint itself an administrator's session.
 func TestExactlyTwoServicesHoldTheSessionMintSecret(t *testing.T) {
 	root := repoRootForCompose(t)
 	requireDockerCLI(t)
@@ -282,8 +234,7 @@ func TestExactlyTwoServicesHoldTheSessionMintSecret(t *testing.T) {
 			"fails at the mint with both roles looking correctly configured")
 }
 
-// Every subset of the profiles Compose reported, the empty one — the documented
-// argument-free command — included.
+// profileCombinations returns every subset of profiles, including the empty one.
 func profileCombinations(profiles []string) [][]string {
 	slices.Sort(profiles)
 
@@ -343,22 +294,10 @@ func readComposeFile(t *testing.T, root, file string) []byte {
 	return raw
 }
 
-// The variables Compose is allowed to see, built up from nothing rather than
-// filtered down from the caller's environment.
-//
-// COMPOSE_FILE, COMPOSE_PROFILES, COMPOSE_PROJECT_NAME and COMPOSE_ENV_FILES
-// answer, from the environment, the very questions this file asks Compose: with
-// COMPOSE_FILE exported, every assertion here passes against a compose.yaml whose
-// `include:` has been deleted, and COMPOSE_PROJECT_NAME can supply a project name
-// no file declares. That invisibility is what R4 rejected. An allowlist is also
-// what keeps this honest for the COMPOSE_* variables added after it was written,
-// and for anything a future `${...}` in either file would interpolate.
-//
-// What is kept names the DAEMON, never the files or the project: strip these and
-// there is no socket to reach, so every test here errors instead of asserting.
-// Adding a COMPOSE_* variable back to this list re-opens the hole.
+// composeDaemonEnv is an allowlist naming only the daemon. COMPOSE_* variables
+// such as COMPOSE_FILE would answer the very questions these tests ask, so
+// never add one here.
 var composeDaemonEnv = []string{
-	// Which daemon, and how to reach and authenticate to it.
 	"DOCKER_HOST",
 	"DOCKER_CONTEXT",
 	"DOCKER_CONFIG",
@@ -396,9 +335,7 @@ func compose(t *testing.T, root string, args ...string) (string, error) {
 	return string(out), err
 }
 
-// Kept apart from compose(): the combined output is what makes a failure readable
-// everywhere else, but one deprecation notice on stderr would be spliced into the
-// middle of the JSON.
+// composeJSON keeps stderr separate so a deprecation notice cannot corrupt the JSON.
 func composeJSON(t *testing.T, root string, args ...string) []byte {
 	t.Helper()
 
@@ -411,10 +348,8 @@ func composeJSON(t *testing.T, root string, args ...string) []byte {
 	return stdout.Bytes()
 }
 
-// The unit-test CI job has no docker, and this file's build tag is not what
-// separates the two jobs — the integration job is the one with a daemon. Skipping
-// on a missing binary keeps `go test -tags=integration ./internal/cli/` runnable
-// anywhere, which matters because these assertions are about text files.
+// requireDockerCLI skips rather than fails, since the build tag alone does not
+// guarantee a docker CLI.
 func requireDockerCLI(t *testing.T) {
 	t.Helper()
 

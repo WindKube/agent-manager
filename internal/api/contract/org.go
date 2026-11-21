@@ -12,11 +12,14 @@ type OrganizationProvider struct {
 }
 
 type OrganizationPolicy struct {
-	ScanGate              string `json:"scanGate" enum:"block,approval,warn-with-override" doc:"What a flagged verdict does to the next resolution."`
-	RequireSignedBundles  bool   `json:"requireSignedBundles" doc:"A version with no recorded signature reference is excluded from every resolution while this is set."`
-	CommunityNeedsReview  bool   `json:"communityNeedsReview" doc:"A version from a non-verified publisher is flagged for review rather than becoming immediately distributable."`
-	RescanOnNewVersion    bool   `json:"rescanOnNewVersion" doc:"Publishing a version rescans the package's other versions under the running rule pack."`
-	AllowPersonalProfiles bool   `json:"allowPersonalProfiles"`
+	ScanGate             string `json:"scanGate" enum:"block,approval,warn-with-override" doc:"What a flagged verdict does to the next resolution."`
+	RequireSignedBundles bool   `json:"requireSignedBundles" doc:"While set, a version resolves only if its Sigstore signature verified against the downloaded archive and its signer matches the package's expected signer. A package with no expected signer configured resolves nothing; packagesWithoutExpectedSigner counts them."`
+	// PackagesWithoutExpectedSigner is how many packages with a published
+	// version would resolve nothing under RequireSignedBundles.
+	PackagesWithoutExpectedSigner int  `json:"packagesWithoutExpectedSigner" doc:"Packages with a published version and no expected signer: every one of them is excluded from resolution while requireSignedBundles is set." example:"3"`
+	CommunityNeedsReview          bool `json:"communityNeedsReview" doc:"A version from a non-verified publisher is flagged for review rather than becoming immediately distributable."`
+	RescanOnNewVersion            bool `json:"rescanOnNewVersion" doc:"Publishing a version rescans the package's other versions under the running rule pack."`
+	AllowPersonalProfiles         bool `json:"allowPersonalProfiles"`
 }
 
 type GroupRoleMapping struct {

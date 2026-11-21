@@ -1,15 +1,5 @@
 package queries
 
-// 001 US5 scenario 1 in isolation: a change is NOT DURABLE until a revision is
-// published, so the screen has to be able to say which rows are still only
-// drafts.
-//
-// It is pure logic over two documents and it gets a container-free test because
-// the interesting cases are the ones a fixture is least likely to contain: a
-// profile with no revisions at all, a floating entry that drifted because the
-// CATALOG moved rather than because anybody edited, an exclusion whose reason
-// changed, and the two things this deliberately does NOT count as a change.
-
 import (
 	"testing"
 
@@ -120,8 +110,7 @@ func TestWhetherAProfileHasAnythingToPublishComparesWhatWouldReachAMachine(t *te
 				ID: "acme/review",
 				Skip: &contract.LockfileSkip{
 					ID: "acme/review", Reason: "flagged-awaiting-approval",
-					// The rule pack reworded the finding. Not a change anybody made,
-					// and not a revision anybody owes.
+					// Reworded by the rule pack: not a change anybody owes a revision for.
 					Detail: "SH-NET-002 in postinstall.sh, line 41",
 				},
 			}},
@@ -164,10 +153,8 @@ func TestWhetherAProfileHasAnythingToPublishComparesWhatWouldReachAMachine(t *te
 			wantRows:  []bool{false},
 		},
 		{
-			// Unreachable today — `am_api` holds no DELETE on profile_entry — and
-			// covered because the day that grant widens, a removal is the one edit
-			// that changes the lockfile while leaving every surviving row identical
-			// to what was published.
+			// Unreachable while `am_api` holds no DELETE on profile_entry; covered
+			// for when that grant widens.
 			name:    "a package the head revision holds and the draft does not is unpublished, on no row",
 			entries: []contract.ProfileEntry{clean},
 			head: contract.Lockfile{Entries: []contract.LockfileEntry{

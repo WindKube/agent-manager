@@ -24,6 +24,8 @@ repos:
         # The compose file and the workflows use no custom tags, but multi-document
         # YAML is allowed so this does not become a reason to disable the hook.
         args: [--allow-multiple-documents]
+        # Helm templates are Go templates that render to YAML, not YAML.
+        exclude: ^deploy/helm/[^/]+/templates/
       - id: check-vcs-permalinks
       - id: destroyed-symlinks
       - id: detect-private-key
@@ -49,6 +51,7 @@ repos:
     hooks:
       - id: yamllint
         args: [--strict, -c, .yamllint.yaml]
+        exclude: ^deploy/helm/[^/]+/templates/
 
   # --- GitHub Actions ------------------------------------------------------
   - repo: https://github.com/rhysd/actionlint

@@ -10,6 +10,7 @@ func NetworkAllowlist() Check {
 			"scp and similar commands, or a bare URL in prose — against the version's declared " +
 			"network capability set, and flags one outside it. Where nothing was declared, or " +
 			"where a host is hidden behind a shell expansion this analysis cannot resolve, " +
-			"every host is flagged rather than silently passed.",
+			"every host is flagged rather than silently passed. A remote MCP server is flagged " +
+			"when its host is neither the manifest's homepage or repository host nor allowlisted.",
 	}
 }

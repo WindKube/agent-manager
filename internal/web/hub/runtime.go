@@ -9,8 +9,7 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// Runtime reads GET /v1/runtime and returns view.Runtime directly: there is
-// exactly one caller, so no separate hub-owned type is worth the indirection.
+// Runtime reads GET /v1/runtime.
 func (c *Client) Runtime(ctx context.Context) (view.Runtime, error) {
 	resp, err := c.api.GetRuntimeWithResponse(ctx)
 	if err != nil {
@@ -55,8 +54,7 @@ func queueCounts(from apiclient.QueueSummary) view.QueueCounts {
 	}
 }
 
-// derefTime is the zero value for a nil pointer, which view.Timestamp
-// already renders as "" rather than as the Unix epoch.
+// derefTime returns the zero value for nil, which view.Timestamp renders as "".
 func derefTime(value *time.Time) time.Time {
 	if value == nil {
 		return time.Time{}

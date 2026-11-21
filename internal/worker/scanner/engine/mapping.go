@@ -9,7 +9,6 @@ import (
 	"agent-manager/internal/worker/scanner/rules"
 )
 
-// labels name the engine's analyzers in the checks matrix.
 var labels = map[string]string{
 	"static":      "Static rules and signatures",
 	"bytecode":    "Compiled Python",
@@ -18,18 +17,9 @@ var labels = map[string]string{
 	"behavioral":  "Dataflow",
 }
 
-// explanations say what each of this engine's own analyzers looks for, in
-// general. Grounded in what this project can actually verify: the golden
-// reports under testdata/ (real responses from the pinned engine) and
-// specs/004-scanner-engine/spec.md, not this build's own guess at a
-// third-party's detection logic. "pipeline" says so rather than guessing,
-// because neither source describes it more precisely than "static".
-//
-// The individual rule ids these analyzers raise (YARA_prompt_injection_generic
-// and the like) are the pinned engine's own and not enumerable here, so this
-// explains the ANALYZER, the thing this project's own code names and can keep
-// a promise about; the per-finding prose for one of its rules comes from the
-// engine's own response instead (detail below).
+// explanations describe analyzers, not the engine's rule ids, which are not
+// enumerable here. They are grounded in the golden reports under testdata/
+// rather than guesses about third-party detection logic.
 var explanations = map[string]string{
 	"static": "Matches the bundle's files against the engine's signature and pattern rules — " +
 		"YARA byte signatures plus built-in checks — covering prompt injection, tool-chaining " +
@@ -49,10 +39,8 @@ var explanations = map[string]string{
 		"boundaries — a chain a line-by-line pattern cannot follow.",
 }
 
-// severities maps the engine's five onto the schema's three. An unrecognised
-// value maps to high rather than low: the engine version is pinned, so a
-// severity this build has not seen means the response changed under it, and
-// the loud outcome is the safe one.
+// severity maps an unrecognised value to high: with a pinned engine it means the
+// response changed, and the loud outcome is the safe one.
 func severity(raw string) rules.Severity {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "critical", "high":
@@ -77,13 +65,9 @@ func rank(s rules.Severity) int {
 	}
 }
 
-// translate turns one engine report into this project's vocabulary.
-//
-// Findings below the threshold are counted on their analyzer's check row
-// instead of being stored, which is what stops a pile of skill-quality
-// complaints flagging a version. The count of findings that PARSED — not the
-// count stored — is what the response cross-check compares, so thresholding
-// never looks like a shape mismatch.
+// translate counts below-threshold findings on the check row instead of storing
+// them. The cross-check compares parsed findings, not stored ones, so
+// thresholding never looks like a shape mismatch.
 func translate(rep report, threshold rules.Severity) (Result, error) {
 	type bucket struct {
 		findings []checks.Finding
@@ -105,9 +89,7 @@ func translate(rep report, threshold rules.Severity) (Result, error) {
 		name := analyzerName(raw.Analyzer)
 		slot, ok := buckets[name]
 		if !ok {
-			// An analyzer this build does not list still had its findings
-			// reported; dropping them would be the one outcome worse than an
-			// unexpected row.
+			// Never drop findings from an analyzer this build does not list.
 			slot = &bucket{}
 			buckets[name] = slot
 		}
@@ -144,10 +126,8 @@ func translate(rep report, threshold rules.Severity) (Result, error) {
 	return result, nil
 }
 
-// crossCheck compares what this build parsed against the engine's own summary
-// of the same scan. A count the engine reported but this build could not read
-// is a response shape it does not understand, and the alternative to erroring
-// is recording a clean scan for a package the engine flagged.
+// crossCheck errors when the engine's summary reports findings this build could
+// not parse, rather than recording a clean scan for a flagged package.
 func crossCheck(rep report, parsed int) error {
 	if rep.FindingsCount > 0 && parsed == 0 {
 		return fmt.Errorf("%w: the engine counted %d findings and none parsed",
@@ -187,8 +167,6 @@ func title(raw *finding) string {
 	return raw.RuleID
 }
 
-// detail carries the engine's prose plus its remediation. Both are the
-// engine's own text about its own rule, not bundle content.
 func detail(raw *finding) string {
 	parts := make([]string, 0, 3)
 	if d := strings.TrimSpace(raw.Description); d != "" {
@@ -222,8 +200,7 @@ func Label(name string) string {
 	return "Engine analyzer " + name
 }
 
-// Explain says what one analyzer looks for, in general, for the checks
-// matrix's hover text.
+// Explain says what one analyzer looks for, for the checks matrix.
 func Explain(name string) string {
 	if e, ok := explanations[name]; ok {
 		return e

@@ -8,8 +8,7 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// Storage reads GET /v1/storage and returns view.Storage directly: there is
-// exactly one caller, so no separate hub-owned type is worth the indirection.
+// Storage reads GET /v1/storage.
 func (c *Client) Storage(ctx context.Context) (view.Storage, error) {
 	resp, err := c.api.GetStorageWithResponse(ctx)
 	if err != nil {

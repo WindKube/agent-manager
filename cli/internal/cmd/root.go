@@ -12,10 +12,7 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/output"
 )
 
-// Stamped at build time with -ldflags -X, the same way the hub's
-// internal/cli does it. See cli/Taskfile.yaml for the exact flags; CI runs
-// `amctl version` against the built binary, so a broken stamp fails there
-// rather than in someone's release notes.
+// Stamped at build time with -ldflags -X; see cli/Taskfile.yaml.
 var (
 	Version = "dev"
 	Commit  = "none"
@@ -23,17 +20,13 @@ var (
 )
 
 // Options holds every global flag and the output streams for one invocation.
-// Constructed per NewRootCmd call, deliberately not package-level: a package
-// variable would make the verbs untestable in parallel.
+// It is per NewRootCmd call, not package-level, so verbs can be tested in parallel.
 type Options struct {
-	// Hub is --hub, empty meaning "not given"; resolving a stored default is
-	// the caller's job, not here, since `amctl version` must work without one.
-	Hub     string
-	Output  string // raw --output; parsed by PersistentPreRunE
-	Offline bool
-	Verbose bool
-	// AllowPlaintextHub is not registered under a literal: hub.New composes
-	// the refusal naming this flag, so the two names must never drift apart.
+	// Hub is --hub, empty when not given; `amctl version` must work without one.
+	Hub               string
+	Output            string // raw --output; parsed by PersistentPreRunE
+	Offline           bool
+	Verbose           bool
 	AllowPlaintextHub bool
 
 	Outcome Code // consulted only when the verb returned no error; see ExitCode
@@ -70,11 +63,9 @@ func NewRootCmd(result, diag io.Writer) (*cobra.Command, *Options) {
 			"them again when the hub says so. The hub resolves; amctl applies.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		// Version deliberately unset: cobra's --version shorthand -v collides
-		// with --verbose; `amctl version` answers this instead.
+		// Version is unset: cobra's -v shorthand would collide with --verbose.
 
-		// Replaces cobra's legacyArgs so a mistyped verb is CodeRefused, not
-		// an unmarked CodeFailure.
+		// Replaces cobra's legacyArgs so a mistyped verb is CodeRefused.
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				return Refusef("unknown command %q for %q", args[0], cmd.CommandPath())
@@ -87,7 +78,7 @@ func NewRootCmd(result, diag io.Writer) (*cobra.Command, *Options) {
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			format, err := output.ParseFormat(opts.Output)
 			if err != nil {
-				return Refusef("--output: %w", err) // flag name belongs in the message
+				return Refusef("--output: %w", err)
 			}
 			opts.streams = output.NewStreams(format, result, diag)
 			opts.streams.SetVerbose(opts.Verbose)
@@ -107,8 +98,7 @@ func NewRootCmd(result, diag io.Writer) (*cobra.Command, *Options) {
 		fmt.Sprintf("output format: %s or %s", output.FormatHuman, output.FormatJSON))
 	flags.BoolVar(&opts.Offline, "offline", false, "use only cached bundles; fail rather than reach the network")
 	flags.BoolVarP(&opts.Verbose, "verbose", "v", false, "diagnostics on stderr")
-	// Not `--insecure`: the flag name should say what it costs. Imported from
-	// hub.PlaintextFlagName so its refusal can't name a flag this file doesn't register.
+	// Named from hub.PlaintextFlagName so hub.New's refusal names a flag that exists.
 	flags.BoolVar(&opts.AllowPlaintextHub, hub.PlaintextFlagName, false,
 		"accept an http:// hub — sends the bearer token over cleartext")
 
@@ -122,16 +112,14 @@ func NewRootCmd(result, diag io.Writer) (*cobra.Command, *Options) {
 	return root, opts
 }
 
-// Main writes nothing to os.Stdout/Stderr itself — the writers are
-// arguments — so the whole CLI is exercisable from a test.
+// Main runs amctl over the given writers, so the whole CLI is exercisable from a test.
 func Main(args []string, result, diag io.Writer) Code {
 	root, opts := NewRootCmd(result, diag)
 	root.SetArgs(args)
 
 	err := root.Execute()
 	if err != nil {
-		// The only place an error is printed (SilenceErrors is on), and to the
-		// diagnostic stream: on the result stream it would corrupt the JSON a script reads.
+		// Diagnostic stream: on the result stream it would corrupt JSON output.
 		opts.Streams().Errorf("%v", err)
 	}
 	return ExitCode(opts.Outcome, err)

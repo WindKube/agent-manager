@@ -9,7 +9,8 @@
 #
 # The env blocks below ARE the credential boundary (constitution principle II).
 # Read them as a table: `web` has no DATABASE_URL and no BLOB_URL, `api` holds a
-# read-only object-store key, and only `fetcher` holds one that can write. None
+# read-only object-store key, only `fetcher` holds one that can write, and
+# `notifier` holds none. None
 # of that is an oversight to tidy up — internal/config has no field for what a
 # role must not read, so adding a line here would not even compile.
 name: agent-manager
@@ -25,6 +26,8 @@ include:
 x-observability: &observability
   AGENT_MANAGER_LOG_LEVEL: info
   AGENT_MANAGER_LOG_FORMAT: console
+  # Empty leaves tracing off; `task up:observability` points it at jaeger.
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
 
 x-queue-url: &queue-url
   AGENT_MANAGER_RIVER_DATABASE_URL: >-
@@ -84,6 +87,15 @@ x-blob-write: &blob-write
   AWS_ACCESS_KEY_ID: am-fetcher
   AWS_SECRET_ACCESS_KEY: local-development-minio-writer
   AWS_REGION: us-east-1
+
+# A worker's only listener is the metrics one (AGENT_MANAGER_METRICS_ADDR,
+# :9090 by default), so its liveness probe is that listener's /healthz.
+x-worker-healthcheck: &worker-healthcheck
+  test: ["CMD", "/usr/local/bin/agent-manager", "healthcheck", "--url", "http://127.0.0.1:9090/healthz"]
+  interval: 15s
+  timeout: 5s
+  retries: 3
+  start_period: 20s
 
 x-app-image: &app-image
   image: agent-manager:local
@@ -154,6 +166,8 @@ services:
       # this role holds none. Unset it and the River Dashboard entry renders
       # disabled with the reason on it rather than disappearing.
       AGENT_MANAGER_RIVER_UI_URL: http://queue-ui:8080
+      # A local-development value, so a sign-in survives `docker compose restart web`.
+      AGENT_MANAGER_WEB_COOKIE_KEY: bG9jYWwtZGV2ZWxvcG1lbnQtd2ViLWNvb2tpZS1rZXktMzI=
     command: ["serve", "web"]
     healthcheck:
       test: ["CMD", "/usr/local/bin/agent-manager", "healthcheck", "--url", "http://127.0.0.1:8080/healthz"]
@@ -176,12 +190,13 @@ services:
       <<: [*observability, *queue-url, *blob-write]
       AGENT_MANAGER_DATABASE_URL: >-
         postgres://am_fetcher:local-development-am-fetcher@postgres:5432/agent_manager?sslmode=disable
+      # Optional. Without it GitHub allows 60 API requests an hour, which upstream tracking exhausts quickly.
+      AGENT_MANAGER_GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      # Optional path to a Sigstore trusted_root.json. Empty fetches the public-good root over TUF
+      # (tuf-repo-cdn.sigstore.dev, through the outbound client) on the first signed fetch and daily after.
+      AGENT_MANAGER_SIGSTORE_TRUSTED_ROOT: ${SIGSTORE_TRUSTED_ROOT:-}
     command: ["worker", "run", "fetcher"]
-    # A worker has no HTTP listener yet, so the image's HEALTHCHECK — which probes
-    # the api's port — would mark it unhealthy forever. T109 adds the metrics and
-    # liveness listener on AGENT_MANAGER_METRICS_ADDR; the probe comes back then.
-    healthcheck:
-      disable: true
+    healthcheck: *worker-healthcheck
     restart: unless-stopped
 
   scanner:
@@ -214,11 +229,23 @@ services:
     volumes:
       - ./internal/worker/scanner/rulepack:/etc/agent-manager/rulepack:ro
     command: ["worker", "run", "scanner"]
-    # A worker has no HTTP listener yet, so the image's HEALTHCHECK — which probes
-    # the api's port — would mark it unhealthy forever. T109 adds the metrics and
-    # liveness listener on AGENT_MANAGER_METRICS_ADDR; the probe comes back then.
-    healthcheck:
-      disable: true
+    healthcheck: *worker-healthcheck
+    restart: unless-stopped
+
+  # The notifier signs and posts webhooks. It reaches the network through the
+  # same SSRF-guarded client as the fetcher and holds no object-store key.
+  notifier:
+    <<: *app-image
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: [*observability, *queue-url]
+      AGENT_MANAGER_DATABASE_URL: >-
+        postgres://am_notifier:local-development-am-notifier@postgres:5432/agent_manager?sslmode=disable
+      AGENT_MANAGER_WEBHOOK_TIMEOUT: 10s
+    command: ["worker", "run", "notifier"]
+    healthcheck: *worker-healthcheck
     restart: unless-stopped
 
   # seed writes bundle bytes as well as rows, so it holds the writer key. It is a

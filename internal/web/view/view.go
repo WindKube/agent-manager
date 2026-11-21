@@ -1,7 +1,5 @@
-// Package view holds the web role's view models: the contract between a
-// data source and the templ components. The web role never sees a store
-// row — a CatalogPage is assembled by whatever implements
-// web.CatalogSource, and the components render nothing else.
+// Package view holds the web role's view models: the contract between the hub client and the templ
+// components. The web role never sees a store row.
 package view
 
 import (
@@ -23,7 +21,6 @@ const (
 	KindSkill  Kind = "skill"
 )
 
-// Label is the design's badge text for a kind.
 func (k Kind) Label() string {
 	if k == KindPlugin {
 		return "Plugin"
@@ -40,8 +37,6 @@ const (
 	ScanPending Scan = "pending"
 )
 
-// Label and Tone give the design's pill: clean to ok, flagged to dan, anything
-// else to warn.
 func (s Scan) Label() string {
 	switch s {
 	case ScanClean:
@@ -64,9 +59,7 @@ func (s Scan) Tone() string {
 	}
 }
 
-// Kind and Status filters are single-selection. The strings are the chip
-// labels, also what the URL and datastar signals carry, so there is one
-// spelling of each value end to end.
+// Kind and Status filters are single-selection; the chip labels are also what the URL and datastar signals carry.
 const (
 	KindFilterAll     = "All"
 	KindFilterPlugins = "Plugins"
@@ -98,7 +91,6 @@ const (
 	DirAsc  SortDir = "asc"
 )
 
-// Arrow is the glyph appended to the active column header only.
 func (d SortDir) Arrow() string {
 	if d == DirAsc {
 		return " ↑"
@@ -106,13 +98,9 @@ func (d SortDir) Arrow() string {
 	return " ↓"
 }
 
-// DefaultPageSize is what the design's catalog shows: its ten packages fit on
-// one page. Paging is a plain server round trip.
 const DefaultPageSize = 10
 
-// CatalogQuery is one catalog request. Categories are disjunctive and Tags
-// are conjunctive — the asymmetry is deliberate: categories widen a search,
-// tags narrow it.
+// CatalogQuery is one catalog request. Categories are disjunctive (widen) and Tags conjunctive (narrow), deliberately.
 type CatalogQuery struct {
 	Text       string
 	Kind       string
@@ -124,8 +112,7 @@ type CatalogQuery struct {
 	Page       int
 }
 
-// Normalise fills the defaults so a zero query is the design's default view and
-// a hostile query cannot ask for an unbounded page.
+// Normalise fills defaults so a zero query is the default view and a hostile query is bounded.
 func (q CatalogQuery) Normalise() CatalogQuery {
 	q.Text = strings.TrimSpace(q.Text)
 	if !contains(KindFilters, q.Kind) {
@@ -150,8 +137,7 @@ func (q CatalogQuery) Normalise() CatalogQuery {
 	return q
 }
 
-// SortState reports the header state for one column: whether it is active, and
-// the direction a click would select next (descending first, then ascending).
+// SortState reports whether a column is active and the direction a click selects next (descending first).
 func (q CatalogQuery) SortState(key SortKey) (active bool, next SortDir, arrow string) {
 	if q.Sort != key {
 		return false, DirDesc, ""
@@ -162,8 +148,7 @@ func (q CatalogQuery) SortState(key SortKey) (active bool, next SortDir, arrow s
 	return true, DirDesc, q.Dir.Arrow()
 }
 
-// Row is one catalog result. Tags belong to the latest version, not the
-// package, so what lands here is already the latest version's set.
+// Row is one catalog result. Tags are the latest version's.
 type Row struct {
 	Key        string
 	ID         string
@@ -179,18 +164,12 @@ type Row struct {
 	Tags       []string
 }
 
-// Href is the row's link, built from the ID rather than the Key: the detail
-// screen is addressed by `namespace/name`, and Key is whatever the source
-// chose to identify a row by.
+// Href is built from ID, not Key: Key is whatever the source chose to identify a row by.
 func (r Row) Href() string { return PackageHref(r.ID) }
 
-// VisibilityLabel is the catalog column's text. A row here already passed
-// queries.PackageReadable to be listed at all, so unlike the change-visibility
-// control there is no gating to add — this only spells the value.
 func (r Row) VisibilityLabel() string { return visibilityLabels[r.Visibility] }
 
-// FacetOption is one checkbox in a facet menu. Count is what selecting this
-// option would yield, so it responds to every other filter.
+// FacetOption is one checkbox in a facet menu. Count is what selecting it would yield given the other filters.
 type FacetOption struct {
 	Label    string
 	Count    int
@@ -207,13 +186,10 @@ type CatalogPage struct {
 	Categories []FacetOption
 	Tags       []FacetOption
 
-	// SignedOut is the third outcome: an empty catalog is an answer, an
-	// unreachable api is a 502, and this renders because the screen is not
-	// the secret — only the rows are.
 	SignedOut bool
 }
 
-// Pages is the page count, at least one so the pager always has a current page.
+// Pages is at least one so the pager always has a current page.
 func (p CatalogPage) Pages() int {
 	size := p.PageSize
 	if size < 1 {
@@ -225,8 +201,7 @@ func (p CatalogPage) Pages() int {
 	return (p.Total + size - 1) / size
 }
 
-// ResultCount is the live count line. Signed out it counts nothing rather
-// than "0 results", a claim about the catalog.
+// ResultCount says "Signed out" rather than claiming "0 results".
 func (p CatalogPage) ResultCount() string {
 	switch {
 	case p.SignedOut:
@@ -240,10 +215,8 @@ func (p CatalogPage) ResultCount() string {
 
 func (p CatalogPage) Empty() bool { return len(p.Rows) == 0 }
 
-// CatalogNoticeFrom is a package delete's own acknowledgement, read back off
-// the redirect the same way PackageNoticeFrom is: a package delete leaves the
-// package's own detail page 404ing (its latest_version_id is cleared), so the
-// notice belongs here instead.
+// CatalogNoticeFrom is a package delete's acknowledgement; it lands on the catalog because the deleted
+// package's own page now 404s.
 func CatalogNoticeFrom(raw, id string) *Notice {
 	if raw != "package-deleted" {
 		return nil
@@ -256,7 +229,6 @@ func CatalogNoticeFrom(raw, id string) *Notice {
 	return &Notice{Tone: "ok", Text: text}
 }
 
-// SelectedSummary is the facet trigger's summary text.
 func SelectedSummary(selected []string) string {
 	switch len(selected) {
 	case 0:
@@ -277,8 +249,7 @@ func contains(haystack []string, want string) bool {
 	return false
 }
 
-// cleaned drops blanks and duplicates and orders the result, so two queries that
-// mean the same thing are the same query.
+// cleaned drops blanks and duplicates and sorts, so equivalent queries are equal.
 func cleaned(in []string) []string {
 	if len(in) == 0 {
 		return nil
@@ -300,15 +271,12 @@ func cleaned(in []string) []string {
 	return out
 }
 
-// Title is the display name of a package. It is DERIVED: `package.name` is
-// the manifest name and no column carries a human title. Title-casing the
-// hyphenated name recovers "Platform Toolkit" from "platform-toolkit" but
-// cannot recover an acronym, so "PII Redactor" renders as "Pii Redactor".
+// Title derives a display name from the manifest name, since none is stored. Acronyms are not recovered:
+// "pii-redactor" renders as "Pii Redactor".
 func Title(name string) string {
 	words := strings.FieldsFunc(name, func(r rune) bool { return r == '-' || r == '_' })
 	for i, word := range words {
-		// By rune, not byte: word[:1] on a multi-byte first character
-		// renders as U+FFFD.
+		// By rune, not byte, so a multi-byte first character survives.
 		first, size := utf8.DecodeRuneInString(word)
 		words[i] = string(unicode.ToUpper(first)) + word[size:]
 	}
@@ -318,10 +286,7 @@ func Title(name string) string {
 	return strings.Join(words, " ")
 }
 
-// Relative renders a timestamp as the Updated column reads it. The API
-// returns an instant, not a phrase, since a relative string is wrong the
-// moment anything caches it. A future timestamp reads as "just now" rather
-// than a negative age.
+// Relative renders an age against the reader's clock; a future timestamp reads as "just now".
 func Relative(at, now time.Time) string {
 	switch age := now.Sub(at); {
 	case age < time.Minute:
@@ -343,8 +308,6 @@ func Relative(at, now time.Time) string {
 	}
 }
 
-// ago is the age formatter Relative is built from, and it is NOT a
-// pluraliser: every string it returns ends in "ago".
 func ago(n int, unit string) string {
 	return plural(n, unit) + " ago"
 }
@@ -356,16 +319,13 @@ func plural(n int, unit string) string {
 	return strconv.Itoa(n) + " " + unit + "s"
 }
 
-// ErrSignedOut is a CatalogSource reporting that the caller has no usable
-// session, a state to render rather than a failure to log.
+// ErrSignedOut means the caller has no usable session: a state to render, not a failure to log.
 var ErrSignedOut = errors.New("no usable session")
 
-// tokenKey carries the browser's session token from the request into the source.
 type tokenKey struct{}
 
-// WithToken puts the caller's own session token in the context. The web
-// role holds no credential of its own, so every api call it makes is made
-// AS the person, or not at all.
+// WithToken puts the caller's session token in the context. The web role holds no credential of its own,
+// so every api call is made as the person or not at all.
 func WithToken(ctx context.Context, token string) context.Context {
 	if token == "" {
 		return ctx
@@ -373,16 +333,13 @@ func WithToken(ctx context.Context, token string) context.Context {
 	return context.WithValue(ctx, tokenKey{}, token)
 }
 
-// TokenFrom returns the caller's session token, or "" when there is none.
 func TokenFrom(ctx context.Context) string {
 	token, _ := ctx.Value(tokenKey{}).(string)
 	return token
 }
 
-// Badges are the sidebar's three counts, scoped to the viewer. A pointer to
-// one of these is what the shell holds, and nil is a request that could not
-// read them — not the same as three zeroes, which would render "0
-// packages" beside a catalog full of them.
+// Badges are the sidebar's counts, scoped to the viewer. A nil *Badges means they could not be read,
+// which must not render as zeroes.
 type Badges struct {
 	Packages     int
 	Profiles     int

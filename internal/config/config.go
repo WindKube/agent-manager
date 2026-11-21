@@ -40,22 +40,13 @@ type API struct {
 	DeviceTokenTTL        time.Duration `env:"DEVICE_TOKEN_TTL" envDefault:"1h"`
 	PublicBaseURL         string        `env:"PUBLIC_BASE_URL" envDefault:"http://localhost:8081"`
 	DeviceVerificationURL string        `env:"DEVICE_VERIFICATION_URL" envDefault:"http://localhost:8080/cli"`
-	// SessionMintSecret authenticates the one operation whose caller is a role
-	// rather than a person: web asking for a session to be minted. It has no
-	// default (a default would be a shared secret every deployment knows);
+	// SessionMintSecret authenticates web asking the API to mint a session. It
+	// has no default, since a default would be a secret every deployment knows;
 	// empty means the mint is refused.
 	SessionMintSecret string `env:"SESSION_MINT_SECRET"`
-	// BootstrapAdminGroup is the identity-provider group this deployment
-	// declares as catalog-admin, reconciled on every start of this role.
-	//
-	// It exists because a fresh hub has no way out of its own authorisation
-	// rule: mapping a group to a role requires catalog-admin (FR-101), and
-	// holding catalog-admin requires a mapping. Without this, the first person
-	// to sign in lands on the signed-in-no-role screen and the only route
-	// forward is an INSERT run by hand against the cluster.
-	//
-	// Empty means reconcile nothing, which is right for a hub whose mappings
-	// are already established.
+	// BootstrapAdminGroup is the IdP group reconciled as catalog-admin on every
+	// start. A fresh hub needs it because mapping groups to roles itself
+	// requires catalog-admin. Empty reconciles nothing.
 	BootstrapAdminGroup string `env:"BOOTSTRAP_ADMIN_GROUP"`
 }
 
@@ -65,23 +56,21 @@ type Web struct {
 
 	Addr       string `env:"WEB_ADDR" envDefault:":8080"`
 	APIBaseURL string `env:"API_BASE_URL,required,notEmpty"`
-	// PublicBaseURL is read INSTEAD of the request to decide whether session
-	// cookies are marked Secure: something upstream may terminate TLS and
-	// forward plain http, so a request alone could miss it.
+	// PublicBaseURL, not the request, decides whether session cookies are
+	// Secure, since upstream TLS termination may forward plain http.
 	PublicBaseURL     string `env:"PUBLIC_BASE_URL" envDefault:"http://localhost:8080"`
 	SessionMintSecret string `env:"SESSION_MINT_SECRET"`
-	// DevCredentialHint puts the local stack's seeded passwords on the
-	// sign-in screen. Must be stated explicitly, never derived from the
-	// issuer URL, host name or build type.
+	// DevCredentialHint shows the local stack's seeded passwords on the sign-in
+	// screen. It must be set explicitly, never inferred.
 	DevCredentialHint bool   `env:"WEB_DEV_CREDENTIAL_HINT" envDefault:"false"`
 	ProviderName      string `env:"WEB_PROVIDER_NAME"`
 	HubURL            string `env:"WEB_HUB_URL" envDefault:"http://localhost:8081"`
-	// RiverUIURL is where River's queue dashboard listens, and empty means this
-	// deployment runs none: the River Dashboard entry is then shown disabled
-	// rather than dropped. It is an operator-supplied address, never anything a
-	// request can influence, and it is not a credential — the dashboard holds the
-	// queue credential, this role holds none.
+	// RiverUIURL is River's queue dashboard; empty shows its entry disabled.
+	// The dashboard holds the queue credential, this role holds none.
 	RiverUIURL string `env:"RIVER_UI_URL"`
+	// CookieKey is base64 of at least 32 bytes signing the sign-in round-trip
+	// cookie. Every replica must share it; empty draws a per-process key.
+	CookieKey string `env:"WEB_COOKIE_KEY"`
 }
 
 type Fetcher struct {
@@ -91,12 +80,25 @@ type Fetcher struct {
 	RiverDatabaseURL string        `env:"RIVER_DATABASE_URL,required,notEmpty"`
 	BlobURL          string        `env:"BLOB_URL,required,notEmpty"`
 	FetchTimeout     time.Duration `env:"FETCH_TIMEOUT" envDefault:"60s"`
-	// OutboundAllowlist entries are addresses only (`ip`, `ip:port` or CIDR);
-	// a hostname is refused because allowlisting a name would reopen the
-	// DNS-rebinding hole internal/fetch exists to close.
+	// OutboundAllowlist takes addresses only (`ip`, `ip:port` or CIDR); a
+	// hostname would reopen the DNS-rebinding hole internal/fetch closes.
 	OutboundAllowlist []string `env:"OUTBOUND_ALLOWLIST" envSeparator:","`
 	MaxUploadBytes    int64    `env:"MAX_UPLOAD_BYTES" envDefault:"26214400"`
 	GitHubToken       string   `env:"GITHUB_TOKEN"`
+	// SigstoreTrustedRoot is a path to a trusted_root.json. Empty uses the
+	// public-good root via TUF, refreshed daily.
+	SigstoreTrustedRoot string        `env:"SIGSTORE_TRUSTED_ROOT"`
+	UpstreamInterval    time.Duration `env:"UPSTREAM_INTERVAL" envDefault:"1h"`
+}
+
+// MinUpstreamInterval keeps the upstream check under forge rate limits.
+const MinUpstreamInterval = 5 * time.Minute
+
+func CheckUpstreamInterval(d time.Duration) error {
+	if d < MinUpstreamInterval {
+		return fmt.Errorf("%sUPSTREAM_INTERVAL is %s; it must be at least %s", EnvPrefix, d, MinUpstreamInterval)
+	}
+	return nil
 }
 
 type Scanner struct {
@@ -108,23 +110,30 @@ type Scanner struct {
 	RulepackDir      string        `env:"RULEPACK_DIR" envDefault:"/etc/agent-manager/rulepack"`
 	ScanBudget       time.Duration `env:"SCAN_BUDGET" envDefault:"120s"`
 
-	// ScanEngineURL is the second analysis engine. Empty runs the rule pack
-	// alone.
+	// ScanEngineURL is the second analysis engine; empty runs the rule pack alone.
 	ScanEngineURL string `env:"SCAN_ENGINE_URL"`
 	// ScanEngineRequired fails a version the engine could not analyse rather
-	// than clearing it on the rule pack alone. It defaults to on: an engine
-	// outage that silently narrowed coverage across the catalog is the failure
-	// worth being loud about.
-	ScanEngineRequired bool `env:"SCAN_ENGINE_REQUIRED" envDefault:"true"`
-	// ScanEngineTimeout bounds one engine request.
-	ScanEngineTimeout time.Duration `env:"SCAN_ENGINE_TIMEOUT" envDefault:"60s"`
-	// ScanEnginePolicy is the engine's own preset: strict, balanced or
-	// permissive.
+	// than clearing it on the rule pack alone, so an outage cannot silently
+	// narrow coverage.
+	ScanEngineRequired bool          `env:"SCAN_ENGINE_REQUIRED" envDefault:"true"`
+	ScanEngineTimeout  time.Duration `env:"SCAN_ENGINE_TIMEOUT" envDefault:"60s"`
+	// ScanEnginePolicy is strict, balanced or permissive.
 	ScanEnginePolicy string `env:"SCAN_ENGINE_POLICY" envDefault:"balanced"`
-	// ScanEngineThreshold is the lowest severity the engine's findings are
-	// stored at. Below it they are counted on the check row, which is what
-	// keeps skill-quality complaints from flagging a version.
+	// ScanEngineThreshold is the lowest severity stored as a finding; lower ones
+	// are only counted, so skill-quality complaints do not flag a version.
 	ScanEngineThreshold string `env:"SCAN_ENGINE_THRESHOLD" envDefault:"medium"`
+}
+
+// Notifier is the webhook role's own settings. It has no object-store field
+// because the role holds no object-store credential.
+type Notifier struct {
+	WebhookTimeout           time.Duration `env:"WEBHOOK_TIMEOUT" envDefault:"10s"`
+	WebhookDeliveryRetention time.Duration `env:"WEBHOOK_DELIVERY_RETENTION" envDefault:"720h"`
+	// WebhookDispatchInterval is the floor of a webhook's latency.
+	WebhookDispatchInterval time.Duration `env:"WEBHOOK_DISPATCH_INTERVAL" envDefault:"10s"`
+	WaiverCheckInterval     time.Duration `env:"WAIVER_CHECK_INTERVAL" envDefault:"1h"`
+	// WaiverNotice is how long before expiry waiver.expiring is raised.
+	WaiverNotice time.Duration `env:"WAIVER_NOTICE" envDefault:"168h"`
 }
 
 type Migrate struct {

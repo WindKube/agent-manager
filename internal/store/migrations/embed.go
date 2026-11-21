@@ -1,8 +1,6 @@
 // Package migrations embeds the versioned SQL Atlas generates from
-// internal/store/schema, so anything that needs the schema replays exactly
-// the files checked in rather than a second description of them. Apply takes
-// a function rather than a database handle: this package stays free of pgx,
-// bun and database/sql so nothing can start depending on it for a connection.
+// internal/store/schema, so consumers replay exactly the checked-in files.
+// It stays free of database drivers, so Apply takes an exec func, not a handle.
 package migrations
 
 import (
@@ -43,9 +41,8 @@ func Files() ([]File, error) {
 	return out, nil
 }
 
-// Apply replays every migration through exec, in order. exec must run a
-// multi-statement script: the migrations contain do-blocks whose bodies are
-// dollar-quoted, so splitting on semicolons would corrupt them.
+// Apply replays every migration through exec, in order. exec must accept a
+// multi-statement script: splitting on semicolons would break dollar-quoted do-blocks.
 func Apply(ctx context.Context, exec func(context.Context, string) error) error {
 	all, err := Files()
 	if err != nil {

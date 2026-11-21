@@ -1,19 +1,8 @@
 //go:build integration
 
-// The product's central claim, end to end, on a database nobody seeded (T076,
-// T077).
-//
-// Everything else in this package starts from rows a helper wrote. This file
-// starts from a URL: a person registers a package, the fetcher goes and gets it,
-// the scanner reads the bytes that landed and reaches a verdict, a reviewer
-// adjudicates it, and the adjudication changes what a machine can obtain. Each
-// hand-off is taken out of the OUTBOX rather than constructed here, so the chain
-// itself is under test — a publish that forgot to enqueue its scan would make
-// these fail rather than be papered over by a fabricated job.
-//
-// The suite this file joins applies the migrations and nothing else. That is
-// SC-107's condition, not an accident: a governance test that leans on the seed
-// proves the seed writes plausible rows, which is not the claim.
+// The import-to-resolution loop end to end on an unseeded database. Each
+// hand-off is read from the outbox rather than constructed, so a publish that
+// forgot to enqueue its next job fails here.
 package scanner_test
 
 import (
@@ -42,6 +31,7 @@ import (
 	"agent-manager/internal/auth"
 	"agent-manager/internal/blob"
 	"agent-manager/internal/fetch"
+	"agent-manager/internal/signing/signingtest"
 	"agent-manager/internal/store/models"
 	"agent-manager/internal/worker"
 	"agent-manager/internal/worker/fetcher"
@@ -49,38 +39,33 @@ import (
 	"agent-manager/internal/worker/scanner/checks"
 )
 
-// ---- the forge --------------------------------------------------------------
-
-// loopForge serves one repository's tarball endpoint, and 404s everything else so
-// a wrong ref reads as "the remote does not have it" rather than as the fixture.
-//
-// A local server rather than a real forge: the test has to be able to state the
-// exact bytes it later asserts a finding about, and a network dependency in a
-// test is a flake with extra steps. The outbound client below is the REAL
-// SSRF-hardened one with this server's loopback address allowlisted, so the
-// policy is exercised rather than bypassed.
+// loopForge serves one repository's tag lookup and tarball and 404s everything
+// else. The real SSRF-hardened client is used with this server allowlisted.
 func loopForge(t *testing.T, repo string, files map[string]string) string {
 	t.Helper()
 
-	prefix := "/api/v3/repos/org/" + repo + "/tarball/"
+	prefix := "/api/v3/repos/org/" + repo + "/"
 	tarball := loopTarball(t, repo+"-9e3f1c2", files)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, prefix) {
+		rest, ok := strings.CutPrefix(r.URL.Path, prefix)
+		switch {
+		case ok && strings.HasPrefix(rest, "git/ref/tags/"):
+			_, _ = w.Write([]byte(`{"object":{"type":"commit","sha":"9e3f1c2a8b7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f"}}`))
+		case ok && strings.HasPrefix(rest, "tarball/"):
+			w.Header().Set("Content-Type", "application/gzip")
+			_, _ = w.Write(tarball)
+		default:
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"message":"Not Found"}`))
-			return
 		}
-		w.Header().Set("Content-Type", "application/gzip")
-		_, _ = w.Write(tarball)
 	}))
 	t.Cleanup(server.Close)
 
 	return server.URL
 }
 
-// loopTarball builds what a forge's tarball endpoint returns: a gzipped tar whose
-// every path sits under one wrapper directory named for the commit.
+// loopTarball builds a forge-style gzipped tar under one wrapper directory.
 func loopTarball(t *testing.T, wrapper string, files map[string]string) []byte {
 	t.Helper()
 
@@ -101,10 +86,7 @@ func loopTarball(t *testing.T, wrapper string, files map[string]string) []byte {
 	return buf.Bytes()
 }
 
-// flatten renders one of this package's scan fixtures as a forge would hold it.
-// The loop is deliberately fed the SAME hostile and benign trees the scan tests
-// use: if the two drifted, a green loop would say nothing about the fixtures the
-// rules are actually verified against.
+// flatten reuses the scan tests' fixtures so the loop and the scan tests cannot drift apart.
 func flatten(tree fstest.MapFS) map[string]string {
 	out := make(map[string]string, len(tree))
 	for path, file := range tree {
@@ -113,13 +95,8 @@ func flatten(tree fstest.MapFS) map[string]string {
 	return out
 }
 
-// ---- the two roles, sharing one bucket --------------------------------------
-
-// loopHarness is both background roles as the bootstrap would have built them,
-// over one bucket. The asymmetry is the point and is visible in the two Deps: the
-// fetcher holds BlobWrite, the scanner holds only a reader, and the bytes the
-// scanner judges are the bytes the fetcher committed rather than a copy the test
-// made.
+// loopHarness runs the fetcher and scanner over one bucket, so the scanner
+// judges exactly the bytes the fetcher committed.
 type loopHarness struct {
 	fetcher *fetcher.Worker
 	scanner *scanner.Worker
@@ -144,11 +121,12 @@ func newLoopHarness(t *testing.T, forgeURLs ...string) loopHarness {
 	require.NoError(t, err)
 
 	fetchWorker, err := fetcher.New(worker.Deps{
-		DB:        db,
-		BlobRead:  bucket.Reader(),
-		BlobWrite: bucket.Writer(),
-		Fetch:     client,
-		Log:       zerolog.New(io.Discard),
+		DB:         db,
+		BlobRead:   bucket.Reader(),
+		BlobWrite:  bucket.Writer(),
+		Fetch:      client,
+		Signatures: signingtest.New(t).Verifier(),
+		Log:        zerolog.New(io.Discard),
 	})
 	require.NoError(t, err)
 
@@ -162,17 +140,13 @@ func newLoopHarness(t *testing.T, forgeURLs ...string) loopHarness {
 	return loopHarness{fetcher: fetchWorker, scanner: scanWorker, bucket: bucket}
 }
 
-// ---- the people -------------------------------------------------------------
-
 var (
 	importerIdentityOnce sync.Once
 	importerIdentityID   uuid.UUID
 )
 
-// importer is a real identity row, because `package.owner_identity_id` is a
-// foreign key: registering a package now records who registered it, and a
-// principal carrying an id no identity table holds would fail at that
-// constraint rather than at the assertion.
+// importer is backed by a real identity row because `package.owner_identity_id`
+// is a foreign key.
 func importer() auth.Principal {
 	importerIdentityOnce.Do(func() {
 		importerIdentityID = models.NewID()
@@ -193,10 +167,8 @@ func importer() auth.Principal {
 	}
 }
 
-// reviewer is a real identity row, because `override.reviewer_identity_id` is a
-// foreign key: an exception with nobody accountable for it is not a state the
-// schema allows, and a principal carrying an id no identity table holds would
-// fail at the constraint rather than at the assertion.
+// reviewer is backed by a real identity row because `override.reviewer_identity_id`
+// is a foreign key.
 func reviewer(t *testing.T, subject string) auth.Principal {
 	t.Helper()
 
@@ -216,9 +188,6 @@ func reviewer(t *testing.T, subject string) auth.Principal {
 	}
 }
 
-// ---- the loop itself --------------------------------------------------------
-
-// imported is what one trip round the loop produced.
 type imported struct {
 	packageID uuid.UUID
 	versionID uuid.UUID
@@ -227,14 +196,8 @@ type imported struct {
 	semver    string
 }
 
-// importPackage runs the whole ingestion path a person's import takes, taking
-// every hand-off out of the outbox.
-//
-// Reading the jobs rather than building them is what makes this a test of the
-// CHAIN. The relay is not run — that is internal/outbox's own suite — but the
-// payload is decoded exactly as the relay would hand it to River, and each job is
-// re-validated, so a publish that enqueued a payload the consumer cannot read
-// fails here instead of in production.
+// importPackage runs register, fetch and scan, decoding each job from the
+// outbox as the relay would so an unreadable payload fails here.
 func (h loopHarness) importPackage(t *testing.T, p auth.Principal, in commands.Registration) imported {
 	t.Helper()
 	ctx := context.Background()
@@ -265,7 +228,7 @@ func outboxFetchJob(t *testing.T, versionID uuid.UUID) fetcher.Job {
 		`select payload from outbox
 		  where job_kind = 'fetch' and idempotency_key like 'fetch:' || $1 || ':%'
 		  order by created_at desc limit 1`, versionID).Scan(&payload),
-		"the registration must have enqueued its fetch in the same transaction (principle IX)")
+		"the registration must have enqueued its fetch in the same transaction")
 
 	var job fetcher.Job
 	require.NoError(t, json.Unmarshal(payload, &job))
@@ -290,11 +253,7 @@ func outboxScanJob(t *testing.T, versionID uuid.UUID) scanner.Job {
 	return job
 }
 
-// ---- what a profile resolves to ---------------------------------------------
-
-// containedIn puts the package in a profile, floating on the latest version. This
-// is a profile a machine could sync, written directly because the api that builds
-// one is US5's (T079..T083) and does not exist yet.
+// containedIn puts the package in a profile, floating on the latest version.
 func containedIn(t *testing.T, slug string, pkg imported) {
 	t.Helper()
 
@@ -312,16 +271,9 @@ func containedIn(t *testing.T, slug string, pkg imported) {
 	require.NoError(t, err)
 }
 
-// resolvesToServableBytes reports whether a floating entry on this package still
-// gives a machine something to sync: the package's own latest pointer, and then
-// the api's own answer to "may these bytes be served".
-//
-// It composes two production reads and adds no rule of its own. In particular it
-// does NOT restate the org gate — `BundleRef.Distributable` is the gate-independent
-// half of resolution (FR-029), which is precisely why a rejection is assertable
-// here while an acceptance is not. The gate arithmetic that turns an override into
-// a lockfile entry lands with the profile resolver in T078/T083; when it does,
-// THIS is the helper to replace with a call to it.
+// resolvesToServableBytes reports whether a floating entry on this package
+// still resolves to servable bytes. It composes production reads only and does
+// not apply the org gate, so it can assert a rejection but not an acceptance.
 func resolvesToServableBytes(t *testing.T, pkg imported) bool {
 	t.Helper()
 	ctx := context.Background()
@@ -332,9 +284,7 @@ func resolvesToServableBytes(t *testing.T, pkg imported) bool {
 	require.Equal(t, pkg.versionID, latest,
 		"a floating entry resolves to the package's latest version, so that is what must be judged")
 
-	// The zero principal is enough: every package this suite imports is
-	// organisation-visible, and that clause of queries.PackageReadable does
-	// not depend on who is asking.
+	// The zero principal suffices: every package here is organisation-visible.
 	ref, err := queries.Bundle(ctx, db, auth.Principal{}, pkg.namespace, pkg.name, pkg.semver)
 	if err != nil {
 		require.ErrorIs(t, err, queries.ErrNotFound)
@@ -354,32 +304,19 @@ func setScanGate(t *testing.T, gate models.ScanGate) {
 	require.NoError(t, err)
 }
 
-// requireNoSeededData is SC-107's "with no seeded rows involved", stated rather
-// than assumed.
-//
-// It names the tables `internal/seed` writes that nothing in this suite does. If
-// somebody wires the seed into this suite's TestMain for convenience, the loop
-// tests stop proving what they claim and this is what says so — a green loop over
-// seeded rows is the exact false positive SC-107 was written against.
+// requireNoSeededData checks tables only `internal/seed` writes, so wiring the
+// seed into this suite fails loudly instead of masking a broken loop.
 func requireNoSeededData(t *testing.T) {
 	t.Helper()
 
 	for _, table := range []string{"category", "membership", "sync_target", "sync_event", "revision"} {
 		require.Zerof(t, countRows(t, "select count(*) from "+table),
-			"%s holds rows: this suite must run against migrations alone (SC-107)", table)
+			"%s holds rows: this suite must run against migrations alone", table)
 	}
 }
 
-// ---- T076 / SC-107 / SC-108 -------------------------------------------------
-
-// The claim the whole product rests on: bytes a person pointed at become a
-// verdict, and a reviewer's decision about that verdict changes what a machine
-// can obtain.
-//
-// The assertion that matters is the LAST one, and it is deliberately not an audit
-// row. An approval that files a beautifully worded audit row and changes nothing a
-// resolver reads is the failure this test exists to catch, so every decision below
-// is measured as a state delta against a snapshot taken before it.
+// A reviewer's decision must change what a machine can obtain, not just write an
+// audit row, so each decision is measured as a state delta.
 func TestTheWholeLoopFromAnImportedHostilePackageToAChangedResolution(t *testing.T) {
 	requireNoSeededData(t)
 	ctx := context.Background()
@@ -397,7 +334,6 @@ func TestTheWholeLoopFromAnImportedHostilePackageToAChangedResolution(t *testing
 	})
 	containedIn(t, "loop-one", pkg)
 
-	// FR-124: the import left "Scanning" on its own, from real bytes.
 	require.Equal(t, string(models.VerdictFlagged), versionVerdict(t, pkg.versionID))
 	require.True(t, resolvesToServableBytes(t, pkg),
 		"a flagged version is quarantined by the gate, not withdrawn: its bytes are still servable")
@@ -409,10 +345,8 @@ func TestTheWholeLoopFromAnImportedHostilePackageToAChangedResolution(t *testing
 	require.Equal(t, string(models.FindingStateOpen), before.State)
 	require.Nil(t, before.Override, "nobody has decided anything yet")
 
-	// FR-025 against a real scan rather than a hand-seeded matrix: the pane carries
-	// every check that RAN, passes included. The seed writes no finding_evidence at
-	// all — deliberately, because the scanner is its writer — so the evidence pane
-	// only ever has rows when they came from bytes, which is what this asserts.
+	// The pane carries every check that ran, passes included, and evidence
+	// quoted from the real bytes.
 	registry, err := checks.Default()
 	require.NoError(t, err)
 	require.Len(t, before.Checks, len(registry.IDs()),
@@ -424,7 +358,7 @@ func TestTheWholeLoopFromAnImportedHostilePackageToAChangedResolution(t *testing
 			}
 		}
 		return false
-	}, "the matrix has to carry the passes, or FR-025 buys nothing")
+	}, "the matrix has to carry the passes")
 
 	require.NotEmpty(t, before.Evidence)
 	require.Equal(t, "primary", before.Evidence[0].Role, "the cause leads")
@@ -433,8 +367,6 @@ func TestTheWholeLoopFromAnImportedHostilePackageToAChangedResolution(t *testing
 
 	summaryBefore, err := queries.ScannerSummary(ctx, db, 30)
 	require.NoError(t, err)
-
-	// --- the acceptance ------------------------------------------------------
 
 	who := reviewer(t, "sec-lead")
 	decision, err := commands.AcceptFinding(ctx, db, who, commands.Decision{
@@ -453,12 +385,12 @@ func TestTheWholeLoopFromAnImportedHostilePackageToAChangedResolution(t *testing
 			"approval changed nothing a resolver can act on")
 	require.Equal(t, who.Email, after.Override.Reviewer)
 	require.Equal(t, "accepted for the pilot; the collector host is ours", after.Override.Note)
-	require.NotNil(t, after.Override.ExpiresAt, "FR-028: an acceptance is bounded, never open-ended")
+	require.NotNil(t, after.Override.ExpiresAt, "an acceptance is bounded, never open-ended")
 	require.WithinDuration(t, time.Now().UTC().Add(12*24*time.Hour), *after.Override.ExpiresAt, time.Minute)
 
 	require.Equal(t, string(models.VerdictFlagged), after.Verdict,
 		"an acceptance must not launder the version clean: it stays flagged and the "+
-			"override is what the gate reads (001 US4 scenario 3)")
+			"override is what the gate reads")
 	require.Equal(t, string(models.VerdictFlagged), versionVerdict(t, pkg.versionID))
 
 	summaryAfter, err := queries.ScannerSummary(ctx, db, 30)
@@ -470,10 +402,27 @@ func TestTheWholeLoopFromAnImportedHostilePackageToAChangedResolution(t *testing
 	require.True(t, resolvesToServableBytes(t, pkg),
 		"an acceptance does not withdraw the bytes")
 
-	// --- the rejection -------------------------------------------------------
-	//
-	// A second package, because rejection is terminal: doing both to one version
-	// would test the second decision against a state the first had already left.
+	packageRef := pkg.namespace + "/" + pkg.name
+	history, err := queries.Audit(ctx, db,
+		queries.AuditFilter{SubjectKind: "package", SubjectID: packageRef}, 1, queries.MaxAuditPageSize)
+	require.NoError(t, err)
+	actions := map[string]contract.AuditEntry{}
+	for _, entry := range history.Entries {
+		require.Equal(t, pkg.namespace, entry.Namespace)
+		require.Equal(t, packageRef, entry.Data["package"])
+		actions[entry.Data["action"].(string)] = entry
+	}
+	require.Len(t, actions, 4, "registered, stored, scanned and accepted, and nothing about another package")
+	for _, action := range []string{"registered", "stored", "scanned"} {
+		require.Equal(t, "version", actions[action].SubjectKind, action)
+		require.Equal(t, packageRef+"@"+pkg.semver, actions[action].SubjectID, action)
+	}
+	require.Equal(t, "flagged", actions["scanned"].Data["verdict"])
+	require.Equal(t, "finding", actions["accepted"].SubjectKind)
+	require.Equal(t, findingID.String(), actions["accepted"].SubjectID)
+	require.Equal(t, "SH-NET-002", actions["accepted"].Data["ruleId"])
+
+	// A second package, because rejection is terminal.
 
 	benignURL := loopForge(t, "digest-report", flatten(hostileTree()))
 	h2 := newLoopHarness(t, benignURL)
@@ -498,26 +447,19 @@ func TestTheWholeLoopFromAnImportedHostilePackageToAChangedResolution(t *testing
 	require.NoError(t, err)
 	require.Equal(t, string(models.VerdictRejected), rejected.Verdict)
 
-	// SC-108, and the only assertion in this file that is about resolution rather
-	// than about state: the same profile, the same package, the same query — and a
-	// different answer, because a person decided.
 	require.False(t, resolvesToServableBytes(t, doomed),
-		"a rejected version must not be resolvable by any profile (FR-029)")
+		"a rejected version must not be resolvable by any profile")
 
-	// "Regardless of gate" is a requirement about a value this path must not read.
-	// Driving all three modes is what would catch the day somebody makes the
-	// refusal conditional on policy.
+	// Rejection must hold regardless of the org gate.
 	for _, gate := range []models.ScanGate{
 		models.ScanGateBlock, models.ScanGateApproval, models.ScanGateWarnWithOverride,
 	} {
 		setScanGate(t, gate)
 		require.False(t, resolvesToServableBytes(t, doomed),
-			"gate %s: FR-029 makes rejection terminal regardless of what the org policy says", gate)
+			"gate %s: rejection is terminal regardless of what the org policy says", gate)
 	}
 
-	// And terminal means terminal: an acceptance cannot walk it back, because
-	// un-rejecting is a real operation with real consequences and belongs to
-	// whoever designs the reversal.
+	// An acceptance cannot walk a rejection back.
 	_, err = commands.AcceptFinding(ctx, db, who, commands.Decision{
 		FindingID: doomedFinding,
 		Note:      "on reflection",
@@ -526,12 +468,7 @@ func TestTheWholeLoopFromAnImportedHostilePackageToAChangedResolution(t *testing
 	require.False(t, resolvesToServableBytes(t, doomed))
 }
 
-// SC-107 on its own terms: an import reaches a TERMINAL verdict, and the loop
-// does not reach it by flagging everything.
-//
-// The pair is the test. A scanner that answered `flagged` unconditionally would
-// satisfy "reaches a terminal verdict" and be worthless, and one that answered
-// `clean` unconditionally would satisfy it and be worse.
+// The hostile/benign pair rules out a scanner that answers one verdict unconditionally.
 func TestAPackageImportedOnAnUnseededDatabaseReachesATerminalVerdictEitherWay(t *testing.T) {
 	requireNoSeededData(t)
 
@@ -553,9 +490,9 @@ func TestAPackageImportedOnAnUnseededDatabaseReachesATerminalVerdictEitherWay(t 
 
 	for _, pkg := range []imported{hostile, benign} {
 		require.NotEqual(t, string(models.VerdictScanning), versionVerdict(t, pkg.versionID),
-			"FR-124: a version registered through the product must not sit at 'Scanning' for ever")
+			"a version registered through the product must not sit at 'Scanning' for ever")
 		require.True(t, visibleInCatalog(t, pkg.versionID),
-			"SC-107: it reaches the catalog carrying the verdict it reached")
+			"it reaches the catalog carrying the verdict it reached")
 	}
 }
 
@@ -579,13 +516,8 @@ func visibleInCatalog(t *testing.T, versionID uuid.UUID) bool {
 	return visible
 }
 
-// ---- T077 / SC-111 ----------------------------------------------------------
-
-// auditCase is one mutating action and the row it must be accountable for.
-//
-// setup and drive are separate because the measurement window is around drive
-// alone: signing out needs a session, and a case that opened one inside the window
-// would be measuring a sign-in as well and asserting two rows were one.
+// auditCase separates setup from drive because only drive is inside the
+// measurement window.
 type auditCase struct {
 	action    string
 	kind      models.AuditKind
@@ -595,34 +527,9 @@ type auditCase struct {
 	drive func(t *testing.T) string
 }
 
-// One row per action. Exactly one.
-//
-// Zero means the action is unaccounted for. Two means every figure derived from
-// the log is wrong — and two is the likelier defect, because the second row is
-// usually written by a helper somebody added for good reasons.
-//
-// What is measured is the delta over the WHOLE table, not over the row's own kind.
-// A command that wrote its `approve` row and also a stray `policy` row would pass
-// a per-kind count, and that is precisely the shape of double-counting this gate
-// exists for. The new row is then identified by id rather than by "the newest",
-// so the assertion is about the row the action wrote and not about a row that
-// happens to sort first.
-//
-// Every mutating action the product can presently perform is here — every one that
-// is REACHABLE, which is the distinction that matters and the one this list got
-// wrong first time round. `POST /v1/sync` was missing: registered in
-// operations.go, called by the CLI, writing a `sync` row, and absent from a table
-// whose whole value is that it claims to be complete. A list that says it is
-// exhaustive and is not will not be revisited, so the omission was worse than the
-// missing case.
-//
-// commands.ApproveDevice and commands.DenyDevice also write rows and are NOT here,
-// deliberately: neither has a registered HTTP operation yet, so no client can
-// perform them. Their cases belong in the layer that exposes them.
-//
-// The five profile commands (T079-T083) landed here rather than in a test of
-// their own, which is what this paragraph used to promise and now records. An
-// administration change (US7) is the next one owed.
+// The delta is measured over the whole audit table, not per kind, so a stray
+// second row of another kind is caught. The list must cover every reachable
+// mutating action; ApproveDevice and DenyDevice have no HTTP operation yet.
 func TestEveryMutatingActionWritesExactlyOneAuditRow(t *testing.T) {
 	requireNoSeededData(t)
 	ctx := context.Background()
@@ -631,9 +538,8 @@ func TestEveryMutatingActionWritesExactlyOneAuditRow(t *testing.T) {
 	h := newLoopHarness(t, forgeURL)
 	who := reviewer(t, "sweep-reviewer")
 
-	// The three ingestion stages share one registration and run in table order: a
-	// scan cannot precede the bytes it reads, so splitting them into independent
-	// cases would buy nothing and cost three imports.
+	// Cases run in table order and share state: ingestion stages build on one
+	// registration and profile commands on one profile.
 	var sweepVersion uuid.UUID
 	var signedOutToken string
 
@@ -653,10 +559,7 @@ func TestEveryMutatingActionWritesExactlyOneAuditRow(t *testing.T) {
 			},
 		},
 		{
-			// Sign-out reuses kind `login` because `audit_kind` has no `logout`
-			// value and adding one is a migration this feature does not carry. The
-			// text is what separates the two halves, which is what the audit screen
-			// renders anyway — and it is still exactly one row, which is the claim.
+			// Sign-out reuses kind `login`: `audit_kind` has no `logout` value.
 			action: "a person signs out", kind: models.AuditKindLogin,
 			actorKind: models.ActorKindIdentity,
 			setup: func(t *testing.T) {
@@ -725,8 +628,7 @@ func TestEveryMutatingActionWritesExactlyOneAuditRow(t *testing.T) {
 			},
 		},
 		{
-			// Rejection also writes kind `approve`, for the same reason sign-out
-			// writes `login`: the enum has no `reject` value. Still one row.
+			// Rejection writes kind `approve`: the enum has no `reject` value.
 			action: "a reviewer rejects a finding", kind: models.AuditKindApprove,
 			actorKind: models.ActorKindIdentity,
 			drive: func(t *testing.T) string {
@@ -740,10 +642,6 @@ func TestEveryMutatingActionWritesExactlyOneAuditRow(t *testing.T) {
 			},
 		},
 		{
-			// The CLI's report of what it actually wrote to a machine. It is the one
-			// mutating action on this list whose actor is a person at a terminal
-			// rather than a browser, and its `source` is the host they ran it on —
-			// which is exactly the column FR-050 exists for.
 			action: "the CLI reports a sync", kind: models.AuditKindSync,
 			actorKind: models.ActorKindIdentity,
 			setup: func(t *testing.T) {
@@ -762,10 +660,6 @@ func TestEveryMutatingActionWritesExactlyOneAuditRow(t *testing.T) {
 			},
 		},
 		{
-			// The five profile commands (T079-T083). They run as one chain in table
-			// order because each needs what the one before it wrote, and because a
-			// profile whose entries were inserted by a helper would not exercise the
-			// upsert that the audit row is meant to account for.
 			action: "a person creates a profile", kind: models.AuditKindProfile,
 			actorKind: models.ActorKindIdentity,
 			drive: func(t *testing.T) string {
@@ -790,9 +684,6 @@ func TestEveryMutatingActionWritesExactlyOneAuditRow(t *testing.T) {
 			},
 		},
 		{
-			// Kind `share` rather than `profile`: the audit vocabulary separates
-			// them, and "who can see this" is the question a reviewer searches for
-			// on its own. Still exactly one row, which is this table's claim.
 			action: "an owner shares a profile", kind: models.AuditKindShare,
 			actorKind: models.ActorKindIdentity,
 			drive: func(t *testing.T) string {
@@ -819,8 +710,7 @@ func TestEveryMutatingActionWritesExactlyOneAuditRow(t *testing.T) {
 			action: "an owner publishes a revision", kind: models.AuditKindProfile,
 			actorKind: models.ActorKindIdentity,
 			setup: func(t *testing.T) {
-				// The resolver refuses to guess a gate, so a publish needs the
-				// singleton to exist. Nothing else in this file writes it.
+				// The resolver refuses to guess a gate, so the policy row must exist.
 				t.Helper()
 				setScanGate(t, models.ScanGateWarnWithOverride)
 			},
@@ -850,15 +740,11 @@ func TestEveryMutatingActionWritesExactlyOneAuditRow(t *testing.T) {
 			require.Equal(t, string(tc.actorKind), written[0].actorKind)
 			require.Equal(t, actor, written[0].actor,
 				"the row has to name who did it, or the log cannot answer the only question it is for")
-			require.NotEmpty(t, written[0].source, "FR-050: a row records where the action came from")
+			require.NotEmpty(t, written[0].source, "a row records where the action came from")
 			require.NotEmpty(t, written[0].text, "a row with no text is a row nobody can read")
 		})
 	}
 
-	// The other half of exactly-one. Both background roles are delivered
-	// at-least-once by design (principle IX), so a redelivery that wrote a second
-	// row would double-count every ingestion in the log — silently, because each
-	// individual delivery looks correct.
 	t.Run("a redelivered fetch and a redelivered scan write no second row", func(t *testing.T) {
 		before := auditIDs(t)
 		require.NoError(t, h.fetcher.Fetch(ctx, outboxFetchJob(t, sweepVersion)))
@@ -866,19 +752,9 @@ func TestEveryMutatingActionWritesExactlyOneAuditRow(t *testing.T) {
 		require.Empty(t, auditRowsSince(t, before))
 	})
 
-	// And the third way a second row gets written: not a redelivery and not a
-	// helper, but a person clicking a button twice.
-	//
-	// Rejection is terminal, so the state after the second click is right either
-	// way — which is what made this survive. The LOG was wrong: both updates re-ran
-	// and a second row landed, indistinguishable from a real second decision. Accept
-	// already refused this; reject did not, and the two functions sitting in one
-	// file arguing at length about why they do not share a code path is exactly how
-	// an asymmetry like that goes unnoticed.
+	// A double-click: the state is right either way, so only the audit log shows
+	// a second rejection.
 	t.Run("a second rejection of the same finding is refused and writes nothing", func(t *testing.T) {
-		// The very finding the table above rejected, on purpose: this is the row a
-		// real double-click lands on, and re-using it means the case cannot pass by
-		// arranging some gentler state of its own.
 		var finding uuid.UUID
 		require.NoError(t, pool.QueryRow(ctx,
 			`select id from finding where version_id = $1 and rule_id = $2 and state = 'rejected'`,
@@ -896,13 +772,8 @@ func TestEveryMutatingActionWritesExactlyOneAuditRow(t *testing.T) {
 	})
 }
 
-// sweepProfile inserts an organisation-visible profile with one revision, so the
-// sync case has something a reader can legitimately have synced.
-//
-// Rows rather than a command, because there is no command: profiles land in the
-// layer after this one (T078-T083). What is under test here is ReportSync writing
-// exactly one audit row, so its input is arranged and only the action goes through
-// the command.
+// sweepProfile inserts rows directly so only ReportSync runs inside the
+// measurement window.
 func sweepProfile(t *testing.T, slug string) {
 	t.Helper()
 
@@ -927,9 +798,7 @@ func sweepProfile(t *testing.T, slug string) {
 	require.NoError(t, err)
 }
 
-// sweepPackageID names the package a version belongs to the way a profile entry
-// addresses it, so the curation case uses the package the chain above registered
-// rather than one it invented.
+// sweepPackageID returns the `namespace/name` a profile entry addresses.
 func sweepPackageID(t *testing.T, versionID uuid.UUID) string {
 	t.Helper()
 
@@ -959,11 +828,8 @@ func auditIDs(t *testing.T) []uuid.UUID {
 	return out
 }
 
-// auditRowsSince returns every row that is not in the given set. Identifying the
-// new rows by id rather than by timestamp is what makes the count exact:
-// `occurred_at` is the transaction clock and two rows written microseconds apart
-// can carry the same value, so "the newest row" is not always the row the action
-// under test wrote.
+// auditRowsSince identifies new rows by id because `occurred_at` is the
+// transaction clock and can tie.
 func auditRowsSince(t *testing.T, before []uuid.UUID) []auditRow {
 	t.Helper()
 

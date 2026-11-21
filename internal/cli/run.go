@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/uptrace/bun"
@@ -23,9 +26,11 @@ import (
 	"agent-manager/internal/blob"
 	"agent-manager/internal/config"
 	"agent-manager/internal/logging"
+	"agent-manager/internal/metrics"
 	"agent-manager/internal/outbox"
 	"agent-manager/internal/seed"
 	"agent-manager/internal/store/models"
+	"agent-manager/internal/tracing"
 	"agent-manager/internal/web"
 	"agent-manager/internal/web/hub"
 	"agent-manager/internal/web/view"
@@ -33,10 +38,8 @@ import (
 	"agent-manager/internal/worker/roles"
 )
 
-// runSeed is the one-shot that loads the design's dataset. It opens the
-// pools itself instead of calling store.Open: config.Seed names only the
-// application database and the bucket, since a role that enqueues
-// nothing has no business holding a queue credential.
+// runSeed loads the design dataset. It skips store.Open because config.Seed
+// deliberately holds no queue credential.
 func runSeed(ctx context.Context) error {
 	cfg, err := config.Load[config.Seed]()
 	if err != nil {
@@ -70,8 +73,7 @@ func runSeed(ctx context.Context) error {
 		}
 	}()
 
-	// Both halves of the bucket: this is the only role besides the
-	// fetcher that gets a writer, since the seed writes bundle bytes too.
+	// The only role besides the fetcher with a bucket writer: the seed writes bundle bytes too.
 	report, err := seed.Run(ctx, seed.Deps{
 		DB:        db,
 		BlobRead:  bucket.Reader(),
@@ -93,10 +95,8 @@ func runSeed(ctx context.Context) error {
 	return nil
 }
 
-// runWeb is the web role's bootstrap. Unlike runAPI, there is no
-// store.Open or blob.Open here, and config.Web has no field that would
-// let there be — that absence is the credential boundary, so the catalog
-// arrives through a source the role is handed rather than one it opens.
+// runWeb is the web role's bootstrap. config.Web has no database or bucket
+// credential, and that absence is the credential boundary.
 func runWeb(ctx context.Context) error {
 	cfg, err := config.Load[config.Web]()
 	if err != nil {
@@ -107,80 +107,89 @@ func runWeb(ctx context.Context) error {
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// The mint secret is the one credential this role holds, buying
-	// exactly one operation: asking the api to open a session for an
-	// identity whose ID token verified. Empty is not a fallback — the api
-	// refuses every mint when it holds no secret, and hub.MintSession
-	// refuses before the call when this side holds none.
-	client, err := hub.New(cfg.APIBaseURL, hub.WithSessionMintSecret(cfg.SessionMintSecret))
+	stopTracing, err := startTracing(ctx, "web", log)
+	if err != nil {
+		return err
+	}
+	defer stopTracing()
+
+	stopMetrics, err := metrics.Serve(ctx, cfg.MetricsBind, log)
+	if err != nil {
+		return err
+	}
+	defer stopMetrics()
+
+	// The mint secret is this role's only credential. Empty is not a fallback:
+	// both sides refuse every mint without it.
+	client, err := hub.New(cfg.APIBaseURL,
+		hub.WithSessionMintSecret(cfg.SessionMintSecret),
+		hub.WithTransport(tracing.Transport(http.DefaultTransport)))
 	if err != nil {
 		return err
 	}
 
-	// Getting the provider's endpoints reaches the network on first use,
-	// not here. A configure failure is not fatal: the role still answers
-	// its health probe, and the sign-in screen offers no action rather
-	// than a button known to fail.
+	// Not fatal: the role still answers its health probe and sign-in offers no action.
 	authProvider, err := webAuthProvider(cfg)
 	if err != nil {
 		log.Error().Err(err).Msg("configure the identity provider; sign-in is unavailable in this process")
 	}
 
-	// Parsed here, not in web.New, so a typo is a boot failure with the value in
-	// it. Silently treating an unparseable address as "no dashboard configured"
-	// would grey the entry out and look like a deliberate deployment choice.
+	// Parsed at boot so a typo fails loudly instead of looking like "no dashboard configured".
 	riverUI, err := riverUIURL(cfg.RiverUIURL)
 	if err != nil {
 		return err
 	}
 
+	cookieKey, err := webCookieKey(cfg.CookieKey)
+	if err != nil {
+		return err
+	}
+	if cookieKey == nil {
+		log.Warn().Msg("AGENT_MANAGER_WEB_COOKIE_KEY is unset; the sign-in cookie key is per process, " +
+			"so a sign-in in flight across a restart or a second replica fails")
+	}
+
 	server := web.New(web.Deps{
-		Catalog:        client,
-		Packages:       client,
-		PackageCurator: client,
-		Files:          client,
-		Registrar:      client,
-		Auth:           authProvider,
-		// Same client, different fields: resolving the viewer and minting
-		// a session are different claims.
-		Viewers:  client,
-		Sessions: client,
-		// The two governance screens: four different claims over one client.
-		Scanner:  client,
-		Reviewer: client,
-		Audit:    client,
-		Badges:   client,
-		// The profile screens: reading and curating are different claims.
-		Profiles:     client,
-		Curator:      client,
-		Device:       client,
-		Storage:      client,
-		Organization: client,
-		Runtime:      client,
-		Log:          log,
+		Hub:  client,
+		Auth: authProvider,
+		Log:  log,
 	}, web.Options{
 		Addr: cfg.Addr,
-		// Read once for the Secure flag on both cookies, so a proxy that
-		// terminates TLS cannot talk this role out of it per request.
-		PublicBaseURL: cfg.PublicBaseURL,
-		HubURL:        cfg.HubURL,
-		// The hint is shown only because an operator set this variable —
-		// nothing derives it from the issuer, host name or build type.
+		// Fixes the cookies' Secure flag so a TLS-terminating proxy cannot drop it per request.
+		PublicBaseURL:     cfg.PublicBaseURL,
+		HubURL:            cfg.HubURL,
 		ProviderName:      cfg.ProviderName,
 		DevCredentialHint: cfg.DevCredentialHint,
 		DevCredentials:    devCredentials(cfg.DevCredentialHint),
 		RiverUI:           riverUI,
+		OIDCCookieKey:     cookieKey,
+		Middleware:        []gin.HandlerFunc{metrics.HTTP(), tracing.Gin("web", "/healthz")},
 	})
 
 	return server.Run(ctx)
 }
 
-// riverUIURL turns the configured dashboard address into the base the web role
-// proxies to, and nil when none is configured.
-//
-// A path on it is refused rather than joined: the dashboard is mounted at a
-// prefix this role also serves under, and two prefixes to keep in step is one
-// more than the feature needs.
+// webCookieKey decodes the configured sign-in cookie key, nil when none is set.
+func webCookieKey(raw string) ([]byte, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	key, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		key, err = base64.RawStdEncoding.DecodeString(raw)
+	}
+	if err != nil {
+		return nil, errors.New("WEB_COOKIE_KEY: not base64")
+	}
+	if len(key) < 32 {
+		return nil, fmt.Errorf("WEB_COOKIE_KEY: decodes to %d bytes, needs at least 32", len(key))
+	}
+	return key, nil
+}
+
+// riverUIURL parses the dashboard base URL, nil when unset. A path is refused
+// rather than joined, since the dashboard is mounted under this role's own prefix.
 func riverUIURL(raw string) (*url.URL, error) {
 	if strings.TrimSpace(raw) == "" {
 		return nil, nil
@@ -200,13 +209,9 @@ func riverUIURL(raw string) (*url.URL, error) {
 	return &url.URL{Scheme: parsed.Scheme, Host: parsed.Host}, nil
 }
 
-// webAuthProvider discovers the provider and builds the browser flow over
-// it. It returns the interface and a nil interface on failure, never a
-// typed nil pointer — web.Deps.Auth is compared against nil to decide
-// whether sign-in may offer an action, and a typed nil would panic on the
-// first click. Discovery is lazy: a role started alongside its provider
-// in the same compose up would otherwise race it, discover nothing, and
-// serve the unreachable screen forever even after the provider came up.
+// webAuthProvider builds the browser sign-in flow. It returns a nil interface on
+// failure, never a typed nil, since web.Deps.Auth is nil-checked. Discovery is
+// lazy so a role started alongside its provider does not lose the race forever.
 func webAuthProvider(cfg config.Web) (web.AuthProvider, error) {
 	return web.NewAuthProvider(web.AuthOptions{
 		Discovery: &lazyDiscovery{cfg: auth.VerifierConfig{
@@ -218,16 +223,13 @@ func webAuthProvider(cfg config.Web) (web.AuthProvider, error) {
 		ClientSecret: cfg.ClientSecret,
 		RedirectURL:  cfg.RedirectURL,
 		Scopes:       cfg.Scopes,
-		// The authorization redirect's host: the only URL in the flow a
-		// browser has to be able to resolve.
+		// The only URL in the flow a browser has to be able to resolve.
 		BrowserBaseURL: cfg.BrowserBaseURL,
 	})
 }
 
-// lazyDiscovery is web.Discovery over auth.Verifier, discovering on first
-// use. It exists because auth.Verifier's Endpoint() cannot fail while
-// web.Discovery's can; internal/web may not link auth directly, since
-// that package reads the session table.
+// lazyDiscovery adapts auth.Verifier to web.Discovery, discovering on first use.
+// internal/web may not import auth directly, since auth reads the session table.
 type lazyDiscovery struct {
 	cfg auth.VerifierConfig
 
@@ -251,8 +253,7 @@ func (l *lazyDiscovery) VerifyIDToken(ctx context.Context, idToken string) error
 	return verifier.VerifyIDToken(ctx, idToken)
 }
 
-// resolve discovers once. A failure is not cached, so the next request
-// tries again.
+// resolve discovers once; a failure is not cached.
 func (l *lazyDiscovery) resolve(ctx context.Context) (*auth.Verifier, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -268,11 +269,9 @@ func (l *lazyDiscovery) resolve(ctx context.Context) (*auth.Verifier, error) {
 	return verifier, nil
 }
 
-// devCredentials is the dev-hint content, built here rather than in
-// internal/web so a display name or address never appears in the role
-// that renders screens. Values come from internal/seed's directory
-// constants, so the hint can't drift from the accounts it names; the
-// username is the mail, since that's what the provider searches on.
+// devCredentials builds the dev sign-in hint from internal/seed's constants, so
+// it cannot drift from the seeded accounts. The username is the mail, since
+// that is what the provider searches on.
 func devCredentials(enabled bool) []view.Credential {
 	if !enabled {
 		return nil
@@ -282,8 +281,6 @@ func devCredentials(enabled bool) []view.Credential {
 	for _, user := range seed.DirectoryUsers {
 		role := seed.RoleOf(user.Group)
 		if role == "" {
-			// Says so rather than leaving the column blank, which would
-			// read as a rendering fault next to two filled ones.
 			role = "no role (" + user.Group + ")"
 		}
 		credentials = append(credentials, view.Credential{
@@ -295,8 +292,7 @@ func devCredentials(enabled bool) []view.Credential {
 	return credentials
 }
 
-// runWorker resolves the name against the registry and hands over.
-// Adding a role is a line in internal/worker/roles and nothing else.
+// runWorker resolves the name against the role registry and runs it.
 func runWorker(ctx context.Context, name string) error {
 	def, err := roles.Lookup(name)
 	if err != nil {
@@ -308,19 +304,23 @@ func runWorker(ctx context.Context, name string) error {
 		return err
 	}
 
-	// A worker drains a queue, so it shuts down on signal rather than
-	// being killed mid-job; River's graceful stop finishes in-flight jobs.
+	// Shut down on signal so River's graceful stop can finish in-flight jobs.
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	stopTracing, err := startTracing(ctx, name, logging.New("worker/"+name, cfg.LogLevel, cfg.LogFormat))
+	if err != nil {
+		return err
+	}
+	defer stopTracing()
 
 	return worker.Run(ctx, def, cfg)
 }
 
 func listWorkers(w io.Writer) error { return roles.List(w) }
 
-// runMigrateQueue applies River's own migrations to the queue database. It
-// reads only AGENT_MANAGER_RIVER_DATABASE_URL: the application database
-// has its own tool (Atlas), and neither may see the other's tables.
+// runMigrateQueue applies River's migrations to the queue database only; the
+// application database is migrated by Atlas, and neither sees the other's tables.
 func runMigrateQueue(ctx context.Context) error {
 	cfg, err := config.Load[config.Migrate]()
 	if err != nil {
@@ -341,8 +341,6 @@ func runMigrateQueue(ctx context.Context) error {
 	return nil
 }
 
-// runHealthcheck is real from the start: containers need it before any role is
-// implemented, and it depends on nothing.
 func runHealthcheck(ctx context.Context, url string) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

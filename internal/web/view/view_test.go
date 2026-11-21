@@ -11,31 +11,14 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The design file is the other side of both checks in here. Transcribing its
-// strings into this file would make the test agree with itself: what is being
-// asserted is that a derivation over the REAL schema's columns can reproduce the
-// REAL design's rendering, and the interesting answer is where it cannot.
+// The tests read the design file directly rather than transcribing its strings, so they cannot agree with themselves.
 const designFile = "../../../docs/design/agent-manager.dc.html"
 
-// designRow pulls `id: 'example/pii-redactor'` and `name: 'PII Redactor'` out of
-// one package literal. The id's second segment is the manifest name — the `key`
-// field is not, `security-kit` stands for `security-review-kit` — so the name is
-// taken from the id rather than from the shorter handle beside it.
+// designRow takes the manifest name from the id's second segment, since the design's `key` field is a shorter handle.
 var designRow = regexp.MustCompile(`id: '[^/']+/([^']+)', name: '([^']+)'`)
 
-// TestTitleReproducesTheDesignsNamesExceptWhereNoDerivationCould measures the
-// gap between a derived heading and the one the design draws.
-//
-// `package` has no display-name column and Agent Plugins 1.0.0 has no title
-// field, so the catalog's heading is derived from the manifest name. This pins
-// how far that gets: six of the design's ten names come back exactly, and the
-// four that do not are all the same failure — an acronym or an abbreviation that
-// the lowercase name does not record. `pii-redactor` cannot become "PII
-// Redactor" without a table of acronyms, and a table of acronyms is a display
-// name column with extra steps.
-//
-// The list below is a ratchet, not a wish. A fifth entry appearing in it means
-// the derivation regressed on a name it used to get right.
+// TestTitleReproducesTheDesignsNamesExceptWhereNoDerivationCould pins how far deriving a title from the manifest
+// name gets. The unrecoverable list is a ratchet: acronyms cannot be derived, and a new entry means a regression.
 func TestTitleReproducesTheDesignsNamesExceptWhereNoDerivationCould(t *testing.T) {
 	unrecoverable := map[string]string{
 		"pii-redactor":        "the acronym PII",
@@ -62,14 +45,8 @@ func TestTitleReproducesTheDesignsNamesExceptWhereNoDerivationCould(t *testing.T
 	}
 }
 
-// TestTitleIsSafeOnNamesTheHubDidNotChoose runs the derivation over names an
-// archive can carry rather than over the ten the design happens to use.
-//
-// The manifest is untrusted input (constitution principle III) and its `name` is
-// whatever the archive said, so this runs over the shapes that break a naive
-// implementation rather than over the ten well-behaved names above. The
-// multi-byte case is the one that used to corrupt output: slicing word[:1] cuts
-// a UTF-8 sequence in half and the browser renders U+FFFD.
+// TestTitleIsSafeOnNamesTheHubDidNotChoose runs the derivation over untrusted manifest names that break a naive
+// implementation.
 func TestTitleIsSafeOnNamesTheHubDidNotChoose(t *testing.T) {
 	for _, tc := range []struct{ name, in, want string }{
 		{"a single word is capitalised", "redactor", "Redactor"},
@@ -88,14 +65,8 @@ func TestTitleIsSafeOnNamesTheHubDidNotChoose(t *testing.T) {
 	}
 }
 
-// TestRelativeSaysEveryPhraseTheDesignsUpdatedColumnShows checks the vocabulary
-// in both directions.
-//
-// The api returns an instant and the design shows a phrase, so the risk is a
-// phrase the design uses that no age can produce — "yesterday" is the one a
-// naive days-since implementation silently drops. Sweeping an hour at a time up
-// to two years and collecting what comes out is the independent half: the design
-// supplies the expected vocabulary, this supplies the reachable one.
+// TestRelativeSaysEveryPhraseTheDesignsUpdatedColumnShows sweeps two years of ages and checks every phrase the
+// design uses is reachable.
 func TestRelativeSaysEveryPhraseTheDesignsUpdatedColumnShows(t *testing.T) {
 	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
 
@@ -123,8 +94,7 @@ func TestRelativeRoundsDownAtEveryBoundaryItCrosses(t *testing.T) {
 	require.Equal(t, "59 minutes ago", ago(59*time.Minute+59*time.Second))
 	require.Equal(t, "1 hour ago", ago(time.Hour))
 	require.Equal(t, "23 hours ago", ago(23*time.Hour+59*time.Minute))
-	// The gap a days-since implementation loses: 24 to 48 hours is a word, not a
-	// number, and the design shows that word.
+	// 24 to 48 hours is "yesterday", which a naive days-since implementation drops.
 	require.Equal(t, "yesterday", ago(24*time.Hour))
 	require.Equal(t, "yesterday", ago(47*time.Hour))
 	require.Equal(t, "2 days ago", ago(48*time.Hour))

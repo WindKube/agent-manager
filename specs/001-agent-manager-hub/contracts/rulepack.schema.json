@@ -20,16 +20,17 @@
       "required": ["kind"],
       "properties": {
         "kind": {
-          "enum": ["shell-ast", "regex", "schema-path", "dep-manifest"],
-          "description": "Selects the matcher. shell-ast walks mvdan.cc/sh syntax trees; regex is RE2 over instruction files; schema-path targets a JSON pointer; dep-manifest parses package.json / go.mod / requirements.txt."
+          "enum": ["shell-ast", "regex", "schema-path", "dep-manifest", "plugin-surface"],
+          "description": "Selects the matcher. shell-ast walks mvdan.cc/sh syntax trees (scripts, hook commands and stdio MCP command lines); regex is RE2 over instruction files; schema-path targets a JSON pointer; dep-manifest parses package.json / go.mod / requirements.txt; plugin-surface reads parsed hooks, MCP servers and skill/agent/command tool grants."
         },
         "command": { "type": "array", "items": { "type": "string" }, "description": "shell-ast: command names to match." },
         "pattern": { "type": "string", "description": "regex: an RE2 pattern. Backtracking is impossible by construction." },
         "paths": { "type": "array", "items": { "type": "string" }, "description": "Glob-limited file scope." },
         "pointer": { "type": "string", "description": "schema-path: JSON pointer into the manifest or expected-capability document." },
-        "extract": { "enum": ["url-argument", "path-argument", "package-spec", "matched-text", "pointer-value"] },
+        "allow": { "type": "array", "items": { "type": "string" }, "description": "host-not-declared: hosts accepted beyond the manifest's homepage and repository hosts. A leading `*.` or `.` covers subdomains." },
+        "extract": { "enum": ["url-argument", "path-argument", "package-spec", "matched-text", "pointer-value", "launcher-package", "hook-trigger", "granted-tool"] },
         "condition": {
-          "enum": ["host-not-in-expected", "path-outside-expected", "version-unpinned", "always", "value-matches"],
+          "enum": ["host-not-in-expected", "path-outside-expected", "version-unpinned", "always", "value-matches", "launcher-unpinned", "host-not-declared"],
           "description": "Named predicate. Adding one is a Go change; using one is not."
         }
       }

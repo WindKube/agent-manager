@@ -13,23 +13,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// SC-009: WCAG AA contrast, both themes.
-//
-// This reads assets/input.css rather than a copy of the hex values, because a
-// test carrying its own palette would keep passing after someone edited the real
-// one.
-//
-// AA is 4.5:1 for text below 18.66px bold / 24px regular, which is every use of
-// --fg2 and --fg3 in this design (package ids, counts, badges, notes), and 3:1
-// for larger text. The stricter number is applied throughout: nothing in the
-// palette needs the concession, and applying it per-element would make the test
-// depend on the type scale.
-//
-// This sweep is over the palette, not any one screen, so it covers all ten
-// screens (catalog, package detail, scanner, audit, profiles list, profile
-// detail, cli, org, storage, sign-in) by construction: every one of them paints
-// with these tokens and nothing else, which is what
-// TestEveryColourInTheStylesheetComesFromThePalette enforces below.
+// WCAG AA contrast, both themes. Reads assets/input.css rather than a copy of the
+// palette, so editing the real one can't leave the test passing. 4.5:1 is applied
+// throughout so the test does not depend on the type scale.
 const aa = 4.5
 
 // surfaces are every background a token's text can land on. --bd is not one: it
@@ -56,8 +42,7 @@ func TestPaletteMeetsWCAGAA(t *testing.T) {
 				}
 			}
 
-			// The badge pairs: a pill is `background: var(--Xbg); color: var(--X)`,
-			// so each status colour is only ever read on its own tinted background.
+			// A pill is `background: var(--Xbg); color: var(--X)`.
 			for _, pair := range [][2]string{{"ok", "okbg"}, {"warn", "warnbg"}, {"dan", "danbg"}} {
 				got := contrast(t, theme.tokens[pair[0]], theme.tokens[pair[1]])
 				require.GreaterOrEqualf(t, got, aa,
@@ -68,25 +53,13 @@ func TestPaletteMeetsWCAGAA(t *testing.T) {
 	}
 }
 
-// TestAStatusColourIsReadableOnEveryPlainSurfaceItIsPaintedOn extends the sweep
-// to the pairs US4's two screens introduced.
-//
-// The governance screens paint --ok, --warn and --dan as TEXT on an untinted card
-// as well as inside a tinted pill: the headline figures are coloured numbers on
-// --surface, and the check matrix's glyphs are coloured marks on the same. The
-// sweep above only ever checked each status colour against its own tinted
-// background, so those pairs were outside it until now.
-//
-// --sel is not in this list, and its absence is the finding rather than an
-// oversight: --ok reaches 4.44:1 and --warn 4.32:1 on --sel in the light theme,
-// both under AA. That is why the selected row on the Scanner screen tints only the
-// row and every status on it carries its own background — a status colour must
+// TestAStatusColourIsReadableOnEveryPlainSurfaceItIsPaintedOn covers status
+// colours painted as text on untinted surfaces. --sel is excluded on purpose:
+// --ok and --warn fall under AA on it in the light theme, so a status colour must
 // never be painted directly on a selection.
 func TestAStatusColourIsReadableOnEveryPlainSurfaceItIsPaintedOn(t *testing.T) {
 	light, dark := palettes(t)
 
-	// The three surfaces a coloured figure or glyph actually lands on. --sel is
-	// excluded deliberately; see this test's comment.
 	plain := []string{"bg", "surface", "surface2"}
 
 	for name, tokens := range map[string]map[string]string{"light": light, "dark": dark} {
@@ -103,25 +76,15 @@ func TestAStatusColourIsReadableOnEveryPlainSurfaceItIsPaintedOn(t *testing.T) {
 	}
 }
 
-// TestEveryColourInTheStylesheetComesFromThePalette is what puts a screen in the
-// sweep by construction rather than by somebody remembering to add it.
-//
-// The two tests above prove the PALETTE meets AA. They say nothing about a rule
-// that reaches past the palette for a literal, and a screen painted with one is
-// outside every assertion in this file while still looking finished. So the
-// declarations that carry text and background colour are required to name a
-// custom property; the tokens themselves, defined in the two :root blocks, are the
-// only place a literal belongs.
-//
-// Shadows and overlays are not in scope: a box-shadow is not a text pair, and the
-// modal's scrim is deliberately a translucent literal.
+// TestEveryColourInTheStylesheetComesFromThePalette puts every screen in the
+// contrast sweep by construction: text and background colours must name a custom
+// property, and literals belong only in the :root token blocks. Shadows and the
+// modal's translucent scrim are out of scope.
 func TestEveryColourInTheStylesheetComesFromThePalette(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "..", "assets", "input.css"))
 	require.NoError(t, err)
 
 	css := string(raw)
-	// The token blocks are where the literals live. Cut them out and every
-	// remaining colour declaration must be a var().
 	for _, block := range []*regexp.Regexp{rootRE, darkRE} {
 		if found := block.FindString(css); found != "" {
 			css = strings.Replace(css, found, "", 1)
@@ -144,9 +107,8 @@ func TestEveryColourInTheStylesheetComesFromThePalette(t *testing.T) {
 	require.Greater(t, checked, 40, "the stylesheet was not read")
 }
 
-// TestTheTextRampStaysARamp guards the reason --fg3 exists. Meeting AA by
-// collapsing it onto --fg2 would pass the test above and destroy the hierarchy
-// the design uses to separate a package name from its id.
+// TestTheTextRampStaysARamp: meeting AA by collapsing --fg3 onto --fg2 would pass
+// the tests above and destroy the name/id hierarchy.
 func TestTheTextRampStaysARamp(t *testing.T) {
 	light, dark := palettes(t)
 
@@ -171,7 +133,6 @@ var (
 	tokenRE = regexp.MustCompile(`--([a-z0-9]+):\s*(#[0-9a-fA-F]{6})`)
 )
 
-// palettes reads the two token blocks out of the real stylesheet.
 func palettes(t *testing.T) (light, dark map[string]string) {
 	t.Helper()
 
@@ -180,8 +141,7 @@ func palettes(t *testing.T) (light, dark map[string]string) {
 
 	css := string(raw)
 	dark = tokens(t, darkRE, css, "dark")
-	// The dark block's selector contains ":root", so it also matches rootRE. Cut
-	// it out before looking for the light block.
+	// The dark selector also matches rootRE, so cut it out first.
 	light = tokens(t, rootRE, strings.Replace(css, darkRE.FindString(css), "", 1), "light")
 
 	for _, want := range append(append([]string{}, surfaces...), "fg", "fg2", "fg3", "ok", "okbg", "warn", "warnbg", "dan", "danbg") {

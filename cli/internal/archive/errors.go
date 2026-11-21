@@ -3,6 +3,8 @@ package archive
 import (
 	"errors"
 	"fmt"
+
+	"github.com/WindKube/agent-manager/cli/archiveguard"
 )
 
 // The failure classes a caller must tell apart: a publisher problem, a security
@@ -71,26 +73,27 @@ type Reason string
 
 // Reasons for KindTooLarge, one per cap.
 const (
-	CapCompressedSize   Reason = "compressed archive size"
-	CapDecompressedSize Reason = "total decompressed size"
-	CapCompressionRatio Reason = "compression ratio"
-	CapEntryCount       Reason = "entry count"
-	CapEntrySize        Reason = "single entry size"
-	CapPathDepth        Reason = "path depth"
-	CapPathLength       Reason = "path length"
+	CapCompressedSize   = Reason(archiveguard.CapCompressedSize)
+	CapDecompressedSize = Reason(archiveguard.CapDecompressedSize)
+	CapCompressionRatio = Reason(archiveguard.CapCompressionRatio)
+	CapEntryCount       = Reason(archiveguard.CapEntryCount)
+	CapEntrySize        = Reason(archiveguard.CapEntrySize)
+	CapPathDepth        = Reason(archiveguard.CapPathDepth)
+	CapPathLength       = Reason(archiveguard.CapPathLength)
 )
 
-// Reasons for KindRejectedMember.
+// Reasons for KindRejectedMember. The member-kind ones keep their " member"
+// suffix, which differs from archiveguard's wording; see reasonFor.
 const (
-	RejectAbsolutePath      Reason = "absolute path"
-	RejectTraversal         Reason = "parent directory traversal"
+	RejectAbsolutePath      Reason = Reason(archiveguard.RejectAbsolutePath)
+	RejectTraversal         Reason = Reason(archiveguard.RejectTraversal)
 	RejectSymlink           Reason = "symlink member"
 	RejectHardlink          Reason = "hardlink member"
 	RejectDevice            Reason = "device node member"
 	RejectFIFO              Reason = "fifo member"
-	RejectMemberType        Reason = "unsupported member type"
-	RejectPathChars         Reason = "unsafe characters in path"
-	RejectEmptyPath         Reason = "empty path"
+	RejectMemberType        Reason = Reason(archiveguard.RejectMemberType)
+	RejectPathChars         Reason = Reason(archiveguard.RejectPathChars)
+	RejectEmptyPath         Reason = Reason(archiveguard.RejectEmptyPath)
 	RejectDuplicate         Reason = "duplicate path"
 	RejectPluginAdoptingDir Reason = "subdirectory would make this a claude-code plugin"
 )
@@ -111,7 +114,7 @@ const (
 )
 
 // ReasonTimeBudget is the reason for KindTimeout; Error.Detail carries the budget.
-const ReasonTimeBudget Reason = "wall clock budget"
+const ReasonTimeBudget = Reason(archiveguard.ReasonTimeBudget)
 
 // Error carries the class, the exact rule and the offending member. Detail holds
 // free-form text so Reason stays comparable.
@@ -183,4 +186,36 @@ func unsafeDest(reason Reason, member string, cause error) *Error {
 
 func ioFailure(reason Reason, member string, cause error) *Error {
 	return &Error{Kind: KindIO, Reason: reason, Path: member, cause: cause}
+}
+
+// fromGuard translates an archiveguard.Violation into this package's Error and
+// passes anything else through.
+func fromGuard(err error) error {
+	var v *archiveguard.Violation
+	if !errors.As(err, &v) {
+		return err
+	}
+	switch v.Kind {
+	case archiveguard.KindTimeout:
+		return &Error{Kind: KindTimeout, Reason: ReasonTimeBudget, Detail: v.Detail, cause: v.Cause}
+	case archiveguard.KindTooLarge:
+		return tooLarge(reasonFor(v.Rule), v.Path)
+	default:
+		return rejected(reasonFor(v.Rule), v.Path)
+	}
+}
+
+func reasonFor(r archiveguard.Rule) Reason {
+	switch r {
+	case archiveguard.RejectSymlink:
+		return RejectSymlink
+	case archiveguard.RejectHardlink:
+		return RejectHardlink
+	case archiveguard.RejectDevice:
+		return RejectDevice
+	case archiveguard.RejectFIFO:
+		return RejectFIFO
+	default:
+		return Reason(r)
+	}
 }

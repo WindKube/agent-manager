@@ -22,8 +22,7 @@ const (
 	hubURL     = "https://hub.example.com"
 )
 
-// dg is a well-formed lockfile digest. Distinct seeds give distinct digests,
-// which is what lets a test say "same version, different bytes".
+// dg is a well-formed lockfile digest; distinct seeds give distinct digests.
 func dg(seed int) string { return fmt.Sprintf("sha256:%064x", seed) }
 
 func mustDigest(t *testing.T, seed int) record.Digest {
@@ -33,9 +32,8 @@ func mustDigest(t *testing.T, seed int) record.Digest {
 	return d
 }
 
-// claudeCodeTarget routes namespace/name to <root>/<namespace>-<name>, running
-// the real layout validation so a name claude-code would never load is refused
-// here rather than installed and reported as a success.
+// claudeCodeTarget routes namespace/name to <root>/<namespace>-<name> through
+// the real layout validation.
 func claudeCodeTarget(root string) Target {
 	return Target{
 		Name: record.TargetClaudeCode,
@@ -56,8 +54,8 @@ func claudeCodeTarget(root string) Target {
 	}
 }
 
-// nameOnlyTarget deliberately drops the namespace, which is how a package
-// legitimately named `synced` reaches claude-code's reserved directory.
+// nameOnlyTarget drops the namespace, so a package named `synced` reaches
+// claude-code's reserved directory.
 func nameOnlyTarget(root string) Target {
 	return Target{
 		Name: record.TargetClaudeCode,
@@ -71,19 +69,14 @@ func nameOnlyTarget(root string) Target {
 	}
 }
 
-// codexTarget is the R2-gated target: the constructor fails, so the plan must
-// say "this build cannot write codex", never "your profile excluded codex".
+// codexTarget is a synthetic target this build knows but cannot write.
 func codexTarget(t *testing.T) Target {
 	t.Helper()
-	_, err := layout.NewCodex(home, "")
-	require.Error(t, err)
-	require.ErrorIs(t, err, layout.ErrR2Unresolved)
-	return Target{Name: record.TargetCodex, Err: err}
+	return Target{Name: record.TargetCodex, Err: fmt.Errorf("codex: %w", layout.ErrR2Unresolved)}
 }
 
-// withdrawnTarget is the THIRD outcome: known, deliberately never implemented,
-// reported rather than refused. layout.Registry.Resolve produces it for
-// agents-md, so the sentinel is taken from there rather than invented.
+// withdrawnTarget is known but deliberately unimplemented, reported rather
+// than refused; the sentinel comes from the real registry.
 func withdrawnTarget(t *testing.T) Target {
 	t.Helper()
 	reg, err := layout.NewRegistry(layout.Config{HomeDir: home})
@@ -180,8 +173,6 @@ func rec(t *testing.T, profiles map[string][]installedEntry) *record.Record {
 	}
 	return r
 }
-
-// ---- rendering, so a table row is readable and hand-derivable ----
 
 func changeLines(cs []Change) []string {
 	if len(cs) == 0 {
@@ -289,8 +280,7 @@ func TestEveryTransitionBetweenTheLockfileAndTheRecord(t *testing.T) {
 			record:    rec(t, map[string][]installedEntry{"base": {{id: "acme/code-review", version: "1.9.0", digestSeed: 1}}}),
 			targets:   []Target{cc},
 			want: want{
-				// 1.9.0 -> 1.10.0 is the case lexicographic comparison gets
-				// backwards, which is why it is the upgrade row.
+				// Lexicographic comparison gets 1.9.0 -> 1.10.0 backwards.
 				upgrade: []string{"claude-code acme/code-review base upgrade 1.9.0->1.10.0 dir=up"},
 			},
 		},
@@ -561,9 +551,8 @@ func TestEverySkippedEntryIsReportedWithTheHubsOwnReason(t *testing.T) {
 	require.Len(t, KnownSkipReasons(), 6,
 		"lockfile.schema.json freezes six skip reasons; a seventh needs a decision, not a quiet append")
 
-	// Two-sided: this package's hand-typed list against the client generated
-	// from the frozen contract. Comparing the list to itself would not see a
-	// typo, and a typo here silently reclassifies a real reason as unknown.
+	// Compared against the generated client, so a typo in the hand-typed list
+	// can't reclassify a real reason as unknown.
 	for _, reason := range KnownSkipReasons() {
 		require.True(t, hub.LockfileSkipReason(reason).Valid(),
 			"%q is not a value the generated client recognises", reason)
@@ -590,15 +579,12 @@ func TestEverySkippedEntryIsReportedWithTheHubsOwnReason(t *testing.T) {
 		"base acme/legacy-helper - flagged-awaiting-approval known=true would=1.9.0",
 	}, skipLines(p.Skipped))
 
-	// The unknown reason must survive byte for byte. Dropping it hides a package
-	// that is not on the machine; mapping it to "other" states something nobody
-	// checked.
+	// The unknown reason must survive byte for byte.
 	require.Equal(t, future, p.Skipped[0].Reason)
 	require.False(t, p.Skipped[0].Recognised)
 	require.Equal(t, detail, p.Skipped[1].Detail)
 
-	// A skip is not a change: a report, not an action. One add, and nothing
-	// at all derived from the two skips.
+	// A skip is a report, not an action.
 	require.Equal(t, 1, p.ChangeCount())
 }
 
@@ -630,7 +616,6 @@ func TestTheChangeSetDoesNotDependOnTheVersionComparer(t *testing.T) {
 	silent, err := Compute(Inputs{Lockfiles: lockfiles, Record: r, Targets: targets, Compare: nonsense})
 	require.NoError(t, err)
 
-	// The set of entries written, and where, is identical. Only the label moves.
 	key := func(p Plan) []string {
 		out := []string{}
 		for _, c := range p.Writes() {
@@ -647,8 +632,7 @@ func TestTheChangeSetDoesNotDependOnTheVersionComparer(t *testing.T) {
 	require.Equal(t, key(honest), key(backwards))
 	require.Equal(t, key(honest), key(silent))
 
-	// And the labels DID move, so the assertion above is not vacuous — a test
-	// that passes because nothing was compared has stopped testing anything.
+	// The labels did move, so the assertion above is not vacuous.
 	require.Equal(t, []string{"claude-code acme/code-review base upgrade 1.9.0->1.10.0 dir=up"}, changeLines(honest.Upgrade))
 	require.Equal(t, []string{"claude-code acme/lint-guard base downgrade 1.4.0->0.9.0 dir=down"}, changeLines(honest.Downgrade))
 	require.Equal(t, []string{"claude-code acme/lint-guard base upgrade 1.4.0->0.9.0 dir=up"}, changeLines(backwards.Upgrade))
@@ -659,8 +643,6 @@ func TestTheChangeSetDoesNotDependOnTheVersionComparer(t *testing.T) {
 		"claude-code acme/lint-guard base replace 1.4.0->0.9.0 dir=unknown",
 	}, changeLines(silent.Upgrade))
 }
-
-// ---- determinism ----
 
 func TestThePlanIsInAStableOrderWhateverOrderTheInputsArriveIn(t *testing.T) {
 	t.Parallel()
@@ -697,9 +679,7 @@ func TestThePlanIsInAStableOrderWhateverOrderTheInputsArriveIn(t *testing.T) {
 		require.Equal(t, removeLines(first.Remove), removeLines(again.Remove))
 	}
 
-	// Hand-derived from the documented order — target, then package id, then
-	// profile slug — and not from a run. Which profile a package landed in
-	// varies with the seed, which is exactly why the order must not.
+	// Target, then package id, then profile slug, whatever the seed.
 	require.Equal(t, []string{
 		"claude-code acme/one 3.0.0",
 		"claude-code acme/two 2.0.0",
@@ -716,14 +696,8 @@ func idOrder(cs []Change) []string {
 	return out
 }
 
-// ---- refusal plumbing ----
-
-// TestAnUnwritableTargetWithNoOtherWritableTargetStillRefuses is the R2 case
-// that must not regress: a profile whose entire writable set is empty because
-// its one target is gated must still refuse rather than install nothing and
-// exit 0. See TestAnUnwritableTargetIsSkippedWhenAnotherTargetCanStillWrite
-// for the case that changed — the same gated target beside one this build can
-// write.
+// TestAnUnwritableTargetWithNoOtherWritableTargetStillRefuses: a profile with
+// no writable target must refuse rather than install nothing and exit 0.
 func TestAnUnwritableTargetWithNoOtherWritableTargetStillRefuses(t *testing.T) {
 	t.Parallel()
 
@@ -740,14 +714,10 @@ func TestAnUnwritableTargetWithNoOtherWritableTargetStillRefuses(t *testing.T) {
 	require.Equal(t, ConflictNoWritableTarget, p.Conflicts[0].Kind)
 	require.Equal(t, ConflictNoWritableTarget, p.Conflicts[1].Kind)
 
-	// Nothing was planned for the target, and nothing was silently dropped
-	// either: the plan refuses.
 	require.Zero(t, p.ChangeCount())
 	require.False(t, p.IsNoOp())
 
-	// A refused plan still reports what it would have skipped, the same way a
-	// refused sync still carries the hub's own skips (FR-011): the refusal
-	// does not make that information less true.
+	// A refused plan still reports what it would have skipped.
 	require.Len(t, p.Skipped, 2)
 	for _, sk := range p.Skipped {
 		require.Equal(t, record.TargetCodex, sk.Target)
@@ -755,9 +725,6 @@ func TestAnUnwritableTargetWithNoOtherWritableTargetStillRefuses(t *testing.T) {
 	}
 }
 
-// TestAnUnwritableTargetIsSkippedWhenAnotherTargetCanStillWrite is GAP 2: one
-// unwritable target must not block a profile whose other target this build
-// can write, the same way one unroutable entry must not block its siblings.
 func TestAnUnwritableTargetIsSkippedWhenAnotherTargetCanStillWrite(t *testing.T) {
 	t.Parallel()
 
@@ -813,10 +780,6 @@ func TestAnUnwritableTargetIsNotTheSameOutcomeAsADisabledOne(t *testing.T) {
 	require.Equal(t, SkipTargetUnwritable, stillEnabled.Skipped[0].Reason)
 }
 
-// TestAnUnsupportedEntryKindIsSkippedRatherThanBlockingItsSiblings is GAP 2's
-// other half: one entry this build cannot install under a target — a plugin
-// where only skills route — must not refuse a plan whose other entries can
-// still install.
 func TestAnUnsupportedEntryKindIsSkippedRatherThanBlockingItsSiblings(t *testing.T) {
 	t.Parallel()
 
@@ -885,12 +848,8 @@ func TestFR012NamesBothProfilesAndBothVersionsAndWhatIsInstalled(t *testing.T) {
 	}
 }
 
-// TestVersionSplitAgainstAProfileNotInThisRunStillRefuses reproduces syncing
-// profile A (installing a package floating at one version), then later
-// syncing profile B ALONE, which pins the same package at a different
-// version: e2e/smoke's own row never enters this run's Lockfiles, but its
-// destination is the one this run is about to write, and the split must
-// refuse exactly as if both profiles were being synced together.
+// TestVersionSplitAgainstAProfileNotInThisRunStillRefuses: syncing profile B
+// alone must still refuse a version split against profile A's recorded row.
 func TestVersionSplitAgainstAProfileNotInThisRunStillRefuses(t *testing.T) {
 	t.Parallel()
 
@@ -942,9 +901,7 @@ func TestRemovalPathsAreTwoLiteralNamesAndNeverAPattern(t *testing.T) {
 		}
 	}
 
-	// An entry with no fingerprint cannot be checked for modification, which is
-	// not the same as being unmodified. The plan reports which is which; the
-	// refusal is internal/apply's.
+	// No fingerprint means unverifiable, not unmodified; apply does the refusing.
 	byID := map[string]Removal{}
 	for _, r := range p.Remove {
 		byID[r.ID] = r
@@ -1009,7 +966,7 @@ func TestTheSecondRunOfAnUnchangedProfilePlansNothing(t *testing.T) {
 		Targets: []Target{claudeCodeTarget(skillsRoot)},
 	})
 	require.NoError(t, err)
-	require.Zero(t, p.ChangeCount(), "FR-025: nothing to write means nothing is written")
+	require.Zero(t, p.ChangeCount(), "nothing to write means nothing is written")
 	require.True(t, p.IsNoOp())
 	require.Len(t, p.Unchanged, 2, "and every entry is accounted for, rather than merely absent")
 }
@@ -1101,8 +1058,7 @@ func TestTheSignatureIsNeverPresentedAsAPass(t *testing.T) {
 func TestComputeTouchesNothingItWasNotGiven(t *testing.T) {
 	t.Parallel()
 
-	// The purity claim reduced to something checkable without a filesystem: the
-	// same inputs produce the same plan, and the inputs are not mutated.
+	// Same inputs give the same plan, and the inputs are not mutated.
 	l := lf("base", []string{"claude-code"}, skill("acme/code-review", "2.4.1", 1))
 	r := rec(t, map[string][]installedEntry{"base": {{id: "acme/code-review", version: "2.3.0", digestSeed: 5}}})
 
@@ -1132,17 +1088,9 @@ func TestConflictErrorIsNilWhenThereIsNothingToRefuse(t *testing.T) {
 	require.NotErrorIs(t, p.ConflictError(), missing)
 }
 
-// TestCaseFoldedDestinationsAreRefusedAgainstTheRealLayout drives the real
-// registry rather than this file's single-dash test target, because the
-// hand-derived source of truth is layout's `<namespace>--<name>` and nothing
-// else. Two ids that differ only in the case of their namespace are two
-// paths on ext4 and one directory on APFS, where the second install
-// silently overwrites the first and the record ends up with two rows for
-// one tree.
-//
-// The two Place calls are asserted to SUCCEED and to differ only by case first:
-// if layout ever starts refusing an uppercase namespace, this test would
-// otherwise pass while testing nothing.
+// TestCaseFoldedDestinationsAreRefusedAgainstTheRealLayout: ids differing only
+// by namespace case are one directory on APFS. The Place calls are asserted to
+// succeed first, or a layout refusal would make this vacuous.
 func TestCaseFoldedDestinationsAreRefusedAgainstTheRealLayout(t *testing.T) {
 	t.Parallel()
 
@@ -1179,12 +1127,9 @@ func TestCaseFoldedDestinationsAreRefusedAgainstTheRealLayout(t *testing.T) {
 	require.ElementsMatch(t, []string{"Acme/x", "acme/x"}, distinctIDs(p.Conflicts[0].Claims))
 }
 
-// TestARemovalIsRetainedAgainstACaseFoldedInstall is the second half of the same
-// hazard, and the half destCollisions cannot see: it is one RECORDED entry being
-// removed and one DESIRED entry being installed, not two desired ones, so the
-// collision check never groups them. Their paths differ only by case, so on
-// APFS the removal would RemoveAll the very directory the install just
-// filled. Retention is the only thing between the prune and a live install.
+// TestARemovalIsRetainedAgainstACaseFoldedInstall: a recorded removal and a
+// desired install differing only by case are one directory on APFS, which
+// destCollisions cannot see.
 func TestARemovalIsRetainedAgainstACaseFoldedInstall(t *testing.T) {
 	t.Parallel()
 
@@ -1209,4 +1154,65 @@ func TestARemovalIsRetainedAgainstACaseFoldedInstall(t *testing.T) {
 	require.NotEmpty(t, rm.RetainedBy,
 		"the record row goes, but the directory is another entry's live install and must not be unlinked")
 	require.Equal(t, "acme/x", rm.RetainedBy[0].ID)
+}
+
+func openCodeTarget(root string, servedBy ...record.Target) Target {
+	return Target{
+		Name:     record.TargetOpenCode,
+		ServedBy: servedBy,
+		Dest: func(id string, _ record.Kind) (string, error) {
+			ns, name, _ := strings.Cut(id, "/")
+			return filepath.Join(root, ns+"--"+name), nil
+		},
+	}
+}
+
+func TestASkillOpenCodeAlreadyLoadsFromAnotherTargetIsNotPlacedTwice(t *testing.T) {
+	t.Parallel()
+	targets := []Target{claudeCodeTarget(skillsRoot), openCodeTarget(home+"/.config/opencode/skills", record.TargetClaudeCode)}
+
+	p, err := Compute(Inputs{
+		Lockfiles: []*hub.Lockfile{lf("base", []string{"claude-code", "opencode"},
+			skill("acme/review", "1.0.0", 1), plugin("acme/kit", "1.0.0", 2))},
+		Targets: targets,
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		"claude-code acme/review base add none->1.0.0 dir=-",
+		"opencode acme/kit base add none->1.0.0 dir=-",
+	}, changeLines(p.Add), "a plugin decides per component, so it is still planned for opencode")
+	var served []Skip
+	for _, sk := range p.Skipped {
+		if sk.Reason == SkipServedBySharedRoot {
+			served = append(served, sk)
+		}
+	}
+	require.Len(t, served, 1)
+	require.Equal(t, "acme/review", served[0].ID)
+	require.Equal(t, record.TargetOpenCode, served[0].Target)
+	require.Contains(t, served[0].Detail, "claude-code")
+
+	alone, err := Compute(Inputs{
+		Lockfiles: []*hub.Lockfile{lf("base", []string{"opencode"}, skill("acme/review", "1.0.0", 1))},
+		Targets:   targets,
+	})
+	require.NoError(t, err)
+	require.Len(t, alone.Add, 1, "without the serving target in the profile, opencode gets its own copy")
+	require.Empty(t, alone.Skipped)
+}
+
+func TestAPartiallyDeliveredEntryIsReplayedAtTheSameVersion(t *testing.T) {
+	t.Parallel()
+	r := rec(t, map[string][]installedEntry{"base": {{id: "acme/review", version: "1.0.0", digestSeed: 1, fingerprint: true}}})
+	r.Profiles[0].Entries[0].Partial = true
+
+	p, err := Compute(Inputs{
+		Lockfiles: []*hub.Lockfile{lf("base", []string{"claude-code"}, skill("acme/review", "1.0.0", 1))},
+		Record:    r,
+		Targets:   []Target{claudeCodeTarget(skillsRoot)},
+	})
+	require.NoError(t, err)
+	require.Empty(t, p.Unchanged)
+	require.Len(t, p.Upgrade, 1)
+	require.Equal(t, OpReplace, p.Upgrade[0].Op)
 }

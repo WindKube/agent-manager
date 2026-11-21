@@ -13,8 +13,7 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// catalog renders the whole screen. The first paint is complete — rows, count and
-// both chip rows — so the catalog is usable before a single signal is touched.
+// catalog's first paint is complete, so the screen is usable before any signal round trip.
 func (s *Server) catalog(c *gin.Context) {
 	page, ok := s.load(c, queryFromURL(c))
 	if !ok {
@@ -22,14 +21,10 @@ func (s *Server) catalog(c *gin.Context) {
 	}
 	s.render(c, http.StatusOK, "Catalog", "catalog", components.CatalogScreen(components.Catalog{
 		Page: page,
-		// Options are deliberately absent from the first render: the option list is
-		// a payload the menu fetches when it opens. That is what keeps the
-		// interaction the same shape at ten options and at ten thousand.
+		// Facet options are fetched when a menu opens, so first paint stays small at any size.
 		Category: categoryFacet(page, false),
 		Tags:     tagFacet(page, false),
-		// The modal's category list IS shipped on the first render, unlike the facet
-		// option lists: it is the admin-curated vocabulary (FR-049), a select rather
-		// than a searchable menu, and a registration can only choose from it.
+		// The import categories ship up front: a short curated select, not a searchable menu.
 		Import: components.Import{
 			Categories:   categoryNames(page),
 			Visibilities: view.ImportVisibilityOptions(viewerGroups(c)),
@@ -38,9 +33,7 @@ func (s *Server) catalog(c *gin.Context) {
 	}))
 }
 
-// catalogResults is the debounced round trip: it re-renders the result table, the
-// live count and — when a menu is open — that menu's option counts. Everything
-// else about the facet menu stays on the client.
+// catalogResults re-renders the table, the count and, when a menu is open, its option counts.
 func (s *Server) catalogResults(c *gin.Context) {
 	signals, ok := readSignals(c)
 	if !ok {
@@ -70,7 +63,6 @@ func (s *Server) catalogResults(c *gin.Context) {
 	}
 }
 
-// catalogFacet is the payload sent when a menu opens.
 func (s *Server) catalogFacet(c *gin.Context) {
 	signals, ok := readSignals(c)
 	if !ok {
@@ -102,13 +94,10 @@ func (s *Server) patchFacet(c *gin.Context, sse *datastar.ServerSentEventGenerat
 	}
 }
 
-// load fetches a page, and turns the three outcomes into the three things the
-// screen must do. Signed out is a 200 with a screen that says so, because the
-// person can act on it; an unreachable api is a 502, because they cannot. The
-// pair collapsing into one is the bug worth guarding: a 200 with no rows would
-// render an outage as a hub that happens to be empty, and nobody reports that.
+// load answers signed-out with a 200 screen and an unreachable api with a 502,
+// so an outage never renders as an empty hub.
 func (s *Server) load(c *gin.Context, q view.CatalogQuery) (view.CatalogPage, bool) {
-	page, err := s.deps.Catalog.Catalog(session(c), q)
+	page, err := s.deps.Hub.Catalog(session(c), q)
 	switch {
 	case errors.Is(err, view.ErrSignedOut):
 		logFrom(c).Debug().Msg("catalog requested without a session")
@@ -121,7 +110,6 @@ func (s *Server) load(c *gin.Context, q view.CatalogQuery) (view.CatalogPage, bo
 	return page, true
 }
 
-// categoryNames is the curated vocabulary as the modal's select needs it.
 func categoryNames(page view.CatalogPage) []string {
 	out := make([]string, 0, len(page.Categories))
 	for _, option := range page.Categories {
@@ -161,25 +149,21 @@ func tagFacet(page view.CatalogPage, withOptions bool) components.Facet {
 	return facet
 }
 
-// catalogSignals is the datastar signal set the browser sends. The facet filter
-// boxes bind to _catQuery and _tagQuery, which datastar excludes from every
-// request because of the leading underscore — that exclusion IS the R7 budget:
-// typing cannot reach the server even by accident.
+// catalogSignals is what the browser sends. Facet filter boxes bind to
+// underscore-prefixed signals, which datastar never sends, so typing there cannot reach the server.
 type catalogSignals struct {
 	Q      string `json:"q"`
 	Kind   string `json:"kind"`
 	Status string `json:"status"`
-	// Cats and Tags arrive as JSON arrays inside a string. datastar's signal proxy
-	// wraps array elements, so a live array signal cannot be compared to a value
-	// on the client; a string is unambiguous on both sides.
+	// Cats and Tags are JSON arrays in a string: datastar's proxy wraps array
+	// elements, so a live array signal cannot be compared on the client.
 	Cats string `json:"cats"`
 	Tags string `json:"tags"`
 	Sort string `json:"sort"`
 	Dir  string `json:"dir"`
 	Page int    `json:"page"`
-	// Menu is which facet menu is open, so a round trip knows whose counts to
-	// re-render. It is excluded from the signal-patch filter that triggers the
-	// round trip, so opening a menu does not re-query the table.
+	// Menu is the open facet menu; it is excluded from the round-trip trigger
+	// so opening a menu does not re-query the table.
 	Menu string `json:"menu"`
 }
 
@@ -196,8 +180,7 @@ func (s catalogSignals) query() view.CatalogQuery {
 	}.Normalise()
 }
 
-// maxSelections caps a facet selection. The list arrives from the client, and an
-// unbounded one turns a cheap filter into a quadratic one.
+// maxSelections caps a client-supplied selection so the filter cannot go quadratic.
 const maxSelections = 64
 
 func decodeList(raw string) []string {
@@ -224,8 +207,7 @@ func readSignals(c *gin.Context) (catalogSignals, bool) {
 	return signals, true
 }
 
-// queryFromURL reads the same state from the URL, so a catalog view is a
-// shareable link and the screenshot harness can ask for one directly.
+// queryFromURL makes a catalog view a shareable link.
 func queryFromURL(c *gin.Context) view.CatalogQuery {
 	page, err := strconv.Atoi(c.Query("page"))
 	if err != nil {

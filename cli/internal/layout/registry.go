@@ -27,6 +27,17 @@ type Target interface {
 	Name() record.Target
 	Root() string                         // absolute directory this agent scans, user scope
 	Place(req Request) (Placement, error) // pure
+	Components() ComponentRoots
+	AlsoReadsSkillsFrom() []string // other agents' skill roots this agent loads too
+}
+
+// ComponentRoots is where an agent reads each kind of plugin component.
+type ComponentRoots struct {
+	Skills    string
+	Agents    string // directory of agent files
+	Commands  string // "" when the agent has no command files amctl writes
+	ConfigDir string // the agent's own config directory (settings, MCP config)
+	MCPConfig string // the file MCP servers are configured in; "" when it is chosen among several
 }
 
 // Config is everything the targets need, already resolved by internal/cmd.
@@ -34,18 +45,24 @@ type Config struct {
 	HomeDir string // absolute; internal/cmd has already refused unset/unwritable
 
 	// ClaudeConfigDir is the raw CLAUDE_CONFIG_DIR value, empty when unset;
-	// XDG_CONFIG_HOME is not read by the agent, so it is not a fallback here either.
+	// claude-code does not read XDG_CONFIG_HOME, so it is no fallback here.
 	ClaudeConfigDir string
+
+	CodexHome     string // raw CODEX_HOME, empty when unset
+	XDGConfigHome string // raw XDG_CONFIG_HOME, empty when unset; only opencode reads it
+
+	// PluginRoot is amctl's own directory for unpacked plugins, one subdirectory
+	// per target; empty means this registry routes no plugin.
+	PluginRoot string
 }
 
 var constructors = map[record.Target]func(Config) (Target, error){
 	record.TargetClaudeCode: newClaudeCodeTarget,
 	record.TargetCodex:      newCodexTarget,
+	record.TargetOpenCode:   newOpenCodeTarget,
 }
 
-// withdrawnTargets are contract values nothing implements, with the reason
-// to print; unlike a gated target these await a design change, so
-// Selection.Withdrawn reports the gap rather than refusing the sync.
+// withdrawnTargets are contract values nothing implements; Selection reports them rather than refusing the sync.
 var withdrawnTargets = map[record.Target]string{
 	"agents-md": "agents-md was withdrawn from the contract: the convention documents only a repository-root " +
 		"AGENTS.md and no per-user location, and one shared file cannot be installed per package, marked with a " +
@@ -54,8 +71,8 @@ var withdrawnTargets = map[record.Target]string{
 
 type Registry struct{ cfg Config }
 
-// NewRegistry refuses a relative HomeDir or CLAUDE_CONFIG_DIR rather than
-// joining it with a working directory, since every destination must be absolute.
+// NewRegistry refuses a relative HomeDir, CLAUDE_CONFIG_DIR or CODEX_HOME since every destination
+// must be absolute. A relative XDG_CONFIG_HOME is ignored, as the XDG spec says.
 func NewRegistry(cfg Config) (*Registry, error) {
 	if cfg.HomeDir == "" {
 		return nil, fmt.Errorf("%w: home directory is empty", ErrConfig)
@@ -63,12 +80,23 @@ func NewRegistry(cfg Config) (*Registry, error) {
 	if !filepath.IsAbs(cfg.HomeDir) {
 		return nil, fmt.Errorf("%w: home directory %q is not absolute", ErrConfig, cfg.HomeDir)
 	}
-	if cfg.ClaudeConfigDir != "" && !filepath.IsAbs(cfg.ClaudeConfigDir) {
-		return nil, fmt.Errorf("%w: %s is %q, which is not absolute", ErrConfig, ClaudeCodeConfigDirEnv, cfg.ClaudeConfigDir)
+	for env, v := range map[string]string{
+		ClaudeCodeConfigDirEnv: cfg.ClaudeConfigDir, CodexHomeEnv: cfg.CodexHome, "plugin root": cfg.PluginRoot,
+	} {
+		if v != "" && !filepath.IsAbs(v) {
+			return nil, fmt.Errorf("%w: %s is %q, which is not absolute", ErrConfig, env, v)
+		}
+	}
+	xdg := cfg.XDGConfigHome
+	if !filepath.IsAbs(xdg) {
+		xdg = ""
 	}
 	return &Registry{cfg: Config{
 		HomeDir:         filepath.Clean(cfg.HomeDir),
 		ClaudeConfigDir: cleanIfSet(cfg.ClaudeConfigDir),
+		CodexHome:       cleanIfSet(cfg.CodexHome),
+		XDGConfigHome:   cleanIfSet(xdg),
+		PluginRoot:      cleanIfSet(cfg.PluginRoot),
 	}}, nil
 }
 
@@ -110,9 +138,8 @@ type Selection struct {
 	Reasons   map[record.Target]string
 }
 
-// Select intersects a lockfile's advisory `targets` array with this build. A
-// gated target is a hard refusal; withdrawn/unknown land in Selection to be
-// reported; an empty writable set is ErrNoWritableTarget regardless.
+// Select intersects a lockfile's advisory `targets` with this build. Withdrawn and unknown targets
+// land in Selection; an empty writable set is ErrNoWritableTarget.
 func (r *Registry) Select(names []string) (Selection, error) {
 	sel := Selection{Reasons: map[record.Target]string{}}
 	seen := map[record.Target]struct{}{}
@@ -173,20 +200,45 @@ type skillTarget struct {
 	root string
 
 	validateDir func(string) error // extra refusals beyond ValidateDirName, nil if none
+
+	components ComponentRoots
+	alsoReads  []string
+	pluginRoot string // amctl's unpacked plugins for this target; "" routes none
 }
 
-func (t *skillTarget) Name() record.Target { return t.name }
-func (t *skillTarget) Root() string        { return t.root }
+func (t *skillTarget) Name() record.Target           { return t.name }
+func (t *skillTarget) Root() string                  { return t.root }
+func (t *skillTarget) Components() ComponentRoots    { return t.components }
+func (t *skillTarget) AlsoReadsSkillsFrom() []string { return t.alsoReads }
 
+// ValidateSkillDirName applies this target's directory-name rules.
+func (t *skillTarget) ValidateSkillDirName(dirName string) error {
+	if err := ValidateDirName(dirName); err != nil {
+		return err
+	}
+	if t.validateDir != nil {
+		return t.validateDir(dirName)
+	}
+	return nil
+}
+
+// Place routes a skill to its directory under Root, and a plugin to amctl's
+// own unpacked copy, from which its components are placed one by one.
 func (t *skillTarget) Place(req Request) (Placement, error) {
 	if req.Kind == "" {
 		return Placement{}, fmt.Errorf("target %s: entry %s has no kind", t.name, req.ID)
 	}
-	if req.Kind != record.KindSkill {
-		return Placement{}, fmt.Errorf("target %s: entry %s is a %s: %w — a plugin is registered in state the "+
-			"agent owns and rewrites, so it can be neither swapped by rename nor pruned by path, and there is no "+
-			"directory to derive",
-			t.name, req.ID, req.Kind, ErrKindUnsupported)
+	root := t.root
+	switch req.Kind {
+	case record.KindSkill:
+	case record.KindPlugin:
+		if t.pluginRoot == "" {
+			return Placement{}, fmt.Errorf("target %s: entry %s is a plugin: %w — no plugin directory is configured",
+				t.name, req.ID, ErrKindUnsupported)
+		}
+		root = t.pluginRoot
+	default:
+		return Placement{}, fmt.Errorf("target %s: entry %s is a %s: %w", t.name, req.ID, req.Kind, ErrKindUnsupported)
 	}
 	pkg, err := ParsePackageID(req.ID)
 	if err != nil {
@@ -202,13 +254,13 @@ func (t *skillTarget) Place(req Request) (Placement, error) {
 		}
 	}
 
-	dest := filepath.Join(t.root, dirName)
+	dest := filepath.Join(root, dirName)
 	return Placement{
 		Target:        t.name,
 		Package:       pkg,
 		Version:       req.Version,
 		Kind:          req.Kind,
-		Root:          t.root,
+		Root:          root,
 		DirName:       dirName,
 		Dest:          dest,
 		EntryFilePath: filepath.Join(dest, SkillEntryFile),
@@ -216,23 +268,74 @@ func (t *skillTarget) Place(req Request) (Placement, error) {
 	}, nil
 }
 
+func pluginRootFor(cfg Config, t record.Target) string {
+	if cfg.PluginRoot == "" {
+		return ""
+	}
+	return filepath.Join(cfg.PluginRoot, string(t))
+}
+
 func newClaudeCodeTarget(cfg Config) (Target, error) {
 	cc, err := NewClaudeCode(cfg.HomeDir, cfg.ClaudeConfigDir, "")
 	if err != nil {
 		return nil, err
 	}
+	configDir := filepath.Dir(cc.UserSkillsRoot)
 	return &skillTarget{ // no project root: installs are confined to the invoking user's home
 		name:        record.TargetClaudeCode,
 		root:        cc.UserSkillsRoot,
 		validateDir: ValidateClaudeCodeSkillDirName,
+		components: ComponentRoots{
+			Skills:    cc.UserSkillsRoot,
+			Agents:    filepath.Join(configDir, "agents"),
+			Commands:  filepath.Join(configDir, "commands"),
+			ConfigDir: configDir,
+			MCPConfig: claudeCodeUserConfigFile(cfg),
+		},
+		pluginRoot: pluginRootFor(cfg, record.TargetClaudeCode),
 	}, nil
 }
 
-// newCodexTarget is unreachable while NewCodex refuses; written out so
-// shipping codex is a change to NewCodex alone.
+// claudeCodeUserConfigFile is where `claude mcp add --scope user` writes:
+// .claude.json inside CLAUDE_CONFIG_DIR when set, else beside ~/.claude.
+func claudeCodeUserConfigFile(cfg Config) string {
+	if cfg.ClaudeConfigDir != "" {
+		return filepath.Join(cfg.ClaudeConfigDir, ".claude.json")
+	}
+	return filepath.Join(cfg.HomeDir, ".claude.json")
+}
+
 func newCodexTarget(cfg Config) (Target, error) {
-	if _, err := NewCodex(cfg.HomeDir, ""); err != nil {
+	cx, err := NewCodex(cfg.HomeDir, cfg.CodexHome)
+	if err != nil {
 		return nil, err
 	}
-	return &skillTarget{name: record.TargetCodex, root: CodexUserSkillsRoot(cfg.HomeDir)}, nil
+	return &skillTarget{
+		name: record.TargetCodex,
+		root: cx.UserSkillsRoot,
+		components: ComponentRoots{
+			Skills:    cx.UserSkillsRoot,
+			Agents:    filepath.Join(cx.Home, "agents"),
+			ConfigDir: cx.Home,
+			MCPConfig: filepath.Join(cx.Home, CodexConfigFile),
+		},
+		pluginRoot: pluginRootFor(cfg, record.TargetCodex),
+	}, nil
+}
+
+func newOpenCodeTarget(cfg Config) (Target, error) { //nolint:unparam // constructors share one signature
+	dir := OpenCodeConfigDir(cfg.HomeDir, cfg.XDGConfigHome)
+	skills := filepath.Join(dir, skillsSubdir)
+	return &skillTarget{
+		name: record.TargetOpenCode,
+		root: skills,
+		components: ComponentRoots{
+			Skills:    skills,
+			Agents:    filepath.Join(dir, "agents"),
+			Commands:  filepath.Join(dir, "commands"),
+			ConfigDir: dir,
+		},
+		alsoReads:  openCodeAlsoReads(cfg.HomeDir),
+		pluginRoot: pluginRootFor(cfg, record.TargetOpenCode),
+	}, nil
 }

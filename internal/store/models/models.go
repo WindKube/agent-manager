@@ -1,9 +1,8 @@
 // Package models holds the Bun structs that are the source of truth for the
-// `agent_manager` schema. Atlas diffs them into versioned SQL, so a struct
-// change is a migration. Every exported struct here is a table — the Atlas
-// loader treats every one as a Bun model, so a helper struct would silently
-// become a table. Enum types, check constraints and indexes have no
-// struct-tag representation; they come from the migration layer.
+// `agent_manager` schema; Atlas diffs them into versioned SQL.
+//
+// The Atlas loader treats every exported struct here as a table, so never add
+// a helper struct to this package.
 package models
 
 import (
@@ -12,8 +11,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// NewID returns a uuid v7: time-ordered, so index locality is free and rows
-// sort by creation without a separate column.
+// NewID returns a time-ordered uuid v7, for index locality and creation-order sorting.
 func NewID() uuid.UUID {
 	id, err := uuid.NewV7()
 	if err != nil {
@@ -54,12 +52,23 @@ func All() []any {
 		(*GroupRoleMap)(nil),
 		(*DeviceAuthorization)(nil),
 		(*Session)(nil),
+		(*ServiceToken)(nil),
 
 		// Governance
 		(*OrgPolicy)(nil),
 		(*AuditEvent)(nil),
 		(*SyncEvent)(nil),
 		(*FetchAttempt)(nil),
+
+		// Fleet inventory
+		(*Machine)(nil),
+		(*MachineInstall)(nil),
+		(*MachineSkip)(nil),
+
+		// Webhooks
+		(*WebhookSubscription)(nil),
+		(*WebhookDelivery)(nil),
+		(*WebhookDispatch)(nil),
 
 		// Job hand-off
 		(*Outbox)(nil),

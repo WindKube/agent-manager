@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -14,19 +15,19 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The governance methods, with the api stubbed and the assertions on the WIRE.
-// Same reasoning as the catalog's tests: asserting against apiclient's structs
-// would let a mapping bug here cancel out against the same bug in the test.
+// Assertions are on the wire: asserting against apiclient's structs would let a
+// mapping bug cancel out against the same bug in the test.
 
-func TestTheScannerSummaryIsReadAsInstantsAndDurationsRatherThanSentences(t *testing.T) {
+func TestTheScannerSummaryReadsItsInstantsAgainstTheClientsClock(t *testing.T) {
 	var got string
+	now := time.Date(2026, 8, 31, 9, 0, 0, 0, time.UTC)
 	client := clientAgainst(t, func(w http.ResponseWriter, r *http.Request) {
 		got = r.URL.RawQuery
 		writeCatalog(w, `{
 		  "periodDays": 30, "versionsScanned": 1284, "quarantined": 2, "overridesActive": 1,
 		  "nearestOverrideExpiry": "2026-09-12T09:00:00Z", "medianScanSeconds": 18.5
 		}`)
-	})
+	}, hub.WithClock(func() time.Time { return now }))
 
 	summary, err := client.ScannerSummary(t.Context(), 30)
 	require.NoError(t, err)
@@ -37,15 +38,12 @@ func TestTheScannerSummaryIsReadAsInstantsAndDurationsRatherThanSentences(t *tes
 	require.Equal(t, 1284, summary.VersionsScanned)
 	require.Equal(t, 2, summary.Quarantined)
 	require.Equal(t, 1, summary.OverridesActive)
-	require.NotNil(t, summary.NearestExpiry)
-	require.Equal(t, time.Date(2026, 9, 12, 9, 0, 0, 0, time.UTC), summary.NearestExpiry.UTC())
-	require.NotNil(t, summary.MedianScan)
-	require.Equal(t, 18500*time.Millisecond, *summary.MedianScan)
+	require.Equal(t, "in 12 days", summary.NearestExpiry)
+	require.Equal(t, "19s", summary.MedianScan)
 }
 
-// An absent figure must stay absent. "No scan finished in the window" and "the
-// median is zero" are different cards, and a zero-valued duration would render as
-// "0s" — a claim about a scan that never happened.
+// An absent median must stay absent: a zero duration would render "0s", a claim
+// about a scan that never happened.
 func TestAnAbsentSummaryFigureStaysAbsentRatherThanBecomingZero(t *testing.T) {
 	client := clientAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
 		writeCatalog(w, `{"periodDays":30,"versionsScanned":0,"quarantined":0,"overridesActive":0}`)
@@ -53,12 +51,11 @@ func TestAnAbsentSummaryFigureStaysAbsentRatherThanBecomingZero(t *testing.T) {
 
 	summary, err := client.ScannerSummary(t.Context(), 0)
 	require.NoError(t, err)
-	require.Nil(t, summary.MedianScan)
-	require.Nil(t, summary.NearestExpiry)
+	require.Empty(t, summary.MedianScan)
+	require.Empty(t, summary.NearestExpiry)
 }
 
-// days of 0 sends no parameter at all, so the api's own default applies. A client
-// that filled in 30 here would be a second place that knows the window.
+// days of 0 sends no parameter, so only the api knows the default window.
 func TestAnUnaskedForWindowIsNotInventedByThisRole(t *testing.T) {
 	var got string
 	client := clientAgainst(t, func(w http.ResponseWriter, r *http.Request) {
@@ -95,22 +92,18 @@ func TestAFindingRowCarriesTheSubjectAndTheVersionsOwnVerdict(t *testing.T) {
 	require.Contains(t, got, "severity=high")
 	require.Contains(t, got, "page=2")
 
-	require.Len(t, page.Findings, 2)
-	require.Equal(t, "community/slack-digest@0.5.1", page.Findings[0].Subject)
-	require.Equal(t, "community/slack-digest", page.Findings[0].PackageID)
-	require.Equal(t, 41, page.Findings[0].EvidenceLine)
+	require.Len(t, page.Rows, 2)
+	require.Equal(t, "community/slack-digest@0.5.1", page.Rows[0].Subject)
+	require.Equal(t, "community/slack-digest", page.Rows[0].PackageID)
+	require.NotNil(t, page.Rows[0].Primary)
+	require.Equal(t, "scripts/digest.sh:41", page.Rows[0].Primary.Location())
 
-	// A finding with no line reads as 0, which is unambiguous because line numbers
-	// are 1-based.
-	require.Equal(t, 0, page.Findings[1].EvidenceLine)
-	require.Empty(t, page.Findings[1].EvidencePath)
+	require.Nil(t, page.Rows[1].Primary)
 
-	// `rejected` survives as itself. The catalog collapses it onto the Flagged pill
-	// — "do not adopt this without reading the finding" — and on this screen the
-	// difference between awaiting a decision and having had one is the subject of
-	// the page.
-	require.Equal(t, "rejected", page.Findings[1].Verdict)
-	require.Equal(t, "rejected", page.Findings[1].State)
+	// `rejected` survives as itself here: on this screen, awaiting a decision versus
+	// having had one is the subject of the page.
+	require.Equal(t, view.VerdictRejected, page.Rows[1].Verdict)
+	require.Equal(t, view.FindingRejected, page.Rows[1].State)
 }
 
 func TestAnEmptyFilterSendsNoParameterRatherThanTheWordAll(t *testing.T) {
@@ -126,8 +119,7 @@ func TestAnEmptyFilterSendsNoParameterRatherThanTheWordAll(t *testing.T) {
 	require.NotContains(t, got, "severity=")
 }
 
-// The whole matrix reaches the screen, passes included, and the primary evidence
-// location is picked off the row whose role says so rather than by position.
+// The primary evidence is picked by role, not position.
 func TestTheFindingDetailKeepsEveryCheckAndFindsThePrimaryLocationByItsRole(t *testing.T) {
 	client := clientAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
 		writeCatalog(w, `{
@@ -155,24 +147,24 @@ func TestTheFindingDetailKeepsEveryCheckAndFindsThePrimaryLocationByItsRole(t *t
 	require.NoError(t, err)
 
 	require.Len(t, detail.Checks, 3, "the passes are carried, or the matrix cannot be told from silence")
-	require.Equal(t, "pass", detail.Checks[0].Result)
+	require.Equal(t, view.CheckPass, detail.Checks[0].Result)
 	require.Equal(t, 2, detail.Checks[2].WarnCount)
 
-	require.Len(t, detail.Evidence, 2)
-	// The primary row is second in the answer, so a mapping that took evidence[0]
-	// would name the consequence as the cause.
-	require.Equal(t, "scripts/digest.sh", detail.EvidencePath)
-	require.Equal(t, 41, detail.EvidenceLine)
+	// The primary row is second, so taking evidence[0] would be wrong.
+	require.NotNil(t, detail.Primary)
+	require.Equal(t, "scripts/digest.sh", detail.Primary.Path)
+	require.Equal(t, 41, detail.Primary.Line)
+	require.Len(t, detail.Supporting, 1)
+	require.Equal(t, 58, detail.Supporting[0].Line)
 
 	require.Equal(t, "1.4.0", detail.Scan.PackVersion)
-	require.NotNil(t, detail.Scan.FinishedAt)
+	require.Equal(t, "2026-08-27 10:00 UTC", detail.Scan.Finished)
 	require.NotNil(t, detail.Override)
 	require.Equal(t, "ewojcik@example.com", detail.Override.Reviewer)
 	require.Contains(t, detail.Explanation, "undeclared host")
 }
 
-// An id out of a URL a person can edit is answered as "no such finding" here,
-// without a round trip to be told the same thing.
+// A malformed id from an editable URL is "no such finding" without a round trip.
 func TestAnIdThatIsNotAUuidIsNotFoundWithoutReachingTheApi(t *testing.T) {
 	reached := false
 	client := clientAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
@@ -185,9 +177,8 @@ func TestAnIdThatIsNotAUuidIsNotFoundWithoutReachingTheApi(t *testing.T) {
 	require.False(t, reached, "the api was called with an id that cannot name a finding")
 }
 
-// FR-126: a role refusal is a screen state with a reason, not a bad gateway. It
-// must also not be confused with the signed-out state — signing in again does not
-// acquire a role, so a person sent round that loop cannot get out of it.
+// A role refusal is a screen state, not a bad gateway, and must not be the
+// signed-out state: signing in again does not acquire a role.
 func TestARoleRefusalIsItsOwnStateAndNotTheSignedOutOne(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -202,11 +193,11 @@ func TestARoleRefusalIsItsOwnStateAndNotTheSignedOutOne(t *testing.T) {
 				w.WriteHeader(tc.status)
 			})
 
-			_, err := client.AcceptFinding(t.Context(), "01930000-0000-7000-8000-000000000001",
+			err := client.AcceptFinding(t.Context(), "01930000-0000-7000-8000-000000000001",
 				"considered", 12)
 			require.ErrorIs(t, err, tc.want)
 
-			_, err = client.RejectFinding(t.Context(), "01930000-0000-7000-8000-000000000001", "")
+			err = client.RejectFinding(t.Context(), "01930000-0000-7000-8000-000000000001", "")
 			require.ErrorIs(t, err, tc.want)
 		})
 	}
@@ -221,15 +212,11 @@ func TestAcceptSendsTheNoteAndTheLifetimeAndRejectSendsNoLifetimeAtAll(t *testin
 		                  "verdict":"flagged","expiresAt":"2026-09-12T09:00:00Z"}`)
 	})
 
-	decision, err := client.AcceptFinding(t.Context(), "01930000-0000-7000-8000-000000000001",
+	err := client.AcceptFinding(t.Context(), "01930000-0000-7000-8000-000000000001",
 		"Egress is to our own collector", 12)
 	require.NoError(t, err)
-	require.Equal(t, "approved", decision.State)
-	require.Equal(t, "flagged", decision.Verdict,
-		"an accept leaves the version flagged: the override is what lets it through")
-	require.NotNil(t, decision.ExpiresAt)
 
-	_, err = client.RejectFinding(t.Context(), "01930000-0000-7000-8000-000000000001",
+	err = client.RejectFinding(t.Context(), "01930000-0000-7000-8000-000000000001",
 		"publisher is shipping a fix")
 	require.NoError(t, err)
 
@@ -240,8 +227,7 @@ func TestAcceptSendsTheNoteAndTheLifetimeAndRejectSendsNoLifetimeAtAll(t *testin
 		"a rejection is terminal, so there is no lifetime to send and no field to suggest one")
 }
 
-// A lifetime nobody chose is left to the api. The default is policy and it lives
-// on the side that owns the row.
+// An unchosen override lifetime is left to the api's policy default.
 func TestAnUnstatedOverrideLifetimeIsNotInventedHere(t *testing.T) {
 	var body string
 	client := clientAgainst(t, func(w http.ResponseWriter, r *http.Request) {
@@ -251,7 +237,7 @@ func TestAnUnstatedOverrideLifetimeIsNotInventedHere(t *testing.T) {
 		                  "verdict":"flagged"}`)
 	})
 
-	_, err := client.AcceptFinding(t.Context(), "01930000-0000-7000-8000-000000000001", "note", 0)
+	err := client.AcceptFinding(t.Context(), "01930000-0000-7000-8000-000000000001", "note", 0)
 	require.NoError(t, err)
 	require.NotContains(t, body, "expiresInDays")
 }
@@ -271,18 +257,51 @@ func TestTheAuditPageIsMappedRowForRow(t *testing.T) {
 		}`)
 	})
 
-	page, err := client.Audit(t.Context(), 1)
+	page, err := client.Audit(t.Context(), 1, view.AuditFilter{})
 	require.NoError(t, err)
 	require.Equal(t, 512, page.Total)
-	require.Len(t, page.Entries, 2)
-	require.Equal(t, "cli / mbp-jk", page.Entries[0].Source)
-	require.Equal(t, "system", page.Entries[1].ActorKind,
+	require.Len(t, page.Rows, 2)
+	require.Equal(t, "cli / mbp-jk", page.Rows[0].Source)
+	require.False(t, page.Rows[0].System)
+	require.True(t, page.Rows[1].System,
 		"a system row must not be attributable to a person, so the kind is carried and not inferred")
-	require.Empty(t, page.Entries[1].Source)
+	require.Empty(t, page.Rows[1].Source)
 }
 
-// The export is handed back as a live stream. A method that decoded it would
-// undo, one layer later, the whole reason the api streams it.
+// A version row is mapped to its package so the screen can link it.
+func TestTheAuditFilterIsForwardedAndSubjectsAreMapped(t *testing.T) {
+	var query url.Values
+	client := clientAgainst(t, func(w http.ResponseWriter, r *http.Request) {
+		query = r.URL.Query()
+		writeCatalog(w, `{
+		  "entries":[
+		    {"id":"01930000-0000-7000-8000-00000000000a","occurredAt":"2026-08-27T14:02:00Z",
+		     "actor":"scanner","actorKind":"system","kind":"scan","text":"flagged community/slack-digest@0.5.1",
+		     "subjectKind":"version","subjectId":"community/slack-digest@0.5.1","namespace":"community",
+		     "data":{"action":"scanned","package":"community/slack-digest","semver":"0.5.1"}},
+		    {"id":"01930000-0000-7000-8000-00000000000b","occurredAt":"2026-08-27T13:48:00Z",
+		     "actor":"a@example.com","actorKind":"identity","kind":"login","text":"a signed in",
+		     "subjectKind":"identity","subjectId":"01930000-0000-7000-8000-0000000000ff"}
+		  ],
+		  "total":2,"page":1,"pageSize":50
+		}`)
+	})
+
+	page, err := client.Audit(t.Context(), 1,
+		view.AuditFilter{SubjectKind: "package", SubjectID: "community/slack-digest"})
+	require.NoError(t, err)
+	require.Equal(t, "package", query.Get("subjectKind"))
+	require.Equal(t, "community/slack-digest", query.Get("subjectId"))
+	require.False(t, query.Has("namespace"), "an unset filter is left off the query")
+
+	require.Equal(t, "version", page.Rows[0].SubjectKind)
+	require.Equal(t, "community/slack-digest", page.Rows[0].Package)
+	require.Equal(t, "/packages/community/slack-digest", page.Rows[0].PackageHref())
+	require.Empty(t, page.Rows[1].Package)
+	require.Empty(t, page.Rows[1].PackageHref())
+}
+
+// The export is a live stream; decoding it would undo why the api streams it.
 func TestTheAuditExportIsHandedBackAsAStreamAndNotAsBytes(t *testing.T) {
 	lines := "{\"id\":\"a\"}\n{\"id\":\"b\"}\n{\"complete\":true,\"rows\":2}\n"
 	client := clientAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
@@ -290,7 +309,7 @@ func TestTheAuditExportIsHandedBackAsAStreamAndNotAsBytes(t *testing.T) {
 		_, _ = w.Write([]byte(lines))
 	})
 
-	body, mediaType, err := client.AuditExport(t.Context())
+	body, mediaType, err := client.AuditExport(t.Context(), view.AuditFilter{})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, body.Close()) })
 	require.Equal(t, "application/x-ndjson", mediaType)
@@ -301,9 +320,8 @@ func TestTheAuditExportIsHandedBackAsAStreamAndNotAsBytes(t *testing.T) {
 	require.Equal(t, 3, strings.Count(string(read), "\n"))
 }
 
-// A refused export must not be handed back as if it were one: its body is a
-// problem document, and a caller copying it to the browser would write that into
-// the operator's file.
+// A refused export's body is a problem document and must not be handed back, or it
+// would be written into the operator's file.
 func TestARefusedExportYieldsNoReader(t *testing.T) {
 	client := clientAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
@@ -311,7 +329,7 @@ func TestARefusedExportYieldsNoReader(t *testing.T) {
 		_, _ = w.Write([]byte(`{"title":"Unauthorized"}`))
 	})
 
-	body, _, err := client.AuditExport(t.Context())
+	body, _, err := client.AuditExport(t.Context(), view.AuditFilter{})
 	require.Nil(t, body)
 	require.True(t, errors.Is(err, view.ErrSignedOut))
 }

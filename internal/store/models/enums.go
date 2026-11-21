@@ -36,6 +36,7 @@ const (
 	PGScanGate          = "scan_gate"
 	PGActorKind         = "actor_kind"
 	PGAuditKind         = "audit_kind"
+	PGAuditSubjectKind  = "audit_subject_kind"
 	PGOutboxState       = "outbox_state"
 	PGEvidenceRole      = "evidence_role"
 	PGFetchSourceKind   = "fetch_source_kind"
@@ -49,7 +50,7 @@ var enumTypes = map[string][]string{
 	PGPackageVisibility: {"organisation", "team", "private"},
 	PGDistTag:           {"latest", "archived", "none"},
 	PGVerdict:           {"scanning", "clean", "flagged", "rejected"},
-	PGComponentKind:     {"skill", "mcp", "ext"},
+	PGComponentKind:     {"skill", "mcp", "ext", "agent", "command", "hook"},
 	PGCapabilitySource:  {"inferred", "expected"},
 	PGCapabilityLevel:   {"scoped", "allowlisted", "review"},
 	PGSignatureKind:     {"none", "cosign-bundle"},
@@ -62,14 +63,18 @@ var enumTypes = map[string][]string{
 	PGEntryMode:         {"latest", "pinned", "range"},
 	PGMembershipRole:    {"owner", "maintainer", "reviewer", "consumer"},
 	PGSubjectKind:       {"user", "group"},
-	PGSyncTargetKind:    {"claude-code", "codex"},
+	PGSyncTargetKind:    {"claude-code", "codex", "opencode"},
 	PGOrgRole:           {"catalog-admin", "scanner-reviewer", "profile-consumer", "read-only"},
 	PGDeviceAuthState:   {"pending", "approved", "consumed", "expired", "denied"},
 	PGScanGate:          {"block", "approval", "warn-with-override"},
-	PGActorKind:         {"identity", "system"},
+	PGActorKind:         {"identity", "system", "service-token"},
 	PGAuditKind: {
 		"fetch", "scan", "approve", "profile", "share", "sync", "login",
-		"policy", "role", "category", "secret",
+		"policy", "role", "category", "secret", "token", "webhook",
+	},
+	PGAuditSubjectKind: {
+		"package", "version", "finding", "profile", "revision",
+		"category", "mapping", "policy", "identity", "device", "service-token", "machine", "webhook",
 	},
 	PGOutboxState:     {"pending", "delivered"},
 	PGEvidenceRole:    {"primary", "supporting"},
@@ -84,8 +89,7 @@ func inEnum(pgType, value string) bool {
 	return slices.Contains(enumTypes[pgType], value)
 }
 
-// EnumTypes returns the Postgres enum types the models reference, mapped to their
-// declared value sets.
+// EnumTypes returns a copy of each Postgres enum type's value set.
 func EnumTypes() map[string][]string {
 	out := make(map[string][]string, len(enumTypes))
 	for name, values := range enumTypes {
@@ -94,9 +98,8 @@ func EnumTypes() map[string][]string {
 	return out
 }
 
-// EnumDDL returns one `create type` statement per enum type, sorted by name.
-// Bun emits no DDL for enum types, so the migration layer prepends these before
-// the loader's `create table` output.
+// EnumDDL returns one `create type` statement per enum type, sorted by name;
+// Bun emits no DDL for enums, so the migration layer prepends these.
 func EnumDDL() []string {
 	names := make([]string, 0, len(enumTypes))
 	for name := range enumTypes {
@@ -163,9 +166,12 @@ func (v Verdict) Valid() bool { return inEnum(PGVerdict, string(v)) }
 type ComponentKind string
 
 const (
-	ComponentKindSkill ComponentKind = "skill"
-	ComponentKindMCP   ComponentKind = "mcp"
-	ComponentKindExt   ComponentKind = "ext"
+	ComponentKindSkill   ComponentKind = "skill"
+	ComponentKindMCP     ComponentKind = "mcp"
+	ComponentKindExt     ComponentKind = "ext"
+	ComponentKindAgent   ComponentKind = "agent"
+	ComponentKindCommand ComponentKind = "command"
+	ComponentKindHook    ComponentKind = "hook"
 )
 
 func (v ComponentKind) Valid() bool { return inEnum(PGComponentKind, string(v)) }
@@ -202,8 +208,7 @@ const (
 
 func (v SignatureKind) Valid() bool { return inEnum(PGSignatureKind, string(v)) }
 
-// SignatureResult is the outcome of a verification attempt; null means "never
-// attempted".
+// SignatureResult is the outcome of a verification attempt; null means never attempted.
 type SignatureResult string
 
 const (
@@ -296,17 +301,13 @@ func (v MembershipRole) MayCurate() bool {
 }
 
 // MayShare reports whether this role may change who the profile is shared
-// with. Owner only: a maintainer who could re-share could widen an access
-// decision the owner made.
+// with; owner only, so a maintainer cannot widen the owner's access decision.
 func (v MembershipRole) MayShare() bool { return v == MembershipRoleOwner }
 
-// MayDelete reports whether this role may delete the profile outright.
-// Owner only, for the same reason as MayShare: deleting is a decision about
-// the profile's own existence, not its curation.
+// MayDelete reports whether this role may delete the profile (owner only).
 func (v MembershipRole) MayDelete() bool { return v == MembershipRoleOwner }
 
-// MayPublish reports whether this role may publish a revision: the sharpest
-// of the three, since a revision is what reaches machines.
+// MayPublish reports whether this role may publish a revision.
 func (v MembershipRole) MayPublish() bool {
 	return v == MembershipRoleOwner || v == MembershipRoleMaintainer
 }
@@ -328,6 +329,7 @@ type SyncTargetKind string
 const (
 	SyncTargetKindClaudeCode SyncTargetKind = "claude-code"
 	SyncTargetKindCodex      SyncTargetKind = "codex"
+	SyncTargetKindOpenCode   SyncTargetKind = "opencode"
 )
 
 func (v SyncTargetKind) Valid() bool { return inEnum(PGSyncTargetKind, string(v)) }
@@ -371,8 +373,9 @@ func (v ScanGate) Valid() bool { return inEnum(PGScanGate, string(v)) }
 type ActorKind string
 
 const (
-	ActorKindIdentity ActorKind = "identity"
-	ActorKindSystem   ActorKind = "system"
+	ActorKindIdentity     ActorKind = "identity"
+	ActorKindSystem       ActorKind = "system"
+	ActorKindServiceToken ActorKind = "service-token"
 )
 
 func (v ActorKind) Valid() bool { return inEnum(PGActorKind, string(v)) }
@@ -391,12 +394,36 @@ const (
 	AuditKindPolicy   AuditKind = "policy"
 	AuditKindRole     AuditKind = "role"
 	AuditKindCategory AuditKind = "category"
-	// AuditKindSecret is identity-provider credential rotation: the credential
-	// itself never reaches a row here, only the fact that it moved.
+	// AuditKindSecret records IdP credential rotation, never the credential itself.
 	AuditKindSecret AuditKind = "secret"
+	AuditKindToken  AuditKind = "token"
+	// AuditKindWebhook rows never hold the secret or the URL past its host.
+	AuditKindWebhook AuditKind = "webhook"
 )
 
 func (v AuditKind) Valid() bool { return inEnum(PGAuditKind, string(v)) }
+
+// AuditSubjectKind is what an audit row is about; each comment names what
+// subject_id holds for that kind.
+type AuditSubjectKind string
+
+const (
+	AuditSubjectPackage  AuditSubjectKind = "package"       // namespace/name, the api's package id
+	AuditSubjectVersion  AuditSubjectKind = "version"       // namespace/name@semver
+	AuditSubjectFinding  AuditSubjectKind = "finding"       // finding.id
+	AuditSubjectProfile  AuditSubjectKind = "profile"       // profile.id
+	AuditSubjectRevision AuditSubjectKind = "revision"      // revision.id
+	AuditSubjectCategory AuditSubjectKind = "category"      // category.id
+	AuditSubjectMapping  AuditSubjectKind = "mapping"       // group_role_map.group_name
+	AuditSubjectPolicy   AuditSubjectKind = "policy"        // org_policy.id, always "1"
+	AuditSubjectIdentity AuditSubjectKind = "identity"      // identity.id
+	AuditSubjectDevice   AuditSubjectKind = "device"        // device_authorization.id
+	AuditSubjectToken    AuditSubjectKind = "service-token" // service_token.id
+	AuditSubjectMachine  AuditSubjectKind = "machine"       // machine.id
+	AuditSubjectWebhook  AuditSubjectKind = "webhook"       // webhook_subscription.id
+)
+
+func (v AuditSubjectKind) Valid() bool { return inEnum(PGAuditSubjectKind, string(v)) }
 
 type OutboxState string
 
@@ -418,8 +445,7 @@ const (
 
 func (v EvidenceRole) Valid() bool { return inEnum(PGEvidenceRole, string(v)) }
 
-// FetchSourceKind mirrors fetch.SourceKind, copied rather than imported since
-// this package must stay free of the fetch tree.
+// FetchSourceKind mirrors fetch.SourceKind; copied so this package stays free of the fetch tree.
 type FetchSourceKind string
 
 const (
@@ -430,8 +456,8 @@ const (
 
 func (v FetchSourceKind) Valid() bool { return inEnum(PGFetchSourceKind, string(v)) }
 
-// FetchOutcome is how one fetch attempt ended, mapped one-to-one to its cause
-// so nothing has to be recovered by parsing `detail`.
+// FetchOutcome is how one fetch attempt ended, one value per cause so nothing
+// is parsed out of `detail`.
 type FetchOutcome string
 
 const (

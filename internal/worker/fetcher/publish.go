@@ -14,23 +14,26 @@ import (
 
 	"agent-manager/internal/blob"
 	"agent-manager/internal/domain/pkgspec"
+	"agent-manager/internal/fetch"
+	"agent-manager/internal/signing"
 	"agent-manager/internal/store/models"
 	"agent-manager/internal/worker/scanner"
 )
 
-// errAlreadyPublished is the transaction finding the version already committed.
+// stored is the signature verification result for the publish transaction.
+type stored struct {
+	signature models.Signature
+	verdict   signing.Result
+}
+
 var errAlreadyPublished = errors.New("version already has committed bytes")
 
-// publish is the one transaction the fetch pipeline hangs on: the digest,
-// manifest, components, `visible` flip, scan hand-off and audit row land
-// together or not at all, so a crash in the middle leaves orphaned objects
-// rather than a half-published version. It returns whether it published, and
-// whether this version took the package's `latest` dist tag.
-func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, commit blob.Commit) (published, latest bool, err error) {
+// publish lands the digest, manifest, components, `visible` flip, scan hand-off
+// and audit row in one transaction. It returns whether it published and whether
+// this version took `latest`.
+func (w *Worker) publish(ctx context.Context, job Job, tree fetch.Tree, pkg *pkgspec.Package, commit blob.Commit, sig stored) (published, latest bool, err error) {
 	err = w.deps.DB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		// `for update` closes the window the pre-flight idempotency check
-		// cannot: two deliveries can both pass that check, and only one may
-		// write.
+		// Two deliveries can both pass the pre-flight check; `for update` lets only one write.
 		var (
 			sortKey        string
 			committed      bool
@@ -52,8 +55,7 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 				job, job.VersionID, packageID, job.PackageID)
 		}
 
-		// Re-registering an older tag must not steal `latest` from a higher
-		// version.
+		// An older tag must not steal `latest` from a higher version.
 		var newest bool
 		if compareErr := tx.QueryRowContext(ctx,
 			`select not exists (
@@ -63,10 +65,8 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 			return fmt.Errorf("compare %s against the package's other versions: %w", job, compareErr)
 		}
 
-		// The package's kind is settled here: knowable only once the bytes
-		// are in hand. A package with a published version keeps its kind — a
-		// tree that claims otherwise is a manifest failure, not a
-		// correction.
+		// Kind is known only once the bytes are in hand. A package with a published
+		// version keeps its kind; a tree claiming otherwise is a manifest failure.
 		derived := models.PackageKind(pkg.Kind)
 		if !derived.Valid() {
 			return fmt.Errorf("%s: %q is not a package kind", job, pkg.Kind)
@@ -109,16 +109,11 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 			}
 		}
 
-		// registeredTags is whatever the registration already wrote — a
-		// publisher's own tags, and an upload's manifest keywords seeded
-		// early so the catalog could filter it before the fetch finished.
-		// Unioned rather than replaced: a plain overwrite here would drop
-		// tags the api wrote and this transaction never re-derives.
+		// Union with the tags the registration already wrote, which this
+		// transaction cannot re-derive.
 		tags := VersionTags(append(registeredTags, pkg.Keywords...))
 
-		// `and digest is null` is a compare-and-set: a lost lock fails the
-		// update rather than silently overwriting bytes that are supposed to
-		// be immutable.
+		// `and digest is null` is a compare-and-set so immutable bytes are never overwritten.
 		res, updateErr := tx.NewUpdate().Model((*models.Version)(nil)).
 			Set("digest = ?", commit.Bundle.Digest[:]).
 			Set("size_bytes = ?", commit.Bundle.Size).
@@ -127,6 +122,8 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 			Set("tags = ?", pgTextArray(tags)).
 			Set("dist_tag = ?", distTag).
 			Set("visible = ?", true).
+			Set("source_url = ?", nullIfEmpty(tree.SourceURL)).
+			Set("source_commit = ?", nullIfEmpty(tree.Commit)).
 			Where("id = ? and digest is null", job.VersionID).
 			Exec(ctx)
 		if updateErr != nil {
@@ -147,12 +144,10 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 			return componentErr
 		}
 
-		// `capability` is deliberately not written here: am_fetcher holds no
-		// grant on it.
-		if _, signatureErr := tx.NewInsert().Model(&models.Signature{
-			VersionID: job.VersionID,
-			Kind:      models.SignatureKindNone,
-		}).On("conflict (version_id) do nothing").Exec(ctx); signatureErr != nil {
+		// am_fetcher holds no grant on `capability`.
+		signatureRow := sig.signature
+		if _, signatureErr := tx.NewInsert().Model(&signatureRow).
+			On("conflict (version_id) do nothing").Returning("NULL").Exec(ctx); signatureErr != nil {
 			return fmt.Errorf("record the signature state for %s: %w", job, signatureErr)
 		}
 
@@ -166,8 +161,7 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 			}
 		}
 
-		// The scan hand-off rides the same transaction, so there is no
-		// committed version that nothing will ever scan.
+		// Same transaction, so no committed version goes unscanned.
 		scanJob, scanErr := scanner.Job{
 			VersionID: job.VersionID,
 			PackageID: job.PackageID,
@@ -180,10 +174,8 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 			return fmt.Errorf("enqueue the scan of %s: %w", job, scanErr)
 		}
 
-		// Publishing a version re-enqueues the package's already-scanned
-		// versions. Whether rescan-on-new-version is enabled is read by the
-		// scanner: am_scanner holds the grant on org_policy and am_fetcher
-		// deliberately does not.
+		// The scanner decides whether rescan-on-new-version applies, since only
+		// am_scanner can read org_policy.
 		sweepJob, sweepErr := scanner.SweepJob{
 			PackageID:        job.PackageID,
 			TriggerVersionID: job.VersionID,
@@ -198,7 +190,7 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 			return fmt.Errorf("enqueue the scan of %s: %w", job, enqueueErr)
 		}
 
-		if auditErr := writeFetchAudit(ctx, tx, storedText(job, pkg, commit)); auditErr != nil {
+		if auditErr := writeFetchAudit(ctx, tx, job, "stored", storedText(job, pkg, commit, sig.verdict), storedData(pkg, commit, sig.verdict)); auditErr != nil {
 			return auditErr
 		}
 		if attemptErr := writeFetchAttempt(ctx, tx, job, models.FetchOutcomeOK, ""); attemptErr != nil {
@@ -218,13 +210,8 @@ func (w *Worker) publish(ctx context.Context, job Job, pkg *pkgspec.Package, com
 	return published, latest, nil
 }
 
-// VersionTags is the one rule for turning a bag of strings into what
-// `version.tags` and `version_tag` store, whether they came from a manifest's
-// keywords or from what a publisher typed. Exported so
-// commands.RegisterPackage normalises the same way instead of restating it.
-//
-// Case is folded because the tag facet groups on the stored string: `AWS`
-// beside `aws` would be two filters that each hide half the catalog.
+// VersionTags normalises strings into what `version.tags` and `version_tag`
+// store. Case is folded so the tag facet does not split `AWS` from `aws`.
 func VersionTags(keywords []string) []string {
 	out := make([]string, 0, len(keywords))
 	for _, tag := range keywords {
@@ -252,13 +239,13 @@ func insertVersionTags(ctx context.Context, tx bun.IDB, versionID uuid.UUID, tag
 	return nil
 }
 
-// insertComponents writes what the file tree said the version contains.
 func insertComponents(ctx context.Context, tx bun.IDB, versionID uuid.UUID, components []pkgspec.Component) error {
 	if len(components) == 0 {
 		return nil
 	}
 	rows := make([]models.Component, 0, len(components))
-	for _, component := range components {
+	for i := range components {
+		component := &components[i]
 		kind := models.ComponentKind(component.Kind)
 		if !kind.Valid() {
 			return fmt.Errorf("component %q of version %s has kind %q, which the schema does not allow",
@@ -270,6 +257,10 @@ func insertComponents(ctx context.Context, tx bun.IDB, versionID uuid.UUID, comp
 			Kind:      kind,
 			Name:      component.Name,
 			Note:      component.Note,
+			Event:     component.Event,
+			Matcher:   component.Matcher,
+			Transport: component.Transport,
+			Target:    component.Target,
 		})
 	}
 	if _, err := tx.NewInsert().Model(&rows).
@@ -279,9 +270,8 @@ func insertComponents(ctx context.Context, tx bun.IDB, versionID uuid.UUID, comp
 	return nil
 }
 
-// pgTextArray renders a Go slice as a text[] literal: this update is a Set on
-// a column rather than a whole-model write, and a []string handed to Set
-// arrives as a jsonb-ish string that text[] refuses.
+// pgTextArray renders a text[] literal, since a []string passed to Set is not
+// encoded as one.
 func pgTextArray(values []string) string {
 	if len(values) == 0 {
 		return "{}"
@@ -302,4 +292,11 @@ func pgTextArray(values []string) string {
 		out = append(out, '"')
 	}
 	return string(append(out, '}'))
+}
+
+func nullIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }

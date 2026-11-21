@@ -1,18 +1,11 @@
-// Package outbox is the only door to the job queue. The queue lives in its
-// own PostgreSQL database, so a mutation cannot enqueue inside its own
-// transaction: Writer inserts a row inside the caller's transaction instead,
-// and Relay moves committed rows into River, so a commit publishes both the
-// state change and its jobs, or neither.
+// Package outbox is the only door to the job queue, which lives in its own
+// database. Writer inserts rows in the caller's transaction and Relay moves
+// committed rows into River, so a commit publishes its state and jobs or neither.
 //
-// Delivery is at-least-once, deliberately: the relay inserts into River
-// before it marks the outbox row delivered, since the other order loses the
-// job outright if the process dies in between, while this order only
-// duplicates it. The idempotency key lives on the job's target row — never
-// in the queue — so a redelivery is answered by the data rather than by the
-// queue remembering.
-//
-// No code path may enqueue by calling River from a request handler. It goes
-// through Writer, or it is a defect.
+// Delivery is at-least-once: the relay inserts into River before marking the
+// row delivered, so a crash duplicates a job rather than losing it; the
+// idempotency key therefore lives on the job's target row. Never call
+// River directly from a request handler.
 package outbox
 
 import (
@@ -23,13 +16,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
+	"go.opentelemetry.io/otel/propagation"
 
 	"agent-manager/internal/store/models"
 )
 
-// NotifyChannel is the LISTEN channel the relay wakes on. Writer raises it inside
-// the caller's transaction, so Postgres delivers it on commit and discards it on
-// rollback — the notification cannot outrun the row it refers to.
+// NotifyChannel is the LISTEN channel the relay wakes on. It is raised inside
+// the caller's transaction, so it cannot outrun the row it refers to.
 const NotifyChannel = "outbox_new"
 
 // Kind is an outbox row's job_kind.
@@ -39,31 +32,31 @@ const (
 	KindFetch       Kind = "fetch"
 	KindScan        Kind = "scan"
 	KindRescanSweep Kind = "rescan-sweep"
+	KindNotify      Kind = "notify"
 )
 
 func (k Kind) Valid() bool {
 	switch k {
-	case KindFetch, KindScan, KindRescanSweep:
+	case KindFetch, KindScan, KindRescanSweep, KindNotify:
 		return true
 	default:
 		return false
 	}
 }
 
-// Queue names, one per worker role. A kind rides the queue its worker actually
-// registers — no kind may share river.QueueDefault, or a worker that never
-// registers that queue's job kind starves on jobs it cannot run.
+// Queue names, one per worker role. No kind may use river.QueueDefault, since
+// workers register only their own queue.
 const (
-	QueueFetch = "fetch"
-	QueueScan  = "scan"
+	QueueFetch  = "fetch"
+	QueueScan   = "scan"
+	QueueNotify = "notify"
 )
 
-// queueByKind names the River queue a kind is delivered to. The outbox row carries
-// no queue column, so the mapping lives here.
 var queueByKind = map[Kind]string{
 	KindFetch:       QueueFetch,
 	KindScan:        QueueScan,
 	KindRescanSweep: QueueScan,
+	KindNotify:      QueueNotify,
 }
 
 // Queue is the River queue a kind is delivered to.
@@ -71,30 +64,36 @@ func Queue(k Kind) string {
 	return queueByKind[k]
 }
 
-// MaxJobAttempts caps every kind's retries. River defaults an unset
-// InsertOpts.MaxAttempts to 25 (river.MaxAttemptsDefault); 25 attempts of a
-// fetch or a scan that keeps failing is 25 attempts of noise nobody reads,
-// and it is what makes the Runtime screen's "retryable" count meaningless.
+// MaxJobAttempts caps retries; River's default of 25 is just noise for a
+// persistently failing fetch or scan.
 const MaxJobAttempts = 3
+
+// MaxNotifyAttempts is larger so a receiver down for an afternoon still gets
+// the event; backoff spreads it over about 17 hours.
+const MaxNotifyAttempts = 10
+
+// MaxAttempts is the retry budget a kind is inserted with.
+func MaxAttempts(k Kind) int {
+	if k == KindNotify {
+		return MaxNotifyAttempts
+	}
+	return MaxJobAttempts
+}
 
 // Job is one queued unit of work as the caller describes it.
 type Job struct {
 	Kind Kind
 
-	// SubjectID and SubjectVersion complete the idempotency key. They name the
-	// row whose state answers "has this already happened?" — the version for
-	// a fetch, the version plus rule-pack version for a scan. A sweep has no
-	// subject.
+	// SubjectID and SubjectVersion complete the idempotency key: the version
+	// for a fetch, plus the rule-pack version for a scan.
 	SubjectID      uuid.UUID
 	SubjectVersion string
 
-	// Payload is marshalled to jsonb and handed to River verbatim. A
-	// json.RawMessage passes through unchanged.
+	// Payload is marshalled to jsonb; a json.RawMessage passes through unchanged.
 	Payload any
 }
 
-// IdempotencyKey is (job_kind, subject_id, subject_version), the key the
-// handler uses to recognise a redelivery.
+// IdempotencyKey is job_kind:subject_id:subject_version.
 func (j Job) IdempotencyKey() string {
 	subject := ""
 	if j.SubjectID != uuid.Nil {
@@ -103,9 +102,8 @@ func (j Job) IdempotencyKey() string {
 	return string(j.Kind) + ":" + subject + ":" + j.SubjectVersion
 }
 
-// Validate rejects a job the relay could not deliver, before it reaches the
-// caller's transaction: an unknown kind has no worker registered against it and a
-// payload that will not encode would abort the mutation at the insert.
+// Validate rejects a job the relay could not deliver before it reaches the
+// caller's transaction.
 func (j Job) Validate() error {
 	if !j.Kind.Valid() {
 		return fmt.Errorf("unknown job kind %q", j.Kind)
@@ -142,9 +140,8 @@ type Enqueuer interface {
 	Enqueue(ctx context.Context, tx bun.IDB, jobs ...Job) ([]uuid.UUID, error)
 }
 
-// Writer inserts outbox rows. It deliberately holds no database handle:
-// every call takes the caller's transaction, so "enqueue outside a
-// transaction" is not expressible.
+// Writer inserts outbox rows. It holds no database handle, so it can only
+// enqueue inside the caller's transaction.
 type Writer struct{}
 
 func NewWriter() Writer { return Writer{} }
@@ -159,6 +156,9 @@ func (Writer) Enqueue(ctx context.Context, tx bun.IDB, jobs ...Job) ([]uuid.UUID
 	if len(jobs) == 0 {
 		return nil, nil
 	}
+
+	trace := propagation.MapCarrier{}
+	propagation.TraceContext{}.Inject(ctx, trace)
 
 	rows := make([]models.Outbox, 0, len(jobs))
 	ids := make([]uuid.UUID, 0, len(jobs))
@@ -179,20 +179,18 @@ func (Writer) Enqueue(ctx context.Context, tx bun.IDB, jobs ...Job) ([]uuid.UUID
 			Payload:        payload,
 			IdempotencyKey: job.IdempotencyKey(),
 			State:          models.OutboxStatePending,
+			TraceParent:    trace.Get("traceparent"),
 		})
 	}
 
-	// am_fetcher and am_scanner hold INSERT-only on outbox — no SELECT — and bun
-	// appends RETURNING for every `default:`-tagged column unless told not to,
-	// which that grant refuses. am_api, the other caller, never reads the
-	// returned columns either, so suppressing it costs nothing there.
+	// am_fetcher and am_scanner hold INSERT-only on outbox, so suppress bun's
+	// automatic RETURNING for `default:` columns.
 	if _, err := tx.NewInsert().Model(&rows).Returning("NULL").Exec(ctx); err != nil {
 		return nil, fmt.Errorf("insert outbox rows: %w", err)
 	}
 
-	// One notification per transaction is enough: the relay drains everything
-	// pending when it wakes. The placeholder is bun's `?`, not Postgres's
-	// `$1`: bun formats raw SQL itself and passes no arguments to the driver.
+	// One notification per transaction is enough; the relay drains all pending.
+	// bun formats raw SQL itself, so the placeholder is `?`, not `$1`.
 	if _, err := tx.ExecContext(ctx, "select pg_notify(?, '')", NotifyChannel); err != nil {
 		return nil, fmt.Errorf("notify %s: %w", NotifyChannel, err)
 	}

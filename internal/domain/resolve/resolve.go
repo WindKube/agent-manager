@@ -1,21 +1,10 @@
-// Package resolve turns a profile's entries, their candidate versions and
-// the org's scan gate into what each entry resolves to, so the profile
-// screen, lockfile and CLI can't disagree.
+// Package resolve applies the org's scan gate to a profile's entries so the
+// profile screen, lockfile and CLI agree on what each entry resolves to.
 //
-// Gate rules:
-//
-//	block               a flagged version does not resolve; a floating
-//	                    entry falls back to its newest clean version
-//	approval            an unapproved flagged version excludes the entry
-//	warn-with-override  a flagged version resolves with a warning, plus
-//	                    an active override if one exists
-//
-// A rejected version never resolves, under any gate.
-//
-// Pure by construction: no store, no blob, no HTTP. It does not decide who
-// may read a profile, package or version (the caller's job), and it does
-// not format findings — Candidate.FlagDetail, Note and Skip.Detail carry
-// attacker-controlled text and must be escaped at render.
+// A rejected version never resolves, under any gate. The package is pure (no
+// store, blob or HTTP) and does no authorization.
+// Candidate.FlagDetail, Note and Skip.Detail carry attacker-controlled text
+// and must be escaped at render.
 package resolve
 
 import (
@@ -25,6 +14,8 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver/v3"
+
+	"agent-manager/internal/domain/signer"
 )
 
 type Gate string
@@ -113,8 +104,7 @@ const (
 )
 
 // Override is a reviewer accepting a finding on a version. The expiry is
-// carried rather than pre-evaluated, so "a lapsed override is not an
-// override" stays a gate rule instead of something callers judge.
+// evaluated here so callers cannot treat a lapsed override as active.
 type Override struct {
 	Reviewer string
 	Note     string
@@ -122,34 +112,46 @@ type Override struct {
 	ExpiresAt *time.Time
 }
 
-// ActiveAt: nil is not an override, so callers can pass Candidate.Override
-// straight in.
+// ActiveAt reports whether o is non-nil and unexpired at t.
 func (o *Override) ActiveAt(t time.Time) bool {
 	return o != nil && (o.ExpiresAt == nil || o.ExpiresAt.After(t))
 }
 
-// Signature is registry-side signature provenance. Verified stays nil or
-// false until cryptographic verification ships and must never be rendered
-// as a pass; nothing here reads it, only Ref decides eligibility.
+// Signature is a version's Sigstore signature evaluated against its
+// package's expected signer at read time, never cached. Verified is true
+// only for signer.StatusMatching.
 type Signature struct {
 	Ref      string
+	Status   signer.Status
+	Issuer   string
+	Identity string
 	Verified *bool
 }
 
+// NewSignature derives Verified from Status, so the two cannot disagree.
+func NewSignature(ref string, status signer.Status, issuer, identity string) *Signature {
+	matching := status == signer.StatusMatching
+	return &Signature{Ref: ref, Status: status, Issuer: issuer, Identity: identity, Verified: &matching}
+}
+
+func (s *Signature) status() signer.Status {
+	if s == nil || s.Status == "" {
+		return signer.StatusUnsigned
+	}
+	return s.Status
+}
+
 // Candidate is one version an entry may resolve to. Digest and ObjectKey
-// are opaque here, carried only so a caller building a lockfile entry
-// copies them out instead of going back to the database.
+// are opaque, carried so lockfile builders need not re-query the database.
 type Candidate struct {
 	ID      string
 	Semver  string
 	Verdict Verdict
-	// Visible: a floating entry never picks an invisible one, but an
-	// explicit pin at one still resolves — withdrawing a version from the
-	// shelf isn't the same as withdrawing it from machines that chose it.
+	// Visible: a floating entry never picks an invisible version, but an
+	// explicit pin at one still resolves.
 	Visible bool
-	// FlagDetail is how this version's flag reads to a human. It reaches
-	// Skip.Detail and the notes verbatim: attacker-controlled, escape at
-	// render.
+	// FlagDetail is attacker-controlled and reaches Skip.Detail and notes
+	// verbatim; escape at render.
 	FlagDetail string
 	Override   *Override
 	Signature  *Signature
@@ -158,25 +160,21 @@ type Candidate struct {
 }
 
 type Entry struct {
-	ID   string // the lockfile's `id`, publisher/name
-	Kind string
-	Mode Mode
-	// PinnedID is the Candidate.ID the pin names; required when Mode is
-	// ModePinned.
-	PinnedID string
-	// Range is the constraint expression; required when Mode is ModeRange.
+	ID         string // the lockfile's `id`, publisher/name
+	Kind       string
+	Mode       Mode
+	PinnedID   string
 	Range      string
 	Candidates []Candidate
 }
 
 type Input struct {
 	Gate Gate
-	// RequireSignatures: a version with no signature reference is not
-	// resolvable while it is set.
+	// RequireSignatures admits only versions whose signature matches the
+	// package's expected signer.
 	RequireSignatures bool
-	// At is passed rather than read off the clock so the resolver stays
-	// pure and re-resolving a published revision as of its own publication
-	// instant gives back what it published.
+	// At is passed in so re-resolving a revision as of its publication
+	// instant reproduces what it published.
 	At      time.Time
 	Entries []Entry
 }
@@ -191,20 +189,16 @@ type Skip struct {
 
 // Resolution is what one entry resolved to and what the screen says about it.
 type Resolution struct {
-	ID   string
-	Kind string
-	// Mode is deliberately not re-labelled by what happened: a pin the
-	// gate refused is still a pin.
+	ID      string
+	Kind    string
 	Mode    Mode
 	Outcome Outcome
 	Version *Candidate
 	// PassedOver is the version the entry would have taken had policy not
-	// stopped it: set on a downgrade and on every skip that had something
-	// to skip.
+	// stopped it.
 	PassedOver *Candidate
-	// Override is the ACTIVE acceptance that let a flagged version
-	// through, nil otherwise; not the same as Version.Override, which may
-	// have lapsed.
+	// Override is the active acceptance that let a flagged version through;
+	// Version.Override may have lapsed.
 	Override *Override
 	// Note embeds FlagDetail, so escape it at render.
 	Note string
@@ -212,9 +206,7 @@ type Resolution struct {
 }
 
 type Result struct {
-	Gate Gate
-	// Entries includes the skipped ones: the screen draws a row for every
-	// entry a profile holds, not only for the ones that survived.
+	Gate    Gate
 	Entries []Resolution
 }
 
@@ -238,10 +230,8 @@ func (r Result) Resolved() []Resolution {
 	return out
 }
 
-// Resolve applies the gate to every entry, erroring on malformed input
-// (unknown gate, mode, verdict, or a non-semver version) rather than
-// falling through to a default — the only defaults available are "let it
-// through" or "drop it", and neither is safe to pick silently.
+// Resolve applies the gate to every entry. Malformed input is an error
+// because neither "let it through" nor "drop it" is a safe default.
 func Resolve(in Input) (Result, error) {
 	if !in.Gate.Valid() {
 		return Result{}, fmt.Errorf("scan gate %q is not block, approval or warn-with-override", in.Gate)
@@ -276,9 +266,7 @@ func resolveEntry(in Input, entry Entry) (Resolution, error) {
 	return resolveFloating(in, entry, out)
 }
 
-// resolvePinned honours the pin or excludes the entry; it never re-points
-// one, since re-pointing behind the owner's back is exactly what a pin
-// promises not to do.
+// resolvePinned honours the pin or excludes the entry; it never re-points it.
 func resolvePinned(in Input, entry Entry, out Resolution) Resolution {
 	pin := findCandidate(entry.Candidates, entry.PinnedID)
 	if pin == nil {
@@ -290,7 +278,7 @@ func resolvePinned(in Input, entry Entry, out Resolution) Resolution {
 	verdict := dispositionOf(in, *pin)
 	if !verdict.eligible {
 		out.Note = noteSkipped(*pin, verdict.reason, ModePinned)
-		return skip(out, verdict.reason, pin.FlagDetail)
+		return skip(out, verdict.reason, verdict.detailFor(*pin))
 	}
 
 	out.Version = pin
@@ -301,9 +289,8 @@ func resolvePinned(in Input, entry Entry, out Resolution) Resolution {
 	return out
 }
 
-// resolveFloating walks candidates newest first: under `block` it falls
-// back to the most recent clean one, but under `approval` a flagged
-// unapproved candidate stops the walk instead, since installing an older
+// resolveFloating walks candidates newest first. Under `approval` a flagged
+// unapproved candidate stops the walk, since falling back to an older
 // version would bury the pending review.
 func resolveFloating(in Input, entry Entry, out Resolution) (Resolution, error) {
 	pool, err := poolFor(entry)
@@ -345,32 +332,30 @@ func resolveFloating(in Input, entry Entry, out Resolution) (Resolution, error) 
 		}
 	}
 
-	// Nothing usable: the newest candidate's obstacle explains the entry.
 	out.Note = noteSkipped(newest, newestVerdict.reason, entry.Mode)
-	return skip(out, newestVerdict.reason, newest.FlagDetail), nil
+	return skip(out, newestVerdict.reason, newestVerdict.detailFor(newest)), nil
 }
 
-// disposition is what policy does to one candidate, decided in isolation.
 type disposition struct {
 	eligible bool
-	// override is nil for every case but an active acceptance — including
-	// a candidate carrying a lapsed one, the point of evaluating it here.
+	// override is set only for an active acceptance, never a lapsed one.
 	override *Override
-	reason   Reason
+	// detail replaces the candidate's FlagDetail as Skip.Detail when set.
+	detail string
+	reason Reason
 }
 
 func dispositionOf(in Input, candidate Candidate) disposition {
 	switch candidate.Verdict {
 	case VerdictRejected:
-		// Above every gate: a rejected version is never resolvable.
 		return disposition{reason: ReasonVersionRejected}
 	case VerdictScanning:
 		return disposition{reason: ReasonNoCleanVersionAvailable}
 	case VerdictClean, VerdictFlagged:
 	}
 
-	if in.RequireSignatures && (candidate.Signature == nil || candidate.Signature.Ref == "") {
-		return disposition{reason: ReasonUnsignedSignaturesRequired}
+	if in.RequireSignatures && candidate.Signature.status() != signer.StatusMatching {
+		return disposition{reason: ReasonUnsignedSignaturesRequired, detail: signatureProblem(candidate)}
 	}
 	if candidate.Verdict == VerdictClean {
 		return disposition{eligible: true}
@@ -379,9 +364,8 @@ func dispositionOf(in Input, candidate Candidate) disposition {
 	active := candidate.Override.ActiveAt(in.At)
 	switch in.Gate {
 	case GateBlock:
-		// An override does not lift a block: otherwise `block` and
-		// `warn-with-override` would be the same gate wherever a reviewer
-		// signed. The lever under `block` is to clear the finding.
+		// An override does not lift a block, or `block` would equal
+		// `warn-with-override` wherever a reviewer signed.
 		return disposition{reason: ReasonFlaggedBlockedByGate}
 	case GateApproval:
 		if !active {
@@ -389,7 +373,6 @@ func dispositionOf(in Input, candidate Candidate) disposition {
 		}
 		return disposition{eligible: true, override: candidate.Override}
 	case GateWarnWithOverride:
-		// Includes flagged versions with no override required to exist first.
 		out := disposition{eligible: true}
 		if active {
 			out.override = candidate.Override
@@ -398,6 +381,13 @@ func dispositionOf(in Input, candidate Candidate) disposition {
 	}
 	// Unreachable: Resolve rejects an invalid gate before any entry is walked.
 	return disposition{reason: ReasonFlaggedBlockedByGate}
+}
+
+func (d disposition) detailFor(candidate Candidate) string {
+	if d.detail != "" {
+		return d.detail
+	}
+	return candidate.FlagDetail
 }
 
 func outcomeOf(candidate Candidate, verdict disposition) Outcome {
@@ -435,8 +425,7 @@ func findCandidate(candidates []Candidate, id string) *Candidate {
 	return nil
 }
 
-// ValidRange lets the store reject a bad range using the same parser that
-// will later evaluate it, instead of surfacing a 500 at resolution time.
+// ValidRange validates expr with the same parser resolution uses.
 func ValidRange(expr string) error {
 	if expr == "" {
 		return fmt.Errorf("a range entry needs a constraint expression")
@@ -447,8 +436,6 @@ func ValidRange(expr string) error {
 	return nil
 }
 
-// poolFor is visible candidates, newest first, narrowed to the range
-// expression when the entry has one.
 func poolFor(entry Entry) ([]Candidate, error) {
 	var match func(*semver.Version) bool
 	if entry.Mode == ModeRange {

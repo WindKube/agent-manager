@@ -44,9 +44,7 @@ func skill(id, version string) layout.Request {
 	return layout.Request{ID: id, Version: version, Kind: record.KindSkill}
 }
 
-// Expected paths are hand-written — user scope is $CLAUDE_CONFIG_DIR/skills,
-// else ~/.claude/skills, and a skill is <root>/<dir>/SKILL.md — not read
-// back from a run.
+// Expected paths are hand-written, not read back from a run.
 func TestClaudeCodePlacesAStandaloneSkillWhereTheAgentLooks(t *testing.T) {
 	t.Parallel()
 
@@ -96,8 +94,6 @@ func TestClaudeCodePlacesAStandaloneSkillWhereTheAgentLooks(t *testing.T) {
 	}
 }
 
-// XDG_CONFIG_HOME is not read at all; this package reads no environment, so
-// the assertion is that setting it changes nothing.
 func TestClaudeCodeIgnoresXDGConfigHome(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "/home/tester/.config")
 
@@ -107,10 +103,7 @@ func TestClaudeCodeIgnoresXDGConfigHome(t *testing.T) {
 	require.NotContains(t, got.Dest, ".config")
 }
 
-// The interesting half is not that the two differ but that the mapping is
-// injective: a hyphen may appear inside either segment, so a
-// single-character separator would map two distinct packages onto one
-// directory.
+// A hyphen may appear inside either segment, so a single-character separator would not be injective.
 func TestFR023CollidingNamesAcrossPublishersGetDistinctDirectories(t *testing.T) {
 	t.Parallel()
 
@@ -222,9 +215,7 @@ func TestPackageIDAcceptsWhatTheHubCanStore(t *testing.T) {
 	}
 }
 
-// The removable set per entry is exactly {dest, dest+AsideSuffix}, so a
-// package legitimately installed at x.amctl-old would sit inside the
-// removable set of the package at x and prune would delete a live install.
+// A package installed at x.amctl-old would sit in x's removable set and be pruned as x's aside.
 func TestNoPackageInstallsToAnAsideOrStagingPath(t *testing.T) {
 	t.Parallel()
 
@@ -317,7 +308,7 @@ func TestClaudeCodePluginAdoptingSubdirsAreRefusedAndTheMarkerIsNotOne(t *testin
 		require.False(t, layout.IsClaudeCodePluginAdoptingSubdir(name), name)
 	}
 	require.False(t, layout.IsClaudeCodePluginAdoptingSubdir(layout.MarkerFileName),
-		"the FR-022 marker must never be a name that turns the skill into a plugin")
+		"the marker must never be a name that turns the skill into a plugin")
 	require.True(t, strings.HasPrefix(layout.MarkerFileName, "."),
 		"a non-dot marker shares the namespace of the skill's own referenced files")
 }
@@ -334,17 +325,24 @@ func TestClaudeCodeRefusesTheReservedSyncDirectory(t *testing.T) {
 		"the reserved directory is `synced` itself; a namespaced sibling is a different directory")
 }
 
-// Plugins are out of scope for every target structurally: there is no
-// plugin destination to derive, so this is a refusal rather than a path.
-func TestPlacingAPluginIsRefusedForEveryTarget(t *testing.T) {
+func TestPlacingAPluginRoutesToThePluginRoot(t *testing.T) {
 	t.Parallel()
 
 	_, err := claudeCode(t, "").Place(layout.Request{
 		ID: "acme/toolkit", Version: "2.0.0", Kind: record.KindPlugin,
 	})
-	require.ErrorIs(t, err, layout.ErrKindUnsupported)
+	require.ErrorIs(t, err, layout.ErrKindUnsupported, "no plugin root, no plugin destination")
 	require.Contains(t, err.Error(), "acme/toolkit")
-	require.Contains(t, err.Error(), "plugin")
+
+	reg, err := layout.NewRegistry(layout.Config{HomeDir: home, PluginRoot: "/home/tester/.agent-manager/hub/plugins"})
+	require.NoError(t, err)
+	for _, name := range []record.Target{record.TargetClaudeCode, record.TargetCodex, record.TargetOpenCode} {
+		target, err := reg.Resolve(name)
+		require.NoError(t, err)
+		got, err := target.Place(layout.Request{ID: "acme/toolkit", Version: "2.0.0", Kind: record.KindPlugin})
+		require.NoError(t, err)
+		require.Equal(t, filepath.FromSlash("/home/tester/.agent-manager/hub/plugins/"+string(name)+"/acme--toolkit"), got.Dest)
+	}
 
 	t.Run("an entry with no kind is refused rather than assumed to be a skill", func(t *testing.T) {
 		t.Parallel()
@@ -373,14 +371,38 @@ func TestRegistryResolve(t *testing.T) {
 		require.Equal(t, filepath.FromSlash("/home/tester/.claude/skills"), target.Root())
 	})
 
-	t.Run("codex refuses with the R2 class, naming the target", func(t *testing.T) {
+	t.Run("codex constructs with skills under ~/.agents and the rest under CODEX_HOME", func(t *testing.T) {
 		t.Parallel()
 		target, err := registry(t, "").Resolve(record.TargetCodex)
-		require.Nil(t, target)
-		require.ErrorIs(t, err, layout.ErrR2Unresolved)
-		require.Contains(t, err.Error(), "codex")
-		require.NotErrorIs(t, err, layout.ErrUnknownTarget, "an unresolved target is not an absent one")
-		require.NotErrorIs(t, err, layout.ErrWithdrawnTarget)
+		require.NoError(t, err)
+		require.Equal(t, filepath.FromSlash("/home/tester/.agents/skills"), target.Root())
+		require.Equal(t, filepath.FromSlash("/home/tester/.codex/agents"), target.Components().Agents)
+		require.Empty(t, target.Components().Commands, "codex prompts are deprecated; amctl writes none")
+
+		reg, err := layout.NewRegistry(layout.Config{HomeDir: home, CodexHome: "/srv/codex"})
+		require.NoError(t, err)
+		target, err = reg.Resolve(record.TargetCodex)
+		require.NoError(t, err)
+		require.Equal(t, filepath.FromSlash("/home/tester/.agents/skills"), target.Root(), "CODEX_HOME does not move skills")
+		require.Equal(t, filepath.FromSlash("/srv/codex"), target.Components().ConfigDir)
+	})
+
+	t.Run("opencode follows an absolute XDG_CONFIG_HOME and ignores a relative one", func(t *testing.T) {
+		t.Parallel()
+		target, err := registry(t, "").Resolve(record.TargetOpenCode)
+		require.NoError(t, err)
+		require.Equal(t, filepath.FromSlash("/home/tester/.config/opencode/skills"), target.Root())
+		require.Equal(t, []string{
+			filepath.FromSlash("/home/tester/.claude/skills"), filepath.FromSlash("/home/tester/.agents/skills"),
+		}, target.AlsoReadsSkillsFrom())
+
+		for xdg, want := range map[string]string{"/xdg": "/xdg/opencode/skills", "rel": "/home/tester/.config/opencode/skills"} {
+			reg, err := layout.NewRegistry(layout.Config{HomeDir: home, XDGConfigHome: xdg})
+			require.NoError(t, err)
+			target, err := reg.Resolve(record.TargetOpenCode)
+			require.NoError(t, err)
+			require.Equal(t, filepath.FromSlash(want), target.Root(), xdg)
+		}
 	})
 
 	t.Run("a withdrawn target is refused by its own class", func(t *testing.T) {
@@ -401,7 +423,7 @@ func TestRegistryResolve(t *testing.T) {
 
 	t.Run("every refusal returns a nil target, so no caller can install under one", func(t *testing.T) {
 		t.Parallel()
-		for _, name := range []record.Target{record.TargetCodex, "agents-md", "future-agent", ""} {
+		for _, name := range []record.Target{"agents-md", "future-agent", ""} {
 			target, err := registry(t, "").Resolve(name)
 			require.Error(t, err, name)
 			require.Nil(t, target, name)
@@ -422,12 +444,11 @@ func TestRegistrySelect(t *testing.T) {
 		require.Empty(t, sel.Unknown)
 	})
 
-	t.Run("a profile naming codex is refused, never partially synced", func(t *testing.T) {
+	t.Run("every target this build knows is writable", func(t *testing.T) {
 		t.Parallel()
-		sel, err := registry(t, "").Select([]string{"claude-code", "codex"})
-		require.ErrorIs(t, err, layout.ErrR2Unresolved)
-		require.Contains(t, err.Error(), "codex")
-		require.Empty(t, sel.Writable, "a refused selection must not hand back a partial writable set")
+		sel, err := registry(t, "").Select([]string{"claude-code", "codex", "opencode"})
+		require.NoError(t, err)
+		require.Len(t, sel.Writable, 3)
 	})
 
 	t.Run("a withdrawn target is reported and does not fail the sync", func(t *testing.T) {
@@ -494,8 +515,6 @@ func TestRegistryConfigRefusals(t *testing.T) {
 	}
 }
 
-// A destination that is not absolute and clean cannot even be checked for
-// containment, and record.Entry refuses it.
 func TestEveryDestinationIsAbsoluteCleanAndUnderTheRoot(t *testing.T) {
 	t.Parallel()
 
@@ -518,7 +537,6 @@ func TestEveryDestinationIsAbsoluteCleanAndUnderTheRoot(t *testing.T) {
 	}
 }
 
-// The marker answers "which package and version is this" with no hub.
 func TestMarkerIdentifiesThePackageWithoutTheHub(t *testing.T) {
 	t.Parallel()
 
@@ -616,8 +634,7 @@ func TestMarkerRefusals(t *testing.T) {
 	})
 }
 
-// APFS folds case, so two ids differing only in case share one directory;
-// recorded here so internal/plan has a named thing to compare.
+// APFS folds case, so two ids differing only in case share one directory.
 func TestDestCollisionKeyExposesTheCaseFoldingHazard(t *testing.T) {
 	t.Parallel()
 
@@ -635,14 +652,11 @@ func TestDestCollisionKeyExposesTheCaseFoldingHazard(t *testing.T) {
 func TestKnownTargetNamesIsTheVocabularyAndNotTheWritableSet(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, []string{"claude-code", "codex"}, layout.KnownTargetNames(),
-		"codex is known to this build and is not writable by it; the two sets are different")
+	require.Equal(t, []string{"claude-code", "codex", "opencode"}, layout.KnownTargetNames())
 
 	_, err := registry(t, "").Select([]string{"agents-md"})
 	require.ErrorIs(t, err, layout.ErrNoWritableTarget)
-	require.Contains(t, err.Error(), "can write claude-code")
-	require.NotContains(t, err.Error(), "can write claude-code, codex",
-		"telling a user this build writes codex when its constructor refuses sends them to fix the wrong thing")
+	require.Contains(t, err.Error(), "can write claude-code, codex, opencode")
 }
 
 func TestPackageIDErrorsAreASingleClass(t *testing.T) {

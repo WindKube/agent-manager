@@ -11,7 +11,7 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/output"
 )
 
-// logoutDeps is logout's outside world. See loginDeps for why it is a struct.
+// logoutDeps is logout's outside world; see loginDeps.
 type logoutDeps struct {
 	backends  []keyring.BackendType
 	lookupEnv func(string) (string, bool)
@@ -21,12 +21,8 @@ func productionLogoutDeps() logoutDeps {
 	return logoutDeps{lookupEnv: os.LookupEnv}
 }
 
-// newLogoutCmd builds `amctl logout`. It only removes one hub's stored
-// credential: no installed package, no other hub's credential, and no
-// network request (so it still works with the hub unreachable, and can
-// delete a plaintext-hub credential without re-passing --allow-plaintext-hub).
-// It is idempotent; `removed` in the result tells a script whether there was
-// anything to remove.
+// newLogoutCmd builds `amctl logout`. It makes no network request, so it works
+// with the hub unreachable and without re-passing --allow-plaintext-hub.
 func newLogoutCmd(opts *Options) *cobra.Command {
 	return &cobra.Command{
 		Use:   "logout",

@@ -8,28 +8,36 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"agent-manager/internal/store/audit"
 	"agent-manager/internal/store/models"
 	"agent-manager/internal/worker/scanner/checks"
 )
 
-// auditActor and auditSource are what a background role writes into the
-// audit log: actor_kind `system` separates a role's action from a person's.
 const (
 	auditActor  = RoleName
 	auditSource = "system"
 )
 
-// writeScanAudit inserts the one audit row a verdict is accountable for. It
-// takes the transaction rather than a pool, so the record cannot survive a
-// rolled back scan or go missing after a committed one.
-func writeScanAudit(ctx context.Context, tx bun.IDB, text string) error {
-	event := &models.AuditEvent{
-		ID:        models.NewID(),
+// writeScanAudit takes the transaction rather than a pool so the audit row
+// commits or rolls back together with the verdict.
+func writeScanAudit(ctx context.Context, tx bun.IDB, job Job, stamp string, result analysis, verdict models.Verdict) error {
+	event, err := audit.New(audit.Entry{
+		Kind:      models.AuditKindScan,
+		Action:    "scanned",
 		Actor:     auditActor,
 		ActorKind: models.ActorKindSystem,
-		Kind:      models.AuditKindScan,
-		Text:      text,
+		Text:      scanText(job, stamp, result, verdict),
 		Source:    auditSource,
+		Subject:   audit.Version(job.Namespace, job.Name, job.Semver),
+		Data: map[string]any{
+			"verdict":   string(verdict),
+			"analyzers": stamp,
+			"ruleIds":   ruleIDs(result.findings),
+			"timedOut":  result.timedOut,
+		},
+	})
+	if err != nil {
+		return err
 	}
 	// am_scanner holds INSERT-only on audit_event — no SELECT — and bun appends
 	// RETURNING for OccurredAt's `default:` tag unless told not to.
@@ -39,8 +47,6 @@ func writeScanAudit(ctx context.Context, tx bun.IDB, text string) error {
 	return nil
 }
 
-// scanText is the audit line: what was scanned, under which rules, and what
-// came of it.
 func scanText(job Job, stamp string, result analysis, verdict models.Verdict) string {
 	switch {
 	case result.timedOut:

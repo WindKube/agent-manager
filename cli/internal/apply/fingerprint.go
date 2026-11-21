@@ -14,13 +14,12 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/record"
 )
 
-// ErrFingerprintAlgo marks a fingerprint this build does not verify: absent
-// (an entry installed before T049, or by a build with Fingerprints unset),
-// or written by some later algorithm. record.Fingerprint's own contract is
-// that either must refuse naming --force rather than be assumed unmodified.
+// ErrFingerprintAlgo marks a fingerprint this build does not verify, either
+// absent or from an unknown algorithm; such an entry must refuse naming
+// --force rather than be assumed unmodified.
 var ErrFingerprintAlgo = errors.New("fingerprint algorithm not recognised")
 
-// TreeFingerprinter is the production Fingerprinter and Verifier: R4's
+// TreeFingerprinter is the production Fingerprinter and Verifier: a
 // closed-set, content-hash fingerprint over an entry's installed tree.
 type TreeFingerprinter struct{}
 
@@ -70,11 +69,9 @@ func (TreeFingerprinter) Modes(dest string, fp record.Fingerprint) (record.Finge
 	return fp, nil
 }
 
-// Modifications is FR-029: every entry-root-relative path under e.Dest whose
-// content, size, mode or kind disagrees with e.Fingerprint, plus every path it
-// names that is no longer there and every path there it does not name — the
-// closed set record.Fingerprint documents. An empty, nil-error result is the
-// only positive "unmodified" verdict; an error means unverifiable.
+// Modifications lists every path under e.Dest that was added, removed or
+// changed relative to e.Fingerprint. An empty, nil-error result is the only
+// positive "unmodified" verdict; an error means unverifiable.
 func (TreeFingerprinter) Modifications(e record.Entry) ([]string, error) {
 	if e.Fingerprint.Algo != record.FingerprintAlgo {
 		return nil, fmt.Errorf("%w: %q", ErrFingerprintAlgo, e.Fingerprint.Algo)
@@ -93,10 +90,6 @@ func kindOf(info fs.FileInfo) string {
 	}
 }
 
-// modifiedPaths walks dest and compares it against fp, both directions: a
-// path on disk and absent from fp is an addition, a path in fp and absent
-// from disk is a removal, and either is a modification alongside a changed
-// hash, size, mode or kind.
 func modifiedPaths(dest string, fp record.Fingerprint) ([]string, error) {
 	seen := make(map[string]bool, len(fp.Files)+len(fp.Dirs))
 	var changed []string

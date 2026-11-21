@@ -24,8 +24,6 @@ func TestQueueCountsRowsCoverEveryRiverStateAndToneOnlyTheOnesThatNeedIt(t *test
 		require.Containsf(t, labels, label, "River's %s state is missing from the table", label)
 	}
 
-	// Retryable and Discarded are the two states worth a reader's attention;
-	// nothing else carries a tone.
 	require.Equal(t, "warn", labels["Retryable"].Tone)
 	require.Equal(t, "dan", labels["Discarded"].Tone)
 	for _, neutral := range []string{"Available", "Scheduled", "Running", "Completed", "Cancelled"} {
@@ -75,8 +73,8 @@ func TestRuntimeCardsCarryNoToneWhenNothingIsWrong(t *testing.T) {
 func TestBarsScaleToThePeakAndNeverExceedTheMaxHeight(t *testing.T) {
 	now := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
 	r := view.Runtime{History: []view.RunBucket{
-		{StartsAt: now.Add(-2 * time.Hour), Fetch: 5, Scan: 5}, // total 10, the peak
-		{StartsAt: now.Add(-1 * time.Hour), Fetch: 0, Scan: 0}, // a genuinely quiet hour
+		{StartsAt: now.Add(-2 * time.Hour), Fetch: 5, Scan: 5},
+		{StartsAt: now.Add(-1 * time.Hour), Fetch: 0, Scan: 0},
 		{StartsAt: now, Fetch: 10, Scan: 0},
 	}}
 	bars := r.Bars()
@@ -86,8 +84,6 @@ func TestBarsScaleToThePeakAndNeverExceedTheMaxHeight(t *testing.T) {
 	require.Equal(t, view.ChartBarMaxHeight/2, bars[0].ScanHeight)
 	require.Zero(t, bars[1].FetchHeight)
 	require.Zero(t, bars[1].ScanHeight)
-	// The last bucket's total (10) equals the peak (10), so it draws the
-	// full height, not half of it.
 	require.Equal(t, view.ChartBarMaxHeight, bars[2].FetchHeight)
 	require.LessOrEqual(t, bars[2].FetchHeight+bars[2].ScanHeight, view.ChartBarMaxHeight)
 }
@@ -100,9 +96,6 @@ func TestBarsWithNoHistoryDrawsNoBarsRatherThanDividingByZero(t *testing.T) {
 	})
 }
 
-// TestChartLabelsShowOnlyEveryFourthBarAndAlwaysTheLast is what keeps 24
-// hourly buckets readable rather than a wall of overlapping text, while
-// still labelling the most recent bar so a reader can place "now".
 func TestChartLabelsShowOnlyEveryFourthBarAndAlwaysTheLast(t *testing.T) {
 	history := make([]view.RunBucket, 10)
 	r := view.Runtime{History: history}
@@ -141,10 +134,6 @@ func TestNoDiscardedAndNoRetryingReportEachListIndependently(t *testing.T) {
 	require.True(t, withDiscarded.NoRetrying())
 }
 
-// The pair's two bars stand side by side, so each is measured against the
-// tallest single bar rather than the tallest pair total. Scaling to the total
-// would draw an hour that ran 10 fetches and 10 scans shorter than one that
-// ran 12 fetches alone, which is the opposite of what happened.
 func TestBarsAreScaledToTheTallestSingleBarNotTheTallestPairTotal(t *testing.T) {
 	now := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
 	r := view.Runtime{History: []view.RunBucket{

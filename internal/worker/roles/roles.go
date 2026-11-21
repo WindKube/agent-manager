@@ -1,8 +1,6 @@
 // Package roles is the worker registry: the one list of background roles. It
-// is a package of its own rather than living in internal/worker because a
-// role package imports internal/worker for Definition, Needs and Deps, so a
-// list inside internal/worker that names fetcher.Definition() would be an
-// import cycle.
+// lives outside internal/worker because role packages import internal/worker,
+// so listing them there would be an import cycle.
 package roles
 
 import (
@@ -13,22 +11,23 @@ import (
 
 	"agent-manager/internal/worker"
 	"agent-manager/internal/worker/fetcher"
+	"agent-manager/internal/worker/notifier"
 	"agent-manager/internal/worker/scanner"
 )
 
-// definitions is the one list. The two roles' Needs are the credential split
-// written where a reader can compare them: the fetcher may write bundle bytes
-// and reach the network, the scanner may do neither.
+// definitions shows the credential split side by side: only the fetcher may
+// write bundle bytes, the scanner has no network, and the notifier holds no
+// object-store credential.
 var definitions = []worker.Definition{
-	fetcher.Definition(), // Needs{DB: AccessReadWrite, Blob: AccessReadWrite, Outbound: true}
-	scanner.Definition(), // Needs{DB: AccessReadWrite, Blob: AccessRead,      Outbound: false}
+	fetcher.Definition(),  // Needs{DB: AccessReadWrite, Blob: AccessReadWrite, Outbound: true}
+	scanner.Definition(),  // Needs{DB: AccessReadWrite, Blob: AccessRead,      Outbound: false}
+	notifier.Definition(), // Needs{DB: AccessReadWrite, Blob: AccessNone,      Outbound: true}
 }
 
 // Definitions returns the registered roles in registration order.
 func Definitions() []worker.Definition { return slices.Clone(definitions) }
 
-// Names returns the registered role names, which are the arguments
-// `agent-manager worker run` accepts.
+// Names returns the registered role names accepted by `worker run`.
 func Names() []string {
 	out := make([]string, 0, len(definitions))
 	for _, def := range definitions {

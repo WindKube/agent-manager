@@ -9,12 +9,7 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The catalog browse operation (US2). The web role reaches it through the
-// generated client and holds no other door to this data.
-
-// The filter vocabularies. They are lowercase canonical values, not the design's
-// chip labels: "All" / "Plugins" / "Verified" are what a screen says, and an API
-// that took them would have made a rendering decision for every client.
+// Filter values are lowercase canonical values, not the design's chip labels.
 const (
 	kindPlugin = "plugin"
 	kindSkill  = "skill"
@@ -30,13 +25,13 @@ const (
 )
 
 type listPackagesInput struct {
-	Q          string   `query:"q" doc:"Case-insensitive substring, matched against name, id, publisher and tags (FR-010)." example:"terraform"`
-	Kind       string   `query:"kind" enum:"all,plugin,skill" default:"all" doc:"Mutually exclusive single selection (FR-011)."`
+	Q          string   `query:"q" doc:"Case-insensitive substring, matched against name, id, publisher and tags." example:"terraform"`
+	Kind       string   `query:"kind" enum:"all,plugin,skill" default:"all" doc:"Mutually exclusive single selection."`
 	Status     string   `query:"status" enum:"all,verified,community,flagged" default:"all" doc:"Mutually exclusive single selection. Verified means a verified publisher AND a clean verdict, both."`
-	Categories []string `query:"category,explode" doc:"Repeatable. Selected categories narrow DISJUNCTIVELY (FR-013)."`
-	Tags       []string `query:"tag,explode" doc:"Repeatable. Selected tags narrow CONJUNCTIVELY (FR-013)."`
+	Categories []string `query:"category,explode" doc:"Repeatable. Selected categories narrow DISJUNCTIVELY."`
+	Tags       []string `query:"tag,explode" doc:"Repeatable. Selected tags narrow CONJUNCTIVELY."`
 	Sort       string   `query:"sort" enum:"name,uses,updated" default:"uses"`
-	Dir        string   `query:"dir" enum:"desc,asc" default:"desc" doc:"Descending first, ascending on a second click (FR-014)."`
+	Dir        string   `query:"dir" enum:"desc,asc" default:"desc" doc:"Descending first, ascending on a second click."`
 	Page       int      `query:"page" minimum:"1" default:"1" doc:"Clamped into range: a page past the end returns the last one."`
 	PageSize   int      `query:"pageSize" minimum:"1" maximum:"100" default:"10"`
 }
@@ -45,14 +40,8 @@ type listPackagesOutput struct {
 	Body contract.CatalogPage
 }
 
-// listPackages answers the catalog screen. It inherits the document's root
-// bearer requirement: there is no anonymous view of the catalog, because public
-// anonymous browsing is out of scope (spec.md, Out of Scope). Until the web
-// role's login lands the screen renders signed out, which is a sequencing cost
-// and not a reason to open the operation.
-//
-// The filter is scoped to the caller (queries.PackageReadable): `team` and
-// `private` packages resolve per viewer, never as a blanket hide.
+// listPackages answers the catalog screen. There is no anonymous view; `team` and
+// `private` packages are filtered per viewer.
 func (s *Server) listPackages(ctx context.Context, in *listPackagesInput) (*listPackagesOutput, error) {
 	principal, _ := PrincipalFrom(ctx)
 	page, err := queries.Catalog(ctx, s.deps.DB, queries.CatalogFilter{

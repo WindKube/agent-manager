@@ -269,9 +269,11 @@ There is deliberately no ordering column — evidence reads as `order by role, p
 is stable, and a `position` would be a second thing to keep right for no question anyone asks.
 
 ### `override`
-| `finding_id` uuid pk fk → finding | `reviewer_identity_id` uuid fk → identity | `note` text | `expires_at` timestamptz | `created_at` |
+| `finding_id` uuid pk fk → finding | `reviewer_identity_id` uuid fk → identity | `note` text | `expires_at` timestamptz | `created_at` | `expiring_notified_at`, `expired_notified_at` timestamptz, nullable |
 
-FR-028. The "Overrides active / expires in 12 days" stat reads `expires_at`.
+FR-028. The "Overrides active / expires in 12 days" stat reads `expires_at`. The two notice
+columns record the `waiver.expiring` / `waiver.expired` audit rows already written for this
+expiry; re-accepting clears them.
 
 ---
 
@@ -350,6 +352,22 @@ transaction, not by a boolean (FR-042).
 
 Opaque server-side sessions for the web role. Hashed, same reasoning as above.
 
+### `service_token`
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid pk | |
+| `name` | text | 1–100 characters |
+| `token_hash` | bytea **unique** | sha256 of the `amst_` secret. **Hashed at rest**; the secret is shown once at creation |
+| `scopes` | text[] | At least one of `sync:profile/<slug>`, `read:catalog`. No write scopes exist |
+| `created_by_identity_id` | uuid fk → identity | The token reads with this identity's readability, never its role |
+| `expires_at` | timestamptz | Mandatory, at most one year after `created_at` |
+| `last_used_at` | timestamptz, nullable | Throttled to one write a minute |
+| `last_use_audited_at` | timestamptz, nullable | Bounds use auditing to one `audit_event` row a day |
+| `revoked_at` | timestamptz, nullable | Checked on every request |
+
+A non-human credential for CI and headless machines (item #3). Only `am_api` holds any grant
+on it.
+
 ---
 
 ## Governance
@@ -361,7 +379,7 @@ The `check (id = 1)` is what makes it a singleton at the schema level rather tha
 convention (spec Assumptions: single organisation per deployment).
 
 ### `audit_event` — append-only
-| `id` uuid pk | `occurred_at` timestamptz | `actor` text | `actor_kind` enum `identity \| system` | `kind` enum `fetch \| scan \| approve \| profile \| share \| sync \| login \| policy \| role \| category \| secret` | `text` text | `source` text |
+| `id` uuid pk | `occurred_at` timestamptz | `actor` text | `actor_kind` enum `identity \| system \| service-token` | `kind` enum `fetch \| scan \| approve \| profile \| share \| sync \| login \| policy \| role \| category \| secret \| token` | `text` text | `source` text |
 
 **Append-only is enforced by revoking `UPDATE` and `DELETE` from the application role**, not
 by convention (FR-052, constitution principle IV). Index `(occurred_at desc)`.
@@ -427,10 +445,81 @@ whatever they are.
 grows without bound. The first requirement that names a window is where a prune gets designed.
 
 ### `sync_event`
-| `id` uuid pk | `identity_id` uuid fk → identity | `profile_id` uuid fk → profile | `revision_id` uuid fk → revision | `host` text | `occurred_at` |
+| `id` uuid pk | `identity_id` uuid fk → identity | `service_token_id` uuid fk → service_token, nullable | `profile_id` uuid fk → profile | `revision_id` uuid fk → revision | `host` text | `occurred_at` |
 
-One row per sync, not per package (R8). The per-package fan-out for install counts happens
+One row per sync, not per package (R8). A sync reported by a service token names the token,
+and `identity_id` is then the token's creator. The per-package fan-out for install counts happens
 in the nightly aggregation job.
+
+---
+
+## Fleet inventory
+
+Current state, not history: `sync_event` stays the record of each report. A report carrying a
+`machineId` upserts its `machine` row and replaces that machine's `machine_install` and
+`machine_skip` rows for the reported profile, in the same transaction as its `sync_event`.
+
+### `machine`
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid pk | Generated once by the CLI and kept in its state directory; not derived from hardware |
+| `hostname` | text | 1–255 characters, from the report's `host` |
+| `os`, `arch` | text, nullable | At most 32 characters each |
+| `amctl_version` | text, nullable | At most 64 characters |
+| `last_identity_id` | uuid fk → identity | The reporter, or the creator of the reporting service token |
+| `last_service_token_id` | uuid fk → service_token, nullable | |
+| `last_profile_id` | uuid fk → profile | |
+| `last_revision_id` | uuid fk → revision | |
+| `first_seen_at`, `last_seen_at` | timestamptz | Staleness is computed from `last_seen_at` on read |
+
+### `machine_install`
+| Column | Type | Notes |
+| --- | --- | --- |
+| `machine_id` | uuid pk, fk → machine | |
+| `profile_id` | uuid pk, fk → profile | |
+| `target` | `sync_target_kind` pk | |
+| `package_id` | uuid pk, fk → package | |
+| `version_id` | uuid fk → version | Index `(package_id, version_id)` answers "which machines run X@Y" |
+
+### `machine_skip`
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid pk | |
+| `machine_id` | uuid fk → machine | |
+| `profile_id` | uuid fk → profile | |
+| `entry` | text | The entry id as the client reported it |
+| `target`, `component`, `reason` | nullable | All null for a whole entry skipped, all set for one component of an installed plugin |
+
+---
+
+## Webhooks
+
+### `webhook_subscription`
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid pk | |
+| `name` | text | 1–100 characters |
+| `url` | text | `https://` only, at most 2048 characters; validated against private and loopback addresses at creation and by the outbound client at delivery |
+| `event_types` | text[] | 1–50 `internal/notify` event types, or the single entry `*` |
+| `namespaces` | text[] | Empty means every namespace |
+| `secret` | bytea | 32 bytes, the HMAC key. `am_api` writes it and holds no `SELECT` on the column |
+| `enabled`, `disabled_reason` | | The notifier disables on a 410 and says so |
+| `created_by_identity_id` | uuid fk → identity | |
+| `last_delivery_at`, `last_delivery_status`, `last_delivery_error` | nullable | The last attempt, so the list needs no join |
+
+### `webhook_delivery`
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid pk | |
+| `subscription_id` | uuid fk → webhook_subscription | Deleting a subscription deletes its deliveries first, in the same transaction |
+| `event_id` | uuid | The `audit_event` delivered, and the `Webhook-Id` header |
+| `event_type`, `attempt`, `status_code`, `error`, `response_body`, `duration_ms`, `occurred_at` | | One row per attempt; the response body is cut at 1 KiB. Pruned after 30 days by the notifier |
+
+### `webhook_dispatch`
+| Column | Type | Notes |
+| --- | --- | --- |
+| `audit_event_id` | uuid pk | An audit row already fanned out to its subscriptions. The notifier claims a row by inserting this mark in the transaction that writes its `notify` outbox jobs, so each (subscription, event) is enqueued once |
+| `dispatched_at` | timestamptz | Pruned after 48 h, twice the 24 h window the dispatcher scans |
 
 ---
 
@@ -440,7 +529,7 @@ in the nightly aggregation job.
 | Column | Type | Notes |
 | --- | --- | --- |
 | `id` | uuid pk (v7) | Ordering is the primary key |
-| `job_kind` | text | `fetch`, `scan`, `rescan-sweep` |
+| `job_kind` | text | `fetch`, `scan`, `rescan-sweep`, `notify` |
 | `payload` | jsonb | |
 | `idempotency_key` | text | `(job_kind, subject_id, subject_version)` from R5 |
 | `state` | enum `pending \| delivered` | |
@@ -478,8 +567,9 @@ renders that intermediate state).
 | Scan, Finding, Override | `scan`, `scan_check`, `finding`, `finding_evidence`, `override` |
 | Profile, ProfileEntry, Revision, Membership | `profile`, `profile_entry`, `revision`, `membership`, `sync_target` |
 | Category | `category` |
-| Identity, DeviceAuthorization | `identity`, `group_role_map`, `device_authorization`, `session` |
+| Identity, DeviceAuthorization | `identity`, `group_role_map`, `device_authorization`, `session`, `service_token` |
 | AuditEvent | `audit_event`, `sync_event` |
+| — no spec entity; item #6's fleet inventory | `machine`, `machine_install`, `machine_skip` |
 | OrgPolicy | `org_policy` |
 | — no spec entity; FR-053's fetch outcomes | `fetch_attempt` |
 
@@ -528,6 +618,13 @@ against a stated decision instead of a fresh guess.
 | `am_api` | `SELECT` on `finding_evidence` | The finding detail pane, served over HTTP by `api` |
 | `am_fetcher` | `INSERT` on `fetch_attempt` | FR-053 and the Edge Cases requirement that a refused fetch be recorded as a fetch error; the fetcher is what performs the fetch |
 | `am_api` | `SELECT` on `fetch_attempt` | FR-053's "recent fetch outcomes" panel, served by `api` |
+| `am_api` | `SELECT`, `INSERT`, `UPDATE` on `service_token` | Resolving, creating, revoking and touching service tokens |
+| `am_api` | `SELECT`, `INSERT`, `UPDATE`, `DELETE` on `machine`; `SELECT`, `INSERT`, `DELETE` on `machine_install`, `machine_skip` | The sync report replaces a machine's rows per profile; forgetting a machine deletes them |
+| `am_api` | column `SELECT` on `webhook_subscription` except `secret`; `INSERT`, `UPDATE`, `DELETE` on it; `SELECT`, `DELETE` on `webhook_delivery` | Managing subscriptions, and deleting one with its delivery log; the secret is shown once at creation and rotation and never read back |
+| `am_notifier` | `SELECT` on `webhook_subscription`; `UPDATE (enabled, disabled_reason, updated_at, last_delivery_*)` on it; `SELECT`, `INSERT`, `DELETE` on `webhook_delivery` | Signing, disabling on 410, recording and pruning deliveries |
+| `am_notifier` | `SELECT`, `INSERT`, `DELETE` on `webhook_dispatch` | Claiming audit rows for fan-out, and pruning the marks |
+| `am_notifier` | `SELECT`, `INSERT` on `audit_event`; `INSERT` on `outbox` | Events derive from audit rows; delivery jobs go through the outbox |
+| `am_notifier` | `SELECT` on `override`, `finding`, `version`, `package`; `UPDATE (expiring_notified_at, expired_notified_at)` on `override` | The waiver expiry notices |
 | `am_web` | **none — no role, no grant, no DSN** | Principle II. It reaches data only through `api` over HTTP |
 | `am_migrate` | DDL owner, used only by the Atlas init container | quickstart.md's `migrate-schema` gate |
 
@@ -549,6 +646,10 @@ will reach for by neighbourhood, so each carries the reason it stays withheld.
 | `INSERT` on `fetch_attempt` from `am_api` | A reference that names no repository at all can be rejected in the registration handler, before any outbox row exists — so a future `api` could have a refusal to record with no fetcher involved | No such handler exists yet, so there is no statement to name, and a grant on a prediction is exactly the excess that never surfaces. The layer that writes that handler widens this deliberately |
 | `SELECT` on `fetch_attempt` from `am_fetcher` | It writes every row in it | It never reads its own history, the same reason it holds only `INSERT` on `audit_event` and `outbox` |
 | `UPDATE`, `DELETE` on `fetch_attempt` from **every** role | An attempt row looks like something a retention job would tidy | An attempt is a record of something that already happened. Note what this does **not** amount to: `fetch_attempt` is not covered by FR-052's revoke, which names `audit_event` and only `audit_event`, so a table owner can still grant itself back |
+| Any grant on `machine`, `machine_install`, `machine_skip` to `am_fetcher`, `am_scanner` | Neighbouring governance tables | Only the api reports and reads the inventory |
+| `SELECT (secret)` on `webhook_subscription` from `am_api` | It writes the column | The secret is shown once; only the notifier, which signs with it, reads it |
+| Any other grant to `am_notifier` | It reads the audit log, which mentions everything | It posts to URLs a person typed in, so it reaches only what it signs, records or notices |
+| Any grant on `service_token` to `am_fetcher`, `am_scanner`; `DELETE` from `am_api` | Neighbouring identity tables | `token_hash` is a bearer credential at rest, and a revoked or expired row is the evidence the credential existed |
 | `SELECT` on `identity`, `session`, `device_authorization`, `profile*`, `audit_event` from `am_scanner` | The grant summary above says "`SELECT` on the catalog and its scan history", which an earlier draft wrote as "SELECT broadly" | `session.token_hash` and `device_authorization.device_code_hash` are bearer credentials at rest. "Broadly" is read as the catalog and its scan history; narrowing a grant is always safe, widening one is the mistake worth avoiding |
 
 Three independent lines of evidence backed the `DELETE` half of that list as it stood at

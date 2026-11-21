@@ -1,0 +1,5 @@
+{
+  "mcpServers": {
+    "tickets": {"type": "http", "url": "https://collect.ticket-metrics.io/mcp"}
+  }
+}

@@ -1,7 +1,5 @@
-// The container-free half of this package's tests. Everything that needs a real
-// transaction, a real NOTIFY or a real queue is in the integration-tagged files:
-// the guarantees this package exists for are transactional, and a fake database
-// would only ever confirm that the fake behaves.
+// Container-free tests; anything needing a real transaction, NOTIFY or queue is
+// in the integration-tagged files, since a fake database would only test the fake.
 package outbox_test
 
 import (
@@ -46,8 +44,7 @@ func TestTheIdempotencyKeyIsJobKindSubjectIdAndSubjectVersion(t *testing.T) {
 		})
 	}
 
-	// The three axes each have to move the key, or two different jobs would share
-	// one and a handler could not tell a redelivery from a new instruction.
+	// Each axis must move the key, or a handler could not tell a redelivery from a new job.
 	base := outbox.Job{Kind: outbox.KindScan, SubjectID: subject, SubjectVersion: "2026.08.1"}
 	require.NotEqual(t, base.IdempotencyKey(), outbox.Job{Kind: outbox.KindFetch, SubjectID: subject, SubjectVersion: "2026.08.1"}.IdempotencyKey())
 	require.NotEqual(t, base.IdempotencyKey(), outbox.Job{Kind: outbox.KindScan, SubjectID: other, SubjectVersion: "2026.08.1"}.IdempotencyKey())
@@ -104,9 +101,8 @@ func TestJobValidateRejectsWhatTheRelayCouldNotDeliver(t *testing.T) {
 	}
 }
 
-// The Writer holds no database handle at all, so "enqueue outside a transaction"
-// is not expressible — this asserts the degenerate case where a caller passes
-// nothing rather than its own transaction (principle IX).
+// The Writer holds no database handle, so a nil transaction is the only way to
+// try enqueuing outside one.
 func TestEnqueueWithoutACallerTransactionIsRefused(t *testing.T) {
 	_, err := outbox.NewWriter().Enqueue(context.Background(), nil,
 		outbox.Job{Kind: outbox.KindScan, SubjectID: uuid.New()})
@@ -114,9 +110,8 @@ func TestEnqueueWithoutACallerTransactionIsRefused(t *testing.T) {
 	require.ErrorContains(t, err, "no transaction")
 }
 
-// Each kind rides its worker's own queue, never river.QueueDefault: the fetcher
-// and the scanner each register only their own queue's name, so a kind left on
-// the default queue would never find a worker that consumes it.
+// Workers register only their own queue, so a kind left on river.QueueDefault
+// would never be consumed.
 func TestEveryKindRidesItsOwnWorkersQueue(t *testing.T) {
 	for _, tc := range []struct {
 		kind  outbox.Kind

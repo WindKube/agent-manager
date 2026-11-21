@@ -2,6 +2,7 @@ package outbox
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,45 +14,38 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/rs/zerolog"
 	"github.com/uptrace/bun"
+	"go.opentelemetry.io/otel/propagation"
+
+	"agent-manager/internal/metrics"
 )
 
-// DefaultSweepInterval is the periodic drain. A LISTEN/NOTIFY notification is
-// fire-and-forget: it is lost if the listener connection is down at that
-// instant, and Postgres never redelivers it. The sweep turns a lost
-// notification into a few seconds of delay instead of a job that never runs.
+// DefaultSweepInterval is the periodic drain that recovers NOTIFYs lost while
+// the listener was disconnected; Postgres never redelivers them.
 const DefaultSweepInterval = 10 * time.Second
 
 const (
-	// DefaultPruneInterval is how often delivered rows are swept out. It is
-	// far shorter than the retention window on purpose: the prune is cheap
-	// and a missed run must not let the table grow.
+	// DefaultPruneInterval is far shorter than retention so a missed run cannot let the table grow.
 	DefaultPruneInterval = time.Hour
 
-	// DefaultRetention is how long a delivered row is kept before pruning.
 	DefaultRetention = 24 * time.Hour
 
-	// DefaultBatch is how many rows one claim takes. The claim holds row locks
-	// across the River insert, so the batch stays small enough that a slow queue
-	// cannot block a mutation for long.
+	// DefaultBatch stays small because the claim holds row locks across the
+	// River insert, and a slow queue must not block mutations for long.
 	DefaultBatch = 50
 
 	listenerRetryDelay = time.Second
 )
 
-// Inserter is all the relay needs from River: hand one job over, or fail. It
-// is deliberately narrower than *river.Client, so the relay is testable
-// without a queue database. RiverInserter adapts the real client.
+// Inserter is the narrow slice of River the relay needs, so it is testable
+// without a queue database.
 type Inserter interface {
 	InsertJob(ctx context.Context, args river.JobArgs, opts *river.InsertOpts) error
 }
 
-// RelayConfig configures the relay. It is hosted in the api role, next to
-// the transactions that feed it.
+// RelayConfig configures the relay.
 type RelayConfig struct {
-	// AppDatabaseURL is the application database. The relay opens one
-	// dedicated connection to it for LISTEN, since a pooled connection
-	// cannot hold a subscription. Empty disables the listener and leaves the
-	// sweep as the only delivery path — degraded, not broken.
+	// AppDatabaseURL is used for a dedicated LISTEN connection, since a pooled
+	// one cannot hold a subscription. Empty leaves the sweep as the only trigger.
 	AppDatabaseURL string
 
 	Batch         int
@@ -76,8 +70,7 @@ func (c RelayConfig) withDefaults() RelayConfig {
 	return c
 }
 
-// RelayStats is what the relay did. Notifications and Sweeps are separate so a
-// test can prove which of the two delivered a row.
+// RelayStats counts what the relay did.
 type RelayStats struct {
 	Notifications int64
 	Sweeps        int64
@@ -120,9 +113,8 @@ func (r *Relay) Stats() RelayStats {
 	}
 }
 
-// Run drains the outbox until ctx is cancelled, on two independent triggers:
-// LISTEN for latency, a periodic sweep so a notification lost to a dropped
-// connection costs seconds rather than forever.
+// Run drains the outbox until ctx is cancelled, on LISTEN for latency and on a
+// periodic sweep for lost notifications.
 func (r *Relay) Run(ctx context.Context) error {
 	wake := make(chan struct{}, 1)
 	if r.cfg.AppDatabaseURL != "" {
@@ -136,10 +128,9 @@ func (r *Relay) Run(ctx context.Context) error {
 	prune := time.NewTicker(r.cfg.PruneInterval)
 	defer prune.Stop()
 
-	// A restart must not wait for the first tick: rows committed while the
-	// process was down are already pending and their notifications are
-	// long gone.
+	// Rows committed while the process was down have no pending notification.
 	r.drainLogged(ctx)
+	r.SampleLag(ctx)
 
 	for {
 		select {
@@ -150,6 +141,7 @@ func (r *Relay) Run(ctx context.Context) error {
 		case <-sweep.C:
 			r.sweeps.Add(1)
 			r.drainLogged(ctx)
+			r.SampleLag(ctx)
 		case <-prune.C:
 			if _, err := r.Prune(ctx); err != nil && ctx.Err() == nil {
 				r.log.Error().Err(err).Msg("outbox prune failed")
@@ -178,18 +170,17 @@ func (r *Relay) Drain(ctx context.Context) error {
 }
 
 type pendingRow struct {
-	id      uuid.UUID
-	kind    string
-	payload json.RawMessage
+	id          uuid.UUID
+	kind        string
+	payload     json.RawMessage
+	traceParent sql.NullString
 }
 
-// deliverBatch claims a batch, inserts it into River and marks it delivered,
-// all in one transaction. The claim uses `for update skip locked` so several
-// api replicas can drain concurrently. The River inserts happen before the
-// mark commits, which is the at-least-once trade: a crash here redelivers,
-// where marking first would silently drop the job.
+// deliverBatch claims, inserts into River and marks delivered in one
+// transaction. `skip locked` lets replicas drain concurrently; inserting before
+// the mark commits means a crash redelivers rather than drops.
 func (r *Relay) deliverBatch(ctx context.Context) (int, error) {
-	var claimed int
+	var kinds []string
 
 	err := r.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		rows, err := claim(ctx, tx, r.cfg.Batch)
@@ -199,16 +190,18 @@ func (r *Relay) deliverBatch(ctx context.Context) (int, error) {
 		if len(rows) == 0 {
 			return nil
 		}
-		claimed = len(rows)
 
 		ids := make([]uuid.UUID, 0, len(rows))
 		for _, row := range rows {
 			args := queuedJob{kind: row.kind, payload: row.payload}
-			opts := &river.InsertOpts{Queue: Queue(Kind(row.kind)), MaxAttempts: MaxJobAttempts}
-			if err := r.queue.InsertJob(ctx, args, opts); err != nil {
+			opts := &river.InsertOpts{Queue: Queue(Kind(row.kind)), MaxAttempts: MaxAttempts(Kind(row.kind))}
+			// Insert under the enqueuing request's trace so it reaches job metadata.
+			jobCtx := propagation.TraceContext{}.Extract(ctx, propagation.MapCarrier{"traceparent": row.traceParent.String})
+			if err := r.queue.InsertJob(jobCtx, args, opts); err != nil {
 				return fmt.Errorf("insert %s job %s into the queue: %w", row.kind, row.id, err)
 			}
 			ids = append(ids, row.id)
+			kinds = append(kinds, row.kind)
 		}
 
 		if _, err := tx.NewRaw(
@@ -223,13 +216,32 @@ func (r *Relay) deliverBatch(ctx context.Context) (int, error) {
 		return 0, err
 	}
 
-	r.delivered.Add(int64(claimed))
-	return claimed, nil
+	r.delivered.Add(int64(len(kinds)))
+	for _, kind := range kinds {
+		metrics.OutboxRelayed.WithLabelValues(kind).Inc()
+	}
+	return len(kinds), nil
+}
+
+// SampleLag sets the age of the oldest pending row, which shows whether jobs
+// reach the queue at all.
+func (r *Relay) SampleLag(ctx context.Context) {
+	var age float64
+	err := r.db.QueryRowContext(ctx,
+		`select coalesce(extract(epoch from now() - min(created_at)), 0)::float8
+		   from outbox where state = 'pending'`).Scan(&age)
+	if err != nil {
+		if ctx.Err() == nil {
+			r.log.Warn().Err(err).Msg("sample outbox lag")
+		}
+		return
+	}
+	metrics.OutboxOldestPending.WithLabelValues().Set(age)
 }
 
 func claim(ctx context.Context, tx bun.Tx, batch int) ([]pendingRow, error) {
-	// Ordering by the primary key is ordering by time: the id is a uuid v7.
-	sqlRows, err := tx.QueryContext(ctx, `select id, job_kind, payload
+	// ids are uuid v7, so this orders by time.
+	sqlRows, err := tx.QueryContext(ctx, `select id, job_kind, payload, traceparent
 		from outbox
 		where state = 'pending'
 		order by id
@@ -243,7 +255,7 @@ func claim(ctx context.Context, tx bun.Tx, batch int) ([]pendingRow, error) {
 	var out []pendingRow
 	for sqlRows.Next() {
 		var row pendingRow
-		if err := sqlRows.Scan(&row.id, &row.kind, &row.payload); err != nil {
+		if err := sqlRows.Scan(&row.id, &row.kind, &row.payload, &row.traceParent); err != nil {
 			return nil, fmt.Errorf("scan outbox row: %w", err)
 		}
 		out = append(out, row)
@@ -254,9 +266,8 @@ func claim(ctx context.Context, tx bun.Tx, batch int) ([]pendingRow, error) {
 	return out, nil
 }
 
-// Prune removes delivered rows past the retention window. `DELETE` on
-// `outbox` is the only delete grant am_api holds, so this is the only
-// statement in the system that may run it.
+// Prune removes delivered rows past the retention window. It is the only
+// statement allowed to use am_api's DELETE grant on outbox.
 func (r *Relay) Prune(ctx context.Context) (int64, error) {
 	res, err := r.db.ExecContext(ctx,
 		`delete from outbox
@@ -276,8 +287,8 @@ func (r *Relay) Prune(ctx context.Context) (int64, error) {
 	return n, nil
 }
 
-// listen holds the LISTEN subscription, reconnecting for as long as ctx lives. A
-// drop is logged at warn rather than fatal: the sweep keeps delivering.
+// listen holds the LISTEN subscription, reconnecting until ctx ends; drops are
+// only warnings because the sweep keeps delivering.
 func (r *Relay) listen(ctx context.Context, wake chan<- struct{}) {
 	for ctx.Err() == nil {
 		if err := r.listenOnce(ctx, wake); err != nil && ctx.Err() == nil {
@@ -302,14 +313,12 @@ func (r *Relay) listenOnce(ctx context.Context, wake chan<- struct{}) error {
 	}
 	defer func() { _ = conn.Close(context.WithoutCancel(ctx)) }()
 
-	// The channel name is a constant, so this concatenation carries no user input;
-	// LISTEN takes no bind parameters.
+	// LISTEN takes no bind parameters; the channel is a constant.
 	if _, err := conn.Exec(ctx, "listen "+NotifyChannel); err != nil {
 		return fmt.Errorf("listen %s: %w", NotifyChannel, err)
 	}
 
-	// A row may have been committed between the last drain and this subscription,
-	// and its notification went nowhere.
+	// Catch rows committed between the last drain and this subscription.
 	r.signal(wake)
 
 	for {
@@ -321,8 +330,7 @@ func (r *Relay) listenOnce(ctx context.Context, wake chan<- struct{}) error {
 	}
 }
 
-// signal is non-blocking: the channel has room for one pending wake-up, and a
-// second is redundant because a drain empties the table.
+// signal is non-blocking: one pending wake-up suffices since a drain empties the table.
 func (r *Relay) signal(wake chan<- struct{}) {
 	select {
 	case wake <- struct{}{}:
@@ -330,11 +338,8 @@ func (r *Relay) signal(wake chan<- struct{}) {
 	}
 }
 
-// queuedJob carries an outbox row into River unchanged. Kind is the row's
-// job_kind, so the outbox kind and the queue kind are one string.
-// MarshalJSON hands River the stored payload verbatim rather than
-// re-encoding a Go value, which lets the relay stay ignorant of every job
-// type.
+// queuedJob hands River the stored payload verbatim, so the relay needs no
+// knowledge of job types.
 type queuedJob struct {
 	kind    string
 	payload json.RawMessage

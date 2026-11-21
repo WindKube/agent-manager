@@ -23,7 +23,10 @@ WORKDIR /src
 
 RUN apk add --no-cache ca-certificates
 
+# go.mod replaces the cli module with ./cli, so its go.mod has to be here
+# before the download for the module graph to resolve.
 COPY go.mod go.sum ./
+COPY cli/go.mod cli/go.sum ./cli/
 RUN go mod download
 
 COPY . .

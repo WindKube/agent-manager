@@ -6,6 +6,8 @@ package fetch
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
@@ -15,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"agent-manager/internal/tracing"
 )
 
 // ErrBlocked marks a refusal by the outbound policy rather than a transport
@@ -57,6 +61,10 @@ type Options struct {
 	// rejected since a name can be made to resolve to a private address.
 	Allowlist []string
 
+	// RootCAs replaces the system trust store; nil keeps it. A test hook, so
+	// an httptest TLS server can stand in for a real receiver.
+	RootCAs *x509.CertPool
+
 	// Resolver is the seam that makes the multi-address SSRF cases testable.
 	// Nil means net.DefaultResolver.
 	Resolver Resolver
@@ -87,7 +95,7 @@ func New(opts Options) (Client, error) {
 	c := &guardedClient{policy: policy{allow: allow}, resolver: resolver}
 	c.http = &http.Client{
 		Timeout: timeout,
-		Transport: &http.Transport{
+		Transport: tracing.OpaqueTransport(&http.Transport{
 			// Proxy stays nil: it would move every connection to the proxy's
 			// address, defeating the dial-time checks below.
 			Proxy:       nil,
@@ -96,8 +104,9 @@ func New(opts Options) (Client, error) {
 			DisableKeepAlives:     true,
 			ForceAttemptHTTP2:     true,
 			TLSHandshakeTimeout:   10 * time.Second,
+			TLSClientConfig:       &tls.Config{RootCAs: opts.RootCAs, MinVersion: tls.VersionTLS12},
 			ExpectContinueTimeout: time.Second,
-		},
+		}),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= maxRedirects {
 				return fmt.Errorf("stopped after %d redirects", maxRedirects)

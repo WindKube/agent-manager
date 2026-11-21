@@ -6,12 +6,8 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// OrgScreen is the identity provider panel, the policy that governs every
-// registration, resolution and scan, the group-to-role mapping and the
-// category list.
-//
-// Every string here that a person typed — a group name, a category name — is
-// interpolated and therefore escaped.
+// OrgScreen is the identity provider panel, the policy, the group-to-role mapping
+// and the category list. Typed names are interpolated and escaped.
 templ OrgScreen(s view.Org) {
 	<div class="am-header">
 		<div class="am-header-text">
@@ -132,9 +128,12 @@ templ orgPolicy(s view.Org) {
 					<span class="am-toggle-label">
 						Require signed bundles
 						<span class="am-toggle-note">
-							A version with no verifiable signature is excluded from every resolution,
-							whatever its verdict.
+							A version resolves only when its Sigstore signature verified and its signer
+							matches the package's expected signer, whatever its verdict.
 						</span>
+						if note := s.Data.Policy.UnsignableNote(); note != "" {
+							<span class="am-toggle-note" id="org-unsignable">{ note }</span>
+						}
 					</span>
 				</label>
 				<label class="am-toggle">

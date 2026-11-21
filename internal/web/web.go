@@ -1,16 +1,14 @@
 // Package web is the `serve web` role: a gin router rendering templ components,
 // made interactive by datastar.
 //
-// This role holds no datastore credential: config.Web has no DatabaseURL or
-// BlobURL field, and internal/archcheck fails the build if internal/web imports
-// a store, blob client or database driver. Data arrives through a CatalogSource.
+// This role holds no datastore credential; internal/archcheck fails the build if
+// it imports a store, blob client or database driver. Data arrives through the hub client.
 package web
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -29,217 +27,63 @@ import (
 )
 
 func init() {
-	// A package global, set once here rather than from New to avoid a race.
+	// Set once here rather than from New: it is a package global.
 	gin.SetMode(gin.ReleaseMode)
 }
 
-// CorrelationHeader carries the id that ties a browser's request to the
-// server's log lines. The api role echoes the same header.
+// CorrelationHeader ties a browser request to server log lines; the api echoes it.
 const CorrelationHeader = "X-Correlation-ID"
 
-// correlationIDPattern is what an inbound id may contain: unbounded, it is a
-// log-injection and header-splitting vector, so a non-match is replaced
-// rather than sanitised.
+// correlationIDPattern bounds inbound ids against log injection and header
+// splitting; a non-match is replaced, not sanitised.
 var correlationIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 
-// CatalogSource is the web role's door to catalog data. A source reporting
-// view.ErrSignedOut is stating a fact about the caller, not failing.
-type CatalogSource interface {
-	Catalog(ctx context.Context, q view.CatalogQuery) (view.CatalogPage, error)
-}
-
-// PackageSource is the detail screen's door to one package.
-type PackageSource interface {
-	Package(ctx context.Context, namespace, name string) (view.Package, error)
-}
-
-// PackageCurator is every write the package detail screen offers: changing
-// visibility (FR-126), and the two destructive withdrawals — one version, or
-// the whole package, out of the catalog. Kept apart from PackageSource for
-// the same reason Reviewer sits apart from ScannerSource: each writes an
-// audit row a fixture must not fake.
-type PackageCurator interface {
-	SetVisibility(ctx context.Context, namespace, name, visibility string) (view.Package, error)
-	DeleteVersion(ctx context.Context, namespace, name, version string) (view.VersionDeleted, error)
-	DeletePackage(ctx context.Context, namespace, name string) (view.PackageDeleted, error)
-}
-
-// PackageFileSource is the files panel's door to the api (US3/US5: read a
-// skill's files before using it), kept separate from PackageSource since a
-// deployment can answer a package's detail while its bundle reader is
-// unavailable, and the two reads must fail on their own terms.
-type PackageFileSource interface {
-	PackageFiles(ctx context.Context, namespace, name string) (view.FileList, error)
-	PackageFile(ctx context.Context, namespace, name, path string) (view.FileDetail, error)
-}
-
-// PackageScanSource is the package detail screen's door to its security
-// section: the latest visible version's scan, findings and any reviewer
-// decision — the Scanner screen's own rows, scoped to one package. Kept
-// separate from PackageSource for the same reason PackageFileSource is: a
-// deployment can answer the rest of the page while this read is unavailable.
-type PackageScanSource interface {
-	PackageScan(ctx context.Context, namespace, name string) (hub.PackageScanDetail, error)
-}
-
-// Registrar is the import modal's door to the two registration operations,
-// separate from CatalogSource so a fixture need not claim to accept one too.
-type Registrar interface {
-	Preview(ctx context.Context, archive view.Archive) (view.ImportPreview, error)
-	Register(ctx context.Context, registration view.Registration) (view.ImportResult, error)
-}
-
-// ScannerSource is the Scanner screen's three reads. It excludes the accept
-// and reject decision, which lives on Reviewer.
-type ScannerSource interface {
-	ScannerSummary(ctx context.Context, days int) (hub.ScannerSummary, error)
-	Findings(ctx context.Context, q hub.FindingQuery) (hub.FindingsPage, error)
-	Finding(ctx context.Context, id string) (hub.FindingDetail, error)
-}
-
-// Reviewer is the two decisions a scanner reviewer can take, separate from
-// ScannerSource because it writes an audit row a fixture must not fake.
-type Reviewer interface {
-	AcceptFinding(ctx context.Context, id, note string, days int) (hub.Decision, error)
-	RejectFinding(ctx context.Context, id, note string) (hub.Decision, error)
-}
-
-// AuditSource is the audit screen and its export. AuditExport hands back a
-// LIVE body the caller owns the Close of, since the audit table grows without bound.
-type AuditSource interface {
-	Audit(ctx context.Context, page int) (hub.AuditPage, error)
-	AuditExport(ctx context.Context) (io.ReadCloser, string, error)
-}
-
-// ProfileSource is the Profiles screens' reads, kept separate from
-// ProfileCurator's writes as ScannerSource is from Reviewer.
-type ProfileSource interface {
-	Profiles(ctx context.Context) ([]hub.ProfileSummary, error)
-	Profile(ctx context.Context, slug string) (hub.ProfileDetail, error)
-	// Revision is the "Show diff" panel's read: one published revision's
-	// resolved lockfile, by number.
-	Revision(ctx context.Context, slug string, revision int) (hub.RevisionLockfile, error)
-}
-
-// ProfileCurator is every write the profile screens offer: create, curate,
-// share, target and publish. One interface, not five, since each is gated by
-// the same profile's ProfilePermissions.
-type ProfileCurator interface {
-	CreateProfile(ctx context.Context, creation hub.ProfileCreation) (hub.ProfileSummary, error)
-	SetProfileEntries(ctx context.Context, slug string, entries []hub.EntrySetting) (hub.ProfileDetail, error)
-	RemoveProfileEntry(ctx context.Context, slug, id string) (hub.ProfileDetail, error)
-	SetProfileSharing(ctx context.Context, slug string, members []hub.Share) (hub.ProfileDetail, error)
-	SetProfileTargets(ctx context.Context, slug string, targets []string) (hub.ProfileDetail, error)
-	PublishRevision(ctx context.Context, slug, note string) (hub.PublishedRevision, error)
-	DeleteProfile(ctx context.Context, slug string) error
-}
-
-// DeviceSource is the Connect-the-CLI screen's door to the api: looking a
-// pending authorisation up and confirming it.
-type DeviceSource interface {
-	LookupDeviceCode(ctx context.Context, userCode string) (view.PendingDeviceAuthorization, error)
-	ApproveDeviceCode(ctx context.Context, userCode string) (string, error)
-}
-
-// BadgeSource is the sidebar's three counts, read once per full page render.
-// Nil means a shell with no badges, not three zeroes.
-type BadgeSource interface {
-	Badges(ctx context.Context) (hub.Badges, error)
-}
-
-// StorageSource is the Storage screen's one read.
-type StorageSource interface {
-	Storage(ctx context.Context) (view.Storage, error)
-}
-
-// RuntimeSource is the Runtime screen's one read: job counts, runner errors
-// and the run-history chart, all from one api call.
-type RuntimeSource interface {
-	Runtime(ctx context.Context) (view.Runtime, error)
-}
-
-// OrganizationSource is the Organization screen's door to the api. Reads and
-// writes share one interface since every mutation needs the same role.
-type OrganizationSource interface {
-	Organization(ctx context.Context) (view.Organization, error)
-	TestIdentityConnection(ctx context.Context) (view.IdentityConnectionTest, error)
-	UpdatePolicy(ctx context.Context, in view.OrganizationPolicy) (view.OrganizationPolicy, error)
-	CreateMapping(ctx context.Context, groupName, role string) (view.GroupRoleMapping, error)
-	DeleteMapping(ctx context.Context, groupName string) error
-	CreateCategory(ctx context.Context, name string) (view.OrganizationCategory, error)
-	UpdateCategory(ctx context.Context, id, name string) (view.OrganizationCategory, error)
-	DeleteCategory(ctx context.Context, id string) error
-}
-
-// Deps is what the role is handed. Nil on any source renders that screen's
-// unavailable state rather than an empty one or a panic.
+// Deps is what the role is handed. Hub is required; Auth is nil when the
+// identity provider failed to configure at boot.
 type Deps struct {
-	Catalog        CatalogSource
-	Packages       PackageSource
-	PackageCurator PackageCurator
-	Files          PackageFileSource
-	PackageScan    PackageScanSource
-	Registrar      Registrar
-	Auth           AuthProvider
-	// Viewers resolves who each request is acting as. Nil fails closed.
-	Viewers      ViewerSource
-	Sessions     SessionMinter
-	Scanner      ScannerSource
-	Reviewer     Reviewer
-	Audit        AuditSource
-	Badges       BadgeSource
-	Device       DeviceSource
-	Profiles     ProfileSource
-	Curator      ProfileCurator
-	Storage      StorageSource
-	Organization OrganizationSource
-	Runtime      RuntimeSource
-	Log          zerolog.Logger
+	Hub  *hub.Client
+	Auth AuthProvider
+	Log  zerolog.Logger
 }
 
 // Options is the run-time configuration of the surface itself.
 type Options struct {
-	// Addr is the listen address, e.g. ":8080".
 	Addr string
-	// PublicBaseURL is read for exactly one decision: see secureCookie.
+	// PublicBaseURL only decides secureCookie.
 	PublicBaseURL string
-	// ProviderName is what the operator calls the identity provider. Empty
-	// renders neutral wording; never derived from the issuer URL.
+	// ProviderName is the operator's name for the identity provider; never derived from the issuer URL.
 	ProviderName string
 	// DevCredentialHint puts the local stack's seeded logins on the sign-in screen.
 	DevCredentialHint bool
-	// DevCredentials is what the hint above prints. Ignored unless the flag is set.
-	DevCredentials []view.Credential
-	// OIDCCookieKey signs the round-trip cookie. Empty draws one at boot — a
-	// deployment with more than one web replica MUST set the same value on each.
+	DevCredentials    []view.Credential
+	// OIDCCookieKey signs the round-trip cookie. Empty draws one at boot, so
+	// multiple web replicas must share the same value.
 	OIDCCookieKey []byte
 	// HubURL is the address `amctl login --hub` should name.
 	HubURL string
-	// RiverUI is the base address of River's queue dashboard, or nil when this
-	// deployment runs none — in which case the River Dashboard entry renders
-	// disabled with the reason on it, rather than disappearing.
-	//
-	// Scheme and host only. It is not a credential: the dashboard holds the
-	// queue's, this role holds none, and nothing a request carries can steer
-	// where the proxy points.
+	// RiverUI is the scheme and host of River's queue dashboard, or nil when none
+	// runs. Nothing a request carries can steer where the proxy points.
 	RiverUI *url.URL
+	// Middleware runs ahead of everything else, instrumentation included.
+	Middleware []gin.HandlerFunc
 }
 
 // Server is the assembled router. It owns no connections.
 type Server struct {
-	deps   Deps
-	opts   Options
-	engine *gin.Engine
-	// secureCookie and oidcKey are decided once, at construction, not per-request.
+	deps         Deps
+	opts         Options
+	engine       *gin.Engine
 	secureCookie bool
 	oidcKey      []byte
-	// riverUI is the reverse proxy onto the queue dashboard, built once, and nil
-	// when no dashboard is configured.
+	// riverUI is nil when no dashboard is configured.
 	riverUI *httputil.ReverseProxy
 }
 
 // New assembles the router. It performs no I/O.
 func New(deps Deps, opts Options) *Server {
+	if deps.Hub == nil {
+		panic("web.New: Deps.Hub is required")
+	}
 	if opts.Addr == "" {
 		opts.Addr = ":8080"
 	}
@@ -255,14 +99,15 @@ func New(deps Deps, opts Options) *Server {
 		oidcKey:      oidcSigningKey(opts.OIDCCookieKey),
 		riverUI:      riverProxy(opts.RiverUI, deps.Log),
 	}
-	// The guard is global, so a new route is protected by default. It runs
-	// after correlation so its own log lines and redirect carry the request's id.
+	// The guard is global so a new route is protected by default, and runs after
+	// correlation so its log lines and redirects carry the request id.
+	engine.Use(opts.Middleware...)
 	engine.Use(correlation(deps.Log), recovery(), srv.guard(), sameOrigin())
 	srv.register()
 	return srv
 }
 
-// Handler is the http.Handler the role serves, and what tests drive.
+// Handler is the http.Handler the role serves.
 func (s *Server) Handler() http.Handler { return s.engine }
 
 func (s *Server) register() {
@@ -275,27 +120,23 @@ func (s *Server) register() {
 	s.engine.POST("/catalog/import/preview", s.importPreview)
 	s.engine.POST("/catalog/import", s.importRegister)
 
-	// A package id IS two segments: `example/platform-toolkit`. gin routes on
-	// the decoded path, so this splits correctly even if the id arrives encoded.
+	// A package id is two segments; gin routes on the decoded path, so an encoded id still splits.
 	s.engine.GET("/packages/:namespace/:name", s.packageDetail)
-	// POST forms that redirect, like the profile screens' writes, so a reload
-	// cannot resubmit any of them. The two deletes are additionally gated on
-	// the role the api demands and sit behind a typed confirmation.
+	// Writes are POST forms that redirect, so a reload cannot resubmit them.
 	s.engine.POST("/packages/visibility", s.setPackageVisibility)
+	s.engine.POST("/packages/tracking", s.setPackageTracking)
+	s.engine.POST("/packages/signer", s.setPackageSigner)
 	s.engine.POST("/packages/:namespace/:name/delete", s.deletePackage)
 	s.engine.POST("/packages/:namespace/:name/versions/:version/delete", s.deleteVersion)
 
-	// Both governance decisions are POST forms that redirect, so a reload
-	// cannot re-approve anything.
 	s.engine.GET("/scanner", s.scanner)
 	s.engine.POST("/scanner/findings/:id/accept", s.acceptFinding)
 	s.engine.POST("/scanner/findings/:id/reject", s.rejectFinding)
 	s.engine.GET("/audit", s.audit)
 	s.engine.GET("/audit/export", s.auditExport)
 
-	// A slug is one segment or several, so the read route is a catch-all. gin
-	// won't register a catch-all beside a fixed-depth sibling, so every write
-	// route below carries its slug as a form field instead of a path segment.
+	// A slug may span segments, so the read route is a catch-all. gin won't register
+	// a catch-all beside a fixed-depth sibling, so writes carry the slug as a form field.
 	s.engine.GET("/profiles", s.profiles)
 	s.engine.POST("/profiles", s.createProfile)
 	s.engine.GET("/profiles/*slug", s.profileDetail)
@@ -307,13 +148,17 @@ func (s *Server) register() {
 	s.engine.POST("/profiles/targets", s.setTargets)
 	s.engine.POST("/profiles/revisions", s.publishRevision)
 	s.engine.POST("/profiles/delete", s.deleteProfile)
-	// The confirm action never carries the user code in its own path: it is
-	// bearer-equivalent for the length of its validity.
+	// The user code never goes in the path: it is bearer-equivalent while valid.
 	s.engine.GET("/cli", s.cli)
 	s.engine.POST("/cli/confirm", s.confirmDeviceCode)
+	s.engine.GET("/tokens", s.tokens)
+	s.engine.POST("/tokens", s.createToken)
+	s.engine.POST("/tokens/:id/revoke", s.revokeToken)
 	s.engine.GET("/storage", s.storage)
+	s.engine.GET("/machines", s.machines)
+	s.engine.GET("/machines/:id", s.machineDetail)
+	s.engine.POST("/machines/:id/forget", s.forgetMachine)
 
-	// Every Organization write is a POST form that redirects, same as Scanner.
 	s.engine.GET("/org", s.org)
 	s.engine.POST("/org/identity/test", s.testConnection)
 	s.engine.POST("/org/identity/secret", s.rotateSecret)
@@ -324,20 +169,22 @@ func (s *Server) register() {
 	s.engine.POST("/org/categories/:id", s.renameCategory)
 	s.engine.POST("/org/categories/:id/delete", s.deleteCategory)
 
+	s.engine.GET("/webhooks", s.webhooks)
+	s.engine.POST("/webhooks", s.createWebhook)
+	s.engine.POST("/webhooks/:id/enabled", s.setWebhookEnabled)
+	s.engine.POST("/webhooks/:id/secret", s.rotateWebhookSecret)
+	s.engine.POST("/webhooks/:id/delete", s.deleteWebhook)
+
 	s.engine.GET("/runtime", s.runtime)
 
-	// The screen and the dashboard it embeds are separate paths on purpose: the
-	// embed is a byte passthrough with no layout, no shell and no session cookie
-	// on the way out, and a wildcard sharing a segment with a rendered screen is
-	// how one of them starts answering for the other.
+	// The embed is a byte passthrough with no shell or session cookie, so it gets
+	// its own prefix rather than a wildcard beside the rendered screen.
 	s.engine.GET("/river", s.riverScreen)
 	s.engine.Any(view.RiverEmbedPrefix+"/*path", s.riverEmbed)
 
 	s.engine.POST("/theme", s.setTheme)
 
-	// These four routes, plus /healthz and /static, are exempt from the guard.
-	// /auth/logout is a POST because a GET sign-out fires from any image tag on
-	// any page, on any origin.
+	// These, plus /healthz and /static, are exempt from the guard.
 	s.engine.GET("/auth/signin", s.signin)
 	s.engine.GET("/auth/login", s.login)
 	s.engine.GET("/auth/callback", s.callback)
@@ -353,7 +200,6 @@ func (s *Server) notFound(c *gin.Context) {
 		components.Placeholder("Not found", "There is no screen at this address."))
 }
 
-// health has no dependency to probe: if the process is up, it can serve.
 func (s *Server) health(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "role": "web"})
 }
@@ -397,7 +243,6 @@ func (s *Server) Run(ctx context.Context) error {
 	return <-errs
 }
 
-// logFrom is the request's logger, already carrying the correlation id.
 func logFrom(c *gin.Context) *zerolog.Logger {
 	log := logging.From(c.Request.Context())
 	return &log
@@ -436,11 +281,8 @@ func recovery() gin.HandlerFunc {
 	})
 }
 
-// sameOrigin is a second line of defence behind SameSite=Lax, which a browser
-// with third-party cookies re-enabled (or a bug in one) does not enforce. A
-// modern browser sends Sec-Fetch-Site on every request; where it is absent,
-// Origin is the fallback every browser old enough to lack it still sends on a
-// state-changing request.
+// sameOrigin backs up SameSite=Lax, which not every browser enforces. It checks
+// Sec-Fetch-Site, falling back to Origin for browsers too old to send it.
 func sameOrigin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		switch c.Request.Method {

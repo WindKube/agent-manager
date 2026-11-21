@@ -15,29 +15,17 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The audit log screen and its export.
-
 func (s *Server) audit(c *gin.Context) {
 	query := auditQueryFromURL(c)
-	screen := view.Audit{Query: query, Page: query.Page, ExportAvailable: s.deps.Audit != nil}
-	if s.deps.Audit == nil {
-		screen.Unavailable = true
-		s.renderAudit(c, http.StatusBadGateway, screen)
-		return
-	}
-
-	entries, err := s.deps.Audit.Audit(session(c), query.Page)
+	screen := view.Audit{Query: query, Page: query.Page, ExportAvailable: true}
+	entries, err := s.deps.Hub.Audit(session(c), query.Page, query.Filter)
 	if status, ok := s.governanceFailure(c, err, &screen.GovernanceState, "audit log"); !ok {
-		// The export is offered only beside rows that could be read.
 		screen.ExportAvailable = false
 		s.renderAudit(c, status, screen)
 		return
 	}
 
-	screen.Total, screen.Page, screen.PageSize = entries.Total, entries.Page, entries.PageSize
-	for _, entry := range entries.Entries {
-		screen.Rows = append(screen.Rows, auditRow(entry))
-	}
+	screen.Rows, screen.Total, screen.Page, screen.PageSize = entries.Rows, entries.Total, entries.Page, entries.PageSize
 
 	if query.Selected != "" {
 		if row := findAuditRow(screen.Rows, query.Selected); row != nil {
@@ -54,7 +42,13 @@ func auditQueryFromURL(c *gin.Context) view.AuditQuery {
 	if err != nil {
 		page = 1
 	}
-	return view.AuditQuery{Page: page, Selected: c.Query("entry")}.Normalise()
+	return view.AuditQuery{Page: page, Selected: c.Query("entry"), Filter: auditFilterFromURL(c)}.Normalise()
+}
+
+func auditFilterFromURL(c *gin.Context) view.AuditFilter {
+	return view.AuditFilter{
+		SubjectKind: c.Query("subjectKind"), SubjectID: c.Query("subjectId"), Namespace: c.Query("namespace"),
+	}
 }
 
 func findAuditRow(rows []view.AuditRow, id string) *view.AuditRow {
@@ -70,40 +64,17 @@ func (s *Server) renderAudit(c *gin.Context, status int, screen view.Audit) {
 	s.render(c, status, "Audit log", "audit", components.AuditScreen(screen))
 }
 
-func auditRow(from hub.AuditEntry) view.AuditRow {
-	return view.AuditRow{
-		ID:    from.ID,
-		At:    view.Timestamp(from.OccurredAt),
-		Actor: from.Actor,
-		// From actor_kind, never inferred from the name.
-		System: from.ActorKind == view.ActorKindSystem,
-		Kind:   from.Kind,
-		Text:   from.Text,
-		Source: from.Source,
-	}
-}
-
-// ---- the export -----------------------------------------------------------
-
-// exportMediaType is what this role sends, a constant rather than the
-// upstream's header echoed back: a response header from another service
-// should not decide how a browser treats a download.
+// exportMediaType is fixed rather than echoed: another service's header should
+// not decide how a browser treats a download.
 const exportMediaType = "application/x-ndjson"
 
-// exportFilename matches the api's own Content-Disposition, so a file saved
-// through this hop and one saved from the api directly are the same file.
+// exportFilename matches the api's own Content-Disposition.
 const exportFilename = "audit-log.ndjson"
 
-// auditExport streams the whole current scope to the browser. It does NOT
-// read the body into memory first: the audit table is the one designed to
-// grow without bound, and an io.ReadAll here would undo the api's own streaming.
+// auditExport streams rather than buffering: the audit log grows without bound.
 func (s *Server) auditExport(c *gin.Context) {
-	if s.deps.Audit == nil {
-		c.Status(http.StatusBadGateway)
-		return
-	}
-
-	body, mediaType, err := s.deps.Audit.AuditExport(session(c))
+	query := view.AuditQuery{Filter: auditFilterFromURL(c)}.Normalise()
+	body, mediaType, err := s.deps.Hub.AuditExport(session(c), query.Filter)
 	switch {
 	case errors.Is(err, view.ErrSignedOut):
 		s.toSignIn(c)
@@ -117,7 +88,6 @@ func (s *Server) auditExport(c *gin.Context) {
 		c.Status(http.StatusBadGateway)
 		return
 	}
-	// A stream left open is a connection held for the life of the process.
 	defer func() { _ = body.Close() }()
 
 	if mediaType != "" && mediaType != exportMediaType {
@@ -134,8 +104,7 @@ func (s *Server) auditExport(c *gin.Context) {
 	complete, err := streamExport(c.Writer, body)
 	switch {
 	case err != nil:
-		// The status is already sent and cannot be taken back: the reader has
-		// a truncated file and a 200.
+		// The 200 is already sent; the reader has a truncated file.
 		logFrom(c).Error().Err(err).Msg("the audit export was cut short mid-stream")
 	case !complete:
 		// The sentinel's absence is the only signal that a 200 was truncated.
@@ -143,14 +112,11 @@ func (s *Server) auditExport(c *gin.Context) {
 	}
 }
 
-// exportTailBytes bounds how much of the stream's end is kept to read the
-// sentinel back, so completeness-checking never becomes the buffering this
-// path avoids.
+// exportTailBytes bounds the tail kept to find the completeness sentinel.
 const exportTailBytes = 512
 
-// streamExport copies the export to the browser and reports whether it ended
-// with the api's completeness sentinel. It flushes as it goes, so a long
-// export arrives while being read rather than after the api finishes producing it.
+// streamExport flushes as it copies and reports whether the stream ended with
+// the api's completeness sentinel.
 func streamExport(w io.Writer, body io.Reader) (bool, error) {
 	flusher, _ := w.(http.Flusher)
 	tail := make([]byte, 0, exportTailBytes)
@@ -185,9 +151,8 @@ func keepTail(tail, chunk []byte) []byte {
 	return tail
 }
 
-// sentinelSeen decodes the stream's last line rather than matching text on
-// it: a substring match on `"complete":true` could be satisfied by an audit
-// row that happened to quote those bytes in its own text.
+// sentinelSeen decodes the last line: a substring match could be satisfied by
+// an audit row quoting `"complete":true`.
 func sentinelSeen(tail []byte) bool {
 	lines := bytes.Split(tail, []byte("\n"))
 	for i := len(lines) - 1; i >= 0; i-- {

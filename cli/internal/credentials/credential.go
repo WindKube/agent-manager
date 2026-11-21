@@ -13,11 +13,8 @@ var ErrCredential = errors.New("stored credential is unusable")
 
 const schemaVersion = 1 // a format change is a migration or a named refusal, never a silent half-decode
 
-// Credential is one hub's bearer token; ExpiresAt exists only because the
-// tokens are opaque, so `expires_in` at issue time is the sole source of a
-// lifetime. String/GoString exist so %v/%s/%#v never print Token, and
-// `json:"-"` on Token stops json.Marshal doing the same (it ignores the
-// Stringer methods entirely) — the on-disk shape is storedCredential below.
+// Credential is one hub's bearer token. String/GoString keep fmt from printing Token, and `json:"-"`
+// does the same for json.Marshal; the on-disk shape is storedCredential.
 type Credential struct {
 	Hub string // stored and compared on load, so a token can never reach the wrong hub
 
@@ -88,9 +85,8 @@ func encodeCredential(c Credential) ([]byte, error) {
 	return json.Marshal(s)
 }
 
-// decodeCredential refuses a stored hub mismatch: the item key is a digest
-// of the URL, so a mismatch means a hand-edited store or a collision, and
-// handing one hub's token to another is the worst thing this package could do.
+// decodeCredential refuses a stored hub mismatch: handing one hub's token to another is the worst
+// thing this package could do.
 func decodeCredential(blob []byte, hubURL string) (Credential, error) {
 	var s storedCredential
 	if err := json.Unmarshal(blob, &s); err != nil {

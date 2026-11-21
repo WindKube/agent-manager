@@ -100,9 +100,7 @@ func objectCount(n int) string {
 	return strconv.Itoa(n) + " objects"
 }
 
-// bucketSettingClass reuses am-kv-none's muted, italic treatment for Unknown: it
-// is already what this page uses for "a value this screen genuinely does not
-// have", one row up, for a scan still running or an override never recorded.
+// bucketSettingClass reuses am-kv-none's muted treatment for Unknown.
 func bucketSettingClass(setting view.BucketSetting) string {
 	if !setting.Known {
 		return "am-kv-val am-kv-none"
@@ -115,8 +113,7 @@ templ recentFetches(s view.Storage) {
 		<div class="am-section-head">
 			<div class="am-section-title">Recent fetches</div>
 		</div>
-		// The four columns line up with the audit log's own row grid (time, a short
-		// tag, the main text, an outcome) rather than a second near-identical one.
+		// Columns match the audit log's row grid rather than a near-identical second one.
 		<div class="am-audit-row am-audit-head">
 			<div>Time</div>
 			<div>Kind</div>

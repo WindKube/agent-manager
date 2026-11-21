@@ -1,19 +1,6 @@
-// Nothing is written outside the invoking user's home, and the check is
-// on the resolved path.
-//
-// Symlinked agent directories are what make this a real question rather
-// than a tautology. `~/.claude` is frequently a symlink into a dotfiles
-// repo, so a destination that is lexically under $HOME says nothing about
-// where the bytes land, and `~/.claude -> /etc/whatever` is how amctl
-// would write outside the home without ever constructing a path outside
-// it. Both directions are asserted here: a link out is refused, a link to
-// another place inside the home still works. Only asserting the first
-// would leave a check that means "no symlinks", which breaks a common
-// dotfiles setup.
-//
-// The destinations in this file come from internal/layout's real registry, not
-// from a hand-written path, so what is proved is about the paths amctl actually
-// derives.
+// Nothing is written outside the home, checked on the resolved path. Both
+// directions are asserted: a symlink out of the home is refused, and one to
+// elsewhere inside it still works, or the check would just mean "no symlinks".
 
 package apply
 
@@ -35,9 +22,7 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/record"
 )
 
-// containFixture is a sandbox holding a home and a sibling directory that is
-// deliberately NOT in the home, so "outside" is a real place on this filesystem
-// that a walk can inspect rather than an abstraction.
+// containFixture holds a home and a sibling directory outside it.
 type containFixture struct {
 	sandbox string
 	home    string
@@ -46,13 +31,8 @@ type containFixture struct {
 
 func newContainFixture(t *testing.T) containFixture {
 	t.Helper()
-	// EvalSymlinks on the sandbox root, because Home.Contains resolves the path
-	// it checks and this fixture compares against paths it built itself. On
-	// darwin t.TempDir() hands back /var/folders/..., and /var is a symlink to
-	// /private/var — so an unresolved fixture path and a resolved Contains
-	// result differ by a prefix that has nothing to do with what is being
-	// tested. Resolving here once puts the whole fixture in the same space as
-	// the code under test rather than teaching each assertion to compensate.
+	// On darwin t.TempDir() is under /var, a symlink to /private/var; resolve
+	// once so fixture paths match what Contains returns.
 	sandbox, err := filepath.EvalSymlinks(t.TempDir())
 	require.NoError(t, err)
 	f := containFixture{
@@ -72,7 +52,6 @@ func requireSymlinks(t *testing.T) {
 	}
 }
 
-// destFor asks internal/layout where an entry goes, through the real registry.
 func destFor(t *testing.T, home, id string) string {
 	t.Helper()
 	reg, err := layout.NewRegistry(layout.Config{HomeDir: home})
@@ -84,7 +63,6 @@ func destFor(t *testing.T, home, id string) string {
 	return p.Dest
 }
 
-// syncInto runs a real one-entry sync against home and returns the error.
 func syncInto(t *testing.T, home, id string) (*Result, error) {
 	t.Helper()
 	f := newApplyFixture(t)
@@ -97,11 +75,6 @@ func syncInto(t *testing.T, home, id string) (*Result, error) {
 	return f.applier(t).Apply(context.Background(), planOf(c))
 }
 
-// the two symlink directions
-
-// TestSyncRefusesAnAgentDirectorySymlinkedOutOfTheHome is the case that
-// matters: every path amctl constructs is under $HOME and the bytes would
-// land in /etc.
 func TestSyncRefusesAnAgentDirectorySymlinkedOutOfTheHome(t *testing.T) {
 	requireSymlinks(t)
 	f := newContainFixture(t)
@@ -113,7 +86,7 @@ func TestSyncRefusesAnAgentDirectorySymlinkedOutOfTheHome(t *testing.T) {
 	res, err := syncInto(t, f.home, "acme/lint-go")
 	require.ErrorIs(t, err, ErrOutsideHome)
 	require.Empty(t, res.Installed)
-	require.Len(t, res.Refusals(), 1, "FR-020 is a refusal the user can fix, not an internal failure")
+	require.Len(t, res.Refusals(), 1, "containment is a refusal the user can fix, not an internal failure")
 
 	require.Empty(t, escapedPaths(t, f.sandbox, f.home, before),
 		"nothing at all was written outside the home")
@@ -122,14 +95,9 @@ func TestSyncRefusesAnAgentDirectorySymlinkedOutOfTheHome(t *testing.T) {
 	require.Empty(t, entries, "not even the skills directory was created through the link")
 }
 
-// TestSyncFollowsAnAgentDirectorySymlinkedElsewhereInsideTheHome is the
-// other half, and without it the check above would be indistinguishable
-// from "amctl refuses symlinks" — which breaks a common dotfiles-repo
-// setup.
-//
-// The link is ABSOLUTE on purpose: that is what `ln -s ~/dotfiles/claude
-// ~/.claude` produces, and it is the case a structural os.Root check refuses.
-// See TestOsRootRefusesAnAbsoluteSymlinkEvenInsideTheRoot.
+// TestSyncFollowsAnAgentDirectorySymlinkedElsewhereInsideTheHome uses an
+// absolute link, as `ln -s ~/dotfiles/claude ~/.claude` makes, which a
+// structural os.Root check would refuse.
 func TestSyncFollowsAnAgentDirectorySymlinkedElsewhereInsideTheHome(t *testing.T) {
 	requireSymlinks(t)
 	f := newContainFixture(t)
@@ -142,14 +110,11 @@ func TestSyncFollowsAnAgentDirectorySymlinkedElsewhereInsideTheHome(t *testing.T
 	require.NoError(t, err, "a dotfiles-repo symlink inside the home is a supported setup")
 	require.Len(t, res.Installed, 1)
 
-	// The bytes are through the link, in the dotfiles repo.
 	body, rerr := os.ReadFile(filepath.Join(dotfiles, "skills", "acme--lint-go", "SKILL.md"))
 	require.NoError(t, rerr)
 	require.Equal(t, "---\nname: lint-go\n---\nthe body\n", string(body))
 
-	// The RECORD stores the requested path, not the resolved one: the record's
-	// destination has to be the path internal/layout derives, or the next run's
-	// plan reads it as a relocation and removes and re-adds the entry forever.
+	// The record stores the requested path, or the next plan sees a relocation.
 	rec, rerr := record.Load(filepath.Join(f.home, ".agent-manager", "hub", record.FileName), applyHub)
 	require.NoError(t, rerr)
 	require.Len(t, rec.Refs(), 1)
@@ -158,12 +123,8 @@ func TestSyncFollowsAnAgentDirectorySymlinkedElsewhereInsideTheHome(t *testing.T
 	require.Empty(t, escapedPaths(t, f.sandbox, f.home, before))
 }
 
-// TestOsRootRefusesAnAbsoluteSymlinkEvenInsideTheRoot pins the measurement that
-// decides why the containment check is not os.Root doing it structurally.
-//
-// If a later change "simplifies" Home.Contains into a root opened on the home,
-// this test is what says the dotfiles case broke — rather than a bug report six
-// months later from somebody whose ~/.claude is a link.
+// TestOsRootRefusesAnAbsoluteSymlinkEvenInsideTheRoot pins why Home.Contains
+// is not an os.Root on the home: that would break a symlinked ~/.claude.
 func TestOsRootRefusesAnAbsoluteSymlinkEvenInsideTheRoot(t *testing.T) {
 	requireSymlinks(t)
 	f := newContainFixture(t)
@@ -193,7 +154,6 @@ func TestOsRootRefusesAnAbsoluteSymlinkEvenInsideTheRoot(t *testing.T) {
 			"so a structural root check on the home would refuse the commonest dotfiles setup there is")
 	require.Contains(t, err.Error(), "escapes")
 
-	// And the resolution-based check this package uses gets all three right.
 	h, err := OpenHome(f.home)
 	require.NoError(t, err)
 	_, err = h.Contains(filepath.Join(f.home, ".rel-inside", "skills", "acme--lint-go"))
@@ -203,8 +163,6 @@ func TestOsRootRefusesAnAbsoluteSymlinkEvenInsideTheRoot(t *testing.T) {
 	_, err = h.Contains(filepath.Join(f.home, ".rel-outside", "skills", "acme--lint-go"))
 	require.ErrorIs(t, err, ErrOutsideHome)
 }
-
-// the check happens before anything is opened
 
 func TestContainsRefusesBeforeAnythingIsCreated(t *testing.T) {
 	f := newContainFixture(t)
@@ -256,18 +214,12 @@ func TestContainsReportsTheResolvedPathItCheckedAndTheRequestedPathToWrite(t *te
 	require.NoError(t, err)
 	require.Equal(t, requested, cont.Dest, "the requested path is what gets written and recorded")
 	require.Equal(t, filepath.Join(dotfiles, "skills", "acme--lint-go"), cont.Resolved,
-		"the resolved path is what FR-020 was checked on")
+		"the resolved path is what containment was checked on")
 }
 
-// the walk over a completed sync, and the proof that it can fail
-
-// TestACompletedSyncTouchesNoPathOutsideTheHome walks the real filesystem after
-// a real multi-entry sync.
 func TestACompletedSyncTouchesNoPathOutsideTheHome(t *testing.T) {
 	f := newContainFixture(t)
 
-	// Unmanaged neighbours outside the home, so the walk has something to
-	// notice if anything strays.
 	require.NoError(t, os.MkdirAll(filepath.Join(f.outside, "claude", "skills"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(f.outside, "claude", "skills", "SKILL.md"),
 		[]byte("somebody else's\n"), 0o644))
@@ -290,14 +242,9 @@ func TestACompletedSyncTouchesNoPathOutsideTheHome(t *testing.T) {
 		"a completed sync created and modified paths only inside the home")
 }
 
-// TestTheContainmentWalkFailsOnAPlantedEscape is the negative control for the
-// walk above. Without it, "no path outside the home was written" is a claim
-// about a helper nobody has seen fail.
-//
-// The escape is planted by calling Stage and Swap directly, which is exactly how
-// a future caller would introduce this bug: both are unconditional by design and
-// neither checks containment — Home.Contains is the only thing that does, and
-// Apply is the only thing that calls it.
+// TestTheContainmentWalkFailsOnAPlantedEscape is the walk's negative control.
+// It plants the escape via Stage and Swap, which never check containment; only
+// Apply calls Home.Contains.
 func TestTheContainmentWalkFailsOnAPlantedEscape(t *testing.T) {
 	f := newContainFixture(t)
 	before := walkTree(t, f.sandbox)
@@ -307,7 +254,7 @@ func TestTheContainmentWalkFailsOnAPlantedEscape(t *testing.T) {
 	d, err := record.ParseDigest(cache.Compute(bundle).Lockfile())
 	require.NoError(t, err)
 	staged, err := Stage(context.Background(), StageRequest{Dest: escape, Digest: d, Bundle: bundle})
-	require.NoError(t, err, "Stage is unconditional by design: it is not where FR-020 lives")
+	require.NoError(t, err, "Stage is unconditional by design: it is not where containment lives")
 	_, err = Swap(staged.Path, escape)
 	require.NoError(t, err)
 
@@ -315,10 +262,7 @@ func TestTheContainmentWalkFailsOnAPlantedEscape(t *testing.T) {
 	require.NotEmpty(t, escaped, "THE WALK MUST BE ABLE TO FAIL; if this is empty the assertion above is vacuous")
 	require.Contains(t, escaped, relTo(t, f.sandbox, filepath.Join(escape, "SKILL.md")))
 
-	// Remove the planted escape and the walk stops reporting it. It still
-	// reports `outside` itself, whose mtime the removal moved — which is the
-	// walk being right rather than the walk being noisy: it is measuring the
-	// filesystem, not amctl's account of what it did.
+	// The walk still reports `outside` itself, whose mtime the removal moved.
 	require.NoError(t, os.RemoveAll(filepath.Join(f.outside, "claude")))
 	after := escapedPaths(t, f.sandbox, f.home, before)
 	require.NotContains(t, after, relTo(t, f.sandbox, filepath.Join(escape, "SKILL.md")))
@@ -334,7 +278,6 @@ func relTo(t *testing.T, base, p string) string {
 	return filepath.ToSlash(rel)
 }
 
-// walkTree records every path under root with the metadata a write would move.
 func walkTree(t *testing.T, root string) map[string]string {
 	t.Helper()
 	out := map[string]string{}
@@ -359,12 +302,8 @@ func walkTree(t *testing.T, root string) map[string]string {
 	return out
 }
 
-// escapedPaths is every path under sandbox that changed since before and
-// is not inside home: a difference taken over the real filesystem, not
-// over what the CLI said it did.
-//
-// The home's own PARENT chain is exempt because a sandbox is not a real machine:
-// the parent of a home is created by whatever made the home. Nothing else is.
+// escapedPaths is every path under sandbox that changed since before and is
+// not inside home. The home's parent chain is exempt, as the fixture created it.
 func escapedPaths(t *testing.T, sandbox, home string, before map[string]string) []string {
 	t.Helper()
 	homeRel := relTo(t, sandbox, home)
@@ -387,9 +326,6 @@ func isUnder(p, dir string) bool {
 	return len(p) > len(dir)+1 && p[:len(dir)] == dir && p[len(dir)] == '/'
 }
 
-// TestApplyChecksContainmentForEveryEntryNotJustTheFirst — a per-run check would
-// pass every test above while letting the second entry of a two-entry plan write
-// anywhere.
 func TestApplyChecksContainmentForEveryEntryNotJustTheFirst(t *testing.T) {
 	f := newContainFixture(t)
 	fx := newApplyFixture(t)

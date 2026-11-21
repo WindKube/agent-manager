@@ -72,6 +72,12 @@ func (r Repository) CloneURL() string {
 	return "https://" + r.Host + "/" + r.Owner + "/" + r.Repo + ".git"
 }
 
+// WebURL is the repository's canonical address: what provenance records and
+// what a commit link is built from.
+func (r Repository) WebURL() string {
+	return "https://" + r.Host + "/" + r.Owner + "/" + r.Repo
+}
+
 // String renders the reference the way provenance reads it back.
 func (r Repository) String() string {
 	s := r.Host + "/" + r.Owner + "/" + r.Repo

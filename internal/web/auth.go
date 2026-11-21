@@ -24,55 +24,34 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The browser's half of sign-in. This role holds no datastore credential:
-// the session row is opened by the api and reached only through the hub client.
-
 // AuthProvider is this role's door to the identity provider.
 type AuthProvider interface {
 	// Reachable reports whether a sign-in can be started at all.
 	Reachable(ctx context.Context) error
-	// AuthorizationURL is where the BROWSER is sent, its challenge the S256
+	// AuthorizationURL is where the browser is sent; codeChallenge is the S256
 	// hash of the verifier held in the round-trip cookie.
 	AuthorizationURL(ctx context.Context, state, codeChallenge string) (string, error)
-	// Exchange trades an authorization code for a raw ID token, returned
-	// exactly as it arrived: the api verifies the same bytes again.
+	// Exchange returns the raw ID token unchanged: the api verifies the same bytes again.
 	Exchange(ctx context.Context, code, codeVerifier string) (string, error)
 	VerifyIDToken(ctx context.Context, idToken string) error
 }
 
-// ViewerSource resolves who a request is acting as. Called on EVERY protected
-// request and never cached, since the api re-joins the group-to-role map per request.
-type ViewerSource interface {
-	Viewer(ctx context.Context) (hub.Viewer, error)
-}
-
-// SessionMinter is the api's two session operations: opening one for a
-// verified ID token, and expiring it server-side.
-type SessionMinter interface {
-	MintSession(ctx context.Context, idToken string) (hub.Session, error)
-	SignOut(ctx context.Context) error
-}
-
-// ---- the identity provider ----------------------------------------------------
-
-// Discovery is the provider's metadata: its published endpoints, and the
-// ability to verify a token against its keys. It is an interface because
-// internal/archcheck forbids this role from importing the session package.
+// Discovery is the provider's metadata and token verifier. It is an interface
+// because internal/archcheck forbids this role from importing the session package.
 type Discovery interface {
 	Endpoint(ctx context.Context) (oauth2.Endpoint, error)
 	VerifyIDToken(ctx context.Context, idToken string) error
 }
 
-// AuthOptions is what NewAuthProvider needs.
+// AuthOptions configures NewAuthProvider.
 type AuthOptions struct {
 	Discovery    Discovery
 	ClientID     string
 	ClientSecret string
 	RedirectURL  string
 	Scopes       []string
-	// BrowserBaseURL is the base a BROWSER must use to reach the provider,
-	// when it differs from this process's address. Empty means one address
-	// serves both.
+	// BrowserBaseURL is the provider base a browser must use when it differs
+	// from the address this process uses. Empty means one address serves both.
 	BrowserBaseURL string
 }
 
@@ -82,15 +61,11 @@ type authProvider struct {
 	clientSecret string
 	redirectURL  string
 	scopes       []string
-	// browserHost is the authority a browser reaches the authorization endpoint
-	// at, or "" when the published one already works from there.
-	browserHost string
+	browserHost  string
 }
 
 // NewAuthProvider assembles the browser flow over a provider it may not have
-// reached yet. It returns the interface rather than the concrete type: a
-// typed nil pointer stored in Deps.Auth would panic on first use instead of
-// rendering as "no provider wired".
+// reached yet. It returns the interface so a typed nil never lands in Deps.Auth.
 func NewAuthProvider(opts AuthOptions) (AuthProvider, error) {
 	switch {
 	case opts.Discovery == nil:
@@ -121,9 +96,8 @@ func (p *authProvider) Reachable(ctx context.Context) error {
 	return err
 }
 
-// AuthorizationURL builds the redirect the browser follows. PKCE is not
-// optional: the redirect URI is public by definition, so the challenge
-// travels here and the verifier stays in a cookie this role signed.
+// AuthorizationURL always uses PKCE: the redirect URI is public, so the
+// verifier stays in a cookie this role signed.
 func (p *authProvider) AuthorizationURL(ctx context.Context, state, codeChallenge string) (string, error) {
 	config, err := p.config(ctx)
 	if err != nil {
@@ -141,7 +115,7 @@ func (p *authProvider) AuthorizationURL(ctx context.Context, state, codeChalleng
 	if err != nil {
 		return "", fmt.Errorf("parse the authorization url: %w", err)
 	}
-	// The AUTHORITY only — the token and key endpoints stay exactly as published.
+	// Only the authority: token and key endpoints stay as published.
 	target.Host = p.browserHost
 	return target.String(), nil
 }
@@ -167,8 +141,8 @@ func (p *authProvider) VerifyIDToken(ctx context.Context, idToken string) error 
 	return p.discovery.VerifyIDToken(ctx, idToken)
 }
 
-// config is built per call rather than stored: a config from construction
-// could be built before the provider was reachable, leaving empty URLs.
+// config is built per call: one built at construction could predate the
+// provider being reachable and carry empty URLs.
 func (p *authProvider) config(ctx context.Context) (*oauth2.Config, error) {
 	endpoint, err := p.discovery.Endpoint(ctx)
 	if err != nil {
@@ -183,8 +157,7 @@ func (p *authProvider) config(ctx context.Context) (*oauth2.Config, error) {
 	}, nil
 }
 
-// browserAuthority is the host and port of a base URL, or "" when there is
-// none. Validated at construction so a bad value fails at boot, not sign-in.
+// browserAuthority is validated at construction so a bad value fails at boot, not sign-in.
 func browserAuthority(base string) (string, error) {
 	if base == "" {
 		return "", nil
@@ -199,16 +172,11 @@ func browserAuthority(base string) (string, error) {
 	return parsed.Host, nil
 }
 
-// ---- the return target --------------------------------------------------------
-
-// maxReturnTarget bounds the value: an unbounded one is a cookie the browser
-// silently drops.
+// maxReturnTarget keeps the round-trip cookie under what browsers silently drop.
 const maxReturnTarget = 2048
 
-// returnTarget validates that raw is a local path, or nothing — without it
-// /auth/login is an open redirect with a login button on it. Whole-string,
-// not a parse alone: `//evil.example` and `/\evil.example` both slip past a
-// naive "starts with a slash" check.
+// returnTarget accepts only a local path, otherwise /auth/login is an open
+// redirect. `//evil.example` and `/\evil.example` slip past a naive prefix check.
 func returnTarget(raw string) string {
 	const fallback = "/"
 
@@ -232,21 +200,15 @@ func returnTarget(raw string) string {
 	return raw
 }
 
-// ---- the round-trip cookie ----------------------------------------------------
-
 const (
-	// oidcCookie carries the state, PKCE verifier and return target across
-	// the provider round trip.
 	oidcCookie     = "am_oidc"
 	oidcCookiePath = "/auth/callback"
-	// oidcCookieTTL is the whole life of a sign-in attempt.
-	oidcCookieTTL = 90 * time.Second
-	// maxSealedRound bounds what is parsed: it arrives from a client.
+	oidcCookieTTL  = 90 * time.Second
 	maxSealedRound = 4096
 )
 
-// oidcRound is what the cookie carries. Issued lets the server refuse a
-// stale round trip on its own, since Max-Age is enforced by the browser.
+// oidcRound is the cookie payload. Issued lets the server refuse a stale round
+// trip itself, since Max-Age is only enforced by the browser.
 type oidcRound struct {
 	State    string `json:"s"`
 	Verifier string `json:"v"`
@@ -254,8 +216,7 @@ type oidcRound struct {
 	Issued   int64  `json:"t"`
 }
 
-// oidcSigningKey is the key the round-trip cookie is signed with: the
-// configured one, or 256 bits drawn at construction.
+// oidcSigningKey falls back to a random key drawn at construction.
 func oidcSigningKey(configured []byte) []byte {
 	if len(configured) > 0 {
 		return configured
@@ -274,8 +235,7 @@ func (s *Server) sealRound(round oidcRound) (string, error) {
 	return body + "." + base64.RawURLEncoding.EncodeToString(s.signRound(body)), nil
 }
 
-// openRound verifies and decodes the cookie. A forged signature, a stale
-// round trip and a value that never existed all collapse to the same bool.
+// openRound collapses forged, stale and missing cookies into the same false.
 func (s *Server) openRound(sealed string) (oidcRound, bool) {
 	if sealed == "" || len(sealed) > maxSealedRound {
 		return oidcRound{}, false
@@ -320,8 +280,7 @@ func (s *Server) setRoundCookie(c *gin.Context, sealed string) {
 		MaxAge:   int(oidcCookieTTL.Seconds()),
 		HttpOnly: true,
 		Secure:   s.secureCookie,
-		// Lax, not Strict: the callback is a top-level navigation the
-		// provider caused, and Strict would drop the cookie on that hop.
+		// Strict would drop the cookie on the provider's redirect back.
 		SameSite: http.SameSiteLaxMode,
 	})
 }
@@ -338,10 +297,6 @@ func (s *Server) dropRoundCookie(c *gin.Context) {
 	})
 }
 
-// ---- the screens --------------------------------------------------------------
-
-// The notices are the sign-in failures, in the hub's own words, as constants
-// so a caller cannot invent a sentence that collapses them into one.
 const (
 	noticeProviderUnreachable = "The identity provider cannot be reached from this hub, so signing in cannot " +
 		"be started. This is the hub's problem rather than your credentials."
@@ -356,11 +311,8 @@ const (
 		"You are still signed in — this is an outage, not an empty hub."
 )
 
-// maxProviderDetail bounds text the provider supplied before it is rendered:
-// the difference between a reason and a paragraph of someone else's making.
 const maxProviderDetail = 240
 
-// signin is the only screen a signed-out visitor may render.
 func (s *Server) signin(c *gin.Context) {
 	target := returnTarget(c.Query("return"))
 	if s.deps.Auth != nil {
@@ -373,18 +325,15 @@ func (s *Server) signin(c *gin.Context) {
 	s.renderSignIn(c, view.SignIn{Return: target})
 }
 
-// renderSignIn is the only place the sign-in screen is built. Always a 200:
-// the screen rendered, and what failed is stated on it. Rendered directly
-// rather than through s.render because it is a whole document, not a screen
-// inside Layout — a signed-out visitor has no sidebar to offer.
+// renderSignIn always answers 200 and states the failure on the screen. It
+// bypasses s.render because sign-in is a whole document without the Layout sidebar.
 func (s *Server) renderSignIn(c *gin.Context, screen view.SignIn) {
 	screen.Unavailable = s.deps.Auth == nil
 	s.writeSignIn(c, screen)
 }
 
-// providerUnreachable says the provider cannot be reached and offers nothing.
-// Goes through writeSignIn, not renderSignIn: the latter would recompute
-// Unavailable from deps.Auth, which is non-nil here.
+// providerUnreachable uses writeSignIn because renderSignIn would recompute
+// Unavailable from a non-nil deps.Auth.
 func (s *Server) providerUnreachable(c *gin.Context, target string) {
 	s.writeSignIn(c, view.SignIn{
 		Return:      target,
@@ -394,8 +343,6 @@ func (s *Server) providerUnreachable(c *gin.Context, target string) {
 	})
 }
 
-// writeSignIn is the only place the screen is written, so the provider's name
-// and the development hint's two gates cannot be forgotten.
 func (s *Server) writeSignIn(c *gin.Context, screen view.SignIn) {
 	screen.Provider = s.opts.ProviderName
 	if s.opts.DevCredentialHint {
@@ -403,7 +350,6 @@ func (s *Server) writeSignIn(c *gin.Context, screen view.SignIn) {
 		screen.Credentials = s.opts.DevCredentials
 	}
 
-	// A cached sign-in page is a cached failure notice.
 	c.Header("Cache-Control", "no-store")
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	c.Status(http.StatusOK)
@@ -413,7 +359,6 @@ func (s *Server) writeSignIn(c *gin.Context, screen view.SignIn) {
 	}
 }
 
-// login mints the round trip and sends the browser to the provider.
 func (s *Server) login(c *gin.Context) {
 	target := returnTarget(c.Query("return"))
 	if s.deps.Auth == nil {
@@ -454,18 +399,14 @@ func (s *Server) login(c *gin.Context) {
 	c.Redirect(http.StatusFound, authorizationURL)
 }
 
-// callback is the return leg: state, then the exchange, then the mint, then the
-// cookie, then back to where they were going.
 func (s *Server) callback(c *gin.Context) {
-	// Read and dropped before anything else happens: single use means a
-	// replayed callback finds no verifier and no state to compare against.
+	// Dropped before anything else so a replayed callback finds no verifier.
 	sealed, cookieErr := c.Cookie(oidcCookie)
 	s.dropRoundCookie(c)
 	c.Header("Cache-Control", "no-store")
 
 	round, opened := s.openRound(sealed)
-	// Constant time, and only once the cookie has verified — otherwise the
-	// zero value of a failed-to-open round trip would compare "" to "".
+	// Compared only once the cookie verified, or a failed open would compare "" to "".
 	if cookieErr != nil || !opened ||
 		subtle.ConstantTimeCompare([]byte(round.State), []byte(c.Query("state"))) != 1 {
 		logFrom(c).Warn().Bool("cookie", cookieErr == nil).Bool("sealed", opened).
@@ -474,12 +415,10 @@ func (s *Server) callback(c *gin.Context) {
 		return
 	}
 
-	// Validated again even though the cookie is signed: it arrived in a query
-	// string once too.
+	// Revalidated: the signed value originally came from a query string.
 	target := returnTarget(round.Return)
 
-	// Read AFTER the state check: reflecting it earlier would make
-	// /auth/callback a way to publish arbitrary copy on this origin.
+	// Read only after the state check, or /auth/callback could publish arbitrary text on this origin.
 	if refusal := c.Query("error"); refusal != "" {
 		logFrom(c).Warn().Msg("the identity provider refused the sign-in")
 		s.renderSignIn(c, view.SignIn{
@@ -501,7 +440,6 @@ func (s *Server) callback(c *gin.Context) {
 	ctx := c.Request.Context()
 	idToken, err := s.deps.Auth.Exchange(ctx, code, round.Verifier)
 	if err != nil {
-		// Generic to the browser, specific to the log.
 		logFrom(c).Error().Err(err).Msg("exchange the authorization code")
 		s.renderSignIn(c, view.SignIn{Return: target, Notice: noticeIncomplete, Tone: "dan"})
 		return
@@ -512,14 +450,8 @@ func (s *Server) callback(c *gin.Context) {
 		return
 	}
 
-	if s.deps.Sessions == nil {
-		logFrom(c).Error().Msg("no session mint is wired, so sign-in cannot complete")
-		s.renderSignIn(c, view.SignIn{Return: target, Notice: noticeHubFailed, Tone: "dan"})
-		return
-	}
-	minted, err := s.deps.Sessions.MintSession(ctx, idToken)
+	minted, err := s.deps.Hub.MintSession(ctx, idToken)
 	if err != nil {
-		// `refused` is for the operator only: both cases render the same screen.
 		logFrom(c).Error().Err(err).Bool("refused", errors.Is(err, hub.ErrMintRefused)).
 			Msg("mint a session")
 		s.renderSignIn(c, view.SignIn{Return: target, Notice: noticeHubFailed, Tone: "dan"})
@@ -527,23 +459,19 @@ func (s *Server) callback(c *gin.Context) {
 	}
 
 	s.issueSession(c, minted)
-	// No token and no subject here: the identity is the api's to log.
+	// No token or subject: identity is the api's to log.
 	logFrom(c).Info().Time("expires_at", minted.ExpiresAt).Msg("signed in")
 	c.Redirect(http.StatusFound, target)
 }
 
-// logout expires the session server-side and then clears the cookie. POST
-// only: a sign-out on GET is triggerable by any image tag on any page.
+// logout is POST only: a GET sign-out is triggerable by any image tag.
 func (s *Server) logout(c *gin.Context) {
-	if s.deps.Sessions != nil {
-		switch err := s.deps.Sessions.SignOut(session(c)); {
-		case err == nil:
-		case errors.Is(err, view.ErrSignedOut):
-			// Already gone, which is the state asked for.
-		default:
-			// The row may still be live and valid to whoever else holds it.
-			logFrom(c).Error().Err(err).Msg("expire the session server-side")
-		}
+	switch err := s.deps.Hub.SignOut(session(c)); {
+	case err == nil:
+	case errors.Is(err, view.ErrSignedOut):
+	default:
+		// The row may still be live for whoever else holds the token.
+		logFrom(c).Error().Err(err).Msg("expire the session server-side")
 	}
 
 	s.clearSession(c)
@@ -551,14 +479,9 @@ func (s *Server) logout(c *gin.Context) {
 	c.Redirect(http.StatusSeeOther, "/auth/signin")
 }
 
-// ---- the guard ----------------------------------------------------------------
-
-// viewerContextKey is where the guard leaves the viewer it resolved. The
-// only place a screen may read an identity from.
+// viewerContextKey is the only place a screen may read an identity from.
 const viewerContextKey = "am_viewer"
 
-// viewerFor is the viewer this request resolved, or nil when it resolved
-// nobody — the signed-out shell, which renders no chip.
 func viewerFor(c *gin.Context) *view.Viewer {
 	stored, ok := c.Get(viewerContextKey)
 	if !ok {
@@ -571,10 +494,6 @@ func viewerFor(c *gin.Context) *view.Viewer {
 	return &viewer
 }
 
-// viewerGroups is the signed-in identity's own groups, or nil for a request
-// that resolved nobody — the same "nothing to offer" input the team
-// visibility option needs, without every caller re-checking for a nil
-// viewer itself.
 func viewerGroups(c *gin.Context) []string {
 	viewer := viewerFor(c)
 	if viewer == nil {
@@ -583,9 +502,7 @@ func viewerGroups(c *gin.Context) []string {
 	return viewer.Groups
 }
 
-// viewerOf maps what the api resolved onto what a component may render. The
-// two types stay separate so a component can never name hub.Viewer's wire
-// shape. This is also the only place SignedIn becomes true.
+// viewerOf keeps components off hub.Viewer's wire shape, and is the only place SignedIn becomes true.
 func viewerOf(resolved hub.Viewer) view.Viewer {
 	groups := resolved.Groups
 	if groups == nil {
@@ -602,9 +519,8 @@ func viewerOf(resolved hub.Viewer) view.Viewer {
 	}
 }
 
-// unauthenticatedPath is the COMPLETE set of routes reachable without a
-// session, including a nonexistent one, so a 404 cannot enumerate screens.
-// The path is cleaned first, since `/auth/../catalog` names the catalog.
+// unauthenticatedPath is the complete set of routes reachable without a session,
+// so a 404 cannot enumerate screens. Cleaned first: `/auth/../catalog` is the catalog.
 func unauthenticatedPath(raw string) bool {
 	clean := path.Clean(raw)
 	switch {
@@ -619,9 +535,7 @@ func unauthenticatedPath(raw string) bool {
 	}
 }
 
-// guard resolves a session on every protected route, or sends the person to
-// sign in. It FAILS CLOSED, including on a missing ViewerSource: reading a
-// nil source as "let everyone through" is one wiring mistake from no sign-in at all.
+// guard fails closed: an unreachable api lets nobody through.
 func (s *Server) guard() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if unauthenticatedPath(c.Request.URL.Path) {
@@ -630,22 +544,20 @@ func (s *Server) guard() gin.HandlerFunc {
 		}
 
 		token, err := c.Cookie(sessionCookie)
-		if err != nil || token == "" || s.deps.Viewers == nil {
+		if err != nil || token == "" {
 			s.toSignIn(c)
 			return
 		}
 
-		// Every request, no cache: a cached viewer would make a mapping
-		// change take an hour to land.
-		viewer, err := s.deps.Viewers.Viewer(session(c))
+		// Not cached, so a role mapping change lands immediately.
+		viewer, err := s.deps.Hub.Viewer(session(c))
 		switch {
 		case errors.Is(err, view.ErrSignedOut):
 			logFrom(c).Debug().Msg("request with no usable session")
 			s.toSignIn(c)
 			return
 		case err != nil:
-			// Never a sign-out: an outage says nothing about whether this
-			// person is signed in.
+			// Not a sign-out: an outage says nothing about the session.
 			logFrom(c).Error().Err(err).Msg("resolve the viewer")
 			c.Header("Cache-Control", "no-store")
 			s.render(c, http.StatusBadGateway, "Unavailable", "",
@@ -657,8 +569,7 @@ func (s *Server) guard() gin.HandlerFunc {
 		resolved := viewerOf(viewer)
 		c.Set(viewerContextKey, resolved)
 
-		// Signed in, holding no role: enforced here rather than screen by
-		// screen, or the failure mode reads as an empty hub.
+		// Enforced here rather than per screen, or a roleless viewer sees an empty hub.
 		if !viewer.HasRole {
 			s.render(c, http.StatusOK, "No role", "", components.NoRoleScreen(view.NoRole{
 				Viewer: resolved,
@@ -672,9 +583,8 @@ func (s *Server) guard() gin.HandlerFunc {
 	}
 }
 
-// toSignIn is the signed-out redirect, carrying the requested path.
 func (s *Server) toSignIn(c *gin.Context) {
-	// A GET is worth coming back to; a path answering only POST is not.
+	// Only a GET is worth returning to.
 	target := "/"
 	status := http.StatusSeeOther
 	if c.Request.Method == http.MethodGet {
@@ -687,8 +597,6 @@ func (s *Server) toSignIn(c *gin.Context) {
 	c.Abort()
 }
 
-// signInHref is the sign-in screen carrying a return target, escaped so a
-// path with a query survives the round trip.
 func signInHref(target string) string {
 	if target == "" || target == "/" {
 		return "/auth/signin"
@@ -696,10 +604,6 @@ func signInHref(target string) string {
 	return "/auth/signin?return=" + url.QueryEscape(target)
 }
 
-// ---- odds and ends ------------------------------------------------------------
-
-// randomState binds one callback to one browser: 256 bits from crypto/rand,
-// unguessable rather than merely unique.
 func randomState() (string, error) {
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {
@@ -708,8 +612,7 @@ func randomState() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
-// providerDetail is the provider's own account of a refusal, bounded and stripped
-// of control bytes.
+// providerDetail bounds provider-supplied text and strips control bytes before rendering.
 func providerDetail(c *gin.Context) string {
 	detail := strings.TrimSpace(c.Query("error_description"))
 	if detail == "" {

@@ -1,24 +1,12 @@
 package hub_test
 
-// `package hub_test` for the same reason bundles_test.go is: this file drives
-// the fake hub and internal/hub/fake imports internal/hub, so an in-package
-// test file could not import it.
-//
-// THE LOAD-BEARING ASSERTION IN THIS FILE IS THE NEGATIVE ONE.
-// TestASecondReportOfTheSameSyncWouldBeAdditiveServerSide is executed rather
-// than argued: it posts the same body twice straight at the hub and shows the
-// accepted-report list grows to two. That is what makes the no-retry policy in
-// sync_report.go a consequence instead of an opinion, and it is also the
-// negative control for the exactly-once latch — without it,
-// TestASyncIsReportedExactlyOnce could pass against a server that deduped and
-// prove nothing about this client.
-
 import (
 	"context"
 	"net/http"
 	"sync"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	"github.com/WindKube/agent-manager/cli/internal/hub"
@@ -41,9 +29,7 @@ func reporterFor(t *testing.T, tg fake.Target) *hub.Reporter {
 	return rep
 }
 
-// baseReport is a report the fake accepts, built from the fixtures so no slug
-// or revision is invented by a test — an invented one is a 404 against the real
-// hub, and a 404 is a green test for the wrong reason.
+// baseReport uses fixture slugs and revisions, since an invented one 404s and passes for the wrong reason.
 func baseReport(tg fake.Target) hub.Report {
 	return hub.Report{
 		Profile:  tg.Fixtures.Profile,
@@ -62,9 +48,7 @@ func TestASyncIsReportedExactlyOnce(t *testing.T) {
 	require.NoError(t, reporter.Report(context.Background(), rep))
 	require.True(t, reporter.Reported(rep))
 
-	// The second call must not reach the wire, and it says so rather than
-	// returning nil: a duplicate is a caller bug, and the worst a loud one can
-	// do is print a line.
+	// The second call must not reach the wire, and says so rather than returning nil.
 	err := reporter.Report(context.Background(), rep)
 	require.ErrorIs(t, err, hub.ErrAlreadyReported)
 
@@ -78,15 +62,8 @@ func TestASyncIsReportedExactlyOnce(t *testing.T) {
 	require.Nil(t, accepted[0].Skipped, "an empty local skip list is omitted, not sent as []")
 }
 
-// TestASecondReportOfTheSameSyncWouldBeAdditiveServerSide bypasses Reporter
-// deliberately and posts through the hub client twice, to
-// establish what the SERVER does with a duplicate. The hub's own
-// internal/api/commands/sync.go inserts a models.NewID() sync_event with no
-// ON CONFLICT and no natural key, sync_event's only constraints are its primary
-// key and three foreign keys, and its integration test asserts a count delta
-// of exactly one per call — so two calls are two rows. The fake models that
-// by appending, and this test pins it: if a future hub ever deduped, this
-// test fails and sync_report.go's no-retry comment is the thing to revisit.
+// The negative control for the exactly-once latch, and the reason for the no-retry policy: the hub
+// inserts a new sync_event per call. If the hub ever dedupes, revisit sync_report.go.
 func TestASecondReportOfTheSameSyncWouldBeAdditiveServerSide(t *testing.T) {
 	tg := startReportFake(t)
 	client, err := hub.New(hub.Config{URL: tg.BaseURL, Token: tg.Token, HTTPClient: tg.HTTPClient})
@@ -104,15 +81,11 @@ func TestASecondReportOfTheSameSyncWouldBeAdditiveServerSide(t *testing.T) {
 	accepted, cerr := tg.Control.SyncReports()
 	require.NoError(t, cerr)
 	require.Len(t, accepted, 2,
-		"reportSync is additive: a retry after an ambiguous failure would write a second audit row and break hub SC-008")
+		"reportSync is additive: a retry after an ambiguous failure would write a second audit row")
 }
 
 func TestAFailedReportIsReturnedForTheCallerToWarnAbout(t *testing.T) {
-	// The sync must not fail because the report did. This package's half of
-	// that is returning a plain error carrying its own classification, so the
-	// verb can put one sentence on stderr and carry on. The unauthorised
-	// case is used because it is the one a caller must not mistake for
-	// "unreachable".
+	// A plain classified error lets the verb warn and carry on; unauthorised must not read as unreachable.
 	tg := startReportFake(t)
 	client, err := hub.New(hub.Config{URL: tg.BaseURL, Token: "not-a-token", HTTPClient: tg.HTTPClient})
 	require.NoError(t, err)
@@ -130,9 +103,7 @@ func TestAFailedReportIsReturnedForTheCallerToWarnAbout(t *testing.T) {
 }
 
 func TestAFailedReportIsNotRetried(t *testing.T) {
-	// Asserted on the request count rather than inferred from the absence of
-	// a loop: one Report call is one POST, even
-	// when the POST fails in the way a retry loop exists for.
+	// One Report call is one POST, even when the POST fails in the way a retry loop exists for.
 	tg := startReportFake(t)
 	counted := &countingTransport{next: tg.HTTPClient.Transport}
 	client, err := hub.New(hub.Config{
@@ -145,15 +116,12 @@ func TestAFailedReportIsNotRetried(t *testing.T) {
 	require.NoError(t, err)
 
 	rep := baseReport(tg)
-	// A profile that does not exist: the hub answers 404, which is terminal and
-	// must not be retried either.
 	rep.Profile = tg.Fixtures.MissingProfile
 	err = reporter.Report(context.Background(), rep)
 	require.ErrorIs(t, err, hub.ErrNotFound)
 	require.Equal(t, 1, counted.count(), "exactly one attempt; there is no idempotency key that would make a second safe")
 
-	// And the latch was claimed before the request, so the failure is not
-	// retried by a second Report call either.
+	// The latch was claimed before the request, so a second call does not retry either.
 	require.ErrorIs(t, reporter.Report(context.Background(), rep), hub.ErrAlreadyReported)
 	require.Equal(t, 1, counted.count())
 }
@@ -205,9 +173,7 @@ func TestReportsThisClientRefusesToSend(t *testing.T) {
 			err := reporter.Report(context.Background(), rep)
 			require.ErrorIs(t, err, hub.ErrReportInput)
 			require.ErrorContains(t, err, tc.expect)
-			// Refused before the latch, so fixing the report and re-reporting
-			// still works. A validation failure that burned the one attempt
-			// would turn a client bug into a permanently missing audit row.
+			// Refused before the latch, so a fixed report can still be sent.
 			require.False(t, reporter.Reported(rep))
 		})
 	}
@@ -240,8 +206,7 @@ func TestAReporterNeedsAHub(t *testing.T) {
 	require.ErrorContains(t, err, "no hub given")
 }
 
-// countingTransport counts the requests this client actually issued. The count
-// is taken on the wire and not inferred from the absence of a retry loop.
+// countingTransport counts the requests actually issued on the wire.
 type countingTransport struct {
 	next http.RoundTripper
 
@@ -264,4 +229,64 @@ func (c *countingTransport) count() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.n
+}
+
+func TestAReportWithAMachineCarriesItsInventorySorted(t *testing.T) {
+	tg := startReportFake(t)
+	rep := baseReport(tg)
+	rep.MachineID = uuid.New()
+	rep.OS, rep.Arch, rep.AmctlVersion = "linux", "amd64", " 1.2.3 "
+	rep.Installed = []hub.Install{
+		{ID: "acme/zeta", Version: "1.0.0", Target: "codex"},
+		{ID: "acme/alpha", Version: "2.0.0", Target: "claude-code", Changed: true},
+	}
+	rep.SkippedComponents = []hub.ComponentSkip{
+		{Entry: "acme/alpha", Target: "claude-code", Component: "mcp-server lint", Reason: "no claude CLI"},
+	}
+	require.NoError(t, reporterFor(t, tg).Report(context.Background(), rep))
+
+	accepted, err := tg.Control.SyncReports()
+	require.NoError(t, err)
+	require.Len(t, accepted, 1)
+	got := accepted[0]
+	require.Equal(t, rep.MachineID, *got.MachineId)
+	require.Equal(t, "1.2.3", *got.AmctlVersion)
+	require.Equal(t, "linux", *got.Os)
+	require.Len(t, *got.Installed, 2)
+	require.Equal(t, "acme/alpha", (*got.Installed)[0].Id)
+	require.True(t, *(*got.Installed)[0].Changed)
+	require.Nil(t, (*got.Installed)[1].Changed)
+	require.Equal(t, "mcp-server lint", (*got.SkippedComponents)[0].Component)
+}
+
+func TestAReportWithoutAMachineSendsNoInventory(t *testing.T) {
+	tg := startReportFake(t)
+	rep := baseReport(tg)
+	rep.Installed = []hub.Install{{ID: "acme/alpha", Version: "2.0.0", Target: "claude-code"}}
+	require.NoError(t, reporterFor(t, tg).Report(context.Background(), rep))
+
+	accepted, err := tg.Control.SyncReports()
+	require.NoError(t, err)
+	require.Nil(t, accepted[0].MachineId)
+	require.Nil(t, accepted[0].Installed)
+}
+
+func TestAMachineWithNothingInstalledSendsAnEmptyList(t *testing.T) {
+	tg := startReportFake(t)
+	rep := baseReport(tg)
+	rep.MachineID = uuid.New()
+	require.NoError(t, reporterFor(t, tg).Report(context.Background(), rep))
+
+	accepted, err := tg.Control.SyncReports()
+	require.NoError(t, err)
+	require.NotNil(t, accepted[0].Installed, "an empty list clears the hub's installs for the profile")
+	require.Empty(t, *accepted[0].Installed)
+}
+
+func TestAnInstalledTargetOutsideTheContractIsRefusedLocally(t *testing.T) {
+	tg := startReportFake(t)
+	rep := baseReport(tg)
+	rep.MachineID = uuid.New()
+	rep.Installed = []hub.Install{{ID: "acme/alpha", Version: "2.0.0", Target: "agents-md"}}
+	require.ErrorIs(t, reporterFor(t, tg).Report(context.Background(), rep), hub.ErrReportInput)
 }

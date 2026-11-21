@@ -76,14 +76,11 @@ func writeTar(tw *tar.Writer, b *Bundle) error {
 // the member rules: a bundle read out of object storage is still bytes off a network, and
 // what could not be extracted must not become unpackable either.
 func Unpack(ctx context.Context, r io.Reader, lim Limits) (*Bundle, error) {
-	lim = lim.withDefaults()
+	lim = lim.WithDefaults()
 	e, cancel := newExtractor(ctx, lim)
 	defer cancel()
 
-	counted := &countingReader{
-		r:     io.LimitReader(e.reader(r), lim.MaxCompressedBytes+1),
-		guard: &e.guard,
-	}
+	counted := e.guard.Reader(io.LimitReader(e.reader(r), lim.MaxCompressedBytes+1))
 	dec, decErr := zstd.NewReader(counted,
 		zstd.WithDecoderConcurrency(1),
 		zstd.WithDecoderMaxMemory(unpackMaxMemory),
@@ -97,8 +94,8 @@ func Unpack(ctx context.Context, r io.Reader, lim Limits) (*Bundle, error) {
 	if walkErr == nil {
 		walkErr = e.drainTrailer(dec)
 	}
-	if e.guard.compressed > lim.MaxCompressedBytes {
-		return nil, tooLarge(CapCompressedSize, "")
+	if err := e.guard.CheckCompressed(); err != nil {
+		return nil, fromGuard(err)
 	}
 	if walkErr != nil {
 		return nil, walkErr

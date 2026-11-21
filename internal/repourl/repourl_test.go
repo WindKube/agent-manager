@@ -183,10 +183,8 @@ func TestParseAcceptsTheShapesPeoplePaste(t *testing.T) {
 			},
 		},
 		{
-			// An address literal is a legal authority, and this package makes no
-			// address-level decision: whether 127.0.0.1 is reachable, private or a
-			// rebinding trick is internal/fetch's call (FR-002). Pinned so nobody
-			// mistakes the bracketed-IPv6 rejection below for SSRF defence.
+			// Address literals are legal here; reachability is internal/fetch's call. Pinned
+			// so the bracketed-IPv6 rejection isn't mistaken for SSRF defence.
 			name: "an ipv4 literal host parses; the address decision belongs to fetch",
 			in:   "https://127.0.0.1:8443/owner/repo",
 			want: Repository{Host: "127.0.0.1:8443", Owner: "owner", Repo: "repo"},
@@ -289,15 +287,13 @@ func TestParseRejects(t *testing.T) {
 			wantMsg: "reference embeds a credential",
 		},
 		{
-			// Refused for its shape, not its address: a bracketed literal is not a
-			// hostname. The dotted-quad form is accepted (see the accept table).
+			// Refused for its shape, not its address; dotted quads are accepted.
 			name:    "bracketed ipv6 literal is not a hostname",
 			in:      "https://[::1]/owner/repo",
 			wantMsg: `"::1" is not a hostname`,
 		},
 		{
-			// The raw-input control-character guard runs before percent-decoding, so
-			// this is the encoding that used to walk a newline into a provenance line.
+			// The raw-input guard runs before percent-decoding, so this must be caught later.
 			name:    "percent-encoded newline in the query ref",
 			in:      "https://github.com/owner/repo?ref=v1%0Aevil",
 			wantMsg: `ref "v1\nevil" contains a control character at byte 2`,
@@ -318,8 +314,7 @@ func TestParseRejects(t *testing.T) {
 			wantMsg: "contains a control character",
 		},
 		{
-			// A half-read query drops the ref and would resolve the default branch
-			// instead, which publishes a version the user never named.
+			// A half-read query would drop the ref and resolve the default branch instead.
 			name:    "query with an unreadable escape",
 			in:      "https://github.com/owner/repo?ref=%zzv1",
 			wantMsg: `query "ref=%zzv1" cannot be read`,
@@ -357,8 +352,6 @@ func TestParseRejects(t *testing.T) {
 			require.Error(t, err)
 			require.ErrorIs(t, err, ErrInvalid)
 			require.ErrorContains(t, err, tc.wantMsg)
-			// The rejection must not hand back a repaired value: a cleaned reference
-			// fetches bytes the user never named.
 			require.Equal(t, Repository{}, got)
 		})
 	}
@@ -475,8 +468,7 @@ func TestExplicitValuesAreValidatedToo(t *testing.T) {
 			wantMsg: `contains ".."`,
 		},
 		{
-			// Parse guards the pasted string; these arrive from a form field beside it
-			// and reach the same provenance strings, audit rows and log lines.
+			// These arrive from form fields, bypassing Parse's guard on the pasted string.
 			name:    "explicit ref carrying a newline",
 			ref:     "v1\nevil",
 			wantMsg: `ref "v1\nevil" contains a control character at byte 2`,
@@ -530,9 +522,8 @@ func TestCloneURLAndString(t *testing.T) {
 	require.Equal(t, "github.com/owner/repo", plain.String())
 }
 
-// FuzzParse holds the invariants a caller relies on: a parse either fails or
-// returns parts that cannot climb out of the repository. This is untrusted input
-// (constitution principle III), so "it never panics" is also a requirement.
+// FuzzParse: a parse either fails or returns parts that cannot climb out of the
+// repository, and never panics on untrusted input.
 func FuzzParse(f *testing.F) {
 	for _, seed := range []string{
 		"owner/repo",
@@ -567,9 +558,8 @@ func FuzzParse(f *testing.F) {
 	})
 }
 
-// FuzzWith covers the second untrusted entry point: a ref and a subdirectory
-// typed beside the URL never pass through Parse's guards on the raw string, so
-// their own validation is all that stands between a form field and a stored row.
+// FuzzWith: a ref and subdir from form fields skip Parse's raw-string guards,
+// so their own validation is all that stands before a stored row.
 func FuzzWith(f *testing.F) {
 	for _, seed := range [][3]string{
 		{"owner/repo", "v1.2.3", "plugins/toolkit"},
@@ -597,9 +587,8 @@ func FuzzWith(f *testing.F) {
 	})
 }
 
-// requireLoggableParts holds the claim the package makes about every field it
-// returns: it is safe to put in a log line, a provenance string and a text
-// column. Valid utf-8, no control characters, no smuggled line break.
+// requireLoggableParts: every returned field is valid utf-8 with no control
+// characters, so it is safe in logs, provenance and text columns.
 func requireLoggableParts(t *testing.T, r Repository) {
 	t.Helper()
 	for _, part := range []string{r.Host, r.Owner, r.Repo, r.Ref, r.Subdir} {

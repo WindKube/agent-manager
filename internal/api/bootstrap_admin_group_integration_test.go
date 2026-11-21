@@ -14,13 +14,8 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The bootstrap admin group, against a real Postgres.
-//
-// What makes this worth a file of its own is that it is the ONE mapping no
-// person can have created: mapping a group requires catalog-admin and holding
-// catalog-admin requires a mapping, so a hub with an empty group_role_map has no
-// administrator and no way to appoint one. Every property below is about that
-// escape hatch staying closed to everything else.
+// The bootstrap admin group is the one mapping no person can create: mapping a
+// group requires catalog-admin, so an empty group_role_map has no way to appoint one.
 
 const bootstrapTestGroup = "WindKube:bootstrap-test"
 
@@ -44,8 +39,6 @@ func roleOfGroup(t *testing.T, group string) string {
 	return role
 }
 
-// TestEnsureAdminGroupCreatesTheMappingAndAuditsItAsTheSystem covers the case the
-// whole mechanism exists for: a hub where nobody can administer anything yet.
 func TestEnsureAdminGroupCreatesTheMappingAndAuditsItAsTheSystem(t *testing.T) {
 	dropBootstrapTestGroup(t)
 
@@ -63,8 +56,7 @@ func TestEnsureAdminGroupCreatesTheMappingAndAuditsItAsTheSystem(t *testing.T) {
 		"nobody clicked this, so it must not be attributed to an identity")
 }
 
-// TestEnsureAdminGroupIsSilentWhenItChangesNothing is why a restart does not fill
-// the Audit screen with one row per deploy.
+// A restart must not write an audit row per deploy.
 func TestEnsureAdminGroupIsSilentWhenItChangesNothing(t *testing.T) {
 	dropBootstrapTestGroup(t)
 
@@ -79,16 +71,13 @@ func TestEnsureAdminGroupIsSilentWhenItChangesNothing(t *testing.T) {
 	require.Equal(t, before, auditRowCount(t), "an unchanged reconcile writes no audit row")
 }
 
-// TestEnsureAdminGroupReclaimsAGroupDemotedOnTheScreen is the property that makes
-// this a reconcile rather than a seed, and the reason an operator who locks every
-// administrator out can recover by restarting the api.
+// Reconcile rather than seed: an operator who locks every admin out recovers by restarting the api.
 func TestEnsureAdminGroupReclaimsAGroupDemotedOnTheScreen(t *testing.T) {
 	dropBootstrapTestGroup(t)
 
 	_, err := commands.EnsureAdminGroup(context.Background(), db, bootstrapTestGroup)
 	require.NoError(t, err)
 
-	// The screen's own action, through the api, exactly as a catalog admin would.
 	sendJSON[contract.GroupRoleMapping](t, kw, http.MethodPost, "/v1/organization/mappings",
 		`{"groupName":"`+bootstrapTestGroup+`","role":"read-only"}`, http.StatusOK)
 	require.Equal(t, "read-only", roleOfGroup(t, bootstrapTestGroup))
@@ -99,8 +88,6 @@ func TestEnsureAdminGroupReclaimsAGroupDemotedOnTheScreen(t *testing.T) {
 	require.Equal(t, string(models.OrgRoleCatalogAdmin), roleOfGroup(t, bootstrapTestGroup))
 }
 
-// TestEnsureAdminGroupDeclaredEmptyTouchesNothing: a hub whose mappings are
-// already established names no group, and must not acquire one.
 func TestEnsureAdminGroupDeclaredEmptyTouchesNothing(t *testing.T) {
 	before := auditRowCount(t)
 

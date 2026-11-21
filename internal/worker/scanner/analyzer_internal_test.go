@@ -15,7 +15,6 @@ import (
 	"agent-manager/internal/worker/scanner/rules"
 )
 
-// stubEngine stands in for the engine service.
 type stubEngine struct {
 	version    string
 	versionErr error
@@ -37,11 +36,6 @@ func newEngineAnalyzer(stub stubEngine, required bool) engineAnalyzer {
 	return engineAnalyzer{client: stub, required: required, log: quietLog()}
 }
 
-// The property under test is the one that decides whether this feature is worth
-// having: a scan that did not get the coverage the policy asks for must not be
-// recorded clean. A silent pass would narrow the whole catalog's coverage the
-// first time the engine restarted.
-
 func TestAnEngineFailureDoesNotClearAVersion(t *testing.T) {
 	broken := stubEngine{scanErr: errors.New("connection refused")}
 
@@ -59,7 +53,6 @@ func TestAnEngineFailureDoesNotClearAVersion(t *testing.T) {
 			require.Equal(t, checks.OutcomeFail, run.Result.Outcome, run.CheckID)
 		}
 
-		// verdictOf is what turns that finding into the verdict.
 		require.Equal(t, "flagged", string(verdictOf(analysis{findings: findings})))
 	})
 
@@ -71,17 +64,14 @@ func TestAnEngineFailureDoesNotClearAVersion(t *testing.T) {
 			require.Equal(t, checks.OutcomeWarn, run.Result.Outcome, run.CheckID)
 			require.Equal(t, 1, run.Result.WarnCount)
 		}
-		// A warn is not a pass, and it is also not a flag: the rule pack's
-		// verdict stands alone, which is what this setting asks for.
+		// A warn is not a flag: the rule pack's verdict stands alone.
 		require.Equal(t, "clean", string(verdictOf(analysis{checks: runs})))
 	})
 }
 
 func TestAPackageTheEngineWillNotTakeIsABlindSpotAndNotAFailure(t *testing.T) {
-	// A 600-file package is valid here and past the engine's upload cap, and a
-	// malformed one the engine declines is already reported by the rule pack's
-	// manifest check. Neither is an engine outage, so neither fails the version
-	// even when the engine is required.
+	// Neither is an engine outage, so neither fails the version even when the
+	// engine is required.
 	for name, cause := range map[string]error{
 		"over the engine's upload cap": fmt.Errorf("%w: 600 files", engine.ErrOverCap),
 		"the engine declined to load":  fmt.Errorf("%w: 422", engine.ErrUnanalysable),
@@ -98,8 +88,6 @@ func TestAPackageTheEngineWillNotTakeIsABlindSpotAndNotAFailure(t *testing.T) {
 }
 
 func TestAShapeMismatchFailsClosed(t *testing.T) {
-	// Recording a clean scan off a response this build could not read is the
-	// one outcome worse than an outage.
 	runs, findings, err := newEngineAnalyzer(
 		stubEngine{scanErr: fmt.Errorf("%w: counted 3, parsed 0", engine.ErrShapeMismatch)}, true,
 	).Analyze(context.Background(), nil)
@@ -110,9 +98,7 @@ func TestAShapeMismatchFailsClosed(t *testing.T) {
 }
 
 func TestACancelledScanIsNotADegradedOne(t *testing.T) {
-	// The budget running out and the process shutting down are the caller's to
-	// classify. Turning either into a finding about the package would be a lie,
-	// and would also suppress the retry.
+	// Turning a cancellation into a finding would also suppress the retry.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -153,8 +139,6 @@ func TestTheFingerprintNamesEveryAnalyzer(t *testing.T) {
 	})
 
 	t.Run("an unreachable engine fingerprints differently from every version", func(t *testing.T) {
-		// So a version scanned during an outage is scanned again once the
-		// engine is back, rather than being held clean by its own guard.
 		down, err := newAnalyzers(registry, pack,
 			stubEngine{versionErr: errors.New("connection refused")}, true, quietLog())
 		require.NoError(t, err)

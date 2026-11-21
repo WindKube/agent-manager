@@ -17,88 +17,65 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"agent-manager/internal/web/components"
-	"agent-manager/internal/web/fixture"
 	"agent-manager/internal/web/view"
 )
 
-// T051 — FR-116 and SC-106: no identity is compiled into this product.
-//
-// The defect this replaces was three strings in shell.templ: an avatar reading
-// "KW", a name reading "Krzysztof W." and a role reading "Platform · Admin", on
-// every page, for every visitor, verified by nothing. The obvious test is a grep
-// for those three strings, and it is worthless: it passes the moment somebody
-// writes a fourth name somewhere else, which is the same defect and the same
-// afternoon's work.
-//
-// So the property asserted here is the general one — every person-shaped and
-// every address-shaped thing this product renders is a value the caller handed in
-// — and it is asserted three ways, because each way has a hole the next one
-// covers:
-//
-//  1. Rendered, signed out. Every screen, with no viewer. Nothing that looks like
-//     a person or an address may appear at all, and the chip's classes must be
-//     absent rather than empty. This is the state a compiled-in identity is
-//     visible in, and it needs no knowledge of where the literal lives.
-//  2. Rendered, signed in. Every screen, with a viewer whose every field is a
-//     sentinel. Every person-shaped and address-shaped fragment on the page must
-//     be one of those sentinels or one of its derivations. A fourth hard-coded
-//     name in a panel nobody thought about is caught here: it is person-shaped
-//     text that is not the sentinel.
-//  3. Lexical, over the source. The two above only see states a test enters. A
-//     name behind a branch this file does not reach is invisible to them and is
-//     still compiled in, so the source is scanned too.
-//
-// internal/web/fixture is excluded from (3) by name, and that exclusion is the
-// point rather than a convenience: SC-106 makes a display name in the product a
-// defect and the same display name in a test's input a fixture. The exclusion is
-// what gives the fixture package its meaning, and it is why the two viewer
-// variants live there and nowhere else.
+// No identity is compiled into this product: every person-shaped or
+// address-shaped thing rendered must come from the viewer the caller passed in.
+// Asserted three ways (rendered signed out, rendered signed in with a sentinel
+// viewer, and a lexical scan of the source), since each covers a hole in the
+// others. Test files and fakeapi are excluded from the scan: there a name is a
+// fixture, not a defect. Fixture addresses use `.invalid` (RFC 2606).
 
-// The two shapes. Neither is clever, and both are checked against known values
-// below so a regexp edit cannot quietly stop matching anything.
+func signedInViewer() *view.Viewer {
+	return &view.Viewer{
+		SignedIn:    true,
+		DisplayName: "Ada Fixture",
+		Email:       "ada@fixture.invalid",
+		Role:        "catalog-admin",
+		HasRole:     true,
+		Groups:      []string{"eng-platform", "eng-all"},
+	}
+}
+
+// unmappedViewer is signed in and holds no role, which is neither signed out
+// nor an empty hub.
+func unmappedViewer() *view.Viewer {
+	return &view.Viewer{
+		SignedIn:    true,
+		DisplayName: "Bo Fixture",
+		Email:       "bo@fixture.invalid",
+		Groups:      []string{"contractors-eu"},
+	}
+}
+
+func signedOutViewer() *view.Viewer { return nil }
+
+// Both patterns are checked against known values below so a regexp edit cannot
+// quietly stop matching.
 var (
-	// personShaped is "Firstname Lastname" or "Firstname L." — two adjacent
-	// capitalised words, the second optionally an initial. It is unanchored, so it
-	// catches a name inside a sentence, which is where the second one gets written.
-	personShaped = regexp.MustCompile(`\p{Lu}\p{Ll}+ \p{Lu}(?:\p{Ll}+|\.)`)
-	// addressShaped is deliberately loose about the domain: what matters is that
-	// somebody's address is on the page, not whether it would deliver.
+	// personShaped is unanchored so it catches a name inside a sentence.
+	personShaped  = regexp.MustCompile(`\p{Lu}\p{Ll}+ \p{Lu}(?:\p{Ll}+|\.)`)
 	addressShaped = regexp.MustCompile(`[\p{L}0-9._%+\-]+@[\p{L}0-9.\-]+\.[\p{L}]{2,}`)
 )
 
-// productVocabulary is every pair of capitalised words this product renders that
-// is not a person. Each is the name of the product or of a specification it
-// implements, which is exactly why a reader cannot tell them apart from a name by
-// shape alone and a test has to be told.
-//
-// Adding to this list is how a compiled-in identity would get past every
-// assertion in this file, so an entry needs a reason a reviewer would accept:
-// these are a product name, two published specification names, a directory
-// convention and a dependency's own dashboard — none of them a claim about who
-// is looking at the page.
+// productVocabulary is every capitalised word pair this product renders that is
+// not a person. Adding to it is how a compiled-in identity would slip past every
+// assertion here, so each entry needs a reason a reviewer would accept.
 var productVocabulary = []string{
 	components.ProductName,
 	"Agent Plugins",
 	"Agent Skills",
-	// The agent directory convention a sync target writes to, not a claim about
-	// who is looking at the page.
 	"Claude Code",
-	// The job queue this hub runs on, and the sidebar entry that embeds its own
-	// dashboard. River is a library's name; the entry names the thing being
-	// looked at, never the person looking.
 	"River Dashboard",
 }
 
-// identityClasses are the design's three identity elements. They are asserted on
-// as well as the text, because "the chip renders with an empty name" and "the chip
-// does not render" are different pages and only one of them is honest (FR-116,
-// contracts/auth.md's signed-out contract).
+// identityClasses are asserted on as well as the text: a chip with an empty name
+// and no chip at all are different pages, and only the latter is honest.
 var identityClasses = []string{"am-avatar", "am-viewer-name", "am-viewer-role"}
 
-// The sentinel viewer. Its values are shaped like the things being hunted — a
-// two-word name, an address, a hyphenated role the shell humanises into a second
-// two-word string — so that they are found by the same patterns the defect would
-// be, and the assertion is about WHICH match was found rather than whether one was.
+// sentinelViewer's values match the same patterns the defect would, so the
+// assertion is about which match was found rather than whether one was.
 func sentinelViewer() *view.Viewer {
 	return &view.Viewer{
 		DisplayName: "Sentinel Viewername",
@@ -113,22 +90,18 @@ func sentinelValues(v *view.Viewer) []string {
 	return []string{v.DisplayName, v.Email, v.RoleLabel(), v.Initials()}
 }
 
-// sweptScreen is one component rendered in both viewer states.
 type sweptScreen struct {
 	name string
-	// hostsShell is false for a component that is its own document or a fragment
-	// patched into one, so the chip is not expected in it even signed in.
+	// hostsShell is false for a component that is its own document, so no chip is
+	// expected even signed in.
 	hostsShell bool
 	render     func(t *testing.T, viewer *view.Viewer) string
 }
 
 func sweep() []sweptScreen {
-	// No package data anywhere in this list. A package's own title-cased display
-	// name — "Platform Toolkit", "Slack Digest" — is indistinguishable from a
-	// person's by shape, and it arrives from a source rather than from this
-	// package, so feeding the fixture's ten rows in would mean weakening the
-	// patterns to accommodate data that was never the risk. What is swept is the
-	// chrome, in every state, which is where an identity gets written.
+	// Screens are swept empty: source data such as package names, audit actors or
+	// token creators is person-shaped by nature and was never the risk. What is
+	// swept is the chrome, which is where an identity gets hand-written.
 	emptyPage := view.CatalogPage{Query: view.CatalogQuery{}.Normalise(), Page: 1, PageSize: view.DefaultPageSize}
 
 	inShell := func(name string, body func() templ.Component) sweptScreen {
@@ -159,48 +132,33 @@ func sweep() []sweptScreen {
 		inShell("VersionsPanel", func() templ.Component { return components.VersionsPanel(view.Package{}) }),
 		inShell("DependentsPanel", func() templ.Component { return components.DependentsPanel(view.Package{}) }),
 		inShell("FilesPanel", func() templ.Component { return components.FilesPanel(view.Package{}) }),
-		// Empty rather than nil: a MarkdownDoc a package's own file content
-		// parsed to is never nil in production, and nil would panic the
-		// walk rather than render a page with no identity on it.
+		// Empty rather than nil: production never passes nil, and nil would panic.
 		inShell("MarkdownBody", func() templ.Component { return components.MarkdownBody(view.ParseMarkdown(nil)) }),
-		// The two governance screens (US4). They are swept EMPTY on purpose: the
-		// actor column of an audit row and the reviewer on an override are both
-		// person-shaped by nature and both arrive from a source, so feeding rows in
-		// would mean weakening the patterns to accommodate data that was never the
-		// risk. What is swept is the chrome — the copy, the empty states and the
-		// refusal wording — which is where a name gets written by hand.
 		inShell("ScannerScreen", func() templ.Component { return components.ScannerScreen(view.Scanner{}) }),
 		inShell("AuditScreen", func() templ.Component { return components.AuditScreen(view.Audit{}) }),
-		// The profile screens, swept empty for the same reason: a member's display
-		// name and a revision's publisher are both person-shaped by nature and both
-		// arrive from a source, so feeding rows in would weaken the patterns to
-		// accommodate data that was never the risk.
 		inShell("ProfilesScreen", func() templ.Component { return components.ProfilesScreen(view.Profiles{}) }),
 		inShell("ProfileScreen", func() templ.Component { return components.ProfileScreen(view.Profile{}) }),
 		inShell("CLIScreen", func() templ.Component { return components.CLIScreen(view.CLI{}) }),
-		// The Storage screen, swept empty for the same reason: a fetch's requested
-		// reference is operator-supplied and person-shaped by nature.
+		inShell("ServiceTokensScreen", func() templ.Component {
+			return components.ServiceTokensScreen(view.ServiceTokens{})
+		}),
+		inShell("WebhooksScreen", func() templ.Component { return components.WebhooksScreen(view.Webhooks{}) }),
+		inShell("MachinesScreen", func() templ.Component { return components.MachinesScreen(view.Machines{}) }),
+		inShell("MachineScreen", func() templ.Component { return components.MachineScreen(view.MachineDetail{}) }),
+		inShell("AffectedMachinesPanel", func() templ.Component {
+			return components.AffectedMachinesPanel(view.AffectedMachines{Package: "a/b", Total: 2})
+		}),
 		inShell("StorageScreen", func() templ.Component { return components.StorageScreen(view.Storage{}) }),
-		// The Organization screen, swept empty for the same reason: a group name
-		// and a category name are both person-shaped by nature and both arrive
-		// from a source, so what is swept is the chrome around them.
 		inShell("OrgScreen", func() templ.Component { return components.OrgScreen(view.Org{}) }),
-		// The Runtime screen has no person-shaped field at all — queue names,
-		// job kinds and runner error text are all system-generated — but it is
-		// still swept empty for the same reason every other governance screen
-		// is: what matters here is the chrome, not a claim that its rows are safe.
 		inShell("RuntimeScreen", func() templ.Component { return components.RuntimeScreen(view.Runtime{}) }),
-		// The embedded state, not the gated one: a frame is what this screen
-		// renders when there is something to render, and the sweep should see
-		// the page that actually has content on it.
+		// The embedded state, not the gated one, so the sweep sees actual content.
 		inShell("RiverScreen", func() templ.Component {
 			return components.RiverScreen(view.River{EmbedPath: view.RiverEmbedPrefix + "/"})
 		}),
 		{
 			name: "NoRoleScreen",
-			// The one screen whose body renders the viewer itself. Signed out there is
-			// no such screen — an unmapped role is something only a signed-in identity
-			// can have — so that state is swept as the shell around an ordinary screen.
+			// Only a signed-in identity can be unmapped, so signed out is swept as the
+			// shell around an ordinary screen.
 			hostsShell: true,
 			render: func(t *testing.T, viewer *view.Viewer) string {
 				if viewer == nil {
@@ -211,10 +169,8 @@ func sweep() []sweptScreen {
 		},
 		{
 			name: "SignInScreen",
-			// Its own document, so it carries no chip in either state — and it is swept
-			// with the credential hint OFF, which is how it is served. The credentials
-			// the hint prints are the caller's data rather than this package's
-			// literals, and the state that prints them has its own test next door.
+			// Swept with the credential hint off, which is how it is served; the hint
+			// prints caller data and has its own test.
 			render: func(t *testing.T, _ *view.Viewer) string {
 				return signInBody(t, view.SignIn{
 					Provider: "the corporate directory", Return: "/scanner",
@@ -227,7 +183,7 @@ func sweep() []sweptScreen {
 func TestNoScreenRendersAnIdentityWhenNoSessionResolvedOne(t *testing.T) {
 	for _, screen := range sweep() {
 		t.Run(screen.name, func(t *testing.T) {
-			body := screen.render(t, fixture.SignedOutViewer())
+			body := screen.render(t, signedOutViewer())
 
 			for _, class := range identityClasses {
 				require.NotContainsf(t, body, class,
@@ -270,14 +226,9 @@ func TestEveryIdentityAScreenRendersIsTheViewersOwn(t *testing.T) {
 	require.Positive(t, chipsSeen, "no screen in the sweep hosts the shell")
 }
 
-// TestEveryComponentIsInTheIdentitySweep is the anti-omission half. Both sweeps
-// above walk a list written by hand, and a list written by hand is a list a new
-// screen is not on — which is how the next compiled-in name would arrive with
-// every test still green. So the list is checked against the components package
-// itself: every exported templ in it is either swept or named below with a reason.
+// TestEveryComponentIsInTheIdentitySweep guards the hand-written sweep list:
+// every exported templ must be swept or excused with a reason.
 func TestEveryComponentIsInTheIdentitySweep(t *testing.T) {
-	// Layout is the shell the sweep renders everything else inside, so it is
-	// covered by every entry rather than by one of its own.
 	notScreens := map[string]string{"Layout": "the shell every swept screen is rendered in"}
 
 	swept := map[string]bool{}
@@ -319,10 +270,8 @@ func exportedComponents(t *testing.T) []string {
 	return names
 }
 
-// TestTheIdentityPatternsCatchTheDefectTheyWereWrittenFor is the guard against
-// the sweeps above passing because the patterns stopped matching. The first value
-// is the string that was in shell.templ; the rest are the ones a grep for it would
-// have let through.
+// TestTheIdentityPatternsCatchTheDefectTheyWereWrittenFor guards against the
+// sweeps passing because the patterns stopped matching.
 func TestTheIdentityPatternsCatchTheDefectTheyWereWrittenFor(t *testing.T) {
 	for _, name := range []string{"Krzysztof W.", "Ada Lovelace", "shared with Jane Roe today", "Sentinel Viewername"} {
 		require.Regexpf(t, personShaped, name, "%q is no longer recognised as a person's name", name)
@@ -331,8 +280,7 @@ func TestTheIdentityPatternsCatchTheDefectTheyWereWrittenFor(t *testing.T) {
 		require.Regexpf(t, addressShaped, address, "%q is no longer recognised as an address", address)
 	}
 
-	// And the negatives, because a pattern that matches the product's own copy gets
-	// weakened by whoever hits it next, and a weakened pattern is worse than none.
+	// A pattern that matches the product's own copy gets weakened by whoever hits it next.
 	for _, copy := range []string{
 		"Connect the CLI", "Audit log", "Not found", "No role", "Sign out",
 		"Nothing matches these filters. Clear a tag or widen the category.",
@@ -341,7 +289,6 @@ func TestTheIdentityPatternsCatchTheDefectTheyWereWrittenFor(t *testing.T) {
 	}
 }
 
-// requireNoIdentityIn is the rule both rendered sweeps apply to one text node.
 func requireNoIdentityIn(t *testing.T, where, chunk string, allowed []string) {
 	t.Helper()
 
@@ -353,7 +300,7 @@ func requireNoIdentityIn(t *testing.T, where, chunk string, allowed []string) {
 			require.Failf(t, "an identity nothing resolved reached the page",
 				"%s renders %q, in %q.\n\n"+
 					"Every name, address, role and avatar on a page must come from the viewer the "+
-					"request resolved (FR-116). A literal here is the hard-coded chip this feature "+
+					"request resolved. A literal here is the hard-coded chip this feature "+
 					"exists to delete, in a new place. If this is a product or specification name "+
 					"rather than a person, it belongs in productVocabulary with the reason.",
 				where, found, chunk)
@@ -370,28 +317,22 @@ func permitted(found string, allowed []string) bool {
 	return false
 }
 
-// renderedText is the page's text nodes, each kept separate.
-//
-// Separate matters: joining them would put the end of one element beside the start
-// of the next and invent "Storage Organization" out of two sidebar links. Attribute
-// values are dropped, which is a hole the source scan below covers — this half is
-// about what a person reads.
+// renderedText is the page's text nodes, kept separate so adjacent elements
+// cannot invent a name like "Storage Organization". Attribute values are dropped;
+// the source scan covers them.
 func renderedText(t *testing.T, body string) []string {
 	t.Helper()
 
 	require.NotEmpty(t, body, "nothing was rendered")
 
-	// Script and style bodies are not text a person reads, and the vendored
-	// datastar bundle is not on the page anyway — only a src for it.
 	for _, tag := range []string{"script", "style"} {
 		body = regexp.MustCompile(`(?s)<`+tag+`[^>]*>.*?</`+tag+`>`).ReplaceAllString(body, "")
 	}
 	return textChunks(body)
 }
 
-// textChunks splits HTML-ish source on its tags and returns the whitespace-collapsed
-// text between them. It is shared with the .templ scan, where the same split
-// isolates a template's literal text from its markup and its Go expressions.
+// textChunks returns the whitespace-collapsed text between tags. Also used for
+// the .templ scan.
 func textChunks(markup string) []string {
 	var out []string
 	for _, piece := range regexp.MustCompile(`<[^>]*>`).Split(markup, -1) {
@@ -403,14 +344,9 @@ func textChunks(markup string) []string {
 	return out
 }
 
-// TestNoIdentityLiteralIsCompiledIntoTheWebRole is the third pass: the source
-// itself, for the name that is only rendered in a state no test enters.
-//
-// String literals and template text, not whole files. A comment naming a person is
-// a different thing from a page rendering one — the reference to
-// internal/seed/groups.go's directory users two files away is a comment that has to
-// name them — and scanning comments here would either fail on those or teach
-// whoever hits it to delete the explanation.
+// TestNoIdentityLiteralIsCompiledIntoTheWebRole scans string literals and
+// template text in the source, for a name only rendered in a state no test
+// enters. Comments are not scanned: naming a person there is not rendering one.
 func TestNoIdentityLiteralIsCompiledIntoTheWebRole(t *testing.T) {
 	files := webSourceFiles(t)
 	require.Contains(t, files, filepath.Join("components", "shell.templ"),
@@ -426,14 +362,9 @@ func TestNoIdentityLiteralIsCompiledIntoTheWebRole(t *testing.T) {
 	}
 }
 
-// webSourceFiles is every non-test source file under internal/web, read from the
-// tree rather than from a list so a file added later is scanned without anybody
-// remembering to add it here.
-//
-// Two exclusions, both deliberate. internal/web/fixture is the declared stand-in
-// and holds the viewer variants the tests render with. `*_templ.go` is generated
-// from the `.templ` file beside it, which IS scanned: reading both would double
-// every finding and report the generated line number.
+// webSourceFiles walks the tree so new files are scanned automatically. fakeapi
+// holds test fixtures; `*_templ.go` is skipped because its `.templ` source is
+// scanned instead.
 func webSourceFiles(t *testing.T) []string {
 	t.Helper()
 
@@ -443,7 +374,7 @@ func webSourceFiles(t *testing.T) []string {
 			return err
 		}
 		if entry.IsDir() {
-			if entry.Name() == "fixture" || entry.Name() == "static" {
+			if entry.Name() == "fakeapi" || entry.Name() == "static" {
 				return fs.SkipDir
 			}
 			return nil

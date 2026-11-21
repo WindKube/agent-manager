@@ -3,6 +3,7 @@ package fetcher
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -10,40 +11,41 @@ import (
 
 	"agent-manager/internal/blob"
 	"agent-manager/internal/domain/pkgspec"
+	"agent-manager/internal/signing"
+	"agent-manager/internal/store/audit"
 	"agent-manager/internal/store/models"
 )
 
-// auditActor and auditSource are what a background role writes into the
-// audit log: actor_kind `system` separates a role's action from a person's.
+// auditActor and auditSource mark a background role's audit rows as `system`.
 const (
 	auditActor  = RoleName
 	auditSource = "system"
 )
 
-// writeFetchAudit inserts the one audit row a fetch is accountable for. It
-// takes a transaction rather than a pool: on the success path that is the
-// publish transaction, so the record cannot survive a rolled back publish or
-// go missing after a committed one.
-func writeFetchAudit(ctx context.Context, tx bun.IDB, text string) error {
-	event := &models.AuditEvent{
-		ID:        models.NewID(),
+// writeFetchAudit inserts a fetch's audit row. On success tx is the publish
+// transaction, so the record commits or rolls back with it.
+func writeFetchAudit(ctx context.Context, tx bun.IDB, job Job, action, text string, data map[string]any) error {
+	event, err := audit.New(audit.Entry{
+		Kind:      models.AuditKindFetch,
+		Action:    action,
 		Actor:     auditActor,
 		ActorKind: models.ActorKindSystem,
-		Kind:      models.AuditKindFetch,
 		Text:      text,
 		Source:    auditSource,
+		Subject:   audit.Version(job.Namespace, job.Name, job.Semver),
+		Data:      data,
+	})
+	if err != nil {
+		return err
 	}
-	// am_fetcher holds INSERT-only on audit_event — no SELECT — and bun appends
-	// RETURNING for OccurredAt's `default:` tag unless told not to.
+	// am_fetcher holds INSERT-only on audit_event, and bun would otherwise add RETURNING.
 	if _, err := tx.NewInsert().Model(event).Returning("NULL").Exec(ctx); err != nil {
 		return fmt.Errorf("write the fetch audit row: %w", err)
 	}
 	return nil
 }
 
-// auditFailure records a fetch that produced no bytes. It runs on its own
-// statement rather than inside a transaction, since the transaction it would
-// have belonged to is the one that did not happen.
+// auditFailure records a fetch that produced no bytes, outside any transaction.
 func (w *Worker) auditFailure(ctx context.Context, job Job, reason Reason, cause error) error {
 	text := fmt.Sprintf("failed to fetch %s from %s: %s", job, describeSource(job.Source), reason)
 	detail := ""
@@ -51,7 +53,12 @@ func (w *Worker) auditFailure(ctx context.Context, job Job, reason Reason, cause
 		detail = firstLine(cause.Error())
 		text += " (" + detail + ")"
 	}
-	if err := writeFetchAudit(ctx, w.deps.DB, text); err != nil {
+	data := map[string]any{"reason": string(reason)}
+	var moved *TagMovedError
+	if errors.As(cause, &moved) {
+		data["sourceRef"], data["previousCommit"], data["commit"] = moved.Tag, moved.From, moved.To
+	}
+	if err := writeFetchAudit(ctx, w.deps.DB, job, "fetch-failed", text, data); err != nil {
 		return err
 	}
 	if outcome, ok := outcomeOf(reason); ok {
@@ -80,7 +87,7 @@ func outcomeOf(reason Reason) (models.FetchOutcome, bool) {
 	switch reason {
 	case ReasonRefused:
 		return models.FetchOutcomeBlocked, true
-	case ReasonRefNotFound:
+	case ReasonRefNotFound, ReasonTagMoved:
 		return models.FetchOutcomeInvalidRef, true
 	case ReasonCredentials, ReasonRemote:
 		return models.FetchOutcomeUnreachable, true
@@ -96,9 +103,8 @@ func outcomeOf(reason Reason) (models.FetchOutcome, bool) {
 	return "", false
 }
 
-// storedText is the audit line: what was stored, from where, and what it
-// turned out to contain.
-func storedText(job Job, pkg *pkgspec.Package, commit blob.Commit) string {
+// storedText is the audit line for a stored version.
+func storedText(job Job, pkg *pkgspec.Package, commit blob.Commit, sig signing.Result) string {
 	text := fmt.Sprintf("stored %s (%s) from %s, digest sha256:%s, %d bytes",
 		job, pkg.Kind, describeSource(job.Source),
 		hex.EncodeToString(commit.Bundle.Digest[:]), commit.Bundle.Size)
@@ -112,7 +118,32 @@ func storedText(job Job, pkg *pkgspec.Package, commit blob.Commit) string {
 	if n := len(pkg.Layout.Links); n > 0 {
 		text += fmt.Sprintf(", %d %s not stored", n, plural(n, "link"))
 	}
-	return text
+	return text + ", " + signatureText(sig)
+}
+
+func signatureText(sig signing.Result) string {
+	switch sig.Status {
+	case signing.StatusVerified:
+		return fmt.Sprintf("signature verified: %s via %s", sig.Identity, sig.Issuer)
+	case signing.StatusInvalid:
+		return "signature invalid: " + firstLine(sig.Reason)
+	default:
+		return "unsigned"
+	}
+}
+
+func storedData(pkg *pkgspec.Package, commit blob.Commit, sig signing.Result) map[string]any {
+	data := map[string]any{
+		"digest":     "sha256:" + hex.EncodeToString(commit.Bundle.Digest[:]),
+		"sizeBytes":  commit.Bundle.Size,
+		"kind":       string(pkg.Kind),
+		"components": len(pkg.Components),
+		"signature":  string(sig.Status),
+	}
+	if sig.Status == signing.StatusVerified {
+		data["signerIssuer"], data["signerIdentity"] = sig.Issuer, sig.Identity
+	}
+	return data
 }
 
 // describeSource names where a fetch went without reproducing a credential.
@@ -134,8 +165,8 @@ func describeSource(source JobSource) string {
 	}
 }
 
-// redactCredentials strips userinfo from a URL. It is a string operation
-// rather than a parse: a URL that will not parse must still be redacted.
+// redactCredentials strips userinfo from a URL without parsing it, so an
+// unparseable URL is still redacted.
 func redactCredentials(raw string) string {
 	scheme := ""
 	if i := strings.Index(raw, "://"); i >= 0 {

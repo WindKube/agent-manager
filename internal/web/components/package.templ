@@ -1,24 +1,11 @@
 package components
 
-import (
-	"strconv"
+import "agent-manager/internal/web/view"
 
-	"agent-manager/internal/web/view"
-)
-
-// PackageScreen is the detail page of US3.
-//
-// The plugin and the skill variants differ STRUCTURALLY and not by an empty
-// panel: a standalone skill has no package-contents section at all (US3
-// scenario 2), because a skill has no components and a section headed "Package
-// contents" over an empty tree says something false about the package rather
-// than nothing about it.
-//
-// One control the design draws is deliberately absent: "View source" has no
-// target — `version` records where bytes were STORED and nothing about where
-// they came from, so the button is unimplementable for a URL registration and
-// meaningless for an uploaded archive. A control with nothing behind it is
-// worse than a screen without it.
+// PackageScreen is the package detail page. A standalone skill has no contents
+// section at all, since an empty "Package contents" tree would say something false.
+// "View source" is deliberately absent: `version` records where bytes were stored,
+// not where they came from.
 templ PackageScreen(p view.Package) {
 	<div class="am-detail-head">
 		<a class="am-back" href="/catalog">← Catalog</a>
@@ -39,11 +26,17 @@ templ PackageScreen(p view.Package) {
 				if p.Category != "" {
 					<span class="am-detail-cat">{ p.Category }</span>
 				}
+				<span class="am-detail-sep">|</span>
+				<a id="package-history" href={ view.AuditHistoryHref(p.ID) }>History</a>
 			</div>
 			if p.Notice != nil {
 				<div class={ NoticeClass(*p.Notice) } id="package-notice">{ p.Notice.Text }</div>
 			}
 			@visibilityControl(p)
+			if p.Tracking != nil {
+				@trackingControl(p.ID, *p.Tracking)
+			}
+			@signerControl(p.ID, p.Signer)
 			@addToProfile(p)
 			@packageDeleteControl(p)
 		}
@@ -78,6 +71,9 @@ templ packageBody(p view.Package) {
 		</div>
 		<div class="am-detail-side">
 			@VersionsPanel(p)
+			if p.Affected != nil {
+				@AffectedMachinesPanel(*p.Affected)
+			}
 			@DependentsPanel(p)
 		</div>
 	</div>
@@ -86,10 +82,8 @@ templ packageBody(p view.Package) {
 	}
 }
 
-// visibilityControl is FR-126's shape for a package's owner or a catalog
-// admin, and everyone else: shown, disabled, with the reason stated rather
-// than the control disappearing for the vast majority of viewers who may
-// only read this screen, not change it.
+// visibilityControl is shown to everyone, disabled with the reason for viewers who
+// may not change it.
 templ visibilityControl(p view.Package) {
 	<div class="am-vis-control" id="package-visibility">
 		if !p.CanChangeVisibility {
@@ -122,10 +116,49 @@ templ visibilityControl(p view.Package) {
 	</div>
 }
 
-// addToProfile is US5's own words: "add to the profile", personal or
-// organisation, beside the package's identity rather than the bottom of the
-// page. Grouped by visibility (view.ProfileVisibilities) so a viewer can
-// tell a private profile from an organisation-wide one at a glance.
+// trackingControl is offered only for git packages, disabled with the reason for
+// anyone who may not change it.
+templ trackingControl(id string, tracking view.Tracking) {
+	<div class="am-vis-control" id="package-tracking">
+		if !tracking.CanChange {
+			<button type="button" class="am-btn" disabled aria-disabled="true" title={ view.TrackingChangeDisabledReason }>Track upstream</button>
+			<span class="am-toggle-note">{ view.TrackingChangeDisabledReason }</span>
+		} else {
+			<form method="post" action="/packages/tracking" class="am-vis-form">
+				<input type="hidden" name="id" value={ id }/>
+				<label class="am-toggle-note">
+					<input type="checkbox" name="track" value="on" checked?={ tracking.On }/>
+					Track upstream
+				</label>
+				<input class="am-input" type="text" name="pattern" value={ tracking.Pattern } maxlength="100" aria-label="Tag pattern" title="Tags matching this glob are registered as they appear; a prerelease only when the pattern contains a hyphen."/>
+				<button type="submit" class="am-btn">Save</button>
+			</form>
+		}
+		<span class="am-toggle-note" id="package-tracking-status">{ tracking.Status() }</span>
+	</div>
+}
+
+// signerControl shows the expected Sigstore signer to everyone; only the owner or
+// a catalog admin may change it.
+templ signerControl(id string, signer view.Signer) {
+	<div class="am-vis-control" id="package-signer">
+		if !signer.CanChange {
+			<button type="button" class="am-btn" disabled aria-disabled="true" title={ view.SignerChangeDisabledReason }>Expected signer</button>
+			<span class="am-toggle-note">{ view.SignerChangeDisabledReason }</span>
+		} else {
+			<form method="post" action="/packages/signer" class="am-vis-form">
+				<input type="hidden" name="id" value={ id }/>
+				<input class="am-input" type="text" name="issuer" value={ signer.Issuer } maxlength="512" placeholder="https://token.actions.githubusercontent.com" aria-label="Expected issuer" title="The exact OIDC issuer the signing certificate must carry."/>
+				<input class="am-input" type="text" name="identity" value={ signer.Identity } maxlength="512" placeholder="https://github\.com/acme/skills/.*" aria-label="Expected identity pattern" title="A regular expression the certificate identity must match in full. Leave both fields empty to clear the expected signer."/>
+				<button type="submit" class="am-btn">Save signer</button>
+			</form>
+		}
+		<span class="am-toggle-note" id="package-signer-status">{ signer.Summary() }</span>
+	</div>
+}
+
+// addToProfile sits beside the package identity, grouped by visibility so private
+// and organisation-wide profiles are told apart at a glance.
 templ addToProfile(p view.Package) {
 	<div class="am-add-to-profile" id="add-to-profile">
 		<div class="am-label">Add to profile</div>
@@ -150,11 +183,8 @@ templ addToProfile(p view.Package) {
 	</div>
 }
 
-// addToProfileRow follows org.templ's pattern for a control a role may not
-// use: shown, disabled, with a tooltip AND a visible sentence naming why —
-// never hidden. A profile already holding the package gets neither the
-// button nor the reason — it is told instead, which is the other honest
-// answer a select offering it as new would not give.
+// addToProfileRow is shown disabled with a visible reason when the role may not
+// use it, never hidden. A profile already holding the package says so instead.
 templ addToProfileRow(p view.Package, option view.ProfileOption) {
 	<div class="am-add-row">
 		<div class="am-dep">
@@ -177,12 +207,8 @@ templ addToProfileRow(p view.Package, option view.ProfileOption) {
 	</div>
 }
 
-// packageDeleteControl is catalog delete's package-level action: a whole
-// package archives every one of its versions. The control is never hidden —
-// a viewer without the role sees it disabled with the reason, the same
-// precedent addToProfileRow and org.templ's own gated controls follow — and
-// it never fires from a bare click: typing the package id is what enables
-// the submit, following addEntryControl's toggle-then-reveal shape.
+// packageDeleteControl archives every version of the package. It is never hidden,
+// and typing the package id is what enables the submit.
 templ packageDeleteControl(p view.Package) {
 	<div class="am-panel-toggle-row" data-signals="{_deletePkgOpen: false, _deletePkgConfirm: ''}">
 		if p.DeleteAccess.Allowed {
@@ -228,6 +254,9 @@ templ packageDescription(p view.Package) {
 			<p class="am-desc am-desc-none">The manifest carries no description.</p>
 		}
 		<div class="am-origin">{ p.Origin() }</div>
+		if p.Source != nil && p.Source.Lead() != "" {
+			@provenanceLine(*p.Source)
+		}
 		if len(p.Tags) > 0 {
 			<div class="am-tagrow">
 				for _, tag := range p.Tags {
@@ -238,24 +267,38 @@ templ packageDescription(p view.Package) {
 	</section>
 }
 
-// packageContents is the plugin variant's tree and component list (FR-017).
-// Both are derived from the component rows: no manifest field enumerates
-// components, and the bundle's file list is not stored anywhere (view.Tree).
+templ provenanceLine(source view.Provenance) {
+	<div class="am-origin">
+		if source.CommitHref() != "" {
+			{ source.Lead() } (<a class="am-mono" href={ templ.SafeURL(source.CommitHref()) } rel="noopener noreferrer">{ source.ShortCommit() }</a>){ source.Tail() }
+		} else if source.ShortCommit() != "" {
+			{ source.Lead() } (<span class="am-mono">{ source.ShortCommit() }</span>){ source.Tail() }
+		} else {
+			{ source.Lead() }{ source.Tail() }
+		}
+	</div>
+}
+
+// packageContents is derived from the component rows: no manifest field
+// enumerates components and the bundle's file list is not stored.
 templ packageContents(p view.Package) {
 	<section class="am-section am-section-flush">
 		<div class="am-section-head">
 			<div class="am-section-title">Package contents</div>
 			<div class="am-section-note">
-				{ strconv.Itoa(p.CountOf("skill")) } skills · { strconv.Itoa(p.CountOf("mcp")) } MCP · { strconv.Itoa(p.CountOf("ext")) } extensions
+				{ p.ContentsNote() }
 			</div>
 		</div>
 		<pre class="am-pre">{ p.Tree() }</pre>
-		for _, component := range p.Components {
-			<div class="am-comp">
-				<span class={ ComponentClass(component.Kind) }>{ component.Kind }</span>
-				<span class="am-mono am-comp-name">{ component.Name }</span>
-				<span class="am-comp-note">{ component.Note }</span>
-			</div>
+		for _, group := range p.ComponentGroups() {
+			<div class="am-comp-group">{ group.Label }</div>
+			for _, component := range group.Components {
+				<div class="am-comp">
+					<span class={ ComponentClass(component.Kind) }>{ component.Kind }</span>
+					<span class="am-mono am-comp-name">{ component.Name }</span>
+					<span class="am-comp-note">{ component.Detail() }</span>
+				</div>
+			}
 		}
 	</section>
 }
@@ -270,14 +313,9 @@ templ packageManifest(p view.Package) {
 	</section>
 }
 
-// CapabilityPanel is T060: inferred against expected, presented so that neither
-// can be mistaken for a permission this hub grants.
-//
-// The "not scanned yet" state is a real, reachable state and not an error: the
-// scanner writes both sources in the transaction that records the scan, so a
-// version registered a moment ago has rows of neither. Rendering it as an empty
-// comparison would say "this package reaches nothing", which is the opposite of
-// what is known about it.
+// CapabilityPanel shows inferred against expected so neither reads as a permission
+// this hub grants. "Not scanned yet" is a real state: rendering it as an empty
+// comparison would claim the package reaches nothing.
 templ CapabilityPanel(caps view.Capabilities) {
 	<section class="am-section" id="capability-panel">
 		<div class="am-label">Capabilities</div>
@@ -328,9 +366,8 @@ templ capabilityFacet(facet view.CapabilityFacet) {
 	</div>
 }
 
-// VersionsPanel is FR-019: semver, dist tag, date, the FULL object key and the
-// sha256. The key is shown whole rather than abbreviated because the point of
-// showing it is that an operator can find the bytes in the bucket.
+// VersionsPanel shows the full object key so an operator can find the bytes in
+// the bucket.
 templ VersionsPanel(p view.Package) {
 	<section
 		class="am-section am-section-flush"
@@ -353,10 +390,26 @@ templ VersionsPanel(p view.Package) {
 							<span class="am-vtag am-vtag-pin">{ version.PinLabel() }</span>
 						}
 						<span class={ ScanClass(version.Scan) }>{ version.Scan.Label() }</span>
+						<span class={ SignatureClass(version.Signature) } data-signature={ string(version.Signature.Status) }>{ version.Signature.Label() }</span>
 					</div>
 					<span class="am-ver-date">{ version.Date }</span>
 				</div>
 				<div class="am-mono am-ver-key">{ version.ObjectKey }</div>
+				if version.Signature.Detail() != "" {
+					<div class="am-mono am-ver-key">{ version.Signature.Detail() }</div>
+				}
+				if version.ShortCommit() != "" {
+					<div class="am-mono am-ver-key">
+						if version.CommitHref() != "" {
+							commit <a href={ templ.SafeURL(version.CommitHref()) } rel="noopener noreferrer">{ version.ShortCommit() }</a>
+						} else {
+							commit { version.ShortCommit() }
+						}
+						if version.SourceRef != "" {
+							· { version.SourceRef }
+						}
+					</div>
+				}
 				if version.Digest != "" {
 					<div class="am-mono am-ver-digest">{ version.Digest }</div>
 				} else {
@@ -371,11 +424,8 @@ templ VersionsPanel(p view.Package) {
 	</section>
 }
 
-// versionDeleteControl is catalog delete's per-version action: the same
-// disabled-with-reason and typed-confirmation shape as packageDeleteControl,
-// scoped to one row. $_deleteVersion holds at most one open semver, the
-// single-open idiom the catalog's own facet menu ($menu) already uses, so
-// confirming one row can never leak into another's form.
+// versionDeleteControl is packageDeleteControl scoped to one row; $_deleteVersion
+// holds at most one open semver, so one row's confirmation cannot leak into another.
 templ versionDeleteControl(p view.Package, version view.PackageVersion) {
 	<div class="am-panel-toggle-row">
 		if p.DeleteAccess.Allowed {
@@ -421,12 +471,8 @@ templ versionDeleteControl(p view.Package, version view.PackageVersion) {
 	}
 }
 
-// DependentsPanel is US3 scenario 5, scoped to the caller.
-//
-// It lists exactly the profiles this identity may read (FR-044) and counts what
-// it lists. There is no "N people" line: a membership row can name a group,
-// nothing here knows how many people are in one, and a partial head count
-// presented as a head count would be worse than none.
+// DependentsPanel lists the profiles this identity may read and counts them. There
+// is no head count: a group member row hides how many people it covers.
 templ DependentsPanel(p view.Package) {
 	<section class="am-section" id="dependents-panel">
 		<div class="am-label">Used in profiles</div>
@@ -440,11 +486,8 @@ templ DependentsPanel(p view.Package) {
 	</section>
 }
 
-// FilesPanel is US3/US5: read a skill's or plugin's files — SKILL.md and
-// whatever else the bundle carries — before using it. It is a plain server
-// round trip with no signals, exactly like the rest of this screen: a row
-// is a link that sets ?file= and the page renders on the new request, the
-// same idiom the audit screen's own detail panel uses for ?entry=.
+// FilesPanel lists a bundle's files; each row is a ?file= link rendered by a plain
+// server round trip, like the audit screen's ?entry=.
 templ FilesPanel(p view.Package) {
 	<section class="am-section am-section-flush" id="files-panel">
 		<div class="am-section-head">
@@ -487,9 +530,7 @@ templ fileRowCells(file view.FileRow) {
 	<span class="am-file-size">{ file.SizeLabel }</span>
 }
 
-// filesDetailPanel shows one file's content, chosen by ?file= — the audit
-// screen's own detail-panel idiom (internal/web/components/audit.templ),
-// reused rather than reinvented.
+// filesDetailPanel shows the file chosen by ?file=.
 templ filesDetailPanel(p view.Package) {
 	<div class="am-audit-panel-backdrop" style="background:rgba(15,18,22,0.42)" aria-hidden="true"></div>
 	<aside class="am-audit-panel" role="dialog" aria-label="File content">

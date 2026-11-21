@@ -20,16 +20,19 @@ import (
 
 // Defines values for AuditEntryActorKind.
 const (
-	Identity AuditEntryActorKind = "identity"
-	System   AuditEntryActorKind = "system"
+	AuditEntryActorKindIdentity     AuditEntryActorKind = "identity"
+	AuditEntryActorKindServiceToken AuditEntryActorKind = "service-token"
+	AuditEntryActorKindSystem       AuditEntryActorKind = "system"
 )
 
 // Valid indicates whether the value is a known member of the AuditEntryActorKind enum.
 func (e AuditEntryActorKind) Valid() bool {
 	switch e {
-	case Identity:
+	case AuditEntryActorKindIdentity:
 		return true
-	case System:
+	case AuditEntryActorKindServiceToken:
+		return true
+	case AuditEntryActorKindSystem:
 		return true
 	default:
 		return false
@@ -49,6 +52,8 @@ const (
 	AuditEntryKindSecret   AuditEntryKind = "secret"
 	AuditEntryKindShare    AuditEntryKind = "share"
 	AuditEntryKindSync     AuditEntryKind = "sync"
+	AuditEntryKindToken    AuditEntryKind = "token"
+	AuditEntryKindWebhook  AuditEntryKind = "webhook"
 )
 
 // Valid indicates whether the value is a known member of the AuditEntryKind enum.
@@ -75,6 +80,61 @@ func (e AuditEntryKind) Valid() bool {
 	case AuditEntryKindShare:
 		return true
 	case AuditEntryKindSync:
+		return true
+	case AuditEntryKindToken:
+		return true
+	case AuditEntryKindWebhook:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuditEntrySubjectKind.
+const (
+	AuditEntrySubjectKindCategory     AuditEntrySubjectKind = "category"
+	AuditEntrySubjectKindDevice       AuditEntrySubjectKind = "device"
+	AuditEntrySubjectKindFinding      AuditEntrySubjectKind = "finding"
+	AuditEntrySubjectKindIdentity     AuditEntrySubjectKind = "identity"
+	AuditEntrySubjectKindMachine      AuditEntrySubjectKind = "machine"
+	AuditEntrySubjectKindMapping      AuditEntrySubjectKind = "mapping"
+	AuditEntrySubjectKindPackage      AuditEntrySubjectKind = "package"
+	AuditEntrySubjectKindPolicy       AuditEntrySubjectKind = "policy"
+	AuditEntrySubjectKindProfile      AuditEntrySubjectKind = "profile"
+	AuditEntrySubjectKindRevision     AuditEntrySubjectKind = "revision"
+	AuditEntrySubjectKindServiceToken AuditEntrySubjectKind = "service-token"
+	AuditEntrySubjectKindVersion      AuditEntrySubjectKind = "version"
+	AuditEntrySubjectKindWebhook      AuditEntrySubjectKind = "webhook"
+)
+
+// Valid indicates whether the value is a known member of the AuditEntrySubjectKind enum.
+func (e AuditEntrySubjectKind) Valid() bool {
+	switch e {
+	case AuditEntrySubjectKindCategory:
+		return true
+	case AuditEntrySubjectKindDevice:
+		return true
+	case AuditEntrySubjectKindFinding:
+		return true
+	case AuditEntrySubjectKindIdentity:
+		return true
+	case AuditEntrySubjectKindMachine:
+		return true
+	case AuditEntrySubjectKindMapping:
+		return true
+	case AuditEntrySubjectKindPackage:
+		return true
+	case AuditEntrySubjectKindPolicy:
+		return true
+	case AuditEntrySubjectKindProfile:
+		return true
+	case AuditEntrySubjectKindRevision:
+		return true
+	case AuditEntrySubjectKindServiceToken:
+		return true
+	case AuditEntrySubjectKindVersion:
+		return true
+	case AuditEntrySubjectKindWebhook:
 		return true
 	default:
 		return false
@@ -162,6 +222,66 @@ func (e CreateMappingRequestRole) Valid() bool {
 	case CreateMappingRequestRoleReadOnly:
 		return true
 	case CreateMappingRequestRoleScannerReviewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateWebhookRequestEventTypes.
+const (
+	CreateWebhookRequestEventTypesAsterisk                  CreateWebhookRequestEventTypes = "*"
+	CreateWebhookRequestEventTypesFindingAccepted           CreateWebhookRequestEventTypes = "finding.accepted"
+	CreateWebhookRequestEventTypesFindingRejected           CreateWebhookRequestEventTypes = "finding.rejected"
+	CreateWebhookRequestEventTypesMachineForgotten          CreateWebhookRequestEventTypes = "machine.forgotten"
+	CreateWebhookRequestEventTypesPackageDeleted            CreateWebhookRequestEventTypes = "package.deleted"
+	CreateWebhookRequestEventTypesPackageVersionDeleted     CreateWebhookRequestEventTypes = "package.version.deleted"
+	CreateWebhookRequestEventTypesPackageVersionFetchFailed CreateWebhookRequestEventTypes = "package.version.fetch-failed"
+	CreateWebhookRequestEventTypesPackageVersionRegistered  CreateWebhookRequestEventTypes = "package.version.registered"
+	CreateWebhookRequestEventTypesPackageVersionStored      CreateWebhookRequestEventTypes = "package.version.stored"
+	CreateWebhookRequestEventTypesPolicyChanged             CreateWebhookRequestEventTypes = "policy.changed"
+	CreateWebhookRequestEventTypesProfileRevisionPublished  CreateWebhookRequestEventTypes = "profile.revision.published"
+	CreateWebhookRequestEventTypesScanCompleted             CreateWebhookRequestEventTypes = "scan.completed"
+	CreateWebhookRequestEventTypesServiceTokenCreated       CreateWebhookRequestEventTypes = "service-token.created"
+	CreateWebhookRequestEventTypesServiceTokenRevoked       CreateWebhookRequestEventTypes = "service-token.revoked"
+	CreateWebhookRequestEventTypesWaiverExpired             CreateWebhookRequestEventTypes = "waiver.expired"
+	CreateWebhookRequestEventTypesWaiverExpiring            CreateWebhookRequestEventTypes = "waiver.expiring"
+)
+
+// Valid indicates whether the value is a known member of the CreateWebhookRequestEventTypes enum.
+func (e CreateWebhookRequestEventTypes) Valid() bool {
+	switch e {
+	case CreateWebhookRequestEventTypesAsterisk:
+		return true
+	case CreateWebhookRequestEventTypesFindingAccepted:
+		return true
+	case CreateWebhookRequestEventTypesFindingRejected:
+		return true
+	case CreateWebhookRequestEventTypesMachineForgotten:
+		return true
+	case CreateWebhookRequestEventTypesPackageDeleted:
+		return true
+	case CreateWebhookRequestEventTypesPackageVersionDeleted:
+		return true
+	case CreateWebhookRequestEventTypesPackageVersionFetchFailed:
+		return true
+	case CreateWebhookRequestEventTypesPackageVersionRegistered:
+		return true
+	case CreateWebhookRequestEventTypesPackageVersionStored:
+		return true
+	case CreateWebhookRequestEventTypesPolicyChanged:
+		return true
+	case CreateWebhookRequestEventTypesProfileRevisionPublished:
+		return true
+	case CreateWebhookRequestEventTypesScanCompleted:
+		return true
+	case CreateWebhookRequestEventTypesServiceTokenCreated:
+		return true
+	case CreateWebhookRequestEventTypesServiceTokenRevoked:
+		return true
+	case CreateWebhookRequestEventTypesWaiverExpired:
+		return true
+	case CreateWebhookRequestEventTypesWaiverExpiring:
 		return true
 	default:
 		return false
@@ -625,6 +745,7 @@ func (e LockfileSchemaVersion) Valid() bool {
 const (
 	LockfileTargetsClaudeCode LockfileTargets = "claude-code"
 	LockfileTargetsCodex      LockfileTargets = "codex"
+	LockfileTargetsOpencode   LockfileTargets = "opencode"
 )
 
 // Valid indicates whether the value is a known member of the LockfileTargets enum.
@@ -633,6 +754,8 @@ func (e LockfileTargets) Valid() bool {
 	case LockfileTargetsClaudeCode:
 		return true
 	case LockfileTargetsCodex:
+		return true
+	case LockfileTargetsOpencode:
 		return true
 	default:
 		return false
@@ -747,6 +870,48 @@ func (e LockfileSkipReason) Valid() bool {
 	}
 }
 
+// Defines values for MachineInstallTarget.
+const (
+	MachineInstallTargetClaudeCode MachineInstallTarget = "claude-code"
+	MachineInstallTargetCodex      MachineInstallTarget = "codex"
+	MachineInstallTargetOpencode   MachineInstallTarget = "opencode"
+)
+
+// Valid indicates whether the value is a known member of the MachineInstallTarget enum.
+func (e MachineInstallTarget) Valid() bool {
+	switch e {
+	case MachineInstallTargetClaudeCode:
+		return true
+	case MachineInstallTargetCodex:
+		return true
+	case MachineInstallTargetOpencode:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MachineSkipTarget.
+const (
+	MachineSkipTargetClaudeCode MachineSkipTarget = "claude-code"
+	MachineSkipTargetCodex      MachineSkipTarget = "codex"
+	MachineSkipTargetOpencode   MachineSkipTarget = "opencode"
+)
+
+// Valid indicates whether the value is a known member of the MachineSkipTarget enum.
+func (e MachineSkipTarget) Valid() bool {
+	switch e {
+	case MachineSkipTargetClaudeCode:
+		return true
+	case MachineSkipTargetCodex:
+		return true
+	case MachineSkipTargetOpencode:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OrganizationPolicyScanGate.
 const (
 	OrganizationPolicyScanGateApproval         OrganizationPolicyScanGate = "approval"
@@ -815,19 +980,49 @@ func (e PackageCapabilityName) Valid() bool {
 
 // Defines values for PackageComponentKind.
 const (
-	PackageComponentKindExt   PackageComponentKind = "ext"
-	PackageComponentKindMcp   PackageComponentKind = "mcp"
-	PackageComponentKindSkill PackageComponentKind = "skill"
+	PackageComponentKindAgent   PackageComponentKind = "agent"
+	PackageComponentKindCommand PackageComponentKind = "command"
+	PackageComponentKindExt     PackageComponentKind = "ext"
+	PackageComponentKindHook    PackageComponentKind = "hook"
+	PackageComponentKindMcp     PackageComponentKind = "mcp"
+	PackageComponentKindSkill   PackageComponentKind = "skill"
 )
 
 // Valid indicates whether the value is a known member of the PackageComponentKind enum.
 func (e PackageComponentKind) Valid() bool {
 	switch e {
+	case PackageComponentKindAgent:
+		return true
+	case PackageComponentKindCommand:
+		return true
 	case PackageComponentKindExt:
+		return true
+	case PackageComponentKindHook:
 		return true
 	case PackageComponentKindMcp:
 		return true
 	case PackageComponentKindSkill:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PackageComponentTransport.
+const (
+	PackageComponentTransportHttp  PackageComponentTransport = "http"
+	PackageComponentTransportSse   PackageComponentTransport = "sse"
+	PackageComponentTransportStdio PackageComponentTransport = "stdio"
+)
+
+// Valid indicates whether the value is a known member of the PackageComponentTransport enum.
+func (e PackageComponentTransport) Valid() bool {
+	switch e {
+	case PackageComponentTransportHttp:
+		return true
+	case PackageComponentTransportSse:
+		return true
+	case PackageComponentTransportStdio:
 		return true
 	default:
 		return false
@@ -1077,6 +1272,27 @@ func (e PackageScanFindingState) Valid() bool {
 	}
 }
 
+// Defines values for PackageSourceKind.
+const (
+	PackageSourceKindArchiveUrl PackageSourceKind = "archive-url"
+	PackageSourceKindGit        PackageSourceKind = "git"
+	PackageSourceKindUpload     PackageSourceKind = "upload"
+)
+
+// Valid indicates whether the value is a known member of the PackageSourceKind enum.
+func (e PackageSourceKind) Valid() bool {
+	switch e {
+	case PackageSourceKindArchiveUrl:
+		return true
+	case PackageSourceKindGit:
+		return true
+	case PackageSourceKindUpload:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PackageVersionDistTag.
 const (
 	PackageVersionDistTagArchived PackageVersionDistTag = "archived"
@@ -1166,15 +1382,24 @@ func (e PreviewCapabilityLevel) Valid() bool {
 
 // Defines values for PreviewComponentKind.
 const (
-	PreviewComponentKindExt   PreviewComponentKind = "ext"
-	PreviewComponentKindMcp   PreviewComponentKind = "mcp"
-	PreviewComponentKindSkill PreviewComponentKind = "skill"
+	PreviewComponentKindAgent   PreviewComponentKind = "agent"
+	PreviewComponentKindCommand PreviewComponentKind = "command"
+	PreviewComponentKindExt     PreviewComponentKind = "ext"
+	PreviewComponentKindHook    PreviewComponentKind = "hook"
+	PreviewComponentKindMcp     PreviewComponentKind = "mcp"
+	PreviewComponentKindSkill   PreviewComponentKind = "skill"
 )
 
 // Valid indicates whether the value is a known member of the PreviewComponentKind enum.
 func (e PreviewComponentKind) Valid() bool {
 	switch e {
+	case PreviewComponentKindAgent:
+		return true
+	case PreviewComponentKindCommand:
+		return true
 	case PreviewComponentKindExt:
+		return true
+	case PreviewComponentKindHook:
 		return true
 	case PreviewComponentKindMcp:
 		return true
@@ -1185,21 +1410,42 @@ func (e PreviewComponentKind) Valid() bool {
 	}
 }
 
+// Defines values for PreviewComponentTransport.
+const (
+	PreviewComponentTransportHttp  PreviewComponentTransport = "http"
+	PreviewComponentTransportSse   PreviewComponentTransport = "sse"
+	PreviewComponentTransportStdio PreviewComponentTransport = "stdio"
+)
+
+// Valid indicates whether the value is a known member of the PreviewComponentTransport enum.
+func (e PreviewComponentTransport) Valid() bool {
+	switch e {
+	case PreviewComponentTransportHttp:
+		return true
+	case PreviewComponentTransportSse:
+		return true
+	case PreviewComponentTransportStdio:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PreviewEntryMark.
 const (
-	Dropped PreviewEntryMark = "dropped"
-	Invalid PreviewEntryMark = "invalid"
-	Kept    PreviewEntryMark = "kept"
+	PreviewEntryMarkDropped PreviewEntryMark = "dropped"
+	PreviewEntryMarkInvalid PreviewEntryMark = "invalid"
+	PreviewEntryMarkKept    PreviewEntryMark = "kept"
 )
 
 // Valid indicates whether the value is a known member of the PreviewEntryMark enum.
 func (e PreviewEntryMark) Valid() bool {
 	switch e {
-	case Dropped:
+	case PreviewEntryMarkDropped:
 		return true
-	case Invalid:
+	case PreviewEntryMarkInvalid:
 		return true
-	case Kept:
+	case PreviewEntryMarkKept:
 		return true
 	default:
 		return false
@@ -1576,6 +1822,7 @@ func (e ProfileShareRole) Valid() bool {
 const (
 	ProfileTargetTargetClaudeCode ProfileTargetTarget = "claude-code"
 	ProfileTargetTargetCodex      ProfileTargetTarget = "codex"
+	ProfileTargetTargetOpencode   ProfileTargetTarget = "opencode"
 )
 
 // Valid indicates whether the value is a known member of the ProfileTargetTarget enum.
@@ -1584,6 +1831,8 @@ func (e ProfileTargetTarget) Valid() bool {
 	case ProfileTargetTargetClaudeCode:
 		return true
 	case ProfileTargetTargetCodex:
+		return true
+	case ProfileTargetTargetOpencode:
 		return true
 	default:
 		return false
@@ -1594,6 +1843,7 @@ func (e ProfileTargetTarget) Valid() bool {
 const (
 	ProfileTargetSelectionTargetsClaudeCode ProfileTargetSelectionTargets = "claude-code"
 	ProfileTargetSelectionTargetsCodex      ProfileTargetSelectionTargets = "codex"
+	ProfileTargetSelectionTargetsOpencode   ProfileTargetSelectionTargets = "opencode"
 )
 
 // Valid indicates whether the value is a known member of the ProfileTargetSelectionTargets enum.
@@ -1602,6 +1852,8 @@ func (e ProfileTargetSelectionTargets) Valid() bool {
 	case ProfileTargetSelectionTargetsClaudeCode:
 		return true
 	case ProfileTargetSelectionTargetsCodex:
+		return true
+	case ProfileTargetSelectionTargetsOpencode:
 		return true
 	default:
 		return false
@@ -1644,10 +1896,74 @@ func (e RuntimeJobQueue) Valid() bool {
 	}
 }
 
+// Defines values for ServiceTokenStatus.
+const (
+	Active  ServiceTokenStatus = "active"
+	Expired ServiceTokenStatus = "expired"
+	Revoked ServiceTokenStatus = "revoked"
+)
+
+// Valid indicates whether the value is a known member of the ServiceTokenStatus enum.
+func (e ServiceTokenStatus) Valid() bool {
+	switch e {
+	case Active:
+		return true
+	case Expired:
+		return true
+	case Revoked:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SyncComponentSkipTarget.
+const (
+	SyncComponentSkipTargetClaudeCode SyncComponentSkipTarget = "claude-code"
+	SyncComponentSkipTargetCodex      SyncComponentSkipTarget = "codex"
+	SyncComponentSkipTargetOpencode   SyncComponentSkipTarget = "opencode"
+)
+
+// Valid indicates whether the value is a known member of the SyncComponentSkipTarget enum.
+func (e SyncComponentSkipTarget) Valid() bool {
+	switch e {
+	case SyncComponentSkipTargetClaudeCode:
+		return true
+	case SyncComponentSkipTargetCodex:
+		return true
+	case SyncComponentSkipTargetOpencode:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SyncInstallTarget.
+const (
+	SyncInstallTargetClaudeCode SyncInstallTarget = "claude-code"
+	SyncInstallTargetCodex      SyncInstallTarget = "codex"
+	SyncInstallTargetOpencode   SyncInstallTarget = "opencode"
+)
+
+// Valid indicates whether the value is a known member of the SyncInstallTarget enum.
+func (e SyncInstallTarget) Valid() bool {
+	switch e {
+	case SyncInstallTargetClaudeCode:
+		return true
+	case SyncInstallTargetCodex:
+		return true
+	case SyncInstallTargetOpencode:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SyncReportTargets.
 const (
 	SyncReportTargetsClaudeCode SyncReportTargets = "claude-code"
 	SyncReportTargetsCodex      SyncReportTargets = "codex"
+	SyncReportTargetsOpencode   SyncReportTargets = "opencode"
 )
 
 // Valid indicates whether the value is a known member of the SyncReportTargets enum.
@@ -1656,6 +1972,8 @@ func (e SyncReportTargets) Valid() bool {
 	case SyncReportTargetsClaudeCode:
 		return true
 	case SyncReportTargetsCodex:
+		return true
+	case SyncReportTargetsOpencode:
 		return true
 	default:
 		return false
@@ -1683,6 +2001,93 @@ func (e UpdatePolicyRequestScanGate) Valid() bool {
 	}
 }
 
+// Defines values for UpdateWebhookRequestEventTypes.
+const (
+	UpdateWebhookRequestEventTypesAsterisk                  UpdateWebhookRequestEventTypes = "*"
+	UpdateWebhookRequestEventTypesFindingAccepted           UpdateWebhookRequestEventTypes = "finding.accepted"
+	UpdateWebhookRequestEventTypesFindingRejected           UpdateWebhookRequestEventTypes = "finding.rejected"
+	UpdateWebhookRequestEventTypesMachineForgotten          UpdateWebhookRequestEventTypes = "machine.forgotten"
+	UpdateWebhookRequestEventTypesPackageDeleted            UpdateWebhookRequestEventTypes = "package.deleted"
+	UpdateWebhookRequestEventTypesPackageVersionDeleted     UpdateWebhookRequestEventTypes = "package.version.deleted"
+	UpdateWebhookRequestEventTypesPackageVersionFetchFailed UpdateWebhookRequestEventTypes = "package.version.fetch-failed"
+	UpdateWebhookRequestEventTypesPackageVersionRegistered  UpdateWebhookRequestEventTypes = "package.version.registered"
+	UpdateWebhookRequestEventTypesPackageVersionStored      UpdateWebhookRequestEventTypes = "package.version.stored"
+	UpdateWebhookRequestEventTypesPolicyChanged             UpdateWebhookRequestEventTypes = "policy.changed"
+	UpdateWebhookRequestEventTypesProfileRevisionPublished  UpdateWebhookRequestEventTypes = "profile.revision.published"
+	UpdateWebhookRequestEventTypesScanCompleted             UpdateWebhookRequestEventTypes = "scan.completed"
+	UpdateWebhookRequestEventTypesServiceTokenCreated       UpdateWebhookRequestEventTypes = "service-token.created"
+	UpdateWebhookRequestEventTypesServiceTokenRevoked       UpdateWebhookRequestEventTypes = "service-token.revoked"
+	UpdateWebhookRequestEventTypesWaiverExpired             UpdateWebhookRequestEventTypes = "waiver.expired"
+	UpdateWebhookRequestEventTypesWaiverExpiring            UpdateWebhookRequestEventTypes = "waiver.expiring"
+)
+
+// Valid indicates whether the value is a known member of the UpdateWebhookRequestEventTypes enum.
+func (e UpdateWebhookRequestEventTypes) Valid() bool {
+	switch e {
+	case UpdateWebhookRequestEventTypesAsterisk:
+		return true
+	case UpdateWebhookRequestEventTypesFindingAccepted:
+		return true
+	case UpdateWebhookRequestEventTypesFindingRejected:
+		return true
+	case UpdateWebhookRequestEventTypesMachineForgotten:
+		return true
+	case UpdateWebhookRequestEventTypesPackageDeleted:
+		return true
+	case UpdateWebhookRequestEventTypesPackageVersionDeleted:
+		return true
+	case UpdateWebhookRequestEventTypesPackageVersionFetchFailed:
+		return true
+	case UpdateWebhookRequestEventTypesPackageVersionRegistered:
+		return true
+	case UpdateWebhookRequestEventTypesPackageVersionStored:
+		return true
+	case UpdateWebhookRequestEventTypesPolicyChanged:
+		return true
+	case UpdateWebhookRequestEventTypesProfileRevisionPublished:
+		return true
+	case UpdateWebhookRequestEventTypesScanCompleted:
+		return true
+	case UpdateWebhookRequestEventTypesServiceTokenCreated:
+		return true
+	case UpdateWebhookRequestEventTypesServiceTokenRevoked:
+		return true
+	case UpdateWebhookRequestEventTypesWaiverExpired:
+		return true
+	case UpdateWebhookRequestEventTypesWaiverExpiring:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VersionSignatureStatus.
+const (
+	VersionSignatureStatusInvalid                  VersionSignatureStatus = "invalid"
+	VersionSignatureStatusUnsigned                 VersionSignatureStatus = "unsigned"
+	VersionSignatureStatusVerifiedMatching         VersionSignatureStatus = "verified-matching"
+	VersionSignatureStatusVerifiedNoExpectedSigner VersionSignatureStatus = "verified-no-expected-signer"
+	VersionSignatureStatusVerifiedUnexpectedSigner VersionSignatureStatus = "verified-unexpected-signer"
+)
+
+// Valid indicates whether the value is a known member of the VersionSignatureStatus enum.
+func (e VersionSignatureStatus) Valid() bool {
+	switch e {
+	case VersionSignatureStatusInvalid:
+		return true
+	case VersionSignatureStatusUnsigned:
+		return true
+	case VersionSignatureStatusVerifiedMatching:
+		return true
+	case VersionSignatureStatusVerifiedNoExpectedSigner:
+		return true
+	case VersionSignatureStatusVerifiedUnexpectedSigner:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ViewerRole.
 const (
 	ViewerRoleCatalogAdmin    ViewerRole = "catalog-admin"
@@ -1701,6 +2106,108 @@ func (e ViewerRole) Valid() bool {
 	case ViewerRoleReadOnly:
 		return true
 	case ViewerRoleScannerReviewer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListAuditParamsSubjectKind.
+const (
+	ListAuditParamsSubjectKindCategory     ListAuditParamsSubjectKind = "category"
+	ListAuditParamsSubjectKindDevice       ListAuditParamsSubjectKind = "device"
+	ListAuditParamsSubjectKindFinding      ListAuditParamsSubjectKind = "finding"
+	ListAuditParamsSubjectKindIdentity     ListAuditParamsSubjectKind = "identity"
+	ListAuditParamsSubjectKindMachine      ListAuditParamsSubjectKind = "machine"
+	ListAuditParamsSubjectKindMapping      ListAuditParamsSubjectKind = "mapping"
+	ListAuditParamsSubjectKindPackage      ListAuditParamsSubjectKind = "package"
+	ListAuditParamsSubjectKindPolicy       ListAuditParamsSubjectKind = "policy"
+	ListAuditParamsSubjectKindProfile      ListAuditParamsSubjectKind = "profile"
+	ListAuditParamsSubjectKindRevision     ListAuditParamsSubjectKind = "revision"
+	ListAuditParamsSubjectKindServiceToken ListAuditParamsSubjectKind = "service-token"
+	ListAuditParamsSubjectKindVersion      ListAuditParamsSubjectKind = "version"
+	ListAuditParamsSubjectKindWebhook      ListAuditParamsSubjectKind = "webhook"
+)
+
+// Valid indicates whether the value is a known member of the ListAuditParamsSubjectKind enum.
+func (e ListAuditParamsSubjectKind) Valid() bool {
+	switch e {
+	case ListAuditParamsSubjectKindCategory:
+		return true
+	case ListAuditParamsSubjectKindDevice:
+		return true
+	case ListAuditParamsSubjectKindFinding:
+		return true
+	case ListAuditParamsSubjectKindIdentity:
+		return true
+	case ListAuditParamsSubjectKindMachine:
+		return true
+	case ListAuditParamsSubjectKindMapping:
+		return true
+	case ListAuditParamsSubjectKindPackage:
+		return true
+	case ListAuditParamsSubjectKindPolicy:
+		return true
+	case ListAuditParamsSubjectKindProfile:
+		return true
+	case ListAuditParamsSubjectKindRevision:
+		return true
+	case ListAuditParamsSubjectKindServiceToken:
+		return true
+	case ListAuditParamsSubjectKindVersion:
+		return true
+	case ListAuditParamsSubjectKindWebhook:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ExportAuditParamsSubjectKind.
+const (
+	ExportAuditParamsSubjectKindCategory     ExportAuditParamsSubjectKind = "category"
+	ExportAuditParamsSubjectKindDevice       ExportAuditParamsSubjectKind = "device"
+	ExportAuditParamsSubjectKindFinding      ExportAuditParamsSubjectKind = "finding"
+	ExportAuditParamsSubjectKindIdentity     ExportAuditParamsSubjectKind = "identity"
+	ExportAuditParamsSubjectKindMachine      ExportAuditParamsSubjectKind = "machine"
+	ExportAuditParamsSubjectKindMapping      ExportAuditParamsSubjectKind = "mapping"
+	ExportAuditParamsSubjectKindPackage      ExportAuditParamsSubjectKind = "package"
+	ExportAuditParamsSubjectKindPolicy       ExportAuditParamsSubjectKind = "policy"
+	ExportAuditParamsSubjectKindProfile      ExportAuditParamsSubjectKind = "profile"
+	ExportAuditParamsSubjectKindRevision     ExportAuditParamsSubjectKind = "revision"
+	ExportAuditParamsSubjectKindServiceToken ExportAuditParamsSubjectKind = "service-token"
+	ExportAuditParamsSubjectKindVersion      ExportAuditParamsSubjectKind = "version"
+	ExportAuditParamsSubjectKindWebhook      ExportAuditParamsSubjectKind = "webhook"
+)
+
+// Valid indicates whether the value is a known member of the ExportAuditParamsSubjectKind enum.
+func (e ExportAuditParamsSubjectKind) Valid() bool {
+	switch e {
+	case ExportAuditParamsSubjectKindCategory:
+		return true
+	case ExportAuditParamsSubjectKindDevice:
+		return true
+	case ExportAuditParamsSubjectKindFinding:
+		return true
+	case ExportAuditParamsSubjectKindIdentity:
+		return true
+	case ExportAuditParamsSubjectKindMachine:
+		return true
+	case ExportAuditParamsSubjectKindMapping:
+		return true
+	case ExportAuditParamsSubjectKindPackage:
+		return true
+	case ExportAuditParamsSubjectKindPolicy:
+		return true
+	case ExportAuditParamsSubjectKindProfile:
+		return true
+	case ExportAuditParamsSubjectKindRevision:
+		return true
+	case ExportAuditParamsSubjectKindServiceToken:
+		return true
+	case ExportAuditParamsSubjectKindVersion:
+		return true
+	case ExportAuditParamsSubjectKindWebhook:
 		return true
 	default:
 		return false
@@ -1749,6 +2256,24 @@ func (e ListFindingsParamsSeverity) Valid() bool {
 	case ListFindingsParamsSeverityLow:
 		return true
 	case ListFindingsParamsSeverityMedium:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListMachinesParamsStale.
+const (
+	False ListMachinesParamsStale = "false"
+	True  ListMachinesParamsStale = "true"
+)
+
+// Valid indicates whether the value is a known member of the ListMachinesParamsStale enum.
+func (e ListMachinesParamsStale) Valid() bool {
+	switch e {
+	case False:
+		return true
+	case True:
 		return true
 	default:
 		return false
@@ -1912,34 +2437,57 @@ type AuditEntry struct {
 	// Examples: kwiatrzyk@example.com
 	Actor string `json:"actor"`
 
-	// ActorKind system is a worker with no person behind it, which a screen must not attribute to anybody.
+	// ActorKind system is a worker with no person behind it, which a screen must not attribute to anybody; service-token is a scoped non-human credential, named by its token name.
 	//
 	// Examples: identity
 	ActorKind AuditEntryActorKind `json:"actorKind"`
-	Id        openapi_types.UUID  `json:"id"`
+
+	// Data Small, stable keys describing the event: always action, plus subject identifiers such as name, semver, package, ruleId, profile and revision. Never a secret or a free-form note.
+	Data *map[string]interface{} `json:"data,omitempty"`
+	Id   openapi_types.UUID      `json:"id"`
 
 	// Kind Examples: approve
-	Kind       AuditEntryKind `json:"kind"`
-	OccurredAt time.Time      `json:"occurredAt"`
+	Kind AuditEntryKind `json:"kind"`
+
+	// Namespace The package namespace, on a package, version or finding subject.
+	//
+	// Examples: community
+	Namespace  *string   `json:"namespace,omitempty"`
+	OccurredAt time.Time `json:"occurredAt"`
 
 	// Source web, cli / <host> or system.
 	//
 	// Examples: web
 	Source *string `json:"source,omitempty"`
 
-	// Text The human-readable record of what happened. It quotes package and profile names, so it is rendered escaped (FR-055).
+	// SubjectId The subject's id: namespace/name for a package, namespace/name@semver for a version, the group name for a mapping, 1 for the policy, and a uuid for everything else.
+	//
+	// Examples: community/slack-digest@0.5.1
+	SubjectId *string `json:"subjectId,omitempty"`
+
+	// SubjectKind What the row is about.
+	//
+	// Examples: version
+	SubjectKind *AuditEntrySubjectKind `json:"subjectKind,omitempty"`
+
+	// Text The human-readable record of what happened. It quotes package and profile names, so it is rendered escaped.
 	//
 	// Examples: override granted for community/aws-cost-explainer@2.0.0
 	Text string `json:"text"`
 }
 
-// AuditEntryActorKind system is a worker with no person behind it, which a screen must not attribute to anybody.
+// AuditEntryActorKind system is a worker with no person behind it, which a screen must not attribute to anybody; service-token is a scoped non-human credential, named by its token name.
 //
 // Examples: identity
 type AuditEntryActorKind string
 
 // AuditEntryKind Examples: approve
 type AuditEntryKind string
+
+// AuditEntrySubjectKind What the row is about.
+//
+// Examples: version
+type AuditEntrySubjectKind string
 
 // AuditPage defines model for AuditPage.
 type AuditPage struct {
@@ -1952,7 +2500,7 @@ type AuditPage struct {
 	// PageSize Examples: 50
 	PageSize int64 `json:"pageSize"`
 
-	// Total Rows in the log. The export returns all of them (FR-051).
+	// Total Rows in the log. The export returns all of them.
 	//
 	// Examples: 512
 	Total int64 `json:"total"`
@@ -1970,7 +2518,7 @@ type Badges struct {
 	// Examples: 10
 	Packages int64 `json:"packages"`
 
-	// Profiles Profiles this identity may read, and no others (FR-044).
+	// Profiles Profiles this identity may read, and no others.
 	//
 	// Examples: 4
 	Profiles int64 `json:"profiles"`
@@ -2008,7 +2556,7 @@ type CatalogFacetOption struct {
 
 // CatalogPackage defines model for CatalogPackage.
 type CatalogPackage struct {
-	// Category The admin-curated category (FR-049). Empty when none was chosen.
+	// Category The admin-curated category. Empty when none was chosen.
 	//
 	// Examples: Infrastructure
 	Category *string `json:"category,omitempty"`
@@ -2037,7 +2585,7 @@ type CatalogPackage struct {
 	// UpdatedAt When the latest visible version was published.
 	UpdatedAt time.Time `json:"updatedAt"`
 
-	// Uses Profiles containing this package, derived at query time and never self-reported (R8).
+	// Uses Profiles containing this package, derived at query time and never self-reported.
 	//
 	// Examples: 42
 	Uses int64 `json:"uses"`
@@ -2052,7 +2600,7 @@ type CatalogPackage struct {
 	// Examples: 1.3.0
 	Version string `json:"version"`
 
-	// Visibility Who may see this package (FR-016).
+	// Visibility Who may see this package.
 	//
 	// Examples: organisation
 	Visibility CatalogPackageVisibility `json:"visibility"`
@@ -2066,7 +2614,7 @@ type CatalogPackageKind string
 // Examples: clean
 type CatalogPackageVerdict string
 
-// CatalogPackageVisibility Who may see this package (FR-016).
+// CatalogPackageVisibility Who may see this package.
 //
 // Examples: organisation
 type CatalogPackageVisibility string
@@ -2090,7 +2638,7 @@ type CatalogPage struct {
 	// Tags Tags reachable from the current result set, alphabetically.
 	Tags []CatalogFacetOption `json:"tags"`
 
-	// Total Packages matching every filter, across all pages. This is FR-015's live count.
+	// Total Packages matching every filter, across all pages.
 	//
 	// Examples: 10
 	Total int64 `json:"total"`
@@ -2111,6 +2659,48 @@ type CreateMappingRequest struct {
 
 // CreateMappingRequestRole defines model for CreateMappingRequest.Role.
 type CreateMappingRequestRole string
+
+// CreateServiceTokenRequest defines model for CreateServiceTokenRequest.
+type CreateServiceTokenRequest struct {
+	// ExpiresAt Required, and at most one year from now. There is no token that never expires.
+	ExpiresAt time.Time `json:"expiresAt"`
+
+	// Name What the token is for, shown in the list and the audit log.
+	//
+	// Examples: release pipeline
+	Name string `json:"name"`
+
+	// Scopes sync:profile/<slug> to resolve, download and report syncs of one profile the creator can read, or read:catalog for read-only catalog, package and scan reads. There are no write scopes.
+	//
+	// Examples: ["sync:profile/example/platform-engineer"]
+	Scopes []string `json:"scopes"`
+}
+
+// CreateWebhookRequest defines model for CreateWebhookRequest.
+type CreateWebhookRequest struct {
+	// EventTypes The event types to deliver, or the single entry * for every one.
+	//
+	// Examples: ["scan.completed","waiver.expiring"]
+	EventTypes []CreateWebhookRequestEventTypes `json:"eventTypes"`
+
+	// Name What the webhook is for.
+	//
+	// Examples: security channel
+	Name string `json:"name"`
+
+	// Namespaces Only events about packages in these namespaces. Absent or empty delivers every namespace, and events with no namespace.
+	//
+	// Examples: ["platform"]
+	Namespaces *[]string `json:"namespaces,omitempty"`
+
+	// Url https only, with no credentials in it and not a private or loopback address.
+	//
+	// Examples: https://hooks.example.com/agent-manager
+	Url string `json:"url"`
+}
+
+// CreateWebhookRequestEventTypes defines model for CreateWebhookRequest.EventTypes.
+type CreateWebhookRequestEventTypes string
 
 // DeviceAuthorization defines model for DeviceAuthorization.
 type DeviceAuthorization struct {
@@ -2146,7 +2736,7 @@ type DeviceAuthorizeRequest struct {
 	// Examples: agent-manager-cli
 	ClientId string `json:"client_id"`
 
-	// Host Hostname of the requesting machine. Bound to the authorisation and displayed to the approving human (FR-041), so approval is an informed act.
+	// Host Hostname of the requesting machine. Bound to the authorisation and displayed to the approving human, so approval is an informed act.
 	//
 	// Examples: dev-laptop-01
 	Host string `json:"host"`
@@ -2272,7 +2862,7 @@ type FindingApproval struct {
 	// Examples: 12
 	ExpiresInDays *int64 `json:"expiresInDays,omitempty"`
 
-	// Note Why this risk is accepted. Required: an override with no stated reason is an unexplained exception, and FR-028 asks for a recorded note.
+	// Note Why this risk is accepted. Required: an override with no stated reason is an unexplained exception.
 	//
 	// Examples: Network call is to our own registry
 	Note string `json:"note"`
@@ -2331,7 +2921,7 @@ type FindingDecisionVerdict string
 
 // FindingDetail defines model for FindingDetail.
 type FindingDetail struct {
-	// Checks Every check the scan ran and its result, including the ones that passed (FR-025).
+	// Checks Every check the scan ran and its result, including the ones that passed.
 	Checks []FindingCheck `json:"checks"`
 
 	// Detail Why this was raised, in prose.
@@ -2342,7 +2932,7 @@ type FindingDetail struct {
 	// Examples: rulepack
 	Engine string `json:"engine"`
 
-	// Evidence Every location this finding points at, cause first. Rendered escaped, always (FR-055).
+	// Evidence Every location this finding points at, cause first. Rendered escaped, always.
 	Evidence []FindingEvidence  `json:"evidence"`
 	Id       openapi_types.UUID `json:"id"`
 
@@ -2439,7 +3029,7 @@ type FindingScan struct {
 	PackVersion string    `json:"packVersion"`
 	StartedAt   time.Time `json:"startedAt"`
 
-	// TimedOut The scan exceeded its budget. Its verdict is not a clean bill of health (FR-031).
+	// TimedOut The scan exceeded its budget. Its verdict is not a clean bill of health.
 	TimedOut bool `json:"timedOut"`
 
 	// Verdict Examples: flagged
@@ -2464,7 +3054,7 @@ type FindingSummary struct {
 	// Examples: 41
 	EvidenceLine *int64 `json:"evidenceLine,omitempty"`
 
-	// EvidencePath The PRIMARY location's path. Rendered escaped, always: it is bundle content (FR-055).
+	// EvidencePath The PRIMARY location's path. Rendered escaped, always: it is bundle content.
 	//
 	// Examples: scripts/digest.sh
 	EvidencePath *string `json:"evidencePath,omitempty"`
@@ -2480,7 +3070,7 @@ type FindingSummary struct {
 	// RaisedAt When the scan that raised this finding recorded it.
 	RaisedAt time.Time `json:"raisedAt"`
 
-	// RuleId Stable rule identifier (FR-024).
+	// RuleId Stable rule identifier.
 	//
 	// Examples: SH-NET-002
 	RuleId string `json:"ruleId"`
@@ -2605,10 +3195,10 @@ type Lockfile struct {
 	Revision      int64                 `json:"revision"`
 	SchemaVersion LockfileSchemaVersion `json:"schemaVersion"`
 
-	// Skipped FR-036: an excluded package is reported with its reason, never silently omitted.
+	// Skipped An excluded package is reported with its reason, never silently omitted.
 	Skipped []LockfileSkip `json:"skipped"`
 
-	// Targets Which agent directories the CLI should write. Advisory to the client; the server stores nothing per target (FR-039).
+	// Targets Which agent directories the CLI should write. Advisory to the client; the server stores nothing per target.
 	Targets []LockfileTargets `json:"targets"`
 }
 
@@ -2697,7 +3287,7 @@ type LockfileSignature struct {
 	// Ref Examples: sigstore:acme/code-review@2.4.1
 	Ref *string `json:"ref,omitempty"`
 
-	// Verified False until Sigstore verification ships (FR-048a). Never render a false value as a pass.
+	// Verified True only when the Sigstore bundle verified against the archive the hub downloaded AND its signer matches the package's expected signer. False covers a bundle that did not verify and one signed by anyone else, or with no expected signer configured; never render it as a pass.
 	Verified *bool `json:"verified,omitempty"`
 }
 
@@ -2718,6 +3308,135 @@ type LockfileSkip struct {
 
 // LockfileSkipReason Examples: flagged-awaiting-approval
 type LockfileSkipReason string
+
+// Machine defines model for Machine.
+type Machine struct {
+	// AmctlVersion Examples: 0.9.0
+	AmctlVersion *string `json:"amctlVersion,omitempty"`
+
+	// Arch Examples: arm64
+	Arch        *string   `json:"arch,omitempty"`
+	FirstSeenAt time.Time `json:"firstSeenAt"`
+
+	// Hostname Examples: dev-laptop-01
+	Hostname string `json:"hostname"`
+
+	// Id The random id the CLI generated for itself.
+	Id openapi_types.UUID `json:"id"`
+
+	// LastProfile Slug of the profile the last report synced.
+	//
+	// Examples: platform-baseline
+	LastProfile string `json:"lastProfile"`
+
+	// LastRevision Examples: 7
+	LastRevision int64     `json:"lastRevision"`
+	LastSeenAt   time.Time `json:"lastSeenAt"`
+
+	// Os Examples: darwin
+	Os *string `json:"os,omitempty"`
+
+	// ReportedBy The person behind the last report: the reporter, or the service token's creator.
+	//
+	// Examples: kw@example.com
+	ReportedBy string `json:"reportedBy"`
+
+	// ServiceToken Name of the service token that filed the last report, if one did.
+	//
+	// Examples: ci-runner
+	ServiceToken *string `json:"serviceToken,omitempty"`
+
+	// Stale No report for longer than staleAfterDays. Computed on read.
+	Stale bool `json:"stale"`
+}
+
+// MachineDetail defines model for MachineDetail.
+type MachineDetail struct {
+	// Installs Installs from profiles and of packages this identity may read, as of each profile's last report.
+	Installs []MachineInstall `json:"installs"`
+	Machine  Machine          `json:"machine"`
+
+	// Skipped What the latest report of each readable profile did not install, without packages this identity may not read.
+	Skipped []MachineSkip `json:"skipped"`
+
+	// StaleAfterDays Examples: 14
+	StaleAfterDays int64 `json:"staleAfterDays"`
+}
+
+// MachineInstall defines model for MachineInstall.
+type MachineInstall struct {
+	// Package namespace/name
+	//
+	// Examples: acme/code-review
+	Package string `json:"package"`
+
+	// Profile Examples: platform-baseline
+	Profile string `json:"profile"`
+
+	// Target Examples: claude-code
+	Target MachineInstallTarget `json:"target"`
+
+	// Version Examples: 2.4.1
+	Version string `json:"version"`
+}
+
+// MachineInstallTarget Examples: claude-code
+type MachineInstallTarget string
+
+// MachineList defines model for MachineList.
+type MachineList struct {
+	// Machines Most recently seen first.
+	Machines []Machine `json:"machines"`
+
+	// Page Examples: 1
+	Page int64 `json:"page"`
+
+	// PageSize Examples: 50
+	PageSize int64 `json:"pageSize"`
+
+	// StaleAfterDays Examples: 14
+	StaleAfterDays int64 `json:"staleAfterDays"`
+
+	// Total Machines matching every filter, across all pages.
+	//
+	// Examples: 42
+	Total int64 `json:"total"`
+
+	// Versions With a package filter, how many of the matching machines hold each of its versions.
+	Versions *[]MachineVersionCount `json:"versions,omitempty"`
+}
+
+// MachineSkip defines model for MachineSkip.
+type MachineSkip struct {
+	// Component Examples: mcp-server lint
+	Component *string `json:"component,omitempty"`
+
+	// Entry Examples: acme/code-review
+	Entry string `json:"entry"`
+
+	// Profile Examples: platform-baseline
+	Profile string `json:"profile"`
+
+	// Reason Examples: no claude CLI on PATH
+	Reason *string `json:"reason,omitempty"`
+
+	// Target Absent when the whole entry was skipped.
+	Target *MachineSkipTarget `json:"target,omitempty"`
+}
+
+// MachineSkipTarget Absent when the whole entry was skipped.
+type MachineSkipTarget string
+
+// MachineVersionCount defines model for MachineVersionCount.
+type MachineVersionCount struct {
+	// Machines Machines in this listing's scope with this version installed.
+	//
+	// Examples: 12
+	Machines int64 `json:"machines"`
+
+	// Version Examples: 2.4.1
+	Version string `json:"version"`
+}
 
 // Organization defines model for Organization.
 type Organization struct {
@@ -2749,7 +3468,12 @@ type OrganizationPolicy struct {
 	// CommunityNeedsReview A version from a non-verified publisher is flagged for review rather than becoming immediately distributable.
 	CommunityNeedsReview bool `json:"communityNeedsReview"`
 
-	// RequireSignedBundles A version with no recorded signature reference is excluded from every resolution while this is set.
+	// PackagesWithoutExpectedSigner Packages with a published version and no expected signer: every one of them is excluded from resolution while requireSignedBundles is set.
+	//
+	// Examples: 3
+	PackagesWithoutExpectedSigner int64 `json:"packagesWithoutExpectedSigner"`
+
+	// RequireSignedBundles While set, a version resolves only if its Sigstore signature verified against the downloaded archive and its signer matches the package's expected signer. A package with no expected signer configured resolves nothing; packagesWithoutExpectedSigner counts them.
 	RequireSignedBundles bool `json:"requireSignedBundles"`
 
 	// RescanOnNewVersion Publishing a version rescans the package's other versions under the running rule pack.
@@ -2796,7 +3520,7 @@ type PackageCapability struct {
 	Detail     []string `json:"detail"`
 	Indefinite *bool    `json:"indefinite,omitempty"`
 
-	// Level How much trust it demands. A shell capability is never below review (FR-018).
+	// Level How much trust it demands. A shell capability is never below review.
 	//
 	// Examples: allowlisted
 	Level PackageCapabilityLevel `json:"level"`
@@ -2805,7 +3529,7 @@ type PackageCapability struct {
 	Name PackageCapabilityName `json:"name"`
 }
 
-// PackageCapabilityLevel How much trust it demands. A shell capability is never below review (FR-018).
+// PackageCapabilityLevel How much trust it demands. A shell capability is never below review.
 //
 // Examples: allowlisted
 type PackageCapabilityLevel string
@@ -2815,8 +3539,18 @@ type PackageCapabilityName string
 
 // PackageComponent defines model for PackageComponent.
 type PackageComponent struct {
+	// Event A hook's event.
+	//
+	// Examples: PreToolUse
+	Event *string `json:"event,omitempty"`
+
 	// Kind Examples: skill
 	Kind PackageComponentKind `json:"kind"`
+
+	// Matcher A hook's tool matcher; absent matches every tool.
+	//
+	// Examples: Bash
+	Matcher *string `json:"matcher,omitempty"`
 
 	// Name Examples: terraform-module-review
 	Name string `json:"name"`
@@ -2824,12 +3558,29 @@ type PackageComponent struct {
 	// Note Examples: SKILL.md + scripts/
 	Note *string `json:"note,omitempty"`
 
-	// Path Examples: skills/terraform-module-review
+	// Path Unique within the version. A component inside a JSON document is file#/json/pointer.
+	//
+	// Examples: skills/terraform-module-review
 	Path string `json:"path"`
+
+	// Target A hook's command, a stdio server's command line, or a remote server's URL host. Publisher-controlled text.
+	//
+	// Examples: npx -y @acme/mcp@1.2.3
+	Target *string `json:"target,omitempty"`
+
+	// Transport An MCP server's transport.
+	//
+	// Examples: stdio
+	Transport *PackageComponentTransport `json:"transport,omitempty"`
 }
 
 // PackageComponentKind Examples: skill
 type PackageComponentKind string
+
+// PackageComponentTransport An MCP server's transport.
+//
+// Examples: stdio
+type PackageComponentTransport string
 
 // PackageDeleted defines model for PackageDeleted.
 type PackageDeleted struct {
@@ -2867,15 +3618,15 @@ type PackageDetail struct {
 	CanChangeVisibility bool                `json:"canChangeVisibility"`
 	Capabilities        PackageCapabilities `json:"capabilities"`
 
-	// Category The admin-curated category (FR-049). Empty when none was chosen.
+	// Category The admin-curated category. Empty when none was chosen.
 	//
 	// Examples: Infrastructure
 	Category *string `json:"category,omitempty"`
 
-	// Components Derived from the FILE TREE. No manifest field enumerates components (FR-017, R1).
+	// Components Derived from the FILE TREE. No manifest field enumerates components.
 	Components []PackageComponent `json:"components"`
 
-	// Dependents Profiles using this package that the CALLER MAY READ, and no others (FR-044).
+	// Dependents Profiles using this package that the CALLER MAY READ, and no others.
 	Dependents []PackageDependent `json:"dependents"`
 
 	// Description Examples: Platform guardrails, ADR authoring and service scaffolding.
@@ -2904,9 +3655,12 @@ type PackageDetail struct {
 	// Owner Examples: kwiatrzyk@example.com
 	Owner     *string          `json:"owner,omitempty"`
 	Publisher PackagePublisher `json:"publisher"`
+	Signer    PackageSigner    `json:"signer"`
+	Source    *PackageSource   `json:"source,omitempty"`
 
 	// Tags The latest version's manifest keywords. Tags belong to the version, not the package.
-	Tags []string `json:"tags"`
+	Tags     []string         `json:"tags"`
+	Tracking *PackageTracking `json:"tracking,omitempty"`
 
 	// Verdict Examples: clean
 	Verdict PackageDetailVerdict `json:"verdict"`
@@ -3073,7 +3827,7 @@ type PackageRegistered struct {
 	Version   string             `json:"version"`
 	VersionId openapi_types.UUID `json:"versionId"`
 
-	// Visible Always false here. Commit-last (FR-008): the fetcher flips it.
+	// Visible Always false here. Commit-last: the fetcher flips it.
 	Visible bool `json:"visible"`
 }
 
@@ -3087,7 +3841,7 @@ type PackageRegisteredVerdict string
 
 // PackageScan defines model for PackageScan.
 type PackageScan struct {
-	// Checks Every check the scan ran, passes included (FR-025).
+	// Checks Every check the scan ran, passes included.
 	Checks []FindingCheck `json:"checks"`
 
 	// Findings Every finding this scan raised against this version.
@@ -3140,6 +3894,81 @@ type PackageScanFindingSeverity string
 // PackageScanFindingState Examples: open
 type PackageScanFindingState string
 
+// PackageSigner defines model for PackageSigner.
+type PackageSigner struct {
+	// CanChange The caller is the owner or a catalog admin.
+	CanChange bool `json:"canChange"`
+
+	// Identity The RE2 pattern the signer's identity must match in full.
+	//
+	// Examples: https://github\.com/acme/skills/\.github/workflows/release\.yaml@refs/tags/v.*
+	Identity *string `json:"identity,omitempty"`
+
+	// Issuer The exact OIDC issuer expected; absent when no signer is configured.
+	//
+	// Examples: https://token.actions.githubusercontent.com
+	Issuer *string `json:"issuer,omitempty"`
+}
+
+// PackageSignerUpdate defines model for PackageSignerUpdate.
+type PackageSignerUpdate struct {
+	// Identity An RE2 regular expression the certificate identity (its URI or email SAN) must match in full; it is anchored at both ends.
+	//
+	// Examples: https://github\.com/acme/skills/\.github/workflows/release\.yaml@refs/tags/v.*
+	Identity *string `json:"identity,omitempty"`
+
+	// Issuer The exact OIDC issuer the signing certificate must carry.
+	//
+	// Examples: https://token.actions.githubusercontent.com
+	Issuer *string `json:"issuer,omitempty"`
+}
+
+// PackageSource defines model for PackageSource.
+type PackageSource struct {
+	// Kind Examples: git
+	Kind PackageSourceKind `json:"kind"`
+
+	// Ref The git ref as requested: a tag, a branch or HEAD.
+	//
+	// Examples: v1.2.0
+	Ref *string `json:"ref,omitempty"`
+
+	// Subdirectory Examples: pdf
+	Subdirectory *string `json:"subdirectory,omitempty"`
+
+	// Url The canonical repository for git, the requested URL for an archive; absent for an upload.
+	//
+	// Examples: https://github.com/acme/skills
+	Url *string `json:"url,omitempty"`
+}
+
+// PackageSourceKind Examples: git
+type PackageSourceKind string
+
+// PackageTracking defines model for PackageTracking.
+type PackageTracking struct {
+	CanChange bool `json:"canChange"`
+
+	// LastCheckError Why the last check could not list the upstream tags; absent when it could.
+	LastCheckError *string    `json:"lastCheckError,omitempty"`
+	LastCheckedAt  *time.Time `json:"lastCheckedAt,omitempty"`
+
+	// TagPattern Examples: v*
+	TagPattern    string `json:"tagPattern"`
+	TrackUpstream bool   `json:"trackUpstream"`
+}
+
+// PackageTrackingUpdate defines model for PackageTrackingUpdate.
+type PackageTrackingUpdate struct {
+	// TagPattern A glob a tag must match. Absent keeps the current pattern. A prerelease tag is registered only when the pattern itself contains a hyphen.
+	//
+	// Examples: v*
+	TagPattern *string `json:"tagPattern,omitempty"`
+
+	// TrackUpstream Register new upstream tags matching tagPattern as they appear.
+	TrackUpstream bool `json:"trackUpstream"`
+}
+
 // PackageVersion defines model for PackageVersion.
 type PackageVersion struct {
 	CreatedAt time.Time `json:"createdAt"`
@@ -3151,9 +3980,23 @@ type PackageVersion struct {
 	DistTag PackageVersionDistTag `json:"distTag"`
 
 	// ObjectKey Examples: skills/example/platform-toolkit/1.3.0/bundle.tar.zst
-	ObjectKey string `json:"objectKey"`
-	PinnedBy  int64  `json:"pinnedBy"`
-	SizeBytes *int64 `json:"sizeBytes,omitempty"`
+	ObjectKey string           `json:"objectKey"`
+	PinnedBy  int64            `json:"pinnedBy"`
+	Signature VersionSignature `json:"signature"`
+	SizeBytes *int64           `json:"sizeBytes,omitempty"`
+
+	// SourceCommit The git commit the bytes were downloaded at, resolved from sourceRef before the download.
+	//
+	// Examples: 3f9c2e1d8b7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e
+	SourceCommit *string `json:"sourceCommit,omitempty"`
+
+	// SourceRef The git ref as requested for this version.
+	//
+	// Examples: v1.2.0
+	SourceRef *string `json:"sourceRef,omitempty"`
+
+	// SourceUrl Examples: https://github.com/acme/skills
+	SourceUrl *string `json:"sourceUrl,omitempty"`
 
 	// Verdict Examples: clean
 	Verdict PackageVersionVerdict `json:"verdict"`
@@ -3211,8 +4054,18 @@ type PreviewCapabilityLevel string
 
 // PreviewComponent defines model for PreviewComponent.
 type PreviewComponent struct {
+	// Event A hook's event.
+	//
+	// Examples: PreToolUse
+	Event *string `json:"event,omitempty"`
+
 	// Kind Examples: skill
 	Kind PreviewComponentKind `json:"kind"`
+
+	// Matcher A hook's tool matcher; absent matches every tool.
+	//
+	// Examples: Bash
+	Matcher *string `json:"matcher,omitempty"`
 
 	// Name Examples: terraform-review
 	Name string `json:"name"`
@@ -3222,10 +4075,25 @@ type PreviewComponent struct {
 
 	// Path Examples: skills/terraform-review/SKILL.md
 	Path string `json:"path"`
+
+	// Target A hook's command, a stdio server's command line, or a remote server's URL host. Publisher-controlled text.
+	//
+	// Examples: npx -y @acme/mcp@1.2.3
+	Target *string `json:"target,omitempty"`
+
+	// Transport An MCP server's transport.
+	//
+	// Examples: stdio
+	Transport *PreviewComponentTransport `json:"transport,omitempty"`
 }
 
 // PreviewComponentKind Examples: skill
 type PreviewComponentKind string
+
+// PreviewComponentTransport An MCP server's transport.
+//
+// Examples: stdio
+type PreviewComponentTransport string
 
 // PreviewEntry defines model for PreviewEntry.
 type PreviewEntry struct {
@@ -3317,7 +4185,7 @@ type ProfileCreate struct {
 	DefaultPolicy *ProfileCreateDefaultPolicy `json:"defaultPolicy,omitempty"`
 	Description   *string                     `json:"description,omitempty"`
 
-	// ForkOf Slug of a profile to fork. Its entries are COPIED at this instant; the fork never sees an upstream revision published afterwards (FR-038). The upstream must be readable by this identity.
+	// ForkOf Slug of a profile to fork. Its entries are COPIED at this instant; the fork never sees an upstream revision published afterwards. The upstream must be readable by this identity.
 	//
 	// Examples: example/sre-oncall
 	ForkOf *string `json:"forkOf,omitempty"`
@@ -3333,7 +4201,7 @@ type ProfileCreate struct {
 	// Examples: example/platform-engineer
 	Slug string `json:"slug"`
 
-	// Visibility Defaults to private. A new profile is not readable by the whole organisation until somebody says so (FR-037, FR-044).
+	// Visibility Defaults to private. A new profile is not readable by the whole organisation until somebody says so.
 	//
 	// Examples: organisation
 	Visibility *ProfileCreateVisibility `json:"visibility,omitempty"`
@@ -3342,23 +4210,23 @@ type ProfileCreate struct {
 // ProfileCreateDefaultPolicy Examples: floating-latest
 type ProfileCreateDefaultPolicy string
 
-// ProfileCreateVisibility Defaults to private. A new profile is not readable by the whole organisation until somebody says so (FR-037, FR-044).
+// ProfileCreateVisibility Defaults to private. A new profile is not readable by the whole organisation until somebody says so.
 //
 // Examples: organisation
 type ProfileCreateVisibility string
 
 // ProfileDetail defines model for ProfileDetail.
 type ProfileDetail struct {
-	// DefaultPolicy The profile's own default, which a per-entry mode overrides (FR-032).
+	// DefaultPolicy The profile's own default, which a per-entry mode overrides.
 	//
 	// Examples: floating-latest
 	DefaultPolicy ProfileDetailDefaultPolicy `json:"defaultPolicy"`
 	Description   *string                    `json:"description,omitempty"`
 
-	// Entries Every package this profile holds, in the profile's own order — INCLUDING the ones the gate excludes, which are reported and never silently omitted (FR-036).
+	// Entries Every package this profile holds, in the profile's own order — INCLUDING the ones the gate excludes, which are reported and never silently omitted.
 	Entries []ProfileEntry `json:"entries"`
 
-	// ForkedFrom Slug of the profile this was forked from. Lineage only: a fork never inherits the upstream's future revisions (FR-038).
+	// ForkedFrom Slug of the profile this was forked from. Lineage only: a fork never inherits the upstream's future revisions.
 	//
 	// Examples: example/sre-oncall
 	ForkedFrom *string `json:"forkedFrom,omitempty"`
@@ -3371,7 +4239,7 @@ type ProfileDetail struct {
 	// Examples: 14
 	HeadRevision int64 `json:"headRevision"`
 
-	// Members Individual members and identity-provider groups, with the role each holds (FR-037).
+	// Members Individual members and identity-provider groups, with the role each holds.
 	Members []ProfileMember `json:"members"`
 
 	// Name Examples: Platform Engineer
@@ -3382,10 +4250,10 @@ type ProfileDetail struct {
 	// Examples: example/platform
 	OwnerTeam *string `json:"ownerTeam,omitempty"`
 
-	// Permissions What this identity may do here. FR-126: a screen disables what it may not do rather than offering it and being refused.
+	// Permissions What this identity may do here. A screen disables what it may not do rather than offering it and being refused.
 	Permissions ProfilePermissions `json:"permissions"`
 
-	// Revisions Published history, most recent first. Previous revisions stay readable for ever (FR-034).
+	// Revisions Published history, most recent first. Previous revisions stay readable for ever.
 	Revisions []ProfileRevision `json:"revisions"`
 
 	// Role This identity's role on this profile. Absent when they read it through organisation visibility rather than a membership.
@@ -3404,7 +4272,7 @@ type ProfileDetail struct {
 	Visibility ProfileDetailVisibility `json:"visibility"`
 }
 
-// ProfileDetailDefaultPolicy The profile's own default, which a per-entry mode overrides (FR-032).
+// ProfileDetailDefaultPolicy The profile's own default, which a per-entry mode overrides.
 //
 // Examples: floating-latest
 type ProfileDetailDefaultPolicy string
@@ -3474,13 +4342,13 @@ type ProfileEntry struct {
 	// Examples: >=1.4.0 <2.0.0
 	Range *string `json:"range,omitempty"`
 
-	// Skip Present exactly when outcome is skipped. The same shape the lockfile publishes, so the screen and the CLI report an exclusion identically (FR-036).
+	// Skip Present exactly when outcome is skipped. The same shape the lockfile publishes, so the screen and the CLI report an exclusion identically.
 	Skip *LockfileSkip `json:"skip,omitempty"`
 
 	// Unpublished This row would resolve differently from the head revision's lockfile. Nothing reaches a machine until a revision is published.
 	Unpublished bool `json:"unpublished"`
 
-	// Verdict The RESOLVED version's verdict. The vocabulary is narrower than the catalog's on purpose: a rejected version never resolves, under any gate (FR-029).
+	// Verdict The RESOLVED version's verdict. The vocabulary is narrower than the catalog's on purpose: a rejected version never resolves, under any gate.
 	Verdict *ProfileEntryVerdict `json:"verdict,omitempty"`
 
 	// Version What this entry resolves to. Absent exactly when the entry is excluded.
@@ -3503,7 +4371,7 @@ type ProfileEntryMode string
 // ProfileEntryOutcome Examples: warned
 type ProfileEntryOutcome string
 
-// ProfileEntryVerdict The RESOLVED version's verdict. The vocabulary is narrower than the catalog's on purpose: a rejected version never resolves, under any gate (FR-029).
+// ProfileEntryVerdict The RESOLVED version's verdict. The vocabulary is narrower than the catalog's on purpose: a rejected version never resolves, under any gate.
 type ProfileEntryVerdict string
 
 // ProfileEntryRemoval defines model for ProfileEntryRemoval.
@@ -3574,7 +4442,7 @@ type ProfilePermissions struct {
 	// Delete May delete the profile outright. Owner only. Deleting is refused separately, by the api, when the profile holds a published revision — this bit is the role check alone.
 	Delete bool `json:"delete"`
 
-	// Publish May publish a revision. Owner or maintainer — a consumer may not (FR-037).
+	// Publish May publish a revision. Owner or maintainer — a consumer may not.
 	Publish bool `json:"publish"`
 
 	// Share May change who the profile is shared with. Owner only: who can see a profile is not a curation decision.
@@ -3763,6 +4631,49 @@ type ScannerSummary struct {
 	VersionsScanned int64 `json:"versionsScanned"`
 }
 
+// ServiceToken defines model for ServiceToken.
+type ServiceToken struct {
+	CreatedAt time.Time `json:"createdAt"`
+
+	// CreatedBy The email or subject of the person who created it.
+	//
+	// Examples: kwiatrzyk@example.com
+	CreatedBy string             `json:"createdBy"`
+	ExpiresAt time.Time          `json:"expiresAt"`
+	Id        openapi_types.UUID `json:"id"`
+
+	// LastUsedAt Accurate to about a minute. Absent until first use.
+	LastUsedAt *time.Time `json:"lastUsedAt,omitempty"`
+
+	// Name Examples: release pipeline
+	Name      string     `json:"name"`
+	RevokedAt *time.Time `json:"revokedAt,omitempty"`
+
+	// Scopes Examples: ["sync:profile/example/platform-engineer"]
+	Scopes []string `json:"scopes"`
+
+	// Status Examples: active
+	Status ServiceTokenStatus `json:"status"`
+}
+
+// ServiceTokenStatus Examples: active
+type ServiceTokenStatus string
+
+// ServiceTokenCreated defines model for ServiceTokenCreated.
+type ServiceTokenCreated struct {
+	// Secret The bearer secret, prefixed amst_. Returned once; the hub stores only its hash.
+	//
+	// Examples: amst_3q2-7wEXAMPLEonlyEXAMPLEonlyEXAMPLEonly
+	Secret string       `json:"secret"`
+	Token  ServiceToken `json:"token"`
+}
+
+// ServiceTokenList defines model for ServiceTokenList.
+type ServiceTokenList struct {
+	// Tokens Most recently created first.
+	Tokens []ServiceToken `json:"tokens"`
+}
+
 // Session defines model for Session.
 type Session struct {
 	// ExpiresAt When the session row expires. This is the value stored, and what a cookie's expiry must match.
@@ -3820,12 +4731,71 @@ type StorageReport struct {
 	Truncated bool    `json:"truncated"`
 }
 
+// SyncComponentSkip defines model for SyncComponentSkip.
+type SyncComponentSkip struct {
+	// Component The component's kind and name.
+	//
+	// Examples: mcp-server lint
+	Component string `json:"component"`
+
+	// Entry namespace/name of the installed entry.
+	//
+	// Examples: acme/code-review
+	Entry string `json:"entry"`
+
+	// Reason Examples: no claude CLI on PATH
+	Reason string `json:"reason"`
+
+	// Target Examples: claude-code
+	Target SyncComponentSkipTarget `json:"target"`
+}
+
+// SyncComponentSkipTarget Examples: claude-code
+type SyncComponentSkipTarget string
+
+// SyncInstall defines model for SyncInstall.
+type SyncInstall struct {
+	// Changed This sync wrote the entry. The component skips of an entry it did not write carry over from the report that did.
+	Changed *bool `json:"changed,omitempty"`
+
+	// Id namespace/name
+	//
+	// Examples: acme/code-review
+	Id string `json:"id"`
+
+	// Target Examples: claude-code
+	Target SyncInstallTarget `json:"target"`
+
+	// Version Examples: 2.4.1
+	Version string `json:"version"`
+}
+
+// SyncInstallTarget Examples: claude-code
+type SyncInstallTarget string
+
 // SyncReport defines model for SyncReport.
 type SyncReport struct {
+	// AmctlVersion Examples: 0.9.0
+	AmctlVersion *string `json:"amctlVersion,omitempty"`
+
+	// Arch Examples: arm64
+	Arch *string `json:"arch,omitempty"`
+
 	// Host Hostname the sync landed on, for the audit row.
 	//
 	// Examples: dev-laptop-01
 	Host string `json:"host"`
+
+	// Installed Every entry of this profile installed on the machine after this sync. Replaces what the machine reported for this profile before.
+	Installed *[]SyncInstall `json:"installed,omitempty"`
+
+	// MachineId A random id the client generated once and keeps. Without it the sync is recorded but no machine inventory is kept.
+	//
+	// Examples: 0193a8e2-6b1f-7c3a-9d4e-2f5b8c1a7e60
+	MachineId *openapi_types.UUID `json:"machineId,omitempty"`
+
+	// Os Examples: darwin
+	Os *string `json:"os,omitempty"`
 
 	// Profile Slug of the profile that was synced.
 	//
@@ -3839,6 +4809,9 @@ type SyncReport struct {
 
 	// Skipped Entry ids the client skipped locally, if any.
 	Skipped *[]string `json:"skipped,omitempty"`
+
+	// SkippedComponents Components of entries this sync wrote that the client did not place.
+	SkippedComponents *[]SyncComponentSkip `json:"skippedComponents,omitempty"`
 
 	// Targets Agent directories the client actually wrote.
 	Targets []SyncReportTargets `json:"targets"`
@@ -3865,11 +4838,56 @@ type UpdatePolicyRequest struct {
 // UpdatePolicyRequestScanGate defines model for UpdatePolicyRequest.ScanGate.
 type UpdatePolicyRequestScanGate string
 
+// UpdateWebhookRequest defines model for UpdateWebhookRequest.
+type UpdateWebhookRequest struct {
+	// Enabled Re-enabling clears the reason a webhook was disabled.
+	Enabled    *bool                             `json:"enabled,omitempty"`
+	EventTypes *[]UpdateWebhookRequestEventTypes `json:"eventTypes,omitempty"`
+	Name       *string                           `json:"name,omitempty"`
+	Namespaces *[]string                         `json:"namespaces,omitempty"`
+	Url        *string                           `json:"url,omitempty"`
+}
+
+// UpdateWebhookRequestEventTypes defines model for UpdateWebhookRequest.EventTypes.
+type UpdateWebhookRequestEventTypes string
+
 // VersionDeleted defines model for VersionDeleted.
 type VersionDeleted struct {
 	// PinnedByProfiles How many profile_entry rows pin this exact version. They keep resolving it; only new floating or range resolution stops offering it.
 	PinnedByProfiles int64 `json:"pinnedByProfiles"`
 }
+
+// VersionSignature defines model for VersionSignature.
+type VersionSignature struct {
+	// Identity The signing certificate's identity, when the bundle verified. Publisher-controlled text.
+	//
+	// Examples: https://github.com/acme/skills/.github/workflows/release.yaml@refs/tags/v1.2.0
+	Identity *string `json:"identity,omitempty"`
+
+	// Issuer The signing certificate's OIDC issuer, when the bundle verified.
+	//
+	// Examples: https://token.actions.githubusercontent.com
+	Issuer *string `json:"issuer,omitempty"`
+
+	// Reason Why the bundle did not verify, when it did not.
+	Reason *string `json:"reason,omitempty"`
+
+	// Ref Where the bundle was found.
+	//
+	// Examples: https://github.com/acme/skills/releases/download/v1.2.0/skills.tar.gz.sigstore.json
+	Ref      *string    `json:"ref,omitempty"`
+	SignedAt *time.Time `json:"signedAt,omitempty"`
+
+	// Status verified-matching is the only trustworthy value: the bundle verified against the downloaded archive AND its signer matches the package's expected signer. verified-no-expected-signer and verified-unexpected-signer verified cryptographically but prove nothing about who should have signed.
+	//
+	// Examples: verified-matching
+	Status VersionSignatureStatus `json:"status"`
+}
+
+// VersionSignatureStatus verified-matching is the only trustworthy value: the bundle verified against the downloaded archive AND its signer matches the package's expected signer. verified-no-expected-signer and verified-unexpected-signer verified cryptographically but prove nothing about who should have signed.
+//
+// Examples: verified-matching
+type VersionSignatureStatus string
 
 // Viewer defines model for Viewer.
 type Viewer struct {
@@ -3886,7 +4904,7 @@ type Viewer struct {
 	// Groups The groups claim as the provider sent it, unfiltered. Shown on the no-role screen so a person can say which groups they hold when asking for access.
 	Groups []string `json:"groups"`
 
-	// HasRole Whether any group this identity holds maps to a role at all (FR-117). False is a screen state, not an error.
+	// HasRole Whether any group this identity holds maps to a role at all. False is a screen state, not an error.
 	HasRole bool `json:"hasRole"`
 
 	// Role The most privileged role this identity's groups map to. Absent when none of them maps to anything.
@@ -3905,12 +4923,128 @@ type Viewer struct {
 // Examples: catalog-admin
 type ViewerRole string
 
+// Webhook defines model for Webhook.
+type Webhook struct {
+	CreatedAt time.Time `json:"createdAt"`
+
+	// CreatedBy The email or subject of the person who created it.
+	//
+	// Examples: kwiatrzyk@example.com
+	CreatedBy string `json:"createdBy"`
+
+	// DisabledReason Why the hub disabled it, when it did; absent when a person did.
+	//
+	// Examples: the receiver answered 410 Gone
+	DisabledReason *string `json:"disabledReason,omitempty"`
+	Enabled        bool    `json:"enabled"`
+
+	// EventTypes Examples: ["scan.completed"]
+	EventTypes        []string           `json:"eventTypes"`
+	Id                openapi_types.UUID `json:"id"`
+	LastDeliveryAt    *time.Time         `json:"lastDeliveryAt,omitempty"`
+	LastDeliveryError *string            `json:"lastDeliveryError,omitempty"`
+
+	// LastDeliveryStatus The HTTP status of the last attempt; absent when it got no response.
+	LastDeliveryStatus *int64 `json:"lastDeliveryStatus,omitempty"`
+
+	// Name Examples: security channel
+	Name string `json:"name"`
+
+	// Namespaces Empty means every namespace.
+	Namespaces []string  `json:"namespaces"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+
+	// Url Examples: https://hooks.example.com/agent-manager
+	Url string `json:"url"`
+}
+
+// WebhookCreated defines model for WebhookCreated.
+type WebhookCreated struct {
+	// Secret The signing secret, whsec_ and base64. Returned once.
+	//
+	// Examples: whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw
+	Secret  string  `json:"secret"`
+	Webhook Webhook `json:"webhook"`
+}
+
+// WebhookDelivery defines model for WebhookDelivery.
+type WebhookDelivery struct {
+	// Attempt Examples: 1
+	Attempt    int64   `json:"attempt"`
+	DurationMs int64   `json:"durationMs"`
+	Error      *string `json:"error,omitempty"`
+
+	// EventId The audit event delivered, and the Webhook-Id header the receiver saw.
+	EventId openapi_types.UUID `json:"eventId"`
+
+	// EventType Examples: scan.completed
+	EventType  string             `json:"eventType"`
+	Id         openapi_types.UUID `json:"id"`
+	OccurredAt time.Time          `json:"occurredAt"`
+
+	// ResponseBody The first KiB of the receiver's answer.
+	ResponseBody *string `json:"responseBody,omitempty"`
+
+	// StatusCode Absent when no response arrived.
+	StatusCode *int64 `json:"statusCode,omitempty"`
+}
+
+// WebhookDeliveryList defines model for WebhookDeliveryList.
+type WebhookDeliveryList struct {
+	// Deliveries Newest first, at most 100, kept for 30 days.
+	Deliveries []WebhookDelivery `json:"deliveries"`
+}
+
+// WebhookList defines model for WebhookList.
+type WebhookList struct {
+	// EventTypes Every event type a subscription can select.
+	EventTypes []string `json:"eventTypes"`
+
+	// Webhooks Most recently created first.
+	Webhooks []Webhook `json:"webhooks"`
+}
+
+// WebhookSecret defines model for WebhookSecret.
+type WebhookSecret struct {
+	// Secret The new signing secret, whsec_ and base64. The previous one stops signing immediately.
+	//
+	// Examples: whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw
+	Secret string `json:"secret"`
+}
+
 // ListAuditParams defines parameters for ListAudit.
 type ListAuditParams struct {
+	// SubjectKind Only rows about this kind of subject. package also matches the rows about its versions and findings.
+	SubjectKind *ListAuditParamsSubjectKind `form:"subjectKind,omitempty" json:"subjectKind,omitempty"`
+
+	// SubjectId Only rows about this subject id; pair it with subjectKind.
+	SubjectId *string `form:"subjectId,omitempty" json:"subjectId,omitempty"`
+
+	// Namespace Only rows whose subject is in this package namespace.
+	Namespace *string `form:"namespace,omitempty" json:"namespace,omitempty"`
+
 	// Page Clamped into range: a page past the end returns the last one.
 	Page     *int64 `form:"page,omitempty" json:"page,omitempty"`
 	PageSize *int64 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 }
+
+// ListAuditParamsSubjectKind defines parameters for ListAudit.
+type ListAuditParamsSubjectKind string
+
+// ExportAuditParams defines parameters for ExportAudit.
+type ExportAuditParams struct {
+	// SubjectKind Only rows about this kind of subject. package also matches the rows about its versions and findings.
+	SubjectKind *ExportAuditParamsSubjectKind `form:"subjectKind,omitempty" json:"subjectKind,omitempty"`
+
+	// SubjectId Only rows about this subject id; pair it with subjectKind.
+	SubjectId *string `form:"subjectId,omitempty" json:"subjectId,omitempty"`
+
+	// Namespace Only rows whose subject is in this package namespace.
+	Namespace *string `form:"namespace,omitempty" json:"namespace,omitempty"`
+}
+
+// ExportAuditParamsSubjectKind defines parameters for ExportAudit.
+type ExportAuditParamsSubjectKind string
 
 // ListFindingsParams defines parameters for ListFindings.
 type ListFindingsParams struct {
@@ -3931,25 +5065,47 @@ type ListFindingsParamsState string
 // ListFindingsParamsSeverity defines parameters for ListFindings.
 type ListFindingsParamsSeverity string
 
+// ListMachinesParams defines parameters for ListMachines.
+type ListMachinesParams struct {
+	// Package Only machines with this package installed, as namespace/name.
+	Package *string `form:"package,omitempty" json:"package,omitempty"`
+
+	// Version Only machines with this version of the package installed; needs package.
+	Version *string `form:"version,omitempty" json:"version,omitempty"`
+
+	// Profile Only machines that reported this profile.
+	Profile *string `form:"profile,omitempty" json:"profile,omitempty"`
+
+	// Stale Only stale machines, or only fresh ones.
+	Stale *ListMachinesParamsStale `form:"stale,omitempty" json:"stale,omitempty"`
+
+	// Page Clamped into range: a page past the end returns the last one.
+	Page     *int64 `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int64 `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
+// ListMachinesParamsStale defines parameters for ListMachines.
+type ListMachinesParamsStale string
+
 // ListPackagesParams defines parameters for ListPackages.
 type ListPackagesParams struct {
-	// Q Case-insensitive substring, matched against name, id, publisher and tags (FR-010).
+	// Q Case-insensitive substring, matched against name, id, publisher and tags.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 
-	// Kind Mutually exclusive single selection (FR-011).
+	// Kind Mutually exclusive single selection.
 	Kind *ListPackagesParamsKind `form:"kind,omitempty" json:"kind,omitempty"`
 
 	// Status Mutually exclusive single selection. Verified means a verified publisher AND a clean verdict, both.
 	Status *ListPackagesParamsStatus `form:"status,omitempty" json:"status,omitempty"`
 
-	// Category Repeatable. Selected categories narrow DISJUNCTIVELY (FR-013).
+	// Category Repeatable. Selected categories narrow DISJUNCTIVELY.
 	Category *[]string `form:"category,omitempty" json:"category,omitempty"`
 
-	// Tag Repeatable. Selected tags narrow CONJUNCTIVELY (FR-013).
+	// Tag Repeatable. Selected tags narrow CONJUNCTIVELY.
 	Tag  *[]string               `form:"tag,omitempty" json:"tag,omitempty"`
 	Sort *ListPackagesParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
 
-	// Dir Descending first, ascending on a second click (FR-014).
+	// Dir Descending first, ascending on a second click.
 	Dir *ListPackagesParamsDir `form:"dir,omitempty" json:"dir,omitempty"`
 
 	// Page Clamped into range: a page past the end returns the last one.
@@ -3974,7 +5130,7 @@ type RegisterPackageMultipartBody struct {
 	// Archive Required when source is upload, and refused otherwise. huma treats a form field as required unless told otherwise, which is what required:"false" is doing on every optional field here.
 	Archive *openapi_types.File `json:"archive,omitempty"`
 
-	// Category A category name or slug from the admin-curated vocabulary (FR-049).
+	// Category A category name or slug from the admin-curated vocabulary.
 	//
 	// Examples: Infrastructure
 	Category *string `json:"category,omitempty"`
@@ -3999,7 +5155,10 @@ type RegisterPackageMultipartBody struct {
 	// Examples: v1.3.0
 	Ref *string `json:"ref,omitempty"`
 
-	// Source Which of FR-001's three shapes this is.
+	// SigstoreBundle Optional, upload only: a Sigstore bundle (.sigstore.json) over the archive's exact bytes, as cosign sign-blob --bundle writes it. The fetcher verifies it and records the signer; a git or archive-url source is checked for a bundle published beside it instead.
+	SigstoreBundle *openapi_types.File `json:"sigstoreBundle,omitempty"`
+
+	// Source Which of the three source shapes this is.
 	//
 	// Examples: git
 	Source *RegisterPackageMultipartBodySource `json:"source,omitempty"`
@@ -4053,7 +5212,7 @@ type GetPackageFileParams struct {
 
 // ScannerSummaryParams defines parameters for ScannerSummary.
 type ScannerSummaryParams struct {
-	// Days The window the scanned count and the median are computed over. The design's card says 30 days; the parameter is what keeps that caption a value rather than a constant (FR-121).
+	// Days The window the scanned count and the median are computed over. The design's card says 30 days; the parameter is what keeps that caption a value rather than a constant.
 	Days *int64 `form:"days,omitempty" json:"days,omitempty"`
 }
 
@@ -4087,6 +5246,12 @@ type RegisterPackageMultipartRequestBody RegisterPackageMultipartBody
 // PreviewPackageMultipartRequestBody defines body for PreviewPackage for multipart/form-data ContentType.
 type PreviewPackageMultipartRequestBody PreviewPackageMultipartBody
 
+// SetPackageSignerJSONRequestBody defines body for SetPackageSigner for application/json ContentType.
+type SetPackageSignerJSONRequestBody = PackageSignerUpdate
+
+// SetPackageTrackingJSONRequestBody defines body for SetPackageTracking for application/json ContentType.
+type SetPackageTrackingJSONRequestBody = PackageTrackingUpdate
+
 // SetPackageVisibilityJSONRequestBody defines body for SetPackageVisibility for application/json ContentType.
 type SetPackageVisibilityJSONRequestBody = PackageVisibilityUpdate
 
@@ -4108,11 +5273,20 @@ type SetProfileSharingJSONRequestBody = ProfileSharing
 // SetProfileTargetsJSONRequestBody defines body for SetProfileTargets for application/json ContentType.
 type SetProfileTargetsJSONRequestBody = ProfileTargetSelection
 
+// CreateServiceTokenJSONRequestBody defines body for CreateServiceToken for application/json ContentType.
+type CreateServiceTokenJSONRequestBody = CreateServiceTokenRequest
+
 // CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
 type CreateSessionJSONRequestBody = SessionMintRequest
 
 // ReportSyncJSONRequestBody defines body for ReportSync for application/json ContentType.
 type ReportSyncJSONRequestBody = SyncReport
+
+// CreateWebhookJSONRequestBody defines body for CreateWebhook for application/json ContentType.
+type CreateWebhookJSONRequestBody = CreateWebhookRequest
+
+// UpdateWebhookJSONRequestBody defines body for UpdateWebhook for application/json ContentType.
+type UpdateWebhookJSONRequestBody = UpdateWebhookRequest
 
 // RequestEditorFn is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -4190,42 +5364,42 @@ type ClientInterface interface {
 
 	// ListAudit The audit log, paged, most recent first
 	//
-	// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. There is deliberately no filter. The export below must return the full CURRENT SCOPE (FR-051), and with no filters the current scope is the whole log — a filter added here without being added there would quietly stop that holding. Rows are append-only, enforced by revoked grants rather than by anything in this process (FR-052). `text` quotes package and profile names, so it is rendered escaped.
+	// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. Optional filters narrow it to one subject or one package namespace; the export takes the same filters, so it always returns the page's full CURRENT SCOPE. Rows written before subjects were recorded carry none and match no subject filter. Rows are append-only, enforced by revoked grants rather than by anything in this process. `text` quotes package and profile names, so it is rendered escaped.
 	//
 	// Corresponds with GET /v1/audit (the `ListAudit` operationId).
 	ListAudit(ctx context.Context, params *ListAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ExportAudit Export the whole audit log
 	//
-	// FR-051: the full current scope, not the visible page. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
+	// The full current scope, not the visible page — the whole log, or what the same filters as listAudit select. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
 	//
 	// Corresponds with GET /v1/audit/export (the `ExportAudit` operationId).
-	ExportAudit(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+	ExportAudit(ctx context.Context, params *ExportAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetBadges The application shell's counts
 	//
-	// The three counts the sidebar renders, in one call: packages visible in the catalog, profiles THIS IDENTITY may read, and findings awaiting a decision (FR-121). One operation because the shell renders on every screen, so three would be three round trips per page. Three indexed counts over the base tables and not a projection: principle VIII sanctions exactly one and it is not spent here (research R5). The profile count is the length of the list the Profiles screen shows and cannot be more: a count including a profile the reader cannot open would leak its existence by arithmetic.
+	// The three counts the sidebar renders, in one call: packages visible in the catalog, profiles THIS IDENTITY may read, and findings awaiting a decision. One operation because the shell renders on every screen, so three would be three round trips per page. Three indexed counts over the base tables and not a projection: principle VIII sanctions exactly one and it is not spent here. The profile count is the length of the list the Profiles screen shows and cannot be more: a count including a profile the reader cannot open would leak its existence by arithmetic.
 	//
 	// Corresponds with GET /v1/badges (the `GetBadges` operationId).
 	GetBadges(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetBundle Download an immutable version bundle
 	//
-	// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate (FR-029).
+	// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate.
 	//
 	// Corresponds with GET /v1/bundles/{publisher}/{name}/{version} (the `GetBundle` operationId).
 	GetBundle(ctx context.Context, publisher string, name string, version string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// LookupDeviceCode Look up a pending device authorisation
 	//
-	// Shows the requesting host and remaining validity BEFORE the viewer confirms (FR-041), so approval is an informed act. Refuses distinguishably when the code is unknown, expired or already decided (FR-042). The path parameter is a bearer-equivalent secret for the length of its validity and is never logged verbatim (see the api role's correlation middleware).
+	// Shows the requesting host and remaining validity BEFORE the viewer confirms, so approval is an informed act. Refuses distinguishably when the code is unknown, expired or already decided. The path parameter is a bearer-equivalent secret for the length of its validity and is never logged verbatim (see the api role's correlation middleware).
 	//
 	// Corresponds with GET /v1/device/authorizations/{user_code} (the `LookupDeviceCode` operationId).
 	LookupDeviceCode(ctx context.Context, userCode string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ApproveDeviceCode Approve a pending device authorisation
 	//
-	// The confirm action (US6). Moves the code from pending to approved in one transaction and writes the `login` audit row naming the host, source `cli / <host>` (FR-050). Single-use: a second approval of the same code refuses the same way any already-decided code does.
+	// The confirm action. Moves the code from pending to approved in one transaction and writes the `login` audit row naming the host, source `cli / <host>`. Single-use: a second approval of the same code refuses the same way any already-decided code does.
 	//
 	// Corresponds with POST /v1/device/authorizations/{user_code}/approve (the `ApproveDeviceCode` operationId).
 	ApproveDeviceCode(ctx context.Context, userCode string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4250,7 +5424,7 @@ type ClientInterface interface {
 
 	// DeviceTokenWithBody Poll for the issued token
 	//
-	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
+	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -4259,7 +5433,7 @@ type ClientInterface interface {
 
 	// DeviceTokenWithFormdataBody Poll for the issued token
 	//
-	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
+	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.
 	//
 	// Takes a body of the `application/x-www-form-urlencoded` content type.
 	//
@@ -4275,14 +5449,14 @@ type ClientInterface interface {
 
 	// GetFinding One finding, its evidence and every check that ran
 	//
-	// The detail pane of 001 US4 scenario 2: severity, rule, subject, the prose explanation, EVERY evidence location, and EVERY check the raising scan ran — passes included (FR-025). The passes are not padding. A pane showing only failures cannot be told apart from one where nothing else ran, so the absence of a finding would be indistinguishable from the absence of a check, which is the distinction the whole matrix exists for. Evidence and check labels are bundle content and identity-provider content respectively: every consumer renders them escaped (FR-055).
+	// The detail pane: severity, rule, subject, the prose explanation, EVERY evidence location, and EVERY check the raising scan ran — passes included. The passes are not padding. A pane showing only failures cannot be told apart from one where nothing else ran, so the absence of a finding would be indistinguishable from the absence of a check, which is the distinction the whole matrix exists for. Evidence and check labels are bundle content and identity-provider content respectively: every consumer renders them escaped.
 	//
 	// Corresponds with GET /v1/findings/{id} (the `GetFinding` operationId).
 	GetFinding(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// AcceptFindingWithBody Accept a finding with a recorded note and an expiry
 	//
-	// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.
+	// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction. The version's verdict is NOT changed. Accepting makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it — this refusal is the backstop, not the mechanism.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -4291,7 +5465,7 @@ type ClientInterface interface {
 
 	// AcceptFinding Accept a finding with a recorded note and an expiry
 	//
-	// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.
+	// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction. The version's verdict is NOT changed. Accepting makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it — this refusal is the backstop, not the mechanism.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -4300,7 +5474,7 @@ type ClientInterface interface {
 
 	// RejectFindingWithBody Reject a finding and quarantine its version for good
 	//
-	// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
+	// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all, so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -4309,7 +5483,7 @@ type ClientInterface interface {
 
 	// RejectFinding Reject a finding and quarantine its version for good
 	//
-	// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
+	// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all, so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -4318,10 +5492,31 @@ type ClientInterface interface {
 
 	// Health Liveness and readiness
 	//
-	// Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case (FR-058).
+	// Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case.
 	//
 	// Corresponds with GET /v1/health (the `Health` operationId).
 	Health(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListMachines Machines that reported a sync
+	//
+	// A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. A package filter names a package this identity can read, and then also counts the matching machines per version. Stale is computed on read.
+	//
+	// Corresponds with GET /v1/machines (the `ListMachines` operationId).
+	ListMachines(ctx context.Context, params *ListMachinesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ForgetMachine Forget a machine
+	//
+	// Deletes the machine and its inventory and writes one `sync` audit row. A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. The sync events it reported stay. A machine that reports again reappears.
+	//
+	// Corresponds with DELETE /v1/machines/{id} (the `ForgetMachine` operationId).
+	ForgetMachine(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetMachine One machine's installs and latest skips
+	//
+	// A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. Installs and skips list only profiles and packages this identity can read.
+	//
+	// Corresponds with GET /v1/machines/{id} (the `GetMachine` operationId).
+	GetMachine(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetOrganization Identity provider settings, policy, mappings and categories
 	//
@@ -4446,14 +5641,14 @@ type ClientInterface interface {
 
 	// ListPackages Browse, search and facet the catalog
 	//
-	// One page of the catalog with both facet option sets and the live total, from two statements issued concurrently (R4). The two facets count differently, and the asymmetry is FR-013's: CATEGORIES are disjunctive, so each option is counted with the category filter removed; TAGS are conjunctive, so each option is counted against the current results — the number selecting it actually yields. Browsing requires a session: public anonymous browsing is out of scope (spec.md).
+	// One page of the catalog with both facet option sets and the live total, from two statements issued concurrently. The two facets count differently, and the asymmetry is this: CATEGORIES are disjunctive, so each option is counted with the category filter removed; TAGS are conjunctive, so each option is counted against the current results — the number selecting it actually yields. Browsing requires a session: public anonymous browsing is out of scope.
 	//
 	// Corresponds with GET /v1/packages (the `ListPackages` operationId).
 	ListPackages(ctx context.Context, params *ListPackagesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RegisterPackageWithBody Register a package from a URL or an upload
 	//
-	// Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed (FR-008).
+	// Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -4462,7 +5657,7 @@ type ClientInterface interface {
 
 	// PreviewPackageWithBody Validate an archive before registering it
 	//
-	// FR-005's pre-submit answer: every entry with a validation mark, the discarded paths named, the components the FILE TREE reveals, and — when a manifest fails — the schema path that refused it. Writes nothing, and runs the same validation the fetcher runs, so the panel a user approves is the tree that gets stored.
+	// The pre-submit answer: every entry with a validation mark, the discarded paths named, the components the FILE TREE reveals, and — when a manifest fails — the schema path that refused it. Writes nothing, and runs the same validation the fetcher runs, so the panel a user approves is the tree that gets stored.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -4478,14 +5673,14 @@ type ClientInterface interface {
 
 	// GetPackage One package's detail
 	//
-	// Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package (FR-016). The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read (FR-044), and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
+	// Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package. The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read, and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
 	//
 	// Corresponds with GET /v1/packages/{namespace}/{name} (the `GetPackage` operationId).
 	GetPackage(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListPackageFiles The bundle's file tree, to read before using it
 	//
-	// Every regular file the LATEST VISIBLE version's bundle holds. The `component` table records only the significant components — a skill's directory, an MCP server — not a full file list, so this unpacks the bundle itself, under the same extraction caps the fetcher enforces on ingestion, and does so again on every call: nothing here stores a byte-level file list to answer from instead. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029). `default` names this version's own SKILL.md or plugin.json when the bundle has one at its root, since that is the file most worth reading first.
+	// Every regular file the LATEST VISIBLE version's bundle holds. The `component` table records only the significant components — a skill's directory, an MCP server — not a full file list, so this unpacks the bundle itself, under the same extraction caps the fetcher enforces on ingestion, and does so again on every call: nothing here stores a byte-level file list to answer from instead. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one. `default` names this version's own SKILL.md or plugin.json when the bundle has one at its root, since that is the file most worth reading first.
 	//
 	// Corresponds with GET /v1/packages/{namespace}/{name}/files (the `ListPackageFiles` operationId).
 	ListPackageFiles(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4499,10 +5694,46 @@ type ClientInterface interface {
 
 	// GetPackageScan The latest visible version's scan result, to show beside the package
 	//
-	// The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029).
+	// The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one.
 	//
 	// Corresponds with GET /v1/packages/{namespace}/{name}/scan (the `GetPackageScan` operationId).
 	GetPackageScan(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetPackageSignerWithBody Set the signer a package's versions must be signed by
+	//
+	// Sets the exact OIDC issuer and the identity pattern (RE2, matched in full) a version's verified Sigstore signer must satisfy for the version to resolve while the organisation requires signed bundles. Both empty clears it. Takes effect at the next resolution; no signature is re-verified. One audit row of kind `policy`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /v1/packages/{namespace}/{name}/signer (the `SetPackageSigner` operationId).
+	SetPackageSignerWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetPackageSigner Set the signer a package's versions must be signed by
+	//
+	// Sets the exact OIDC issuer and the identity pattern (RE2, matched in full) a version's verified Sigstore signer must satisfy for the version to resolve while the organisation requires signed bundles. Both empty clears it. Takes effect at the next resolution; no signature is re-verified. One audit row of kind `policy`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /v1/packages/{namespace}/{name}/signer (the `SetPackageSigner` operationId).
+	SetPackageSigner(ctx context.Context, namespace string, name string, body SetPackageSignerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetPackageTrackingWithBody Track a git package's upstream tags
+	//
+	// Opts a package registered from git in or out of the fetcher's periodic upstream check, which registers each new tag matching the pattern exactly as a registration would: version, fetch job and audit row, then the ordinary fetch, scan and gate. One audit row of kind `fetch`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /v1/packages/{namespace}/{name}/tracking (the `SetPackageTracking` operationId).
+	SetPackageTrackingWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetPackageTracking Track a git package's upstream tags
+	//
+	// Opts a package registered from git in or out of the fetcher's periodic upstream check, which registers each new tag matching the pattern exactly as a registration would: version, fetch job and audit row, then the ordinary fetch, scan and gate. One audit row of kind `fetch`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /v1/packages/{namespace}/{name}/tracking (the `SetPackageTracking` operationId).
+	SetPackageTracking(ctx context.Context, namespace string, name string, body SetPackageTrackingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteVersion Withdraw one version from the catalog
 	//
@@ -4513,7 +5744,7 @@ type ClientInterface interface {
 
 	// SetPackageVisibilityWithBody Change who may see a package
 	//
-	// Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
+	// Organisation, team or private, in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -4522,7 +5753,7 @@ type ClientInterface interface {
 
 	// SetPackageVisibility Change who may see a package
 	//
-	// Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
+	// Organisation, team or private, in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -4531,14 +5762,14 @@ type ClientInterface interface {
 
 	// ListProfiles Profiles readable by this identity
 	//
-	// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate (FR-126), so a caller choosing among them need not read every one's detail just to find out which allow it.
+	// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others. Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate, so a caller choosing among them need not read every one's detail just to find out which allow it.
 	//
 	// Corresponds with GET /v1/profiles (the `ListProfiles` operationId).
 	ListProfiles(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// CreateProfileWithBody Create a profile, or fork one
 	//
-	// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
+	// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -4547,7 +5778,7 @@ type ClientInterface interface {
 
 	// CreateProfile Create a profile, or fork one
 	//
-	// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
+	// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -4556,21 +5787,21 @@ type ClientInterface interface {
 
 	// DeleteProfile Delete a profile
 	//
-	// Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: FR-034 forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.
+	// Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: the design forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.
 	//
 	// Corresponds with DELETE /v1/profiles/{slug} (the `DeleteProfile` operationId).
 	DeleteProfile(ctx context.Context, slug string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetProfile One profile, resolved under the org gate
 	//
-	// The profile detail screen (001 US5): every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted (FR-036). The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
+	// The profile detail screen: every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted. The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` exists because a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
 	//
 	// Corresponds with GET /v1/profiles/{slug} (the `GetProfile` operationId).
 	GetProfile(ctx context.Context, slug string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SetProfileEntriesWithBody Set the packages a profile holds and how each one tracks versions
 	//
-	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
+	// Float or pin per package, in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED. This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -4579,7 +5810,7 @@ type ClientInterface interface {
 
 	// SetProfileEntries Set the packages a profile holds and how each one tracks versions
 	//
-	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
+	// Float or pin per package, in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED. This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -4606,7 +5837,7 @@ type ClientInterface interface {
 
 	// PublishRevisionWithBody Publish the next immutable revision
 	//
-	// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.
+	// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile`. The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown. THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one. Requires owner or maintainer on the profile — a consumer may not publish.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -4615,7 +5846,7 @@ type ClientInterface interface {
 
 	// PublishRevision Publish the next immutable revision
 	//
-	// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.
+	// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile`. The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown. THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one. Requires owner or maintainer on the profile — a consumer may not publish.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -4624,14 +5855,14 @@ type ClientInterface interface {
 
 	// GetRevision Fetch a resolved revision lockfile
 	//
-	// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted (FR-036).
+	// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted.
 	//
 	// Corresponds with GET /v1/profiles/{slug}/revisions/{revision} (the `GetRevision` operationId).
 	GetRevision(ctx context.Context, slug string, revision string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SetProfileSharingWithBody Set the role each member and identity-provider group holds
 	//
-	// Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
+	// Individual members and IdP groups at four levels — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. This is about roles: a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision; sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -4640,7 +5871,7 @@ type ClientInterface interface {
 
 	// SetProfileSharing Set the role each member and identity-provider group holds
 	//
-	// Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
+	// Individual members and IdP groups at four levels — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. This is about roles: a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision; sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -4649,7 +5880,7 @@ type ClientInterface interface {
 
 	// SetProfileTargetsWithBody Choose which agent directories a client writes
 	//
-	// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
+	// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores. Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -4658,7 +5889,7 @@ type ClientInterface interface {
 
 	// SetProfileTargets Choose which agent directories a client writes
 	//
-	// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
+	// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores. Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -4674,14 +5905,46 @@ type ClientInterface interface {
 
 	// ScannerSummary The Scanner screen's headline figures
 	//
-	// Versions that reached a verdict in the period, how many packages are quarantined, how many acceptances are still in force and when the first of them lapses, and the median time from a scan starting to its verdict (001 US4 scenario 1). `quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged versions: a superseded flagged version is not quarantining anything, because nothing resolves to it. `nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when there is nothing to report — no active override and no finished scan are different statements from "expires now" and "instant".
+	// Versions that reached a verdict in the period, how many packages are quarantined, how many acceptances are still in force and when the first of them lapses, and the median time from a scan starting to its verdict. `quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged versions: a superseded flagged version is not quarantining anything, because nothing resolves to it. `nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when there is nothing to report — no active override and no finished scan are different statements from "expires now" and "instant".
 	//
 	// Corresponds with GET /v1/scanner/summary (the `ScannerSummary` operationId).
 	ScannerSummary(ctx context.Context, params *ScannerSummaryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListServiceTokens The service tokens the caller may manage
+	//
+	// The caller's own tokens, or every token for a catalog-admin. Never carries a secret or its hash.
+	//
+	// Corresponds with GET /v1/service-tokens (the `ListServiceTokens` operationId).
+	ListServiceTokens(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateServiceTokenWithBody Create a scoped service token
+	//
+	// Mints a non-human bearer credential for CI and headless machines and writes one `token` audit row. The secret is returned in this response and never again. Every sync:profile scope must name a profile the caller can read now.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/service-tokens (the `CreateServiceToken` operationId).
+	CreateServiceTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateServiceToken Create a scoped service token
+	//
+	// Mints a non-human bearer credential for CI and headless machines and writes one `token` audit row. The secret is returned in this response and never again. Every sync:profile scope must name a profile the caller can read now.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/service-tokens (the `CreateServiceToken` operationId).
+	CreateServiceToken(ctx context.Context, body CreateServiceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeServiceToken Revoke a service token
+	//
+	// Effective on the token's next request, and writes one `token` audit row. The creator or a catalog-admin may revoke; revoking a revoked token is a no-op.
+	//
+	// Corresponds with DELETE /v1/service-tokens/{id} (the `RevokeServiceToken` operationId).
+	RevokeServiceToken(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// CreateSessionWithBody Mint a browser session from a verified ID token
 	//
-	// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
+	// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row, and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -4690,7 +5953,7 @@ type ClientInterface interface {
 
 	// CreateSession Mint a browser session from a verified ID token
 	//
-	// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
+	// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row, and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -4699,7 +5962,7 @@ type ClientInterface interface {
 
 	// DeleteSession Sign out
 	//
-	// Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction (FR-114, FR-115). Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.
+	// Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction. Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.
 	//
 	// Corresponds with DELETE /v1/sessions/current (the `DeleteSession` operationId).
 	DeleteSession(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4713,7 +5976,7 @@ type ClientInterface interface {
 
 	// ReportSyncWithBody Report a completed sync
 	//
-	// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
+	// Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -4722,7 +5985,7 @@ type ClientInterface interface {
 
 	// ReportSync Report a completed sync
 	//
-	// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
+	// Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -4731,15 +5994,77 @@ type ClientInterface interface {
 
 	// GetViewer Who this request is acting as
 	//
-	// The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL (FR-117) — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate (FR-118).
+	// The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate.
 	//
 	// Corresponds with GET /v1/viewer (the `GetViewer` operationId).
 	GetViewer(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListWebhooks Every webhook subscription
+	//
+	// Never carries a secret.
+	//
+	// Corresponds with GET /v1/webhooks (the `ListWebhooks` operationId).
+	ListWebhooks(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateWebhookWithBody Subscribe a URL to events
+	//
+	// Stores a subscription and writes one `webhook` audit row. The signing secret is returned in this response and never again.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /v1/webhooks (the `CreateWebhook` operationId).
+	CreateWebhookWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateWebhook Subscribe a URL to events
+	//
+	// Stores a subscription and writes one `webhook` audit row. The signing secret is returned in this response and never again.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /v1/webhooks (the `CreateWebhook` operationId).
+	CreateWebhook(ctx context.Context, body CreateWebhookJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteWebhook Delete a webhook and its delivery log
+	//
+	// Corresponds with DELETE /v1/webhooks/{id} (the `DeleteWebhook` operationId).
+	DeleteWebhook(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateWebhookWithBody Change a webhook's name, URL, filters or whether it is enabled
+	//
+	// Changes only the fields given and writes one `webhook` audit row.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /v1/webhooks/{id} (the `UpdateWebhook` operationId).
+	UpdateWebhookWithBody(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateWebhook Change a webhook's name, URL, filters or whether it is enabled
+	//
+	// Changes only the fields given and writes one `webhook` audit row.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /v1/webhooks/{id} (the `UpdateWebhook` operationId).
+	UpdateWebhook(ctx context.Context, id openapi_types.UUID, body UpdateWebhookJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListWebhookDeliveries A webhook's recent delivery attempts
+	//
+	// The newest 100 attempts of the last 30 days, with the first KiB of each response.
+	//
+	// Corresponds with GET /v1/webhooks/{id}/deliveries (the `ListWebhookDeliveries` operationId).
+	ListWebhookDeliveries(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RotateWebhookSecret Replace a webhook's signing secret
+	//
+	// The new secret is returned once and signs every delivery from now on, retries included.
+	//
+	// Corresponds with POST /v1/webhooks/{id}/secret (the `RotateWebhookSecret` operationId).
+	RotateWebhookSecret(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 // ListAudit The audit log, paged, most recent first
 //
-// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. There is deliberately no filter. The export below must return the full CURRENT SCOPE (FR-051), and with no filters the current scope is the whole log — a filter added here without being added there would quietly stop that holding. Rows are append-only, enforced by revoked grants rather than by anything in this process (FR-052). `text` quotes package and profile names, so it is rendered escaped.
+// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. Optional filters narrow it to one subject or one package namespace; the export takes the same filters, so it always returns the page's full CURRENT SCOPE. Rows written before subjects were recorded carry none and match no subject filter. Rows are append-only, enforced by revoked grants rather than by anything in this process. `text` quotes package and profile names, so it is rendered escaped.
 //
 // Corresponds with GET /v1/audit (the `ListAudit` operationId).
 func (c *Client) ListAudit(ctx context.Context, params *ListAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -4756,11 +6081,11 @@ func (c *Client) ListAudit(ctx context.Context, params *ListAuditParams, reqEdit
 
 // ExportAudit Export the whole audit log
 //
-// FR-051: the full current scope, not the visible page. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
+// The full current scope, not the visible page — the whole log, or what the same filters as listAudit select. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
 //
 // Corresponds with GET /v1/audit/export (the `ExportAudit` operationId).
-func (c *Client) ExportAudit(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewExportAuditRequest(c.Server)
+func (c *Client) ExportAudit(ctx context.Context, params *ExportAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExportAuditRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -4773,7 +6098,7 @@ func (c *Client) ExportAudit(ctx context.Context, reqEditors ...RequestEditorFn)
 
 // GetBadges The application shell's counts
 //
-// The three counts the sidebar renders, in one call: packages visible in the catalog, profiles THIS IDENTITY may read, and findings awaiting a decision (FR-121). One operation because the shell renders on every screen, so three would be three round trips per page. Three indexed counts over the base tables and not a projection: principle VIII sanctions exactly one and it is not spent here (research R5). The profile count is the length of the list the Profiles screen shows and cannot be more: a count including a profile the reader cannot open would leak its existence by arithmetic.
+// The three counts the sidebar renders, in one call: packages visible in the catalog, profiles THIS IDENTITY may read, and findings awaiting a decision. One operation because the shell renders on every screen, so three would be three round trips per page. Three indexed counts over the base tables and not a projection: principle VIII sanctions exactly one and it is not spent here. The profile count is the length of the list the Profiles screen shows and cannot be more: a count including a profile the reader cannot open would leak its existence by arithmetic.
 //
 // Corresponds with GET /v1/badges (the `GetBadges` operationId).
 func (c *Client) GetBadges(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -4790,7 +6115,7 @@ func (c *Client) GetBadges(ctx context.Context, reqEditors ...RequestEditorFn) (
 
 // GetBundle Download an immutable version bundle
 //
-// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate (FR-029).
+// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate.
 //
 // Corresponds with GET /v1/bundles/{publisher}/{name}/{version} (the `GetBundle` operationId).
 func (c *Client) GetBundle(ctx context.Context, publisher string, name string, version string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -4807,7 +6132,7 @@ func (c *Client) GetBundle(ctx context.Context, publisher string, name string, v
 
 // LookupDeviceCode Look up a pending device authorisation
 //
-// Shows the requesting host and remaining validity BEFORE the viewer confirms (FR-041), so approval is an informed act. Refuses distinguishably when the code is unknown, expired or already decided (FR-042). The path parameter is a bearer-equivalent secret for the length of its validity and is never logged verbatim (see the api role's correlation middleware).
+// Shows the requesting host and remaining validity BEFORE the viewer confirms, so approval is an informed act. Refuses distinguishably when the code is unknown, expired or already decided. The path parameter is a bearer-equivalent secret for the length of its validity and is never logged verbatim (see the api role's correlation middleware).
 //
 // Corresponds with GET /v1/device/authorizations/{user_code} (the `LookupDeviceCode` operationId).
 func (c *Client) LookupDeviceCode(ctx context.Context, userCode string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -4824,7 +6149,7 @@ func (c *Client) LookupDeviceCode(ctx context.Context, userCode string, reqEdito
 
 // ApproveDeviceCode Approve a pending device authorisation
 //
-// The confirm action (US6). Moves the code from pending to approved in one transaction and writes the `login` audit row naming the host, source `cli / <host>` (FR-050). Single-use: a second approval of the same code refuses the same way any already-decided code does.
+// The confirm action. Moves the code from pending to approved in one transaction and writes the `login` audit row naming the host, source `cli / <host>`. Single-use: a second approval of the same code refuses the same way any already-decided code does.
 //
 // Corresponds with POST /v1/device/authorizations/{user_code}/approve (the `ApproveDeviceCode` operationId).
 func (c *Client) ApproveDeviceCode(ctx context.Context, userCode string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -4879,7 +6204,7 @@ func (c *Client) DeviceAuthorize(ctx context.Context, body DeviceAuthorizeJSONRe
 
 // DeviceTokenWithBody Poll for the issued token
 //
-// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
+// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.
 //
 // Takes any type of body and a specified content type.
 //
@@ -4898,7 +6223,7 @@ func (c *Client) DeviceTokenWithBody(ctx context.Context, contentType string, bo
 
 // DeviceTokenWithFormdataBody Poll for the issued token
 //
-// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
+// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.
 //
 // Takes a body of the `application/x-www-form-urlencoded` content type.
 //
@@ -4934,7 +6259,7 @@ func (c *Client) ListFindings(ctx context.Context, params *ListFindingsParams, r
 
 // GetFinding One finding, its evidence and every check that ran
 //
-// The detail pane of 001 US4 scenario 2: severity, rule, subject, the prose explanation, EVERY evidence location, and EVERY check the raising scan ran — passes included (FR-025). The passes are not padding. A pane showing only failures cannot be told apart from one where nothing else ran, so the absence of a finding would be indistinguishable from the absence of a check, which is the distinction the whole matrix exists for. Evidence and check labels are bundle content and identity-provider content respectively: every consumer renders them escaped (FR-055).
+// The detail pane: severity, rule, subject, the prose explanation, EVERY evidence location, and EVERY check the raising scan ran — passes included. The passes are not padding. A pane showing only failures cannot be told apart from one where nothing else ran, so the absence of a finding would be indistinguishable from the absence of a check, which is the distinction the whole matrix exists for. Evidence and check labels are bundle content and identity-provider content respectively: every consumer renders them escaped.
 //
 // Corresponds with GET /v1/findings/{id} (the `GetFinding` operationId).
 func (c *Client) GetFinding(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -4951,7 +6276,7 @@ func (c *Client) GetFinding(ctx context.Context, id openapi_types.UUID, reqEdito
 
 // AcceptFindingWithBody Accept a finding with a recorded note and an expiry
 //
-// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.
+// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction. The version's verdict is NOT changed. Accepting makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it — this refusal is the backstop, not the mechanism.
 //
 // Takes any type of body and a specified content type.
 //
@@ -4970,7 +6295,7 @@ func (c *Client) AcceptFindingWithBody(ctx context.Context, id openapi_types.UUI
 
 // AcceptFinding Accept a finding with a recorded note and an expiry
 //
-// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.
+// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction. The version's verdict is NOT changed. Accepting makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it — this refusal is the backstop, not the mechanism.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -4989,7 +6314,7 @@ func (c *Client) AcceptFinding(ctx context.Context, id openapi_types.UUID, body 
 
 // RejectFindingWithBody Reject a finding and quarantine its version for good
 //
-// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
+// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all, so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
 //
 // Takes any type of body and a specified content type.
 //
@@ -5008,7 +6333,7 @@ func (c *Client) RejectFindingWithBody(ctx context.Context, id openapi_types.UUI
 
 // RejectFinding Reject a finding and quarantine its version for good
 //
-// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
+// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all, so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -5027,11 +6352,62 @@ func (c *Client) RejectFinding(ctx context.Context, id openapi_types.UUID, body 
 
 // Health Liveness and readiness
 //
-// Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case (FR-058).
+// Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case.
 //
 // Corresponds with GET /v1/health (the `Health` operationId).
 func (c *Client) Health(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewHealthRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListMachines Machines that reported a sync
+//
+// A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. A package filter names a package this identity can read, and then also counts the matching machines per version. Stale is computed on read.
+//
+// Corresponds with GET /v1/machines (the `ListMachines` operationId).
+func (c *Client) ListMachines(ctx context.Context, params *ListMachinesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListMachinesRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ForgetMachine Forget a machine
+//
+// Deletes the machine and its inventory and writes one `sync` audit row. A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. The sync events it reported stay. A machine that reports again reappears.
+//
+// Corresponds with DELETE /v1/machines/{id} (the `ForgetMachine` operationId).
+func (c *Client) ForgetMachine(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewForgetMachineRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetMachine One machine's installs and latest skips
+//
+// A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. Installs and skips list only profiles and packages this identity can read.
+//
+// Corresponds with GET /v1/machines/{id} (the `GetMachine` operationId).
+func (c *Client) GetMachine(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetMachineRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -5315,7 +6691,7 @@ func (c *Client) UpdatePolicy(ctx context.Context, body UpdatePolicyJSONRequestB
 
 // ListPackages Browse, search and facet the catalog
 //
-// One page of the catalog with both facet option sets and the live total, from two statements issued concurrently (R4). The two facets count differently, and the asymmetry is FR-013's: CATEGORIES are disjunctive, so each option is counted with the category filter removed; TAGS are conjunctive, so each option is counted against the current results — the number selecting it actually yields. Browsing requires a session: public anonymous browsing is out of scope (spec.md).
+// One page of the catalog with both facet option sets and the live total, from two statements issued concurrently. The two facets count differently, and the asymmetry is this: CATEGORIES are disjunctive, so each option is counted with the category filter removed; TAGS are conjunctive, so each option is counted against the current results — the number selecting it actually yields. Browsing requires a session: public anonymous browsing is out of scope.
 //
 // Corresponds with GET /v1/packages (the `ListPackages` operationId).
 func (c *Client) ListPackages(ctx context.Context, params *ListPackagesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -5332,7 +6708,7 @@ func (c *Client) ListPackages(ctx context.Context, params *ListPackagesParams, r
 
 // RegisterPackageWithBody Register a package from a URL or an upload
 //
-// Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed (FR-008).
+// Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed.
 //
 // Takes any type of body and a specified content type.
 //
@@ -5351,7 +6727,7 @@ func (c *Client) RegisterPackageWithBody(ctx context.Context, contentType string
 
 // PreviewPackageWithBody Validate an archive before registering it
 //
-// FR-005's pre-submit answer: every entry with a validation mark, the discarded paths named, the components the FILE TREE reveals, and — when a manifest fails — the schema path that refused it. Writes nothing, and runs the same validation the fetcher runs, so the panel a user approves is the tree that gets stored.
+// The pre-submit answer: every entry with a validation mark, the discarded paths named, the components the FILE TREE reveals, and — when a manifest fails — the schema path that refused it. Writes nothing, and runs the same validation the fetcher runs, so the panel a user approves is the tree that gets stored.
 //
 // Takes any type of body and a specified content type.
 //
@@ -5387,7 +6763,7 @@ func (c *Client) DeletePackage(ctx context.Context, namespace string, name strin
 
 // GetPackage One package's detail
 //
-// Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package (FR-016). The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read (FR-044), and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
+// Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package. The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read, and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
 //
 // Corresponds with GET /v1/packages/{namespace}/{name} (the `GetPackage` operationId).
 func (c *Client) GetPackage(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -5404,7 +6780,7 @@ func (c *Client) GetPackage(ctx context.Context, namespace string, name string, 
 
 // ListPackageFiles The bundle's file tree, to read before using it
 //
-// Every regular file the LATEST VISIBLE version's bundle holds. The `component` table records only the significant components — a skill's directory, an MCP server — not a full file list, so this unpacks the bundle itself, under the same extraction caps the fetcher enforces on ingestion, and does so again on every call: nothing here stores a byte-level file list to answer from instead. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029). `default` names this version's own SKILL.md or plugin.json when the bundle has one at its root, since that is the file most worth reading first.
+// Every regular file the LATEST VISIBLE version's bundle holds. The `component` table records only the significant components — a skill's directory, an MCP server — not a full file list, so this unpacks the bundle itself, under the same extraction caps the fetcher enforces on ingestion, and does so again on every call: nothing here stores a byte-level file list to answer from instead. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one. `default` names this version's own SKILL.md or plugin.json when the bundle has one at its root, since that is the file most worth reading first.
 //
 // Corresponds with GET /v1/packages/{namespace}/{name}/files (the `ListPackageFiles` operationId).
 func (c *Client) ListPackageFiles(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -5438,11 +6814,87 @@ func (c *Client) GetPackageFile(ctx context.Context, namespace string, name stri
 
 // GetPackageScan The latest visible version's scan result, to show beside the package
 //
-// The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029).
+// The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one.
 //
 // Corresponds with GET /v1/packages/{namespace}/{name}/scan (the `GetPackageScan` operationId).
 func (c *Client) GetPackageScan(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetPackageScanRequest(c.Server, namespace, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetPackageSignerWithBody Set the signer a package's versions must be signed by
+//
+// Sets the exact OIDC issuer and the identity pattern (RE2, matched in full) a version's verified Sigstore signer must satisfy for the version to resolve while the organisation requires signed bundles. Both empty clears it. Takes effect at the next resolution; no signature is re-verified. One audit row of kind `policy`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /v1/packages/{namespace}/{name}/signer (the `SetPackageSigner` operationId).
+func (c *Client) SetPackageSignerWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetPackageSignerRequestWithBody(c.Server, namespace, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetPackageSigner Set the signer a package's versions must be signed by
+//
+// Sets the exact OIDC issuer and the identity pattern (RE2, matched in full) a version's verified Sigstore signer must satisfy for the version to resolve while the organisation requires signed bundles. Both empty clears it. Takes effect at the next resolution; no signature is re-verified. One audit row of kind `policy`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /v1/packages/{namespace}/{name}/signer (the `SetPackageSigner` operationId).
+func (c *Client) SetPackageSigner(ctx context.Context, namespace string, name string, body SetPackageSignerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetPackageSignerRequest(c.Server, namespace, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetPackageTrackingWithBody Track a git package's upstream tags
+//
+// Opts a package registered from git in or out of the fetcher's periodic upstream check, which registers each new tag matching the pattern exactly as a registration would: version, fetch job and audit row, then the ordinary fetch, scan and gate. One audit row of kind `fetch`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /v1/packages/{namespace}/{name}/tracking (the `SetPackageTracking` operationId).
+func (c *Client) SetPackageTrackingWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetPackageTrackingRequestWithBody(c.Server, namespace, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// SetPackageTracking Track a git package's upstream tags
+//
+// Opts a package registered from git in or out of the fetcher's periodic upstream check, which registers each new tag matching the pattern exactly as a registration would: version, fetch job and audit row, then the ordinary fetch, scan and gate. One audit row of kind `fetch`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /v1/packages/{namespace}/{name}/tracking (the `SetPackageTracking` operationId).
+func (c *Client) SetPackageTracking(ctx context.Context, namespace string, name string, body SetPackageTrackingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetPackageTrackingRequest(c.Server, namespace, name, body)
 	if err != nil {
 		return nil, err
 	}
@@ -5472,7 +6924,7 @@ func (c *Client) DeleteVersion(ctx context.Context, namespace string, name strin
 
 // SetPackageVisibilityWithBody Change who may see a package
 //
-// Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
+// Organisation, team or private, in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
 //
 // Takes any type of body and a specified content type.
 //
@@ -5491,7 +6943,7 @@ func (c *Client) SetPackageVisibilityWithBody(ctx context.Context, namespace str
 
 // SetPackageVisibility Change who may see a package
 //
-// Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
+// Organisation, team or private, in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -5510,7 +6962,7 @@ func (c *Client) SetPackageVisibility(ctx context.Context, namespace string, nam
 
 // ListProfiles Profiles readable by this identity
 //
-// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate (FR-126), so a caller choosing among them need not read every one's detail just to find out which allow it.
+// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others. Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate, so a caller choosing among them need not read every one's detail just to find out which allow it.
 //
 // Corresponds with GET /v1/profiles (the `ListProfiles` operationId).
 func (c *Client) ListProfiles(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -5527,7 +6979,7 @@ func (c *Client) ListProfiles(ctx context.Context, reqEditors ...RequestEditorFn
 
 // CreateProfileWithBody Create a profile, or fork one
 //
-// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
+// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
 //
 // Takes any type of body and a specified content type.
 //
@@ -5546,7 +6998,7 @@ func (c *Client) CreateProfileWithBody(ctx context.Context, contentType string, 
 
 // CreateProfile Create a profile, or fork one
 //
-// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
+// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -5565,7 +7017,7 @@ func (c *Client) CreateProfile(ctx context.Context, body CreateProfileJSONReques
 
 // DeleteProfile Delete a profile
 //
-// Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: FR-034 forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.
+// Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: the design forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.
 //
 // Corresponds with DELETE /v1/profiles/{slug} (the `DeleteProfile` operationId).
 func (c *Client) DeleteProfile(ctx context.Context, slug string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -5582,7 +7034,7 @@ func (c *Client) DeleteProfile(ctx context.Context, slug string, reqEditors ...R
 
 // GetProfile One profile, resolved under the org gate
 //
-// The profile detail screen (001 US5): every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted (FR-036). The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
+// The profile detail screen: every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted. The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` exists because a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
 //
 // Corresponds with GET /v1/profiles/{slug} (the `GetProfile` operationId).
 func (c *Client) GetProfile(ctx context.Context, slug string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -5599,7 +7051,7 @@ func (c *Client) GetProfile(ctx context.Context, slug string, reqEditors ...Requ
 
 // SetProfileEntriesWithBody Set the packages a profile holds and how each one tracks versions
 //
-// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
+// Float or pin per package, in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED. This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
 //
 // Takes any type of body and a specified content type.
 //
@@ -5618,7 +7070,7 @@ func (c *Client) SetProfileEntriesWithBody(ctx context.Context, slug string, con
 
 // SetProfileEntries Set the packages a profile holds and how each one tracks versions
 //
-// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
+// Float or pin per package, in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED. This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -5675,7 +7127,7 @@ func (c *Client) RemoveProfileEntry(ctx context.Context, slug string, body Remov
 
 // PublishRevisionWithBody Publish the next immutable revision
 //
-// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.
+// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile`. The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown. THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one. Requires owner or maintainer on the profile — a consumer may not publish.
 //
 // Takes any type of body and a specified content type.
 //
@@ -5694,7 +7146,7 @@ func (c *Client) PublishRevisionWithBody(ctx context.Context, slug string, conte
 
 // PublishRevision Publish the next immutable revision
 //
-// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.
+// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile`. The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown. THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one. Requires owner or maintainer on the profile — a consumer may not publish.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -5713,7 +7165,7 @@ func (c *Client) PublishRevision(ctx context.Context, slug string, body PublishR
 
 // GetRevision Fetch a resolved revision lockfile
 //
-// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted (FR-036).
+// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted.
 //
 // Corresponds with GET /v1/profiles/{slug}/revisions/{revision} (the `GetRevision` operationId).
 func (c *Client) GetRevision(ctx context.Context, slug string, revision string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -5730,7 +7182,7 @@ func (c *Client) GetRevision(ctx context.Context, slug string, revision string, 
 
 // SetProfileSharingWithBody Set the role each member and identity-provider group holds
 //
-// Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
+// Individual members and IdP groups at four levels — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. This is about roles: a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision; sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
 //
 // Takes any type of body and a specified content type.
 //
@@ -5749,7 +7201,7 @@ func (c *Client) SetProfileSharingWithBody(ctx context.Context, slug string, con
 
 // SetProfileSharing Set the role each member and identity-provider group holds
 //
-// Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
+// Individual members and IdP groups at four levels — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. This is about roles: a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision; sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -5768,7 +7220,7 @@ func (c *Client) SetProfileSharing(ctx context.Context, slug string, body SetPro
 
 // SetProfileTargetsWithBody Choose which agent directories a client writes
 //
-// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
+// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores. Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
 //
 // Takes any type of body and a specified content type.
 //
@@ -5787,7 +7239,7 @@ func (c *Client) SetProfileTargetsWithBody(ctx context.Context, slug string, con
 
 // SetProfileTargets Choose which agent directories a client writes
 //
-// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
+// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores. Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -5823,7 +7275,7 @@ func (c *Client) GetRuntime(ctx context.Context, reqEditors ...RequestEditorFn) 
 
 // ScannerSummary The Scanner screen's headline figures
 //
-// Versions that reached a verdict in the period, how many packages are quarantined, how many acceptances are still in force and when the first of them lapses, and the median time from a scan starting to its verdict (001 US4 scenario 1). `quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged versions: a superseded flagged version is not quarantining anything, because nothing resolves to it. `nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when there is nothing to report — no active override and no finished scan are different statements from "expires now" and "instant".
+// Versions that reached a verdict in the period, how many packages are quarantined, how many acceptances are still in force and when the first of them lapses, and the median time from a scan starting to its verdict. `quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged versions: a superseded flagged version is not quarantining anything, because nothing resolves to it. `nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when there is nothing to report — no active override and no finished scan are different statements from "expires now" and "instant".
 //
 // Corresponds with GET /v1/scanner/summary (the `ScannerSummary` operationId).
 func (c *Client) ScannerSummary(ctx context.Context, params *ScannerSummaryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -5838,9 +7290,81 @@ func (c *Client) ScannerSummary(ctx context.Context, params *ScannerSummaryParam
 	return c.Client.Do(req)
 }
 
+// ListServiceTokens The service tokens the caller may manage
+//
+// The caller's own tokens, or every token for a catalog-admin. Never carries a secret or its hash.
+//
+// Corresponds with GET /v1/service-tokens (the `ListServiceTokens` operationId).
+func (c *Client) ListServiceTokens(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListServiceTokensRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateServiceTokenWithBody Create a scoped service token
+//
+// Mints a non-human bearer credential for CI and headless machines and writes one `token` audit row. The secret is returned in this response and never again. Every sync:profile scope must name a profile the caller can read now.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/service-tokens (the `CreateServiceToken` operationId).
+func (c *Client) CreateServiceTokenWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateServiceTokenRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateServiceToken Create a scoped service token
+//
+// Mints a non-human bearer credential for CI and headless machines and writes one `token` audit row. The secret is returned in this response and never again. Every sync:profile scope must name a profile the caller can read now.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/service-tokens (the `CreateServiceToken` operationId).
+func (c *Client) CreateServiceToken(ctx context.Context, body CreateServiceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateServiceTokenRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RevokeServiceToken Revoke a service token
+//
+// Effective on the token's next request, and writes one `token` audit row. The creator or a catalog-admin may revoke; revoking a revoked token is a no-op.
+//
+// Corresponds with DELETE /v1/service-tokens/{id} (the `RevokeServiceToken` operationId).
+func (c *Client) RevokeServiceToken(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeServiceTokenRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // CreateSessionWithBody Mint a browser session from a verified ID token
 //
-// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
+// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row, and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
 //
 // Takes any type of body and a specified content type.
 //
@@ -5859,7 +7383,7 @@ func (c *Client) CreateSessionWithBody(ctx context.Context, contentType string, 
 
 // CreateSession Mint a browser session from a verified ID token
 //
-// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
+// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row, and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -5878,7 +7402,7 @@ func (c *Client) CreateSession(ctx context.Context, body CreateSessionJSONReques
 
 // DeleteSession Sign out
 //
-// Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction (FR-114, FR-115). Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.
+// Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction. Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.
 //
 // Corresponds with DELETE /v1/sessions/current (the `DeleteSession` operationId).
 func (c *Client) DeleteSession(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -5912,7 +7436,7 @@ func (c *Client) GetStorage(ctx context.Context, reqEditors ...RequestEditorFn) 
 
 // ReportSyncWithBody Report a completed sync
 //
-// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
+// Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 //
 // Takes any type of body and a specified content type.
 //
@@ -5931,7 +7455,7 @@ func (c *Client) ReportSyncWithBody(ctx context.Context, contentType string, bod
 
 // ReportSync Report a completed sync
 //
-// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
+// Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -5950,11 +7474,153 @@ func (c *Client) ReportSync(ctx context.Context, body ReportSyncJSONRequestBody,
 
 // GetViewer Who this request is acting as
 //
-// The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL (FR-117) — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate (FR-118).
+// The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate.
 //
 // Corresponds with GET /v1/viewer (the `GetViewer` operationId).
 func (c *Client) GetViewer(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetViewerRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListWebhooks Every webhook subscription
+//
+// Never carries a secret.
+//
+// Corresponds with GET /v1/webhooks (the `ListWebhooks` operationId).
+func (c *Client) ListWebhooks(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListWebhooksRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateWebhookWithBody Subscribe a URL to events
+//
+// Stores a subscription and writes one `webhook` audit row. The signing secret is returned in this response and never again.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /v1/webhooks (the `CreateWebhook` operationId).
+func (c *Client) CreateWebhookWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateWebhookRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateWebhook Subscribe a URL to events
+//
+// Stores a subscription and writes one `webhook` audit row. The signing secret is returned in this response and never again.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /v1/webhooks (the `CreateWebhook` operationId).
+func (c *Client) CreateWebhook(ctx context.Context, body CreateWebhookJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateWebhookRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteWebhook Delete a webhook and its delivery log
+//
+// Corresponds with DELETE /v1/webhooks/{id} (the `DeleteWebhook` operationId).
+func (c *Client) DeleteWebhook(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteWebhookRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateWebhookWithBody Change a webhook's name, URL, filters or whether it is enabled
+//
+// Changes only the fields given and writes one `webhook` audit row.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /v1/webhooks/{id} (the `UpdateWebhook` operationId).
+func (c *Client) UpdateWebhookWithBody(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateWebhookRequestWithBody(c.Server, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateWebhook Change a webhook's name, URL, filters or whether it is enabled
+//
+// Changes only the fields given and writes one `webhook` audit row.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /v1/webhooks/{id} (the `UpdateWebhook` operationId).
+func (c *Client) UpdateWebhook(ctx context.Context, id openapi_types.UUID, body UpdateWebhookJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateWebhookRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListWebhookDeliveries A webhook's recent delivery attempts
+//
+// The newest 100 attempts of the last 30 days, with the first KiB of each response.
+//
+// Corresponds with GET /v1/webhooks/{id}/deliveries (the `ListWebhookDeliveries` operationId).
+func (c *Client) ListWebhookDeliveries(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListWebhookDeliveriesRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RotateWebhookSecret Replace a webhook's signing secret
+//
+// The new secret is returned once and signs every delivery from now on, retries included.
+//
+// Corresponds with POST /v1/webhooks/{id}/secret (the `RotateWebhookSecret` operationId).
+func (c *Client) RotateWebhookSecret(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRotateWebhookSecretRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -5992,6 +7658,42 @@ func NewListAuditRequest(server string, params *ListAuditParams) (*http.Request,
 		// styled parameters, preserving literal commas as delimiters
 		// per the OpenAPI spec (e.g. "color=blue,black,brown").
 		var rawQueryFragments []string
+
+		if params.SubjectKind != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "subjectKind", *params.SubjectKind, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.SubjectId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "subjectId", *params.SubjectId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Namespace != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "namespace", *params.Namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
 
 		if params.Page != nil {
 
@@ -6032,7 +7734,7 @@ func NewListAuditRequest(server string, params *ListAuditParams) (*http.Request,
 }
 
 // NewExportAuditRequest constructs an http.Request for the ExportAudit method
-func NewExportAuditRequest(server string) (*http.Request, error) {
+func NewExportAuditRequest(server string, params *ExportAuditParams) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -6048,6 +7750,57 @@ func NewExportAuditRequest(server string) (*http.Request, error) {
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.SubjectKind != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "subjectKind", *params.SubjectKind, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.SubjectId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "subjectId", *params.SubjectId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Namespace != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "namespace", *params.Namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -6509,6 +8262,188 @@ func NewHealthRequest(server string) (*http.Request, error) {
 	}
 
 	operationPath := fmt.Sprintf("/v1/health")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListMachinesRequest constructs an http.Request for the ListMachines method
+func NewListMachinesRequest(server string, params *ListMachinesParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/machines")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Package != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "package", *params.Package, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Version != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "version", *params.Version, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Profile != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "profile", *params.Profile, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Stale != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "stale", *params.Stale, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "page", *params.Page, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.PageSize != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "pageSize", *params.PageSize, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewForgetMachineRequest constructs an http.Request for the ForgetMachine method
+func NewForgetMachineRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/machines/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetMachineRequest constructs an http.Request for the GetMachine method
+func NewGetMachineRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/machines/%s", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -7332,6 +9267,114 @@ func NewGetPackageScanRequest(server string, namespace string, name string) (*ht
 	return req, nil
 }
 
+// NewSetPackageSignerRequest calls the generic SetPackageSigner builder with application/json body
+func NewSetPackageSignerRequest(server string, namespace string, name string, body SetPackageSignerJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetPackageSignerRequestWithBody(server, namespace, name, "application/json", bodyReader)
+}
+
+// NewSetPackageSignerRequestWithBody constructs an http.Request for the SetPackageSigner method, with any body, and a specified content type
+func NewSetPackageSignerRequestWithBody(server string, namespace string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/packages/%s/%s/signer", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewSetPackageTrackingRequest calls the generic SetPackageTracking builder with application/json body
+func NewSetPackageTrackingRequest(server string, namespace string, name string, body SetPackageTrackingJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetPackageTrackingRequestWithBody(server, namespace, name, "application/json", bodyReader)
+}
+
+// NewSetPackageTrackingRequestWithBody constructs an http.Request for the SetPackageTracking method, with any body, and a specified content type
+func NewSetPackageTrackingRequestWithBody(server string, namespace string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/packages/%s/%s/tracking", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewDeleteVersionRequest constructs an http.Request for the DeleteVersion method
 func NewDeleteVersionRequest(server string, namespace string, name string, version string) (*http.Request, error) {
 	var err error
@@ -7926,6 +9969,107 @@ func NewScannerSummaryRequest(server string, params *ScannerSummaryParams) (*htt
 	return req, nil
 }
 
+// NewListServiceTokensRequest constructs an http.Request for the ListServiceTokens method
+func NewListServiceTokensRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/service-tokens")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateServiceTokenRequest calls the generic CreateServiceToken builder with application/json body
+func NewCreateServiceTokenRequest(server string, body CreateServiceTokenJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateServiceTokenRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateServiceTokenRequestWithBody constructs an http.Request for the CreateServiceToken method, with any body, and a specified content type
+func NewCreateServiceTokenRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/service-tokens")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRevokeServiceTokenRequest constructs an http.Request for the RevokeServiceToken method
+func NewRevokeServiceTokenRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/service-tokens/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewCreateSessionRequest calls the generic CreateSession builder with application/json body
 func NewCreateSessionRequest(server string, body CreateSessionJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -8087,6 +10231,222 @@ func NewGetViewerRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewListWebhooksRequest constructs an http.Request for the ListWebhooks method
+func NewListWebhooksRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/webhooks")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateWebhookRequest calls the generic CreateWebhook builder with application/json body
+func NewCreateWebhookRequest(server string, body CreateWebhookJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateWebhookRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateWebhookRequestWithBody constructs an http.Request for the CreateWebhook method, with any body, and a specified content type
+func NewCreateWebhookRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/webhooks")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteWebhookRequest constructs an http.Request for the DeleteWebhook method
+func NewDeleteWebhookRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/webhooks/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateWebhookRequest calls the generic UpdateWebhook builder with application/json body
+func NewUpdateWebhookRequest(server string, id openapi_types.UUID, body UpdateWebhookJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateWebhookRequestWithBody(server, id, "application/json", bodyReader)
+}
+
+// NewUpdateWebhookRequestWithBody constructs an http.Request for the UpdateWebhook method, with any body, and a specified content type
+func NewUpdateWebhookRequestWithBody(server string, id openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/webhooks/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListWebhookDeliveriesRequest constructs an http.Request for the ListWebhookDeliveries method
+func NewListWebhookDeliveriesRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/webhooks/%s/deliveries", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRotateWebhookSecretRequest constructs an http.Request for the RotateWebhookSecret method
+func NewRotateWebhookSecretRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/webhooks/%s/secret", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -8133,7 +10493,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListAuditWithResponse The audit log, paged, most recent first
 	//
-	// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. There is deliberately no filter. The export below must return the full CURRENT SCOPE (FR-051), and with no filters the current scope is the whole log — a filter added here without being added there would quietly stop that holding. Rows are append-only, enforced by revoked grants rather than by anything in this process (FR-052). `text` quotes package and profile names, so it is rendered escaped.
+	// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. Optional filters narrow it to one subject or one package namespace; the export takes the same filters, so it always returns the page's full CURRENT SCOPE. Rows written before subjects were recorded carry none and match no subject filter. Rows are append-only, enforced by revoked grants rather than by anything in this process. `text` quotes package and profile names, so it is rendered escaped.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -8142,16 +10502,16 @@ type ClientWithResponsesInterface interface {
 
 	// ExportAuditWithResponse Export the whole audit log
 	//
-	// FR-051: the full current scope, not the visible page. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
+	// The full current scope, not the visible page — the whole log, or what the same filters as listAudit select. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /v1/audit/export (the `ExportAudit` operationId).
-	ExportAuditWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ExportAuditResponse, error)
+	ExportAuditWithResponse(ctx context.Context, params *ExportAuditParams, reqEditors ...RequestEditorFn) (*ExportAuditResponse, error)
 
 	// GetBadgesWithResponse The application shell's counts
 	//
-	// The three counts the sidebar renders, in one call: packages visible in the catalog, profiles THIS IDENTITY may read, and findings awaiting a decision (FR-121). One operation because the shell renders on every screen, so three would be three round trips per page. Three indexed counts over the base tables and not a projection: principle VIII sanctions exactly one and it is not spent here (research R5). The profile count is the length of the list the Profiles screen shows and cannot be more: a count including a profile the reader cannot open would leak its existence by arithmetic.
+	// The three counts the sidebar renders, in one call: packages visible in the catalog, profiles THIS IDENTITY may read, and findings awaiting a decision. One operation because the shell renders on every screen, so three would be three round trips per page. Three indexed counts over the base tables and not a projection: principle VIII sanctions exactly one and it is not spent here. The profile count is the length of the list the Profiles screen shows and cannot be more: a count including a profile the reader cannot open would leak its existence by arithmetic.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -8160,7 +10520,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetBundleWithResponse Download an immutable version bundle
 	//
-	// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate (FR-029).
+	// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -8169,7 +10529,7 @@ type ClientWithResponsesInterface interface {
 
 	// LookupDeviceCodeWithResponse Look up a pending device authorisation
 	//
-	// Shows the requesting host and remaining validity BEFORE the viewer confirms (FR-041), so approval is an informed act. Refuses distinguishably when the code is unknown, expired or already decided (FR-042). The path parameter is a bearer-equivalent secret for the length of its validity and is never logged verbatim (see the api role's correlation middleware).
+	// Shows the requesting host and remaining validity BEFORE the viewer confirms, so approval is an informed act. Refuses distinguishably when the code is unknown, expired or already decided. The path parameter is a bearer-equivalent secret for the length of its validity and is never logged verbatim (see the api role's correlation middleware).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -8178,7 +10538,7 @@ type ClientWithResponsesInterface interface {
 
 	// ApproveDeviceCodeWithResponse Approve a pending device authorisation
 	//
-	// The confirm action (US6). Moves the code from pending to approved in one transaction and writes the `login` audit row naming the host, source `cli / <host>` (FR-050). Single-use: a second approval of the same code refuses the same way any already-decided code does.
+	// The confirm action. Moves the code from pending to approved in one transaction and writes the `login` audit row naming the host, source `cli / <host>`. Single-use: a second approval of the same code refuses the same way any already-decided code does.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -8205,7 +10565,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeviceTokenWithBodyWithResponse Poll for the issued token
 	//
-	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
+	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8214,7 +10574,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeviceTokenWithFormdataBodyWithResponse Poll for the issued token
 	//
-	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
+	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.
 	//
 	// Takes a body of the `application/x-www-form-urlencoded` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8232,7 +10592,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetFindingWithResponse One finding, its evidence and every check that ran
 	//
-	// The detail pane of 001 US4 scenario 2: severity, rule, subject, the prose explanation, EVERY evidence location, and EVERY check the raising scan ran — passes included (FR-025). The passes are not padding. A pane showing only failures cannot be told apart from one where nothing else ran, so the absence of a finding would be indistinguishable from the absence of a check, which is the distinction the whole matrix exists for. Evidence and check labels are bundle content and identity-provider content respectively: every consumer renders them escaped (FR-055).
+	// The detail pane: severity, rule, subject, the prose explanation, EVERY evidence location, and EVERY check the raising scan ran — passes included. The passes are not padding. A pane showing only failures cannot be told apart from one where nothing else ran, so the absence of a finding would be indistinguishable from the absence of a check, which is the distinction the whole matrix exists for. Evidence and check labels are bundle content and identity-provider content respectively: every consumer renders them escaped.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -8241,7 +10601,7 @@ type ClientWithResponsesInterface interface {
 
 	// AcceptFindingWithBodyWithResponse Accept a finding with a recorded note and an expiry
 	//
-	// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.
+	// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction. The version's verdict is NOT changed. Accepting makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it — this refusal is the backstop, not the mechanism.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8250,7 +10610,7 @@ type ClientWithResponsesInterface interface {
 
 	// AcceptFindingWithResponse Accept a finding with a recorded note and an expiry
 	//
-	// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.
+	// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction. The version's verdict is NOT changed. Accepting makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it — this refusal is the backstop, not the mechanism.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8259,7 +10619,7 @@ type ClientWithResponsesInterface interface {
 
 	// RejectFindingWithBodyWithResponse Reject a finding and quarantine its version for good
 	//
-	// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
+	// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all, so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8268,7 +10628,7 @@ type ClientWithResponsesInterface interface {
 
 	// RejectFindingWithResponse Reject a finding and quarantine its version for good
 	//
-	// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
+	// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all, so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8277,12 +10637,39 @@ type ClientWithResponsesInterface interface {
 
 	// HealthWithResponse Liveness and readiness
 	//
-	// Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case (FR-058).
+	// Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /v1/health (the `Health` operationId).
 	HealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*HealthResponse, error)
+
+	// ListMachinesWithResponse Machines that reported a sync
+	//
+	// A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. A package filter names a package this identity can read, and then also counts the matching machines per version. Stale is computed on read.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/machines (the `ListMachines` operationId).
+	ListMachinesWithResponse(ctx context.Context, params *ListMachinesParams, reqEditors ...RequestEditorFn) (*ListMachinesResponse, error)
+
+	// ForgetMachineWithResponse Forget a machine
+	//
+	// Deletes the machine and its inventory and writes one `sync` audit row. A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. The sync events it reported stay. A machine that reports again reappears.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/machines/{id} (the `ForgetMachine` operationId).
+	ForgetMachineWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*ForgetMachineResponse, error)
+
+	// GetMachineWithResponse One machine's installs and latest skips
+	//
+	// A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. Installs and skips list only profiles and packages this identity can read.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/machines/{id} (the `GetMachine` operationId).
+	GetMachineWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetMachineResponse, error)
 
 	// GetOrganizationWithResponse Identity provider settings, policy, mappings and categories
 	//
@@ -8421,7 +10808,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListPackagesWithResponse Browse, search and facet the catalog
 	//
-	// One page of the catalog with both facet option sets and the live total, from two statements issued concurrently (R4). The two facets count differently, and the asymmetry is FR-013's: CATEGORIES are disjunctive, so each option is counted with the category filter removed; TAGS are conjunctive, so each option is counted against the current results — the number selecting it actually yields. Browsing requires a session: public anonymous browsing is out of scope (spec.md).
+	// One page of the catalog with both facet option sets and the live total, from two statements issued concurrently. The two facets count differently, and the asymmetry is this: CATEGORIES are disjunctive, so each option is counted with the category filter removed; TAGS are conjunctive, so each option is counted against the current results — the number selecting it actually yields. Browsing requires a session: public anonymous browsing is out of scope.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -8430,7 +10817,7 @@ type ClientWithResponsesInterface interface {
 
 	// RegisterPackageWithBodyWithResponse Register a package from a URL or an upload
 	//
-	// Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed (FR-008).
+	// Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8439,7 +10826,7 @@ type ClientWithResponsesInterface interface {
 
 	// PreviewPackageWithBodyWithResponse Validate an archive before registering it
 	//
-	// FR-005's pre-submit answer: every entry with a validation mark, the discarded paths named, the components the FILE TREE reveals, and — when a manifest fails — the schema path that refused it. Writes nothing, and runs the same validation the fetcher runs, so the panel a user approves is the tree that gets stored.
+	// The pre-submit answer: every entry with a validation mark, the discarded paths named, the components the FILE TREE reveals, and — when a manifest fails — the schema path that refused it. Writes nothing, and runs the same validation the fetcher runs, so the panel a user approves is the tree that gets stored.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8457,7 +10844,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetPackageWithResponse One package's detail
 	//
-	// Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package (FR-016). The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read (FR-044), and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
+	// Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package. The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read, and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -8466,7 +10853,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListPackageFilesWithResponse The bundle's file tree, to read before using it
 	//
-	// Every regular file the LATEST VISIBLE version's bundle holds. The `component` table records only the significant components — a skill's directory, an MCP server — not a full file list, so this unpacks the bundle itself, under the same extraction caps the fetcher enforces on ingestion, and does so again on every call: nothing here stores a byte-level file list to answer from instead. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029). `default` names this version's own SKILL.md or plugin.json when the bundle has one at its root, since that is the file most worth reading first.
+	// Every regular file the LATEST VISIBLE version's bundle holds. The `component` table records only the significant components — a skill's directory, an MCP server — not a full file list, so this unpacks the bundle itself, under the same extraction caps the fetcher enforces on ingestion, and does so again on every call: nothing here stores a byte-level file list to answer from instead. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one. `default` names this version's own SKILL.md or plugin.json when the bundle has one at its root, since that is the file most worth reading first.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -8484,12 +10871,48 @@ type ClientWithResponsesInterface interface {
 
 	// GetPackageScanWithResponse The latest visible version's scan result, to show beside the package
 	//
-	// The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029).
+	// The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /v1/packages/{namespace}/{name}/scan (the `GetPackageScan` operationId).
 	GetPackageScanWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*GetPackageScanResponse, error)
+
+	// SetPackageSignerWithBodyWithResponse Set the signer a package's versions must be signed by
+	//
+	// Sets the exact OIDC issuer and the identity pattern (RE2, matched in full) a version's verified Sigstore signer must satisfy for the version to resolve while the organisation requires signed bundles. Both empty clears it. Takes effect at the next resolution; no signature is re-verified. One audit row of kind `policy`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/packages/{namespace}/{name}/signer (the `SetPackageSigner` operationId).
+	SetPackageSignerWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetPackageSignerResponse, error)
+
+	// SetPackageSignerWithResponse Set the signer a package's versions must be signed by
+	//
+	// Sets the exact OIDC issuer and the identity pattern (RE2, matched in full) a version's verified Sigstore signer must satisfy for the version to resolve while the organisation requires signed bundles. Both empty clears it. Takes effect at the next resolution; no signature is re-verified. One audit row of kind `policy`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/packages/{namespace}/{name}/signer (the `SetPackageSigner` operationId).
+	SetPackageSignerWithResponse(ctx context.Context, namespace string, name string, body SetPackageSignerJSONRequestBody, reqEditors ...RequestEditorFn) (*SetPackageSignerResponse, error)
+
+	// SetPackageTrackingWithBodyWithResponse Track a git package's upstream tags
+	//
+	// Opts a package registered from git in or out of the fetcher's periodic upstream check, which registers each new tag matching the pattern exactly as a registration would: version, fetch job and audit row, then the ordinary fetch, scan and gate. One audit row of kind `fetch`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/packages/{namespace}/{name}/tracking (the `SetPackageTracking` operationId).
+	SetPackageTrackingWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetPackageTrackingResponse, error)
+
+	// SetPackageTrackingWithResponse Track a git package's upstream tags
+	//
+	// Opts a package registered from git in or out of the fetcher's periodic upstream check, which registers each new tag matching the pattern exactly as a registration would: version, fetch job and audit row, then the ordinary fetch, scan and gate. One audit row of kind `fetch`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/packages/{namespace}/{name}/tracking (the `SetPackageTracking` operationId).
+	SetPackageTrackingWithResponse(ctx context.Context, namespace string, name string, body SetPackageTrackingJSONRequestBody, reqEditors ...RequestEditorFn) (*SetPackageTrackingResponse, error)
 
 	// DeleteVersionWithResponse Withdraw one version from the catalog
 	//
@@ -8502,7 +10925,7 @@ type ClientWithResponsesInterface interface {
 
 	// SetPackageVisibilityWithBodyWithResponse Change who may see a package
 	//
-	// Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
+	// Organisation, team or private, in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8511,7 +10934,7 @@ type ClientWithResponsesInterface interface {
 
 	// SetPackageVisibilityWithResponse Change who may see a package
 	//
-	// Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
+	// Organisation, team or private, in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8520,7 +10943,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListProfilesWithResponse Profiles readable by this identity
 	//
-	// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate (FR-126), so a caller choosing among them need not read every one's detail just to find out which allow it.
+	// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others. Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate, so a caller choosing among them need not read every one's detail just to find out which allow it.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -8529,7 +10952,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateProfileWithBodyWithResponse Create a profile, or fork one
 	//
-	// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
+	// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8538,7 +10961,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateProfileWithResponse Create a profile, or fork one
 	//
-	// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
+	// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8547,7 +10970,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteProfileWithResponse Delete a profile
 	//
-	// Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: FR-034 forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.
+	// Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: the design forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -8556,7 +10979,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetProfileWithResponse One profile, resolved under the org gate
 	//
-	// The profile detail screen (001 US5): every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted (FR-036). The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
+	// The profile detail screen: every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted. The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` exists because a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -8565,7 +10988,7 @@ type ClientWithResponsesInterface interface {
 
 	// SetProfileEntriesWithBodyWithResponse Set the packages a profile holds and how each one tracks versions
 	//
-	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
+	// Float or pin per package, in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED. This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8574,7 +10997,7 @@ type ClientWithResponsesInterface interface {
 
 	// SetProfileEntriesWithResponse Set the packages a profile holds and how each one tracks versions
 	//
-	// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
+	// Float or pin per package, in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED. This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8601,7 +11024,7 @@ type ClientWithResponsesInterface interface {
 
 	// PublishRevisionWithBodyWithResponse Publish the next immutable revision
 	//
-	// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.
+	// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile`. The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown. THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one. Requires owner or maintainer on the profile — a consumer may not publish.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8610,7 +11033,7 @@ type ClientWithResponsesInterface interface {
 
 	// PublishRevisionWithResponse Publish the next immutable revision
 	//
-	// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.
+	// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile`. The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown. THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one. Requires owner or maintainer on the profile — a consumer may not publish.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8619,7 +11042,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetRevisionWithResponse Fetch a resolved revision lockfile
 	//
-	// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted (FR-036).
+	// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -8628,7 +11051,7 @@ type ClientWithResponsesInterface interface {
 
 	// SetProfileSharingWithBodyWithResponse Set the role each member and identity-provider group holds
 	//
-	// Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
+	// Individual members and IdP groups at four levels — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. This is about roles: a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision; sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8637,7 +11060,7 @@ type ClientWithResponsesInterface interface {
 
 	// SetProfileSharingWithResponse Set the role each member and identity-provider group holds
 	//
-	// Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
+	// Individual members and IdP groups at four levels — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. This is about roles: a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision; sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8646,7 +11069,7 @@ type ClientWithResponsesInterface interface {
 
 	// SetProfileTargetsWithBodyWithResponse Choose which agent directories a client writes
 	//
-	// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
+	// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores. Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8655,7 +11078,7 @@ type ClientWithResponsesInterface interface {
 
 	// SetProfileTargetsWithResponse Choose which agent directories a client writes
 	//
-	// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
+	// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores. Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8673,16 +11096,52 @@ type ClientWithResponsesInterface interface {
 
 	// ScannerSummaryWithResponse The Scanner screen's headline figures
 	//
-	// Versions that reached a verdict in the period, how many packages are quarantined, how many acceptances are still in force and when the first of them lapses, and the median time from a scan starting to its verdict (001 US4 scenario 1). `quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged versions: a superseded flagged version is not quarantining anything, because nothing resolves to it. `nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when there is nothing to report — no active override and no finished scan are different statements from "expires now" and "instant".
+	// Versions that reached a verdict in the period, how many packages are quarantined, how many acceptances are still in force and when the first of them lapses, and the median time from a scan starting to its verdict. `quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged versions: a superseded flagged version is not quarantining anything, because nothing resolves to it. `nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when there is nothing to report — no active override and no finished scan are different statements from "expires now" and "instant".
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /v1/scanner/summary (the `ScannerSummary` operationId).
 	ScannerSummaryWithResponse(ctx context.Context, params *ScannerSummaryParams, reqEditors ...RequestEditorFn) (*ScannerSummaryResponse, error)
 
+	// ListServiceTokensWithResponse The service tokens the caller may manage
+	//
+	// The caller's own tokens, or every token for a catalog-admin. Never carries a secret or its hash.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/service-tokens (the `ListServiceTokens` operationId).
+	ListServiceTokensWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListServiceTokensResponse, error)
+
+	// CreateServiceTokenWithBodyWithResponse Create a scoped service token
+	//
+	// Mints a non-human bearer credential for CI and headless machines and writes one `token` audit row. The secret is returned in this response and never again. Every sync:profile scope must name a profile the caller can read now.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/service-tokens (the `CreateServiceToken` operationId).
+	CreateServiceTokenWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateServiceTokenResponse, error)
+
+	// CreateServiceTokenWithResponse Create a scoped service token
+	//
+	// Mints a non-human bearer credential for CI and headless machines and writes one `token` audit row. The secret is returned in this response and never again. Every sync:profile scope must name a profile the caller can read now.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/service-tokens (the `CreateServiceToken` operationId).
+	CreateServiceTokenWithResponse(ctx context.Context, body CreateServiceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateServiceTokenResponse, error)
+
+	// RevokeServiceTokenWithResponse Revoke a service token
+	//
+	// Effective on the token's next request, and writes one `token` audit row. The creator or a catalog-admin may revoke; revoking a revoked token is a no-op.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/service-tokens/{id} (the `RevokeServiceToken` operationId).
+	RevokeServiceTokenWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeServiceTokenResponse, error)
+
 	// CreateSessionWithBodyWithResponse Mint a browser session from a verified ID token
 	//
-	// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
+	// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row, and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8691,7 +11150,7 @@ type ClientWithResponsesInterface interface {
 
 	// CreateSessionWithResponse Mint a browser session from a verified ID token
 	//
-	// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
+	// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row, and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8700,7 +11159,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteSessionWithResponse Sign out
 	//
-	// Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction (FR-114, FR-115). Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.
+	// Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction. Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -8718,7 +11177,7 @@ type ClientWithResponsesInterface interface {
 
 	// ReportSyncWithBodyWithResponse Report a completed sync
 	//
-	// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
+	// Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8727,7 +11186,7 @@ type ClientWithResponsesInterface interface {
 
 	// ReportSyncWithResponse Report a completed sync
 	//
-	// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
+	// Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -8736,12 +11195,82 @@ type ClientWithResponsesInterface interface {
 
 	// GetViewerWithResponse Who this request is acting as
 	//
-	// The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL (FR-117) — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate (FR-118).
+	// The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /v1/viewer (the `GetViewer` operationId).
 	GetViewerWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetViewerResponse, error)
+
+	// ListWebhooksWithResponse Every webhook subscription
+	//
+	// Never carries a secret.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/webhooks (the `ListWebhooks` operationId).
+	ListWebhooksWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListWebhooksResponse, error)
+
+	// CreateWebhookWithBodyWithResponse Subscribe a URL to events
+	//
+	// Stores a subscription and writes one `webhook` audit row. The signing secret is returned in this response and never again.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/webhooks (the `CreateWebhook` operationId).
+	CreateWebhookWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateWebhookResponse, error)
+
+	// CreateWebhookWithResponse Subscribe a URL to events
+	//
+	// Stores a subscription and writes one `webhook` audit row. The signing secret is returned in this response and never again.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/webhooks (the `CreateWebhook` operationId).
+	CreateWebhookWithResponse(ctx context.Context, body CreateWebhookJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateWebhookResponse, error)
+
+	// DeleteWebhookWithResponse Delete a webhook and its delivery log
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/webhooks/{id} (the `DeleteWebhook` operationId).
+	DeleteWebhookWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteWebhookResponse, error)
+
+	// UpdateWebhookWithBodyWithResponse Change a webhook's name, URL, filters or whether it is enabled
+	//
+	// Changes only the fields given and writes one `webhook` audit row.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /v1/webhooks/{id} (the `UpdateWebhook` operationId).
+	UpdateWebhookWithBodyWithResponse(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateWebhookResponse, error)
+
+	// UpdateWebhookWithResponse Change a webhook's name, URL, filters or whether it is enabled
+	//
+	// Changes only the fields given and writes one `webhook` audit row.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /v1/webhooks/{id} (the `UpdateWebhook` operationId).
+	UpdateWebhookWithResponse(ctx context.Context, id openapi_types.UUID, body UpdateWebhookJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateWebhookResponse, error)
+
+	// ListWebhookDeliveriesWithResponse A webhook's recent delivery attempts
+	//
+	// The newest 100 attempts of the last 30 days, with the first KiB of each response.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/webhooks/{id}/deliveries (the `ListWebhookDeliveries` operationId).
+	ListWebhookDeliveriesWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListWebhookDeliveriesResponse, error)
+
+	// RotateWebhookSecretWithResponse Replace a webhook's signing secret
+	//
+	// The new secret is returned once and signs every delivery from now on, retries included.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /v1/webhooks/{id}/secret (the `RotateWebhookSecret` operationId).
+	RotateWebhookSecretWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*RotateWebhookSecretResponse, error)
 }
 
 type ListAuditResponse struct {
@@ -8816,6 +11345,8 @@ type ExportAuditResponse struct {
 	HTTPResponse *http.Response
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
 	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
 	ApplicationproblemJSON500 *Error
 	// Headers200 the parsed response headers for an HTTP 200 response
@@ -8825,6 +11356,11 @@ type ExportAuditResponse struct {
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r ExportAuditResponse) GetApplicationproblemJSON401() *Error {
 	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r ExportAuditResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
 }
 
 // GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
@@ -9636,6 +12172,206 @@ func (r HealthResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r HealthResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListMachinesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *MachineList
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListMachinesResponse) GetJSON200() *MachineList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListMachinesResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ListMachinesResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r ListMachinesResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ListMachinesResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListMachinesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListMachinesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListMachinesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListMachinesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ForgetMachineResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ForgetMachineResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ForgetMachineResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r ForgetMachineResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ForgetMachineResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ForgetMachineResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ForgetMachineResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ForgetMachineResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ForgetMachineResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetMachineResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *MachineDetail
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetMachineResponse) GetJSON200() *MachineDetail {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r GetMachineResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r GetMachineResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r GetMachineResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r GetMachineResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetMachineResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetMachineResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetMachineResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetMachineResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -10925,6 +13661,186 @@ func (r GetPackageScanResponse) ContentType() string {
 	return ""
 }
 
+type SetPackageSignerResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PackageDetail
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetPackageSignerResponse) GetJSON200() *PackageDetail {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r SetPackageSignerResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r SetPackageSignerResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r SetPackageSignerResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r SetPackageSignerResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r SetPackageSignerResponse) GetApplicationproblemJSON415() *Error {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r SetPackageSignerResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r SetPackageSignerResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r SetPackageSignerResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetPackageSignerResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetPackageSignerResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetPackageSignerResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type SetPackageTrackingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PackageDetail
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Error
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON415 the response for an HTTP 415 `application/problem+json` response
+	ApplicationproblemJSON415 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SetPackageTrackingResponse) GetJSON200() *PackageDetail {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r SetPackageTrackingResponse) GetApplicationproblemJSON400() *Error {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r SetPackageTrackingResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r SetPackageTrackingResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r SetPackageTrackingResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON415 returns the response for an HTTP 415 `application/problem+json` response
+func (r SetPackageTrackingResponse) GetApplicationproblemJSON415() *Error {
+	return r.ApplicationproblemJSON415
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r SetPackageTrackingResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r SetPackageTrackingResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r SetPackageTrackingResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SetPackageTrackingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetPackageTrackingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SetPackageTrackingResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type DeleteVersionResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -12024,6 +14940,199 @@ func (r ScannerSummaryResponse) ContentType() string {
 	return ""
 }
 
+type ListServiceTokensResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ServiceTokenList
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListServiceTokensResponse) GetJSON200() *ServiceTokenList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListServiceTokensResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ListServiceTokensResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ListServiceTokensResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListServiceTokensResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListServiceTokensResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListServiceTokensResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListServiceTokensResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateServiceTokenResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *ServiceTokenCreated
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateServiceTokenResponse) GetJSON201() *ServiceTokenCreated {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CreateServiceTokenResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r CreateServiceTokenResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CreateServiceTokenResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r CreateServiceTokenResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateServiceTokenResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateServiceTokenResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateServiceTokenResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateServiceTokenResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RevokeServiceTokenResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r RevokeServiceTokenResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r RevokeServiceTokenResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r RevokeServiceTokenResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r RevokeServiceTokenResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r RevokeServiceTokenResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeServiceTokenResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeServiceTokenResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RevokeServiceTokenResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type CreateSessionResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -12341,9 +15450,416 @@ func (r GetViewerResponse) ContentType() string {
 	return ""
 }
 
+type ListWebhooksResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *WebhookList
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListWebhooksResponse) GetJSON200() *WebhookList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListWebhooksResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ListWebhooksResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ListWebhooksResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListWebhooksResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListWebhooksResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListWebhooksResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListWebhooksResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateWebhookResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *WebhookCreated
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateWebhookResponse) GetJSON201() *WebhookCreated {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r CreateWebhookResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r CreateWebhookResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r CreateWebhookResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r CreateWebhookResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateWebhookResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateWebhookResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateWebhookResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateWebhookResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteWebhookResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r DeleteWebhookResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r DeleteWebhookResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r DeleteWebhookResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r DeleteWebhookResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteWebhookResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteWebhookResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteWebhookResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteWebhookResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateWebhookResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Webhook
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON422 the response for an HTTP 422 `application/problem+json` response
+	ApplicationproblemJSON422 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateWebhookResponse) GetJSON200() *Webhook {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r UpdateWebhookResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r UpdateWebhookResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r UpdateWebhookResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON422 returns the response for an HTTP 422 `application/problem+json` response
+func (r UpdateWebhookResponse) GetApplicationproblemJSON422() *Error {
+	return r.ApplicationproblemJSON422
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r UpdateWebhookResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateWebhookResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateWebhookResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateWebhookResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateWebhookResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListWebhookDeliveriesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *WebhookDeliveryList
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListWebhookDeliveriesResponse) GetJSON200() *WebhookDeliveryList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r ListWebhookDeliveriesResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ListWebhookDeliveriesResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r ListWebhookDeliveriesResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ListWebhookDeliveriesResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r ListWebhookDeliveriesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListWebhookDeliveriesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListWebhookDeliveriesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListWebhookDeliveriesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RotateWebhookSecretResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *WebhookSecret
+	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
+	ApplicationproblemJSON401 *Error
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Error
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Error
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RotateWebhookSecretResponse) GetJSON200() *WebhookSecret {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
+func (r RotateWebhookSecretResponse) GetApplicationproblemJSON401() *Error {
+	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r RotateWebhookSecretResponse) GetApplicationproblemJSON403() *Error {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r RotateWebhookSecretResponse) GetApplicationproblemJSON404() *Error {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r RotateWebhookSecretResponse) GetApplicationproblemJSON500() *Error {
+	return r.ApplicationproblemJSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r RotateWebhookSecretResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RotateWebhookSecretResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RotateWebhookSecretResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RotateWebhookSecretResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // ListAuditWithResponse The audit log, paged, most recent first
 //
-// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. There is deliberately no filter. The export below must return the full CURRENT SCOPE (FR-051), and with no filters the current scope is the whole log — a filter added here without being added there would quietly stop that holding. Rows are append-only, enforced by revoked grants rather than by anything in this process (FR-052). `text` quotes package and profile names, so it is rendered escaped.
+// One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. Optional filters narrow it to one subject or one package namespace; the export takes the same filters, so it always returns the page's full CURRENT SCOPE. Rows written before subjects were recorded carry none and match no subject filter. Rows are append-only, enforced by revoked grants rather than by anything in this process. `text` quotes package and profile names, so it is rendered escaped.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -12358,13 +15874,13 @@ func (c *ClientWithResponses) ListAuditWithResponse(ctx context.Context, params 
 
 // ExportAuditWithResponse Export the whole audit log
 //
-// FR-051: the full current scope, not the visible page. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
+// The full current scope, not the visible page — the whole log, or what the same filters as listAudit select. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.
 //
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /v1/audit/export (the `ExportAudit` operationId).
-func (c *ClientWithResponses) ExportAuditWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ExportAuditResponse, error) {
-	rsp, err := c.ExportAudit(ctx, reqEditors...)
+func (c *ClientWithResponses) ExportAuditWithResponse(ctx context.Context, params *ExportAuditParams, reqEditors ...RequestEditorFn) (*ExportAuditResponse, error) {
+	rsp, err := c.ExportAudit(ctx, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -12373,7 +15889,7 @@ func (c *ClientWithResponses) ExportAuditWithResponse(ctx context.Context, reqEd
 
 // GetBadgesWithResponse The application shell's counts
 //
-// The three counts the sidebar renders, in one call: packages visible in the catalog, profiles THIS IDENTITY may read, and findings awaiting a decision (FR-121). One operation because the shell renders on every screen, so three would be three round trips per page. Three indexed counts over the base tables and not a projection: principle VIII sanctions exactly one and it is not spent here (research R5). The profile count is the length of the list the Profiles screen shows and cannot be more: a count including a profile the reader cannot open would leak its existence by arithmetic.
+// The three counts the sidebar renders, in one call: packages visible in the catalog, profiles THIS IDENTITY may read, and findings awaiting a decision. One operation because the shell renders on every screen, so three would be three round trips per page. Three indexed counts over the base tables and not a projection: principle VIII sanctions exactly one and it is not spent here. The profile count is the length of the list the Profiles screen shows and cannot be more: a count including a profile the reader cannot open would leak its existence by arithmetic.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -12388,7 +15904,7 @@ func (c *ClientWithResponses) GetBadgesWithResponse(ctx context.Context, reqEdit
 
 // GetBundleWithResponse Download an immutable version bundle
 //
-// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate (FR-029).
+// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -12403,7 +15919,7 @@ func (c *ClientWithResponses) GetBundleWithResponse(ctx context.Context, publish
 
 // LookupDeviceCodeWithResponse Look up a pending device authorisation
 //
-// Shows the requesting host and remaining validity BEFORE the viewer confirms (FR-041), so approval is an informed act. Refuses distinguishably when the code is unknown, expired or already decided (FR-042). The path parameter is a bearer-equivalent secret for the length of its validity and is never logged verbatim (see the api role's correlation middleware).
+// Shows the requesting host and remaining validity BEFORE the viewer confirms, so approval is an informed act. Refuses distinguishably when the code is unknown, expired or already decided. The path parameter is a bearer-equivalent secret for the length of its validity and is never logged verbatim (see the api role's correlation middleware).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -12418,7 +15934,7 @@ func (c *ClientWithResponses) LookupDeviceCodeWithResponse(ctx context.Context, 
 
 // ApproveDeviceCodeWithResponse Approve a pending device authorisation
 //
-// The confirm action (US6). Moves the code from pending to approved in one transaction and writes the `login` audit row naming the host, source `cli / <host>` (FR-050). Single-use: a second approval of the same code refuses the same way any already-decided code does.
+// The confirm action. Moves the code from pending to approved in one transaction and writes the `login` audit row naming the host, source `cli / <host>`. Single-use: a second approval of the same code refuses the same way any already-decided code does.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -12463,7 +15979,7 @@ func (c *ClientWithResponses) DeviceAuthorizeWithResponse(ctx context.Context, b
 
 // DeviceTokenWithBodyWithResponse Poll for the issued token
 //
-// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
+// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12478,7 +15994,7 @@ func (c *ClientWithResponses) DeviceTokenWithBodyWithResponse(ctx context.Contex
 
 // DeviceTokenWithFormdataBodyWithResponse Poll for the issued token
 //
-// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
+// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.
 //
 // Takes a body of the `application/x-www-form-urlencoded` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12508,7 +16024,7 @@ func (c *ClientWithResponses) ListFindingsWithResponse(ctx context.Context, para
 
 // GetFindingWithResponse One finding, its evidence and every check that ran
 //
-// The detail pane of 001 US4 scenario 2: severity, rule, subject, the prose explanation, EVERY evidence location, and EVERY check the raising scan ran — passes included (FR-025). The passes are not padding. A pane showing only failures cannot be told apart from one where nothing else ran, so the absence of a finding would be indistinguishable from the absence of a check, which is the distinction the whole matrix exists for. Evidence and check labels are bundle content and identity-provider content respectively: every consumer renders them escaped (FR-055).
+// The detail pane: severity, rule, subject, the prose explanation, EVERY evidence location, and EVERY check the raising scan ran — passes included. The passes are not padding. A pane showing only failures cannot be told apart from one where nothing else ran, so the absence of a finding would be indistinguishable from the absence of a check, which is the distinction the whole matrix exists for. Evidence and check labels are bundle content and identity-provider content respectively: every consumer renders them escaped.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -12523,7 +16039,7 @@ func (c *ClientWithResponses) GetFindingWithResponse(ctx context.Context, id ope
 
 // AcceptFindingWithBodyWithResponse Accept a finding with a recorded note and an expiry
 //
-// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.
+// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction. The version's verdict is NOT changed. Accepting makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it — this refusal is the backstop, not the mechanism.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12538,7 +16054,7 @@ func (c *ClientWithResponses) AcceptFindingWithBodyWithResponse(ctx context.Cont
 
 // AcceptFindingWithResponse Accept a finding with a recorded note and an expiry
 //
-// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.
+// Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction. The version's verdict is NOT changed. Accepting makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it — this refusal is the backstop, not the mechanism.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12553,7 +16069,7 @@ func (c *ClientWithResponses) AcceptFindingWithResponse(ctx context.Context, id 
 
 // RejectFindingWithBodyWithResponse Reject a finding and quarantine its version for good
 //
-// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
+// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all, so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12568,7 +16084,7 @@ func (c *ClientWithResponses) RejectFindingWithBodyWithResponse(ctx context.Cont
 
 // RejectFindingWithResponse Reject a finding and quarantine its version for good
 //
-// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
+// Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all, so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12583,7 +16099,7 @@ func (c *ClientWithResponses) RejectFindingWithResponse(ctx context.Context, id 
 
 // HealthWithResponse Liveness and readiness
 //
-// Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case (FR-058).
+// Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -12594,6 +16110,51 @@ func (c *ClientWithResponses) HealthWithResponse(ctx context.Context, reqEditors
 		return nil, err
 	}
 	return ParseHealthResponse(rsp)
+}
+
+// ListMachinesWithResponse Machines that reported a sync
+//
+// A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. A package filter names a package this identity can read, and then also counts the matching machines per version. Stale is computed on read.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/machines (the `ListMachines` operationId).
+func (c *ClientWithResponses) ListMachinesWithResponse(ctx context.Context, params *ListMachinesParams, reqEditors ...RequestEditorFn) (*ListMachinesResponse, error) {
+	rsp, err := c.ListMachines(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListMachinesResponse(rsp)
+}
+
+// ForgetMachineWithResponse Forget a machine
+//
+// Deletes the machine and its inventory and writes one `sync` audit row. A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. The sync events it reported stay. A machine that reports again reappears.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/machines/{id} (the `ForgetMachine` operationId).
+func (c *ClientWithResponses) ForgetMachineWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*ForgetMachineResponse, error) {
+	rsp, err := c.ForgetMachine(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseForgetMachineResponse(rsp)
+}
+
+// GetMachineWithResponse One machine's installs and latest skips
+//
+// A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. Installs and skips list only profiles and packages this identity can read.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/machines/{id} (the `GetMachine` operationId).
+func (c *ClientWithResponses) GetMachineWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetMachineResponse, error) {
+	rsp, err := c.GetMachine(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetMachineResponse(rsp)
 }
 
 // GetOrganizationWithResponse Identity provider settings, policy, mappings and categories
@@ -12823,7 +16384,7 @@ func (c *ClientWithResponses) UpdatePolicyWithResponse(ctx context.Context, body
 
 // ListPackagesWithResponse Browse, search and facet the catalog
 //
-// One page of the catalog with both facet option sets and the live total, from two statements issued concurrently (R4). The two facets count differently, and the asymmetry is FR-013's: CATEGORIES are disjunctive, so each option is counted with the category filter removed; TAGS are conjunctive, so each option is counted against the current results — the number selecting it actually yields. Browsing requires a session: public anonymous browsing is out of scope (spec.md).
+// One page of the catalog with both facet option sets and the live total, from two statements issued concurrently. The two facets count differently, and the asymmetry is this: CATEGORIES are disjunctive, so each option is counted with the category filter removed; TAGS are conjunctive, so each option is counted against the current results — the number selecting it actually yields. Browsing requires a session: public anonymous browsing is out of scope.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -12838,7 +16399,7 @@ func (c *ClientWithResponses) ListPackagesWithResponse(ctx context.Context, para
 
 // RegisterPackageWithBodyWithResponse Register a package from a URL or an upload
 //
-// Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed (FR-008).
+// Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12853,7 +16414,7 @@ func (c *ClientWithResponses) RegisterPackageWithBodyWithResponse(ctx context.Co
 
 // PreviewPackageWithBodyWithResponse Validate an archive before registering it
 //
-// FR-005's pre-submit answer: every entry with a validation mark, the discarded paths named, the components the FILE TREE reveals, and — when a manifest fails — the schema path that refused it. Writes nothing, and runs the same validation the fetcher runs, so the panel a user approves is the tree that gets stored.
+// The pre-submit answer: every entry with a validation mark, the discarded paths named, the components the FILE TREE reveals, and — when a manifest fails — the schema path that refused it. Writes nothing, and runs the same validation the fetcher runs, so the panel a user approves is the tree that gets stored.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12883,7 +16444,7 @@ func (c *ClientWithResponses) DeletePackageWithResponse(ctx context.Context, nam
 
 // GetPackageWithResponse One package's detail
 //
-// Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package (FR-016). The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read (FR-044), and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
+// Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package. The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read, and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -12898,7 +16459,7 @@ func (c *ClientWithResponses) GetPackageWithResponse(ctx context.Context, namesp
 
 // ListPackageFilesWithResponse The bundle's file tree, to read before using it
 //
-// Every regular file the LATEST VISIBLE version's bundle holds. The `component` table records only the significant components — a skill's directory, an MCP server — not a full file list, so this unpacks the bundle itself, under the same extraction caps the fetcher enforces on ingestion, and does so again on every call: nothing here stores a byte-level file list to answer from instead. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029). `default` names this version's own SKILL.md or plugin.json when the bundle has one at its root, since that is the file most worth reading first.
+// Every regular file the LATEST VISIBLE version's bundle holds. The `component` table records only the significant components — a skill's directory, an MCP server — not a full file list, so this unpacks the bundle itself, under the same extraction caps the fetcher enforces on ingestion, and does so again on every call: nothing here stores a byte-level file list to answer from instead. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one. `default` names this version's own SKILL.md or plugin.json when the bundle has one at its root, since that is the file most worth reading first.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -12928,7 +16489,7 @@ func (c *ClientWithResponses) GetPackageFileWithResponse(ctx context.Context, na
 
 // GetPackageScanWithResponse The latest visible version's scan result, to show beside the package
 //
-// The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029).
+// The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -12939,6 +16500,66 @@ func (c *ClientWithResponses) GetPackageScanWithResponse(ctx context.Context, na
 		return nil, err
 	}
 	return ParseGetPackageScanResponse(rsp)
+}
+
+// SetPackageSignerWithBodyWithResponse Set the signer a package's versions must be signed by
+//
+// Sets the exact OIDC issuer and the identity pattern (RE2, matched in full) a version's verified Sigstore signer must satisfy for the version to resolve while the organisation requires signed bundles. Both empty clears it. Takes effect at the next resolution; no signature is re-verified. One audit row of kind `policy`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/packages/{namespace}/{name}/signer (the `SetPackageSigner` operationId).
+func (c *ClientWithResponses) SetPackageSignerWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetPackageSignerResponse, error) {
+	rsp, err := c.SetPackageSignerWithBody(ctx, namespace, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetPackageSignerResponse(rsp)
+}
+
+// SetPackageSignerWithResponse Set the signer a package's versions must be signed by
+//
+// Sets the exact OIDC issuer and the identity pattern (RE2, matched in full) a version's verified Sigstore signer must satisfy for the version to resolve while the organisation requires signed bundles. Both empty clears it. Takes effect at the next resolution; no signature is re-verified. One audit row of kind `policy`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/packages/{namespace}/{name}/signer (the `SetPackageSigner` operationId).
+func (c *ClientWithResponses) SetPackageSignerWithResponse(ctx context.Context, namespace string, name string, body SetPackageSignerJSONRequestBody, reqEditors ...RequestEditorFn) (*SetPackageSignerResponse, error) {
+	rsp, err := c.SetPackageSigner(ctx, namespace, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetPackageSignerResponse(rsp)
+}
+
+// SetPackageTrackingWithBodyWithResponse Track a git package's upstream tags
+//
+// Opts a package registered from git in or out of the fetcher's periodic upstream check, which registers each new tag matching the pattern exactly as a registration would: version, fetch job and audit row, then the ordinary fetch, scan and gate. One audit row of kind `fetch`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/packages/{namespace}/{name}/tracking (the `SetPackageTracking` operationId).
+func (c *ClientWithResponses) SetPackageTrackingWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetPackageTrackingResponse, error) {
+	rsp, err := c.SetPackageTrackingWithBody(ctx, namespace, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetPackageTrackingResponse(rsp)
+}
+
+// SetPackageTrackingWithResponse Track a git package's upstream tags
+//
+// Opts a package registered from git in or out of the fetcher's periodic upstream check, which registers each new tag matching the pattern exactly as a registration would: version, fetch job and audit row, then the ordinary fetch, scan and gate. One audit row of kind `fetch`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/packages/{namespace}/{name}/tracking (the `SetPackageTracking` operationId).
+func (c *ClientWithResponses) SetPackageTrackingWithResponse(ctx context.Context, namespace string, name string, body SetPackageTrackingJSONRequestBody, reqEditors ...RequestEditorFn) (*SetPackageTrackingResponse, error) {
+	rsp, err := c.SetPackageTracking(ctx, namespace, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetPackageTrackingResponse(rsp)
 }
 
 // DeleteVersionWithResponse Withdraw one version from the catalog
@@ -12958,7 +16579,7 @@ func (c *ClientWithResponses) DeleteVersionWithResponse(ctx context.Context, nam
 
 // SetPackageVisibilityWithBodyWithResponse Change who may see a package
 //
-// Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
+// Organisation, team or private, in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12973,7 +16594,7 @@ func (c *ClientWithResponses) SetPackageVisibilityWithBodyWithResponse(ctx conte
 
 // SetPackageVisibilityWithResponse Change who may see a package
 //
-// Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
+// Organisation, team or private, in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -12988,7 +16609,7 @@ func (c *ClientWithResponses) SetPackageVisibilityWithResponse(ctx context.Conte
 
 // ListProfilesWithResponse Profiles readable by this identity
 //
-// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate (FR-126), so a caller choosing among them need not read every one's detail just to find out which allow it.
+// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others. Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate, so a caller choosing among them need not read every one's detail just to find out which allow it.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -13003,7 +16624,7 @@ func (c *ClientWithResponses) ListProfilesWithResponse(ctx context.Context, reqE
 
 // CreateProfileWithBodyWithResponse Create a profile, or fork one
 //
-// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
+// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -13018,7 +16639,7 @@ func (c *ClientWithResponses) CreateProfileWithBodyWithResponse(ctx context.Cont
 
 // CreateProfileWithResponse Create a profile, or fork one
 //
-// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
+// Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -13033,7 +16654,7 @@ func (c *ClientWithResponses) CreateProfileWithResponse(ctx context.Context, bod
 
 // DeleteProfileWithResponse Delete a profile
 //
-// Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: FR-034 forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.
+// Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: the design forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -13048,7 +16669,7 @@ func (c *ClientWithResponses) DeleteProfileWithResponse(ctx context.Context, slu
 
 // GetProfileWithResponse One profile, resolved under the org gate
 //
-// The profile detail screen (001 US5): every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted (FR-036). The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
+// The profile detail screen: every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted. The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` exists because a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -13063,7 +16684,7 @@ func (c *ClientWithResponses) GetProfileWithResponse(ctx context.Context, slug s
 
 // SetProfileEntriesWithBodyWithResponse Set the packages a profile holds and how each one tracks versions
 //
-// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
+// Float or pin per package, in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED. This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -13078,7 +16699,7 @@ func (c *ClientWithResponses) SetProfileEntriesWithBodyWithResponse(ctx context.
 
 // SetProfileEntriesWithResponse Set the packages a profile holds and how each one tracks versions
 //
-// Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
+// Float or pin per package, in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED. This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -13123,7 +16744,7 @@ func (c *ClientWithResponses) RemoveProfileEntryWithResponse(ctx context.Context
 
 // PublishRevisionWithBodyWithResponse Publish the next immutable revision
 //
-// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.
+// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile`. The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown. THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one. Requires owner or maintainer on the profile — a consumer may not publish.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -13138,7 +16759,7 @@ func (c *ClientWithResponses) PublishRevisionWithBodyWithResponse(ctx context.Co
 
 // PublishRevisionWithResponse Publish the next immutable revision
 //
-// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.
+// Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile`. The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown. THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one. Requires owner or maintainer on the profile — a consumer may not publish.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -13153,7 +16774,7 @@ func (c *ClientWithResponses) PublishRevisionWithResponse(ctx context.Context, s
 
 // GetRevisionWithResponse Fetch a resolved revision lockfile
 //
-// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted (FR-036).
+// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -13168,7 +16789,7 @@ func (c *ClientWithResponses) GetRevisionWithResponse(ctx context.Context, slug 
 
 // SetProfileSharingWithBodyWithResponse Set the role each member and identity-provider group holds
 //
-// Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
+// Individual members and IdP groups at four levels — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. This is about roles: a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision; sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -13183,7 +16804,7 @@ func (c *ClientWithResponses) SetProfileSharingWithBodyWithResponse(ctx context.
 
 // SetProfileSharingWithResponse Set the role each member and identity-provider group holds
 //
-// Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
+// Individual members and IdP groups at four levels — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. This is about roles: a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision; sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -13198,7 +16819,7 @@ func (c *ClientWithResponses) SetProfileSharingWithResponse(ctx context.Context,
 
 // SetProfileTargetsWithBodyWithResponse Choose which agent directories a client writes
 //
-// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
+// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores. Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -13213,7 +16834,7 @@ func (c *ClientWithResponses) SetProfileTargetsWithBodyWithResponse(ctx context.
 
 // SetProfileTargetsWithResponse Choose which agent directories a client writes
 //
-// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
+// The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores. Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -13243,7 +16864,7 @@ func (c *ClientWithResponses) GetRuntimeWithResponse(ctx context.Context, reqEdi
 
 // ScannerSummaryWithResponse The Scanner screen's headline figures
 //
-// Versions that reached a verdict in the period, how many packages are quarantined, how many acceptances are still in force and when the first of them lapses, and the median time from a scan starting to its verdict (001 US4 scenario 1). `quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged versions: a superseded flagged version is not quarantining anything, because nothing resolves to it. `nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when there is nothing to report — no active override and no finished scan are different statements from "expires now" and "instant".
+// Versions that reached a verdict in the period, how many packages are quarantined, how many acceptances are still in force and when the first of them lapses, and the median time from a scan starting to its verdict. `quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged versions: a superseded flagged version is not quarantining anything, because nothing resolves to it. `nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when there is nothing to report — no active override and no finished scan are different statements from "expires now" and "instant".
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -13256,9 +16877,69 @@ func (c *ClientWithResponses) ScannerSummaryWithResponse(ctx context.Context, pa
 	return ParseScannerSummaryResponse(rsp)
 }
 
+// ListServiceTokensWithResponse The service tokens the caller may manage
+//
+// The caller's own tokens, or every token for a catalog-admin. Never carries a secret or its hash.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/service-tokens (the `ListServiceTokens` operationId).
+func (c *ClientWithResponses) ListServiceTokensWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListServiceTokensResponse, error) {
+	rsp, err := c.ListServiceTokens(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListServiceTokensResponse(rsp)
+}
+
+// CreateServiceTokenWithBodyWithResponse Create a scoped service token
+//
+// Mints a non-human bearer credential for CI and headless machines and writes one `token` audit row. The secret is returned in this response and never again. Every sync:profile scope must name a profile the caller can read now.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/service-tokens (the `CreateServiceToken` operationId).
+func (c *ClientWithResponses) CreateServiceTokenWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateServiceTokenResponse, error) {
+	rsp, err := c.CreateServiceTokenWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateServiceTokenResponse(rsp)
+}
+
+// CreateServiceTokenWithResponse Create a scoped service token
+//
+// Mints a non-human bearer credential for CI and headless machines and writes one `token` audit row. The secret is returned in this response and never again. Every sync:profile scope must name a profile the caller can read now.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/service-tokens (the `CreateServiceToken` operationId).
+func (c *ClientWithResponses) CreateServiceTokenWithResponse(ctx context.Context, body CreateServiceTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateServiceTokenResponse, error) {
+	rsp, err := c.CreateServiceToken(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateServiceTokenResponse(rsp)
+}
+
+// RevokeServiceTokenWithResponse Revoke a service token
+//
+// Effective on the token's next request, and writes one `token` audit row. The creator or a catalog-admin may revoke; revoking a revoked token is a no-op.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/service-tokens/{id} (the `RevokeServiceToken` operationId).
+func (c *ClientWithResponses) RevokeServiceTokenWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeServiceTokenResponse, error) {
+	rsp, err := c.RevokeServiceToken(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeServiceTokenResponse(rsp)
+}
+
 // CreateSessionWithBodyWithResponse Mint a browser session from a verified ID token
 //
-// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
+// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row, and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -13273,7 +16954,7 @@ func (c *ClientWithResponses) CreateSessionWithBodyWithResponse(ctx context.Cont
 
 // CreateSessionWithResponse Mint a browser session from a verified ID token
 //
-// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
+// The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row, and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -13288,7 +16969,7 @@ func (c *ClientWithResponses) CreateSessionWithResponse(ctx context.Context, bod
 
 // DeleteSessionWithResponse Sign out
 //
-// Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction (FR-114, FR-115). Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.
+// Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction. Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -13318,7 +16999,7 @@ func (c *ClientWithResponses) GetStorageWithResponse(ctx context.Context, reqEdi
 
 // ReportSyncWithBodyWithResponse Report a completed sync
 //
-// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
+// Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -13333,7 +17014,7 @@ func (c *ClientWithResponses) ReportSyncWithBodyWithResponse(ctx context.Context
 
 // ReportSyncWithResponse Report a completed sync
 //
-// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
+// Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -13348,7 +17029,7 @@ func (c *ClientWithResponses) ReportSyncWithResponse(ctx context.Context, body R
 
 // GetViewerWithResponse Who this request is acting as
 //
-// The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL (FR-117) — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate (FR-118).
+// The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -13359,6 +17040,124 @@ func (c *ClientWithResponses) GetViewerWithResponse(ctx context.Context, reqEdit
 		return nil, err
 	}
 	return ParseGetViewerResponse(rsp)
+}
+
+// ListWebhooksWithResponse Every webhook subscription
+//
+// Never carries a secret.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/webhooks (the `ListWebhooks` operationId).
+func (c *ClientWithResponses) ListWebhooksWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListWebhooksResponse, error) {
+	rsp, err := c.ListWebhooks(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListWebhooksResponse(rsp)
+}
+
+// CreateWebhookWithBodyWithResponse Subscribe a URL to events
+//
+// Stores a subscription and writes one `webhook` audit row. The signing secret is returned in this response and never again.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/webhooks (the `CreateWebhook` operationId).
+func (c *ClientWithResponses) CreateWebhookWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateWebhookResponse, error) {
+	rsp, err := c.CreateWebhookWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateWebhookResponse(rsp)
+}
+
+// CreateWebhookWithResponse Subscribe a URL to events
+//
+// Stores a subscription and writes one `webhook` audit row. The signing secret is returned in this response and never again.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/webhooks (the `CreateWebhook` operationId).
+func (c *ClientWithResponses) CreateWebhookWithResponse(ctx context.Context, body CreateWebhookJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateWebhookResponse, error) {
+	rsp, err := c.CreateWebhook(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateWebhookResponse(rsp)
+}
+
+// DeleteWebhookWithResponse Delete a webhook and its delivery log
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/webhooks/{id} (the `DeleteWebhook` operationId).
+func (c *ClientWithResponses) DeleteWebhookWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteWebhookResponse, error) {
+	rsp, err := c.DeleteWebhook(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteWebhookResponse(rsp)
+}
+
+// UpdateWebhookWithBodyWithResponse Change a webhook's name, URL, filters or whether it is enabled
+//
+// Changes only the fields given and writes one `webhook` audit row.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /v1/webhooks/{id} (the `UpdateWebhook` operationId).
+func (c *ClientWithResponses) UpdateWebhookWithBodyWithResponse(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateWebhookResponse, error) {
+	rsp, err := c.UpdateWebhookWithBody(ctx, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateWebhookResponse(rsp)
+}
+
+// UpdateWebhookWithResponse Change a webhook's name, URL, filters or whether it is enabled
+//
+// Changes only the fields given and writes one `webhook` audit row.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /v1/webhooks/{id} (the `UpdateWebhook` operationId).
+func (c *ClientWithResponses) UpdateWebhookWithResponse(ctx context.Context, id openapi_types.UUID, body UpdateWebhookJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateWebhookResponse, error) {
+	rsp, err := c.UpdateWebhook(ctx, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateWebhookResponse(rsp)
+}
+
+// ListWebhookDeliveriesWithResponse A webhook's recent delivery attempts
+//
+// The newest 100 attempts of the last 30 days, with the first KiB of each response.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/webhooks/{id}/deliveries (the `ListWebhookDeliveries` operationId).
+func (c *ClientWithResponses) ListWebhookDeliveriesWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListWebhookDeliveriesResponse, error) {
+	rsp, err := c.ListWebhookDeliveries(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListWebhookDeliveriesResponse(rsp)
+}
+
+// RotateWebhookSecretWithResponse Replace a webhook's signing secret
+//
+// The new secret is returned once and signs every delivery from now on, retries included.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /v1/webhooks/{id}/secret (the `RotateWebhookSecret` operationId).
+func (c *ClientWithResponses) RotateWebhookSecretWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*RotateWebhookSecretResponse, error) {
+	rsp, err := c.RotateWebhookSecret(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRotateWebhookSecretResponse(rsp)
 }
 
 // ParseListAuditResponse parses an HTTP response from a ListAuditWithResponse call
@@ -13428,6 +17227,13 @@ func ParseExportAuditResponse(rsp *http.Response) (*ExportAuditResponse, error) 
 			return nil, err
 		}
 		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error
@@ -14088,6 +17894,164 @@ func ParseHealthResponse(rsp *http.Response) (*HealthResponse, error) {
 			return nil, err
 		}
 		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListMachinesResponse parses an HTTP response from a ListMachinesWithResponse call
+func ParseListMachinesResponse(rsp *http.Response) (*ListMachinesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListMachinesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MachineList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseForgetMachineResponse parses an HTTP response from a ForgetMachineWithResponse call
+func ParseForgetMachineResponse(rsp *http.Response) (*ForgetMachineResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ForgetMachineResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetMachineResponse parses an HTTP response from a GetMachineWithResponse call
+func ParseGetMachineResponse(rsp *http.Response) (*GetMachineResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetMachineResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MachineDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
 
 	}
 
@@ -15101,6 +19065,156 @@ func ParseGetPackageScanResponse(rsp *http.Response) (*GetPackageScanResponse, e
 	return response, nil
 }
 
+// ParseSetPackageSignerResponse parses an HTTP response from a SetPackageSignerWithResponse call
+func ParseSetPackageSignerResponse(rsp *http.Response) (*SetPackageSignerResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetPackageSignerResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PackageDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetPackageTrackingResponse parses an HTTP response from a SetPackageTrackingWithResponse call
+func ParseSetPackageTrackingResponse(rsp *http.Response) (*SetPackageTrackingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetPackageTrackingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PackageDetail
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 415:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON415 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseDeleteVersionResponse parses an HTTP response from a DeleteVersionWithResponse call
 func ParseDeleteVersionResponse(rsp *http.Response) (*DeleteVersionResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -15999,6 +20113,157 @@ func ParseScannerSummaryResponse(rsp *http.Response) (*ScannerSummaryResponse, e
 	return response, nil
 }
 
+// ParseListServiceTokensResponse parses an HTTP response from a ListServiceTokensWithResponse call
+func ParseListServiceTokensResponse(rsp *http.Response) (*ListServiceTokensResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListServiceTokensResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServiceTokenList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateServiceTokenResponse parses an HTTP response from a CreateServiceTokenWithResponse call
+func ParseCreateServiceTokenResponse(rsp *http.Response) (*CreateServiceTokenResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateServiceTokenResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest ServiceTokenCreated
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevokeServiceTokenResponse parses an HTTP response from a RevokeServiceTokenWithResponse call
+func ParseRevokeServiceTokenResponse(rsp *http.Response) (*RevokeServiceTokenResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeServiceTokenResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseCreateSessionResponse parses an HTTP response from a CreateSessionWithResponse call
 func ParseCreateSessionResponse(rsp *http.Response) (*CreateSessionResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -16234,6 +20499,326 @@ func ParseGetViewerResponse(rsp *http.Response) (*GetViewerResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListWebhooksResponse parses an HTTP response from a ListWebhooksWithResponse call
+func ParseListWebhooksResponse(rsp *http.Response) (*ListWebhooksResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListWebhooksResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest WebhookList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateWebhookResponse parses an HTTP response from a CreateWebhookWithResponse call
+func ParseCreateWebhookResponse(rsp *http.Response) (*CreateWebhookResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateWebhookResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest WebhookCreated
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteWebhookResponse parses an HTTP response from a DeleteWebhookWithResponse call
+func ParseDeleteWebhookResponse(rsp *http.Response) (*DeleteWebhookResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteWebhookResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateWebhookResponse parses an HTTP response from a UpdateWebhookWithResponse call
+func ParseUpdateWebhookResponse(rsp *http.Response) (*UpdateWebhookResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateWebhookResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Webhook
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListWebhookDeliveriesResponse parses an HTTP response from a ListWebhookDeliveriesWithResponse call
+func ParseListWebhookDeliveriesResponse(rsp *http.Response) (*ListWebhookDeliveriesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListWebhookDeliveriesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest WebhookDeliveryList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRotateWebhookSecretResponse parses an HTTP response from a RotateWebhookSecretWithResponse call
+func ParseRotateWebhookSecretResponse(rsp *http.Response) (*RotateWebhookSecretResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RotateWebhookSecretResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest WebhookSecret
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

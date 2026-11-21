@@ -19,7 +19,7 @@ const FileName = "state.json" // `~/.agent-manager/<hub>/state.json`
 
 const AsideSuffix = ".amctl-old" // atomic-swap sibling name; internal/apply's swap must match
 
-// Kind is a lockfile entry's kind (`plugin|skill`); only skill is installable today.
+// Kind is a lockfile entry's kind (`plugin|skill`).
 type Kind string
 
 // The contract's kind values.
@@ -31,19 +31,57 @@ const (
 // IsValid reports whether k is one of the contract's kinds.
 func (k Kind) IsValid() bool { return k == KindSkill || k == KindPlugin }
 
-// Target is one agent's directory convention (`claude-code|codex`); `agents-md` was removed.
+// Target is one agent's directory convention.
 type Target string
 
 // The contract's target values.
 const (
 	TargetClaudeCode Target = "claude-code"
 	TargetCodex      Target = "codex"
+	TargetOpenCode   Target = "opencode"
 )
 
 // IsValid reports whether t is one of the contract's targets.
 func (t Target) IsValid() bool {
-	return t == TargetClaudeCode || t == TargetCodex
+	return t == TargetClaudeCode || t == TargetCodex || t == TargetOpenCode
 }
+
+// ComponentKind is one part of a plugin amctl places on its own.
+type ComponentKind string
+
+const (
+	ComponentSkill     ComponentKind = "skill"
+	ComponentMCPServer ComponentKind = "mcp-server"
+	ComponentAgent     ComponentKind = "agent"
+	ComponentCommand   ComponentKind = "command"
+	ComponentHook      ComponentKind = "hook"
+)
+
+func (k ComponentKind) IsValid() bool {
+	switch k {
+	case ComponentSkill, ComponentMCPServer, ComponentAgent, ComponentCommand, ComponentHook:
+		return true
+	}
+	return false
+}
+
+// Component is one thing a plugin entry wrote outside its own directory: a
+// skill directory, a file, or one entry (Key) inside a config file amctl
+// shares with the agent and the user. SHA256 is of what amctl wrote, so a
+// prune can tell its own bytes from an edit.
+type Component struct {
+	Kind   ComponentKind `json:"kind"`
+	Name   string        `json:"name"` // the plugin's own name for it
+	Path   string        `json:"path"`
+	Key    string        `json:"key,omitempty"`
+	SHA256 string        `json:"h"`
+}
+
+// Slot is where a component lives; two plugins cannot share one.
+func (c Component) Slot() string { return c.Path + "\x00" + c.Key }
+
+// Identity is a component across versions of one plugin; hooks share a slot.
+func (c Component) Identity() string { return c.Slot() + "\x00" + c.Name }
 
 // Digest is cache.Digest with the record's JSON encoding, `sha256:<64 hex>`.
 type Digest struct {
@@ -78,9 +116,8 @@ func (d *Digest) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// FileMark is one installed file's account. No mtime (a same-size edit within
-// a millisecond of install is byte-identical in mtime here), no ctime
-// (darwin's Stat_t has none), no inode (the swap's rename changes it on every install).
+// FileMark is one installed file's account. mtime, ctime and inode are left
+// out on purpose: none of them reliably detects an edit across platforms and swaps.
 type FileMark struct {
 	SHA256 string `json:"h"` // the detector; everything else here is secondary
 	Size   int64  `json:"s"` // cheap short-circuit: a differing size is sufficient for `modified`, never for `unmodified`
@@ -119,8 +156,7 @@ func (f Fingerprint) IsZero() bool {
 
 // Entry is one installed package, for one target, in one profile.
 type Entry struct {
-	// ID is `namespace/name`, exactly two segments — not `publisher/name`,
-	// which would build a bundle URL with three where the contract has two.
+	// ID is `namespace/name`, exactly two segments.
 	ID string `json:"id"`
 
 	Version string `json:"version"` // verbatim, as the hub resolved and amctl installed it
@@ -132,6 +168,11 @@ type Entry struct {
 	Dest string `json:"dest"` // absolute path amctl wrote; the entry's root
 
 	Fingerprint Fingerprint `json:"fingerprint,omitzero"` // absent means unverifiable: refuse and name --force, never assume unmodified
+
+	Components []Component `json:"components,omitempty"` // a plugin's parts placed outside Dest
+
+	// Partial: some component did not land, so the next sync redoes the entry.
+	Partial bool `json:"partial,omitempty"`
 }
 
 // RemovablePaths is Dest and Dest+AsideSuffix (what an interrupted swap
@@ -354,7 +395,39 @@ func (e *Entry) validate() error {
 	if err := validateDest(e.ID, e.Dest); err != nil {
 		return err
 	}
+	if len(e.Components) > 0 && e.Kind != KindPlugin {
+		return fmt.Errorf("%w: entry %s is a %s and records plugin components", ErrInvalid, e.ID, e.Kind)
+	}
+	seen := make(map[string]struct{}, len(e.Components))
+	for _, c := range e.Components {
+		if err := c.validate(e.ID); err != nil {
+			return err
+		}
+		if _, dup := seen[c.Identity()]; dup {
+			return fmt.Errorf("%w: entry %s records component %s %s twice", ErrInvalid, e.ID, c.Kind, c.Name)
+		}
+		seen[c.Identity()] = struct{}{}
+	}
 	return e.Fingerprint.validate(e.ID)
+}
+
+func (c Component) validate(id string) error {
+	switch {
+	case !c.Kind.IsValid():
+		return fmt.Errorf("%w: entry %s has a component of kind %q", ErrInvalid, id, c.Kind)
+	case c.Name == "":
+		return fmt.Errorf("%w: entry %s has an unnamed %s component", ErrInvalid, id, c.Kind)
+	case !filepath.IsAbs(c.Path) || filepath.Clean(c.Path) != c.Path:
+		return fmt.Errorf("%w: entry %s component %s path %q is not absolute and clean", ErrInvalid, id, c.Name, c.Path)
+	case !isHex64(c.SHA256):
+		return fmt.Errorf("%w: entry %s component %s has hash %q, want 64 lowercase hex characters",
+			ErrInvalid, id, c.Name, c.SHA256)
+	}
+	return nil
+}
+
+func isHex64(s string) bool {
+	return len(s) == 64 && strings.Trim(s, "0123456789abcdef") == ""
 }
 
 // validateID enforces `namespace/name`, two non-empty segments, never repaired.
@@ -404,7 +477,6 @@ func validateDest(id, dest string) error {
 // otherwise send --force outside the entry root.
 func (f Fingerprint) validate(id string) error {
 	if f.IsZero() {
-		// Absent is allowed and means unverifiable, not silently unmodified.
 		return nil
 	}
 	if f.Algo == "" {
@@ -414,8 +486,7 @@ func (f Fingerprint) validate(id string) error {
 		if err := validateFingerprintKey(id, key); err != nil {
 			return err
 		}
-		if len(mark.SHA256) != 64 || strings.ToLower(mark.SHA256) != mark.SHA256 ||
-			strings.TrimLeft(mark.SHA256, "0123456789abcdef") != "" {
+		if !isHex64(mark.SHA256) {
 			return fmt.Errorf("%w: entry %s file %s has hash %q, want 64 lowercase hex characters",
 				ErrInvalid, id, key, mark.SHA256)
 		}

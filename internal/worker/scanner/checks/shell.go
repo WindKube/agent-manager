@@ -11,20 +11,17 @@ import (
 	"agent-manager/internal/domain/capability"
 )
 
-// This file parses shell rather than text-matching it, so it can tell a real
-// command from prose or a comment describing one. It never evaluates
-// anything: an expansion like `$HOST` arrives as its own text, and
-// internal/domain/capability grades that indefinite target as Review.
+// Shell is parsed rather than text-matched so a real command is told apart from
+// a comment describing one. Nothing is evaluated: an expansion like `$HOST`
+// stays as text and is graded indefinite.
 
 // Command is one parsed command with the source it came from.
 type Command struct {
 	capability.Command
 
-	// Node is the source text of the statement, redirections included, for
-	// `evidence.quote: matched-node`.
+	// Node is the statement source for `evidence.quote: matched-node`.
 	Node string
-	// Text is the whole source line the command starts on, for
-	// `evidence.quote: matched-line`.
+	// Text is the starting source line for `evidence.quote: matched-line`.
 	Text string
 }
 
@@ -32,7 +29,6 @@ type Command struct {
 // recorded as a blind spot by the caller.
 const maxCommandsPerScript = 20000
 
-// parseShell walks one script's syntax tree and returns the commands in it.
 func parseShell(filePath string, src []byte) ([]Command, error) {
 	// LangBash, not LangPOSIX: bundles ship bash.
 	parser := syntax.NewParser(syntax.Variant(syntax.LangBash), syntax.KeepComments(false))
@@ -80,8 +76,7 @@ func parseShell(filePath string, src []byte) ([]Command, error) {
 	return out, nil
 }
 
-// commandName is the command word with its directory dropped: `/usr/bin/curl`
-// is `curl`.
+// commandName drops the directory: `/usr/bin/curl` is `curl`.
 func commandName(word *syntax.Word) string {
 	text := wordText(word)
 	if text == "" {
@@ -105,8 +100,8 @@ func wordTexts(words []*syntax.Word) []string {
 	return out
 }
 
-// wordText renders one word as the shell would see it, minus quoting.
-// Expansions are rendered back with their `$`, read as "indefinite".
+// wordText renders a word without quoting; expansions keep their `$` so they
+// read as indefinite.
 func wordText(word *syntax.Word) string {
 	if word == nil {
 		return ""

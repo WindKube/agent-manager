@@ -9,6 +9,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"agent-manager/internal/auth"
+	"agent-manager/internal/store/audit"
 	"agent-manager/internal/store/models"
 )
 
@@ -90,8 +91,11 @@ func Login(ctx context.Context, db bun.IDB, in LoginInput) (LoginResult, error) 
 		if actor == "" {
 			actor = in.Claims.Subject
 		}
-		return writeAudit(ctx, tx, models.AuditKindLogin, actor, string(models.ActorKindIdentity),
-			fmt.Sprintf("%s signed in", actor), in.Source)
+		return writeAudit(ctx, tx, audit.Entry{
+			Kind: models.AuditKindLogin, Action: "signed-in", Actor: actor, ActorKind: models.ActorKindIdentity,
+			Text: fmt.Sprintf("%s signed in", actor), Source: in.Source,
+			Subject: audit.Identity(identity.ID),
+		})
 	})
 	if err != nil {
 		return LoginResult{}, err

@@ -13,14 +13,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// tempHome points the platform's home variable at a fresh directory. Filesystem
-// behaviour is never tested against the developer's own home (plan.md).
+// tempHome points the platform's home variable at a fresh directory.
 func tempHome(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv(homeEnvVar(), dir)
-	// Setting only the current platform's variable is the point — setting every
-	// candidate would hide a bug in homeEnvVar.
+	// Only the current platform's variable: setting every candidate would hide a bug in homeEnvVar.
 	return dir
 }
 
@@ -65,10 +63,10 @@ func TestResolveHomeRefusesAnUnsetHomeNamingTheVariable(t *testing.T) {
 	_, err := ResolveHome()
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrHomeUnset)
-	require.True(t, IsRefusal(err), "an unset home is the user's to fix (FR-039), so it must reach CodeRefused")
+	require.True(t, IsRefusal(err), "an unset home is the user's to fix, so it must reach CodeRefused")
 	require.Equal(t, CodeRefused, ExitCode(CodeNoChanges, err))
 	require.Contains(t, err.Error(), homeEnvVar(),
-		"FR-039 requires the refusal to NAME the variable the running platform actually consults")
+		"the refusal must NAME the variable the running platform actually consults")
 }
 
 func TestResolveHomeRefusesARelativeHome(t *testing.T) {
@@ -116,8 +114,8 @@ func TestResolveHomeRefusesAnUnwritableHome(t *testing.T) {
 	require.Contains(t, err.Error(), dir)
 }
 
-// The mode bits on the home say 0700 and the write still fails, which is the
-// whole reason ResolveHome probes with a real write instead of reading a mode.
+// The mode bits say 0700 and the write still fails, which is why ResolveHome
+// probes with a real write.
 func TestResolveHomeRefusesAWritableHomeWithAnUnwritableStateRoot(t *testing.T) {
 	requireUnprivileged(t)
 	dir := tempHome(t)
@@ -132,8 +130,7 @@ func TestResolveHomeRefusesAWritableHomeWithAnUnwritableStateRoot(t *testing.T) 
 	require.Contains(t, err.Error(), "cannot write inside")
 }
 
-// A relative symlink that stays inside the home is fine. Measured on go1.26:
-// os.Root's openat resolution follows it.
+// os.Root follows a relative symlink that stays inside the home.
 func TestResolveHomeAcceptsARelativeSymlinkedStateRootInsideTheHome(t *testing.T) {
 	dir := tempHome(t)
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "dotfiles"), 0o700))
@@ -144,9 +141,8 @@ func TestResolveHomeAcceptsARelativeSymlinkedStateRootInsideTheHome(t *testing.T
 	require.Equal(t, filepath.Join(dir, DirName), home.Root)
 }
 
-// An ABSOLUTE symlink is refused even when it points back inside the home,
-// because os.Root refuses every absolute link. This is a deliberate, documented
-// usability cost, so the refusal has to say what to do about it.
+// os.Root refuses every absolute symlink, even one back inside the home, so
+// the refusal has to say what to do about it.
 func TestResolveHomeRefusesAnAbsolutelySymlinkedStateRootAndSaysWhy(t *testing.T) {
 	dir := tempHome(t)
 	target := filepath.Join(t.TempDir(), "elsewhere")
@@ -158,7 +154,7 @@ func TestResolveHomeRefusesAnAbsolutelySymlinkedStateRootAndSaysWhy(t *testing.T
 	require.Contains(t, err.Error(), "absolute symlink")
 	require.Contains(t, err.Error(), "make the link relative")
 	require.NoFileExists(t, filepath.Join(target, ".amctl-write-probe"),
-		"FR-020: nothing may be written through a link that leaves the home")
+		"nothing may be written through a link that leaves the home")
 }
 
 func TestHomeEnvVarNamesThePlatformVariable(t *testing.T) {
@@ -188,11 +184,8 @@ func TestHubDirAndLockPathSitDirectlyUnderTheStateRoot(t *testing.T) {
 	require.Equal(t, home.Root, filepath.Dir(home.LockPath()))
 }
 
-// "Before making any network request" is an ordering, and a run that
-// dialled the hub, got a token and only then discovered the home was
-// unwritable has already done the irreversible half. Prepare is the seam
-// that makes the ordering structural; this proves it, with a positive
-// control so the test cannot pass by never running work at all.
+// Prepare must refuse a bad home or hub before work dials the network; a run
+// that got a token first has already done the irreversible half.
 func TestPrepareValidatesTheHomeBeforeAnyNetworkCall(t *testing.T) {
 	requireUnprivileged(t)
 
@@ -220,7 +213,7 @@ func TestPrepareValidatesTheHomeBeforeAnyNetworkCall(t *testing.T) {
 		err := Prepare(srv.URL, dial)
 		require.ErrorIs(t, err, ErrHomeUnwritable)
 		require.Equal(t, CodeRefused, ExitCode(CodeNoChanges, err))
-		require.Zero(t, hits.Load(), "FR-039: the hub must not be reached before the home is validated")
+		require.Zero(t, hits.Load(), "the hub must not be reached before the home is validated")
 	})
 
 	t.Run("an unset home refuses without dialling", func(t *testing.T) {
@@ -239,10 +232,8 @@ func TestPrepareValidatesTheHomeBeforeAnyNetworkCall(t *testing.T) {
 		require.Zero(t, hits.Load())
 	})
 
-	// The negative control for the three above: with a good home and a good
-	// hub, work DOES run and DOES reach the network. Without this, all three
-	// assertions above would also pass against a Prepare that never called
-	// work.
+	// Control: with a good home and hub, work does run, so the cases above
+	// can't pass against a Prepare that never calls work.
 	t.Run("a valid home and hub reach the network", func(t *testing.T) {
 		tempHome(t)
 
@@ -272,8 +263,6 @@ func TestPrepareReturnsWorksError(t *testing.T) {
 	require.ErrorIs(t, err, sentinel)
 }
 
-// The three URLs the brief asks about, plus the rest of the canonicalisation
-// decisions, stated as a table so the answer is testable rather than prose.
 func TestParseHubCanonicalForm(t *testing.T) {
 	cases := []struct {
 		name string
@@ -306,7 +295,6 @@ func TestParseHubCanonicalForm(t *testing.T) {
 	}
 }
 
-// The decision, restated as behaviour: which of these are the SAME hub.
 func TestParseHubIdentityDecision(t *testing.T) {
 	same := func(t *testing.T, a, b string) {
 		t.Helper()
@@ -343,10 +331,7 @@ func TestParseHubIdentityDecision(t *testing.T) {
 	})
 }
 
-// Injectivity is the property internal/record's "hub A refused against
-// hub B" rests on: two hubs sharing a directory means one machine's
-// record silently applies to the other. Asserted over near-misses rather
-// than claimed in a comment.
+// Two hubs sharing a directory would let one hub's record silently apply to the other.
 func TestHubDirNamesAreInjectiveOverNearMissURLs(t *testing.T) {
 	urls := []string{
 		"https://hub.example.com",
@@ -390,8 +375,6 @@ func TestHubDirNamesAreInjectiveOverNearMissURLs(t *testing.T) {
 	require.Len(t, byDir, len(urls))
 }
 
-// Two hubs whose readable prefixes are identical must still get two
-// directories. This is the case a prefix-only scheme silently gets wrong.
 func TestHubDirNamesDifferWhenOnlyTheReadablePrefixCollides(t *testing.T) {
 	a, err := ParseHub("https://hub.example.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	require.NoError(t, err)
@@ -441,16 +424,13 @@ func TestParseHubRefusesHostileURLs(t *testing.T) {
 			require.ErrorIs(t, err, ErrHubURL)
 			require.True(t, IsRefusal(err), "a bad --hub value is the user's to fix")
 			require.Equal(t, CodeRefused, ExitCode(CodeNoChanges, err))
-			// Assert the SPECIFIC rejection: a case that fails for the wrong
-			// reason has silently stopped testing what it names.
+			// The specific rejection, or a case failing for the wrong reason stops testing what it names.
 			require.Contains(t, err.Error(), tc.wantMsg)
 			require.Empty(t, hub.Dir)
 		})
 	}
 }
 
-// Every accepted hub, hostile or not, must yield one boring path component that
-// cannot traverse, cannot be absolute and cannot collide on any platform.
 func TestHubDirNameIsAlwaysASafeSingleComponent(t *testing.T) {
 	root := t.TempDir()
 	urls := []string{
@@ -484,8 +464,6 @@ func TestHubDirNameIsAlwaysASafeSingleComponent(t *testing.T) {
 			require.NotContains(t, hub.Dir, `\`)
 			require.NotEqual(t, "..", hub.Dir)
 
-			// The containment backstop, on the real filesystem: the derived
-			// name must land directly under the state root and nowhere else.
 			joined := filepath.Join(root, hub.Dir)
 			require.Equal(t, root, filepath.Dir(joined))
 
@@ -493,7 +471,7 @@ func TestHubDirNameIsAlwaysASafeSingleComponent(t *testing.T) {
 			require.NoError(t, err)
 			defer func() { _ = r.Close() }()
 			require.NoError(t, r.Mkdir(hub.Dir, 0o700),
-				"os.OpenRoot refuses a name that escapes; this is the FR-020 backstop")
+				"os.OpenRoot refuses a name that escapes; this is the containment backstop")
 		})
 	}
 }
@@ -575,16 +553,13 @@ func TestValidatePathComponentRefusals(t *testing.T) {
 		})
 	}
 
-	// Negative control: the shape hubDirName actually produces must pass, or
-	// the table above is only proving that everything fails.
+	// Control: the shape hubDirName produces must pass, or the table only proves everything fails.
 	t.Run("a derived hub directory name is accepted", func(t *testing.T) {
 		require.NoError(t, validatePathComponent(hubDirName("https://hub.example.com")))
 		require.NoError(t, validatePathComponent("hub-example-com-0123456789abcdef"))
 	})
 }
 
-// A state root is routinely synced or mounted between machines, so the guard is
-// checked unconditionally rather than on the platforms that enforce it.
 func TestNoHubURLCanProduceAReservedDeviceName(t *testing.T) {
 	for _, host := range []string{"con", "nul", "prn", "aux", "com1", "lpt9", "CON", "Nul"} {
 		t.Run(host, func(t *testing.T) {

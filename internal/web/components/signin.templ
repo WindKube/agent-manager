@@ -2,13 +2,8 @@ package components
 
 import "agent-manager/internal/web/view"
 
-// The sign-in screen (FR-108, FR-109) and the state a signed-in identity that
-// maps to no role lands on (FR-117). contracts/auth.md is authoritative for both,
-// including which of its eleven failures the notice carries.
-//
-// SignInScreen is a whole document rather than a screen inside Layout: the shell's
-// sidebar is navigation to screens a signed-out visitor may not render, and
-// offering it here would be a page of links that all bounce back to this one.
+// SignInScreen is a whole document rather than a screen inside Layout: the
+// sidebar would be links that all bounce back here.
 
 templ SignInScreen(s Shell, in view.SignIn) {
 	<!DOCTYPE html>
@@ -22,9 +17,7 @@ templ SignInScreen(s Shell, in view.SignIn) {
 						<div class="am-brand-name">{ ProductName }</div>
 					</div>
 					if in.Notice != "" {
-						// The provider's own words can be in here. templ escapes them, and
-						// nothing under internal/web may call templ.Raw (001 FR-055), which
-						// is what makes rendering an upstream string safe at all.
+						// May carry the provider's own words; templ escapes them.
 						<div class="am-signin-alert" id="signin-notice">{ in.Notice }</div>
 					}
 					if in.Detail != "" {
@@ -58,9 +51,8 @@ templ SignInScreen(s Shell, in view.SignIn) {
 	</html>
 }
 
-// credentialHint is FR-119's development affordance, behind both of the gates
-// ShowCredentials checks. It says out loud that it is switched on: a hint nobody
-// meant to publish is one an operator has to be able to recognise on sight.
+// credentialHint is a development affordance behind both ShowCredentials gates,
+// and announces that it is switched on so an operator recognises it on sight.
 templ credentialHint(in view.SignIn) {
 	<div class="am-signin-hint" id="signin-dev-credentials">
 		<div class="am-label">Local accounts · development hint</div>
@@ -80,15 +72,9 @@ templ credentialHint(in view.SignIn) {
 	</div>
 }
 
-// NoRoleScreen is FR-117: signed in, holding no role.
-//
-// A distinct screen, with a distinct id and distinct copy, and the FIRST sentence
-// of the body is the one that matters — that this hub has content and this viewer
-// may not read it. An empty catalog and an unmapped identity look identical on a
-// screen that only says "nothing here", and the two ask their reader for
-// completely different things: one to register a package, the other to be given a
-// role. 001's am-empty-auth set the precedent for the signed-out state; this is the
-// same distinction one step further in.
+// NoRoleScreen is signed in, holding no role. Its first sentence says the hub has
+// content this viewer may not read, because an empty catalog and an unmapped
+// identity ask for different things: register a package, or be given a role.
 templ NoRoleScreen(n view.NoRole) {
 	<div class="am-header">
 		<div class="am-header-text">

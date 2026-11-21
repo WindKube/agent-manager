@@ -11,9 +11,8 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/record"
 )
 
-// installedFixture stages and swaps skillBundle(t) into a fresh destination,
-// takes its fingerprint the way cmd/sync.go now does — Hash before the swap,
-// Modes after — and returns the entry a Verifier would be asked about.
+// installedFixture installs skillBundle(t) and fingerprints it like cmd/sync.go
+// does: Hash before the swap, Modes after.
 func installedFixture(t *testing.T) (dest string, entry record.Entry) {
 	t.Helper()
 	f := newStageFixture(t)

@@ -1,14 +1,5 @@
-// The actor invariants, held by a test because nothing holds them at run time.
-//
-// A seeded row naming someone who can sign in produces no error anywhere: the
-// seed succeeds, the sign-in succeeds, and the product simply shows two identities
-// for one person — the seeded one carrying the history, the real one carrying the
-// viewer. See DirectoryUsers in groups.go for why that is the defect this whole
-// feature exists to remove and not a cosmetic duplicate.
-//
-// These tests are in `package seed` rather than beside the integration suite
-// deliberately: the invariant is a property of the dataset, so it is worth
-// knowing without a container, on every `go test ./...`.
+// Actor invariants nothing enforces at run time: a seeded row naming someone who
+// can sign in silently gives that person two identities.
 package seed
 
 import (
@@ -54,9 +45,7 @@ func TestNoSeededRowNamesSomeoneWhoCanSignIn(t *testing.T) {
 	}
 }
 
-// TestEverySeededActorIsASeededIdentity is the other half: an actor who is in no
-// identity row renders as a bare email with no display name and no groups, which
-// is how a reassignment gets half done.
+// An actor with no identity row renders as a bare email with no name or groups.
 func TestEverySeededActorIsASeededIdentity(t *testing.T) {
 	for _, reference := range seededReferences() {
 		if !reference.isActor {
@@ -67,9 +56,7 @@ func TestEverySeededActorIsASeededIdentity(t *testing.T) {
 	}
 }
 
-// TestEverySeededGroupHasAMemberIdentity keeps the Organization screen's
-// vocabulary populated. A mapped group with no member reads as a role nobody
-// holds, which is the empty state Phase 2 exists to avoid.
+// A mapped group with no member reads as a role nobody holds.
 func TestEverySeededGroupHasAMemberIdentity(t *testing.T) {
 	members := map[string]int{}
 	for _, spec := range identities {
@@ -83,10 +70,8 @@ func TestEverySeededGroupHasAMemberIdentity(t *testing.T) {
 	}
 }
 
-// seededReference is one actor-shaped string the dataset states, with where it
-// came from so a failure names the row rather than the value alone. isActor
-// marks the ones that assert a person DID something, as opposed to a source
-// string that merely mentions a host.
+// seededReference is an actor-shaped string in the dataset and where it came
+// from. isActor marks values claiming a person did something.
 type seededReference struct {
 	where   string
 	value   string
@@ -122,8 +107,7 @@ func seededReferences() []seededReference {
 		})
 	}
 
-	// The version count only reaches the rescan row's text; any value builds the
-	// same set of actors.
+	// The version count does not affect the actors.
 	for _, row := range auditRows(1) {
 		out = append(out,
 			seededReference{
@@ -141,13 +125,9 @@ func seededReferences() []seededReference {
 	return out
 }
 
-// directoryUserIn reports whether a value names one of the people in
-// deploy/local/glauth/glauth.cfg.
-//
-// The email is matched by containment because the values it has to catch embed it
-// — `seed:kwiatrzyk@example.com`, `cli / kwiatrzyk@example.com`. The username is
-// matched by equality instead: `anowak` is a substring of plenty of addresses that
-// belong to somebody else entirely.
+// directoryUserIn reports whether a value names a local directory user. Emails
+// match by containment since values embed them; usernames match exactly since
+// they are substrings of unrelated addresses.
 func directoryUserIn(value string) (string, bool) {
 	folded := strings.ToLower(strings.TrimSpace(value))
 	for _, user := range DirectoryUsers {
@@ -159,27 +139,21 @@ func directoryUserIn(value string) (string, bool) {
 	return "", false
 }
 
-// TestTheUnmappedGroupIsMappedToNothing is the guard on FR-117's only route.
-//
-// GroupUnmapped exists so a person can reach the no-role screen on the local
-// stack by signing in as somebody real, rather than by breaking the group-to-role
-// coupling on purpose. Mapping it is a one-line change that looks like tidying up
-// an oversight and silently deletes the only way to see a whole screen — so the
-// absence is asserted rather than left to the comment beside the constant.
+// Mapping GroupUnmapped looks like tidying up but removes the only way to reach
+// the no-role screen locally.
 func TestTheUnmappedGroupIsMappedToNothing(t *testing.T) {
 	require.NotEmpty(t, GroupRoles, "no mappings, so this test asserts nothing")
 
 	for _, mapping := range GroupRoles {
 		require.NotEqualf(t, GroupUnmapped, mapping.Group,
 			"%q now resolves to %q. That is the only group in the local directory that maps to "+
-				"nothing, and FR-117's screen has no other way to be reached in a browser: pick "+
+				"nothing, and the no-role screen has no other way to be reached in a browser: pick "+
 				"a new unmapped group name and put the directory user in it, or delete the "+
 				"requirement", GroupUnmapped, mapping.Role)
 	}
 	require.Empty(t, RoleOf(GroupUnmapped))
 
-	// And the directory really has somebody in it, because a group nothing maps to
-	// and nobody is in is not a route to anything.
+	// The group must also have a directory member to be a route at all.
 	var found bool
 	for _, user := range DirectoryUsers {
 		if user.Group == GroupUnmapped {
@@ -190,9 +164,6 @@ func TestTheUnmappedGroupIsMappedToNothing(t *testing.T) {
 	require.True(t, found, "no directory user is in %q", GroupUnmapped)
 }
 
-// Every group a directory user is in resolves to a role, or is the one that
-// deliberately does not. A third unmapped group would be a silent second no-role
-// account, which is a coupling mistake wearing FR-117's clothes.
 func TestEveryDirectoryGroupExceptTheUnmappedOneResolvesToARole(t *testing.T) {
 	for _, user := range DirectoryUsers {
 		t.Run(user.Username, func(t *testing.T) {

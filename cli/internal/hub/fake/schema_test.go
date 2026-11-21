@@ -15,20 +15,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// A small JSON Schema validator, test-only.
-//
-// Why hand-written: cli/go.mod carries no schema library and this layer may not
-// add one. Why that is acceptable here: the schema being interpreted is FROZEN and
-// uses exactly the keywords handled below, and the alternative — asserting against
-// a Go struct — is not a check at all, because the struct is generated from the
-// same document as the schema and would agree with it by construction.
-//
-// What it does NOT implement: $ref, allOf/anyOf/oneOf, if/then, dependent schemas,
-// numeric multiples, string lengths, uniqueItems, and every format except
-// date-time. If lockfile.schema.json ever grows one of those, this validator will
-// silently ignore it — so schemaKeywordsAreAllHandled below fails the build when a
-// keyword appears that nothing here interprets. A validator that quietly skips the
-// rule you were relying on is worse than no validator.
+// A small hand-written JSON Schema validator: cli/go.mod carries no schema library, and asserting
+// against the generated Go struct would agree with the schema by construction. A keyword nothing here
+// interprets fails the build, so a rule is never silently skipped.
 var handledKeywords = map[string]bool{
 	// Structural, interpreted below.
 	"type": true, "required": true, "properties": true, "additionalProperties": true,
@@ -46,11 +35,7 @@ type violation struct {
 func (v violation) String() string { return v.path + ": " + v.msg }
 
 type validator struct {
-	// relaxEnumAt suppresses the enum check at exactly this instance path. It
-	// exists for one case and is named after it: the CLI must report an
-	// unrecognised skip reason verbatim, so the fake must serve one, and the
-	// frozen enum cannot contain it. Every OTHER rule still applies to that
-	// document.
+	// relaxEnumAt suppresses the enum check at exactly this path, for the unknown-skip-reason profile.
 	relaxEnumAt string
 	out         []violation
 }
@@ -224,9 +209,7 @@ func walkKeywords(schema any, seen map[string]bool) {
 	}
 }
 
-// lockfileSchema reads the FROZEN schema from the repo, not a copy. A copy inside
-// this package would drift the day the hub's schema changed and no test would
-// notice, which is the exact failure this self-test exists to prevent.
+// lockfileSchema reads the schema from the repo, not a copy that could drift.
 func lockfileSchema(t *testing.T) map[string]any {
 	t.Helper()
 	const rel = "specs/001-agent-manager-hub/contracts/lockfile.schema.json"
@@ -252,8 +235,7 @@ func lockfileSchema(t *testing.T) map[string]any {
 func TestSchemaKeywordsAreAllHandled(t *testing.T) {
 	seen := map[string]bool{}
 	walkKeywords(lockfileSchema(t), seen)
-	// The walker is the load-bearing half; if it returned nothing the sweep below
-	// would pass on an empty set and say nothing at all.
+	// Otherwise an empty walk would pass the sweep below vacuously.
 	for _, expect := range []string{"type", "required", "properties", "additionalProperties", "enum", "pattern", "const", "minimum", "format", "items"} {
 		require.True(t, seen[expect], "the keyword walker did not reach %q, so this sweep is vacuous", expect)
 	}
@@ -268,9 +250,7 @@ func TestSchemaKeywordsAreAllHandled(t *testing.T) {
 		"lockfile.schema.json uses keywords this validator ignores, so the conformance test below is weaker than it looks: %v", unhandled)
 }
 
-// A negative control for the validator itself. Every gate needs one: a validator
-// that returns no violations for anything would make the conformance test green
-// and meaningless.
+// Negative control for the validator itself.
 func TestValidatorRejectsMalformedLockfiles(t *testing.T) {
 	schema := lockfileSchema(t)
 	valid := `{"schemaVersion":"1.0.0","profile":{"slug":"p","name":"P"},"revision":1,` +

@@ -127,7 +127,7 @@
     "targets": {
       "type": "array",
       "description": "Which agent directories the CLI should write. Advisory to the client; the server stores nothing per target (FR-039).",
-      "items": { "type": "string", "enum": ["claude-code", "codex"] },
+      "items": { "type": "string", "enum": ["claude-code", "codex", "opencode"] },
       "examples": [["claude-code"]]
     }
   }

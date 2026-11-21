@@ -9,7 +9,10 @@ func ShellAudit() Check {
 			"command substitution, a variable or a downloaded file — rather than text shipped " +
 			"in the bundle. This is the pattern behind a `curl | bash` install: the archive " +
 			"passes review because the payload is not in it yet. A script this analysis could " +
-			"not parse is reported as a warning here, never silently skipped.",
+			"not parse is reported as a warning here, never silently skipped. Hook commands and " +
+			"stdio MCP command lines are read as scripts too, and hooks that run on every " +
+			"session, prompt or tool call and tool grants that pre-approve any `Bash` command " +
+			"are flagged.",
 		blindSpots: func(b *Bundle) int { return len(b.Unparsed) },
 	}
 }

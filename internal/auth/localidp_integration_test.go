@@ -1,19 +1,9 @@
 //go:build integration
 
-// The local identity provider, asserted against the real thing: the pinned Dex
-// and glauth images, the configuration files deploy/local actually ships, and
-// tokens Dex actually signed.
-//
-// The order below is the order contracts/local-identity.md sets out, and it is
-// the order of increasing consequence. Discovery answering proves the containers
-// booted. The device endpoint proves FR-102. A `groups` claim per user proves the
-// LDAP connector's attribute names are right. And the two claims DIFFERING is the
-// one that matters: a presence-only check passes against Dex's own mockCallback
-// connector, which hands one hard-coded group to everybody, so presence alone
-// would have signed off on the exact bug this file exists to catch.
-//
-// The fixture files are also checked against internal/seed's constants — cheaply,
-// without Docker, in localidp_fixture_test.go, which runs in the ordinary build.
+// The local identity provider asserted against the pinned Dex and glauth images,
+// the shipped deploy/local config, and tokens Dex actually signed. The key check
+// is that users get DIFFERENT groups: a presence-only check passes against a
+// connector handing everyone the same hard-coded group.
 package auth_test
 
 import (
@@ -46,46 +36,28 @@ import (
 // dexImage, glauthImage and issuer live in localidp_fixture_test.go, where the
 // ordinary build can check them against the compose files that declare them.
 const (
-	// FR-103 / SC-103, and the quantity matters as much as the number: this is the
-	// UNPACKED on-disk size of the two images, what `docker image ls` prints, and
-	// what research.md's 268 MB and the 730 MB it compares against both are. It is
-	// NOT what `docker image inspect` reports — under the containerd snapshotter
-	// that field is the compressed content size, 62 MB for this pair, so measuring
-	// it left the budget 4.3x of false slack AND made the assertion silently
-	// host-dependent, because the classic graph driver returns the unpacked size
-	// from the same field. Measured 268.0 MB on 2026-08-31.
-	//
-	// Decimal MB, because that is the unit docker prints and the unit FR-103 and
-	// research.md are written in. 300 MiB would be the looser reading of the same
-	// sentence.
+	// Unpacked on-disk size as `docker image ls` prints it, in decimal MB.
+	// `docker image inspect` reports compressed size under containerd, which gave
+	// 4x false slack and made the check host-dependent.
 	combinedImageBudget = 300_000_000
 
 	oidcClientID     = "agent-manager"
 	oidcClientSecret = "local-only-oidc-client-secret"
-	// One of the two redirect URIs the shipped Dex config registers. Nothing
-	// listens on it; the flow is stopped at the redirect and the code is read out
-	// of the Location header.
+	// Nothing listens here; the code is read from the Location header.
 	oidcRedirectURI = "http://127.0.0.1:8080/auth/callback"
 
-	// Both directory users share it. glauth.cfg holds its sha256.
+	// glauth.cfg holds its sha256.
 	directoryPassword = "local-only-directory-password"
 )
 
 var (
-	// dexBase is the mapped host base URL, e.g. http://127.0.0.1:49xxx/dex.
 	dexBase string
 
-	// dexContainer is kept only so a failure can quote Dex's log. Every one of
-	// R1's three attribute-name traps surfaces here as an opaque HTTP 500 whose
-	// actual cause — a missing attribute, a group entity with no cn — is written
-	// nowhere but that log. Printing it is the difference between this suite
-	// naming the mistake and this suite saying "500".
+	// dexContainer is kept so a failure can quote Dex's log: LDAP attribute
+	// mistakes surface only as an opaque HTTP 500 whose cause is logged there.
 	dexContainer testcontainers.Container
 
-	// discoveryLatency is measured from immediately before the Dex container is
-	// created to the first 200 from its discovery path — deliberately including
-	// container creation, so the 5 s budget is charged for everything an operator
-	// waits through. Image pulls happen before the clock starts.
+	// discoveryLatency includes container creation but not image pulls.
 	discoveryLatency time.Duration
 
 	discovery struct {
@@ -98,19 +70,9 @@ var (
 		ScopesSupported             []string `json:"scopes_supported"`
 	}
 
-	// The two ways this suite can decline to assert, kept apart because
-	// conflating them is what made T017 unable to fail.
-	//
-	// noContainers is a SKIP: no reachable daemon, or an image that cannot be
-	// obtained. A machine like that has nothing wrong with it, and a spurious red
-	// is a red nobody reads.
-	//
-	// brokenStack is a FAILURE. The daemon answered, the images are local, and the
-	// configuration this repository ships either refused to come up or never
-	// answered on the port it publishes. Reporting that as a skip is how moving
-	// Dex's listener to :5557 produced six skips and `exit 0` — and tasks.md names
-	// T017 as the gate whose failure stops the feature, so it has to be able to
-	// fail for the one regression most likely to happen.
+	// noContainers is a skip (no daemon or image: nothing wrong with the machine);
+	// brokenStack is a failure (the shipped config didn't come up). Conflating them
+	// once turned a moved Dex listener into six skips and exit 0.
 	noContainers string
 	brokenStack  string
 )
@@ -134,7 +96,6 @@ func runLocalIDPSuite(m *testing.M) (int, error) {
 	}
 	defer docker.Close()
 
-	// Before the clock starts. A cold pull is not what the 5 s budget is about.
 	for _, ref := range []string{glauthImage, dexImage} {
 		if pullErr := ensureImage(ctx, docker.Client, ref); pullErr != nil {
 			noContainers = fmt.Sprintf("cannot obtain %s: %v", ref, pullErr)
@@ -142,9 +103,7 @@ func runLocalIDPSuite(m *testing.M) (int, error) {
 		}
 	}
 
-	// A skip, unlike the container starts below: nothing in this repository
-	// configures the network, so a daemon that cannot make one is an environment
-	// that cannot run containers rather than a stack that is broken.
+	// A skip: nothing in this repository configures the network.
 	net, err := network.New(ctx)
 	if err != nil {
 		noContainers = "cannot create a Docker network: " + err.Error()
@@ -152,20 +111,15 @@ func runLocalIDPSuite(m *testing.M) (int, error) {
 	}
 	defer func() { _ = net.Remove(ctx) }()
 
-	// glauth first, and its Ryuk reaper with it, so neither is charged to Dex's
-	// discovery budget. Dex tolerates a directory that is not yet listening —
-	// it dials LDAP per login, not at boot — but starting them in order keeps the
-	// first login in a fresh stack from paying for the retry.
+	// glauth first, so its startup and Ryuk aren't charged to Dex's discovery budget.
 	glauth, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		Started: true,
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image:          glauthImage,
 			Networks:       []string{net.Name},
 			NetworkAliases: map[string][]string{net.Name: {"glauth"}},
-			// The image's start script reads exactly this path and copies its own
-			// example config in if the file is absent — a silent fallback to a
-			// directory with none of our users in it, so an unmounted fixture
-			// would look like a wrong password rather than a missing file.
+			// The image copies in its own example config if this path is absent, which
+			// would look like a wrong password rather than a missing mount.
 			Files: []testcontainers.ContainerFile{{
 				HostFilePath:      glauthFixturePath,
 				ContainerFilePath: "/app/config/config.cfg",
@@ -232,13 +186,10 @@ func ensureImage(ctx context.Context, cli *client.Client, ref string) error {
 	}
 	defer resp.Close()
 
-	// The pull is only complete once its progress stream is drained.
 	_, err = io.Copy(io.Discard, resp)
 	return err
 }
 
-// awaitDiscovery polls until the document parses, recording how long that took
-// and keeping the document for the assertions to read.
 func awaitDiscovery(ctx context.Context, startedAt time.Time) error {
 	deadline := time.Now().Add(30 * time.Second)
 	var last error
@@ -275,9 +226,6 @@ func awaitDiscovery(ctx context.Context, startedAt time.Time) error {
 	return fmt.Errorf("discovery never answered: %w", last)
 }
 
-// quoteDexLogOnFailure is registered by signIn, because a refused login is the
-// one failure in this file whose explanation lives in the provider rather than in
-// the assertion.
 func quoteDexLogOnFailure(t *testing.T) {
 	t.Helper()
 
@@ -305,9 +253,8 @@ func quoteDexLogOnFailure(t *testing.T) {
 	})
 }
 
-// requireStack is for every assertion about the running provider. It skips when
-// the harness cannot run containers here and FAILS when the stack we ship did
-// not come up, which is the distinction the whole suite turns on.
+// requireStack skips when containers can't run here and fails when the shipped
+// stack didn't come up.
 func requireStack(t *testing.T) {
 	t.Helper()
 	if noContainers != "" {
@@ -318,9 +265,8 @@ func requireStack(t *testing.T) {
 	}
 }
 
-// requireImages is for the two assertions whose subject is the images alone.
-// They are answerable whether or not the stack booted, and saying so keeps a
-// broken config from reddening tests that have nothing to do with it.
+// requireImages is for assertions about the images alone, so a broken config
+// doesn't redden them.
 func requireImages(t *testing.T) {
 	t.Helper()
 	if noContainers != "" {
@@ -328,23 +274,17 @@ func requireImages(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// 1. Discovery, within 5 s of container start.
-
 func TestTheLocalProviderAnswersDiscoveryWithinFiveSeconds(t *testing.T) {
 	requireStack(t)
 
 	t.Logf("discovery answered %s after the container was created", discoveryLatency.Round(time.Millisecond))
 	require.Less(t, discoveryLatency, 5*time.Second,
-		"FR-103: the provider Keycloak replaced took nine seconds, and the whole point of the "+
+		"the provider Keycloak replaced took nine seconds, and the whole point of the "+
 			"swap was that an operator should not wait through it")
 	require.Equal(t, issuer, discovery.Issuer)
 
-	// R2's finding, in its cheapest form: the document is byte-identical whichever
-	// host it was fetched through, because Dex ignores the request Host. This was
-	// fetched through a mapped port and still names the container host, which is
-	// exactly why the issuer must be the container-reachable one and only the
-	// browser leg gets an override.
+	// Dex ignores the request Host, so the document names the container host even
+	// via a mapped port; hence only the browser leg gets an override.
 	for _, endpoint := range []string{
 		discovery.AuthorizationEndpoint, discovery.TokenEndpoint,
 		discovery.JWKSURI, discovery.DeviceAuthorizationEndpoint,
@@ -355,9 +295,6 @@ func TestTheLocalProviderAnswersDiscoveryWithinFiveSeconds(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// 2. The device flow the CLI needs (FR-102).
-
 func TestTheLocalProviderAdvertisesTheDeviceEndpointAndTheDeviceCodeGrant(t *testing.T) {
 	requireStack(t)
 
@@ -366,14 +303,9 @@ func TestTheLocalProviderAdvertisesTheDeviceEndpointAndTheDeviceCodeGrant(t *tes
 		"urn:ietf:params:oauth:grant-type:device_code",
 		"the CLI has no browser redirect to fall back on")
 
-	// Dex requires the scope to be asked for; the Keycloak realm it replaces
-	// attached its group mapper to the client, which is why
-	// AGENT_MANAGER_OIDC_SCOPES has to gain `groups` (FR-106).
+	// Dex only emits `groups` when the scope is requested.
 	require.Contains(t, discovery.ScopesSupported, "groups")
 }
-
-// ---------------------------------------------------------------------------
-// 3. A groups claim, per user, in a token Dex signed.
 
 func TestEachDirectoryUserGetsAGroupsClaimNamingTheirOwnGroup(t *testing.T) {
 	requireStack(t)
@@ -383,17 +315,13 @@ func TestEachDirectoryUserGetsAGroupsClaimNamingTheirOwnGroup(t *testing.T) {
 			c := signIn(t, user.Email)
 
 			require.Equal(t, user.Email, c.Email)
-			require.NotEmpty(t, c.Groups, "FR-101. This is the failure Keycloak was adopted to "+
+			require.NotEmpty(t, c.Groups, "This is the failure Keycloak was adopted to "+
 				"avoid and the one the group search's attribute names reintroduce silently: the "+
 				"login succeeds and the claim is simply absent")
 			require.Contains(t, c.Groups, user.Group,
 				"the group seed.DirectoryUsers puts this user in")
 
-			// Two of the three resolve a role through that group and the third
-			// deliberately resolves none (FR-117). Asserted here rather than left
-			// implicit, because "the claim arrived" and "the claim resolves to
-			// something" are the two halves the local stack breaks between: the group
-			// search working and the NAME matching are independent failures.
+			// Group search working and the group NAME matching a role are independent failures.
 			if user.Group == seed.GroupUnmapped {
 				require.Empty(t, seed.RoleOf(user.Group),
 					"this is the account that reaches the no-role screen; a role here removes "+
@@ -405,9 +333,6 @@ func TestEachDirectoryUserGetsAGroupsClaimNamingTheirOwnGroup(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// 4. The assertion this file exists for.
-
 func TestTheTwoDirectoryUsersGetDifferentGroups(t *testing.T) {
 	requireStack(t)
 
@@ -416,7 +341,7 @@ func TestTheTwoDirectoryUsersGetDifferentGroups(t *testing.T) {
 
 	require.NotEqual(t, platform.Sub, security.Sub, "two people, two subjects")
 	require.NotEqual(t, platform.Groups, security.Groups,
-		"SC-104 turns on these two differing. A connector that hands every user the same "+
+		"These two must differ. A connector that hands every user the same "+
 			"hard-coded group — Dex's mockCallback does exactly that — satisfies every other "+
 			"assertion in this file, and then both users resolve to the same role and the "+
 			"product cannot demonstrate a role boundary at all")
@@ -425,18 +350,8 @@ func TestTheTwoDirectoryUsersGetDifferentGroups(t *testing.T) {
 	require.ElementsMatch(t, []string{seed.GroupEngSecurity, seed.GroupEngAll}, security.Groups)
 }
 
-// The measurement the shared group rests on, pinned rather than described.
-//
-// glauth gives each user ONE primarygroup and any number of `othergroups`, and
-// nothing in Dex's configuration says which of those a group search returns —
-// the connector asks for group entries whose `uniqueMember` holds the user's DN
-// and takes whatever comes back. A directory that listed only primary members
-// there would leave this arrangement working, silent and useless: both users
-// would still sign in, still resolve their role, and still be outside the group
-// the dataset shares a profile with.
-//
-// Measured through the shipped containers on 2026-08-31: both memberships arrive
-// in one claim. The three assertions below are that measurement.
+// Nothing in Dex's config says whether a group search returns glauth's
+// othergroups as well as the primary group; this pins that both arrive.
 func TestBothRoleHoldingDirectoryUsersArriveInTheGroupTheyShare(t *testing.T) {
 	requireStack(t)
 
@@ -459,11 +374,8 @@ func TestBothRoleHoldingDirectoryUsersArriveInTheGroupTheyShare(t *testing.T) {
 	}
 }
 
-// eng-all maps to profile-consumer (seed.GroupRoles), so the secondary membership
-// is handing both role-holders a SECOND role — and the whole arrangement is only
-// harmless because auth.HighestRole takes the most privileged one. Reversing that
-// precedence, or mapping eng-all to something above catalog-admin, would demote
-// the local stack's administrator with nothing failing anywhere.
+// eng-all maps to a second role, harmless only because HighestRole picks the most
+// privileged; changing that precedence would silently demote the local admin.
 func TestTheSharedDirectoryGroupDoesNotChangeEitherUsersRole(t *testing.T) {
 	requireStack(t)
 
@@ -472,8 +384,6 @@ func TestTheSharedDirectoryGroupDoesNotChangeEitherUsersRole(t *testing.T) {
 			continue
 		}
 		t.Run(user.Username, func(t *testing.T) {
-			// group_role_map's lookup, done in Go: every mapped role the claim's
-			// groups resolve to, then the precedence rule over the lot.
 			var mapped []string
 			for _, group := range signIn(t, user.Email).Groups {
 				if role := seed.RoleOf(group); role != "" {
@@ -490,9 +400,6 @@ func TestTheSharedDirectoryGroupDoesNotChangeEitherUsersRole(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// T024: the footprint and the platform (FR-103, SC-103).
-
 func TestTheTwoIdentityImagesStayUnderTheCombinedFootprintBudget(t *testing.T) {
 	requireImages(t)
 
@@ -503,9 +410,7 @@ func TestTheTwoIdentityImagesStayUnderTheCombinedFootprintBudget(t *testing.T) {
 
 	var total int64
 	for _, ref := range []string{dexImage, glauthImage} {
-		// The image SUMMARY, not the inspect record. Both carry a `Size` and they
-		// are different quantities under the containerd snapshotter; this is the
-		// one `docker image ls` prints and the one combinedImageBudget explains.
+		// The image summary size, not the inspect record; see combinedImageBudget.
 		listed, err := docker.ImageList(ctx, client.ImageListOptions{
 			Filters: client.Filters{}.Add("reference", ref),
 		})
@@ -531,7 +436,6 @@ func TestBothIdentityImagesPublishLinuxArm64(t *testing.T) {
 
 	for _, ref := range []string{dexImage, glauthImage} {
 		t.Run(ref, func(t *testing.T) {
-			// The registry's manifest list, so this holds on an amd64 host too.
 			dist, err := docker.DistributionInspect(ctx, ref, client.DistributionInspectOptions{})
 			require.NoError(t, err, "the registry has to be reachable to answer this")
 
@@ -542,10 +446,8 @@ func TestBothIdentityImagesPublishLinuxArm64(t *testing.T) {
 			require.Contains(t, platforms, "linux/arm64",
 				"every measurement in research.md was taken on aarch64")
 
-			// And the copy this machine pulled is native. On an arm64 host a
-			// missing arm64 variant does not fail the pull, it silently lands the
-			// amd64 one under emulation — which then makes every timing number in
-			// research.md a measurement of qemu.
+			// On arm64 a missing arm64 variant silently pulls amd64 under emulation,
+			// skewing every timing measurement.
 			info, err := docker.ImageInspect(ctx, ref)
 			require.NoError(t, err)
 			require.Equal(t, "linux", info.Os)
@@ -554,9 +456,6 @@ func TestBothIdentityImagesPublishLinuxArm64(t *testing.T) {
 		})
 	}
 }
-
-// ---------------------------------------------------------------------------
-// The real credential grant.
 
 type idTokenClaims struct {
 	Iss    string   `json:"iss"`
@@ -568,18 +467,9 @@ type idTokenClaims struct {
 
 var formActionPattern = regexp.MustCompile(`<form[^>]*\saction="([^"]+)"`)
 
-// signIn drives the authorization-code flow the product actually uses, through
-// Dex's own LDAP login form, and returns the claims of a signature-verified ID
-// token.
-//
-// Not the password grant, which would have been three lines. Dex does support it
-// — `oauth2.passwordConnector: ldap` turns it on and it does yield the groups
-// claim, measured — but it is a global switch, not the per-client setting it
-// looks like: it enables ROPC for every registered client, the public CLI one
-// included. Buying test convenience with a permanent widening of the shipped
-// config is a bad trade, and a test that took that path would exercise a grant
-// the product never uses and leave the login form — the thing an operator
-// actually meets — unasserted.
+// signIn drives the product's authorization-code flow through Dex's login form.
+// Not the password grant: enabling it in Dex turns on ROPC for every client,
+// the public CLI one included.
 func signIn(t *testing.T, email string) idTokenClaims {
 	t.Helper()
 	quoteDexLogOnFailure(t)
@@ -589,9 +479,7 @@ func signIn(t *testing.T, email string) idTokenClaims {
 		"client_id":     {oidcClientID},
 		"redirect_uri":  {oidcRedirectURI},
 		"response_type": {"code"},
-		// From compose.yaml, not from a literal here: this suite is the only thing
-		// that would notice `groups` leaving the list the product actually sends,
-		// and it cannot notice it while asking for a list of its own.
+		// From compose.yaml so this suite notices `groups` leaving the shipped scope list.
 		"scope": {composeOIDCScopes(t)},
 		"state": {state},
 	}.Encode()
@@ -620,10 +508,7 @@ func signIn(t *testing.T, email string) idTokenClaims {
 	require.NoError(t, json.Unmarshal(tokenBody, &token))
 	require.NotEmpty(t, token.IDToken)
 
-	// Verified, not merely decoded — an unverified payload would let a fixture
-	// masquerade as a token. The key set is fetched through the mapped port while
-	// the issuer checked against the `iss` claim stays the published one, which is
-	// the split this whole arrangement rests on.
+	// Verified, not merely decoded, so a fixture can't masquerade as a token.
 	ctx := context.Background()
 	verifier := oidc.NewVerifier(issuer, oidc.NewRemoteKeySet(ctx, dexBase+"/keys"),
 		&oidc.Config{ClientID: oidcClientID})
@@ -637,12 +522,7 @@ func signIn(t *testing.T, email string) idTokenClaims {
 }
 
 // authorizationCode drives a browser through Dex's LDAP login form and returns
-// the authorization code the redirect carries.
-//
-// Extracted rather than inlined because signin_integration_test.go needs the same
-// browser with a DIFFERENT authorization URL — one the product built, through the
-// browser-facing authority — and a second copy of the form handling would be a
-// second thing to fix when Dex's markup moves.
+// the code from the redirect.
 func authorizationCode(t *testing.T, authorizationURL, email, wantState string) string {
 	t.Helper()
 	quoteDexLogOnFailure(t)
@@ -650,8 +530,7 @@ func authorizationCode(t *testing.T, authorizationURL, email, wantState string) 
 	jar, err := cookiejar.New(nil)
 	require.NoError(t, err)
 
-	// Stop at the first hop that leaves Dex. That hop is the redirect carrying the
-	// authorization code, and nothing is listening on the redirect URI's port.
+	// Stop at the redirect leaving Dex; nothing listens on the redirect URI.
 	stopAtRedirectURI := func(req *http.Request, _ []*http.Request) error {
 		if strings.HasPrefix(req.URL.String(), oidcRedirectURI) {
 			return http.ErrUseLastResponse
@@ -660,7 +539,6 @@ func authorizationCode(t *testing.T, authorizationURL, email, wantState string) 
 	}
 	c := &http.Client{Jar: jar, CheckRedirect: stopAtRedirectURI, Timeout: 20 * time.Second}
 
-	// One connector, so Dex redirects straight past its chooser to the login page.
 	page, err := c.Get(authorizationURL)
 	require.NoError(t, err)
 	body, err := io.ReadAll(page.Body)
@@ -673,8 +551,6 @@ func authorizationCode(t *testing.T, authorizationURL, email, wantState string) 
 	loginURL, err := page.Request.URL.Parse(html.UnescapeString(string(action[1])))
 	require.NoError(t, err)
 
-	// skipApprovalScreen collapses the consent hop, so this lands on the redirect
-	// directly; the client would follow an approval hop on its own if it appeared.
 	submitted, err := c.PostForm(loginURL.String(), url.Values{
 		"login":    {email},
 		"password": {directoryPassword},

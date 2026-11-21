@@ -8,35 +8,27 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The sweep interval is a guarantee, not a tuning knob: LISTEN/NOTIFY is
-// fire-and-forget, so the sweep is the only thing that turns a notification lost
-// to a dropped connection into seconds of delay rather than a job that never
-// runs (R5). The integration suite shortens it to keep the tests fast, which is
-// exactly why the shipped default is pinned here.
+// The sweep is what recovers a NOTIFY lost to a dropped connection, and the
+// integration suite shortens it, so the shipped default is pinned here.
 func TestTheSweepIntervalDefaultsToTenSeconds(t *testing.T) {
 	require.Equal(t, 10*time.Second, DefaultSweepInterval)
 
 	filled := RelayConfig{}.withDefaults()
 	require.Equal(t, DefaultSweepInterval, filled.SweepInterval)
 	require.Equal(t, DefaultPruneInterval, filled.PruneInterval)
-	require.Equal(t, 24*time.Hour, filled.Retention, "data-model.md: delivered rows pruned after 24 h")
+	require.Equal(t, 24*time.Hour, filled.Retention, "delivered rows are pruned after 24 h")
 	require.Equal(t, DefaultBatch, filled.Batch)
 
-	// An explicit value survives, so the defaults cannot silently override a
-	// deployment that tuned one.
 	explicit := RelayConfig{Batch: 7, SweepInterval: time.Second, PruneInterval: 2 * time.Second, Retention: 3 * time.Second}.withDefaults()
 	require.Equal(t, explicit, RelayConfig{Batch: 7, SweepInterval: time.Second, PruneInterval: 2 * time.Second, Retention: 3 * time.Second})
 }
 
-// Pinned rather than left at River's own default (25): 25 attempts of a fetch
-// or a scan that keeps failing is 25 attempts of noise nobody reads, and it
-// is what makes the Runtime screen's "retryable" count meaningless.
+// River's default of 25 attempts turns a persistently failing job into noise
+// and makes the "retryable" count meaningless.
 func TestMaxJobAttemptsIsThreeNotRiversDefaultTwentyFive(t *testing.T) {
 	require.Equal(t, 3, MaxJobAttempts)
 }
 
-// The relay is generic over job types: it hands River the payload exactly as the
-// outbox stored it, so a new job kind needs no relay change.
 func TestAQueuedJobCarriesTheOutboxRowThrough(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -64,5 +56,13 @@ func TestAQueuedJobCarriesTheOutboxRowThrough(t *testing.T) {
 			require.NoError(t, err)
 			require.JSONEq(t, tc.want, string(encoded))
 		})
+	}
+}
+
+func TestANotifyJobGetsTheWebhookRetryBudgetAndEveryOtherKindThree(t *testing.T) {
+	require.Equal(t, 10, MaxAttempts(KindNotify))
+	require.Equal(t, QueueNotify, Queue(KindNotify))
+	for _, k := range []Kind{KindFetch, KindScan, KindRescanSweep} {
+		require.Equal(t, MaxJobAttempts, MaxAttempts(k))
 	}
 }

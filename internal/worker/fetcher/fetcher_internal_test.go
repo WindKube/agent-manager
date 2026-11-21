@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -15,25 +16,19 @@ import (
 	"agent-manager/internal/domain/pkgspec"
 	"agent-manager/internal/fetch"
 	"agent-manager/internal/outbox"
+	"agent-manager/internal/signing"
+	"agent-manager/internal/store/models"
 	"agent-manager/internal/worker"
 )
 
-// The stubs below exist only so New can be reached with one dependency missing.
-// None of them is called: New fails before it constructs anything.
+// Stubs so New can be reached with one dependency missing; none is called.
 type stubDB struct{ bun.IDB }
 
 type stubBlob struct{ blob.Reader }
 
 type stubFetch struct{ fetch.Client }
 
-// ---------------------------------------------------------------------------
-// T045 — the error taxonomy, and the separation it exists to hold
-// ---------------------------------------------------------------------------
-
-// The requirement is not "classify errors tidily". It is that a fetch failure is
-// reported as a fetch failure and NEVER as a scan finding (US1 scenario 5), and
-// this test is where the SSRF refusal, the missing ref, the absent subdirectory
-// and the repo needing credentials are each nailed to a fetch reason.
+// A fetch failure must be reported as a fetch failure, never as a scan finding.
 func TestEveryFetchFailureIsAFetchErrorAndNeverAFinding(t *testing.T) {
 	subject := "example/platform-toolkit@1.3.0"
 
@@ -121,6 +116,12 @@ func TestEveryFetchFailureIsAFetchErrorAndNeverAFinding(t *testing.T) {
 			want: ReasonVersionMismatch,
 		},
 		{
+			name: "a tag that names a different commit from the one already recorded",
+			err: &TagMovedError{Repo: "https://github.com/acme/skills", Tag: "v1.2.0", Version: "acme/pdf@1.2.0",
+				From: strings.Repeat("a", 40), To: strings.Repeat("b", 40)},
+			want: ReasonTagMoved,
+		},
+		{
 			name:      "the hub's own storage failing, which is the fall-through",
 			err:       errors.New("write bundle.tar.zst: connection reset"),
 			want:      ReasonStore,
@@ -131,9 +132,6 @@ func TestEveryFetchFailureIsAFetchErrorAndNeverAFinding(t *testing.T) {
 			err := classify(subject, tc.err)
 			require.Error(t, err)
 
-			// Every one of them is a fetch error. This is the assertion that stands
-			// between an unreadable source and a `finding` row about a package the
-			// hub never read.
 			require.ErrorIs(t, err, ErrFetch)
 			require.ErrorIs(t, err, tc.err, "the cause must stay reachable for the operator")
 			require.Equal(t, tc.want, ReasonOf(err))
@@ -146,9 +144,17 @@ func TestEveryFetchFailureIsAFetchErrorAndNeverAFinding(t *testing.T) {
 	}
 }
 
-// The negative control for the table above: not everything that reaches classify
-// is the source's fault. A cancelled caller is a shutdown, and dressing it up as
-// a fetch failure would blame a package for the operator restarting the role.
+func TestAMovedTagNamesBothCommitsShort(t *testing.T) {
+	err := &TagMovedError{Repo: "https://github.com/acme/skills", Tag: "v1.2.0", Version: "acme/pdf@1.2.0",
+		From: "abc1234" + strings.Repeat("0", 33), To: "def5678" + strings.Repeat("0", 33)}
+	require.Equal(t, "tag v1.2.0 of https://github.com/acme/skills moved from abc1234… to def5678…: "+
+		"acme/pdf@1.2.0 was stored from the first, and versions are immutable", err.Error())
+	outcome, ok := outcomeOf(ReasonTagMoved)
+	require.True(t, ok)
+	require.Equal(t, models.FetchOutcomeInvalidRef, outcome)
+}
+
+// A cancelled caller is a shutdown, not the package's fault.
 func TestACancelledCallerIsNotAFetchFailure(t *testing.T) {
 	for _, err := range []error{context.Canceled, context.DeadlineExceeded} {
 		out := classify("example/x@1.0.0", err)
@@ -162,21 +168,12 @@ func TestACancelledCallerIsNotAFetchFailure(t *testing.T) {
 	require.Empty(t, ReasonOf(errors.New("not a fetch error")))
 }
 
-// ---------------------------------------------------------------------------
-// The publish transaction's inputs, which have to be right before the
-// transaction is worth testing
-// ---------------------------------------------------------------------------
-
 func TestTheManifestKeywordsBecomeTheVersionsTagsExactlyOnce(t *testing.T) {
-	// version_tag is keyed on (version_id, tag) and version.tags is the same set
-	// denormalised, so a duplicate keyword would abort the publish transaction on
-	// a primary-key violation.
+	// A duplicate would abort the publish on version_tag's primary key.
 	require.Equal(t, []string{"iac", "terraform"},
 		VersionTags([]string{"terraform", "iac", "terraform", ""}))
 	require.Empty(t, VersionTags(nil))
 
-	// The facet groups on the stored string, so `AWS` and `aws` have to be one
-	// tag rather than two filters that each hide half the catalog.
 	require.Equal(t, []string{"aws"}, VersionTags([]string{"AWS", "aws", "Aws"}))
 }
 
@@ -198,10 +195,6 @@ func TestTheTagsColumnIsRenderedAsAPostgresTextArray(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// The audit row (US1 scenario 6)
-// ---------------------------------------------------------------------------
-
 func TestTheAuditRowNamesTheStoredVersionAndNeverACredential(t *testing.T) {
 	job := Job{
 		VersionID: uuid.New(),
@@ -222,8 +215,9 @@ func TestTheAuditRowNamesTheStoredVersionAndNeverACredential(t *testing.T) {
 	}
 	commit := blob.Commit{Bundle: blob.Object{Size: 4096}}
 
-	text := storedText(job, pkg, commit)
+	text := storedText(job, pkg, commit, signing.Result{Status: signing.StatusUnsigned})
 	require.Contains(t, text, "stored example/platform-toolkit@1.3.0 (plugin)")
+	require.Contains(t, text, ", unsigned")
 	require.Contains(t, text, "git https://redacted@github.com/org/plugin@v1.3.0")
 	require.Contains(t, text, "digest sha256:"+
 		"0000000000000000000000000000000000000000000000000000000000000000")
@@ -232,16 +226,20 @@ func TestTheAuditRowNamesTheStoredVersionAndNeverACredential(t *testing.T) {
 	require.Contains(t, text, "2 paths dropped as outside the spec layout")
 	require.NotContains(t, text, "s3cr3t", "an audit row is the copy that is kept forever")
 
-	// The failure row is the same rule: the reason is named, the credential is not.
 	require.NotContains(t, describeSource(job.Source), "s3cr3t")
+
+	require.Contains(t, storedText(job, pkg, commit, signing.Result{
+		Status: signing.StatusVerified, Issuer: "https://issuer.example", Identity: "release@example.com",
+	}), "signature verified: release@example.com via https://issuer.example")
+	require.Contains(t, storedText(job, pkg, commit, signing.Result{
+		Status: signing.StatusInvalid, Reason: "digest mismatch\nmore",
+	}), "signature invalid: digest mismatch")
 	require.Equal(t, "upload platform-toolkit-1.3.0.zip",
 		describeSource(JobSource{Kind: fetch.SourceUpload, ArchiveName: "platform-toolkit-1.3.0.zip"}))
 }
 
 func TestCredentialRedactionSurvivesAURLThatWillNotParse(t *testing.T) {
-	// The failure mode of a parse-then-redact implementation is a secret in the
-	// audit log forever, so this is a string operation and this is the test that
-	// says why.
+	// Unparseable URLs must still be redacted, or a secret lands in the audit log.
 	for _, tc := range []struct{ given, want string }{
 		{"https://user:pw@example.com/x", "https://redacted@example.com/x"},
 		{"https://token@example.com", "https://redacted@example.com"},
@@ -252,10 +250,6 @@ func TestCredentialRedactionSurvivesAURLThatWillNotParse(t *testing.T) {
 		require.Equal(t, tc.want, redactCredentials(tc.given), tc.given)
 	}
 }
-
-// ---------------------------------------------------------------------------
-// The job payload, which is the contract between the api and this role
-// ---------------------------------------------------------------------------
 
 func TestAFetchJobIsRefusedBeforeItReachesTheQueue(t *testing.T) {
 	valid := Job{
@@ -293,9 +287,7 @@ func TestAFetchJobIsRefusedBeforeItReachesTheQueue(t *testing.T) {
 			err := job.Validate()
 			require.ErrorContains(t, err, tc.want)
 
-			// A payload that cannot be worked cannot be enqueued either: the same
-			// check runs at enqueue time so a bad registration fails the REQUEST
-			// rather than a job nobody is watching.
+			// The same check runs at enqueue time, so a bad registration fails the request.
 			_, err = job.OutboxJob()
 			require.Error(t, err)
 		})
@@ -320,8 +312,6 @@ func TestTheFetchJobsIdempotencyKeyIsTheVersionsOwnIdentity(t *testing.T) {
 	require.Equal(t, "1.3.0", out.SubjectVersion)
 	require.Equal(t, "fetch:"+versionID.String()+":1.3.0", out.IdempotencyKey())
 
-	// The River job kind and the outbox job_kind are one string, so a worker
-	// registers against a single value and the relay needs no mapping.
 	require.Equal(t, string(outbox.KindFetch), job.Kind())
 
 	require.Equal(t, blob.VersionRef{Namespace: "example", Name: "platform-toolkit", Semver: "1.3.0"},
@@ -330,10 +320,8 @@ func TestTheFetchJobsIdempotencyKeyIsTheVersionsOwnIdentity(t *testing.T) {
 }
 
 func TestTheWorkerRefusesToStartWithoutTheHalfThatWritesBytes(t *testing.T) {
-	// The Definition declares Blob: AccessReadWrite and the bootstrap hands out a
-	// blob.Writer for that value alone. A nil BlobWrite here therefore means the
-	// declaration and the bootstrap disagree, and defaulting past it would produce
-	// a fetcher that fetches and stores nothing — silently.
+	// A nil BlobWrite means the Definition and bootstrap disagree; defaulting past
+	// it would silently store nothing.
 	_, err := New(worker.Deps{
 		DB:        stubDB{},
 		BlobRead:  stubBlob{},
@@ -341,10 +329,19 @@ func TestTheWorkerRefusesToStartWithoutTheHalfThatWritesBytes(t *testing.T) {
 		Fetch:     stubFetch{},
 	})
 	require.ErrorContains(t, err, "no object-store writer")
+
+	_, err = New(worker.Deps{
+		DB:        stubDB{},
+		BlobRead:  stubBlob{},
+		BlobWrite: stubWriter{},
+		Fetch:     stubFetch{},
+	})
+	require.ErrorContains(t, err, "no signature verifier")
 }
 
-// The fetch kind is enqueued onto outbox.QueueFetch; a Definition that registered
-// river.QueueDefault instead would never see it delivered.
+type stubWriter struct{ blob.Writer }
+
+// A Definition registering river.QueueDefault would never receive fetch jobs.
 func TestTheDefinitionRegistersTheFetchQueue(t *testing.T) {
 	def := Definition()
 

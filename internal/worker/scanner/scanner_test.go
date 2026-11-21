@@ -21,10 +21,8 @@ import (
 	"agent-manager/internal/worker/scanner"
 )
 
-// Needs IS the enforcement of principle II for this role, so it is asserted
-// rather than assumed: worker.Build hands out a blob.Writer for AccessReadWrite
-// and for no other value, and it constructs the outbound client only for
-// Outbound: true.
+// Needs is the enforcement: worker.Build hands out a blob.Writer only for
+// AccessReadWrite and an outbound client only for Outbound: true.
 func TestTheScannerDeclaresTheNarrowestNeedsThatWork(t *testing.T) {
 	def := scanner.Definition()
 
@@ -39,8 +37,6 @@ func TestTheScannerDeclaresTheNarrowestNeedsThatWork(t *testing.T) {
 	require.NotNil(t, def.Register)
 }
 
-// The Go boundary, tested from the inside: if the bootstrap ever hands this role a
-// writer, the role refuses to run rather than quietly holding one.
 func TestTheScannerRefusesDependenciesItDidNotDeclare(t *testing.T) {
 	bucket, err := blob.Open(t.Context(), "mem://")
 	require.NoError(t, err)
@@ -80,9 +76,8 @@ func TestTheScannerRefusesDependenciesItDidNotDeclare(t *testing.T) {
 	})
 }
 
-// The payload is the wire contract between the fetcher's publish transaction and
-// this worker: it travels as jsonb through the outbox and back out of River, so
-// the field names are as load-bearing as any column name.
+// The payload travels as jsonb through the outbox and River, so field names are
+// as load-bearing as column names.
 func TestTheScanPayloadKeepsItsWireNames(t *testing.T) {
 	job := scanner.Job{
 		VersionID: uuid.MustParse("11111111-1111-4111-8111-111111111111"),
@@ -106,10 +101,8 @@ func TestTheScanPayloadKeepsItsWireNames(t *testing.T) {
 	require.Equal(t, string(outbox.KindScan), job.Kind())
 }
 
-// SubjectVersion is empty on purpose and it matters: the scan idempotency key is
-// (scan, version id, RULE-PACK version), and the pack version is the scanner's
-// own. A producer that filled it in would either suppress the first real scan or
-// fail to suppress a redelivery.
+// The idempotency key's pack version is the scanner's own; a producer that set
+// SubjectVersion would suppress the first scan or miss a redelivery.
 func TestTheProducerLeavesTheRulePackVersionOutOfTheIdempotencyKey(t *testing.T) {
 	job := scanner.Job{
 		VersionID: uuid.MustParse("11111111-1111-4111-8111-111111111111"),
@@ -175,20 +168,9 @@ func sortStrings(values []string) {
 	}
 }
 
-// TestAMountedPackThatFailsItsOwnFixturesCannotStartTheRole is the guard on the
-// operator path this design is built around.
-//
-// Rules are data so an operator can tune one without a rebuild, and compose makes
-// that real: it mounts internal/worker/scanner/rulepack at
-// AGENT_MANAGER_RULEPACK_DIR, so the pack that RUNS is a directory on the host,
-// not the one this binary embeds. The unit tests over rules.Builtin() therefore
-// constrain what ships and say nothing at all about what runs — which is a gap
-// that reads as covered, and was: a mounted rule with the pattern `.` started
-// cleanly and flagged every package in the catalog.
-//
-// The negative fixture is the only artefact separating "this rule detects
-// something" from "this rule detects anything", so the pack is refused unless
-// every rule still trips one and spares the other.
+// The pack that runs in compose is mounted from the host, not the embedded one,
+// so tests over rules.Builtin() say nothing about it. A mounted pack is refused
+// unless every rule trips its positive fixture and spares its negative one.
 func TestAMountedPackThatFailsItsOwnFixturesCannotStartTheRole(t *testing.T) {
 	bucket, err := blob.Open(t.Context(), "mem://")
 	require.NoError(t, err)
@@ -201,9 +183,7 @@ func TestAMountedPackThatFailsItsOwnFixturesCannotStartTheRole(t *testing.T) {
 	}
 
 	t.Run("the pack as it ships mounts and starts", func(t *testing.T) {
-		// The control. Without it the three cases below could pass because the
-		// mounted-pack path is broken for every pack, which would be a different bug
-		// wearing this test's clothes.
+		// Control: otherwise the cases below could pass because mounting is broken.
 		w, err := scanner.New(deps, scanner.Options{RulepackDir: mountedPack(t, nil)})
 		require.NoError(t, err)
 		require.NotEmpty(t, w.Fingerprint(context.Background()))
@@ -223,8 +203,7 @@ func TestAMountedPackThatFailsItsOwnFixturesCannotStartTheRole(t *testing.T) {
 	})
 
 	t.Run("a rule whose fixtures do not exist", func(t *testing.T) {
-		// Load reads pack.yaml and rules/ and never resolves a fixture path, so this
-		// one is invisible until something tries to run them.
+		// Load never resolves fixture paths, so only Verify can catch this.
 		dir := mountedPack(t, func(t *testing.T, dir string) {
 			t.Helper()
 			path := filepath.Join(dir, "rules", "SH-SEC-003.yaml")
@@ -252,9 +231,8 @@ func TestAMountedPackThatFailsItsOwnFixturesCannotStartTheRole(t *testing.T) {
 	})
 }
 
-// mountedPack copies the shipped pack into a temp directory and applies one edit,
-// so each case starts from the real thing rather than from a miniature pack that
-// would prove nothing about the one in production.
+// mountedPack copies the shipped pack and applies one edit, so each case starts
+// from the real pack rather than a miniature one.
 func mountedPack(t *testing.T, edit func(t *testing.T, dir string)) string {
 	t.Helper()
 
@@ -276,8 +254,7 @@ func narrowRule(t *testing.T, path string) {
 	replacePattern(t, path, "'this string appears in no fixture anywhere'")
 }
 
-// replacePattern rewrites the rule's `pattern:` value, which sits alone on the
-// line after its key.
+// replacePattern rewrites the line after a bare `pattern:` key.
 func replacePattern(t *testing.T, path, pattern string) {
 	t.Helper()
 

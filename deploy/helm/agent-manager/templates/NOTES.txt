@@ -1,0 +1,14 @@
+agent-manager {{ .Chart.AppVersion }} is installed as {{ include "am.fullname" . }}-{api,web,fetcher,scanner,notifier}.
+{{- if .Values.ingress.enabled }}
+
+Web: http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.web.host }}
+API: http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.api.host }}
+{{- else }}
+
+  kubectl port-forward svc/{{ include "am.fullname" . }}-web {{ .Values.web.port }}
+{{- end }}
+{{- if .Values.networkPolicy.enabled }}
+
+NetworkPolicies are on with default-deny. Check networkPolicy.postgres,
+objectStore and identityProvider point where yours actually live.
+{{- end }}

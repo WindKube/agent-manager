@@ -5,9 +5,7 @@ import (
 	"fmt"
 )
 
-// ErrorCode is a token-endpoint error code from RFC 8628 §3.5, carried
-// verbatim from the hub. Two of the five declared codes mean keep polling,
-// three are final.
+// ErrorCode is a token-endpoint error code from RFC 8628 §3.5, carried verbatim from the hub.
 type ErrorCode string
 
 const (
@@ -26,8 +24,7 @@ func Codes() []ErrorCode {
 	}
 }
 
-// Continues reports whether c means the client should poll again. An
-// unrecognised code does not continue.
+// Continues reports whether c means the client should poll again.
 func (c ErrorCode) Continues() bool {
 	switch c {
 	case CodeAuthorizationPending, CodeSlowDown:
@@ -52,8 +49,6 @@ var (
 	ErrNoClock        = errors.New("no clock given")
 )
 
-// terminalError maps a terminal code onto its sentinel, quoting an
-// unrecognised code verbatim.
 func terminalError(code ErrorCode) error {
 	switch code {
 	case CodeAccessDenied:

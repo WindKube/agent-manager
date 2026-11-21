@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,16 +21,17 @@ import (
 	"agent-manager/internal/fetch"
 )
 
+const (
+	testCommit   = "3f9c2e1d8b7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e"
+	testCommitB  = "b0b1b2b3b4b5b6b7b8b9c0c1c2c3c4c5c6c7c8c9"
+	testTagObjID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+)
+
 const testPluginManifest = `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"platform-toolkit","version":"1.3.0"}`
 
-// rewriteClient is a fetch.Client that sends every request to one test server,
-// keeping the path and headers the caller built.
-//
-// This is the seam that makes the go-github path testable without reaching
-// GitHub: the assertion that matters is which endpoint go-github built and how the
-// answer is classified, and both are visible here. It implements fetch.Client
-// rather than wrapping an http.Transport so the production client's own behaviour
-// is never partially bypassed — the SSRF suite in safe_test.go is what tests that.
+// rewriteClient sends every request to one test server, keeping the path and
+// headers the caller built. It implements fetch.Client rather than wrapping a
+// transport so the production client's SSRF behaviour is never partly bypassed.
 type rewriteClient struct {
 	server *httptest.Server
 	seen   []string
@@ -90,8 +92,8 @@ func TestUploadSourceExtractsUnderTheR3Caps(t *testing.T) {
 	})
 
 	t.Run("a lone directory with no manifest is not mistaken for a wrapper", func(t *testing.T) {
-		// A tree whose root holds only skills/ is a legitimate shape. Stripping it
-		// would publish the inside of a skill as if it were the package.
+		// A root holding only skills/ is legitimate; stripping it would publish a
+		// skill's insides as the package.
 		archive := zipArchive(t, map[string]string{"skills/x/SKILL.md": "---\nname: x\ndescription: y\n---\n"})
 		tree, err := source.Fetch(context.Background(), fetch.SourceRef{
 			Kind: fetch.SourceUpload, Archive: bytes.NewReader(archive),
@@ -112,8 +114,7 @@ func TestUploadSourceExtractsUnderTheR3Caps(t *testing.T) {
 		require.Equal(t, "plugins/platform-toolkit", tree.Root)
 	})
 
-	// The negative control: the caps are internal/bundle's and the source must not
-	// have its own reading of them.
+	// The caps are internal/bundle's; the source must not apply its own.
 	t.Run("a cap failure reaches the caller as a bundle error", func(t *testing.T) {
 		archive := zipArchive(t, map[string]string{"plugin.json": testPluginManifest, "big": strings.Repeat("a", 4096)})
 		_, err := source.Fetch(context.Background(), fetch.SourceRef{
@@ -140,17 +141,30 @@ func TestGitSourceUsesTheTarballEndpointAndNeverAShell(t *testing.T) {
 	var served int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/repos/example/platform-toolkit/tarball/v1.3.0":
+		case "/repos/example/platform-toolkit/git/ref/tags/v1.3.0":
+			_, _ = fmt.Fprintf(w, `{"ref":"refs/tags/v1.3.0","object":{"type":"commit","sha":%q}}`, testCommit)
+		case "/repos/example/platform-toolkit/tarball/" + testCommit:
 			served++
 			w.Header().Set("Content-Type", "application/gzip")
 			_, _ = w.Write(tarball)
-		case "/repos/example/platform-toolkit/tarball/v9.9.9":
+		case "/repos/example/platform-toolkit/git/ref/tags/v9.9.9",
+			"/repos/example/private/git/ref/tags/HEAD", "/repos/example/broken/git/ref/tags/HEAD",
+			"/repos/example/platform-toolkit/releases/tags/v1.3.0":
 			w.WriteHeader(http.StatusNotFound)
 			_, _ = w.Write([]byte(`{"message":"Not Found"}`))
-		case "/repos/example/private/tarball/HEAD":
+		case "/repos/example/platform-toolkit/commits/v9.9.9":
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_, _ = w.Write([]byte(`{"message":"No commit found for SHA: v9.9.9"}`))
+		case "/repos/example/private/commits/HEAD":
 			w.WriteHeader(http.StatusForbidden)
 			_, _ = w.Write([]byte(`{"message":"Must have admin rights to Repository."}`))
-		case "/repos/example/broken/tarball/HEAD":
+		case "/repos/example/throttled/git/ref/tags/HEAD":
+			w.Header().Set("X-RateLimit-Limit", "60")
+			w.Header().Set("X-RateLimit-Remaining", "0")
+			w.Header().Set("X-RateLimit-Reset", "4102444800")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"message":"API rate limit exceeded for 203.0.113.7."}`))
+		case "/repos/example/broken/commits/HEAD":
 			w.WriteHeader(http.StatusInternalServerError)
 			_, _ = w.Write([]byte(`{"message":"boom"}`))
 		default:
@@ -161,19 +175,26 @@ func TestGitSourceUsesTheTarballEndpointAndNeverAShell(t *testing.T) {
 	defer server.Close()
 
 	client := &rewriteClient{server: server}
-	source, err := fetch.NewGitSource(client)
+	source, err := fetch.NewGitSource(client, "")
 	require.NoError(t, err)
 	require.Equal(t, "git", source.Name())
 
-	t.Run("the endpoint is repos/{owner}/{repo}/tarball/{ref}", func(t *testing.T) {
+	t.Run("the ref is resolved first and the tarball fetched by that sha", func(t *testing.T) {
 		tree, err := source.Fetch(context.Background(), fetch.SourceRef{
 			Kind: fetch.SourceGit, URL: "https://github.com/example/platform-toolkit", Ref: "v1.3.0",
 		})
 		require.NoError(t, err)
 		require.Equal(t, 1, served)
-		require.Equal(t, []string{"/repos/example/platform-toolkit/tarball/v1.3.0"}, client.seen)
+		require.Equal(t, []string{
+			"/repos/example/platform-toolkit/git/ref/tags/v1.3.0",
+			"/repos/example/platform-toolkit/tarball/" + testCommit,
+			"/repos/example/platform-toolkit/releases/tags/v1.3.0",
+		}, client.seen)
+		require.Empty(t, tree.Signatures, "no release is unsigned")
+		require.Equal(t, sha256.Sum256(tarball), tree.ArchiveDigest)
+		require.Equal(t, testCommit, tree.Commit)
+		require.Equal(t, "https://github.com/example/platform-toolkit", tree.SourceURL)
 
-		// The forge's unpredictable `owner-repo-<sha>/` wrapper is what Root strips.
 		require.Equal(t, "example-platform-toolkit-9f1c2ab", tree.Root)
 		require.Equal(t, "git https://github.com/example/platform-toolkit.git@v1.3.0", tree.Origin)
 	})
@@ -188,8 +209,7 @@ func TestGitSourceUsesTheTarballEndpointAndNeverAShell(t *testing.T) {
 		require.Contains(t, tree.Origin, "(plugins/nested)")
 	})
 
-	// T045: each of these is a FETCH error with its own reason, and none of them is
-	// a scan finding.
+	// Each is a fetch error with its own reason, never a scan finding.
 	t.Run("a missing ref is a fetch error naming the ref", func(t *testing.T) {
 		_, err := source.Fetch(context.Background(), fetch.SourceRef{
 			Kind: fetch.SourceGit, URL: "https://github.com/example/platform-toolkit", Ref: "v9.9.9",
@@ -213,6 +233,15 @@ func TestGitSourceUsesTheTarballEndpointAndNeverAShell(t *testing.T) {
 		require.ErrorIs(t, err, fetch.ErrCredentialsRequired)
 	})
 
+	t.Run("a rate limit is the remote's refusal, not a credential problem", func(t *testing.T) {
+		_, err := source.Fetch(context.Background(), fetch.SourceRef{
+			Kind: fetch.SourceGit, URL: "https://github.com/example/throttled",
+		})
+		require.ErrorIs(t, err, fetch.ErrRemote)
+		require.NotErrorIs(t, err, fetch.ErrCredentialsRequired)
+		require.ErrorContains(t, err, "AGENT_MANAGER_GITHUB_TOKEN")
+	})
+
 	t.Run("any other refusal is reported as the remote's", func(t *testing.T) {
 		_, err := source.Fetch(context.Background(), fetch.SourceRef{
 			Kind: fetch.SourceGit, URL: "https://github.com/example/broken",
@@ -230,6 +259,93 @@ func TestGitSourceUsesTheTarballEndpointAndNeverAShell(t *testing.T) {
 	})
 }
 
+func TestGitSourceResolvesARefToTheCommitItNamesNow(t *testing.T) {
+	var accepts []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/example/kit/git/ref/tags/v1.0.0":
+			_, _ = fmt.Fprintf(w, `{"object":{"type":"commit","sha":%q}}`, testCommit)
+		case "/repos/example/kit/git/ref/tags/v2.0.0":
+			_, _ = fmt.Fprintf(w, `{"object":{"type":"tag","sha":%q}}`, testTagObjID)
+		case "/repos/example/kit/git/tags/" + testTagObjID:
+			_, _ = fmt.Fprintf(w, `{"object":{"type":"commit","sha":%q}}`, testCommitB)
+		case "/repos/example/kit/git/ref/tags/main", "/repos/example/kit/git/ref/tags/HEAD":
+			w.WriteHeader(http.StatusNotFound)
+		case "/repos/example/kit/commits/main", "/repos/example/kit/commits/HEAD":
+			accepts = append(accepts, r.Header.Get("Accept"))
+			_, _ = w.Write([]byte(strings.ToUpper(testCommitB)))
+		default:
+			w.WriteHeader(http.StatusBadRequest)
+		}
+	}))
+	defer server.Close()
+
+	client := &rewriteClient{server: server}
+	source, err := fetch.NewGitSource(client, "")
+	require.NoError(t, err)
+	resolve := func(ref string) (fetch.Pin, error) {
+		return source.Resolve(context.Background(), fetch.SourceRef{
+			Kind: fetch.SourceGit, URL: "https://github.com/example/kit", Ref: ref,
+		})
+	}
+
+	t.Run("a lightweight tag is one call", func(t *testing.T) {
+		client.seen = nil
+		pin, err := resolve("v1.0.0")
+		require.NoError(t, err)
+		require.Equal(t, fetch.Pin{RepoURL: "https://github.com/example/kit", Ref: "v1.0.0", Commit: testCommit, Tag: true}, pin)
+		require.Len(t, client.seen, 1)
+	})
+
+	t.Run("an annotated tag is peeled to its commit", func(t *testing.T) {
+		pin, err := resolve("v2.0.0")
+		require.NoError(t, err)
+		require.True(t, pin.Tag)
+		require.Equal(t, testCommitB, pin.Commit)
+	})
+
+	t.Run("a branch is not a tag and resolves through the commits endpoint", func(t *testing.T) {
+		pin, err := resolve("main")
+		require.NoError(t, err)
+		require.False(t, pin.Tag)
+		require.Equal(t, testCommitB, pin.Commit, "the sha is normalised to lowercase")
+		require.Equal(t, "application/vnd.github.sha", accepts[len(accepts)-1])
+	})
+
+	t.Run("no ref is HEAD", func(t *testing.T) {
+		pin, err := resolve("")
+		require.NoError(t, err)
+		require.Equal(t, "HEAD", pin.Ref)
+		require.False(t, pin.Tag)
+	})
+
+	t.Run("a full sha needs no request", func(t *testing.T) {
+		client.seen = nil
+		pin, err := resolve(strings.ToUpper(testCommit))
+		require.NoError(t, err)
+		require.Equal(t, testCommit, pin.Commit)
+		require.Empty(t, client.seen)
+	})
+
+	t.Run("a fetch pinned to a commit does not resolve again", func(t *testing.T) {
+		client.seen = nil
+		_, err := source.Fetch(context.Background(), fetch.SourceRef{
+			Kind: fetch.SourceGit, URL: "https://github.com/example/kit", Ref: "v1.0.0", Commit: testCommitB,
+		})
+		require.Error(t, err, "this server has no tarball")
+		require.Equal(t, []string{"/repos/example/kit/tarball/" + testCommitB}, client.seen)
+	})
+
+	t.Run("a pinned value that is not a sha is refused before any request", func(t *testing.T) {
+		client.seen = nil
+		_, err := source.Fetch(context.Background(), fetch.SourceRef{
+			Kind: fetch.SourceGit, URL: "https://github.com/example/kit", Commit: "../../etc",
+		})
+		require.Error(t, err)
+		require.Empty(t, client.seen)
+	})
+}
+
 func TestArchiveURLSourceFetchesThroughTheInjectedClient(t *testing.T) {
 	archive := zipArchive(t, map[string]string{"plugin.json": testPluginManifest})
 
@@ -237,10 +353,14 @@ func TestArchiveURLSourceFetchesThroughTheInjectedClient(t *testing.T) {
 		switch r.URL.Path {
 		case "/dist/platform-toolkit-1.3.0.zip":
 			_, _ = w.Write(archive)
+		case "/dist/latest.zip":
+			http.Redirect(w, r, "/dist/platform-toolkit-1.3.0.zip?X-Amz-Signature=secret", http.StatusFound)
 		case "/dist/gone.zip":
 			w.WriteHeader(http.StatusNotFound)
 		case "/dist/private.zip":
 			w.WriteHeader(http.StatusUnauthorized)
+		case "/dist/platform-toolkit-1.3.0.zip.sigstore.json", "/dist/latest.zip.sigstore.json":
+			w.WriteHeader(http.StatusNotFound)
 		default:
 			w.WriteHeader(http.StatusTeapot)
 		}
@@ -257,6 +377,18 @@ func TestArchiveURLSourceFetchesThroughTheInjectedClient(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, ".", tree.Root)
 		require.Contains(t, tree.Origin, "platform-toolkit-1.3.0.zip")
+		require.Empty(t, tree.Commit)
+		require.Equal(t, sha256.Sum256(archive), tree.ArchiveDigest)
+		require.Empty(t, tree.Signatures)
+	})
+
+	t.Run("the source url is where the bytes came from after redirects, without its query", func(t *testing.T) {
+		tree, err := source.Fetch(context.Background(), fetch.SourceRef{
+			Kind: fetch.SourceArchiveURL, URL: "https://cdn.example.dev/dist/latest.zip",
+		})
+		require.NoError(t, err)
+		require.True(t, strings.HasSuffix(tree.SourceURL, "/dist/platform-toolkit-1.3.0.zip"), tree.SourceURL)
+		require.NotContains(t, tree.SourceURL, "secret")
 	})
 
 	for _, tc := range []struct {
@@ -287,7 +419,7 @@ func TestArchiveURLSourceFetchesThroughTheInjectedClient(t *testing.T) {
 
 func TestRegistryRoutesByKindAndByShape(t *testing.T) {
 	upload := fetch.NewUploadSource()
-	git, err := fetch.NewGitSource(&rewriteClient{})
+	git, err := fetch.NewGitSource(&rewriteClient{}, "")
 	require.NoError(t, err)
 	archive := fetch.NewArchiveURLSource(&rewriteClient{})
 
@@ -319,7 +451,6 @@ func TestRegistryRoutesByKindAndByShape(t *testing.T) {
 	})
 }
 
-// zipArchive builds a zip in memory.
 func zipArchive(t *testing.T, files map[string]string) []byte {
 	t.Helper()
 
@@ -335,8 +466,7 @@ func zipArchive(t *testing.T, files map[string]string) []byte {
 	return buf.Bytes()
 }
 
-// forgeTarball builds the shape a forge's tarball endpoint returns: every entry
-// under one `owner-repo-<sha>/` directory.
+// forgeTarball wraps every entry in one `owner-repo-<sha>/` directory, as a forge does.
 func forgeTarball(t *testing.T, wrapper string, files map[string]string) []byte {
 	t.Helper()
 
@@ -360,4 +490,150 @@ func forgeTarball(t *testing.T, wrapper string, files map[string]string) []byte 
 	require.NoError(t, tw.Close())
 	require.NoError(t, gz.Close())
 	return buf.Bytes()
+}
+
+func TestProvenanceIsTheCanonicalSourceWithoutACredential(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		ref  fetch.SourceRef
+		want fetch.Provenance
+	}{
+		{
+			name: "a git web path is split into repository, ref and subdirectory",
+			ref:  fetch.SourceRef{Kind: fetch.SourceGit, URL: "https://github.com/Acme/Skills/tree/v1.2.0/pdf"},
+			want: fetch.Provenance{Kind: fetch.SourceGit, URL: "https://github.com/acme/skills", Ref: "v1.2.0", Subdirectory: "pdf"},
+		},
+		{
+			name: "no ref is HEAD",
+			ref:  fetch.SourceRef{Kind: fetch.SourceGit, URL: "git@github.com:acme/skills.git"},
+			want: fetch.Provenance{Kind: fetch.SourceGit, URL: "https://github.com/acme/skills", Ref: "HEAD"},
+		},
+		{
+			name: "a self-hosted forge reached over http keeps its scheme",
+			ref:  fetch.SourceRef{Kind: fetch.SourceGit, URL: "http://git.internal:8080/acme/skills", Ref: "main"},
+			want: fetch.Provenance{Kind: fetch.SourceGit, URL: "http://git.internal:8080/acme/skills", Ref: "main"},
+		},
+		{
+			name: "an archive keeps its url but not its userinfo, query or fragment",
+			ref:  fetch.SourceRef{Kind: fetch.SourceArchiveURL, URL: "https://u:hunter2@cdn.example.dev/a.zip?v=1#top"},
+			want: fetch.Provenance{Kind: fetch.SourceArchiveURL, URL: "https://cdn.example.dev/a.zip"},
+		},
+		{
+			name: "a presigned archive url loses its signature",
+			ref: fetch.SourceRef{Kind: fetch.SourceArchiveURL,
+				URL: "https://bucket.s3.amazonaws.com/a.zip?X-Amz-Signature=deadbeef&X-Amz-Credential=AKIA"},
+			want: fetch.Provenance{Kind: fetch.SourceArchiveURL, URL: "https://bucket.s3.amazonaws.com/a.zip"},
+		},
+		{
+			name: "an upload has no url",
+			ref:  fetch.SourceRef{Kind: fetch.SourceUpload, ArchiveName: "a.zip"},
+			want: fetch.Provenance{Kind: fetch.SourceUpload},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, fetch.ProvenanceOf(tc.ref))
+		})
+	}
+}
+
+func TestGitSourceAuthenticatesToTheGitHubAPIOnlyWhenGivenAToken(t *testing.T) {
+	tarball := forgeTarball(t, "example-platform-toolkit-9f1c2ab", map[string]string{"plugin.json": testPluginManifest})
+	for _, token := range []string{"", "ghp_test"} {
+		var auth []string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			auth = append(auth, r.Header.Get("Authorization"))
+			switch r.URL.Path {
+			case "/repos/example/platform-toolkit/git/ref/tags/v1.3.0":
+				_, _ = fmt.Fprintf(w, `{"ref":"refs/tags/v1.3.0","object":{"type":"commit","sha":%q}}`, testCommit)
+			case "/repos/example/platform-toolkit/releases/tags/v1.3.0":
+				w.WriteHeader(http.StatusNotFound)
+			default:
+				w.Header().Set("Content-Type", "application/gzip")
+				_, _ = w.Write(tarball)
+			}
+		}))
+		source, err := fetch.NewGitSource(&rewriteClient{server: server}, token)
+		require.NoError(t, err)
+		_, err = source.Fetch(context.Background(), fetch.SourceRef{
+			Kind: fetch.SourceGit, URL: "https://github.com/example/platform-toolkit", Ref: "v1.3.0",
+		})
+		server.Close()
+		require.NoError(t, err)
+
+		want := ""
+		if token != "" {
+			want = "Bearer " + token
+		}
+		require.Len(t, auth, 3)
+		for _, got := range auth {
+			require.Equal(t, want, got)
+		}
+	}
+}
+
+func TestGitSourceNeverSendsTheTokenToAnotherHost(t *testing.T) {
+	tarball := forgeTarball(t, "example-kit-9f1c2ab", map[string]string{"plugin.json": testPluginManifest})
+	var auth []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth = append(auth, r.Header.Get("Authorization"))
+		if strings.HasSuffix(r.URL.Path, "/git/ref/tags/v1.0.0") {
+			_, _ = fmt.Fprintf(w, `{"ref":"refs/tags/v1.0.0","object":{"type":"commit","sha":%q}}`, testCommit)
+			return
+		}
+		if strings.Contains(r.URL.Path, "/releases/") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/gzip")
+		_, _ = w.Write(tarball)
+	}))
+	defer server.Close()
+
+	source, err := fetch.NewGitSource(&rewriteClient{server: server}, "ghp_test")
+	require.NoError(t, err)
+	_, err = source.Fetch(context.Background(), fetch.SourceRef{
+		Kind: fetch.SourceGit, URL: "https://git.attacker.example/example/kit", Ref: "v1.0.0",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, auth)
+	for _, got := range auth {
+		require.Empty(t, got)
+	}
+}
+
+func TestGitSourceListsEveryPageOfTags(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/example/kit/tags":
+			require.Equal(t, "100", r.URL.Query().Get("per_page"))
+			count := 100
+			if r.URL.Query().Get("page") == "2" {
+				count = 3
+			}
+			entries := make([]string, 0, count)
+			for i := range count {
+				entries = append(entries, fmt.Sprintf(`{"name":"v1.%s.%d","commit":{"sha":%q}}`,
+					r.URL.Query().Get("page"), i, strings.ToUpper(testCommit)))
+			}
+			_, _ = w.Write([]byte("[" + strings.Join(entries, ",") + "]"))
+		case "/repos/example/gone/tags":
+			w.WriteHeader(http.StatusNotFound)
+		default:
+			w.WriteHeader(http.StatusBadRequest)
+		}
+	}))
+	defer server.Close()
+
+	client := &rewriteClient{server: server}
+	source, err := fetch.NewGitSource(client, "")
+	require.NoError(t, err)
+
+	tags, err := source.Tags(context.Background(), fetch.SourceRef{Kind: fetch.SourceGit, URL: "https://github.com/example/kit"})
+	require.NoError(t, err)
+	require.Len(t, tags, 103)
+	require.Equal(t, fetch.Tag{Name: "v1.2.2", Commit: testCommit}, tags[102])
+	require.Len(t, client.seen, 2, "a short page is the last one")
+
+	_, err = source.Tags(context.Background(), fetch.SourceRef{Kind: fetch.SourceGit, URL: "https://github.com/example/gone"})
+	require.ErrorIs(t, err, fetch.ErrRefNotFound)
 }

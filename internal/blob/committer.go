@@ -22,9 +22,7 @@ type VersionParts struct {
 	ManifestObjectName string
 	Manifest           []byte
 
-	// Scan and Signature are optional: a version is committed before it is
-	// scanned, and a signature is only present when the publisher supplied
-	// one.
+	// Scan and Signature are optional: versions are committed before scanning.
 	Scan      []byte
 	Signature []byte
 
@@ -32,7 +30,6 @@ type VersionParts struct {
 	Latest bool
 }
 
-// stagedPart is one object on its way through the staging prefix.
 type stagedPart struct {
 	object string
 	body   io.Reader
@@ -50,9 +47,7 @@ type Commit struct {
 }
 
 // Committer publishes versions commit-last. It holds both halves because
-// appending to index.json means reading the existing index first, and
-// because only the fetcher role, which declares Blob: AccessReadWrite, ever
-// constructs one.
+// appending to index.json requires reading it; only the fetcher role builds one.
 type Committer struct {
 	read  Reader
 	write Writer
@@ -66,17 +61,10 @@ func NewCommitter(read Reader, write Writer) *Committer {
 	return &Committer{read: read, write: write, now: time.Now, attempt: uuid.NewString}
 }
 
-// Commit writes one version and makes it visible, in that order:
-//
-//  1. Every part goes to a staging prefix. Nothing under it is reachable
-//     through the index, so a crash anywhere below leaves the version
-//     unreadable rather than half-published.
-//  2. The parts are promoted to their final, semver-scoped keys. A version
-//     is write-once, so this can never overwrite live bytes.
-//  3. index.json is written last. Until that write lands, Catalog refuses
-//     to resolve the version.
-//  4. Staging is deleted; a failed cleanup must not fail a publish that has
-//     already committed.
+// Commit writes one version and makes it visible: stage every part, promote to
+// the write-once semver keys, write index.json last, then best-effort delete
+// staging. A crash before the index write leaves the version unreadable, never
+// half-published.
 func (c *Committer) Commit(ctx context.Context, ref VersionRef, parts VersionParts) (Commit, error) {
 	if err := ref.Validate(); err != nil {
 		return Commit{}, err
@@ -104,9 +92,8 @@ func (c *Committer) Commit(ctx context.Context, ref VersionRef, parts VersionPar
 		return Commit{}, err
 	}
 
-	// A fetch is delivered at least once. A version the index already names
-	// has committed bytes, so the redelivery is a no-op rather than a second
-	// upload — the pointer naming it is the record that the bytes landed.
+	// Fetches are delivered at least once; a version the index already names is
+	// committed, so a redelivery is a no-op.
 	if entry, ok := index.Entry(ref.Semver); ok {
 		return Commit{Ref: ref, Entry: entry, AlreadyCommitted: true}, nil
 	}
@@ -123,7 +110,6 @@ func (c *Committer) Commit(ctx context.Context, ref VersionRef, parts VersionPar
 		staged = append(staged, stagedPart{object: SignatureObject, body: bytes.NewReader(parts.Signature)})
 	}
 
-	// Step 1 — staging.
 	var (
 		bundle     Object
 		stagedKeys = make([]string, 0, len(staged))
@@ -140,7 +126,6 @@ func (c *Committer) Commit(ctx context.Context, ref VersionRef, parts VersionPar
 		}
 	}
 
-	// Step 2 — promote.
 	for i, part := range staged {
 		if err := c.write.Copy(ctx, ref.Key(part.object), stagedKeys[i]); err != nil {
 			return Commit{}, fmt.Errorf("promote %s for %s: %w", part.object, ref, err)
@@ -162,15 +147,12 @@ func (c *Committer) Commit(ctx context.Context, ref VersionRef, parts VersionPar
 		entry.Signature = ref.Key(SignatureObject)
 	}
 
-	// Step 3 — the pointer, last.
 	index.Namespace = ref.Namespace
 	index.Name = ref.Name
 	index.Versions = append(index.Versions, entry)
 	index.UpdatedAt = c.now().UTC()
-	// A package's first version always becomes latest, since an index naming
-	// none would leave "floating latest" with nothing to resolve. Which of
-	// several versions is latest is a catalog decision the caller makes,
-	// never a semver comparison here.
+	// The first version always becomes latest so floating latest resolves; which
+	// later version is latest is the caller's catalog decision, not semver order.
 	if parts.Latest || index.Latest == "" {
 		index.Latest = ref.Semver
 	}
@@ -178,7 +160,6 @@ func (c *Committer) Commit(ctx context.Context, ref VersionRef, parts VersionPar
 		return Commit{}, err
 	}
 
-	// Step 4 — cleanup, deliberately not fatal.
 	for _, key := range stagedKeys {
 		_ = c.write.Delete(ctx, key)
 	}

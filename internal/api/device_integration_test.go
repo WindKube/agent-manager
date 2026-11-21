@@ -1,14 +1,7 @@
 //go:build integration
 
-// The device authorisation flow against a real Postgres (T088, T089, T091).
-//
-// Everything asserted here is a guarantee the code cannot make on its own: that
-// the device code plaintext is nowhere in its row, that single use is the
-// database's conditional update and not a Go branch, that expiry is a state
-// transition rather than a delete because no DELETE grant exists, that the token
-// the flow issues is one the middleware actually accepts, and that it carries the
-// APPROVING identity's access and no one else's. A handler-shaped test with a fake
-// store would pass against every one of those being broken.
+// The device authorisation flow against a real Postgres: these guarantees (no plaintext
+// in the row, single use, expiry as a transition, the token's identity) live in the database.
 package api_test
 
 import (
@@ -40,12 +33,10 @@ const (
 	deviceGrant    = "urn:ietf:params:oauth:grant-type:device_code"
 )
 
-// deviceUserCodePattern is the frozen contract's, transcribed rather than read off
-// the Go struct tag the schema is built from.
+// deviceUserCodePattern is transcribed from the frozen contract, not read off the struct tag.
 var deviceUserCodePattern = regexp.MustCompile(`^[0-9A-HJ-NP-TV-Z]{4}-[0-9A-HJ-NP-TV-Z]{4}$`)
 
-// deviceHandler is liveHandler with the device options a test needs to control.
-// The TTLs are the only reason it exists: an expiry test cannot wait ten minutes.
+// deviceHandler is liveHandler with controllable device TTLs.
 func deviceHandler(t *testing.T, opts api.Options) http.Handler {
 	t.Helper()
 
@@ -65,8 +56,7 @@ func requireJSON(t *testing.T, rec *httptest.ResponseRecorder, into any) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), into), rec.Body.String())
 }
 
-// asAPIRole runs a statement as am_api, which is the role `serve api` actually
-// connects as. The suite's own pool is the owner and would be refused nothing.
+// asAPIRole runs fn as am_api, the role `serve api` connects as; the suite's pool is the owner.
 func asAPIRole(t *testing.T, fn func(ctx context.Context, conn *pgxpool.Conn)) {
 	t.Helper()
 	ctx := context.Background()
@@ -77,8 +67,7 @@ func asAPIRole(t *testing.T, fn func(ctx context.Context, conn *pgxpool.Conn)) {
 
 	_, err = conn.Exec(ctx, "set role am_api")
 	require.NoError(t, err)
-	// Resetting is correctness, not tidiness: a released connection goes back to
-	// the pool carrying whatever role it last had.
+	// A released connection keeps whatever role it last had.
 	defer func() {
 		_, resetErr := conn.Exec(ctx, "reset role")
 		require.NoError(t, resetErr)
@@ -107,7 +96,6 @@ func pollDeviceToken(t *testing.T, h http.Handler, clientID, deviceCode string) 
 	return rec
 }
 
-// openDeviceAuthorization runs the real endpoint and returns the parsed body.
 func openDeviceAuthorization(t *testing.T, h http.Handler, host string) contract.DeviceAuthorization {
 	t.Helper()
 
@@ -142,8 +130,6 @@ func tokenErrorOf(t *testing.T, rec *httptest.ResponseRecorder) string {
 	return envelope.Error
 }
 
-// ---- T088 --------------------------------------------------------------------
-
 func TestDeviceAuthorizeStoresNoCredentialAndBindsTheHost(t *testing.T) {
 	h := deviceHandler(t, api.Options{DeviceVerificationURL: "https://hub.example.dev/cli"})
 	const host = "dev-laptop-01"
@@ -156,9 +142,7 @@ func TestDeviceAuthorizeStoresNoCredentialAndBindsTheHost(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Every column of the row, rendered as text. Not just device_code_hash: the
-	// point is that the plaintext is nowhere in the row, not that one column holds
-	// a hash.
+	// The whole row as text: the plaintext must be nowhere in it, not just absent from one column.
 	var rendered string
 	require.NoError(t, pool.QueryRow(ctx,
 		"select to_jsonb(device_authorization)::text from device_authorization where user_code = $1",
@@ -182,11 +166,11 @@ func TestDeviceAuthorizeStoresNoCredentialAndBindsTheHost(t *testing.T) {
 		Scan(&storedHash, &storedHost, &state, &approvedBy, &ttl))
 
 	require.Equal(t, commands.DeviceCodeHash(deviceClientID, out.DeviceCode), storedHash)
-	require.Equal(t, host, storedHost, "FR-041: the host is bound at issue")
+	require.Equal(t, host, storedHost, "the host is bound at issue")
 	require.Equal(t, "pending", state, "nothing is authorised until a human decides")
 	require.Nil(t, approvedBy)
 	require.InDelta(t, (10 * time.Minute).Seconds(), ttl.Seconds(), 5,
-		"FR-041 requires an expiry, and it is the advertised one")
+		"the expiry is the advertised one")
 
 	t.Run("the stored hash cannot be replayed as a device code", func(t *testing.T) {
 		for name, replay := range map[string]string{
@@ -234,9 +218,7 @@ func TestDeviceAuthorizationRowsAreUniqueAndUndeletable(t *testing.T) {
 	})
 
 	t.Run("am_api may not delete one, because expiry is a state transition", func(t *testing.T) {
-		// Re-asserted in this suite and not only in internal/store's: the flow above
-		// depends on the withheld grant for its expiry design, so a widening would
-		// break this layer's reasoning and should fail this layer's tests.
+		// Re-asserted here because this layer's expiry design depends on the withheld grant.
 		asAPIRole(t, func(ctx context.Context, conn *pgxpool.Conn) {
 			_, err := conn.Exec(ctx, "delete from device_authorization where id = $1", id)
 			var pgErr *pgconn.PgError
@@ -244,15 +226,11 @@ func TestDeviceAuthorizationRowsAreUniqueAndUndeletable(t *testing.T) {
 			require.Equal(t, "42501", pgErr.Code, "message was %q", pgErr.Message)
 		})
 
-		// The same statement as the owner must succeed, or the refusal above was
-		// about something other than the privilege.
 		tag, err := pool.Exec(ctx, "delete from device_authorization where id = $1", id)
 		require.NoError(t, err)
 		require.EqualValues(t, 1, tag.RowsAffected())
 	})
 }
-
-// ---- T089 --------------------------------------------------------------------
 
 func TestDeviceTokenPollingFollowsRFC8628ThroughToAWorkingToken(t *testing.T) {
 	h := deviceHandler(t, api.Options{DeviceVerificationURL: "https://hub.example.dev/cli"})
@@ -261,21 +239,13 @@ func TestDeviceTokenPollingFollowsRFC8628ThroughToAWorkingToken(t *testing.T) {
 	beforeAudit := countRows(t, "select count(*) from audit_event where kind = 'login'")
 	out := openDeviceAuthorization(t, h, host)
 
-	// First poll: pending, and never slow_down. RFC 8628 asks a client to wait one
-	// interval before polling, but charging slow_down for the opening request would
-	// make every well-behaved client look abusive.
+	// The first poll is never slow_down, or every well-behaved client would look abusive.
 	require.Equal(t, "authorization_pending", tokenErrorOf(t, pollDeviceToken(t, h, deviceClientID, out.DeviceCode)))
 
-	// Second poll, immediately: inside the five-second interval, so slow_down.
-	// This is the assertion that proves the mechanism exists at all; a slow_down
-	// that never fires is worse than none, because a client's back-off code then
-	// never runs.
 	require.Equal(t, "slow_down", tokenErrorOf(t, pollDeviceToken(t, h, deviceClientID, out.DeviceCode)))
 
 	t.Run("a poll after the interval is pending again, not slow_down", func(t *testing.T) {
-		// The negative control for slow_down. Rather than sleeping five seconds, the
-		// last-poll marker is moved into the past — which is exactly the column the
-		// mechanism reads, so this exercises the real comparison.
+		// Moves the last-poll marker back instead of sleeping; it is the column the mechanism reads.
 		_, err := pool.Exec(context.Background(),
 			`update device_authorization set updated_at = now() - interval '30 seconds'
 			  where user_code = $1`, out.UserCode)
@@ -285,21 +255,16 @@ func TestDeviceTokenPollingFollowsRFC8628ThroughToAWorkingToken(t *testing.T) {
 	})
 
 	t.Run("the client_id is bound to the authorisation", func(t *testing.T) {
-		// The frozen contract: "Must be the same client_id that opened the
-		// authorisation". No column carries it, so it is hashed into
-		// device_code_hash and a different one simply matches no row.
 		require.Equal(t, "invalid_grant",
 			tokenErrorOf(t, pollDeviceToken(t, h, "some-other-client", out.DeviceCode)))
 		require.Equal(t, "pending", deviceState(t, out.UserCode),
 			"a poll under the wrong client_id must not have changed the authorisation")
 	})
 
-	// The human's half. T090's browser UI is out of scope; the transition it drives
-	// is not.
 	approvedHost, err := commands.ApproveDevice(context.Background(), db, principalFor(t, an), out.UserCode)
 	require.NoError(t, err)
 	require.Equal(t, host, approvedHost,
-		"FR-041: the host is what the approving human is shown, so it is what the command returns")
+		"the host is what the approving human is shown, so it is what the command returns")
 
 	t.Run("approval writes one login audit row naming the host", func(t *testing.T) {
 		require.Equal(t, beforeAudit+1, countRows(t, "select count(*) from audit_event where kind = 'login'"))
@@ -310,7 +275,7 @@ func TestDeviceTokenPollingFollowsRFC8628ThroughToAWorkingToken(t *testing.T) {
 			  where kind = 'login' order by occurred_at desc limit 1`).Scan(&text, &source, &actor))
 		require.Contains(t, text, host)
 		require.Contains(t, text, "approved")
-		require.Equal(t, "cli / "+host, source, "FR-050: a client source identifies the host")
+		require.Equal(t, "cli / "+host, source, "a client source identifies the host")
 		require.Equal(t, an.claims.Email, actor)
 		require.NotContains(t, text, out.DeviceCode, "no credential reaches an audit row")
 	})
@@ -322,23 +287,19 @@ func TestDeviceTokenPollingFollowsRFC8628ThroughToAWorkingToken(t *testing.T) {
 	requireJSON(t, rec, &token)
 	require.Equal(t, "Bearer", token.TokenType)
 	require.NotEmpty(t, token.AccessToken)
-	require.Equal(t, 3600, token.ExpiresIn, "FR-043: short-lived, and the advertised DEVICE_TOKEN_TTL")
+	require.Equal(t, 3600, token.ExpiresIn, "short-lived, and the advertised DEVICE_TOKEN_TTL")
 	require.Empty(t, token.RefreshToken,
 		"this build issues no refresh token, so the field is omitted rather than empty")
 	require.Equal(t, "consumed", deviceState(t, out.UserCode))
 
 	t.Run("the issued token is one the middleware accepts", func(t *testing.T) {
-		// The failure class this whole feature exists to avoid: a login flow whose
-		// token the authenticated half of the API rejects. Asserted through a real
-		// authenticated operation, not by resolving the session directly.
+		// Through a real authenticated operation, not by resolving the session directly.
 		profiles := request(t, h, http.MethodGet, "/v1/profiles", token.AccessToken, "")
 		require.Equal(t, http.StatusOK, profiles.Code, profiles.Body.String())
 	})
 
 	t.Run("the token carries the approving identity's access and nobody else's", func(t *testing.T) {
-		// This is the answer to "whose permissions does this machine get". `an` is in
-		// eng-security and may read security-review; `kw` may not, and may read
-		// kw-private, which `an` may not.
+		// `an` may read security-review but not kw-private; `kw` is the opposite.
 		profiles := request(t, h, http.MethodGet, "/v1/profiles", token.AccessToken, "")
 		require.Equal(t, http.StatusOK, profiles.Code)
 
@@ -361,11 +322,8 @@ func TestDeviceTokenPollingFollowsRFC8628ThroughToAWorkingToken(t *testing.T) {
 	})
 }
 
-// ---- T091: the refusals ------------------------------------------------------
-
 func TestDeviceTokenRefusesAnExpiredCodeAndRecordsTheExpiryAsATransition(t *testing.T) {
-	// A one-nanosecond code: expired before the response is written. Options
-	// withDefaults only replaces a non-positive TTL, so this survives.
+	// withDefaults only replaces a non-positive TTL, so a nanosecond survives.
 	h := deviceHandler(t, api.Options{DeviceCodeTTL: time.Nanosecond})
 	out := openDeviceAuthorization(t, h, "dev-laptop-01")
 
@@ -388,8 +346,6 @@ func TestDeviceTokenRefusesAnExpiredCodeAndRecordsTheExpiryAsATransition(t *test
 	})
 
 	t.Run("an approved code that expires before it is collected yields no token", func(t *testing.T) {
-		// The window FR-042's expiry requirement is actually about: approval is not
-		// a licence to collect forever.
 		slow := deviceHandler(t, api.Options{})
 		second := openDeviceAuthorization(t, slow, "dev-laptop-02")
 		identity := principalFor(t, kw).IdentityID
@@ -417,9 +373,6 @@ func TestDeviceTokenRefusesADeniedCodeTerminally(t *testing.T) {
 
 	beforeAudit := countRows(t, "select count(*) from audit_event where kind = 'login'")
 
-	// FR-042's practical half: refusal is a decision, not the absence of one. A
-	// user code read aloud and typed in by the wrong person is refused HERE, by the
-	// human who was shown a host they do not recognise.
 	host, err := commands.DenyDevice(context.Background(), db, principalFor(t, kw), out.UserCode)
 	require.NoError(t, err)
 	require.Equal(t, "someone-elses-laptop", host)
@@ -460,11 +413,8 @@ func TestApprovalRecordsWhichIdentityDecidedAndOnlyOneMay(t *testing.T) {
 	h := deviceHandler(t, api.Options{})
 	out := openDeviceAuthorization(t, h, "dev-laptop-01")
 
-	// FR-042 says a device code must be refusable when approved by "an identity
-	// other than the requester". There is no requester identity — /v1/device/
-	// authorize carries a client_id and a host and nothing else — so what is
-	// testable, and what the schema provides, is that the deciding identity is
-	// recorded and that a second identity cannot decide again.
+	// There is no requester identity to compare against, so what is testable is that the
+	// deciding identity is recorded and a second identity cannot decide again.
 	_, err := commands.ApproveDevice(context.Background(), db, principalFor(t, an), out.UserCode)
 	require.NoError(t, err)
 
@@ -508,8 +458,6 @@ func TestApprovalForgivesTypographyAndNothingElse(t *testing.T) {
 	})
 }
 
-// ---- the race single use exists for ------------------------------------------
-
 func TestConcurrentPollsOfOneApprovedCodeYieldExactlyOneToken(t *testing.T) {
 	h := deviceHandler(t, api.Options{})
 	out := openDeviceAuthorization(t, h, "dev-laptop-01")
@@ -521,9 +469,7 @@ func TestConcurrentPollsOfOneApprovedCodeYieldExactlyOneToken(t *testing.T) {
 	beforeSessions := countRows(t, fmt.Sprintf(
 		"select count(*) from session where identity_id = '%s'", identity))
 
-	// Real concurrency, released from one barrier. Two sequential calls would pass
-	// against a read-then-write implementation, which is the exact bug single use
-	// is meant to exclude.
+	// Real concurrency: sequential calls would pass against a read-then-write implementation.
 	const pollers = 8
 	var (
 		start   = make(chan struct{})
@@ -570,18 +516,12 @@ func TestConcurrentPollsOfOneApprovedCodeYieldExactlyOneToken(t *testing.T) {
 		"select count(*) from session where identity_id = '%s'", identity)),
 		"one authorisation opened one session, whatever the poll count")
 
-	// And the one token that was issued works.
 	profiles := request(t, h, http.MethodGet, "/v1/profiles", tokens[0], "")
 	require.Equal(t, http.StatusOK, profiles.Code, profiles.Body.String())
 }
 
-// ---- the expiry the transition itself has to carry ---------------------------
-
-// holdDeviceRow takes a row-level write lock on one authorisation and returns the
-// release. Its only purpose is to stall the consuming UPDATE on purpose, so a
-// window that is microseconds wide on an idle database becomes wide enough to
-// assert on. Nothing in the hub takes this lock; the test does, so that the guard
-// under test is exercised rather than the race that usually hides it.
+// holdDeviceRow row-locks one authorisation to stall the consuming UPDATE, widening a
+// microsecond race window enough to assert on. It returns the release.
 func holdDeviceRow(t *testing.T, userCode string) (release func()) {
 	t.Helper()
 	ctx := context.Background()
@@ -619,14 +559,8 @@ func setDeviceExpiry(t *testing.T, userCode string, in time.Duration) {
 }
 
 func TestAnApprovalThatExpiresWhileTheConsumingUpdateWaitsIssuesNoToken(t *testing.T) {
-	// ConsumeDevice moves a lapsed code to `expired` with a statement that runs
-	// BEFORE its transaction, so every microsecond between that statement and the
-	// conditional update is a window in which an already-expired approval is still
-	// redeemable. The window is real but tiny on an idle database, so it is widened
-	// here with a row lock: the consuming UPDATE blocks, the expiry passes while it
-	// waits, and the guard inside the transaction is the only thing left to refuse
-	// it. Without that guard this poll returns a full session for an authorisation
-	// that expired hundreds of milliseconds earlier.
+	// ConsumeDevice's expiry sweep runs before its transaction, so an approval can lapse while
+	// the consuming UPDATE waits; only the guard inside the transaction can then refuse it.
 	const grace = 400 * time.Millisecond
 
 	h := deviceHandler(t, api.Options{})
@@ -644,8 +578,6 @@ func TestAnApprovalThatExpiresWhileTheConsumingUpdateWaitsIssuesNoToken(t *testi
 	polled := make(chan *httptest.ResponseRecorder, 1)
 	go func() { polled <- pollDeviceToken(t, h, deviceClientID, out.DeviceCode) }()
 
-	// Long enough that the poll has certainly issued its UPDATE and is waiting on
-	// the lock, and long enough that the expiry is unambiguously in the past.
 	time.Sleep(4 * grace)
 	release()
 	rec := <-polled
@@ -664,10 +596,7 @@ func TestAnApprovalThatExpiresWhileTheConsumingUpdateWaitsIssuesNoToken(t *testi
 }
 
 func TestAnApprovalStillLiveAfterTheConsumingUpdateWaitsIssuesItsToken(t *testing.T) {
-	// The negative control for the test above. The same row lock, the same stall,
-	// but an expiry that is still in the future when the lock releases — so the
-	// guard must NOT fire. Without this, a fix that refused every exchange delayed
-	// by a lock would look correct.
+	// Negative control for the test above: the same stall with a future expiry must still issue.
 	h := deviceHandler(t, api.Options{})
 	out := openDeviceAuthorization(t, h, "dev-laptop-05")
 

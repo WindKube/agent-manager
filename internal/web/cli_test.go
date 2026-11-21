@@ -1,58 +1,39 @@
 package web_test
 
 import (
-	"context"
 	"net/http"
 	"net/url"
 	"testing"
 	"time"
 
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
+	"agent-manager/internal/apiclient"
 	"agent-manager/internal/web"
-	"agent-manager/internal/web/fixture"
-	"agent-manager/internal/web/hub"
-	"agent-manager/internal/web/view"
+	"agent-manager/internal/web/fakeapi"
 )
 
-// device is a web.DeviceSource whose answer a test sets directly, and which
-// records every user code it was asked to decide.
-type device struct {
-	pending view.PendingDeviceAuthorization
-	err     error
-
-	approvedHost string
-	approveErr   error
-	approvedWith []string
+func cliServer(t *testing.T) (*fakeapi.API, http.Handler) {
+	t.Helper()
+	return newServerWith(t, web.Options{HubURL: "http://localhost:8082"})
 }
 
-func (d *device) LookupDeviceCode(context.Context, string) (view.PendingDeviceAuthorization, error) {
-	return d.pending, d.err
-}
-
-func (d *device) ApproveDeviceCode(_ context.Context, userCode string) (string, error) {
-	d.approvedWith = append(d.approvedWith, userCode)
-	return d.approvedHost, d.approveErr
-}
-
-func cliHandler(source *device) http.Handler {
-	return web.New(web.Deps{
-		Catalog: fixture.New(), Device: source, Viewers: fixture.SignedInViewers(), Log: zerolog.Nop(),
-	}, web.Options{HubURL: "http://localhost:8082"}).Handler()
+func pendingDevice(api *fakeapi.API, host string, expiresIn time.Duration) {
+	api.Data.Devices["HKQ2-9FTL"] = apiclient.PendingDeviceAuthorization{
+		RequestingHost: host, ExpiresIn: int64(expiresIn.Seconds()),
+	}
 }
 
 func TestCLIScreenWithNoCodePrintsTheRealCommandAndHubAddress(t *testing.T) {
-	body := get(t, cliHandler(&device{}), "/cli").Body.String()
+	_, h := cliServer(t)
+	body := get(t, h, "/cli").Body.String()
 	require.Contains(t, body, "amctl login --hub http://localhost:8082")
 	require.Contains(t, body, "http://localhost:8082")
 	require.NotContains(t, body, "cli-pending")
 }
 
 func TestCLIScreenWithNoHubURLConfiguredSaysSoRatherThanPrintingABrokenCommand(t *testing.T) {
-	h := web.New(web.Deps{
-		Catalog: fixture.New(), Device: &device{}, Viewers: fixture.SignedInViewers(), Log: zerolog.Nop(),
-	}, web.Options{}).Handler()
+	_, h := newServer(t)
 
 	body := get(t, h, "/cli").Body.String()
 	require.NotContains(t, body, "amctl login")
@@ -60,10 +41,9 @@ func TestCLIScreenWithNoHubURLConfiguredSaysSoRatherThanPrintingABrokenCommand(t
 }
 
 func TestCLIScreenShowsTheHostAndCountdownBeforeConfirmation(t *testing.T) {
-	source := &device{pending: view.PendingDeviceAuthorization{
-		RequestingHost: "dev-laptop-01", ExpiresAt: time.Now().Add(9 * time.Minute),
-	}}
-	rec := get(t, cliHandler(source), "/cli?user_code=HKQ2-9FTL")
+	api, h := cliServer(t)
+	pendingDevice(api, "dev-laptop-01", 9*time.Minute)
+	rec := get(t, h, "/cli?user_code=HKQ2-9FTL")
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	body := rec.Body.String()
@@ -74,10 +54,9 @@ func TestCLIScreenShowsTheHostAndCountdownBeforeConfirmation(t *testing.T) {
 }
 
 func TestCLIScreenEscapesAMachineSuppliedHost(t *testing.T) {
-	source := &device{pending: view.PendingDeviceAuthorization{
-		RequestingHost: `<script>alert(1)</script>`, ExpiresAt: time.Now().Add(time.Minute),
-	}}
-	body := get(t, cliHandler(source), "/cli?user_code=HKQ2-9FTL").Body.String()
+	api, h := cliServer(t)
+	pendingDevice(api, `<script>alert(1)</script>`, time.Minute)
+	body := get(t, h, "/cli?user_code=HKQ2-9FTL").Body.String()
 	require.NotContains(t, body, "<script>")
 	require.Contains(t, body, "&lt;script&gt;")
 }
@@ -85,16 +64,17 @@ func TestCLIScreenEscapesAMachineSuppliedHost(t *testing.T) {
 func TestCLIScreenDistinguishesTheThreeRefusals(t *testing.T) {
 	for _, tt := range []struct {
 		name   string
-		err    error
 		status int
 		id     string
 	}{
-		{"unknown", hub.ErrDeviceCodeUnknown, http.StatusNotFound, "cli-unknown"},
-		{"expired", hub.ErrDeviceCodeExpired, http.StatusGone, "cli-expired"},
-		{"already decided", hub.ErrDeviceCodeDecided, http.StatusConflict, "cli-decided"},
+		{"unknown", http.StatusNotFound, "cli-unknown"},
+		{"expired", http.StatusGone, "cli-expired"},
+		{"already decided", http.StatusConflict, "cli-decided"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			rec := get(t, cliHandler(&device{err: tt.err}), "/cli?user_code=ZZZZ-ZZZZ")
+			api, h := cliServer(t)
+			api.Fail("lookupDeviceCode", tt.status)
+			rec := get(t, h, "/cli?user_code=ZZZZ-ZZZZ")
 			require.Equal(t, tt.status, rec.Code)
 			require.Contains(t, rec.Body.String(), `id="`+tt.id+`"`)
 		})
@@ -105,10 +85,9 @@ func TestCLIScreenDistinguishesTheThreeRefusals(t *testing.T) {
 	require.Len(t, ids, 4)
 }
 
-func TestCLIScreenWithNoDeviceSourceIsUnavailableRatherThanEmpty(t *testing.T) {
-	h := web.New(web.Deps{
-		Catalog: fixture.New(), Viewers: fixture.SignedInViewers(), Log: zerolog.Nop(),
-	}, web.Options{}).Handler()
+func TestCLIScreenWhenTheLookupFailsIsUnavailableRatherThanEmpty(t *testing.T) {
+	api, h := cliServer(t)
+	api.Fail("lookupDeviceCode", http.StatusServiceUnavailable)
 
 	rec := get(t, h, "/cli?user_code=HKQ2-9FTL")
 	require.Equal(t, http.StatusBadGateway, rec.Code)
@@ -116,40 +95,46 @@ func TestCLIScreenWithNoDeviceSourceIsUnavailableRatherThanEmpty(t *testing.T) {
 }
 
 func TestCLIScreenSignedOutMidLookupGoesToSignIn(t *testing.T) {
-	rec := get(t, cliHandler(&device{err: view.ErrSignedOut}), "/cli?user_code=HKQ2-9FTL")
+	api, h := cliServer(t)
+	api.Fail("lookupDeviceCode", http.StatusUnauthorized)
+	rec := get(t, h, "/cli?user_code=HKQ2-9FTL")
 	require.Equal(t, http.StatusFound, rec.Code)
 	require.Contains(t, rec.Header().Get("Location"), "/auth/signin")
 }
 
 func TestConfirmDeviceCodeIsPostRedirectGet(t *testing.T) {
-	source := &device{approvedHost: "dev-laptop-01"}
-	rec := post(t, cliHandler(source), "/cli/confirm", url.Values{"user_code": {"HKQ2-9FTL"}})
+	api, h := cliServer(t)
+	pendingDevice(api, "dev-laptop-01", 9*time.Minute)
+	rec := post(t, h, "/cli/confirm", url.Values{"user_code": {"HKQ2-9FTL"}})
 
 	require.Equal(t, http.StatusSeeOther, rec.Code)
-	require.Equal(t, []string{"HKQ2-9FTL"}, source.approvedWith)
+	calls := api.Calls("approveDeviceCode")
+	require.Len(t, calls, 1)
+	require.Equal(t, "/v1/device/authorizations/HKQ2-9FTL/approve", calls[0].Path)
 
 	location := rec.Header().Get("Location")
 	require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
 	require.NotContains(t, location, "HKQ2-9FTL", "the user code must not travel in a redirect URL")
 	require.Contains(t, location, "outcome=approved")
 
-	body := get(t, cliHandler(source), location).Body.String()
+	body := get(t, h, location).Body.String()
 	require.Contains(t, body, "dev-laptop-01")
 }
 
 func TestConfirmDeviceCodeRefusalsReachTheirOwnNotice(t *testing.T) {
 	for _, tt := range []struct {
-		name string
-		err  error
-		want string
+		name   string
+		status int
+		want   string
 	}{
-		{"unknown", hub.ErrDeviceCodeUnknown, "outcome=unknown"},
-		{"expired", hub.ErrDeviceCodeExpired, "outcome=expired"},
-		{"already decided", hub.ErrDeviceCodeDecided, "outcome=decided"},
+		{"unknown", http.StatusNotFound, "outcome=unknown"},
+		{"expired", http.StatusGone, "outcome=expired"},
+		{"already decided", http.StatusConflict, "outcome=decided"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			source := &device{approveErr: tt.err}
-			rec := post(t, cliHandler(source), "/cli/confirm", url.Values{"user_code": {"HKQ2-9FTL"}})
+			api, h := cliServer(t)
+			api.Fail("approveDeviceCode", tt.status)
+			rec := post(t, h, "/cli/confirm", url.Values{"user_code": {"HKQ2-9FTL"}})
 			require.Equal(t, http.StatusSeeOther, rec.Code)
 			require.Contains(t, rec.Header().Get("Location"), tt.want)
 		})
@@ -157,16 +142,16 @@ func TestConfirmDeviceCodeRefusalsReachTheirOwnNotice(t *testing.T) {
 }
 
 func TestConfirmDeviceCodeSignedOutGoesToSignIn(t *testing.T) {
-	source := &device{approveErr: view.ErrSignedOut}
-	rec := post(t, cliHandler(source), "/cli/confirm", url.Values{"user_code": {"HKQ2-9FTL"}})
+	api, h := cliServer(t)
+	api.Fail("approveDeviceCode", http.StatusUnauthorized)
+	rec := post(t, h, "/cli/confirm", url.Values{"user_code": {"HKQ2-9FTL"}})
 	require.Equal(t, http.StatusSeeOther, rec.Code)
 	require.Contains(t, rec.Header().Get("Location"), "/auth/signin")
 }
 
-func TestConfirmDeviceCodeWithNoDeviceSourceRecordsNothing(t *testing.T) {
-	h := web.New(web.Deps{
-		Catalog: fixture.New(), Viewers: fixture.SignedInViewers(), Log: zerolog.Nop(),
-	}, web.Options{}).Handler()
+func TestConfirmDeviceCodeWhenTheApiFailsSaysUnavailable(t *testing.T) {
+	api, h := cliServer(t)
+	api.Fail("approveDeviceCode", http.StatusServiceUnavailable)
 
 	rec := post(t, h, "/cli/confirm", url.Values{"user_code": {"HKQ2-9FTL"}})
 	require.Equal(t, http.StatusSeeOther, rec.Code)

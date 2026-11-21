@@ -10,54 +10,40 @@ import (
 	"agent-manager/internal/bundle"
 )
 
-// The spec-layout filter must both discard files outside the spec layout and
-// report which paths were discarded, before the user commits to
-// registration: dropping silently would pass every test that only looks at
-// the stored tree while leaving the preview unable to say
-// `.github/, README.md → outside spec, dropped`.
-
-// ErrNoManifest means neither manifest sits at the package root, so there is
-// nothing to register. It is an ingestion failure, never a scan finding.
+// ErrNoManifest means neither manifest sits at the package root. It is an
+// ingestion failure, never a scan finding.
 var ErrNoManifest = errors.New("no plugin.json or SKILL.md at the package root")
 
-// The directories an Agent Skills tree may carry beside SKILL.md, closed
-// rather than "everything" so the drop report stays meaningful.
+// skillSupportDirs is closed rather than "everything" so the drop report
+// stays meaningful.
 var skillSupportDirs = []string{"scripts", "references", "assets"}
 
-// reverseDomainLabel is one label of a reverse-domain namespace directory
-// such as `com.anthropic.claude-code`. Two or more labels are required: a
-// single label is just a directory, and a dotted name with one label is a
-// file with an extension.
+// reverseDomainLabel is one label of a namespace directory such as
+// `com.anthropic.claude-code`.
 var reverseDomainLabel = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
 
-// LayoutEntry is one line of the archive-contents panel: Path is a file, a
-// directory with its trailing slash, or several dropped paths joined by
-// ", "; Note is the right-hand column (`schema valid`, `4 skills`, `1
-// server`, `client extension`, `outside spec, dropped`); Kept renders `✓` or `–`.
+// LayoutEntry is one line of the archive-contents panel. Path is a file, a
+// slash-terminated directory, or dropped paths joined by ", ".
 type LayoutEntry struct {
 	Path string
 	Note string
 	Kept bool
 }
 
-// LayoutReport is what the filter did, in the order the panel lists it.
-// Dropped holds every discarded path in full, not the grouped rendering:
-// the panel shows the groups, the audit trail and tests need the paths.
+// LayoutReport is what the filter did, in panel order. Dropped holds every
+// discarded path in full; DroppedGroups is the panel's rendering.
 type LayoutReport struct {
 	Entries []LayoutEntry
 	Dropped []string
 	Kept    []string
 
-	// Links are paths extraction left out because the member was a symlink or a
-	// hardlink. They are not Dropped: a dropped path was outside the spec
-	// layout, and telling someone their AGENTS.md is outside the layout when it
-	// is a link would send them looking in the wrong place.
+	// Links are symlink or hardlink members extraction left out. They are kept
+	// apart from Dropped so a link isn't misreported as outside the layout.
 	Links []string
 }
 
-// DroppedGroups renders the discarded paths the way the panel joins them: one
-// entry per top-level name, so `.github/workflows/ci.yml` and
-// `.github/CODEOWNERS` collapse to `.github/`.
+// DroppedGroups collapses discarded paths to one entry per top-level name,
+// e.g. `.github/`.
 func (r LayoutReport) DroppedGroups() []string {
 	seen := make(map[string]struct{}, len(r.Dropped))
 	groups := make([]string, 0, len(r.Dropped))
@@ -76,9 +62,8 @@ func (r LayoutReport) DroppedGroups() []string {
 	return groups
 }
 
-// linksUnder names the members extraction left out, relative to the package
-// root. A link elsewhere in the archive says nothing about this package: a forge
-// tarball of a monorepo carries links the requested subdirectory never sees.
+// linksUnder names left-out link members under root, relative to it; links
+// elsewhere in a monorepo tarball say nothing about this package.
 func linksUnder(tree *bundle.Bundle, root string) []string {
 	prefix := ""
 	if root != "" && root != "." {
@@ -95,7 +80,6 @@ func linksUnder(tree *bundle.Bundle, root string) []string {
 	return links
 }
 
-// layout is the structural result of filtering, before any manifest is read.
 type layout struct {
 	kind    Kind
 	files   *bundle.Bundle
@@ -108,19 +92,15 @@ type layout struct {
 	hasMCP    bool
 }
 
-// extDir is a reverse-domain namespace directory present in the tree, with
-// firstChild the first segment inside it, for the panel's
-// `com.anthropic.claude-code/hooks/` label.
+// extDir is a reverse-domain namespace directory; firstChild (slash-terminated
+// when a directory) feeds the panel's `com.anthropic.claude-code/hooks/` label.
 type extDir struct {
 	name       string
 	firstChild string
 }
 
-// filterLayout reroots tree at root, decides the package kind from which
-// manifest is present, and partitions the paths. A root that names nothing
-// is an error, not an empty tree: "no files under the subdirectory" and "the
-// subdirectory does not exist" are the same fetch error, and neither is a
-// successful publish of nothing.
+// filterLayout reroots tree at root, decides the package kind and partitions
+// the paths. A root that names nothing is an error, never an empty publish.
 func filterLayout(tree *bundle.Bundle, root string) (*layout, error) {
 	if tree == nil {
 		return nil, errors.New("layout filter: no tree")
@@ -170,7 +150,11 @@ func filterLayout(tree *bundle.Bundle, root string) (*layout, error) {
 			}
 		case isReverseDomain(segments[0]) && len(segments) > 1:
 			if _, ok := extSeen[segments[0]]; !ok {
-				extSeen[segments[0]] = segments[1]
+				child := segments[1]
+				if len(segments) > 2 {
+					child += "/"
+				}
+				extSeen[segments[0]] = child
 			}
 		}
 	}
@@ -204,9 +188,7 @@ func keptPath(kind Kind, path string, dirs map[string]struct{}) bool {
 	case top == SkillsDir && len(segments) > 1:
 		return true
 	case len(segments) > 1 && isReverseDomain(top):
-		// Only a directory qualifies as a client extension: `plugin.json` and
-		// `mcp.json` also carry a dot, and `dirs` keeps a dotted file from
-		// being read as a namespace.
+		// Only a directory qualifies, so dotted files aren't read as namespaces.
 		_, isDir := dirs[top]
 		return isDir
 	default:
@@ -219,8 +201,7 @@ func isReverseDomain(name string) bool {
 	if len(labels) < 2 {
 		return false
 	}
-	// The leading label is a TLD-shaped token (`com`, `dev`, `io`); a single
-	// character there is a filename like `a.b`, not a namespace.
+	// A single-character leading label is a filename like `a.b`, not a TLD.
 	if len(labels[0]) < 2 {
 		return false
 	}

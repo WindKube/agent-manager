@@ -8,10 +8,8 @@ import (
 	"agent-manager/internal/web"
 )
 
-// The table is transcribed by hand from the design's fuzzy() semantics
-// (docs/design/agent-manager.dc.html line 964), not from this implementation's
-// output. The other side of the check is the browser: the R7 measurement asserts
-// amFuzzy in app.js against the same cases.
+// Transcribed by hand from the design's fuzzy() semantics, not from this
+// implementation's output. The browser-side amFuzzy is measured against the same cases.
 func TestFuzzy(t *testing.T) {
 	tests := []struct {
 		name     string

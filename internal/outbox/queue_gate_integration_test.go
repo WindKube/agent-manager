@@ -15,22 +15,9 @@ import (
 	"agent-manager/internal/outbox"
 )
 
-// T025, the R11 gate.
-//
-// Constitution principle IX and R11: the queue lives in its own database and no
-// migration tool may see the other's tables. That isolation is structural — Atlas
-// is pointed at `agent_manager` and River migrates `river` with its own tool — but
-// "structural" is only true while the two URLs address two databases, and
-// collapsing them is a one-character change in a compose file.
-//
-// So: migrate River fully, then ask Atlas to diff the checked-in migration
-// directory against the LIVE application database. If River's tables ever land in
-// `agent_manager`, Atlas sees tables the migrations never created and the
-// generated migration is no longer empty — which also means a diff-based tool with
-// DROP TABLE in its vocabulary is now looking at the queue.
-//
-// The same assertion catches ordinary drift: a schema change made in the models
-// without a migration, or a migration applied by hand.
+// With River fully migrated, Atlas diffing the checked-in migrations against the
+// live application database must produce nothing. A non-empty diff means River's
+// tables landed in `agent_manager` (where Atlas could drop them) or schema drift.
 func TestAtlasSeesNothingItDoesNotOwnAfterRiverHasMigrated(t *testing.T) {
 	requireInfra(t)
 	ctx := context.Background()
@@ -41,20 +28,16 @@ func TestAtlasSeesNothingItDoesNotOwnAfterRiverHasMigrated(t *testing.T) {
 		t.Skipf("skipping the R11 gate: %s is absent (run `task atlas:install`)", atlasBin)
 	}
 
-	// River is already migrated by TestMain, but assert it rather than assume: a
-	// gate that ran against an unmigrated queue would pass for the wrong reason.
+	// An unmigrated queue would make this gate pass for the wrong reason.
 	requireRiverIsMigrated(t, ctx)
 
-	// A copy of the migration directory, because `atlas migrate diff` writes the
-	// generated migration to disk and this test must not mutate the repository.
+	// `atlas migrate diff` writes to the directory, so work on a copy.
 	dir := copyMigrations(t, filepath.Join(root, "internal", "store", "migrations"))
 	before := sqlFiles(t, dir)
 
 	cmd := exec.CommandContext(ctx, atlasBin, "migrate", "diff", "r11_gate",
 		"--dir", "file://"+dir,
-		// The desired state is the live application database, not the model loader.
-		// That is what makes this a test about which tables exist in
-		// `agent_manager` rather than a test about struct tags.
+		// Desired state is the live database, not the model loader.
 		"--to", withSearchPath(appURL),
 		"--dev-url", withSearchPath(atlasDevDB),
 	)
@@ -74,7 +57,7 @@ internal/store/migrations says it is.
 
 The usual cause is that AGENT_MANAGER_DATABASE_URL and AGENT_MANAGER_RIVER_DATABASE_URL
 have been collapsed onto one database, which puts River's tables in front of a tool that
-can DROP them (constitution principle IX, R11).
+can DROP them.
 
 %s:
 %s`, extra[0], generated)
@@ -87,8 +70,7 @@ can DROP them (constitution principle IX, R11).
 func requireRiverIsMigrated(t *testing.T, ctx context.Context) {
 	t.Helper()
 
-	// Idempotent, and its emptiness is the assertion: TestMain already migrated,
-	// so a second run must have nothing to apply.
+	// TestMain already migrated, so a second run must apply nothing.
 	applied, err := outbox.MigrateQueue(ctx, queueURL, nil)
 	require.NoError(t, err)
 	require.Empty(t, applied, "the queue database must already be fully migrated")
@@ -99,7 +81,6 @@ func requireRiverIsMigrated(t *testing.T, ctx context.Context) {
 		 where table_schema = 'public' and table_name like 'river%'`).Scan(&jobTables))
 	require.Positive(t, jobTables, "river migrated nothing into its own database")
 
-	// The other half of the isolation, asserted from the application side.
 	var strays int
 	require.NoError(t, appPool.QueryRow(ctx,
 		`select count(*) from information_schema.tables
@@ -107,9 +88,8 @@ func requireRiverIsMigrated(t *testing.T, ctx context.Context) {
 	require.Zero(t, strays, "river tables must not exist in the application database")
 }
 
-// withSearchPath scopes Atlas to the public schema on both sides of the diff.
-// Without it Atlas compares whole databases, and the two sides then differ by
-// which database they are rather than by what they contain.
+// withSearchPath scopes Atlas to the public schema; otherwise it compares whole
+// databases and the sides differ by name alone.
 func withSearchPath(url string) string {
 	if strings.Contains(url, "search_path=") {
 		return url

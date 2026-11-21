@@ -1,0 +1,22 @@
+{{- include "am.forbid" (dict "root" . "role" "web" "names" (list "AGENT_MANAGER_DATABASE_URL" "AGENT_MANAGER_RIVER_DATABASE_URL" "AGENT_MANAGER_BLOB_URL" "AWS_ACCESS_KEY_ID" "AWS_SECRET_ACCESS_KEY")) }}
+{{- if and (gt (int .Values.web.replicas) 1) (not .Values.web.existingSecret) (not .Values.web.secretEnv.AGENT_MANAGER_WEB_COOKIE_KEY) }}
+{{- fail "web.replicas > 1 needs web.secretEnv.AGENT_MANAGER_WEB_COOKIE_KEY (or web.existingSecret carrying it)" }}
+{{- end }}
+{{ include "am.deployment" (dict "root" . "role" "web" "args" (list "serve" "web") "port" .Values.web.port "readinessPath" "/healthz"
+    "extraEnv" (list
+      (dict "name" "AGENT_MANAGER_WEB_ADDR" "value" (printf ":%v" .Values.web.port))
+      (dict "name" "AGENT_MANAGER_API_BASE_URL" "value" (printf "http://%s-api:%v" (include "am.fullname" .) .Values.api.port)))) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "am.fullname" . }}-web
+  labels:
+    {{- include "am.labels" (dict "root" . "role" "web") | nindent 4 }}
+spec:
+  selector:
+    {{- include "am.selectorLabels" (dict "root" . "role" "web") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.web.port }}
+      targetPort: http

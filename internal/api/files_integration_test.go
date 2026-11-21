@@ -17,16 +17,9 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The package files operations (US3/US5: read a skill's files before using
-// it) over a REAL packed bundle: internal/bundle.Pack producing the bytes,
-// a real (in-memory) bucket holding them, and internal/bundle.Unpack — the
-// same extraction the fetcher uses on ingestion — reading them back. A
-// handler-shaped test with a fake bundle.Bundle would not catch a mistake in
-// how the archive is actually walked.
+// The package files operations over a real packed bundle, so a mistake in how
+// the archive is walked is caught; a fake bundle.Bundle would hide it.
 
-// packBundle builds and packs a bundle.Bundle from path/content pairs, the
-// smallest reusable seam between "what a fixture wants a file to contain"
-// and internal/bundle's real tar+zstd writer.
 func packBundle(t *testing.T, files map[string]string) []byte {
 	t.Helper()
 
@@ -41,11 +34,8 @@ func packBundle(t *testing.T, files map[string]string) []byte {
 	return data
 }
 
-// seedPackageWithBundle inserts a publisher, package and one visible version
-// pointed to by latest_version_id — the same relation every other "latest"
-// read in this api joins through (queries.LatestBundle included) — and
-// returns the object key the bytes were packed under, for the caller to
-// write into the bucket liveHandler serves from.
+// seedPackageWithBundle inserts a publisher, package and latest version, and
+// returns the object key the caller must write the bundle bytes under.
 func seedPackageWithBundle(t *testing.T, namespace, name string, verdict models.Verdict, key string) {
 	t.Helper()
 	ctx := context.Background()
@@ -163,11 +153,7 @@ func TestPackageFilesServesTheLatestVisibleVersionsRealBundle(t *testing.T) {
 	})
 }
 
-// TestPackageFilesRefusesARejectedLatestVersionOnBothOperations is FR-029 for
-// this pair of operations: a rejected version is never served, exactly as
-// getBundle refuses one — checked here at the LATEST-version door these two
-// operations use, which getBundle's own version-addressed test does not
-// exercise.
+// Checked at the latest-version door, which getBundle's version-addressed test does not exercise.
 func TestPackageFilesRefusesARejectedLatestVersionOnBothOperations(t *testing.T) {
 	packed := packBundle(t, map[string]string{"SKILL.md": "# Should never be served\n"})
 	key := "skills/filestest/rejected-latest/1.0.0/bundle.tar.zst"

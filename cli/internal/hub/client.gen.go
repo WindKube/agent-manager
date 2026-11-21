@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // Defines values for DeviceTokenTokenType.
@@ -153,6 +154,7 @@ func (e LockfileSchemaVersion) Valid() bool {
 const (
 	LockfileTargetsClaudeCode LockfileTargets = "claude-code"
 	LockfileTargetsCodex      LockfileTargets = "codex"
+	LockfileTargetsOpencode   LockfileTargets = "opencode"
 )
 
 // Valid indicates whether the value is a known member of the LockfileTargets enum.
@@ -161,6 +163,8 @@ func (e LockfileTargets) Valid() bool {
 	case LockfileTargetsClaudeCode:
 		return true
 	case LockfileTargetsCodex:
+		return true
+	case LockfileTargetsOpencode:
 		return true
 	default:
 		return false
@@ -296,10 +300,53 @@ func (e ProfileVisibility) Valid() bool {
 	}
 }
 
+// Defines values for SyncComponentSkipTarget.
+const (
+	SyncComponentSkipTargetClaudeCode SyncComponentSkipTarget = "claude-code"
+	SyncComponentSkipTargetCodex      SyncComponentSkipTarget = "codex"
+	SyncComponentSkipTargetOpencode   SyncComponentSkipTarget = "opencode"
+)
+
+// Valid indicates whether the value is a known member of the SyncComponentSkipTarget enum.
+func (e SyncComponentSkipTarget) Valid() bool {
+	switch e {
+	case SyncComponentSkipTargetClaudeCode:
+		return true
+	case SyncComponentSkipTargetCodex:
+		return true
+	case SyncComponentSkipTargetOpencode:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SyncInstallTarget.
+const (
+	SyncInstallTargetClaudeCode SyncInstallTarget = "claude-code"
+	SyncInstallTargetCodex      SyncInstallTarget = "codex"
+	SyncInstallTargetOpencode   SyncInstallTarget = "opencode"
+)
+
+// Valid indicates whether the value is a known member of the SyncInstallTarget enum.
+func (e SyncInstallTarget) Valid() bool {
+	switch e {
+	case SyncInstallTargetClaudeCode:
+		return true
+	case SyncInstallTargetCodex:
+		return true
+	case SyncInstallTargetOpencode:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SyncReportTargets.
 const (
 	SyncReportTargetsClaudeCode SyncReportTargets = "claude-code"
 	SyncReportTargetsCodex      SyncReportTargets = "codex"
+	SyncReportTargetsOpencode   SyncReportTargets = "opencode"
 )
 
 // Valid indicates whether the value is a known member of the SyncReportTargets enum.
@@ -308,6 +355,8 @@ func (e SyncReportTargets) Valid() bool {
 	case SyncReportTargetsClaudeCode:
 		return true
 	case SyncReportTargetsCodex:
+		return true
+	case SyncReportTargetsOpencode:
 		return true
 	default:
 		return false
@@ -348,7 +397,7 @@ type DeviceAuthorizeRequest struct {
 	// Examples: agent-manager-cli
 	ClientId string `json:"client_id"`
 
-	// Host Hostname of the requesting machine. Bound to the authorisation and displayed to the approving human (FR-041), so approval is an informed act.
+	// Host Hostname of the requesting machine. Bound to the authorisation and displayed to the approving human, so approval is an informed act.
 	//
 	// Examples: dev-laptop-01
 	Host string `json:"host"`
@@ -494,10 +543,10 @@ type Lockfile struct {
 	Revision      int64                 `json:"revision"`
 	SchemaVersion LockfileSchemaVersion `json:"schemaVersion"`
 
-	// Skipped FR-036: an excluded package is reported with its reason, never silently omitted.
+	// Skipped An excluded package is reported with its reason, never silently omitted.
 	Skipped []LockfileSkip `json:"skipped"`
 
-	// Targets Which agent directories the CLI should write. Advisory to the client; the server stores nothing per target (FR-039).
+	// Targets Which agent directories the CLI should write. Advisory to the client; the server stores nothing per target.
 	Targets []LockfileTargets `json:"targets"`
 }
 
@@ -586,7 +635,7 @@ type LockfileSignature struct {
 	// Ref Examples: sigstore:acme/code-review@2.4.1
 	Ref *string `json:"ref,omitempty"`
 
-	// Verified False until Sigstore verification ships (FR-048a). Never render a false value as a pass.
+	// Verified True only when the Sigstore bundle verified against the archive the hub downloaded AND its signer matches the package's expected signer. False covers a bundle that did not verify and one signed by anyone else, or with no expected signer configured; never render it as a pass.
 	Verified *bool `json:"verified,omitempty"`
 }
 
@@ -650,12 +699,71 @@ type ProfileList struct {
 	Profiles []Profile `json:"profiles"`
 }
 
+// SyncComponentSkip defines model for SyncComponentSkip.
+type SyncComponentSkip struct {
+	// Component The component's kind and name.
+	//
+	// Examples: mcp-server lint
+	Component string `json:"component"`
+
+	// Entry namespace/name of the installed entry.
+	//
+	// Examples: acme/code-review
+	Entry string `json:"entry"`
+
+	// Reason Examples: no claude CLI on PATH
+	Reason string `json:"reason"`
+
+	// Target Examples: claude-code
+	Target SyncComponentSkipTarget `json:"target"`
+}
+
+// SyncComponentSkipTarget Examples: claude-code
+type SyncComponentSkipTarget string
+
+// SyncInstall defines model for SyncInstall.
+type SyncInstall struct {
+	// Changed This sync wrote the entry. The component skips of an entry it did not write carry over from the report that did.
+	Changed *bool `json:"changed,omitempty"`
+
+	// Id namespace/name
+	//
+	// Examples: acme/code-review
+	Id string `json:"id"`
+
+	// Target Examples: claude-code
+	Target SyncInstallTarget `json:"target"`
+
+	// Version Examples: 2.4.1
+	Version string `json:"version"`
+}
+
+// SyncInstallTarget Examples: claude-code
+type SyncInstallTarget string
+
 // SyncReport defines model for SyncReport.
 type SyncReport struct {
+	// AmctlVersion Examples: 0.9.0
+	AmctlVersion *string `json:"amctlVersion,omitempty"`
+
+	// Arch Examples: arm64
+	Arch *string `json:"arch,omitempty"`
+
 	// Host Hostname the sync landed on, for the audit row.
 	//
 	// Examples: dev-laptop-01
 	Host string `json:"host"`
+
+	// Installed Every entry of this profile installed on the machine after this sync. Replaces what the machine reported for this profile before.
+	Installed *[]SyncInstall `json:"installed,omitempty"`
+
+	// MachineId A random id the client generated once and keeps. Without it the sync is recorded but no machine inventory is kept.
+	//
+	// Examples: 0193a8e2-6b1f-7c3a-9d4e-2f5b8c1a7e60
+	MachineId *openapi_types.UUID `json:"machineId,omitempty"`
+
+	// Os Examples: darwin
+	Os *string `json:"os,omitempty"`
 
 	// Profile Slug of the profile that was synced.
 	//
@@ -669,6 +777,9 @@ type SyncReport struct {
 
 	// Skipped Entry ids the client skipped locally, if any.
 	Skipped *[]string `json:"skipped,omitempty"`
+
+	// SkippedComponents Components of entries this sync wrote that the client did not place.
+	SkippedComponents *[]SyncComponentSkip `json:"skippedComponents,omitempty"`
 
 	// Targets Agent directories the client actually wrote.
 	Targets []SyncReportTargets `json:"targets"`
@@ -762,7 +873,7 @@ type ClientInterface interface {
 
 	// GetBundle Download an immutable version bundle
 	//
-	// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate (FR-029).
+	// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate.
 	//
 	// Corresponds with GET /v1/bundles/{publisher}/{name}/{version} (the `GetBundle` operationId).
 	GetBundle(ctx context.Context, publisher string, name string, version string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -787,7 +898,7 @@ type ClientInterface interface {
 
 	// DeviceTokenWithBody Poll for the issued token
 	//
-	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
+	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -796,7 +907,7 @@ type ClientInterface interface {
 
 	// DeviceTokenWithFormdataBody Poll for the issued token
 	//
-	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
+	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.
 	//
 	// Takes a body of the `application/x-www-form-urlencoded` content type.
 	//
@@ -805,28 +916,28 @@ type ClientInterface interface {
 
 	// Health Liveness and readiness
 	//
-	// Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case (FR-058).
+	// Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case.
 	//
 	// Corresponds with GET /v1/health (the `Health` operationId).
 	Health(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListProfiles Profiles readable by this identity
 	//
-	// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate (FR-126), so a caller choosing among them need not read every one's detail just to find out which allow it.
+	// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others. Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate, so a caller choosing among them need not read every one's detail just to find out which allow it.
 	//
 	// Corresponds with GET /v1/profiles (the `ListProfiles` operationId).
 	ListProfiles(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetRevision Fetch a resolved revision lockfile
 	//
-	// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted (FR-036).
+	// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted.
 	//
 	// Corresponds with GET /v1/profiles/{slug}/revisions/{revision} (the `GetRevision` operationId).
 	GetRevision(ctx context.Context, slug string, revision string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ReportSyncWithBody Report a completed sync
 	//
-	// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
+	// Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -835,7 +946,7 @@ type ClientInterface interface {
 
 	// ReportSync Report a completed sync
 	//
-	// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
+	// Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -845,7 +956,7 @@ type ClientInterface interface {
 
 // GetBundle Download an immutable version bundle
 //
-// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate (FR-029).
+// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate.
 //
 // Corresponds with GET /v1/bundles/{publisher}/{name}/{version} (the `GetBundle` operationId).
 func (c *Client) GetBundle(ctx context.Context, publisher string, name string, version string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -900,7 +1011,7 @@ func (c *Client) DeviceAuthorize(ctx context.Context, body DeviceAuthorizeJSONRe
 
 // DeviceTokenWithBody Poll for the issued token
 //
-// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
+// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.
 //
 // Takes any type of body and a specified content type.
 //
@@ -919,7 +1030,7 @@ func (c *Client) DeviceTokenWithBody(ctx context.Context, contentType string, bo
 
 // DeviceTokenWithFormdataBody Poll for the issued token
 //
-// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
+// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.
 //
 // Takes a body of the `application/x-www-form-urlencoded` content type.
 //
@@ -938,7 +1049,7 @@ func (c *Client) DeviceTokenWithFormdataBody(ctx context.Context, body DeviceTok
 
 // Health Liveness and readiness
 //
-// Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case (FR-058).
+// Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case.
 //
 // Corresponds with GET /v1/health (the `Health` operationId).
 func (c *Client) Health(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -955,7 +1066,7 @@ func (c *Client) Health(ctx context.Context, reqEditors ...RequestEditorFn) (*ht
 
 // ListProfiles Profiles readable by this identity
 //
-// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate (FR-126), so a caller choosing among them need not read every one's detail just to find out which allow it.
+// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others. Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate, so a caller choosing among them need not read every one's detail just to find out which allow it.
 //
 // Corresponds with GET /v1/profiles (the `ListProfiles` operationId).
 func (c *Client) ListProfiles(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -972,7 +1083,7 @@ func (c *Client) ListProfiles(ctx context.Context, reqEditors ...RequestEditorFn
 
 // GetRevision Fetch a resolved revision lockfile
 //
-// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted (FR-036).
+// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted.
 //
 // Corresponds with GET /v1/profiles/{slug}/revisions/{revision} (the `GetRevision` operationId).
 func (c *Client) GetRevision(ctx context.Context, slug string, revision string, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -989,7 +1100,7 @@ func (c *Client) GetRevision(ctx context.Context, slug string, revision string, 
 
 // ReportSyncWithBody Report a completed sync
 //
-// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
+// Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 //
 // Takes any type of body and a specified content type.
 //
@@ -1008,7 +1119,7 @@ func (c *Client) ReportSyncWithBody(ctx context.Context, contentType string, bod
 
 // ReportSync Report a completed sync
 //
-// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
+// Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -1334,7 +1445,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetBundleWithResponse Download an immutable version bundle
 	//
-	// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate (FR-029).
+	// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -1361,7 +1472,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeviceTokenWithBodyWithResponse Poll for the issued token
 	//
-	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
+	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -1370,7 +1481,7 @@ type ClientWithResponsesInterface interface {
 
 	// DeviceTokenWithFormdataBodyWithResponse Poll for the issued token
 	//
-	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
+	// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.
 	//
 	// Takes a body of the `application/x-www-form-urlencoded` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -1379,7 +1490,7 @@ type ClientWithResponsesInterface interface {
 
 	// HealthWithResponse Liveness and readiness
 	//
-	// Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case (FR-058).
+	// Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -1388,7 +1499,7 @@ type ClientWithResponsesInterface interface {
 
 	// ListProfilesWithResponse Profiles readable by this identity
 	//
-	// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate (FR-126), so a caller choosing among them need not read every one's detail just to find out which allow it.
+	// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others. Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate, so a caller choosing among them need not read every one's detail just to find out which allow it.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -1397,7 +1508,7 @@ type ClientWithResponsesInterface interface {
 
 	// GetRevisionWithResponse Fetch a resolved revision lockfile
 	//
-	// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted (FR-036).
+	// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -1406,7 +1517,7 @@ type ClientWithResponsesInterface interface {
 
 	// ReportSyncWithBodyWithResponse Report a completed sync
 	//
-	// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
+	// Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -1415,7 +1526,7 @@ type ClientWithResponsesInterface interface {
 
 	// ReportSyncWithResponse Report a completed sync
 	//
-	// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
+	// Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -1867,7 +1978,7 @@ func (r ReportSyncResponse) ContentType() string {
 
 // GetBundleWithResponse Download an immutable version bundle
 //
-// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate (FR-029).
+// Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -1912,7 +2023,7 @@ func (c *ClientWithResponses) DeviceAuthorizeWithResponse(ctx context.Context, b
 
 // DeviceTokenWithBodyWithResponse Poll for the issued token
 //
-// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
+// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -1927,7 +2038,7 @@ func (c *ClientWithResponses) DeviceTokenWithBodyWithResponse(ctx context.Contex
 
 // DeviceTokenWithFormdataBodyWithResponse Poll for the issued token
 //
-// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).
+// Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.
 //
 // Takes a body of the `application/x-www-form-urlencoded` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -1942,7 +2053,7 @@ func (c *ClientWithResponses) DeviceTokenWithFormdataBodyWithResponse(ctx contex
 
 // HealthWithResponse Liveness and readiness
 //
-// Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case (FR-058).
+// Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -1957,7 +2068,7 @@ func (c *ClientWithResponses) HealthWithResponse(ctx context.Context, reqEditors
 
 // ListProfilesWithResponse Profiles readable by this identity
 //
-// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate (FR-126), so a caller choosing among them need not read every one's detail just to find out which allow it.
+// Returns exactly the profiles this identity may read via direct membership or group mapping, and no others. Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate, so a caller choosing among them need not read every one's detail just to find out which allow it.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -1972,7 +2083,7 @@ func (c *ClientWithResponses) ListProfilesWithResponse(ctx context.Context, reqE
 
 // GetRevisionWithResponse Fetch a resolved revision lockfile
 //
-// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted (FR-036).
+// `revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -1987,7 +2098,7 @@ func (c *ClientWithResponses) GetRevisionWithResponse(ctx context.Context, slug 
 
 // ReportSyncWithBodyWithResponse Report a completed sync
 //
-// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
+// Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -2002,7 +2113,7 @@ func (c *ClientWithResponses) ReportSyncWithBodyWithResponse(ctx context.Context
 
 // ReportSyncWithResponse Report a completed sync
 //
-// Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.
+// Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //

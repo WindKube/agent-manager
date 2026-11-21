@@ -29,6 +29,10 @@ type Target struct {
 	// Withdrawn: a known target deliberately unimplemented, reported rather
 	// than refused (does not license an all-withdrawn profile to exit 0).
 	Withdrawn error
+
+	// ServedBy are targets whose skill root this agent also reads: when one
+	// of them is written in the same profile, a skill is not placed twice.
+	ServedBy []record.Target
 }
 
 // Op is what a plan does to one entry, finer-grained than the bucket the change lands in.
@@ -68,7 +72,7 @@ type Change struct {
 	// Dest is the routed destination; a later prune removes RemovablePaths(), derived from it.
 	Dest string
 
-	Version string        // the hub's resolved version for this revision
+	Version string
 	Digest  record.Digest // 32 bytes, not a string — comparing formatted digests stops being a digest check
 
 	Resolution string // how the hub resolved (latest/pinned/range); reporting only
@@ -76,8 +80,9 @@ type Change struct {
 	// Verdict: clean or flagged, under an override or warn-with-override gate.
 	Verdict string
 
-	// Signature is absent when the source carried none; Verified is false
-	// until Sigstore ships - never render false as a pass or tick.
+	// Signature is absent when the source carried none; Verified is true only
+	// when the hub verified the bundle and its signer is the package's
+	// expected one - never render false as a pass or tick.
 	Signature *Signature
 
 	From *Installed // what the record claims is installed; nil exactly when Op is OpAdd

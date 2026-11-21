@@ -16,22 +16,16 @@ import (
 
 	"agent-manager/internal/api/contract"
 	"agent-manager/internal/auth"
+	"agent-manager/internal/store/audit"
 	"agent-manager/internal/store/models"
 )
-
-// The Organization screen's mutations. Every command writes exactly one
-// audit row in its own transaction, except TestIdentityConnection (no
-// mutation) and RotateClientSecret (a refusal — nothing happened).
 
 const (
 	categoryNameConstraint = "category_name_key"
 	categorySlugConstraint = "category_slug_key"
 )
 
-// ---- identity -------------------------------------------------------------------
-
-// IdentityConfig never carries the client secret, which this package
-// never reads.
+// IdentityConfig never carries the client secret, which this package never reads.
 type IdentityConfig struct {
 	Issuer       string
 	DiscoveryURL string
@@ -39,9 +33,6 @@ type IdentityConfig struct {
 	Scopes       []string
 }
 
-// discoveryDocument is the subset of an OIDC discovery document this
-// screen needs; jwks_uri is fetched too, so the connection test proves
-// reachability rather than just a well-formed URL.
 type discoveryDocument struct {
 	Issuer                      string `json:"issuer"`
 	JWKSURI                     string `json:"jwks_uri"`
@@ -53,9 +44,8 @@ const (
 	maxIdentityBytes     = 1 << 20
 )
 
-// fetchDiscovery mirrors internal/auth/oidc.go's fetch: same bounded read,
-// same rule that the document's issuer must equal the configured one
-// rather than being trusted verbatim.
+// fetchDiscovery mirrors internal/auth/oidc.go: the document's issuer must
+// equal the configured one rather than being trusted verbatim.
 func fetchDiscovery(ctx context.Context, cfg IdentityConfig) (discoveryDocument, error) {
 	if cfg.Issuer == "" {
 		return discoveryDocument{}, errors.New("no identity provider is configured")
@@ -130,10 +120,9 @@ func TestIdentityConnection(ctx context.Context, cfg IdentityConfig) contract.Id
 	return contract.IdentityConnectionTest{OK: true}
 }
 
-// ErrSecretRotationUnsupported is RotateClientSecret's whole implementation:
-// the client secret is environment configuration this hub does not own a
-// provider-side registration for, so a "rotation" that only overwrote a
-// local copy would lie about having changed anything at the provider.
+// ErrSecretRotationUnsupported: the client secret is environment
+// configuration, so a local "rotation" would lie about changing anything at
+// the provider.
 var ErrSecretRotationUnsupported = errors.New(
 	"the identity provider's client secret is managed by the deployment environment " +
 		"(the OIDC_CLIENT_SECRET this role was started with), not by this hub; there is no " +
@@ -142,13 +131,10 @@ var ErrSecretRotationUnsupported = errors.New(
 // RotateClientSecret always refuses. See ErrSecretRotationUnsupported.
 func RotateClientSecret(context.Context) error { return ErrSecretRotationUnsupported }
 
-// ---- policy -----------------------------------------------------------------
-
 var ErrInvalidGate = errors.New("scan gate must be block, approval or warn-with-override")
 
-// UpdatePolicy writes every org_policy toggle and one `policy` audit row.
-// It only writes the row; the gate, signature requirement, and the two
-// scanner toggles are all read live by their consumers on every request.
+// UpdatePolicy writes every org_policy toggle and one `policy` audit row;
+// consumers read the toggles live on every request.
 func UpdatePolicy(ctx context.Context, db bun.IDB, p auth.Principal,
 	in contract.UpdatePolicyRequest,
 ) (contract.OrganizationPolicy, error) {
@@ -181,7 +167,16 @@ func UpdatePolicy(ctx context.Context, db bun.IDB, p auth.Principal,
 		if affected, _ := res.RowsAffected(); affected == 0 {
 			return fmt.Errorf("update the organisation policy: %w", sql.ErrNoRows)
 		}
-		return writeOrgAudit(ctx, tx, p, models.AuditKindPolicy, "updated the organisation policy")
+		audit := identityAudit(p, models.AuditKindPolicy, "updated", "updated the organisation policy",
+			audit.Policy())
+		audit.Data = map[string]any{
+			"scanGate":              string(gate),
+			"requireSignedBundles":  in.RequireSignedBundles,
+			"communityNeedsReview":  in.CommunityNeedsReview,
+			"rescanOnNewVersion":    in.RescanOnNewVersion,
+			"allowPersonalProfiles": in.AllowPersonalProfiles,
+		}
+		return writeAudit(ctx, tx, audit)
 	})
 	if err != nil {
 		return contract.OrganizationPolicy{}, err
@@ -189,13 +184,10 @@ func UpdatePolicy(ctx context.Context, db bun.IDB, p auth.Principal,
 	return out, nil
 }
 
-// ---- group-to-role mappings ---------------------------------------------------
-
 var ErrInvalidRole = errors.New(
 	"role must be catalog-admin, scanner-reviewer, profile-consumer or read-only")
 
-// ErrValidation wraps a request the caller can fix by changing the body — a
-// missing name, a name with nothing left after slugifying.
+// ErrValidation wraps a request the caller can fix by changing the body.
 var ErrValidation = errors.New("invalid request")
 
 var ErrMappingNotFound = errors.New("no such mapping")
@@ -204,29 +196,13 @@ var ErrMappingNotFound = errors.New("no such mapping")
 // rather than a person clicked, paired with models.ActorKindSystem.
 const BootstrapActor = "deployment"
 
-// bootstrapAuditSource is the audit row's `source`, where a person's row carries
-// `web` or `cli / <host>`.
 const bootstrapAuditSource = "config"
 
 // EnsureAdminGroup reconciles the deployment's declared admin group onto
-// catalog-admin, and reports whether it had to change anything.
-//
-// This is the way out of a rule that would otherwise have no exit: mapping a
-// group requires catalog-admin, and holding catalog-admin requires a mapping. A
-// fresh hub therefore has no administrator and no way to appoint one, and the
-// only remedy was an INSERT run by hand against the cluster — which meant the
-// deployment held a credential that could write any table, to set one row.
-//
-// It RECONCILES rather than seeds: the group named in the environment is
-// configuration, and a configured invariant that the UI can quietly edit away is
-// not an invariant. Re-pointing this group at a weaker role on the Organization
-// screen therefore lasts until the api restarts. That cuts both ways on purpose
-// — it is also what lets an operator who has locked every administrator out
-// recover by restarting a container rather than by opening psql.
-//
-// The audit row is written only when something actually changed, and is
-// attributed to the system: nobody clicked this. A restart that changes nothing
-// leaves no trace, so the Audit screen does not fill up with one row per deploy.
+// catalog-admin, and reports whether it had to change anything. It breaks the
+// bootstrap loop (mapping a group requires catalog-admin) and reconciles rather
+// than seeds, so a restart undoes UI edits and recovers a locked-out hub. An
+// audit row is written only on change, attributed to the system.
 func EnsureAdminGroup(ctx context.Context, db bun.IDB, groupName string) (bool, error) {
 	groupName = strings.TrimSpace(groupName)
 	if groupName == "" {
@@ -242,7 +218,6 @@ func EnsureAdminGroup(ctx context.Context, db bun.IDB, groupName string) (bool, 
 			`select role::text from group_role_map where group_name = ?`, groupName).Scan(&current)
 		switch {
 		case readErr == nil && current == string(role):
-			// Already right. No write, and therefore no audit row.
 			return nil
 		case readErr != nil && !errors.Is(readErr, sql.ErrNoRows):
 			return fmt.Errorf("read the mapping for group %q: %w", groupName, readErr)
@@ -257,9 +232,13 @@ func EnsureAdminGroup(ctx context.Context, db bun.IDB, groupName string) (bool, 
 		}
 		changed = true
 
-		return writeAudit(ctx, tx, models.AuditKindRole, BootstrapActor, string(models.ActorKindSystem),
-			fmt.Sprintf("mapped group %q to role %s, as declared by this deployment", groupName, role),
-			bootstrapAuditSource)
+		return writeAudit(ctx, tx, audit.Entry{
+			Kind: models.AuditKindRole, Action: "mapped", Actor: BootstrapActor, ActorKind: models.ActorKindSystem,
+			Text:    fmt.Sprintf("mapped group %q to role %s, as declared by this deployment", groupName, role),
+			Source:  bootstrapAuditSource,
+			Subject: audit.Mapping(groupName),
+			Data:    map[string]any{"role": string(role)},
+		})
 	})
 	if err != nil {
 		return false, err
@@ -267,9 +246,7 @@ func EnsureAdminGroup(ctx context.Context, db bun.IDB, groupName string) (bool, 
 	return changed, nil
 }
 
-// CreateMapping upserts a group's role and writes one `role` audit row:
-// re-pointing an existing group at a new role is the same screen action
-// as adding one.
+// CreateMapping upserts a group's role and writes one `role` audit row.
 func CreateMapping(ctx context.Context, db bun.IDB, p auth.Principal,
 	in contract.CreateMappingRequest,
 ) (contract.GroupRoleMapping, error) {
@@ -291,8 +268,10 @@ func CreateMapping(ctx context.Context, db bun.IDB, p auth.Principal,
 			Exec(ctx); txErr != nil {
 			return fmt.Errorf("map group %q to %s: %w", groupName, role, txErr)
 		}
-		return writeOrgAudit(ctx, tx, p, models.AuditKindRole,
-			fmt.Sprintf("mapped group %q to role %s", groupName, role))
+		audit := identityAudit(p, models.AuditKindRole, "mapped",
+			fmt.Sprintf("mapped group %q to role %s", groupName, role), audit.Mapping(groupName))
+		audit.Data = map[string]any{"role": string(role)}
+		return writeAudit(ctx, tx, audit)
 	})
 	if err != nil {
 		return contract.GroupRoleMapping{}, err
@@ -312,11 +291,10 @@ func DeleteMapping(ctx context.Context, db bun.IDB, p auth.Principal, groupName 
 		if affected, _ := res.RowsAffected(); affected == 0 {
 			return ErrMappingNotFound
 		}
-		return writeOrgAudit(ctx, tx, p, models.AuditKindRole, fmt.Sprintf("removed mapping for group %q", groupName))
+		return writeAudit(ctx, tx, identityAudit(p, models.AuditKindRole, "unmapped",
+			fmt.Sprintf("removed mapping for group %q", groupName), audit.Mapping(groupName)))
 	})
 }
-
-// ---- categories -----------------------------------------------------------------
 
 var ErrCategoryNotFound = errors.New("no such category")
 
@@ -348,7 +326,8 @@ func CreateCategory(ctx context.Context, db bun.IDB, p auth.Principal,
 			}
 			return fmt.Errorf("create category %q: %w", name, txErr)
 		}
-		return writeOrgAudit(ctx, tx, p, models.AuditKindCategory, fmt.Sprintf("added category %q", name))
+		return writeAudit(ctx, tx, identityAudit(p, models.AuditKindCategory, "created",
+			fmt.Sprintf("added category %q", name), audit.Category(row.ID.String(), name)))
 	})
 	if err != nil {
 		return contract.OrganizationCategory{}, err
@@ -386,7 +365,8 @@ func UpdateCategory(ctx context.Context, db bun.IDB, p auth.Principal,
 		if affected, _ := res.RowsAffected(); affected == 0 {
 			return ErrCategoryNotFound
 		}
-		return writeOrgAudit(ctx, tx, p, models.AuditKindCategory, fmt.Sprintf("renamed category to %q", name))
+		return writeAudit(ctx, tx, identityAudit(p, models.AuditKindCategory, "renamed",
+			fmt.Sprintf("renamed category to %q", name), audit.Category(id, name)))
 	})
 	if err != nil {
 		return contract.OrganizationCategory{}, err
@@ -395,8 +375,7 @@ func UpdateCategory(ctx context.Context, db bun.IDB, p auth.Principal,
 }
 
 // DeleteCategory removes a category and writes one `category` audit row.
-// ErrCategoryInUse comes from the database's own foreign-key refusal, not
-// a check duplicated here.
+// ErrCategoryInUse comes from the database's foreign-key refusal.
 func DeleteCategory(ctx context.Context, db bun.IDB, p auth.Principal, id string) error {
 	return db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		res, txErr := tx.NewDelete().Model((*models.Category)(nil)).
@@ -411,11 +390,11 @@ func DeleteCategory(ctx context.Context, db bun.IDB, p auth.Principal, id string
 		if affected, _ := res.RowsAffected(); affected == 0 {
 			return ErrCategoryNotFound
 		}
-		return writeOrgAudit(ctx, tx, p, models.AuditKindCategory, fmt.Sprintf("deleted category %s", id))
+		return writeAudit(ctx, tx, identityAudit(p, models.AuditKindCategory, "deleted",
+			fmt.Sprintf("deleted category %s", id), audit.Category(id, "")))
 	})
 }
 
-// isForeignKeyViolation reports whether err is Postgres 23503.
 func isForeignKeyViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) {
@@ -439,14 +418,4 @@ func slugify(name string) string {
 		}
 	}
 	return strings.TrimSuffix(b.String(), "-")
-}
-
-// writeOrgAudit is the one audit write every mutation in this file goes
-// through, so actor derivation can't drift between them.
-func writeOrgAudit(ctx context.Context, tx bun.IDB, p auth.Principal, kind models.AuditKind, text string) error {
-	actor := p.Email
-	if actor == "" {
-		actor = p.Subject
-	}
-	return writeAudit(ctx, tx, kind, actor, string(models.ActorKindIdentity), text, p.Source)
 }

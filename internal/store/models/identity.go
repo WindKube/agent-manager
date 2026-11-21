@@ -64,3 +64,25 @@ type Session struct {
 
 	Identity *Identity `bun:"rel:belongs-to,join:identity_id=id"`
 }
+
+// ServiceToken is a non-human bearer credential limited to its scopes. Only
+// the sha256 of the secret is stored; the secret is shown once at creation.
+type ServiceToken struct {
+	bun.BaseModel `bun:"table:service_token,alias:svt"`
+
+	ID                  uuid.UUID `bun:"id,pk,type:uuid,notnull"`
+	Name                string    `bun:"name,type:text,notnull"`
+	TokenHash           []byte    `bun:"token_hash,type:bytea,notnull,unique"`
+	Scopes              []string  `bun:"scopes,array,type:text[],notnull"`
+	CreatedByIdentityID uuid.UUID `bun:"created_by_identity_id,type:uuid,notnull"`
+	ExpiresAt           time.Time `bun:"expires_at,type:timestamptz,notnull"`
+	// LastUsedAt is throttled, so it is accurate to about a minute.
+	LastUsedAt *time.Time `bun:"last_used_at,type:timestamptz,nullzero"`
+	// LastUseAuditedAt bounds use auditing to one row per token per day.
+	LastUseAuditedAt *time.Time `bun:"last_use_audited_at,type:timestamptz,nullzero"`
+	RevokedAt        *time.Time `bun:"revoked_at,type:timestamptz,nullzero"`
+	CreatedAt        time.Time  `bun:"created_at,type:timestamptz,notnull,default:now()"`
+	UpdatedAt        time.Time  `bun:"updated_at,type:timestamptz,notnull,default:now()"`
+
+	CreatedBy *Identity `bun:"rel:belongs-to,join:created_by_identity_id=id"`
+}

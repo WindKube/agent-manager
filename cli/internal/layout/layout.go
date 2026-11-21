@@ -1,5 +1,5 @@
-// Package layout turns a lockfile entry into the paths one agent reads,
-// purely: no I/O, no home-containment check, no sanitising — an unusable name is refused, not rewritten.
+// Package layout turns a lockfile entry into the paths one agent reads, without I/O.
+// An unusable name is refused, never rewritten.
 package layout
 
 import (
@@ -104,10 +104,8 @@ var reservedDeviceNames = map[string]struct{}{
 	"lpt5": {}, "lpt6": {}, "lpt7": {}, "lpt8": {}, "lpt9": {},
 }
 
-// ValidateDirName is the portable floor every target's directory name must
-// clear; a target may be stricter (see ValidateClaudeCodeSkillDirName) but
-// never laxer. Refuses record.AsideSuffix, StagingDirName, dot-prefix,
-// trailing dot/space, a DOS device name, traversal, a separator, oversize.
+// ValidateDirName is the portable floor every target's directory name must clear; a target may be
+// stricter but never laxer.
 func ValidateDirName(dirName string) error {
 	switch {
 	case dirName == "":
@@ -162,7 +160,7 @@ type Request struct {
 
 	Version string // carried into the marker verbatim, never in the path
 
-	Kind record.Kind // only record.KindSkill is installable; KindPlugin refused structurally
+	Kind record.Kind // a plugin routes to amctl's own unpacked copy, see Config.PluginRoot
 }
 
 // Placement is every path one entry needs, derived and validated. Dest is
@@ -173,7 +171,7 @@ type Placement struct {
 	Version string
 	Kind    record.Kind
 
-	Root    string // the absolute directory the agent scans for skills
+	Root    string // the absolute directory the agent scans for skills, or the plugin root
 	DirName string // Root's child holding this entry
 	Dest    string // the entry root; the only path prune consults, with its aside sibling
 
@@ -185,8 +183,8 @@ func (p Placement) AsidePath() string { return p.Dest + record.AsideSuffix }
 
 func (p Placement) StagingRoot() string { return StagingRoot(p.Dest) }
 
-// Marker is provenance, not authority (state.json is what pruning
-// consults); no timestamp, no profile slug (two profiles may share a destination).
+// Marker is provenance, not authority: state.json is what pruning consults. It has no profile slug
+// because two profiles may share a destination.
 type Marker struct {
 	SchemaVersion int           `json:"schemaVersion"`
 	ID            string        `json:"id"`

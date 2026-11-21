@@ -8,10 +8,7 @@ import (
 	"agent-manager/internal/domain/capability"
 )
 
-// The expected set (T057, FR-018a). Every manifest below is CONFORMANT: the
-// design's `network: {allow: []}` and `filesystem: {write: []}` are not fields
-// either published specification defines (R1), so nothing here reproduces them
-// and a test that did would be asserting against a manifest the hub refuses at
+// Every manifest below is schema-conformant; the hub refuses any other at
 // registration.
 
 const pluginManifest = `{
@@ -28,9 +25,8 @@ const pluginManifest = `{
   }
 }`
 
-// A skill's frontmatter has no `extensions` key — the schema's
-// additionalProperties:false refuses one — so its expectation lives under the
-// same reverse-domain name inside `metadata`.
+// Skill frontmatter refuses an `extensions` key, so the expectation lives
+// under the same namespace inside `metadata`.
 const skillManifest = `{
   "name": "pii-redactor",
   "description": "Finds and masks personal data.",
@@ -57,9 +53,6 @@ func TestExpectedReadsTheDeclarationFromEitherSpecsNamespaceObject(t *testing.T)
 	})
 
 	t.Run("a standalone skill declares under metadata", func(t *testing.T) {
-		// Without this branch a skill could never record an expectation at all, and
-		// FR-027's "no expected set, so surface every host" would be permanent for
-		// every skill in the catalog rather than a state a publisher can leave.
 		rows, err := capability.Expected([]byte(skillManifest))
 		require.NoError(t, err)
 		require.Len(t, rows, 1)
@@ -68,8 +61,6 @@ func TestExpectedReadsTheDeclarationFromEitherSpecsNamespaceObject(t *testing.T)
 	})
 }
 
-// FR-018a: recording an expectation is optional, and not recording one is not an
-// error. It is the case where every discovered host is surfaced for review.
 func TestNoDeclarationIsNoRowsAndNoError(t *testing.T) {
 	for _, tc := range []struct{ name, manifest string }{
 		{"a manifest with no extensions object at all", `{"name":"adr-writer"}`},
@@ -90,17 +81,11 @@ func TestNoDeclarationIsNoRowsAndNoError(t *testing.T) {
 func TestAnUnusableDeclarationIsRefusedRatherThanQuietlyDropped(t *testing.T) {
 	for _, tc := range []struct{ name, manifest, wantMessage string }{
 		{
-			// The one that motivates DisallowUnknownFields: a typo here is an
-			// expectation that silently does not exist, and the finding it was meant
-			// to suppress never appears.
 			name:        "a misspelled key is not an empty expectation",
 			manifest:    `{"extensions":{"dev.agent-manager":{"expectedCapabilties":[]}}}`,
 			wantMessage: "expectedCapabilties",
 		},
 		{
-			// An unrecognised name can never match anything Infer produces, so
-			// keeping it would put a row on the page that suppresses nothing while
-			// reading as though it does.
 			name:        "a capability name outside the closed set",
 			manifest:    `{"extensions":{"dev.agent-manager":{"expectedCapabilities":[{"name":"gpu"}]}}}`,
 			wantMessage: `"gpu"`,
@@ -125,8 +110,6 @@ func TestAnUnusableDeclarationIsRefusedRatherThanQuietlyDropped(t *testing.T) {
 	}
 }
 
-// FR-018a says an expectation with no level is still an expectation. The safe
-// reading of one that names no level is the one that asks for a human.
 func TestADeclarationWithNoLevelDefaultsToReview(t *testing.T) {
 	rows, err := capability.Expected(
 		[]byte(`{"extensions":{"dev.agent-manager":{"expectedCapabilities":[{"name":"network"}]}}}`))
@@ -135,10 +118,6 @@ func TestADeclarationWithNoLevelDefaultsToReview(t *testing.T) {
 	require.Equal(t, capability.LevelReview, rows[0].Level)
 }
 
-// FR-018's floor is a claim about how much trust a shell capability demands, not
-// about who wrote the level down. A publisher declaring `shell: scoped` beside
-// an inferred `shell: review` would read as a disagreement the scanner found,
-// rather than as a level this model does not have.
 func TestAnExpectedShellCapabilityIsAlsoNeverBelowReview(t *testing.T) {
 	for _, declared := range []string{"scoped", "allowlisted", "review"} {
 		rows, err := capability.Expected([]byte(
@@ -151,10 +130,8 @@ func TestAnExpectedShellCapabilityIsAlsoNeverBelowReview(t *testing.T) {
 	}
 }
 
-// The two sides of FR-027 must be comparable, which means the same names, the
-// same levels and the same ordering. A test for it exists because the two are
-// produced by different functions from different inputs, and nothing in the
-// compiler notices when one of them grows a name the other cannot produce.
+// Expected and Infer come from different inputs, and the compiler won't
+// notice if one grows a name the other cannot produce.
 func TestBothSourcesSpeakTheSameVocabulary(t *testing.T) {
 	inferred := capability.Infer(capability.Artefacts{
 		Files: []capability.File{{Path: "scripts/run.sh", Class: capability.ClassScript}},

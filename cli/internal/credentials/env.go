@@ -26,9 +26,8 @@ type Resolved struct {
 	Location   string // human phrase for a result's `store` field
 }
 
-// Resolver tries the environment, then a store. Open is a func, not a
-// *Store, so opening (a keychain dialog, shelling to `pass`, a fallback
-// warning) never happens when the environment already supplied a token.
+// Resolver tries the environment, then a store. Open is a func so a store is never opened when the
+// environment already supplied a token.
 type Resolver struct {
 	Open      func() (*Store, error)      // called at most once, never when TokenEnvVar is set
 	LookupEnv func(string) (string, bool) // defaults to os.LookupEnv

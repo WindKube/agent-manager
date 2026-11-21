@@ -1,10 +1,7 @@
 // Package components holds the templ components of the web role.
 //
-// FR-055 lives here by construction: templ escapes every interpolated value, and
-// nothing in this package calls templ.Raw. Package-derived text — a name, an id,
-// a manifest keyword rendered as a tag — reaches the page only through templ's
-// escaping, and internal/archcheck fails the build if templ.Raw appears under
-// internal/web at all.
+// templ escapes every interpolated value and nothing here calls templ.Raw, so
+// package-derived text reaches the page only escaped; archcheck enforces this.
 package components
 
 import (
@@ -16,16 +13,12 @@ import (
 
 // NavItem is one sidebar entry.
 //
-// It carries no count. The counts are per-viewer and per-request and live on the
-// Shell, because a badge on a package-level var is a badge that is the same number
-// for everybody who ever loads the page — which is what FR-121 is about, and what
-// the design's compiled-in 10 / 4 / 4 were.
+// It carries no count: counts are per viewer and per request and live on Shell.
 type NavItem struct {
 	ID    string
 	Label string
 	Href  string
-	// Alert renders the badge in --dan. The scanner's open-findings count is the
-	// only badge the design colours.
+	// Alert renders the badge in --dan.
 	Alert bool
 }
 
@@ -35,13 +28,12 @@ type NavGroup struct {
 	Items []NavItem
 }
 
-// Nav is the design's sidebar (docs/design/agent-manager.dc.html lines 938-943),
-// and it is the STRUCTURE only. What each entry counts is Shell.Badge's answer for
-// that entry's id, resolved per request from the api.
+// Nav is the sidebar's structure only; counts come per request from Shell.Badge.
 var Nav = []NavGroup{
 	{Label: "Workspace", Items: []NavItem{
 		{ID: "catalog", Label: "Catalog", Href: "/catalog"},
 		{ID: "profiles", Label: "Profiles", Href: "/profiles"},
+		{ID: "machines", Label: "Machines", Href: "/machines"},
 	}},
 	{Label: "Security", Items: []NavItem{
 		{ID: "scanner", Label: "Scanner", Href: "/scanner", Alert: true},
@@ -50,67 +42,48 @@ var Nav = []NavGroup{
 	{Label: "Administration", Items: []NavItem{
 		{ID: "storage", Label: "Storage", Href: "/storage"},
 		{ID: "org", Label: "Organization", Href: "/org"},
+		{ID: "webhooks", Label: "Webhooks", Href: "/webhooks"},
 		{ID: "runtime", Label: "Runtime", Href: "/runtime"},
 		{ID: "river", Label: "River Dashboard", Href: "/river"},
 	}},
 	{Label: "Onboarding", Items: []NavItem{
 		{ID: "cli", Label: "Connect the CLI", Href: "/cli"},
+		{ID: "tokens", Label: "Service tokens", Href: "/tokens"},
 	}},
 }
 
-// ProductName is what this product calls itself.
-//
-// A constant because two surfaces render it — the sidebar's brand and the sign-in
-// screen — and because the identity sweep next to internal/web's contrast test
-// has to exempt exactly one pair of capitalised words from "that is a person's
-// name". An exemption that is a constant is one identifier; an exemption that is
-// a spelling is a place for a second one to be added quietly.
+// ProductName is a constant so the identity sweep test can exempt exactly this
+// one pair of capitalised words.
 const ProductName = "Agent Manager"
 
 // Shell is everything the layout needs that is not the screen itself.
 type Shell struct {
 	Title string
-	// Theme is "light" or "dark" and is written to data-sm-theme on <html>, read
-	// server-side so the first paint is already the right theme (FR-054).
-	Theme string
-	// Next is the theme a click on the toggle selects.
-	Next string
-	// Active is the NavItem.ID of the current screen.
+	// Theme is "light" or "dark", written to data-sm-theme server-side so the
+	// first paint is already right.
+	Theme  string
+	Next   string
 	Active string
-	// Return is the path the theme form comes back to. It is validated as a local
-	// path before it reaches here.
+	// Return is the path the theme form comes back to, already validated as local.
 	Return string
-	// AppCSS, AppJS and VendorJS are content-addressed URLs, so the far-future
-	// cache headers on /static are safe.
+	// AppCSS, AppJS and VendorJS are content-addressed, so far-future caching is safe.
 	AppCSS   string
 	AppJS    string
 	VendorJS string
-	// Viewer is who this request resolved as, or nil when it resolved nobody.
-	//
-	// A pointer, with no default and no fallback (FR-116). The alternative — a
-	// Viewer value — has a zero form that renders a chip with an empty name over an
-	// empty role, which is the compiled-in chip again with its literals deleted:
-	// still an identity no screen verified. nil renders no chip at all, so a caller
-	// that forgets to resolve a viewer produces a page that is visibly missing
-	// something rather than a page that is quietly lying.
+	// Viewer is who this request resolved as. A pointer with no fallback: nil
+	// renders no chip, so a forgotten resolution is visibly missing rather than a
+	// zero-value chip claiming an unverified identity.
 	Viewer *view.Viewer
-	// Badges are the sidebar's three counts as this request read them, or nil when
-	// it could not. Nil renders no badges rather than three zeroes: a count of zero
-	// is a fact about the hub and must be earned (FR-121).
+	// Badges are the request's sidebar counts, or nil when unreadable. Nil renders
+	// no badges rather than zeroes, since a zero must be earned.
 	Badges *view.Badges
-	// NavGate is why an entry cannot be followed, keyed by NavItem.ID, and holds
-	// nothing for the entries that can. A gated entry is rendered disabled with
-	// its reason on hover rather than dropped: an entry that vanishes teaches a
-	// reader that the hub has fewer screens than it has, and they cannot ask for
-	// access to something they never saw.
+	// NavGate is why an entry cannot be followed, keyed by NavItem.ID. A gated
+	// entry renders disabled with its reason rather than vanishing, so readers know
+	// the screen exists and can ask for access.
 	NavGate map[string]string
 }
 
-// Badge is the count beside one nav entry, and "" when there is none to show.
-//
-// Absent rather than zero, in both directions: nil badges are a request that could
-// not read the counts, and a genuine zero is nothing worth a badge. The design
-// draws a badge on three entries and the other four never had one.
+// Badge is the count beside one nav entry, or "" for none, including a genuine zero.
 func (s Shell) Badge(id string) string {
 	if s.Badges == nil {
 		return ""
@@ -144,22 +117,17 @@ func (s Shell) ToggleIcon() string {
 
 // Facet is one multi-select facet menu.
 type Facet struct {
-	// Name is the URL and DOM identifier: "category" or "tag".
-	Name string
-	// Label is the trigger's text.
+	Name  string
 	Label string
-	// Signal is the datastar signal holding the selection as a JSON array in a
-	// string. Signal names without a leading underscore are sent to the server;
-	// the filter text signals are underscored and never are, which is what makes
-	// typing free.
+	// Signal holds the selection as a JSON array in a string. It is sent to the
+	// server; the underscored filter text signals never are, which keeps typing free.
 	Signal string
 	// QuerySignal is the client-only filter text signal.
 	QuerySignal string
 	Placeholder string
-	// Mono renders option labels in IBM Plex Mono, as the design does for tags.
-	Mono     bool
-	Options  []view.FacetOption
-	Selected []string
+	Mono        bool
+	Options     []view.FacetOption
+	Selected    []string
 }
 
 func (f Facet) OptionsID() string { return "facet-" + f.Name + "-options" }
@@ -179,15 +147,13 @@ type Catalog struct {
 	Category Facet
 	Tags     Facet
 	Import   Import
-	// Notice is a package delete's own acknowledgement, read back off the
-	// redirect: a delete leaves the package's own detail page 404ing, so
-	// this is where its outcome is said instead.
+	// Notice is a package delete's acknowledgement: the deleted package's own
+	// page 404s, so the outcome is said here.
 	Notice *view.Notice
 }
 
-// Signals is the initial datastar signal state, JSON so it is both a valid
-// datastar expression and safe: encoding/json escapes whatever arrived in the
-// query string, and templ escapes the attribute around it.
+// Signals is the initial datastar state as JSON: a valid datastar expression, with
+// query-string input escaped by encoding/json and the attribute by templ.
 func (c Catalog) Signals() string {
 	q := c.Page.Query
 	state := map[string]any{
@@ -200,14 +166,11 @@ func (c Catalog) Signals() string {
 		"dir":    string(q.Dir),
 		"page":   c.Page.Page,
 		"menu":   "",
-		// Client-only: the underscore prefix is datastar's convention for a signal
-		// that is never sent to the server, which is the whole point of the facet
-		// filter box.
+		// Underscore-prefixed signals are never sent to the server, which is the
+		// point of the client-side facet filter box.
 		"_catQuery": "",
 		"_tagQuery": "",
-		// The registration modal's whole state, for the same reason: opening it,
-		// switching tabs and attaching a file are client-side, so none of it is ever
-		// sent and none of it can trigger the debounced round trip.
+		// The registration modal's whole state is client-side, for the same reason.
 		"_importOpen":      false,
 		"_importTab":       string(view.ImportUpload),
 		"_importFile":      "",
@@ -219,9 +182,8 @@ func (c Catalog) Signals() string {
 		"_importVersion":   "",
 		"_importKind":      "",
 		"_importTags":      "",
-		// Set by data-indicator on the submit control while its request is in
-		// flight. Declared here so the disabled expression has a value to read on
-		// first paint rather than on the plugin's own initialisation order.
+		// Set by data-indicator while the submit request is in flight; declared so
+		// the disabled expression has a value on first paint.
 		"_importBusy": false,
 	}
 	encoded, err := json.Marshal(state)
@@ -242,8 +204,7 @@ func jsonList(values []string) string {
 	return string(encoded)
 }
 
-// The expressions below are built in Go rather than written inline so a facet's
-// signal name appears once.
+// The expressions below are built in Go so a facet's signal name appears once.
 
 func (f Facet) ToggleMenuExpr() string {
 	return "$menu = ($menu === '" + f.Name + "' ? '' : '" + f.Name + "'); $" + f.QuerySignal +
@@ -287,8 +248,7 @@ func (f Facet) SummaryClassExpr() string {
 
 func (f Facet) ClearExpr() string { return "$" + f.Signal + " = '[]'; $page = 1" }
 
-// SortExpr is the click behaviour of a sortable column header: descending first,
-// then ascending, computed from the state the server just rendered.
+// SortExpr toggles a sortable column: descending first, then ascending.
 func SortExpr(q view.CatalogQuery, key view.SortKey) string {
 	_, next, _ := q.SortState(key)
 	return "$sort = '" + string(key) + "'; $dir = '" + string(next) + "'; $page = 1"
@@ -306,7 +266,7 @@ func SortArrow(q view.CatalogQuery, key view.SortKey) string {
 	return arrow
 }
 
-// ChipExpr selects a single-selection filter chip (FR-011).
+// ChipExpr selects a single-selection filter chip.
 func ChipExpr(signal, value string) string {
 	return "$" + signal + " = '" + value + "'; $page = 1"
 }
@@ -315,8 +275,8 @@ func ChipClassExpr(signal, value string) string {
 	return "{'am-chip-on': $" + signal + " === '" + value + "'}"
 }
 
-// PageExpr moves the pager. Paging is a plain server round trip, like sorting and
-// the chips: only the facet menus keep state on the client.
+// PageExpr moves the pager. Paging is a server round trip; only the facet menus
+// keep state on the client.
 func PageExpr(page int) string {
 	return "$page = " + strconv.Itoa(page)
 }
@@ -333,9 +293,13 @@ func ScanClass(scan view.Scan) string {
 	return "am-scan am-scan-" + scan.Tone()
 }
 
-// VisibilityClass tones the visibility badge. Organisation carries no
-// modifier — it is the neutral, everyone-sees-it default, the same
-// unmodified look am-kind gives a skill.
+// SignatureClass reuses the scan badge's three tones.
+func SignatureClass(signature view.VersionSignature) string {
+	return "am-scan am-scan-" + signature.Tone()
+}
+
+// VisibilityClass tones the visibility badge; organisation, the neutral default,
+// carries no modifier.
 func VisibilityClass(visibility string) string {
 	switch visibility {
 	case "team", "private":
@@ -347,32 +311,24 @@ func VisibilityClass(visibility string) string {
 
 // ---- the registration modal --------------------------------------------------
 
-// Import is the modal's props. It is a distinct type from view.Import so a
-// component signature never becomes the place a new field is added silently.
+// Import is the modal's props, distinct from view.Import so no field is added to a
+// component signature silently.
 type Import struct {
 	Categories []string
-	// Visibilities is view.ImportVisibilityOptions already scoped to the
-	// viewer, computed by the handler (which holds the session) rather than
-	// by the template — a component has no session to read groups from.
+	// Visibilities is computed by the handler, which holds the session; a
+	// component has none to read groups from.
 	Visibilities []view.ImportOption
 	Preview      *view.ImportPreview
-	// Result is the outcome of a submission, when there has been one.
-	Result *view.ImportResult
+	Result       *view.ImportResult
 }
 
-// The modal's two round trips. Both are user-initiated — attaching a file and
-// pressing the button — so neither is reachable from a signal patch, which is
-// what keeps the R7 budget the underscore-prefixed signals establish.
-//
-// `contentType: 'form'` is what makes datastar send a FormData body rather than
-// the signal JSON, and the selector names the form rather than relying on
-// closest(): the submit control is a sibling of the fields, not a descendant of
-// anything that would make closest() obvious.
+// The modal's two round trips are user-initiated, so neither is reachable from a
+// signal patch. `contentType: 'form'` makes datastar send FormData, and the
+// selector names the form because the submit control is not inside it.
 const importFormSelector = "#import-form"
 
-// ImportAttachExpr previews the attached archive. The guard matters: clearing a
-// file picker also fires change, and posting an empty archive would answer FR-005
-// with a report about nothing.
+// ImportAttachExpr previews the attached archive. Clearing a file picker also
+// fires change, hence the guard against posting an empty archive.
 func ImportAttachExpr() string {
 	return "$_importFile = el.files.length ? el.files[0].name : ''; " +
 		"if (el.files.length) @post('/catalog/import/preview', {contentType: 'form', selector: '" +
@@ -383,26 +339,18 @@ func ImportSubmitExpr() string {
 	return "@post('/catalog/import', {contentType: 'form', selector: '" + importFormSelector + "'})"
 }
 
-// ImportSubmitDisabledExpr is T046's disabled-until-attached submit, plus the
-// in-flight guard. The attachment half applies to the upload tab only: the URL
-// tab has nothing to attach. The in-flight half is what stops a second
-// registration of the same version, which the api answers as a conflict and
-// which read as the button doing nothing at all.
+// ImportSubmitDisabledExpr disables submit until a file is attached (upload tab
+// only) and while a request is in flight, which stops a duplicate registration.
 func ImportSubmitDisabledExpr() string {
 	return "$_importBusy || ($_importTab === '" + string(view.ImportUpload) +
 		"' && $_importFile === '') ? 'disabled' : null"
 }
 
-// ImportBusySignal is the signal data-indicator sets while the registration is
-// in flight. The underscore keeps it out of every request, like the modal's
-// other state.
+// ImportBusySignal is set by data-indicator while registration is in flight.
 const ImportBusySignal = "_importBusy"
 
-// ImportKinds are the kind selector's options. The empty value is first and is
-// the default: kind is decided by which manifest is at the tree root, so a
-// choice here is a provisional label the fetcher overwrites once it has the
-// bytes, and "detect" is the honest default rather than a guess presented as a
-// setting.
+// ImportKinds are the kind selector's options. The empty "detect" value is the
+// default because the manifest at the tree root decides kind once fetched.
 func ImportKinds() []view.ImportOption {
 	return []view.ImportOption{
 		{Value: "", Label: "Detect from the manifest"},
@@ -411,13 +359,12 @@ func ImportKinds() []view.ImportOption {
 	}
 }
 
-// ImportTagsLimit is the tags field's maxlength, as a string for the
-// attribute. Mirrors view.MaxTagsFieldLength; the api still decides.
+// ImportTagsLimit is the tags maxlength attribute, mirroring
+// view.MaxTagsFieldLength; the api still decides.
 func ImportTagsLimit() string { return strconv.Itoa(view.MaxTagsFieldLength) }
 
-// ImportResultClass tones the outcome banner. A refusal is --dan and an
-// acknowledgement is --warn, not --ok: a 202 means the fetch is queued, and
-// nothing has been scanned yet (FR-008).
+// ImportResultClass tones the outcome banner. Acceptance is --warn, not --ok:
+// a 202 means the fetch is queued and nothing has been scanned.
 func ImportResultClass(result view.ImportResult) string {
 	if result.Registered {
 		return "am-import-note am-import-note-warn"
@@ -425,10 +372,8 @@ func ImportResultClass(result view.ImportResult) string {
 	return "am-import-note am-import-note-dan"
 }
 
-// ImportTabExpr selects a tab. It touches one signal and that signal is
-// underscore-prefixed, so switching tabs costs no round trip. The tab id is a
-// constant from view, never user text, which is why it is quoted the same way
-// ChipExpr quotes a filter value.
+// ImportTabExpr selects a tab via one underscore-prefixed signal, so it costs no
+// round trip. The tab id is a view constant, never user text.
 func ImportTabExpr(tab view.ImportTab) string {
 	return "$_importTab = '" + string(tab) + "'"
 }
@@ -441,25 +386,17 @@ func ImportTabSelectedExpr(tab view.ImportTab) string {
 	return "$_importTab === '" + string(tab) + "' ? 'true' : 'false'"
 }
 
-// ImportMarkStyle is the mark column's colour. The tone comes from the entry
-// rather than from the caller so a kept file and a dropped one cannot be given
-// the same glyph and different colours.
+// ImportMarkStyle derives the colour from the entry, so glyph and colour cannot
+// disagree.
 func ImportMarkStyle(entry view.ImportEntry) string {
 	return "width:12px;flex:0 0 12px;font-size:11px;color:var(--" + entry.Tone() + ")"
 }
 
 // ---- the two governance screens ----------------------------------------------
 
-// tone maps a view model's tone onto the four the stylesheet paints, and refuses
-// anything else.
-//
-// The guard is not paranoia about the call sites — every tone on these screens is
-// produced by a method in internal/web/view over a closed switch. It is here
-// because these classes are the one place a value derived from api data reaches a
-// class attribute rather than a text node, and templ escapes the attribute but
-// cannot know that `am-pill-` plus a rule pack's string is not a class this
-// stylesheet has ever heard of. An unknown tone renders neutral, which is legible
-// in both themes; a passed-through one renders unstyled, which is not.
+// tone maps a view model's tone onto the four the stylesheet paints. This is the
+// one place api-derived values reach a class attribute, and templ cannot know an
+// arbitrary `am-pill-` suffix is unstyled; an unknown tone renders neutral.
 func tone(want string) string {
 	switch want {
 	case "ok", "warn", "dan":
@@ -469,9 +406,7 @@ func tone(want string) string {
 	}
 }
 
-// PillClass is the shared pill: severity, finding state, version verdict and audit
-// kind are all one shape in the design, so they are one class here and the tone is
-// what separates them.
+// PillClass is the shared pill for severity, finding state, verdict and audit kind.
 func PillClass(want string) string { return "am-pill am-pill-" + tone(want) }
 
 func SeverityClass(severity view.Severity) string { return PillClass(severity.Tone()) }
@@ -482,14 +417,12 @@ func VerdictClass(verdict view.Verdict) string { return PillClass(verdict.Tone()
 
 func AuditKindClass(row view.AuditRow) string { return PillClass(row.KindTone()) }
 
-// CheckMarkClass colours the matrix's glyph. The glyph itself already carries the
-// result, so the colour is reinforcement rather than the only signal.
+// CheckMarkClass colours the matrix glyph, which already carries the result.
 func CheckMarkClass(check view.Check) string {
 	return "am-chk-mark am-chk-mark-" + tone(check.Result.Tone())
 }
 
-// StatValueClass tones one headline figure. An untoned figure reads in --fg, which
-// is the design's default for the two that are counts rather than warnings.
+// StatValueClass tones one headline figure; untoned reads in --fg.
 func StatValueClass(card view.StatCard) string {
 	if card.Tone == "" {
 		return "am-stat-value"
@@ -502,17 +435,15 @@ func NoticeClass(notice view.Notice) string {
 	return "am-gov-notice am-gov-notice-" + tone(notice.Tone)
 }
 
-// ReviewNoteLimit is the note field's maxlength, as a string for the attribute. It
-// mirrors the api's cap so a reviewer is stopped while typing rather than after
-// submitting; the api is still what decides.
+// ReviewNoteLimit is the note maxlength attribute, mirroring the api's cap so a
+// reviewer is stopped while typing; the api still decides.
 func ReviewNoteLimit() string { return strconv.Itoa(view.MaxReviewNote) }
 
 // OutcomeClass tones a profile entry's gate outcome pill.
 func OutcomeClass(outcome view.ProfileOutcome) string { return PillClass(outcome.Tone()) }
 
-// StateRowClass tones the Runtime screen's job-count rows: a state whose
-// presence itself is the concern (retryable, discarded) colours its count,
-// where every other state's is left neutral.
+// StateRowClass tones the Runtime job-count rows; only retryable and discarded,
+// whose presence is the concern, are coloured.
 func StateRowClass(row view.StateRow) string {
 	if row.Tone == "" {
 		return "am-kv-val"
@@ -522,38 +453,27 @@ func StateRowClass(row view.StateRow) string {
 
 // ---- catalog delete: package and version ---------------------------------
 
-// PackageDeleteConfirmDisabledExpr disables the package delete submit until
-// the typed text exactly matches the package id — the strongest confirmation
-// idiom available to a single text field, one click away from destructive.
-// namespace/name is validated at registration (pkgspec.ValidName and the
-// object-key segment pattern), so it carries no quote a JS string literal
-// would need escaped.
+// PackageDeleteConfirmDisabledExpr disables delete until the typed text matches
+// the package id. namespace/name is validated at registration, so it needs no JS
+// string escaping.
 func PackageDeleteConfirmDisabledExpr(id string) string {
 	return "$_deletePkgConfirm !== '" + id + "' ? 'disabled' : null"
 }
 
-// VersionDeleteConfirmDisabledExpr is the same idiom scoped to one version:
-// the confirmation text is namespace/name@version, so confirming the wrong
-// row's form does nothing even if two rows were open, which they cannot be.
+// VersionDeleteConfirmDisabledExpr is the same idiom with namespace/name@version.
 func VersionDeleteConfirmDisabledExpr(id, version string) string {
 	return "$_deleteVersionConfirm !== '" + id + "@" + version + "' ? 'disabled' : null"
 }
 
-// VersionDeleteToggleExpr opens one version row's confirm form and closes
-// whichever other row had it open — $_deleteVersion holds at most one
-// semver, the same single-open idiom the catalog's own facet menu ($menu)
-// uses — clearing the typed text so it can never carry over onto another
-// version's confirmation.
+// VersionDeleteToggleExpr opens one row's confirm form, closing any other and
+// clearing the typed text so it cannot carry over.
 func VersionDeleteToggleExpr(version string) string {
 	return "$_deleteVersion = ($_deleteVersion === '" + version + "' ? '' : '" + version +
 		"'); $_deleteVersionConfirm = ''"
 }
 
-// VersionDeleteFormStyleExpr is that row's confirm form's own visibility, as
-// data-style:display rather than data-show: the form is .am-field-row, which
-// is display:flex, and data-show only ever REMOVES display, which would
-// leave it at the flex box's block default — see import.templ's own note on
-// the same hazard.
+// VersionDeleteFormStyleExpr uses data-style:display, not data-show: the form is
+// display:flex, and data-show only removes display, leaving it block.
 func VersionDeleteFormStyleExpr(version string) string {
 	return "$_deleteVersion === '" + version + "' ? 'flex' : 'none'"
 }

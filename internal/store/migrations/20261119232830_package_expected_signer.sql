@@ -1,0 +1,2 @@
+-- Modify "package" table
+ALTER TABLE "public"."package" ADD CONSTRAINT "package_expected_signer_is_whole" CHECK (((expected_signer_issuer IS NULL) = (expected_signer_identity IS NULL)) AND (COALESCE(char_length(expected_signer_issuer), 0) <= 512) AND (COALESCE(char_length(expected_signer_identity), 0) <= 512)), ADD COLUMN "expected_signer_issuer" text NULL, ADD COLUMN "expected_signer_identity" text NULL;

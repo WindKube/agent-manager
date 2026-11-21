@@ -11,20 +11,15 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/riverqueue/river/rivermigrate"
+	"github.com/riverqueue/river/rivertype"
+	"github.com/riverqueue/rivercontrib/otelriver"
 )
 
-// The queue database is River's alone. Atlas describes the application
-// schema and River migrates its own with its own tool, so nothing in this
-// file may ever be pointed at AGENT_MANAGER_DATABASE_URL.
+// The queue database is River's alone: nothing here may ever be pointed at
+// AGENT_MANAGER_DATABASE_URL.
 
-// MigrateQueue applies River's own migrations to the queue database in process
-// and returns the versions it applied, newest last. It is idempotent: a second
-// run applies nothing.
-//
-// Deployments do not come through here — the migration job runs River's own CLI,
-// which the image ships and which wraps this same rivermigrate call. This is the
-// in-process path: a test that needs a migrated queue should not have to build a
-// second binary to get one.
+// MigrateQueue idempotently applies River's migrations in process and returns
+// the versions applied. Deployments use River's CLI instead; this path is for tests.
 func MigrateQueue(ctx context.Context, queueURL string, log *slog.Logger) ([]int, error) {
 	if queueURL == "" {
 		return nil, errors.New("queue database url is empty")
@@ -57,15 +52,17 @@ func MigrateQueue(ctx context.Context, queueURL string, log *slog.Logger) ([]int
 	return applied, nil
 }
 
-// NewInsertClient builds the insert-only River client the relay drains
-// into. It declares no queues and no workers, so it can insert but will
-// never work a job — the relay hands jobs over, the worker roles run them.
+// NewInsertClient builds the insert-only River client the relay drains into;
+// it declares no queues or workers, so it never works a job.
 func NewInsertClient(pool *pgxpool.Pool, log *slog.Logger) (*river.Client[pgx.Tx], error) {
 	if pool == nil {
 		return nil, errors.New("queue pool is nil")
 	}
 
-	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{Logger: log})
+	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
+		Logger:     log,
+		Middleware: []rivertype.Middleware{TraceMiddleware()},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("build the insert-only river client: %w", err)
 	}
@@ -84,4 +81,13 @@ func (i riverInserter) InsertJob(ctx context.Context, args river.JobArgs, opts *
 		return fmt.Errorf("insert %s into the queue: %w", args.Kind(), err)
 	}
 	return nil
+}
+
+// TraceMiddleware propagates the inserting span's context through job metadata
+// and opens a per-job span linked (not parented) to it, since jobs may run long after the request.
+func TraceMiddleware() rivertype.Middleware {
+	return otelriver.NewMiddleware(&otelriver.MiddlewareConfig{
+		EnableTracePropagation:      true,
+		EnableWorkSpanJobKindSuffix: true,
+	})
 }

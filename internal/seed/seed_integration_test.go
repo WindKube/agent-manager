@@ -1,18 +1,8 @@
 //go:build integration
 
-// The seed against a real Postgres and a real bucket (003 T009, T010).
-//
-// Three properties, and the first two are why the compose service that runs this
-// holds the object-store writer key: the seed writes ROWS AND BYTES, and it may
-// run again on every `docker compose up`, so it has to be idempotent in both
-// stores at once. The third is 001 SC-004 — every package the design draws is on
-// the catalog with the verdict the design gives it.
-//
-// The expectation in TestEverySeededPackage... is a HAND-TRANSCRIBED literal, not
-// a walk over the dataset this package exports. A test that reads the same
-// variable the production code reads asserts that the variable equals itself, and
-// the whole point of SC-004 is that the rows a person sees match a document
-// neither side generated.
+// The seed against a real Postgres and bucket: idempotent across both stores,
+// and every design package present with the design's verdict. designCatalog is
+// hand-transcribed on purpose, so it is not compared against itself.
 package seed_test
 
 import (
@@ -43,9 +33,7 @@ var (
 	db     *bun.DB
 	bucket *blob.Bucket
 
-	// The suite shares one database AND one bucket, because idempotence is a
-	// property of the pair: a second run against a fresh bucket would rewrite every
-	// object and prove nothing.
+	// Database and bucket are shared together, since idempotence is a property of the pair.
 	seedOnce   sync.Once
 	seedReport seed.Report
 	seedErr    error
@@ -90,8 +78,7 @@ func runSuite(m *testing.M) (int, error) {
 	}
 	defer pool.Close()
 
-	// The checked-in migrations, not the desired state: the grants the seed has to
-	// live inside are hand-written SQL that only the migration directory carries.
+	// The migrations, not the desired state, since only they carry the grants.
 	if applyErr := migrations.Apply(ctx, func(ctx context.Context, statement string) error {
 		_, execErr := pool.Exec(ctx, statement)
 		return execErr
@@ -114,9 +101,7 @@ func runSuite(m *testing.M) (int, error) {
 	return m.Run(), nil
 }
 
-// seededTables is every table the seed writes. It is enumerated rather than
-// discovered so that a table the seed stops writing fails this suite instead of
-// quietly dropping out of the comparison.
+// seededTables is enumerated, not discovered, so a table the seed stops writing fails the suite.
 var seededTables = []string{
 	"publisher", "category", "package", "version", "version_tag", "component",
 	"signature", "capability", "scan", "scan_check", "finding", "override",
@@ -191,8 +176,7 @@ func TestTheSeedWritesBundleBytesForEveryVersionItRecords(t *testing.T) {
 			version.Name, version.Semver)
 		require.Equal(t, version.SizeBytes, int64(len(body)))
 
-		// The manifest rides beside the bundle (FR-006), and index.json is what
-		// makes the version resolvable at all.
+		// The manifest sits beside the bundle, and index.json makes the version resolvable.
 		manifests, err := read.List(ctx, strings.TrimSuffix(version.ObjectKey, blob.BundleObject))
 		require.NoError(t, err)
 		require.Len(t, manifests, 2, "a version's prefix holds its bundle and its manifest")
@@ -203,8 +187,7 @@ func TestTheSeedWritesBundleBytesForEveryVersionItRecords(t *testing.T) {
 		require.Truef(t, exists, "%s/%s has no index.json", version.Namespace, version.Name)
 	}
 
-	// Every revision's lockfile is at the key its row names, so a profile the CLI
-	// asks for resolves to bytes rather than to a row alone.
+	// Every revision's lockfile is at the key its row names.
 	var keys []string
 	require.NoError(t, db.NewSelect().
 		ColumnExpr("object_key").TableExpr("revision").Scan(ctx, &keys))
@@ -220,10 +203,8 @@ func TestTheSeedWritesBundleBytesForEveryVersionItRecords(t *testing.T) {
 	require.Empty(t, staging, "the commit left objects in staging")
 }
 
-// designCatalog is the design's ten packages: its id, its kind and the verdict of
-// the version the catalog shows. Transcribed from
-// docs/design/agent-manager.dc.html items() at lines 867-920, where `scan:
-// 'pending'` is the `scanning` verdict.
+// designCatalog is the design's ten packages, transcribed from
+// docs/design/agent-manager.dc.html items(); `scan: 'pending'` is `scanning`.
 var designCatalog = []struct {
 	id      string
 	kind    string
@@ -265,8 +246,7 @@ func TestEverySeededPackageIsOnTheCatalogWithTheVerdictTheDesignSpecifies(t *tes
 	}
 	require.Equal(t, map[string]int{"plugin": 4, "skill": 6}, kinds)
 
-	// The whole curated vocabulary is offered, in curated order, whatever the
-	// counts are (FR-012).
+	// The whole curated vocabulary, in curated order, whatever the counts.
 	var names []string
 	for _, option := range page.Categories {
 		names = append(names, option.Value)
@@ -276,12 +256,7 @@ func TestEverySeededPackageIsOnTheCatalogWithTheVerdictTheDesignSpecifies(t *tes
 	}, names)
 }
 
-// TestTheSeedLeavesNoIdentityRowForSomeoneWhoCanSignIn asserts against the stored
-// rows what the dataset's own tests assert against the dataset (identities_test.go,
-// and seed.DirectoryUsers for why it matters). Both are worth having: the unit
-// test names the offending literal, and this one covers the whole write path — an
-// identity row reaching the table from a membership, an override or anywhere else
-// the seed grows a second identity writer.
+// The stored-rows counterpart of identities_test.go, covering every write path.
 func TestTheSeedLeavesNoIdentityRowForSomeoneWhoCanSignIn(t *testing.T) {
 	seeded(t)
 	ctx := t.Context()
@@ -306,9 +281,7 @@ func TestTheSeedLeavesNoIdentityRowForSomeoneWhoCanSignIn(t *testing.T) {
 		}
 	}
 
-	// The mapping is seeded whole even though no seeded identity can sign in: the
-	// two role-holding directory users resolve their roles through it on first
-	// login (SC-104).
+	// Directory users resolve their roles through this mapping on first sign-in.
 	var mapped []string
 	require.NoError(t, db.NewSelect().
 		ColumnExpr("group_name").TableExpr("group_role_map").Scan(ctx, &mapped))
@@ -316,10 +289,7 @@ func TestTheSeedLeavesNoIdentityRowForSomeoneWhoCanSignIn(t *testing.T) {
 	var unmapped []string
 	for _, user := range seed.DirectoryUsers {
 		if user.Group == seed.GroupUnmapped {
-			// FR-117's account. The row's ABSENCE is the requirement here, asserted
-			// rather than skipped: seeding a mapping for this group is the one edit
-			// that removes the only route to the no-role screen, and it would look
-			// like completing the mapping table.
+			// Its absence is the only route to the no-role screen.
 			require.NotContainsf(t, mapped, user.Group,
 				"%q now has a group_role_map row, so %q resolves a role and nobody in the local "+
 					"directory reaches the no-role screen", user.Group, user.Username)
@@ -330,14 +300,12 @@ func TestTheSeedLeavesNoIdentityRowForSomeoneWhoCanSignIn(t *testing.T) {
 			"%q has no group_role_map row, so %q would sign in with no role", user.Group, user.Username)
 	}
 	require.Len(t, unmapped, 1,
-		"exactly one directory user holds no role. Two would mean a coupling failure wearing "+
-			"FR-117's clothes; none would mean the screen is unreachable")
+		"exactly one directory user holds no role. Two would mean a coupling failure; "+
+			"none would mean the screen is unreachable")
 }
 
-// TestTheSeedRunsWithTheGrantsTheApiRoleHolds is the constraint the compose
-// service states: the seed connects as am_api. A table it must write but that
-// am_api holds no grant on is a permission error at run time and nowhere else, so
-// the whole load is replayed under `set role` rather than trusted to review.
+// The seed connects as am_api, so the whole load is replayed under `set role`
+// to catch a missing grant before run time.
 func TestTheSeedRunsWithTheGrantsTheApiRoleHolds(t *testing.T) {
 	seeded(t)
 	ctx := t.Context()

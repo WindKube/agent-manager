@@ -7,12 +7,13 @@
 -- models.EnumTypes(), so a drift between this file and the Go const sets fails
 -- the integration suite rather than surfacing as a runtime insert error.
 
-create type actor_kind as enum ('identity', 'system');
-create type audit_kind as enum ('fetch', 'scan', 'approve', 'profile', 'share', 'sync', 'login', 'policy', 'role', 'category', 'secret');
+create type actor_kind as enum ('identity', 'system', 'service-token');
+create type audit_kind as enum ('fetch', 'scan', 'approve', 'profile', 'share', 'sync', 'login', 'policy', 'role', 'category', 'secret', 'token', 'webhook');
+create type audit_subject_kind as enum ('package', 'version', 'finding', 'profile', 'revision', 'category', 'mapping', 'policy', 'identity', 'device', 'service-token', 'machine', 'webhook');
 create type capability_level as enum ('scoped', 'allowlisted', 'review');
 create type capability_source as enum ('inferred', 'expected');
 create type check_result as enum ('pass', 'fail', 'warn');
-create type component_kind as enum ('skill', 'mcp', 'ext');
+create type component_kind as enum ('skill', 'mcp', 'ext', 'agent', 'command', 'hook');
 create type device_auth_state as enum ('pending', 'approved', 'consumed', 'expired', 'denied');
 create type dist_tag as enum ('latest', 'archived', 'none');
 create type entry_mode as enum ('latest', 'pinned', 'range');
@@ -38,6 +39,6 @@ create type subject_kind as enum ('user', 'group');
 -- was never an install target in the sense the other two are. It will come back
 -- when there is a design for composing N packages into delimited, individually
 -- prunable regions of one file. See specs/002-agent-manager-cli/plan.md R2.
-create type sync_target_kind as enum ('claude-code', 'codex');
+create type sync_target_kind as enum ('claude-code', 'codex', 'opencode');
 create type verdict as enum ('scanning', 'clean', 'flagged', 'rejected');
 create type version_policy as enum ('floating-latest', 'pinned', 'range');

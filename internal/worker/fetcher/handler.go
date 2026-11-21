@@ -3,13 +3,16 @@ package fetcher
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 
 	"agent-manager/internal/blob"
 	"agent-manager/internal/bundle"
 	"agent-manager/internal/domain/pkgspec"
 	"agent-manager/internal/fetch"
+	"agent-manager/internal/metrics"
 	"agent-manager/internal/outbox"
 )
 
@@ -47,6 +50,7 @@ func (w *Worker) Fetch(ctx context.Context, job Job) error {
 	}
 
 	result, err := w.run(ctx, job)
+	fetched(job.Source.Kind, result, err)
 	if err != nil {
 		reason := ReasonOf(err)
 		log.Error().Err(err).Str("reason", string(reason)).Msg("fetch failed")
@@ -72,6 +76,19 @@ func (w *Worker) Fetch(ctx context.Context, job Job) error {
 	return nil
 }
 
+func fetched(source fetch.SourceKind, result Result, err error) {
+	outcome := "stored"
+	switch {
+	case err != nil && ReasonOf(err) != "":
+		outcome = string(ReasonOf(err))
+	case err != nil:
+		outcome = "error"
+	case result.AlreadyStored:
+		outcome = "unchanged"
+	}
+	metrics.FetchesTotal.WithLabelValues(string(source), outcome).Inc()
+}
+
 // run is the pipeline proper, with every step's failure classified.
 func (w *Worker) run(ctx context.Context, job Job) (Result, error) {
 	ref := job.SourceRef()
@@ -80,7 +97,23 @@ func (w *Worker) run(ctx context.Context, job Job) (Result, error) {
 		ref.Archive = bytes.NewReader(job.Source.Archive)
 	}
 
+	if job.Source.Kind == fetch.SourceGit {
+		pin, err := w.git.Resolve(ctx, ref)
+		if err != nil {
+			return Result{}, classify(job.String(), err)
+		}
+		if err := w.refuseMovedTag(ctx, job, pin); err != nil {
+			return Result{}, classify(job.String(), err)
+		}
+		ref.Commit = pin.Commit
+	}
+
 	tree, err := w.sources.Fetch(ctx, ref)
+	if err != nil {
+		return Result{}, classify(job.String(), err)
+	}
+
+	signature, verdict, err := w.verifySignatures(ctx, job.VersionID, tree)
 	if err != nil {
 		return Result{}, classify(job.String(), err)
 	}
@@ -90,9 +123,7 @@ func (w *Worker) run(ctx context.Context, job Job) (Result, error) {
 		return Result{}, classify(job.String(), err)
 	}
 
-	// A manifest that names its own version must agree with the version
-	// being registered, or the digest would be a lie about which release it
-	// is.
+	// A manifest's own version must match the one being registered.
 	if pkg.Semver != "" && pkg.Semver != job.Semver {
 		return Result{}, classify(job.String(),
 			fmt.Errorf("%w: manifest says %s, registration says %s", errVersionMismatch, pkg.Semver, job.Semver))
@@ -102,15 +133,13 @@ func (w *Worker) run(ctx context.Context, job Job) (Result, error) {
 			fmt.Errorf("%w: manifest name is %q, registration is for %q", pkgspec.ErrManifestInvalid, pkg.Name, job.Name))
 	}
 
-	// Pack is deterministic, which makes the digest a function of the tree
-	// alone.
+	// Pack is deterministic, so the digest depends only on the tree.
 	packed, digest, size, err := bundle.Pack(pkg.Files)
 	if err != nil {
 		return Result{}, classify(job.String(), err)
 	}
 
-	// Latest is false here and moved afterwards: which version is latest is
-	// decided under a row lock in the publish transaction below.
+	// Latest is decided later, under a row lock in the publish transaction.
 	commit, err := w.committer.Commit(ctx, job.VersionRef(), blob.VersionParts{
 		Bundle:             packed,
 		ManifestObjectName: pkg.ManifestObject,
@@ -131,13 +160,12 @@ func (w *Worker) run(ctx context.Context, job Job) (Result, error) {
 			hex.EncodeToString(commit.Bundle.Digest[:]), commit.Bundle.Size))
 	}
 
-	published, latest, err := w.publish(ctx, job, pkg, commit)
+	published, latest, err := w.publish(ctx, job, tree, pkg, commit, stored{signature: signature, verdict: verdict})
 	if err != nil {
 		return Result{}, classify(job.String(), err)
 	}
 	if !published {
-		// The transaction found the version already published, losing a race
-		// with the pre-flight check.
+		// Lost a race with the pre-flight check.
 		return Result{AlreadyStored: true, Package: pkg, Origin: tree.Origin}, nil
 	}
 
@@ -147,4 +175,29 @@ func (w *Worker) run(ctx context.Context, job Job) (Result, error) {
 		}
 	}
 	return Result{Commit: commit, Package: pkg, Origin: tree.Origin, Latest: latest}, nil
+}
+
+// refuseMovedTag refuses a tag that resolves to a different commit than any
+// version from the same repository recorded for it.
+func (w *Worker) refuseMovedTag(ctx context.Context, job Job, pin fetch.Pin) error {
+	if !pin.Tag {
+		return nil
+	}
+	var semver, namespace, name, recorded string
+	err := w.deps.DB.QueryRowContext(ctx,
+		`select ver.semver, pkg.namespace, pkg.name, ver.source_commit
+		   from version as ver join package as pkg on pkg.id = ver.package_id
+		  where ver.source_url = ? and ver.source_ref = ? and ver.source_commit <> ? and ver.id <> ?
+		  order by ver.created_at limit 1`,
+		pin.RepoURL, pin.Ref, pin.Commit, job.VersionID).Scan(&semver, &namespace, &name, &recorded)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return nil
+	case err != nil:
+		return fmt.Errorf("compare tag %s against the recorded commits: %w", pin.Ref, err)
+	}
+	return &TagMovedError{
+		Repo: pin.RepoURL, Tag: pin.Ref, Version: namespace + "/" + name + "@" + semver,
+		From: recorded, To: pin.Commit,
+	}
 }

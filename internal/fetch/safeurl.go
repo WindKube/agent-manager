@@ -232,3 +232,13 @@ func mustCIDRs(cidrs ...string) []*net.IPNet {
 	}
 	return out
 }
+
+// ReservedReason reports why ip is not a public address, or "" if it is one.
+// It is the same decision the client makes at dial time, for callers that
+// validate an address before anything is fetched.
+func ReservedReason(ip net.IP) string {
+	if v4 := ip.To4(); v4 != nil {
+		ip = v4
+	}
+	return reservedReason(ip)
+}

@@ -1,6 +1,4 @@
-// Tests live in package device, not device_test, so the never-polls-faster
-// negative control can zero Flow.slowDown directly. The clock is virtual;
-// nothing here actually sleeps.
+// Internal package so the negative control can zero Flow.slowDown directly.
 package device
 
 import (
@@ -80,7 +78,7 @@ type fakeHub struct {
 func (h *fakeHub) Authorize(_ context.Context, req AuthorizeRequest) (Authorization, error) {
 	h.authorizeCalls++
 	require.NotEmpty(h.t, req.ClientID, "client id must reach the transport")
-	require.NotEmpty(h.t, req.Host, "host must reach the transport (FR-001)")
+	require.NotEmpty(h.t, req.Host, "host must reach the transport")
 	if h.authErr != nil {
 		return Authorization{}, h.authErr
 	}
@@ -149,8 +147,7 @@ func newHub(t *testing.T, auth Authorization, steps []step, tail *step) *fakeHub
 	return &fakeHub{t: t, clk: newClock(), auth: auth, steps: steps, tail: tail}
 }
 
-// requiredInterval is RFC 8628 §3.2/§3.5 restated, hand-derived rather than
-// read off Flow.interval so a bug in the implementation can't self-validate.
+// requiredInterval is hand-derived from RFC 8628 rather than read off Flow.interval, so a bug can't self-validate.
 func requiredInterval(advertised time.Duration, slowDownsSeen int) time.Duration {
 	if advertised <= 0 {
 		advertised = 5 * time.Second
@@ -406,8 +403,7 @@ func TestSlowDown(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Equal(t, 15*time.Second, f.Interval())
-		// RFC 8628 §3.5: the widened interval governs the gap immediately
-		// following the slow_down, not the one after that.
+		// The widened interval governs the gap immediately following the slow_down.
 		require.Equal(t, []time.Duration{10 * time.Second, 15 * time.Second, 15 * time.Second}, h.clk.waits)
 	})
 
@@ -463,9 +459,7 @@ func TestIntervalNormalisation(t *testing.T) {
 	}
 }
 
-// TestBeginRefusesAnIntervalNoWindowCouldFit proves the failure is reported
-// as ErrProtocol naming both numbers, not misdiagnosed as ErrExpired (which
-// would send the user into a retry loop that can never succeed).
+// ErrExpired here would send the user into a retry loop that can never succeed.
 func TestBeginRefusesAnIntervalNoWindowCouldFit(t *testing.T) {
 	for _, tc := range []struct {
 		name            string
@@ -509,8 +503,6 @@ func TestBeginRefusesAnIntervalNoWindowCouldFit(t *testing.T) {
 	})
 }
 
-// TestSubSecondIntervalIsNotClampedUp proves this package enforces only the
-// hub's floor and imposes none of its own.
 func TestSubSecondIntervalIsNotClampedUp(t *testing.T) {
 	h := newHub(t, authorization(time.Minute, time.Millisecond),
 		[]step{{code: CodeAuthorizationPending}, {issued: issuedToken()}}, nil)
@@ -587,7 +579,7 @@ func TestTransportFailureEndsTheFlowWithItsOwnError(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = f.Wait(context.Background())
-	require.ErrorIs(t, err, boom, "the transport's diagnosis must survive (FR-040)")
+	require.ErrorIs(t, err, boom, "the transport's diagnosis must survive")
 	require.NotErrorIs(t, err, ErrDenied)
 	require.Equal(t, 2, f.Polls(), "a transport failure is not retried here")
 }
@@ -671,9 +663,7 @@ func TestIssuedTokenIsRefusedWhenItCannotBeUsed(t *testing.T) {
 	}
 }
 
-// TestNoCodeAndNoTokenSurvivesFormatting proves no credential leaks through
-// any fmt verb on Flow or Token; the user code is the one deliberate exception,
-// since it must be shown to the human.
+// The user code is the one deliberate exception, since it must be shown to the human.
 func TestNoCodeAndNoTokenSurvivesFormatting(t *testing.T) {
 	secrets := []string{testDeviceCode, testAccessToken, testRefresh}
 
@@ -721,7 +711,7 @@ func TestNoCodeAndNoTokenSurvivesFormatting(t *testing.T) {
 
 	for _, s := range rendered {
 		for _, secret := range secrets {
-			require.NotContains(t, s, secret, "FR-007: a credential reached a rendered string")
+			require.NotContains(t, s, secret, "a credential reached a rendered string")
 		}
 	}
 
@@ -743,8 +733,6 @@ func touchesTheClock(src string) []string {
 	return found
 }
 
-// TestPackageTouchesTheClockOnlyThroughClock enforces mechanically that only
-// clock.go may read the wall clock or block.
 func TestPackageTouchesTheClockOnlyThroughClock(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	require.NoError(t, err)

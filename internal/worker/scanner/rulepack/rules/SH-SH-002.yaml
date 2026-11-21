@@ -1,0 +1,20 @@
+id: SH-SH-002
+severity: medium
+check: shell-audit
+title: Tool grant pre-approves any shell command
+detail: |
+  A skill, agent or command in this package pre-approves `Bash` through its
+  `allowed-tools` or `tools` frontmatter without restricting which commands,
+  as `Bash` or `Bash(*)`. Every shell command it then asks for runs without a
+  prompt. A restriction such as `Bash(git status:*)` limits the grant to what
+  the package needs.
+match:
+  kind: plugin-surface
+  extract: granted-tool
+  condition: value-matches
+  pattern: '^Bash(\(\s*(\*|:\*|\*:\*)?\s*\))?$'
+evidence:
+  quote: matched-line
+fixtures:
+  trips: fixtures/SH-SH-002/hostile
+  clean: fixtures/SH-SH-002/benign

@@ -1,0 +1,244 @@
+image:
+  repository: ghcr.io/windkube/agent-manager
+  # Empty means the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+log:
+  level: info
+  format: json
+
+# Every role serves /metrics and /healthz here. The workers' liveness probe is
+# this listener, so it is always on.
+metrics:
+  port: 9090
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    # Extra labels, e.g. the `release` your Prometheus operator selects on.
+    labels: {}
+
+tracing:
+  # OTLP/HTTP base URL, e.g. http://otel-collector.monitoring:4318. Empty leaves
+  # tracing off.
+  otlpEndpoint: ""
+  # OTEL_TRACES_SAMPLER and its argument; empty is the SDK default
+  # (parentbased_always_on).
+  sampler: ""
+  samplerArg: ""
+
+podSecurityContext:
+  runAsNonRoot: true
+  # Numeric, because the image's USER is a name the kubelet cannot check.
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+# Applied to every pod.
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Each role below takes:
+#   env            non-secret AGENT_MANAGER_* settings, rendered into the pod
+#   secretEnv      the role's OWN credentials, rendered into its own Secret
+#   existingSecret a Secret you manage instead of secretEnv
+# Empty values are dropped rather than set to "", so an unset key keeps the
+# binary's default. The split mirrors compose.yaml: no role is handed a
+# credential another role holds, and web and notifier refuse to render one
+# they must never have.
+
+api:
+  replicas: 1
+  port: 8081
+  env:
+    AGENT_MANAGER_PUBLIC_BASE_URL: ""
+    # The web role's /cli screen.
+    AGENT_MANAGER_DEVICE_VERIFICATION_URL: ""
+    AGENT_MANAGER_OIDC_ISSUER: ""
+    AGENT_MANAGER_OIDC_CLIENT_ID: ""
+    AGENT_MANAGER_OIDC_REDIRECT_URL: ""
+    AGENT_MANAGER_BOOTSTRAP_ADMIN_GROUP: ""
+  secretEnv:
+    # As am_api.
+    AGENT_MANAGER_DATABASE_URL: ""
+    # As am_queue.
+    AGENT_MANAGER_RIVER_DATABASE_URL: ""
+    AGENT_MANAGER_BLOB_URL: ""
+    # The READ-ONLY object-store key.
+    AWS_ACCESS_KEY_ID: ""
+    AWS_SECRET_ACCESS_KEY: ""
+    AWS_REGION: ""
+    AGENT_MANAGER_OIDC_CLIENT_SECRET: ""
+    # Must equal web's.
+    AGENT_MANAGER_SESSION_MINT_SECRET: ""
+  existingSecret: ""
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {memory: 256Mi}
+
+web:
+  # More than one needs AGENT_MANAGER_WEB_COOKIE_KEY: without it each replica
+  # signs the sign-in round trip with its own key and rejects the others'.
+  replicas: 1
+  port: 8080
+  env:
+    AGENT_MANAGER_PUBLIC_BASE_URL: ""
+    # The api's public URL, for the command the Connect-the-CLI screen prints.
+    AGENT_MANAGER_WEB_HUB_URL: ""
+    AGENT_MANAGER_WEB_PROVIDER_NAME: ""
+    AGENT_MANAGER_OIDC_ISSUER: ""
+    AGENT_MANAGER_OIDC_BROWSER_BASE_URL: ""
+    AGENT_MANAGER_OIDC_CLIENT_ID: ""
+    AGENT_MANAGER_OIDC_REDIRECT_URL: ""
+  secretEnv:
+    AGENT_MANAGER_OIDC_CLIENT_SECRET: ""
+    AGENT_MANAGER_SESSION_MINT_SECRET: ""
+    # base64 of at least 32 random bytes (`openssl rand -base64 32`).
+    AGENT_MANAGER_WEB_COOKIE_KEY: ""
+  existingSecret: ""
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {memory: 256Mi}
+
+fetcher:
+  replicas: 1
+  env:
+    AGENT_MANAGER_FETCH_TIMEOUT: ""
+    AGENT_MANAGER_UPSTREAM_INTERVAL: ""
+  secretEnv:
+    # As am_fetcher.
+    AGENT_MANAGER_DATABASE_URL: ""
+    AGENT_MANAGER_RIVER_DATABASE_URL: ""
+    AGENT_MANAGER_BLOB_URL: ""
+    # The one object-store key that can WRITE.
+    AWS_ACCESS_KEY_ID: ""
+    AWS_SECRET_ACCESS_KEY: ""
+    AWS_REGION: ""
+    AGENT_MANAGER_GITHUB_TOKEN: ""
+  existingSecret: ""
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 512Mi}
+
+scanner:
+  replicas: 1
+  env:
+    AGENT_MANAGER_SCAN_BUDGET: ""
+    AGENT_MANAGER_SCAN_ENGINE_REQUIRED: ""
+  secretEnv:
+    # As am_scanner.
+    AGENT_MANAGER_DATABASE_URL: ""
+    AGENT_MANAGER_RIVER_DATABASE_URL: ""
+    AGENT_MANAGER_BLOB_URL: ""
+    # The read-only object-store key.
+    AWS_ACCESS_KEY_ID: ""
+    AWS_SECRET_ACCESS_KEY: ""
+    AWS_REGION: ""
+  existingSecret: ""
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 512Mi}
+
+notifier:
+  replicas: 1
+  env:
+    AGENT_MANAGER_WEBHOOK_TIMEOUT: ""
+  secretEnv:
+    # As am_notifier. No object-store key, ever.
+    AGENT_MANAGER_DATABASE_URL: ""
+    AGENT_MANAGER_RIVER_DATABASE_URL: ""
+  existingSecret: ""
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {memory: 256Mi}
+
+# Atlas then River's own migrator, as a pre-install/pre-upgrade hook.
+migrate:
+  secretEnv:
+    # As am_migrate.
+    AGENT_MANAGER_DATABASE_URL: ""
+    AGENT_MANAGER_RIVER_DATABASE_URL: ""
+  existingSecret: ""
+  backoffLimit: 2
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {memory: 256Mi}
+
+# The second scan engine (deploy/local/skill-scanner, published by
+# .github/workflows/release-skill-scanner-image.yaml). It holds no credential,
+# accepts traffic only from the scanner and has no egress at all.
+scanEngine:
+  enabled: false
+  image:
+    repository: ghcr.io/windkube/agent-manager/skill-scanner
+    # The engine's own version, not the hub's (SKILL_SCANNER_VERSION).
+    tag: "2.1.0"
+    pullPolicy: IfNotPresent
+  port: 8000
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 1Gi}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  web:
+    host: agent-manager.example.com
+  api:
+    host: hub.agent-manager.example.com
+  tls: []
+
+networkPolicy:
+  enabled: true
+  # Who may reach web's and api's HTTP ports. Empty means anyone; narrow it to
+  # your ingress controller.
+  publicFrom: []
+  # Who may scrape the metrics port. Empty means no one.
+  metricsFrom: []
+  dns:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+  # For each egress target below, an empty `to` means any destination on its
+  # ports. Postgres and the object store default to private addresses only, so
+  # the scanner cannot reach the internet through them: a public S3 endpoint
+  # needs its ranges added here.
+  postgres:
+    to: &private
+      - ipBlock: {cidr: 10.0.0.0/8}
+      - ipBlock: {cidr: 172.16.0.0/12}
+      - ipBlock: {cidr: 192.168.0.0/16}
+    ports: [5432]
+  objectStore:
+    to: *private
+    ports: [443]
+  # api and web reach the OIDC provider for discovery, token exchange and keys.
+  identityProvider:
+    to: []
+    ports: [443]
+  # Used only when tracing.otlpEndpoint is set.
+  otlp:
+    to: []
+    ports: [4318]
+  # fetcher and notifier reach arbitrary public hosts (forges, archives,
+  # webhook receivers). Everything private stays out of reach.
+  internetExcept:
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+    - 100.64.0.0/10
+    - 169.254.0.0/16
+    - 127.0.0.0/8

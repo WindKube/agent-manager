@@ -1,0 +1,23 @@
+id: SH-NET-005
+severity: medium
+check: network-allowlist
+title: Remote MCP server on a host the package does not declare
+detail: |
+  An http or sse MCP server in this package connects to a host that is not
+  declared. Declared means: the host of the manifest's `homepage` or
+  `repository` URL, or a subdomain of one, or a host in this rule's `allow`
+  list. Everything the agent sends to the server — prompts, file contents,
+  tool results — goes to that host.
+
+  An undeclared host is not proof of exfiltration, but a reviewer should know
+  who runs it before approving.
+match:
+  kind: plugin-surface
+  extract: url-argument
+  condition: host-not-declared
+  allow: [localhost, 127.0.0.1, "::1"]
+evidence:
+  quote: matched-node
+fixtures:
+  trips: fixtures/SH-NET-005/hostile
+  clean: fixtures/SH-NET-005/benign

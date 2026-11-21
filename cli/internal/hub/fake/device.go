@@ -13,9 +13,7 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/hub"
 )
 
-// userCodeAlphabet is Crockford base32 (no I, L, O, U), stricter than the
-// contract's regex (which admits L) on purpose: emitting only what the real
-// hub could emit stops a lax client parser from passing here.
+// userCodeAlphabet is Crockford base32, stricter than the contract's regex, matching what the real hub emits.
 const userCodeAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
 type deviceState int
@@ -49,9 +47,7 @@ func randomToken() string {
 	if _, err := rand.Read(b[:]); err != nil {
 		panic(fmt.Sprintf("fake: rand: %v", err))
 	}
-	// Opaque base64url, never a JWT: the hub's bearerFormat is `opaque`, and
-	// a decodable payload would let a test read an expiry here and fail
-	// against the real hub.
+	// Opaque, never a JWT, so no test can read an expiry here that the real hub wouldn't offer.
 	return base64.RawURLEncoding.EncodeToString(b[:])
 }
 
@@ -71,8 +67,7 @@ func randomUserCode() string {
 }
 
 func (h *Hub) deviceAuthorize(w http.ResponseWriter, r *http.Request) {
-	// 415/400, not the 422/501 the (stale) generated doc still shows for
-	// PR #14; matching the doc instead would pass what the real hub refuses.
+	// 415/400 as the real hub answers, not what the stale generated doc shows.
 	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
 		writeProblem(w, http.StatusUnsupportedMediaType, "Unsupported Media Type",
 			"body must be application/json")
@@ -116,9 +111,8 @@ func (h *Hub) deviceAuthorize(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// deviceToken implements RFC 8628 §3.4. Ordering is load-bearing and matches
-// the real hub: terminal states are decided before slow_down, so a
-// hammering client on a dead code gets the terminal answer, not a loop.
+// deviceToken implements RFC 8628 §3.4. Terminal states are decided before slow_down, as on the real
+// hub, so a hammering client on a dead code gets the terminal answer.
 func (h *Hub) deviceToken(w http.ResponseWriter, r *http.Request) {
 	// Form-encoded ONLY (RFC 8628 §3.4); a JSON branch would pass a test the real hub fails.
 	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/x-www-form-urlencoded") {
@@ -134,8 +128,7 @@ func (h *Hub) deviceToken(w http.ResponseWriter, r *http.Request) {
 	deviceCode := r.PostForm.Get("device_code")
 	clientID := r.PostForm.Get("client_id")
 
-	// invalid_grant, not RFC 6749's unsupported_grant_type: the contract's
-	// enum has no room for a response outside its five values.
+	// invalid_grant, since the contract's enum has no unsupported_grant_type.
 	if grant != "urn:ietf:params:oauth:grant-type:device_code" {
 		writeTokenError(w, hub.InvalidGrant)
 		return
@@ -165,8 +158,7 @@ func (h *Hub) deviceToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// slow_down only after a prior poll inside the advertised interval; a
-	// first poll is never slow_down, or login would be needlessly slower.
+	// A first poll is never slow_down.
 	if auth.polled && now.Sub(auth.lastPoll) < auth.interval {
 		// counts anyway: lastPoll still advances, so hammering keeps earning slow_down
 		auth.lastPoll = now
@@ -202,13 +194,10 @@ func (h *Hub) deviceToken(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// writeTokenError answers 400 as application/json, not problem+json: the
-// one route whose error body is an OAuth structure, not RFC 7807.
+// writeTokenError answers 400 as application/json, the one OAuth-shaped error body.
 func writeTokenError(w http.ResponseWriter, code hub.DeviceTokenErrorError) {
 	writeJSON(w, http.StatusBadRequest, "application/json", hub.DeviceTokenError{Error: &code})
 }
-
-// ---- Control's device half
 
 func (c control) ApproveDevice(userCode string) error {
 	return c.h.setDeviceState(userCode, deviceApproved)

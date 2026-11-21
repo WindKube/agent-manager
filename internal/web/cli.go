@@ -14,13 +14,6 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The Connect-the-CLI screen: a code entry form, the pending authorisation it
-// names, and the one confirm action.
-//
-// Confirming is post-redirect-get, and the redirect carries an outcome token
-// and never the user code — a value in a redirect URL reaches browser history
-// and a referrer header, and the code is bearer-equivalent for its validity.
-
 func (s *Server) cli(c *gin.Context) {
 	screen := view.CLI{
 		Command: cliLoginCommand(s.opts.HubURL),
@@ -35,13 +28,7 @@ func (s *Server) cli(c *gin.Context) {
 		return
 	}
 
-	if s.deps.Device == nil {
-		screen.Unavailable = true
-		s.renderCLI(c, http.StatusBadGateway, screen)
-		return
-	}
-
-	pending, err := s.deps.Device.LookupDeviceCode(session(c), code)
+	pending, err := s.deps.Hub.LookupDeviceCode(session(c), code)
 	switch {
 	case err == nil:
 		now := time.Now().UTC()
@@ -74,16 +61,10 @@ func (s *Server) renderCLI(c *gin.Context, status int, screen view.CLI) {
 	s.render(c, status, "Connect the CLI", "cli", components.CLIScreen(screen))
 }
 
-// confirmDeviceCode is the one decision this screen offers.
 func (s *Server) confirmDeviceCode(c *gin.Context) {
 	code := strings.TrimSpace(c.PostForm("user_code"))
 
-	if s.deps.Device == nil {
-		s.backToCLI(c, "unavailable", "")
-		return
-	}
-
-	host, err := s.deps.Device.ApproveDeviceCode(session(c), code)
+	host, err := s.deps.Hub.ApproveDeviceCode(session(c), code)
 	switch {
 	case err == nil:
 		s.backToCLI(c, "approved", host)
@@ -101,8 +82,8 @@ func (s *Server) confirmDeviceCode(c *gin.Context) {
 	}
 }
 
-// backToCLI redirects to the empty form carrying an outcome token the screen
-// looks its copy up from, never the user code itself.
+// backToCLI never carries the user code: it is bearer-equivalent and a redirect
+// URL leaks into history and referrers.
 func (s *Server) backToCLI(c *gin.Context, outcome, host string) {
 	values := url.Values{"outcome": {outcome}}
 	if host != "" {
@@ -137,8 +118,7 @@ func cliNotice(outcome, host string) *view.Notice {
 	}
 }
 
-// cliLoginCommand is the real command a person runs. Empty HubURL means this
-// role was not told the api's address, and the screen says so plainly.
+// cliLoginCommand is empty when this role was not told the api's address.
 func cliLoginCommand(hubURL string) string {
 	if hubURL == "" {
 		return ""

@@ -1,9 +1,5 @@
-// The extractor's own behaviour — caps, refused member kinds, path
-// validation — is internal/archive's suite; what is tested here is what
-// Stage adds on top: where the tree lands, that a leftover from an
-// interrupted run is cleared rather than tripped over, that the provenance
-// marker arrives with the same rename the rest of the entry does, and that
-// a planted staging directory cannot steer the extraction.
+// Extraction itself is covered by internal/archive; these tests cover only
+// what Stage adds on top.
 
 package apply
 
@@ -39,9 +35,8 @@ func file(name, body string) tarMember {
 	return tarMember{name: name, typeflag: tar.TypeReg, mode: 0o644, body: body}
 }
 
-// pack builds a tar+zstd bundle with the encoder settings the hub's bundle.Pack
-// uses, so the decoder meets the frame shape it will actually meet in
-// production.
+// pack uses the hub's bundle.Pack encoder settings, so the decoder sees the
+// production frame shape.
 func packBundle(t *testing.T, ms ...tarMember) []byte {
 	t.Helper()
 	var buf bytes.Buffer
@@ -76,8 +71,6 @@ func packBundle(t *testing.T, ms ...tarMember) []byte {
 	return buf.Bytes()
 }
 
-// skillBundle is the shape every target actually installs: SKILL.md plus a
-// subdirectory.
 func skillBundle(t *testing.T) []byte {
 	t.Helper()
 	return packBundle(t,
@@ -106,11 +99,9 @@ func requestFor(t *testing.T, f stageFixture, bundle []byte) StageRequest {
 	return StageRequest{Dest: f.dest, Digest: d, Bundle: bundle}
 }
 
-// TestStageExtractsIntoASiblingOfTheDestination asserts the staging
-// decision: <dest-parent>/.amctl-staging/sha256-<hex>, never a central
-// ~/.agent-manager/staging. Same-filesystem staging is the only thing that
-// makes the install a rename, and an agent directory is frequently a
-// symlink into a dotfiles repo on another mount.
+// TestStageExtractsIntoASiblingOfTheDestination: only same-filesystem staging
+// makes the install a rename, and an agent directory is often a symlink onto
+// another mount.
 func TestStageExtractsIntoASiblingOfTheDestination(t *testing.T) {
 	f := newStageFixture(t)
 	bundle := skillBundle(t)
@@ -136,8 +127,8 @@ func TestStageExtractsIntoASiblingOfTheDestination(t *testing.T) {
 	require.NoDirExists(t, f.dest, "Stage must not touch the destination; that is Swap's")
 }
 
-// TestStageThenSwapInstallsTheEntry is the two halves together, which is the
-// only way to see that the paths Stage produces are the paths Swap accepts.
+// TestStageThenSwapInstallsTheEntry checks the paths Stage produces are the
+// paths Swap accepts.
 func TestStageThenSwapInstallsTheEntry(t *testing.T) {
 	f := newStageFixture(t)
 	req := requestFor(t, f, skillBundle(t))
@@ -178,10 +169,6 @@ func TestStageThenSwapInstallsTheEntry(t *testing.T) {
 	require.Len(t, entries, 1, "a completed install leaves the entry and nothing else")
 }
 
-// TestStageClearsALeftoverStagedTree is what makes an interrupted run
-// converge. The negative control is the second half: internal/archive
-// requires its destination to be absent, so without the RemoveAll every
-// re-run of an entry that died during extraction would fail forever.
 func TestStageClearsALeftoverStagedTree(t *testing.T) {
 	f := newStageFixture(t)
 	req := requestFor(t, f, skillBundle(t))
@@ -197,17 +184,12 @@ func TestStageClearsALeftoverStagedTree(t *testing.T) {
 	require.NoDirExists(t, filepath.Join(staged.Path, "half-written"))
 	require.FileExists(t, filepath.Join(staged.Path, "SKILL.md"))
 
-	// The negative control: the extractor alone refuses an existing destination,
-	// so the clearing step is load-bearing rather than tidiness.
+	// The extractor alone refuses an existing destination, so clearing is load-bearing.
 	_, err = archive.Extract(context.Background(), bytes.NewReader(req.Bundle), staged.Path, archive.Limits{})
 	require.ErrorIs(t, err, archive.ErrUnsafeDestination)
 	require.Equal(t, archive.RejectDestExists, archive.ReasonOf(err))
 }
 
-// TestStageEnforcesTheExtractorsCaps proves the caps are actually plumbed and
-// that a refused bundle leaves nothing staged. The specific refusal is asserted,
-// not err != nil: a cap case that fails for the wrong reason has stopped testing
-// the cap.
 func TestStageEnforcesTheExtractorsCaps(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -268,10 +250,8 @@ func TestStageEnforcesTheExtractorsCaps(t *testing.T) {
 	}
 }
 
-// TestStageWritesTheProvenanceMarkerIntoTheStagedTree. It has to be in the
-// staged tree: a write into the destination after the swap would be a
-// second mutation with its own window, and it would fall outside the
-// fingerprint of the tree as installed.
+// TestStageWritesTheProvenanceMarkerIntoTheStagedTree: writing it after the
+// swap would be a second mutation outside the installed fingerprint.
 func TestStageWritesTheProvenanceMarkerIntoTheStagedTree(t *testing.T) {
 	f := newStageFixture(t)
 	req := requestFor(t, f, skillBundle(t))
@@ -292,9 +272,8 @@ func TestStageWritesTheProvenanceMarkerIntoTheStagedTree(t *testing.T) {
 		"SKILL.md must never be edited to stamp provenance: those bytes were just verified by digest")
 }
 
-// TestStageRefusesABundleThatShipsItsOwnMarker. A bundle carrying
-// .agent-manager.json would be forging its own provenance, and O_EXCL turns that
-// into a loud refusal instead of a silent overwrite.
+// TestStageRefusesABundleThatShipsItsOwnMarker: a bundle must not forge its
+// own provenance.
 func TestStageRefusesABundleThatShipsItsOwnMarker(t *testing.T) {
 	f := newStageFixture(t)
 	req := requestFor(t, f, packBundle(t,
@@ -337,12 +316,8 @@ func TestStageRefusesAMarkerNameThatIsNotAFilename(t *testing.T) {
 	}
 }
 
-// TestStageRefusesASymlinkedStagingDirectory is the containment hole that
-// os.MkdirAll followed by os.OpenRoot on the full path would leave open:
-// os.OpenRoot resolves its own argument normally, so a planted
-// .amctl-staging symlink would confine the root to wherever it points and
-// every extracted byte would land there, with no path outside the home
-// ever constructed.
+// TestStageRefusesASymlinkedStagingDirectory: os.OpenRoot on the full path
+// would follow a planted .amctl-staging symlink and extract wherever it points.
 func TestStageRefusesASymlinkedStagingDirectory(t *testing.T) {
 	outside := t.TempDir()
 	f := newStageFixture(t)
@@ -395,8 +370,6 @@ func TestStageRefusesAnUnusableRequest(t *testing.T) {
 	})
 }
 
-// TestStageCreatesTheAgentDirectoryChain — the skills directory does not exist
-// on a machine that has never run the agent, and staging is inside it.
 func TestStageCreatesTheAgentDirectoryChain(t *testing.T) {
 	f := newStageFixture(t)
 	require.NoDirExists(t, f.parent)
@@ -419,9 +392,8 @@ func TestDiscardRemovesTheStagedTree(t *testing.T) {
 	require.NoDirExists(t, staged.Root)
 }
 
-// TestPruneStagingRootRemovesOnlyAnEmptyStagingDirectory. The staging root is
-// shared by every entry under one parent, so removing it while another entry is
-// staged there would delete a tree that is about to be installed.
+// TestPruneStagingRootRemovesOnlyAnEmptyStagingDirectory: the staging root is
+// shared by every entry under one parent.
 func TestPruneStagingRootRemovesOnlyAnEmptyStagingDirectory(t *testing.T) {
 	f := newStageFixture(t)
 	first, err := Stage(context.Background(), requestFor(t, f, skillBundle(t)))
@@ -444,10 +416,6 @@ func TestPruneStagingRootRemovesOnlyAnEmptyStagingDirectory(t *testing.T) {
 	require.NoError(t, PruneStagingRoot(f.dest), "an absent staging root is not an error")
 }
 
-// TestStagedOpenRootReadsTheStagedTreeAndCannotEscapeIt. The fingerprint
-// hashes the staged content before the swap, and it must read through a
-// root so that a symlink planted in the staged tree cannot walk the hasher
-// out of it.
 func TestStagedOpenRootReadsTheStagedTreeAndCannotEscapeIt(t *testing.T) {
 	f := newStageFixture(t)
 	staged, err := Stage(context.Background(), requestFor(t, f, skillBundle(t)))
@@ -465,8 +433,6 @@ func TestStagedOpenRootReadsTheStagedTreeAndCannotEscapeIt(t *testing.T) {
 	require.Error(t, err, "a root confined to the staged tree must not read outside it")
 }
 
-// TestStageRefusesACancelledContext — the caller's cancellation is passed
-// through as the caller's, not reported as an archive defect.
 func TestStageRefusesACancelledContext(t *testing.T) {
 	f := newStageFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())

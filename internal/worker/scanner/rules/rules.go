@@ -1,12 +1,9 @@
-// Package rules is the scanner's rule pack: detection rules as versioned data,
-// not Go control flow, so tuning a rule needs no code change or deploy. A rule
-// INSTANCE — this command, this pattern, this severity — is a YAML file. A
-// detection CLASS — how a shell AST is walked, what "outside the expected set"
-// means — is Go, reached from a rule by a named `match.kind`, `extract` and
-// `condition` out of a closed vocabulary validated at load time (schema.go). A
-// rule naming a kind, extractor or condition this build does not implement is a
-// LOAD failure, never a rule that silently matches nothing: a rule that matches
-// nothing is indistinguishable from a package that is clean.
+// Package rules is the scanner's rule pack: detection rules as versioned YAML
+// data, so tuning a rule needs no deploy. Detection classes are Go, selected by
+// a closed `match.kind`/`extract`/`condition` vocabulary.
+//
+// A rule naming something this build does not implement fails the load, since a
+// rule that silently matches nothing is indistinguishable from a clean package.
 package rules
 
 import (
@@ -27,15 +24,11 @@ import (
 // ErrPack is the sentinel behind every rule-pack load failure.
 var ErrPack = errors.New("rule pack is not loadable")
 
-// The file layout of a pack directory. It is the same layout embedded in the
-// binary and mounted into the scanner container, so a pack can be copied from one
-// to the other without translation.
+// Pack directory layout, identical for the embedded and mounted copies.
 const (
-	// ManifestFile carries the pack's declared version and nothing else.
 	ManifestFile = "pack.yaml"
 	// RulesDir holds one YAML document per rule, named <RULE-ID>.yaml.
-	RulesDir = "rules"
-	// FixturesDir holds the trip/clean bundle each rule ships.
+	RulesDir    = "rules"
 	FixturesDir = "fixtures"
 )
 
@@ -52,18 +45,14 @@ const (
 type Kind string
 
 const (
-	// KindShellAST walks the shell syntax tree of every script in the bundle.
-	KindShellAST Kind = "shell-ast"
-	// KindRegex applies an RE2 pattern line by line to the files in scope.
-	KindRegex Kind = "regex"
-	// KindSchemaPath addresses the manifest document by JSON pointer.
-	KindSchemaPath Kind = "schema-path"
-	// KindDepManifest reads package.json, requirements.txt and go.mod.
-	KindDepManifest Kind = "dep-manifest"
+	KindShellAST      Kind = "shell-ast"
+	KindRegex         Kind = "regex"
+	KindSchemaPath    Kind = "schema-path"
+	KindDepManifest   Kind = "dep-manifest"
+	KindPluginSurface Kind = "plugin-surface"
 )
 
-// Extract names what a match yields as its target value: the thing a condition
-// then judges.
+// Extract names the value a match yields for its condition to judge.
 type Extract string
 
 const (
@@ -72,55 +61,54 @@ const (
 	ExtractPackageSpec  Extract = "package-spec"
 	ExtractMatchedText  Extract = "matched-text"
 	ExtractPointerValue Extract = "pointer-value"
+	// ExtractLauncherPackage yields `launcher spec` for npx, uvx, docker run and similar.
+	ExtractLauncherPackage Extract = "launcher-package"
+	// ExtractHookTrigger yields a hook's `Event:matcher`.
+	ExtractHookTrigger Extract = "hook-trigger"
+	ExtractGrantedTool Extract = "granted-tool"
 )
 
-// Condition is the named predicate applied to an extracted value. Adding one is a
-// Go change; using one is not.
+// Condition is the named predicate applied to an extracted value.
 type Condition string
 
 const (
-	// ConditionAlways matches on the presence of what was extracted.
 	ConditionAlways Condition = "always"
-	// ConditionHostNotInExpected is a host outside the version's expected
-	// capability set. Where no expected set was recorded every host matches, so
-	// nothing passes silently for want of a declaration.
-	ConditionHostNotInExpected Condition = "host-not-in-expected"
-	// ConditionPathOutsideExpected is a filesystem target that leaves the package
-	// tree and is not covered by the expected set.
+	// ConditionHostNotInExpected matches every host when nothing was declared,
+	// so omitting a declaration never passes silently.
+	ConditionHostNotInExpected   Condition = "host-not-in-expected"
 	ConditionPathOutsideExpected Condition = "path-outside-expected"
-	// ConditionVersionUnpinned is a dependency specifier that does not name one
-	// release.
-	ConditionVersionUnpinned Condition = "version-unpinned"
-	// ConditionValueMatches is the extracted value against the rule's own pattern.
-	ConditionValueMatches Condition = "value-matches"
+	ConditionVersionUnpinned     Condition = "version-unpinned"
+	ConditionValueMatches        Condition = "value-matches"
+	ConditionLauncherUnpinned    Condition = "launcher-unpinned"
+	// ConditionHostNotDeclared is a host outside the manifest's homepage and
+	// repository domains and match.allow.
+	ConditionHostNotDeclared Condition = "host-not-declared"
 )
 
 // Quote is which text a finding's evidence quotes.
 type Quote string
 
 const (
-	// QuoteMatchedNode is the source text of the matched syntax node.
 	QuoteMatchedNode Quote = "matched-node"
-	// QuoteMatchedLine is the whole source line the match sits on.
 	QuoteMatchedLine Quote = "matched-line"
-	// QuoteSchemaError is the validator's own message. It is the only quote a
-	// document-level check can produce, because there is no matched text.
+	// QuoteSchemaError is the validator's message, for document-level checks
+	// that have no matched text.
 	QuoteSchemaError Quote = "schema-error"
 )
 
 // Match is a rule's matcher configuration.
 type Match struct {
-	Kind      Kind      `yaml:"kind"`
-	Command   []string  `yaml:"command"`
-	Pattern   string    `yaml:"pattern"`
-	Paths     []string  `yaml:"paths"`
-	Pointer   string    `yaml:"pointer"`
+	Kind    Kind     `yaml:"kind"`
+	Command []string `yaml:"command"`
+	Pattern string   `yaml:"pattern"`
+	Paths   []string `yaml:"paths"`
+	Pointer string   `yaml:"pointer"`
+	// Allow lists extra hosts host-not-declared accepts.
+	Allow     []string  `yaml:"allow"`
 	Extract   Extract   `yaml:"extract"`
 	Condition Condition `yaml:"condition"`
 
-	// pattern and scope are compiled at load. A pattern that will not compile, or
-	// a glob that will not, is a pack that does not load — not a rule that quietly
-	// never fires.
+	// Compiled at load, so a bad pattern or glob fails the load instead of never firing.
 	pattern *regexp.Regexp
 	scope   []*regexp.Regexp
 }
@@ -128,8 +116,7 @@ type Match struct {
 // Regexp is the compiled RE2 pattern, or nil when the rule carries none.
 func (m Match) Regexp() *regexp.Regexp { return m.pattern }
 
-// InScope reports whether a bundle path is one this rule looks at. A rule with no
-// `paths` looks at every file its matcher understands.
+// InScope reports whether the rule looks at a path; no `paths` means every file.
 func (m Match) InScope(filePath string) bool {
 	if len(m.scope) == 0 {
 		return true
@@ -142,12 +129,9 @@ func (m Match) InScope(filePath string) bool {
 	return false
 }
 
-// Evidence is what a finding raised by this rule quotes.
 type Evidence struct {
 	Quote Quote `yaml:"quote"`
-	// ContextLines is honoured by the matchers that quote a line. Zero is a
-	// meaningful value (quote the matched line alone), so the schema's default of 1
-	// is applied at load rather than inferred from the zero value.
+	// ContextLines is a pointer because zero is meaningful; nil takes the default of 1.
 	ContextLines *int `yaml:"contextLines"`
 }
 
@@ -159,15 +143,13 @@ func (e Evidence) Lines() int {
 	return *e.ContextLines
 }
 
-// Fixtures are the two bundles every rule ships: one that must trip it and one
-// that must not. A rule with only a positive fixture is how a rule that matches
-// everything ships.
+// Fixtures are the bundles that must and must not trip the rule. The negative
+// one is what stops a rule that matches everything from shipping.
 type Fixtures struct {
 	Trips string `yaml:"trips"`
 	Clean string `yaml:"clean"`
 }
 
-// Rule is one detection rule.
 type Rule struct {
 	ID         string   `yaml:"id"`
 	Severity   Severity `yaml:"severity"`
@@ -180,9 +162,7 @@ type Rule struct {
 	References []string `yaml:"references"`
 }
 
-// Pack is a loaded rule pack.
 type Pack struct {
-	// version is what every scan records in `scan.pack_version`.
 	version  string
 	declared string
 	origin   string
@@ -190,18 +170,14 @@ type Pack struct {
 	fsys     fs.FS
 }
 
-// Version is the value written to `scan.pack_version`, half of the scan
-// idempotency key `unique (version_id, pack_version)`. It is the pack's DECLARED
-// version with a short digest of the rule content appended, so tuning a pattern
-// without bumping the declared version still moves the key: the next scan of an
-// already-scanned version runs instead of being suppressed by its own guard.
+// Version is the declared version plus a digest of the rule content, so tuning
+// a pattern without bumping the declared version still triggers rescans.
 func (p *Pack) Version() string { return p.version }
 
-// Declared is the version the pack states for itself, without the content digest.
+// Declared is the pack's own version, without the content digest.
 func (p *Pack) Declared() string { return p.declared }
 
-// Origin says where the pack came from, for the one log line that answers "which
-// rules is this scanner actually running?".
+// Origin says where the pack was loaded from.
 func (p *Pack) Origin() string { return p.origin }
 
 // All returns every rule, ordered by id.
@@ -218,15 +194,13 @@ func (p *Pack) For(checkID string) []Rule {
 	return out
 }
 
-// Len is how many rules the pack holds.
+// Len returns the number of rules.
 func (p *Pack) Len() int { return len(p.rules) }
 
-// FS is the pack's own filesystem, so a fixture path can be read back out of the
-// pack that declared it.
+// FS returns the filesystem the pack was loaded from.
 func (p *Pack) FS() fs.FS { return p.fsys }
 
-// Load reads a pack out of any filesystem: the embedded copy, an
-// AGENT_MANAGER_RULEPACK_DIR mount, or a test's fstest.MapFS.
+// Load reads a pack from any filesystem: embedded, mounted, or a test MapFS.
 func Load(fsys fs.FS, origin string) (*Pack, error) {
 	if fsys == nil {
 		return nil, fmt.Errorf("%w: no filesystem", ErrPack)
@@ -270,9 +244,7 @@ func Load(fsys fs.FS, origin string) (*Pack, error) {
 			return nil, fmt.Errorf("%w: %s declares rule %s, which %s already declares",
 				ErrPack, rulePath, rule.ID, previous)
 		}
-		// The filename carries the id so that `ls rules/` is the rule list and a
-		// copied file with an unedited id is caught here rather than by a reviewer
-		// wondering why their new rule never fires.
+		// Catches a copied rule file whose id was never edited.
 		if base := strings.TrimSuffix(strings.TrimSuffix(name, ".yaml"), ".yml"); base != rule.ID {
 			return nil, fmt.Errorf("%w: %s declares rule %s; the file must be named %s.yaml",
 				ErrPack, rulePath, rule.ID, rule.ID)
@@ -280,18 +252,14 @@ func Load(fsys fs.FS, origin string) (*Pack, error) {
 		seen[rule.ID] = rulePath
 		pack.rules = append(pack.rules, *rule)
 
-		// The digest covers the id and the file bytes of every rule, read in a
-		// deterministic order, so two directories with the same rules produce the
-		// same pack version and one edited byte produces a different one.
+		// ReadDir is sorted, so identical rules always produce the same digest.
 		_, _ = digest.Write([]byte(rule.ID + "\x00"))
 		_, _ = digest.Write(raw)
 		_, _ = digest.Write([]byte{'\n'})
 	}
 
 	if len(pack.rules) == 0 {
-		// A pack with no rules would scan every bundle to `clean` while reporting
-		// that every check passed. That is the worst answer this system can give, so
-		// it is a load failure rather than an empty pack.
+		// An empty pack would clear every bundle, so it is a load failure.
 		return nil, fmt.Errorf("%w: %s/ holds no rules", ErrPack, RulesDir)
 	}
 
@@ -320,12 +288,9 @@ func readManifest(fsys fs.FS) (string, error) {
 	return strings.TrimSpace(manifest.PackVersion), nil
 }
 
-// decodeRule turns one YAML document into a Rule, validated against the contract
-// schema and then against what this build can actually execute.
 func decodeRule(validator *jsonschema.Schema, rulePath string, raw []byte) (*Rule, error) {
-	// The YAML is round-tripped through JSON before validation: a JSON Schema
-	// validator applies JSON type rules and YAML's are different — `1.0` is a
-	// float in YAML and a string in JSON.
+	// Round-tripped through JSON because the validator applies JSON type rules,
+	// which differ from YAML's.
 	document, err := yamlAsJSON(raw)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s: %w", ErrPack, rulePath, err)
@@ -347,15 +312,10 @@ func decodeRule(validator *jsonschema.Schema, rulePath string, raw []byte) (*Rul
 	return &rule, nil
 }
 
-// compile turns the rule's text into the compiled artefacts the engine needs, and
-// refuses a combination this build cannot execute: the schema validates the
-// vocabulary one field at a time, so it cannot state that `condition:
-// value-matches` is meaningless without a pattern, or that `extract:
-// url-argument` has no reading under `dep-manifest`.
+// compile also rejects field combinations the per-field schema cannot express,
+// such as `value-matches` without a pattern.
 func (r *Rule) compile() error {
-	// The schema's minLength catches an omitted title or detail but not a
-	// whitespace-only one, and a finding a reviewer cannot read is exactly what
-	// this guard exists to make impossible to ship.
+	// The schema's minLength does not catch whitespace-only text.
 	if strings.TrimSpace(r.Title) == "" {
 		return errors.New("rule has no title")
 	}
@@ -389,10 +349,11 @@ func (r *Rule) compile() error {
 
 func (r *Rule) checkCombination() error {
 	allowed := map[Kind][]Extract{
-		KindShellAST:    {ExtractURLArgument, ExtractPathArgument, ExtractMatchedText},
-		KindRegex:       {ExtractURLArgument, ExtractPathArgument, ExtractMatchedText},
-		KindDepManifest: {ExtractPackageSpec},
-		KindSchemaPath:  {ExtractPointerValue, ExtractMatchedText},
+		KindShellAST:      {ExtractURLArgument, ExtractPathArgument, ExtractMatchedText, ExtractLauncherPackage},
+		KindRegex:         {ExtractURLArgument, ExtractPathArgument, ExtractMatchedText},
+		KindDepManifest:   {ExtractPackageSpec},
+		KindSchemaPath:    {ExtractPointerValue, ExtractMatchedText},
+		KindPluginSurface: {ExtractURLArgument, ExtractHookTrigger, ExtractGrantedTool},
 	}
 	extracts, known := allowed[r.Match.Kind]
 	if !known {
@@ -424,6 +385,14 @@ func (r *Rule) checkCombination() error {
 		if r.Match.Kind != KindDepManifest {
 			return fmt.Errorf("condition version-unpinned is only readable under dep-manifest, not %s", r.Match.Kind)
 		}
+	case ConditionLauncherUnpinned:
+		if r.Match.Extract != ExtractLauncherPackage {
+			return fmt.Errorf("condition launcher-unpinned needs extract launcher-package, not %q", r.Match.Extract)
+		}
+	case ConditionHostNotDeclared:
+		if r.Match.Extract != ExtractURLArgument {
+			return fmt.Errorf("condition host-not-declared needs extract url-argument, not %q", r.Match.Extract)
+		}
 	default:
 		return fmt.Errorf("match.condition %q is not a predicate this build implements", r.Match.Condition)
 	}
@@ -434,9 +403,7 @@ func (r *Rule) checkCombination() error {
 			return errors.New("match.kind regex needs match.pattern")
 		}
 	case KindShellAST:
-		// An empty `command` is legitimate — it means every command — but a rule
-		// that matches every command with condition `always` fires on every script
-		// in the catalog, which is a rule that says nothing.
+		// An empty `command` means every command; with `always` it would fire on every script.
 		if len(r.Match.Command) == 0 && r.Match.Condition == ConditionAlways {
 			return errors.New("match.kind shell-ast with no command list and condition always matches every script")
 		}
@@ -444,14 +411,13 @@ func (r *Rule) checkCombination() error {
 		if r.Evidence.Quote != QuoteSchemaError && r.Match.Pointer == "" {
 			return errors.New("match.kind schema-path needs match.pointer unless it quotes a schema-error")
 		}
-	case KindDepManifest:
+	case KindDepManifest, KindPluginSurface:
 	}
 	return nil
 }
 
-// globRegexp compiles a `paths` glob. `**` crosses directory separators and `*`
-// does not, which is the convention every reader already has from .gitignore and
-// from tooling configuration; path.Match alone cannot express the first.
+// globRegexp compiles a `paths` glob where `**` crosses directories and `*` does
+// not, which path.Match cannot express.
 func globRegexp(glob string) (*regexp.Regexp, error) {
 	if strings.TrimSpace(glob) == "" {
 		return nil, errors.New("match.paths holds an empty glob")

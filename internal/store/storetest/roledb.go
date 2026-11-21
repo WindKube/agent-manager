@@ -1,6 +1,5 @@
-// Package storetest holds test-only helpers for exercising a database role's
-// actual grants, rather than the superuser connection a testcontainers suite
-// hands out by default.
+// Package storetest holds test helpers that exercise a database role's real
+// grants instead of the testcontainers superuser.
 package storetest
 
 import (
@@ -16,14 +15,9 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// RoleDB opens a bun.DB whose every connection has run `set role` before it
-// is used. A test that ran its statements over the superuser connection
-// testcontainers hands out would never see a grant the role is missing —
-// e.g. bun appending RETURNING against an INSERT-only role.
-//
-// dsn connects as a superuser, or as anything already a member of role; no
-// password is provisioned for the application roles, and `set role` needs
-// none. The caller must call the returned close func to release the pool.
+// RoleDB opens a bun.DB whose connections all `set role` first, so missing
+// grants (e.g. RETURNING on an INSERT-only role) surface in tests. dsn must be
+// a superuser or a member of role; the caller must call closeFn.
 func RoleDB(ctx context.Context, dsn, role string) (db *bun.DB, closeFn func(), err error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {

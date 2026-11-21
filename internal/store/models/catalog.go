@@ -18,7 +18,7 @@ type Publisher struct {
 	bun.BaseModel `bun:"table:publisher,alias:pub"`
 
 	ID uuid.UUID `bun:"id,pk,type:uuid,notnull"`
-	// Slug is the whole owner, `example` or `example/platform`.
+	// Slug is the whole owner, e.g. `example` or `example/platform`.
 	Slug        string    `bun:"slug,type:text,notnull,unique"`
 	DisplayName string    `bun:"display_name,type:text,notnull"`
 	Verified    bool      `bun:"verified,type:boolean,notnull,default:false"`
@@ -39,9 +39,8 @@ type Category struct {
 	UpdatedAt time.Time `bun:"updated_at,type:timestamptz,notnull,default:now()"`
 }
 
-// Package is the named unit a publisher owns. Uniqueness is `(namespace,
-// name)`, not `(publisher_id, name)`, so two publishers cannot both own a
-// package that resolves to the same object key.
+// Package is the named unit a publisher owns. It is unique on `(namespace,
+// name)` so two publishers cannot resolve to the same object key.
 type Package struct {
 	bun.BaseModel `bun:"table:package,alias:pkg"`
 
@@ -52,16 +51,30 @@ type Package struct {
 	Kind        PackageKind       `bun:"kind,type:package_kind,notnull"`
 	CategoryID  *uuid.UUID        `bun:"category_id,type:uuid,nullzero"`
 	Visibility  PackageVisibility `bun:"visibility,type:package_visibility,notnull"`
-	// OwnerIdentityID is who registered the package, set once at creation and
-	// never reassigned by a later registration of the same package. Null on a
-	// package that predates this column: that is "no owner", not "everyone's",
-	// and the read path treats it accordingly rather than as private-by-accident.
+	// OwnerIdentityID is who first registered the package and is never
+	// reassigned. Null means "no owner", not "everyone's".
 	OwnerIdentityID *uuid.UUID `bun:"owner_identity_id,type:uuid,nullzero"`
 	// ParentPackageID is set when a skill is distributed inside a plugin.
 	ParentPackageID *uuid.UUID `bun:"parent_package_id,type:uuid,nullzero"`
 	LatestVersionID *uuid.UUID `bun:"latest_version_id,type:uuid,nullzero"`
-	CreatedAt       time.Time  `bun:"created_at,type:timestamptz,notnull,default:now()"`
-	UpdatedAt       time.Time  `bun:"updated_at,type:timestamptz,notnull,default:now()"`
+	// Source of the last registration. SourceURL is the canonical repo for git,
+	// the requested URL for an archive, null for an upload.
+	SourceKind         FetchSourceKind `bun:"source_kind,type:fetch_source_kind,nullzero"`
+	SourceURL          string          `bun:"source_url,type:text,nullzero"`
+	SourceRef          string          `bun:"source_ref,type:text,nullzero"`
+	SourceSubdirectory string          `bun:"source_subdirectory,type:text,nullzero"`
+	// TrackUpstream opts a git package into periodic registration of new tags
+	// matching TagPattern (a path.Match glob).
+	TrackUpstream  bool       `bun:"track_upstream,type:boolean,notnull,default:false"`
+	TagPattern     string     `bun:"tag_pattern,type:text,notnull,default:'v*'"`
+	LastCheckedAt  *time.Time `bun:"last_checked_at,type:timestamptz,nullzero"`
+	LastCheckError string     `bun:"last_check_error,type:text,nullzero"`
+	// ExpectedSignerIssuer (exact) and ExpectedSignerIdentity (whole-match RE2)
+	// constrain a version's verified Sigstore signer.
+	ExpectedSignerIssuer   string    `bun:"expected_signer_issuer,type:text,nullzero"`
+	ExpectedSignerIdentity string    `bun:"expected_signer_identity,type:text,nullzero"`
+	CreatedAt              time.Time `bun:"created_at,type:timestamptz,notnull,default:now()"`
+	UpdatedAt              time.Time `bun:"updated_at,type:timestamptz,notnull,default:now()"`
 
 	Publisher *Publisher `bun:"rel:belongs-to,join:publisher_id=id"`
 	Category  *Category  `bun:"rel:belongs-to,join:category_id=id"`
@@ -85,10 +98,14 @@ type Version struct {
 	Tags       []string        `bun:"tags,array,type:text[],notnull,default:'{}'"`
 	DistTag    DistTag         `bun:"dist_tag,type:dist_tag,notnull"`
 	Verdict    Verdict         `bun:"verdict,type:verdict,notnull"`
-	// Visible is commit-last: flipped true only once bytes, digest and metadata
-	// have all landed.
-	Visible   bool      `bun:"visible,type:boolean,notnull,default:false"`
-	CreatedAt time.Time `bun:"created_at,type:timestamptz,notnull,default:now()"`
+	// Visible is flipped last, once bytes, digest and metadata have all landed.
+	Visible bool `bun:"visible,type:boolean,notnull,default:false"`
+	// SourceURL is where the bytes came from: the canonical repo for git, the
+	// post-redirect URL (no userinfo or query) for an archive, null for an upload.
+	SourceURL    string    `bun:"source_url,type:text,nullzero"`
+	SourceRef    string    `bun:"source_ref,type:text,nullzero"`
+	SourceCommit string    `bun:"source_commit,type:text,nullzero"`
+	CreatedAt    time.Time `bun:"created_at,type:timestamptz,notnull,default:now()"`
 
 	Package      *Package      `bun:"rel:belongs-to,join:package_id=id"`
 	VersionTags  []*VersionTag `bun:"rel:has-many,join:id=version_id"`
@@ -117,6 +134,10 @@ type Component struct {
 	Kind      ComponentKind `bun:"kind,type:component_kind,notnull"`
 	Name      string        `bun:"name,type:text,notnull"`
 	Note      string        `bun:"note,type:text,nullzero"`
+	Event     string        `bun:"event,type:text,nullzero"`
+	Matcher   string        `bun:"matcher,type:text,nullzero"`
+	Transport string        `bun:"transport,type:text,nullzero"`
+	Target    string        `bun:"target,type:text,nullzero"`
 	CreatedAt time.Time     `bun:"created_at,type:timestamptz,notnull,default:now()"`
 
 	Version *Version `bun:"rel:belongs-to,join:version_id=id"`
@@ -137,7 +158,8 @@ type Capability struct {
 	Version *Version `bun:"rel:belongs-to,join:version_id=id"`
 }
 
-// Signature is registry-side metadata, never a manifest field.
+// Signature is registry-side metadata, never a manifest field. Kind none with
+// a null Result means unsigned.
 type Signature struct {
 	bun.BaseModel `bun:"table:signature,alias:sig"`
 
@@ -147,8 +169,19 @@ type Signature struct {
 	VerifiedAt *time.Time       `bun:"verified_at,type:timestamptz,nullzero"`
 	VerifiedBy string           `bun:"verified_by,type:text,nullzero"`
 	Result     *SignatureResult `bun:"result,type:signature_result,nullzero"`
-	CreatedAt  time.Time        `bun:"created_at,type:timestamptz,notnull,default:now()"`
-	UpdatedAt  time.Time        `bun:"updated_at,type:timestamptz,notnull,default:now()"`
+	// Bundle is null when what was found was not JSON.
+	Bundle json.RawMessage `bun:"bundle,type:jsonb,nullzero"`
+	// ArtifactDigest is the sha256 of the archive as downloaded, which the bundle
+	// was checked against; the stored object is a repack.
+	ArtifactDigest []byte `bun:"artifact_digest,type:bytea,nullzero"`
+	// SignerIssuer and SignerIdentity are set only on a verified row.
+	SignerIssuer   string     `bun:"signer_issuer,type:text,nullzero"`
+	SignerIdentity string     `bun:"signer_identity,type:text,nullzero"`
+	SignedAt       *time.Time `bun:"signed_at,type:timestamptz,nullzero"`
+	LogIndex       *int64     `bun:"log_index,type:bigint,nullzero"`
+	Reason         string     `bun:"reason,type:text,nullzero"`
+	CreatedAt      time.Time  `bun:"created_at,type:timestamptz,notnull,default:now()"`
+	UpdatedAt      time.Time  `bun:"updated_at,type:timestamptz,notnull,default:now()"`
 
 	Version *Version `bun:"rel:belongs-to,join:version_id=id"`
 }
@@ -157,8 +190,8 @@ const semverSortNumberWidth = 10
 
 const semverSortIdentWidth = 20
 
-// semverSortPad is the lowest character semver permits in an identifier, so a
-// short identifier sorts before a longer one that starts with it.
+// semverSortPad is the lowest character semver allows in an identifier, so a
+// short identifier sorts before a longer one sharing its prefix.
 const semverSortPad = "-"
 
 // SemverSort computes version.semver_sort: a key whose byte order is semver's
@@ -169,7 +202,6 @@ func SemverSort(raw string) (string, error) {
 		return "", fmt.Errorf("semver sort %q: empty", raw)
 	}
 
-	// This format requires major, minor and patch explicitly.
 	core := strings.TrimPrefix(trimmed, "v")
 	if i := strings.IndexAny(core, "-+"); i >= 0 {
 		core = core[:i]

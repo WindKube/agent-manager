@@ -9,10 +9,6 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The detail screen's derivations (US3). Everything here is a rendering
-// decision the api deliberately does not make, so this is where each one is
-// pinned.
-
 func TestTheOriginLineDistinguishesThePluginAndSkillVariants(t *testing.T) {
 	plugin := view.Package{
 		Kind: view.KindPlugin, SpecVersion: "1.0.0",
@@ -29,11 +25,7 @@ func TestTheOriginLineDistinguishesThePluginAndSkillVariants(t *testing.T) {
 		require.Equal(t, "Agent Skills spec · standalone skill", skill.Origin())
 	})
 
-	// US3 scenario 2 asks for a "named plugin VERSION" and the schema cannot
-	// supply one: `parent_package_id` points at a package, and nothing links a
-	// skill's version to the plugin version containing it. The parent's current
-	// latest is the only version available, and it would make the sentence
-	// rewrite itself when the parent publishes — so no version is stated.
+	// Nothing links a skill's version to the plugin version containing it, so no version is stated.
 	t.Run("a contained skill names the parent package and no version", func(t *testing.T) {
 		skill := view.Package{Kind: view.KindSkill,
 			ParentID: "example/platform-toolkit", ParentName: "platform-toolkit"}
@@ -47,8 +39,7 @@ func TestTheOriginLineDistinguishesThePluginAndSkillVariants(t *testing.T) {
 	})
 }
 
-// US3 scenarios 1 and 2 differ STRUCTURALLY. A skill does not get an empty
-// contents section; it gets no contents section.
+// A skill gets no contents section at all, not an empty one.
 func TestOnlyAPluginHasAContentsSection(t *testing.T) {
 	require.True(t, view.Package{Kind: view.KindPlugin}.HasContents())
 	require.False(t, view.Package{Kind: view.KindSkill}.HasContents())
@@ -63,7 +54,7 @@ func TestTheTreeIsDerivedFromTheComponentRows(t *testing.T) {
 		Components: []view.Component{
 			{Kind: "skill", Name: "terraform-module-review"},
 			{Kind: "skill", Name: "adr-writer"},
-			{Kind: "mcp", Name: "terraform-registry"},
+			{Kind: "mcp", Name: "terraform-registry", Path: "mcp.json#/mcpServers/terraform-registry"},
 			{Kind: "ext", Name: "com.anthropic.claude-code"},
 		},
 	}
@@ -77,6 +68,12 @@ func TestTheTreeIsDerivedFromTheComponentRows(t *testing.T) {
 		"├── mcp.json",
 		"└── com.anthropic.claude-code/",
 	}, "\n"), plugin.Tree())
+
+	t.Run("an MCP server declared by the Claude Code extension draws no mcp.json", func(t *testing.T) {
+		ext := view.Package{Kind: view.KindPlugin, Name: "guard", ManifestObject: "plugin.json",
+			Components: []view.Component{{Kind: "mcp", Name: "docs", Path: "com.anthropic.claude-code/.mcp.json#/mcpServers/docs"}}}
+		require.NotContains(t, ext.Tree(), "mcp.json")
+	})
 
 	t.Run("a plugin with no mcp component draws no mcp.json", func(t *testing.T) {
 		bare := view.Package{Kind: view.KindPlugin, Name: "solo", ManifestObject: "plugin.json",
@@ -98,8 +95,7 @@ func TestTheCapabilityComparisonNamesTheRelationshipAndNotADecision(t *testing.T
 		tone string
 	}{
 		{
-			// FR-027: with no expectation recorded, everything is surfaced rather
-			// than silently accepted.
+			// With no expectation recorded, everything is surfaced rather than silently accepted.
 			name: "inferred with nothing declared",
 			row:  view.CapabilityRow{Name: "network", Inferred: facet("allowlisted")},
 			want: view.CapabilityUndeclared, tone: "warn",
@@ -122,9 +118,7 @@ func TestTheCapabilityComparisonNamesTheRelationshipAndNotADecision(t *testing.T
 			want: view.CapabilityWithin, tone: "fg2",
 		},
 		{
-			// Declaring MORE than the bytes do is not a finding. It is a publisher
-			// who left themselves room, and colouring it as a problem would train
-			// people to ignore the column.
+			// Declaring more than the bytes need is not a problem and must not be coloured as one.
 			name: "the publisher declared more than the bytes demand",
 			row: view.CapabilityRow{Name: "network",
 				Inferred: facet("allowlisted"), Expected: facet("review")},
@@ -147,21 +141,15 @@ func TestTargetsSayWhenTheyAreNotTheWholeSet(t *testing.T) {
 	require.Empty(t, view.CapabilityFacet{}.Targets())
 }
 
-// FR-019's tag column, and the one thing about it that is not stored.
 func TestAVersionShowsItsDistributionTagAndItsDerivedPinCountSeparately(t *testing.T) {
 	latest := view.PackageVersion{Version: "2.4.1", DistTag: "latest"}
 	require.Equal(t, "latest", latest.Tag())
 	require.Empty(t, latest.PinLabel())
 
-	// The design's middle row: neither latest nor archived, but pinned. `pinned
-	// by N` is not a dist_tag value — it is derived from profile pins — so the
-	// version carries `none` and a count.
 	pinned := view.PackageVersion{Version: "2.4.0", DistTag: "none", PinnedBy: 2}
 	require.Empty(t, pinned.Tag())
 	require.Equal(t, "pinned by 2", pinned.PinLabel())
 
-	// And a version is routinely both, which the design's single tag column
-	// cannot express and two badges can.
 	both := view.PackageVersion{Version: "3.0.0", DistTag: "latest", PinnedBy: 1}
 	require.Equal(t, "latest", both.Tag())
 	require.Equal(t, "pinned by 1", both.PinLabel())
@@ -173,9 +161,7 @@ func TestADependentProfileShowsHowItResolvesThePackage(t *testing.T) {
 	require.Equal(t, "^1.2", view.Dependent{Mode: "range", Pin: "^1.2"}.Resolution())
 }
 
-// Decision A, applied: the count beside an enumerable set is that enumeration's
-// length. There is no head count, because a membership row can name a group and
-// nothing here knows how many people are in one.
+// The count is the list's length, never a head count: a membership can name a group.
 func TestTheDependentsLineCountsWhatItLists(t *testing.T) {
 	require.Equal(t, "No profile you can see uses this package",
 		view.Package{}.DependentsLine())
@@ -194,9 +180,7 @@ func TestTheDependentsLineCountsWhatItLists(t *testing.T) {
 func TestTheManifestIsIndentedForDisplayAndNotReEncoded(t *testing.T) {
 	p := view.Package{Manifest: `{"name":"x","keywords":["b","a"],"version":"1.0.0"}`}
 
-	// Key order is preserved: json.Indent is textual, so a reviewer reading a
-	// manifest precisely because they do not trust it sees the publisher's own
-	// ordering rather than Go's.
+	// Key order is preserved, not Go's map order.
 	require.Equal(t, "{\n  \"name\": \"x\",\n  \"keywords\": [\n    \"b\",\n    \"a\"\n  ],\n  \"version\": \"1.0.0\"\n}",
 		p.ManifestText())
 
@@ -209,13 +193,10 @@ func TestTheManifestIsIndentedForDisplayAndNotReEncoded(t *testing.T) {
 func TestTheManifestPanelNamesWhichDocumentItIsShowing(t *testing.T) {
 	require.Equal(t, "plugin.json",
 		view.Package{Kind: view.KindPlugin, ManifestObject: "plugin.json"}.ManifestPanelTitle())
-	// The column holds the FRONTMATTER as json, not the SKILL.md file, and the
-	// heading says which of the two a reader is looking at.
 	require.Equal(t, "SKILL.md frontmatter",
 		view.Package{Kind: view.KindSkill, ManifestObject: "SKILL.md"}.ManifestPanelTitle())
 }
 
-// The link out of the catalog, and the reason it validates rather than escapes.
 func TestPackageHrefRefusesAnIdThatIsNotTwoObjectKeySegments(t *testing.T) {
 	require.Equal(t, "/packages/example/platform-toolkit",
 		view.PackageHref("example/platform-toolkit"))
@@ -239,8 +220,7 @@ func TestPackageHrefRefusesAnIdThatIsNotTwoObjectKeySegments(t *testing.T) {
 
 func TestProfileHrefRefusesASlugThatCouldClimbOut(t *testing.T) {
 	require.Equal(t, "/profiles/platform-engineer", view.ProfileHref("platform-engineer"))
-	// A slug is allowed to be several segments — internal/blob's profile keys say
-	// so — and each one is checked.
+	// A slug may be several segments, and each is checked.
 	require.Equal(t, "/profiles/example/platform-engineer", view.ProfileHref("example/platform-engineer"))
 
 	for _, hostile := range []string{"../admin", "", "a/../../b", "/x"} {
@@ -248,9 +228,6 @@ func TestProfileHrefRefusesASlugThatCouldClimbOut(t *testing.T) {
 	}
 }
 
-// US5's add-to-profile control (view.Package.ProfileOptions) groups by
-// visibility and knows which options already hold the package — both derived
-// from data the screen already reads, never a second request per profile.
 func TestProfileOptionsGroupByVisibility(t *testing.T) {
 	pkg := view.Package{ProfileOptions: []view.ProfileOption{
 		{Slug: "kw-private", Visibility: "private"},
@@ -276,7 +253,32 @@ func TestProfileOptionsHeldMarksExactlyTheDependentSlugs(t *testing.T) {
 	require.True(t, marked[0].Held, "the dependent profile is marked held")
 	require.False(t, marked[1].Held, "a profile absent from Dependents is not held")
 
-	// The input is never mutated: a caller building options once and reusing
-	// them for a second package must not see the first package's answer.
+	// The input slice is never mutated.
 	require.False(t, options[0].Held)
+}
+
+func TestComponentsAreGroupedByKindWithTheirSurface(t *testing.T) {
+	p := view.Package{Kind: view.KindPlugin, Components: []view.Component{
+		{Kind: "skill", Name: "a"},
+		{Kind: "mcp", Name: "local", Note: "stdio", Transport: "stdio", Target: "npx -y pkg@1.2.3"},
+		{Kind: "hook", Name: "PreToolUse", Event: "PreToolUse", Target: "./guard.sh"},
+		{Kind: "hook", Name: "PostToolUse", Event: "PostToolUse", Matcher: "Edit"},
+		{Kind: "hook", Name: "SessionStart", Event: "SessionStart", Target: "./start.sh"},
+		{Kind: "agent", Name: "reviewer", Note: "Reviews."},
+	}}
+
+	groups := p.ComponentGroups()
+	labels := make([]string, 0, len(groups))
+	for _, group := range groups {
+		labels = append(labels, group.Label)
+	}
+	require.Equal(t, []string{"Skills", "Agents", "Hooks", "MCP servers"}, labels, "empty kinds are omitted")
+	require.Len(t, groups[2].Components, 3)
+
+	require.Equal(t, "PreToolUse · matcher every tool · ./guard.sh", groups[2].Components[0].Detail())
+	require.Equal(t, "PostToolUse · matcher Edit", groups[2].Components[1].Detail())
+	require.Equal(t, "SessionStart · ./start.sh", groups[2].Components[2].Detail(), "no tool matcher on a session event")
+	require.Equal(t, "stdio · npx -y pkg@1.2.3", groups[3].Components[0].Detail())
+	require.Equal(t, "Reviews.", groups[1].Components[0].Detail())
+	require.Equal(t, "1 skill · 1 MCP · 1 agent · 3 hooks · 0 extensions", p.ContentsNote())
 }

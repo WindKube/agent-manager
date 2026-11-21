@@ -56,16 +56,18 @@ type Change struct {
 	Path    string `json:"path,omitempty"`
 }
 
-// Skip is one entry that was resolved and then not installed: the hub's own
-// reason verbatim (FR-011), or this CLI's own reason when it is the one that
-// could not install the entry's kind or write its target. Target is set only
-// for the latter, since the hub reasons per package rather than per target.
+// Skip is one entry that was resolved and then not installed, with the hub's reason verbatim or
+// this CLI's own. Target is set only for the latter, since the hub reasons per package.
 type Skip struct {
 	Package string `json:"package"`
 	Version string `json:"version,omitempty"`
 	Target  string `json:"target,omitempty"`
-	Reason  string `json:"reason"`
-	Detail  string `json:"detail,omitempty"`
+
+	// Component is set when one part of an installed plugin was not placed: `<kind> <name>`.
+	Component string `json:"component,omitempty"`
+
+	Reason string `json:"reason"`
+	Detail string `json:"detail,omitempty"`
 }
 
 // SyncResult is produced by `amctl sync` from the plan internal/plan computed.
@@ -80,9 +82,7 @@ type SyncResult struct {
 	Removed   []Change `json:"removed"`
 	Skipped   []Skip   `json:"skipped"`
 
-	// Failed is an entry this run abandoned: digest mismatch, unservable version,
-	// refused pre-signed URL. Separate from Skipped because a skip exits 0 and a
-	// failure sets the exit code.
+	// Failed is separate from Skipped because a skip exits 0 and a failure sets the exit code.
 	Failed []Skip `json:"failed"`
 
 	Conflicts []Change `json:"conflicts"`
@@ -133,7 +133,13 @@ func (r SyncResult) Human(w io.Writer) error {
 		}
 	}
 	for _, s := range rest {
-		if _, err := fmt.Fprintf(w, "  %-9s %s %s: %s\n", "skip", s.Package, s.Version, s.Reason); err != nil {
+		var err error
+		if s.Component != "" {
+			_, err = fmt.Fprintf(w, "  %-9s %s %s for %s: %s\n", "skip", s.Package, s.Component, s.Target, s.Reason)
+		} else {
+			_, err = fmt.Fprintf(w, "  %-9s %s %s: %s\n", "skip", s.Package, s.Version, s.Reason)
+		}
+		if err != nil {
 			return err
 		}
 	}
@@ -171,9 +177,7 @@ type ProfileStatus struct {
 	HasDrift bool      `json:"has_drift"`
 }
 
-// StatusResult is produced by `amctl status`, read from the installation record
-// and never from the network. A machine that has never synced is a valid result
-// with Synced false, not an error.
+// StatusResult is produced by `amctl status` from the installation record, never the network.
 type StatusResult struct {
 	Hub      string          `json:"hub"`
 	Identity string          `json:"identity"`
@@ -245,25 +249,17 @@ func joinOr(values []string, empty string) string {
 	return out
 }
 
-// skipTargetUnwritable mirrors plan.SkipTargetUnwritable's wire value. Kept as
-// a literal rather than an import: this package renders whatever string
-// internal/plan put in Skip.Reason and otherwise has no opinion on the hub's
-// or the CLI's vocabulary, and importing internal/plan here just to name one
-// of its constants would make output depend on the package that depends on it.
+// skipTargetUnwritable mirrors plan.SkipTargetUnwritable; importing internal/plan would create a cycle.
 const skipTargetUnwritable = "target-unwritable"
 
-// targetSkipGroup is every entry skipped under one target this build cannot
-// write, collapsed to a count.
 type targetSkipGroup struct {
 	target string
 	detail string
 	count  int
 }
 
-// groupTargetUnwritableSkips separates a target-unwritable skip — repeated
-// once per entry a gated target would have received — from every other skip,
-// and collapses the former by target. A profile with a dozen entries under
-// one gated target must print one line naming it, not a dozen identical ones.
+// groupTargetUnwritableSkips collapses target-unwritable skips by target, so a gated target prints
+// one line rather than one per entry.
 func groupTargetUnwritableSkips(skips []Skip) (groups []targetSkipGroup, rest []Skip) {
 	index := map[string]int{}
 	for _, s := range skips {

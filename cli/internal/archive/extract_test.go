@@ -15,11 +15,11 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/stretchr/testify/require"
+
+	"github.com/WindKube/agent-manager/cli/archiveguard"
 )
 
-// Every hostile archive is built here rather than committed as a binary fixture,
-// which cannot be reviewed. Negative cases assert the specific Reason through
-// requireRefusal, and each cap case puts the other caps out of the way.
+// Hostile archives are built here rather than committed as unreviewable binary fixtures.
 
 type member struct {
 	name     string
@@ -104,7 +104,6 @@ func writeZeros(t *testing.T, w io.Writer, n int64) {
 	}
 }
 
-// newDest returns a path that does not exist inside a parent that does.
 func newDest(t *testing.T) string {
 	t.Helper()
 	return filepath.Join(t.TempDir(), "skill")
@@ -479,8 +478,7 @@ func TestExtractRefusesPluginAdoptingSubdir(t *testing.T) {
 	}
 }
 
-// A directory, then a symlink inside it pointing out, then a write through it
-// with a clean relative path. It must be refused at entry two, and that is asserted.
+// A directory, a symlink inside it pointing out, then a write through it: refused at entry two.
 func TestExtractSymlinkEscape(t *testing.T) {
 	t.Parallel()
 
@@ -566,16 +564,14 @@ func TestExtractHardlinkEscape(t *testing.T) {
 func TestExtractDeepPath(t *testing.T) {
 	t.Parallel()
 
-	deep := strings.Repeat("d/", DefaultMaxPathDepth+8) + "SKILL.md"
+	deep := strings.Repeat("d/", archiveguard.DefaultMaxPathDepth+8) + "SKILL.md"
 	data := pack(t, regular(deep, "x"))
 
 	_, err := Extract(context.Background(), bytes.NewReader(data), newDest(t), Limits{})
 	requireRefusal(t, err, ErrTooLarge, CapPathDepth)
 }
 
-// A real bomb against the real default caps: 64 MiB of zeros in a few kilobytes.
-// The second assertion is the one that matters: the refusal must arrive with
-// barely anything on disk.
+// The refusal must arrive with barely anything on disk.
 func TestExtractZstdBomb(t *testing.T) {
 	t.Parallel()
 
@@ -771,28 +767,7 @@ func rawTar(t *testing.T, ms ...member) []byte {
 	return buf.Bytes()
 }
 
-// Asserted below Extract because archive/tar trims the name at the first NUL, so a
-// NUL cannot reach the extractor through this decoder; the check is kept anyway.
-func TestValidatePathRejectsNUL(t *testing.T) {
-	t.Parallel()
-
-	e, cancel := newExtractor(context.Background(), DefaultLimits())
-	defer cancel()
-
-	_, _, err := e.validatePath("refs/a\x00b.md")
-	requireRefusal(t, err, ErrRejectedMember, RejectPathChars)
-}
-
-func TestZeroLimitsTakeTheStrictDefault(t *testing.T) {
-	t.Parallel()
-
-	require.Equal(t, DefaultLimits(), Limits{}.withDefaults())
-	require.Equal(t, DefaultLimits(), Limits{MaxEntries: -1, MaxDuration: -time.Second}.withDefaults())
-}
-
-// Exercises the containment invariant with no hostile member: something is already
-// on disk where an extracted path has to go, and anything this extraction did not
-// create is refused rather than reused.
+// Anything already on disk that this extraction did not create is refused rather than reused.
 func TestOnlyComponentsWeCreated(t *testing.T) {
 	t.Parallel()
 
@@ -864,4 +839,29 @@ func TestOnlyComponentsWeCreated(t *testing.T) {
 		require.NoError(t, readErr)
 		require.Equal(t, "mine", string(body), "overwrote a file this extraction did not create")
 	})
+}
+
+func TestGuardViolationsKeepThisPackagesReasons(t *testing.T) {
+	t.Parallel()
+
+	for rule, want := range map[archiveguard.Rule]Reason{
+		archiveguard.RejectSymlink:      "symlink member",
+		archiveguard.RejectHardlink:     "hardlink member",
+		archiveguard.RejectDevice:       "device node member",
+		archiveguard.RejectFIFO:         "fifo member",
+		archiveguard.RejectMemberType:   "unsupported member type",
+		archiveguard.RejectTraversal:    "parent directory traversal",
+		archiveguard.RejectAbsolutePath: "absolute path",
+		archiveguard.RejectPathChars:    "unsafe characters in path",
+		archiveguard.RejectEmptyPath:    "empty path",
+	} {
+		err := fromGuard(archiveguard.RejectMember(rule, "m"))
+		requireRefusal(t, err, ErrRejectedMember, want)
+	}
+
+	err := fromGuard(&archiveguard.Violation{
+		Kind: archiveguard.KindTimeout, Rule: archiveguard.ReasonTimeBudget, Detail: "1m0s", Cause: context.DeadlineExceeded,
+	})
+	requireRefusal(t, err, ErrTimeout, ReasonTimeBudget)
+	require.Equal(t, "extraction exceeded its time budget: wall clock budget (1m0s): context deadline exceeded", err.Error())
 }

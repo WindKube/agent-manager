@@ -5,16 +5,13 @@ import (
 	"time"
 )
 
-// QueueCounts is one queue's jobs by River's own state — the vocabulary is
-// River's, not this screen's, and none of the seven is folded into another:
-// a queue stalled on Available reads differently from one stuck Retryable.
+// QueueCounts is one queue's jobs by River state. No state is folded into another: a queue stalled on
+// Available reads differently from one stuck Retryable.
 type QueueCounts struct {
 	Queue                                                                            string
 	Available, Scheduled, Running, Retryable, Completed, Discarded, Cancelled, Other int64
 }
 
-// Label is the card's title. Anything besides the two queues this hub
-// registers today still renders under its own name rather than vanishing.
 func (q QueueCounts) Label() string {
 	switch q.Queue {
 	case "fetch":
@@ -26,7 +23,6 @@ func (q QueueCounts) Label() string {
 	}
 }
 
-// Active is work not yet finished: waiting to run or currently running.
 func (q QueueCounts) Active() int64 { return q.Available + q.Scheduled + q.Running }
 
 // StateRow is one row of a queue card's state table.
@@ -36,10 +32,7 @@ type StateRow struct {
 	Tone  string
 }
 
-// Rows is one queue card's state table, ordered so that what is still to
-// happen comes before what has already been decided. Other is appended only
-// when it is nonzero: a permanent empty row for a state this screen was never
-// taught about would be noise.
+// Rows lists pending states before settled ones; Other appears only when nonzero.
 func (q QueueCounts) Rows() []StateRow {
 	rows := []StateRow{
 		{Label: "Available", Count: q.Available},
@@ -77,16 +70,12 @@ type JobRow struct {
 	Kind        string
 	Attempt     int
 	MaxAttempts int
-	// When is when a discarded job stopped retrying, or when a retrying one
-	// is next scheduled to run — the caller sets which, since the two mean
-	// opposite things and neither list holds both.
+	// When is when a discarded job stopped, or when a retrying one next runs; the caller decides which.
 	When   string
 	Errors []ErrorEntry
 }
 
-// LatestError is the most recent attempt's message, "" when River recorded
-// none — which happens for a job discarded by a cancellation rather than a
-// failure.
+// LatestError is "" when River recorded none, e.g. for a job discarded by cancellation.
 func (j JobRow) LatestError() string {
 	if len(j.Errors) == 0 {
 		return ""
@@ -94,37 +83,29 @@ func (j JobRow) LatestError() string {
 	return j.Errors[len(j.Errors)-1].Error
 }
 
-// RunBucket is one interval of the run-history chart, as the api reported
-// it: raw counts, not yet scaled to a bar height.
+// RunBucket is one interval of the run-history chart, unscaled.
 type RunBucket struct {
 	StartsAt time.Time
 	Fetch    int64
 	Scan     int64
 }
 
-// ChartBarMaxHeight is the tallest a bar may draw, in pixels. It is mirrored
-// by .am-runtime-bar-track's height in assets/input.css — the two must
-// agree, or a bar taller than its track clips.
+// ChartBarMaxHeight is in pixels and must match .am-runtime-bar-track's height in assets/input.css.
 const ChartBarMaxHeight = 120
 
-// RunBar is one bucket, scaled for rendering: two stacked segments and the
-// x-axis label the chart shows beneath it.
+// RunBar is one bucket, scaled for rendering.
 type RunBar struct {
-	Label     string
-	ShowLabel bool
-	Fetch     int64
-	Scan      int64
-	// FetchHeight and ScanHeight are the pixel heights of the pair's two
-	// bars, each at most ChartBarMaxHeight.
+	Label       string
+	ShowLabel   bool
+	Fetch       int64
+	Scan        int64
 	FetchHeight int
 	ScanHeight  int
 }
 
-// Total is what the bar's height represents.
 func (b RunBar) Total() int64 { return b.Fetch + b.Scan }
 
-// Runtime is the whole screen: the job queue's own state, its runners'
-// errors, and when they ran.
+// Runtime is the whole screen: queue state, job errors, and run history.
 type Runtime struct {
 	Queues        []QueueCounts
 	Discarded     []JobRow
@@ -135,8 +116,7 @@ type Runtime struct {
 	GovernanceState
 }
 
-// Cards is the headline row, summed across every queue: a reader asks "is
-// the pipeline healthy" before they ask "which queue".
+// Cards is the headline row, summed across every queue.
 func (r Runtime) Cards() []StatCard {
 	var active, retrying, discarded, completed int64
 	for _, q := range r.Queues {
@@ -165,13 +145,10 @@ func formatCount(n int64) string {
 	return strconv.FormatInt(n, 10)
 }
 
-// NoDiscarded and NoRetrying back the two lists' empty states, which are
-// good news here rather than an absence of data.
 func (r Runtime) NoDiscarded() bool { return len(r.Discarded) == 0 }
 func (r Runtime) NoRetrying() bool  { return len(r.Retrying) == 0 }
 
-// BucketLabel is the caption stating what one bar covers, so the chart is
-// never read without knowing its own units.
+// BucketLabel states what one bar covers.
 func (r Runtime) BucketLabel() string {
 	if r.BucketMinutes <= 0 {
 		return ""
@@ -182,10 +159,7 @@ func (r Runtime) BucketLabel() string {
 	return plural(r.BucketMinutes, "minute")
 }
 
-// ChartPeak is the tallest single bar, which is one queue's count and not
-// the pair's total: the bars in a pair stand side by side, so each one has to
-// be readable against the same axis on its own. Zero reads as "0", not as an
-// empty axis.
+// ChartPeak is the tallest single bar, not a pair's total, since the pair's bars stand side by side.
 func (r Runtime) ChartPeak() int64 {
 	var peak int64
 	for _, b := range r.History {
@@ -194,18 +168,14 @@ func (r Runtime) ChartPeak() int64 {
 	return peak
 }
 
-// ChartPeakLabel is ChartPeak rendered.
 func (r Runtime) ChartPeakLabel() string { return formatCount(r.ChartPeak()) }
 
-// Title is the bar's hover text: the one place the chart states its exact
-// numbers rather than a height a reader has to eyeball.
+// Title is the bar's hover text with exact numbers.
 func (b RunBar) Title() string {
 	return b.Label + " UTC — fetch " + formatCount(b.Fetch) + ", scan " + formatCount(b.Scan)
 }
 
-// Bars scales History into pixel heights. A label prints only every fourth
-// bar (and always the last), so 24 hourly buckets read as a chart rather
-// than a wall of overlapping text.
+// Bars scales History into pixel heights, labelling every fourth bar and the last so labels do not overlap.
 func (r Runtime) Bars() []RunBar {
 	peak := r.ChartPeak()
 	bars := make([]RunBar, len(r.History))

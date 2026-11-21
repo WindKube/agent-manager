@@ -8,17 +8,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"agent-manager/internal/domain/resolve"
+	"agent-manager/internal/domain/signer"
 )
 
-// The gate rules, tested with no container. That is the whole reason the resolver
-// takes its own input types instead of models.*: the three gates crossed with the
-// two entry modes and the four states a version can be in is 24 cases, and 24
-// cases that need Postgres is a table nobody writes.
-
 var (
-	// resolvedAt is the instant every resolution below happens at. The two
-	// acceptance expiries straddle it, which is what makes "an override that has
-	// lapsed is not an override" a case rather than a comment.
+	// The two acceptance expiries straddle resolvedAt.
 	resolvedAt = time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
 	stillValid = time.Date(2026, 4, 12, 9, 0, 0, 0, time.UTC)
 	ranOut     = time.Date(2025, 12, 1, 9, 0, 0, 0, time.UTC)
@@ -29,8 +23,7 @@ const (
 	flagDetail = "SH-INJ-011 in SKILL.md"
 )
 
-// newest is the candidate every case varies; older is the clean release behind it
-// that a fallback can land on.
+// older is the clean release a fallback can land on.
 func older() resolve.Candidate {
 	return resolve.Candidate{
 		ID: "guard@1.0.0", Semver: "1.0.0", Verdict: resolve.VerdictClean, Visible: true,
@@ -62,9 +55,8 @@ func zeros() string {
 	return string(out)
 }
 
-// entry is one package tracking the two candidates above, in the given mode. A
-// pinned entry always pins the NEWER one, because a pin at a version the gate
-// dislikes is the case US5 asks the screen to state rather than silently fix.
+// entry pins the newer candidate when pinned, since that is the one the gate
+// may dislike.
 func entry(mode resolve.Mode, newest resolve.Candidate) resolve.Entry {
 	built := resolve.Entry{
 		ID: "community/postgres-migration-guard", Kind: "skill", Mode: mode,
@@ -85,7 +77,6 @@ func resolveOne(t *testing.T, gate resolve.Gate, e resolve.Entry) resolve.Resolu
 	return result.Entries[0]
 }
 
-// The four states the newest version can be in.
 const (
 	stateClean   = "clean"
 	stateFlagged = "flagged"
@@ -112,14 +103,13 @@ func TestEachGateDecidesWhatAPinnedAndAFloatingEntryResolveTo(t *testing.T) {
 		mode    resolve.Mode
 		state   string
 		outcome resolve.Outcome
-		// version is the semver the entry resolved to, empty when it was excluded.
 		version string
 		reason  resolve.Reason
-		// would is Skip.WouldHaveResolvedTo, or on a downgrade the version passed over.
+		// would is Skip.WouldHaveResolvedTo, or the version passed over on a downgrade.
 		would string
 	}{
-		// block: a flagged version does not resolve. A floating entry falls back to
-		// the most recent clean one; a pin is a conflict, not something to re-point.
+		// block: a floating entry falls back to the newest clean version; a pin is
+		// never re-pointed.
 		{resolve.GateBlock, resolve.ModeLatest, stateClean, resolve.OutcomeResolved, "2.0.0", "", ""},
 		{resolve.GateBlock, resolve.ModeLatest, stateFlagged, resolve.OutcomeDowngraded, "1.0.0", "", "2.0.0"},
 		{resolve.GateBlock, resolve.ModeLatest, stateActive, resolve.OutcomeDowngraded, "1.0.0", "", "2.0.0"},
@@ -129,8 +119,8 @@ func TestEachGateDecidesWhatAPinnedAndAFloatingEntryResolveTo(t *testing.T) {
 		{resolve.GateBlock, resolve.ModePinned, stateActive, resolve.OutcomeSkipped, "", resolve.ReasonFlaggedBlockedByGate, "2.0.0"},
 		{resolve.GateBlock, resolve.ModePinned, stateLapsed, resolve.OutcomeSkipped, "", resolve.ReasonFlaggedBlockedByGate, "2.0.0"},
 
-		// approval: an unapproved flagged version excludes the entry. Note that a
-		// clean 1.0.0 is sitting right there and is NOT taken — that is the point.
+		// approval: an unapproved flagged version excludes the entry even though a
+		// clean 1.0.0 exists.
 		{resolve.GateApproval, resolve.ModeLatest, stateClean, resolve.OutcomeResolved, "2.0.0", "", ""},
 		{resolve.GateApproval, resolve.ModeLatest, stateFlagged, resolve.OutcomeSkipped, "", resolve.ReasonFlaggedAwaitingApproval, "2.0.0"},
 		{resolve.GateApproval, resolve.ModeLatest, stateActive, resolve.OutcomeOverridden, "2.0.0", "", ""},
@@ -140,8 +130,8 @@ func TestEachGateDecidesWhatAPinnedAndAFloatingEntryResolveTo(t *testing.T) {
 		{resolve.GateApproval, resolve.ModePinned, stateActive, resolve.OutcomeOverridden, "2.0.0", "", ""},
 		{resolve.GateApproval, resolve.ModePinned, stateLapsed, resolve.OutcomeSkipped, "", resolve.ReasonFlaggedAwaitingApproval, "2.0.0"},
 
-		// warn-with-override: FR-035 includes flagged versions and records the
-		// override. An acceptance changes whose name is on it, not whether it lands.
+		// warn-with-override: an acceptance changes whose name is on it, not
+		// whether it lands.
 		{resolve.GateWarnWithOverride, resolve.ModeLatest, stateClean, resolve.OutcomeResolved, "2.0.0", "", ""},
 		{resolve.GateWarnWithOverride, resolve.ModeLatest, stateFlagged, resolve.OutcomeWarned, "2.0.0", "", ""},
 		{resolve.GateWarnWithOverride, resolve.ModeLatest, stateActive, resolve.OutcomeOverridden, "2.0.0", "", ""},
@@ -162,7 +152,7 @@ func TestEachGateDecidesWhatAPinnedAndAFloatingEntryResolveTo(t *testing.T) {
 			if tc.version == "" {
 				require.Nil(t, got.Version)
 				require.Nil(t, got.Override)
-				require.NotNil(t, got.Skip, "an excluded entry must report why (FR-036)")
+				require.NotNil(t, got.Skip, "an excluded entry must report why")
 				require.Equal(t, tc.reason, got.Skip.Reason)
 				require.Equal(t, tc.would, got.Skip.WouldHaveResolvedTo)
 				require.Equal(t, got.ID, got.Skip.ID)
@@ -197,14 +187,12 @@ func TestAnAcceptanceWithNoExpiryNeverLapses(t *testing.T) {
 func TestARejectedVersionNeverResolvesWhateverTheGateSays(t *testing.T) {
 	for _, gate := range []resolve.Gate{resolve.GateBlock, resolve.GateApproval, resolve.GateWarnWithOverride} {
 		t.Run(string(gate), func(t *testing.T) {
-			// Pinned, so there is nothing to fall back to and the reason is the
-			// rejection itself rather than the absence of an alternative (FR-029).
+			// Pinned, so the reason is the rejection itself, not a missing fallback.
 			got := resolveOne(t, gate, entry(resolve.ModePinned, newest(resolve.VerdictRejected, accepted(&stillValid))))
 
 			require.Equal(t, resolve.OutcomeSkipped, got.Outcome)
 			require.Equal(t, resolve.ReasonVersionRejected, got.Skip.Reason)
 
-			// And a floating entry passes over it rather than stopping.
 			floating := resolveOne(t, gate, entry(resolve.ModeLatest, newest(resolve.VerdictRejected, nil)))
 			require.Equal(t, resolve.OutcomeDowngraded, floating.Outcome)
 			require.Equal(t, "1.0.0", floating.Version.Semver)
@@ -301,7 +289,7 @@ func TestARangeMatchingNothingExcludesTheEntry(t *testing.T) {
 
 func TestRequiringSignedBundlesExcludesAVersionCarryingNoSignature(t *testing.T) {
 	signed := older()
-	signed.Signature = &resolve.Signature{Ref: "sigstore:guard@1.0.0"}
+	signed.Signature = resolve.NewSignature("sigstore:guard@1.0.0", signer.StatusMatching, "https://issuer.example", "release@guard.example")
 
 	resolveWith := func(candidates ...resolve.Candidate) resolve.Resolution {
 		result, err := resolve.Resolve(resolve.Input{
@@ -318,11 +306,64 @@ func TestRequiringSignedBundlesExcludesAVersionCarryingNoSignature(t *testing.T)
 	fell := resolveWith(signed, newest(resolve.VerdictClean, nil))
 	require.Equal(t, resolve.OutcomeDowngraded, fell.Outcome)
 	require.Equal(t, "1.0.0", fell.Version.Semver)
+	require.Contains(t, fell.Note, "carries no Sigstore signature")
+}
 
-	// With nothing signed, the entry is excluded under the frozen reason.
-	excluded := resolveWith(older(), newest(resolve.VerdictClean, nil))
-	require.Equal(t, resolve.OutcomeSkipped, excluded.Outcome)
-	require.Equal(t, resolve.ReasonUnsignedSignaturesRequired, excluded.Skip.Reason)
+func TestRequiringSignedBundlesAcceptsOnlyTheExpectedSigner(t *testing.T) {
+	const issuer, identity = "https://token.actions.githubusercontent.com", "https://github.com/x/y/.github/workflows/r.yaml@refs/tags/v2.0.0"
+	for _, tc := range []struct {
+		name       string
+		signature  *resolve.Signature
+		wantDetail string
+	}{
+		{"unsigned", nil, "carries no Sigstore signature"},
+		{"invalid", resolve.NewSignature("ref", signer.StatusInvalid, "", ""), "did not verify"},
+		{"no expected signer", resolve.NewSignature("ref", signer.StatusNoExpectedSigner, issuer, identity), "no expected signer configured"},
+		{"signer mismatch", resolve.NewSignature("ref", signer.StatusUnexpectedSigner, issuer, identity), "not its package's expected signer"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			candidate := newest(resolve.VerdictClean, nil)
+			candidate.Signature = tc.signature
+			for _, mode := range []resolve.Mode{resolve.ModeLatest, resolve.ModePinned} {
+				result, err := resolve.Resolve(resolve.Input{
+					Gate: resolve.GateWarnWithOverride, RequireSignatures: true, At: resolvedAt,
+					Entries: []resolve.Entry{{ID: "x/y", Mode: mode, PinnedID: candidate.ID, Candidates: []resolve.Candidate{candidate}}},
+				})
+				require.NoError(t, err)
+				got := result.Entries[0]
+				require.Equal(t, resolve.OutcomeSkipped, got.Outcome, mode)
+				require.Equal(t, resolve.ReasonUnsignedSignaturesRequired, got.Skip.Reason)
+				require.Contains(t, got.Skip.Detail, tc.wantDetail)
+				require.Contains(t, got.Note, tc.wantDetail)
+			}
+
+			// Off, a signature is informational only.
+			result, err := resolve.Resolve(resolve.Input{
+				Gate: resolve.GateWarnWithOverride, At: resolvedAt,
+				Entries: []resolve.Entry{{ID: "x/y", Mode: resolve.ModeLatest, Candidates: []resolve.Candidate{candidate}}},
+			})
+			require.NoError(t, err)
+			require.Equal(t, resolve.OutcomeResolved, result.Entries[0].Outcome)
+		})
+	}
+
+	t.Run("the expected signer resolves", func(t *testing.T) {
+		candidate := newest(resolve.VerdictClean, nil)
+		candidate.Signature = resolve.NewSignature("ref", signer.StatusMatching, issuer, identity)
+		require.True(t, *candidate.Signature.Verified)
+		result, err := resolve.Resolve(resolve.Input{
+			Gate: resolve.GateWarnWithOverride, RequireSignatures: true, At: resolvedAt,
+			Entries: []resolve.Entry{{ID: "x/y", Mode: resolve.ModeLatest, Candidates: []resolve.Candidate{candidate}}},
+		})
+		require.NoError(t, err)
+		require.Equal(t, resolve.OutcomeResolved, result.Entries[0].Outcome)
+	})
+
+	t.Run("only a match is marked verified", func(t *testing.T) {
+		for _, status := range signer.Statuses() {
+			require.Equal(t, status == signer.StatusMatching, *resolve.NewSignature("", status, "", "").Verified, status)
+		}
+	})
 }
 
 func TestResolveRefusesInputItCannotBeSureAbout(t *testing.T) {
@@ -421,13 +462,8 @@ func TestTheSixSkipReasonsAreTheOnesTheResolverCanProduce(t *testing.T) {
 	}
 }
 
-// TestThePolicyNoteStatesWhatTheGateDid pins the prose, not just the decision.
-//
-// US5 scenarios 2 and 3 make the note behaviour: the screen has to STATE that a
-// version was blocked and fell back, and that another is excluded pending a named
-// reviewer. Asserting the exact sentence is what stops a later edit turning "is
-// excluded until one does" into something that reads like a transient error, and
-// it is the string T089 compares the rendered screen against.
+// TestThePolicyNoteStatesWhatTheGateDid pins the exact prose, since the screen
+// is compared against it.
 func TestThePolicyNoteStatesWhatTheGateDid(t *testing.T) {
 	cases := []struct {
 		name string

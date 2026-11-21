@@ -188,6 +188,43 @@ The OpenAPI 3.1 document is **emitted from the operation definitions** and never
 hand-maintained; the typed client the web role uses is generated from it, and CI fails on a
 breaking change against the merge base.
 
+## Observability
+
+Every long-running role (`serve api`, `serve web`, each `worker run`) serves Prometheus
+metrics on `AGENT_MANAGER_METRICS_ADDR` (`:9090` by default, empty disables it), a listener
+separate from the application's. The same listener answers `GET /healthz` with 200 while the
+process runs, which is the workers' liveness probe. Everything this project records is
+prefixed `agent_manager_`:
+
+| Metric | Labels | From |
+| --- | --- | --- |
+| `http_requests_total`, `http_request_duration_seconds` | `route` (the pattern, never the raw path), `method`, `code` (status class) | api, web |
+| `river_jobs_total` | `kind`, `queue`, `result` (`completed`, `retried`, `discarded`, `cancelled`, `snoozed`) | workers |
+| `river_job_duration_seconds` | `kind`, `queue` | workers |
+| `river_queue_jobs` | `queue`, `state` — sampled every 15s, each queue by the role that drains it | workers |
+| `outbox_relayed_total` | `kind` | api |
+| `outbox_oldest_pending_age_seconds` | — | api |
+| `fetches_total` | `source`, `result` (`stored`, `unchanged` or the failure reason) | fetcher |
+| `signature_verifications_total` | `result` (`verified`, `invalid`, `unsigned`, `error`) | fetcher |
+| `scans_total` | `verdict` | scanner |
+| `scan_engine_errors_total` | `reason` (`failed`, `unanalysable`) | scanner |
+| `webhook_deliveries_total` | `status` (status class, or `error`) | notifier |
+
+The Go runtime and process collectors are registered as well. The one-shots (`migrate`,
+`seed`) serve nothing: they exit before a scrape would find them.
+
+Traces are OpenTelemetry over OTLP/HTTP, configured by the standard variables:
+`OTEL_EXPORTER_OTLP_ENDPOINT` (or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`) turns them on and
+unset leaves the no-op provider in place, `OTEL_SERVICE_NAME` defaults to
+`agent-manager-<role>`, and `OTEL_TRACES_SAMPLER`/`OTEL_TRACES_SAMPLER_ARG` pick the sampler.
+The api and web routers open a span per request named by route; web's calls to the api carry
+W3C trace context, so one trace spans both roles. The fetcher's and notifier's outbound client
+is traced too but sends no trace headers, since a forge or webhook receiver has no business
+learning internal ids. A job keeps the trace that enqueued it: the outbox row stores the
+`traceparent`, the relay inserts under it, and River's middleware opens a span per job
+**linked** to it rather than parented, because a job may run hours after its request.
+`task up:observability` runs the stack with Jaeger on <http://localhost:16686>.
+
 ## Quickstart
 
 ```bash
@@ -200,6 +237,9 @@ and the catalog is already populated. The UI is on <http://localhost:8080> and t
 <http://localhost:8082>. Dex replaced an earlier Keycloak substitute once measurement showed
 a directory-backed Dex emits the same `groups` claim the role mapping needs, at a fraction
 of the image size.
+
+For Kubernetes there is a Helm chart in [`deploy/helm/agent-manager`](deploy/helm/agent-manager),
+with the same per-role credential split and default-deny NetworkPolicies.
 
 Requires Docker and [Task](https://taskfile.dev). Nothing else is installed on the host —
 the toolchain is pinned in `mise.toml`, and the image has no Node.js in it.
@@ -214,8 +254,7 @@ scanner's rule packs and findings review, profile curation and publish, the RFC 
 flow for pairing a machine, and organisation policy and identity administration.
 
 Not there yet: the timed clean-checkout quickstart and the manual `aarch64` run are unverified
-by an agent (they need a human at a terminal), and there is no Prometheus metrics
-instrumentation — `AGENT_MANAGER_METRICS_ADDR` today backs only the liveness listener.
+by an agent (they need a human at a terminal).
 
 ## Acknowledgements
 
@@ -239,10 +278,12 @@ This project is assembled almost entirely from other people's work. What each pi
 | [`github.com/google/go-github`](https://github.com/google/go-github) | `v90.0.0` | The GitHub API for the git registration source: resolving a ref and downloading a tarball without shelling out to `git` |
 | [`github.com/google/uuid`](https://github.com/google/uuid) | `v1.6.0` | UUIDv7 primary keys, so insertion order and index locality come free |
 | [`github.com/jackc/pgx`](https://github.com/jackc/pgx) | `v5.10.0` | Postgres driver and connection pooling; the two pools (app, queue) are two `pgxpool.Pool`s on two databases |
-| [`github.com/klauspost/compress`](https://github.com/klauspost/compress) | `v1.19.2` | zstd for `bundle.tar.zst` — the archive format every version is stored as |
+| [`github.com/klauspost/compress`](https://github.com/klauspost/compress) | `v1.20.1` | zstd for `bundle.tar.zst` — the archive format every version is stored as |
 | [`github.com/oapi-codegen/oapi-codegen`](https://github.com/oapi-codegen/oapi-codegen) | `v2.8.0` | The typed client the web role uses to reach the api — its only door to data |
 | [`github.com/oapi-codegen/runtime`](https://github.com/oapi-codegen/runtime) | `v1.7.0` | Required by the generated client: oapi-codegen emits calls into it for path-parameter styling |
+| [`github.com/prometheus/client_golang`](https://github.com/prometheus/client_golang) | `v1.25.0` | The `/metrics` listener every long-running role serves |
 | [`github.com/riverqueue/river`](https://github.com/riverqueue/river) | `v0.45.0` | Durable job queue, on its own database by construction |
+| [`github.com/riverqueue/rivercontrib/otelriver`](https://github.com/riverqueue/rivercontrib) | `v0.12.0` | A span per job, linked to the trace that enqueued it through the job's metadata |
 | [`github.com/rs/zerolog`](https://github.com/rs/zerolog) | `v1.35.1` | Structured logging with the correlation id carried through the context |
 | [`github.com/santhosh-tekuri/jsonschema`](https://github.com/santhosh-tekuri/jsonschema) | `v6.0.2` | JSON Schema validation of skill and plugin manifests against the vendored Agent Skills schemas |
 | [`github.com/spf13/cobra`](https://github.com/spf13/cobra) | `v1.10.2` | The role tree: one binary, roles as subcommands (`serve api`, `worker run`, `migrate queue`) |
@@ -250,6 +291,8 @@ This project is assembled almost entirely from other people's work. What each pi
 | [`github.com/stretchr/testify`](https://github.com/stretchr/testify) | `v1.12.1` | Assertions throughout the test suite |
 | [`github.com/testcontainers/testcontainers-go`](https://github.com/testcontainers/testcontainers-go) | `v0.44.0` | A real Postgres for the integration suite, so grants and constraints are asserted against a database rather than a mock |
 | [`github.com/uptrace/bun`](https://github.com/uptrace/bun) | `v1.2.18` | The models that are the schema's source of truth, and the query builder above pgx |
+| [`go.opentelemetry.io/contrib`](https://github.com/open-telemetry/opentelemetry-go-contrib) | `v0.69.0` | `otelgin` for the two routers' server spans, `otelhttp` for the outbound clients |
+| [`go.opentelemetry.io/otel`](https://github.com/open-telemetry/opentelemetry-go) | `v1.44.0` | Tracing API, SDK and the OTLP/HTTP exporter |
 | [`gocloud.dev`](https://gocloud.dev) | `v0.46.0` | Blob storage behind one interface — S3/MinIO in production, in-memory in tests |
 | [`golang.org/x/tools`](https://golang.org/x/tools) | `v0.49.0` | `go/packages` for the import-graph test that enforces the role boundaries |
 | [`gopkg.in/yaml.v3`](https://gopkg.in/yaml.v3) | `v3.0.1` | Parses the frozen contract in the test that proves the emitted OpenAPI document is still a superset of it |
@@ -262,6 +305,8 @@ This project is assembled almost entirely from other people's work. What each pi
 | **Atlas (community)** | Versioned migrations with a checksummed directory, so a tampered migration set fails to apply |
 | **MinIO** | S3-compatible object storage for bundle bytes in local development |
 | **Dex + glauth** | OIDC provider for local development, including the RFC 8628 device grant. glauth is the directory behind it, and it is there because the `groups` claim the hub maps to roles cannot come from a static password list |
+| **Helm** | The Kubernetes chart under `deploy/helm`, linted by `task helm:lint` |
+| **Jaeger** | Local trace viewer behind the `observability` compose profile |
 | **Tailwind CSS** | Styling via the standalone binary — no Node.js in any image |
 | **Redoc** | The static, self-contained API reference built by `task openapi:docs` |
 | **Distroless** | The runtime base image: no shell, no package manager, non-root |

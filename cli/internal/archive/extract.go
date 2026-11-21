@@ -15,8 +15,15 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 
+	"github.com/WindKube/agent-manager/cli/archiveguard"
 	"github.com/WindKube/agent-manager/cli/internal/layout"
 )
+
+// Limits bounds one extraction; see archiveguard.Limits.
+type Limits = archiveguard.Limits
+
+// DefaultLimits returns every cap at its default.
+func DefaultLimits() Limits { return archiveguard.DefaultLimits() }
 
 // zstdMagic is the only frame magic a decoder is built for. A leading skippable
 // frame is legal zstd and refused anyway: the hub never emits one.
@@ -46,15 +53,11 @@ type Result struct {
 	DecompressedBytes int64
 }
 
-// Extract writes a tar+zstd bundle into dest under lim. dest must not exist and
-// its parent must: creating the root here is what makes every component beneath
-// it one this call made, so none can be a symlink and every leaf opens O_EXCL.
-//
-// It does not clean up after a failure (the caller owns dest's parent), does not
-// check dest is under the home directory (internal/apply does), and does not
-// verify the digest (that happens before bytes reach this package).
+// Extract writes a tar+zstd bundle into dest under lim. dest must not exist and its parent must:
+// creating the root here makes every component beneath it one this call made, so none can be a symlink.
+// It does not clean up after a failure, check home containment, or verify the digest.
 func Extract(ctx context.Context, r io.Reader, dest string, lim Limits) (*Result, error) {
-	lim = lim.withDefaults()
+	lim = lim.WithDefaults()
 
 	e, cancel := newExtractor(ctx, lim)
 	defer cancel()
@@ -73,9 +76,8 @@ func Extract(ctx context.Context, r io.Reader, dest string, lim Limits) (*Result
 	return &e.result, nil
 }
 
-// createDest makes dest through its parent's os.Root rather than os.Mkdir then
-// os.OpenRoot(dest): between those two calls another process could replace dest
-// with a symlink, and the root would then be confined to somewhere else.
+// createDest makes dest through its parent's os.Root, since between os.Mkdir and os.OpenRoot(dest)
+// another process could replace dest with a symlink.
 func createDest(dest string) (*os.Root, error) {
 	dest = filepath.Clean(dest)
 	parent, leaf := filepath.Split(dest)
@@ -117,31 +119,25 @@ func existingDestError(r *os.Root, name, reported string) error {
 }
 
 type extractor struct {
-	// parent is the caller's context; ctx adds the wall-clock cap. alive needs
-	// both to tell whose budget expired.
-	parent context.Context
-	ctx    context.Context
-
+	clock  *archiveguard.Clock
 	limits Limits
-	guard  ratioGuard
+	guard  *archiveguard.Guard
 	root   *os.Root
 
 	seen     map[string]struct{}
 	seenFold map[string]string
 	created  map[string]struct{}
 	dirOrder []string
-	count    int
 
 	result Result
 }
 
 func newExtractor(ctx context.Context, lim Limits) (*extractor, context.CancelFunc) {
-	cctx, cancel := context.WithTimeout(ctx, lim.MaxDuration)
+	clock, cancel := archiveguard.StartClock(ctx, lim.MaxDuration)
 	return &extractor{
-		parent:   ctx,
-		ctx:      cctx,
+		clock:    clock,
 		limits:   lim,
-		guard:    ratioGuard{limits: lim},
+		guard:    archiveguard.NewGuard(lim),
 		seen:     make(map[string]struct{}),
 		seenFold: make(map[string]string),
 		created:  map[string]struct{}{".": {}},
@@ -149,10 +145,7 @@ func newExtractor(ctx context.Context, lim Limits) (*extractor, context.CancelFu
 }
 
 func (e *extractor) run(r io.Reader) error {
-	src := &countingReader{
-		r:     io.LimitReader(&clockReader{e: e, r: r}, e.limits.MaxCompressedBytes+1),
-		guard: &e.guard,
-	}
+	src := e.guard.Reader(io.LimitReader(archiveguard.ClockReader(r, e.alive), e.limits.MaxCompressedBytes+1))
 
 	var magic [4]byte
 	if _, err := io.ReadFull(src, magic[:]); err != nil {
@@ -181,8 +174,8 @@ func (e *extractor) run(r io.Reader) error {
 		walkErr = e.drainTrailer(dec)
 	}
 	// Checked before walkErr: an archive over the compressed cap surfaces as a truncated stream.
-	if e.guard.compressed > e.limits.MaxCompressedBytes {
-		return tooLarge(CapCompressedSize, "")
+	if err := e.guard.CheckCompressed(); err != nil {
+		return fromGuard(err)
 	}
 	if walkErr != nil {
 		return walkErr
@@ -191,8 +184,8 @@ func (e *extractor) run(r io.Reader) error {
 		return malformed("archive contains no members", nil)
 	}
 
-	e.result.CompressedBytes = e.guard.compressed
-	e.result.DecompressedBytes = e.guard.decompressed
+	e.result.CompressedBytes = e.guard.Compressed()
+	e.result.DecompressedBytes = e.guard.Decompressed()
 	e.syncDirs()
 	return nil
 }
@@ -234,15 +227,13 @@ func (e *extractor) walkTar(tr *tar.Reader) error {
 
 // acceptMember applies every member-kind and path rule before a byte of the body is read.
 func (e *extractor) acceptMember(hdr *tar.Header) (clean string, isDir bool, err error) {
-	// Switched on the typeflag, never on FileInfo().Mode(): an unrecognised
-	// typeflag reports a regular-file mode and would pass a mode-based check.
-	if reason := tarMemberReason(hdr.Typeflag); reason != "" {
-		return "", false, rejected(reason, hdr.Name)
+	// Every refused kind is fatal here, links included: unlike the hub this
+	// extractor writes to disk, so it never drops a member it cannot represent.
+	if rule := archiveguard.TarMemberRule(hdr.Typeflag); rule != "" {
+		return "", false, fromGuard(archiveguard.RejectMember(rule, hdr.Name))
 	}
-
-	e.count++
-	if e.count > e.limits.MaxEntries {
-		return "", false, tooLarge(CapEntryCount, hdr.Name)
+	if countErr := e.guard.CountEntry(hdr.Name); countErr != nil {
+		return "", false, fromGuard(countErr)
 	}
 
 	clean, isDir, err = e.validatePath(hdr.Name)
@@ -257,9 +248,8 @@ func (e *extractor) acceptMember(hdr *tar.Header) (clean string, isDir bool, err
 	if _, dup := e.seen[clean]; dup {
 		return "", false, rejected(RejectDuplicate, hdr.Name)
 	}
-	// Case-folded collisions are refused on every platform: SKILL.md and Skill.md
-	// are one file on darwin and two on linux, so the same digest would install a
-	// different tree per platform. Folding is ASCII only; O_EXCL below backstops the rest.
+	// SKILL.md and Skill.md are one file on darwin and two on linux, so refuse everywhere.
+	// Folding is ASCII only; O_EXCL below backstops the rest.
 	fold := strings.ToLower(clean)
 	if prev, dup := e.seenFold[fold]; dup {
 		return "", false, &Error{
@@ -276,36 +266,12 @@ func (e *extractor) acceptMember(hdr *tar.Header) (clean string, isDir bool, err
 }
 
 func (e *extractor) validatePath(name string) (clean string, isDir bool, err error) {
-	if len(name) > e.limits.MaxPathBytes {
-		return "", false, tooLarge(CapPathLength, truncate(name))
+	clean, isDir, err = archiveguard.ValidatePath(name, e.limits)
+	if err != nil {
+		return "", false, fromGuard(err)
 	}
-	if name == "" {
-		return "", false, rejected(RejectEmptyPath, name)
-	}
-	// A backslash is a separator to some consumers, so `a\..\..\x` is a traversal
-	// path.Clean would pass; a NUL truncates the path for any C consumer. A NUL
-	// cannot arrive through archive/tar today, but the check costs nothing.
-	if strings.ContainsAny(name, "\\\x00") {
-		return "", false, rejected(RejectPathChars, name)
-	}
-	if path.IsAbs(name) || hasDriveLetter(name) {
-		return "", false, rejected(RejectAbsolutePath, name)
-	}
-
-	isDir = strings.HasSuffix(name, "/")
-	clean = path.Clean(strings.TrimSuffix(name, "/"))
-	if clean == "." || clean == "" {
-		if isDir {
-			return ".", true, nil
-		}
-		return "", false, rejected(RejectEmptyPath, name)
-	}
-	// Cleaning is normalisation, not sanitisation: the rejection runs on the cleaned form.
-	if clean == ".." || strings.HasPrefix(clean, "../") {
-		return "", false, rejected(RejectTraversal, name)
-	}
-	if strings.Count(clean, "/")+1 > e.limits.MaxPathDepth {
-		return "", false, tooLarge(CapPathDepth, clean)
+	if clean == "." {
+		return clean, isDir, nil
 	}
 	if reason := e.rejectPluginAdoption(clean, isDir); reason != "" {
 		return "", false, rejected(reason, name)
@@ -313,9 +279,8 @@ func (e *extractor) validatePath(name string) (clean string, isDir bool, err err
 	return clean, isDir, nil
 }
 
-// rejectPluginAdoption refuses a bundle that would change its own kind on disk:
-// the destination root is the skill directory, so a top-level subdirectory with
-// an adopting name makes Claude Code treat the tree as a plugin. Deeper is inert.
+// rejectPluginAdoption refuses a top-level subdirectory that would make Claude Code treat the skill
+// as a plugin. Deeper is inert.
 func (e *extractor) rejectPluginAdoption(clean string, isDir bool) Reason {
 	first, _, nested := strings.Cut(clean, "/")
 	// A plain file named `hooks` at the root does not trigger adoption.
@@ -328,10 +293,8 @@ func (e *extractor) rejectPluginAdoption(clean string, isDir bool) Reason {
 	return ""
 }
 
-// ensureDir creates clean and every component above it, refusing anything already
-// present that this extraction did not create. os.Mkdir cannot create a symlink
-// and fails when one is there, so every component is a real directory we made;
-// that is what defeats the directory, symlink-inside-it, write-through-it escape.
+// ensureDir creates clean and every component above it, refusing anything this extraction did not
+// create. That is what defeats the directory, symlink-inside-it, write-through-it escape.
 func (e *extractor) ensureDir(clean string) error {
 	if clean == "." || clean == "" {
 		return nil
@@ -354,9 +317,8 @@ func (e *extractor) ensureDir(clean string) error {
 	return nil
 }
 
-// writeFile streams one member to disk, checking every cap before the chunk that
-// would breach it is written. No size is taken from the archive: a declared size
-// is attacker-controlled.
+// writeFile streams one member to disk, checking every cap before each chunk is written. The
+// archive's declared size is attacker-controlled and never used.
 func (e *extractor) writeFile(clean string, mode fs.FileMode, r io.Reader) error {
 	if err := e.ensureDir(path.Dir(clean)); err != nil {
 		return err
@@ -404,11 +366,8 @@ func (e *extractor) copyMember(w io.Writer, r io.Reader, member string) error {
 		n, readErr := r.Read(chunk)
 		if n > 0 {
 			got += int64(n)
-			if got > e.limits.MaxEntryBytes {
-				return tooLarge(CapEntrySize, member)
-			}
-			if gErr := e.guard.produced(int64(n), member); gErr != nil {
-				return gErr
+			if gErr := e.guard.Produced(int64(n), got, member); gErr != nil {
+				return fromGuard(gErr)
 			}
 			if _, wErr := w.Write(chunk[:n]); wErr != nil {
 				return ioFailure(IOWrite, member, wErr)
@@ -423,18 +382,14 @@ func (e *extractor) copyMember(w io.Writer, r io.Reader, member string) error {
 	}
 }
 
-// maxTrailerBytes bounds what may follow the tar end marker; GNU tar pads to 10 KiB.
-const maxTrailerBytes = 1 << 20
-
-// drainTrailer reads to the end of the stream so zstd verifies its frame checksum;
-// otherwise a truncated bundle looks complete.
+// drainTrailer reads to the end of the stream so zstd verifies its frame checksum.
 func (e *extractor) drainTrailer(r io.Reader) error {
-	n, err := io.Copy(io.Discard, io.LimitReader(&clockReader{e: e, r: r}, maxTrailerBytes+1))
+	err := archiveguard.DrainTrailer(archiveguard.ClockReader(r, e.alive))
+	if errors.Is(err, archiveguard.ErrTrailingData) {
+		return malformed("trailing data after end of archive", nil)
+	}
 	if err != nil {
 		return e.budgetFirst(malformed("cannot read archive trailer", err))
-	}
-	if n > maxTrailerBytes {
-		return malformed("trailing data after end of archive", nil)
 	}
 	return nil
 }
@@ -457,22 +412,10 @@ func (e *extractor) syncDir(name string) {
 	_ = d.Close()
 }
 
-// alive reports our own wall-clock cap as an extraction failure but passes the
-// caller's cancellation through: a Ctrl-C is not an archive defect. The caller's
-// context is checked first because ctx inherits its deadline.
+// alive reports our own wall-clock cap as a KindTimeout Error but passes the
+// caller's cancellation through: a Ctrl-C is not an archive defect.
 func (e *extractor) alive() error {
-	if parentErr := e.parent.Err(); parentErr != nil {
-		return fmt.Errorf("extraction stopped: %w", parentErr)
-	}
-	if ctxErr := e.ctx.Err(); ctxErr != nil {
-		return &Error{
-			Kind:   KindTimeout,
-			Reason: ReasonTimeBudget,
-			Detail: e.limits.MaxDuration.String(),
-			cause:  ctxErr,
-		}
-	}
-	return nil
+	return fromGuard(e.clock.Err())
 }
 
 // budget is alive plus the compressed cap, re-checked here because an error from
@@ -481,10 +424,7 @@ func (e *extractor) budget() error {
 	if err := e.alive(); err != nil {
 		return err
 	}
-	if e.guard.compressed > e.limits.MaxCompressedBytes {
-		return tooLarge(CapCompressedSize, "")
-	}
-	return nil
+	return fromGuard(e.guard.CheckCompressed())
 }
 
 // budgetFirst prefers a busted budget over a read failure: a read that failed
@@ -494,93 +434,4 @@ func (e *extractor) budgetFirst(err error) error {
 		return bErr
 	}
 	return err
-}
-
-// clockReader makes every read observe the clock, so a trickling peer cannot
-// outlast MaxDuration. It cannot interrupt a Read that blocks forever; the HTTP
-// client's timeouts cover that.
-type clockReader struct {
-	e *extractor
-	r io.Reader
-}
-
-func (c *clockReader) Read(p []byte) (int, error) {
-	if err := c.e.alive(); err != nil {
-		return 0, err
-	}
-	return c.r.Read(p)
-}
-
-// ratioGuard enforces the decompressed cap and the ratio on every chunk as it is
-// produced, never at the end.
-type ratioGuard struct {
-	limits       Limits
-	compressed   int64
-	decompressed int64
-}
-
-func (g *ratioGuard) consumed(n int64) {
-	if n > 0 {
-		g.compressed += n
-	}
-}
-
-func (g *ratioGuard) produced(n int64, member string) error {
-	g.decompressed += n
-	if g.decompressed > g.limits.MaxDecompressedBytes {
-		return tooLarge(CapDecompressedSize, member)
-	}
-	// The denominator is real input consumed, never a declared size.
-	allowed := g.compressed * g.limits.MaxCompressionRatio
-	if allowed < g.limits.RatioGraceBytes {
-		allowed = g.limits.RatioGraceBytes
-	}
-	if g.decompressed > allowed {
-		return tooLarge(CapCompressionRatio, member)
-	}
-	return nil
-}
-
-type countingReader struct {
-	r     io.Reader
-	guard *ratioGuard
-}
-
-func (c *countingReader) Read(p []byte) (int, error) {
-	n, err := c.r.Read(p)
-	c.guard.consumed(int64(n))
-	return n, err
-}
-
-func tarMemberReason(typeflag byte) Reason {
-	switch typeflag {
-	case tar.TypeReg, tar.TypeDir:
-		return ""
-	case tar.TypeSymlink:
-		return RejectSymlink
-	case tar.TypeLink:
-		return RejectHardlink
-	case tar.TypeChar, tar.TypeBlock:
-		return RejectDevice
-	case tar.TypeFifo:
-		return RejectFIFO
-	default:
-		return RejectMemberType
-	}
-}
-
-func hasDriveLetter(p string) bool {
-	if len(p) < 2 || p[1] != ':' {
-		return false
-	}
-	c := p[0]
-	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
-}
-
-func truncate(s string) string {
-	const limit = 64
-	if len(s) <= limit {
-		return s
-	}
-	return s[:limit] + "..."
 }

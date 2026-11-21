@@ -1,0 +1,24 @@
+id: SH-DEP-005
+severity: high
+check: dependency-pinning
+title: MCP server launches a package that is not pinned
+detail: |
+  A stdio MCP server in this package starts through a launcher — npx, bunx,
+  pnpm dlx, uvx, pipx run or docker run — that downloads and runs a package at
+  every start. Without an exact version (`pkg@1.2.3`, `pkg==1.2.3`) or an image
+  tag other than `latest` or a digest, the code the agent runs is whatever the
+  registry serves that day, not anything this scan read.
+
+  The launched package is outside the bundle either way; pinning is what makes
+  the approval of this version mean the same thing tomorrow.
+match:
+  kind: shell-ast
+  command: [npx, bunx, pnpm, uvx, pipx, docker, podman]
+  paths: ["mcp.json#/mcpServers/*", "**/.mcp.json#/mcpServers/*", "plugin.json#/extensions/*/mcpServers/*"]
+  extract: launcher-package
+  condition: launcher-unpinned
+evidence:
+  quote: matched-node
+fixtures:
+  trips: fixtures/SH-DEP-005/hostile
+  clean: fixtures/SH-DEP-005/benign

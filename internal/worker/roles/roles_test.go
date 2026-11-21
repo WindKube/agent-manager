@@ -11,13 +11,7 @@ import (
 	"agent-manager/internal/worker/roles"
 )
 
-// ---------------------------------------------------------------------------
-// Principle VII — the registry is the only file a new role touches
-// ---------------------------------------------------------------------------
-
 func TestTheRegistryIsTheOnlyPlaceARoleIsNamed(t *testing.T) {
-	// What must hold is that the lookup and the listing read the one list rather
-	// than a second copy of the names.
 	require.Equal(t, len(roles.Definitions()), len(roles.Names()))
 	require.NotEmpty(t, roles.Definitions(), "the registry ships with at least the fetcher")
 
@@ -38,10 +32,8 @@ func TestTheRegistryIsTheOnlyPlaceARoleIsNamed(t *testing.T) {
 	}
 }
 
-// The declaration that makes "only the fetcher may write bundle bytes"
-// structural: worker.Build hands out a blob.Writer for AccessReadWrite and for no
-// other value, so this line is the whole mechanism (principle II). It is asserted
-// through the registry because the registry is what the bootstrap reads.
+// worker.Build hands out a blob.Writer only for AccessReadWrite, so this
+// declaration is the whole mechanism keeping bundle writes in the fetcher.
 func TestTheFetcherIsRegisteredAsTheOnlyRoleThatMayWriteBundleBytes(t *testing.T) {
 	found, err := roles.Lookup("fetcher")
 	require.NoError(t, err)
@@ -61,4 +53,18 @@ func TestTheFetcherIsRegisteredAsTheOnlyRoleThatMayWriteBundleBytes(t *testing.T
 		require.NotEqual(t, worker.AccessReadWrite, def.Needs.Blob,
 			"role %q declares Blob: AccessReadWrite, which hands it a blob.Writer", def.Name)
 	}
+}
+
+func TestTheNotifierReachesTheNetworkButHoldsNoObjectStoreCredential(t *testing.T) {
+	found, err := roles.Lookup("notifier")
+	require.NoError(t, err)
+
+	require.Equal(t, worker.Needs{
+		DB:       worker.AccessReadWrite,
+		Blob:     worker.AccessNone,
+		Outbound: true,
+	}, found.Needs)
+	require.Contains(t, found.Queues, outbox.QueueNotify)
+	require.NotNil(t, found.Register)
+	require.NotNil(t, found.Periodic)
 }

@@ -16,21 +16,17 @@ import (
 
 	"agent-manager/internal/api/contract"
 	"agent-manager/internal/auth"
+	"agent-manager/internal/domain/signer"
 	"agent-manager/internal/store/models"
 )
 
-// The package detail read is five statements: one that identifies the
-// package and 404s, then four issued concurrently once its ids are known.
-// The first cannot join the rest because four are one-to-many over
-// different children, and a single join would multiply every row and then
-// need undoing in Go. db must be a pool, not a transaction: the four run concurrently.
+// The package detail read is one identifying statement, then four concurrent
+// one-to-many reads (a single join would multiply rows). db must be a pool,
+// not a transaction.
 
-// detailSQL identifies the package and everything one-to-one with it. The
-// `latest_version_id` join is the same rule catalogFrom uses, so the
-// detail page shows exactly what the catalog links to. %s is
-// PackageReadable over `pkg` — the same predicate CatalogFilter.baseFilters
-// composes, repeated rather than shared because this statement's FROM
-// clause differs, but the two must not drift.
+// detailSQL identifies the package and everything one-to-one with it. Its
+// `latest_version_id` join and %s (PackageReadable over `pkg`) must match
+// catalogFrom and CatalogFilter.baseFilters.
 const detailSQL = `
 select
   pkg.id,
@@ -51,7 +47,17 @@ select
   ver.tags,
   coalesce(parent.namespace || '/' || parent.name, ''),
   coalesce(parent.name, ''),
-  exists (select 1 from scan where scan.version_id = ver.id and scan.finished_at is not null)
+  exists (select 1 from scan where scan.version_id = ver.id and scan.finished_at is not null),
+  coalesce(pkg.source_kind::text, ''),
+  coalesce(pkg.source_url, ''),
+  coalesce(pkg.source_ref, ''),
+  coalesce(pkg.source_subdirectory, ''),
+  pkg.track_upstream,
+  pkg.tag_pattern,
+  pkg.last_checked_at,
+  coalesce(pkg.last_check_error, ''),
+  coalesce(pkg.expected_signer_issuer, ''),
+  coalesce(pkg.expected_signer_identity, '')
 from package as pkg
 join publisher as pub on pub.id = pkg.publisher_id
 join version as ver on ver.id = pkg.latest_version_id and ver.visible
@@ -63,8 +69,7 @@ where %s
   and pkg.name = ?`
 
 // Package answers one detail page. `namespace` is the first segment of the
-// rendered id, not the publisher slug (see bundles.go, where confusing the
-// two was a real defect).
+// rendered id, not the publisher slug.
 func Package(ctx context.Context, db bun.IDB, principal auth.Principal,
 	namespace, name string,
 ) (contract.PackageDetail, error) {
@@ -76,6 +81,8 @@ func Package(ctx context.Context, db bun.IDB, principal auth.Principal,
 		manifest    string
 		parentID    string
 		parent      string
+		source      contract.PackageSource
+		tracking    contract.PackageTracking
 	)
 	detail.Tags = []string{}
 
@@ -89,7 +96,10 @@ func Package(ctx context.Context, db bun.IDB, principal auth.Principal,
 		&detail.Publisher.Slug, &detail.Publisher.DisplayName, &detail.Publisher.Verified,
 		&detail.Category,
 		&versionID, &detail.Version, &detail.Verdict, &manifest, pgdialect.Array(&detail.Tags),
-		&parentID, &parent, &detail.Capabilities.Scanned)
+		&parentID, &parent, &detail.Capabilities.Scanned,
+		&source.Kind, &source.URL, &source.Ref, &source.Subdirectory,
+		&tracking.TrackUpstream, &tracking.TagPattern, &tracking.LastCheckedAt, &tracking.LastCheckError,
+		&detail.Signer.Issuer, &detail.Signer.Identity)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return contract.PackageDetail{}, ErrNotFound
@@ -99,12 +109,19 @@ func Package(ctx context.Context, db bun.IDB, principal auth.Principal,
 	if detail.Tags == nil {
 		detail.Tags = []string{}
 	}
-	// Owner or catalog admin, mirroring the org.templ pattern: the control
-	// is offered to every reader of this page and disabled, with its
-	// reason, for everyone else (FR-126).
+	if source.Kind != "" {
+		detail.Source = &source
+	}
+	// Owner or catalog admin; everyone else sees the control disabled.
 	ownerID, _ := uuid.Parse(ownerIDText)
 	detail.CanChangeVisibility = (ownerID != uuid.Nil && ownerID == principal.IdentityID) ||
 		principal.Role == models.OrgRoleCatalogAdmin
+	detail.Signer.CanChange = detail.CanChangeVisibility
+	expected := signer.Expected{Issuer: detail.Signer.Issuer, Identity: detail.Signer.Identity}
+	if source.Kind == string(models.FetchSourceGit) {
+		tracking.CanChange = detail.CanChangeVisibility
+		detail.Tracking = &tracking
+	}
 
 	detail.Manifest = manifest
 	detail.ManifestObject = manifestObject(detail.Kind)
@@ -122,7 +139,7 @@ func Package(ctx context.Context, db bun.IDB, principal auth.Principal,
 	wait.Add(4)
 	go func() {
 		defer wait.Done()
-		detail.Versions, errs[0] = packageVersions(ctx, db, principal, packageID)
+		detail.Versions, errs[0] = packageVersions(ctx, db, principal, packageID, expected)
 	}()
 	go func() {
 		defer wait.Done()
@@ -145,12 +162,11 @@ func Package(ctx context.Context, db bun.IDB, principal auth.Principal,
 	return detail, nil
 }
 
-// packageVersions is the versions panel. `pinned by N` is derived and
-// scoped by the readability predicate — not optional: an unscoped count
-// beside the readable dependent-profiles list would leak private profiles
-// by arithmetic. Ordering is by `semver_sort` so 0.10.0 sorts above 0.9.0.
+// packageVersions is the versions panel. `pinned by N` must be scoped by
+// readability, or it leaks private profiles by arithmetic. `semver_sort`
+// puts 0.10.0 above 0.9.0.
 func packageVersions(ctx context.Context, db bun.IDB, principal auth.Principal,
-	packageID string,
+	packageID string, expected signer.Expected,
 ) ([]contract.PackageVersion, error) {
 	readable, readableArgs := Readable("pinner", principal)
 
@@ -163,11 +179,21 @@ select
   ver.object_key,
   coalesce(ver.digest, ''::bytea),
   coalesce(ver.size_bytes, 0),
+  coalesce(ver.source_url, ''),
+  coalesce(ver.source_ref, ''),
+  coalesce(ver.source_commit, ''),
   (select count(*)
      from profile_entry as pin
      join profile as pinner on pinner.id = pin.profile_id
-    where pin.pinned_version_id = ver.id and ` + readable + `)
+    where pin.pinned_version_id = ver.id and ` + readable + `),
+  coalesce(sig.result::text, ''),
+  coalesce(sig.signer_issuer, ''),
+  coalesce(sig.signer_identity, ''),
+  coalesce(sig.reason, ''),
+  case when sig.kind = 'cosign-bundle' then coalesce(sig.ref, '') else '' end,
+  sig.signed_at
 from version as ver
+left join signature as sig on sig.version_id = ver.id
 where ver.package_id = ? and ver.visible
 order by ver.semver_sort desc, ver.created_at desc`
 
@@ -185,11 +211,18 @@ order by ver.semver_sort desc, ver.created_at desc`
 		var (
 			version contract.PackageVersion
 			digest  []byte
+			result  string
+			sig     = &version.Signature
 		)
 		if err := rows.Scan(&version.Version, &version.DistTag, &version.Verdict, &version.CreatedAt,
-			&version.ObjectKey, &digest, &version.SizeBytes, &version.PinnedBy); err != nil {
+			&version.ObjectKey, &digest, &version.SizeBytes,
+			&version.SourceURL, &version.SourceRef, &version.SourceCommit, &version.PinnedBy,
+			&result, &sig.Issuer, &sig.Identity, &sig.Reason, &sig.Ref, &sig.SignedAt); err != nil {
 			return nil, fmt.Errorf("scan a version row: %w", err)
 		}
+		sig.Status = string(signer.Evaluate(signer.Observed{
+			Result: result, Issuer: sig.Issuer, Identity: sig.Identity,
+		}, expected))
 		if len(digest) > 0 {
 			version.Digest = "sha256:" + hex.EncodeToString(digest)
 		}
@@ -201,17 +234,16 @@ order by ver.semver_sort desc, ver.created_at desc`
 	return versions, nil
 }
 
-// packageComponents is ordered by the enum's declaration order — skill,
-// mcp, ext — not the text, which would put ext first. `order by cmp.kind`
-// is qualified for that reason: a bare `order by kind` binds to the cast
-// output column and sorts alphabetically instead, a defect this query
-// actually had.
+// packageComponents is ordered by the enum's declaration order. `cmp.kind` is
+// qualified because a bare `order by kind` binds to the ::text output column
+// and sorts alphabetically.
 func packageComponents(ctx context.Context, db bun.IDB, versionID string) ([]contract.PackageComponent, error) {
 	const query = `
-select cmp.kind::text, cmp.name, cmp.path, coalesce(cmp.note, '')
+select cmp.kind::text, cmp.name, cmp.path, coalesce(cmp.note, ''),
+  coalesce(cmp.event, ''), coalesce(cmp.matcher, ''), coalesce(cmp.transport, ''), coalesce(cmp.target, '')
 from component as cmp
 where cmp.version_id = ?
-order by cmp.kind, cmp.name`
+order by cmp.kind, cmp.name, cmp.path`
 
 	rows, err := db.QueryContext(ctx, query, versionID)
 	if err != nil {
@@ -222,7 +254,8 @@ order by cmp.kind, cmp.name`
 	components := []contract.PackageComponent{}
 	for rows.Next() {
 		var component contract.PackageComponent
-		if err := rows.Scan(&component.Kind, &component.Name, &component.Path, &component.Note); err != nil {
+		if err := rows.Scan(&component.Kind, &component.Name, &component.Path, &component.Note,
+			&component.Event, &component.Matcher, &component.Transport, &component.Target); err != nil {
 			return nil, fmt.Errorf("scan a component row: %w", err)
 		}
 		components = append(components, component)
@@ -233,15 +266,12 @@ order by cmp.kind, cmp.name`
 	return components, nil
 }
 
-// packageCapabilities reads both sources of the inferred/expected
-// comparison in one statement, since they are one table keyed by source.
-// Two empty slices means never scanned, not "reaches nothing" — the
-// `scanned` flag on the detail tells the two cases apart.
+// packageCapabilities reads inferred and expected capabilities in one
+// statement. Two empty slices may mean never scanned; the detail's `scanned`
+// flag tells them apart.
 func packageCapabilities(ctx context.Context, db bun.IDB, versionID string) (
 	inferred, expected []contract.PackageCapability, err error,
 ) {
-	// Ordered by name only: rows split into two slices by source below, so
-	// ordering by source would risk the same output-name defect above.
 	const query = `
 select cap.source::text, cap.name, cap.level::text, coalesce(cap.detail::text, '')
 from capability as cap
@@ -278,9 +308,8 @@ order by cap.name`
 	return inferred, expected, nil
 }
 
-// capabilityDetail is decoded permissively: the column is jsonb with no
-// check constraint, and an unreadable detail degrades to "no targets
-// listed" rather than failing the whole page.
+// capabilityDetail is decoded permissively: an unreadable jsonb detail
+// degrades to no targets rather than failing the page.
 type capabilityDetail struct {
 	Targets    []string `json:"targets"`
 	Indefinite bool     `json:"indefinite"`
@@ -297,10 +326,8 @@ func decodeCapabilityDetail(raw string) ([]string, bool) {
 	return detail.Targets, detail.Indefinite
 }
 
-// packageDependents is scoped by the same readability predicate
-// /v1/profiles uses: an unreadable profile is never selected. Without it
-// this panel would name every private profile pinning the package, from a
-// page any authenticated person may open.
+// packageDependents is scoped by Readable so the panel never names a private
+// profile pinning the package.
 func packageDependents(ctx context.Context, db bun.IDB, principal auth.Principal,
 	packageID string,
 ) ([]contract.PackageDependent, error) {
@@ -337,12 +364,6 @@ order by prf.name, prf.slug`
 	return dependents, nil
 }
 
-// ---- manifest readings --------------------------------------------------------
-//
-// The three below read the stored manifest rather than a column: `package`
-// carries no description or spec version, and adding one would duplicate
-// what the manifest already says.
-
 func manifestObject(kind string) string {
 	if kind == "skill" {
 		return "SKILL.md"
@@ -360,10 +381,8 @@ func manifestDescription(manifest string) string {
 	return doc.Description
 }
 
-// specVersion reads the version out of the manifest's `$schema`: Agent
-// Plugins has no `agentPluginsVersion` field, so the $id carries the
-// version as a path segment instead. A standalone skill has no `$schema`,
-// so this returns "" — not a gap to fill, since agentskills.io versions nothing.
+// specVersion reads the version from the manifest's `$schema` path, since
+// Agent Plugins has no version field. A standalone skill returns "".
 func specVersion(manifest string) string {
 	var doc struct {
 		Schema string `json:"$schema"`

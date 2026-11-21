@@ -14,175 +14,12 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The two governance screens' door to the api, through the generated client
-// and nothing else. The shapes below live in THIS package rather than
-// internal/web/view: they are what the api answers, mapped once into Go the
-// screen can use, and the screen owns its own view models.
-//
-// Nothing here renders: instants, counts and canonical vocabulary, so the
-// screen can render them against its own clock and its own copy.
-
-// ErrForbidden is the api refusing an action this identity's role does not
-// carry. A sentinel of its own, not folded into the generic error path: it
-// is a screen state rather than a failure, and its arrival also means the
-// screen offered something it should not have.
+// ErrForbidden is the api refusing an action this identity's role lacks. It is a
+// screen state, not a failure, and means the screen offered something it should not have.
 var ErrForbidden = errors.New("this identity may not take that action")
 
-// ScannerSummary is the Scanner screen's headline card.
-type ScannerSummary struct {
-	// PeriodDays is the window the two period figures cover, from the api
-	// rather than a caption — never a figure that is a constant in the product.
-	PeriodDays      int
-	VersionsScanned int
-	Quarantined     int
-	OverridesActive int
-	// NearestExpiry is when the first active override lapses, nil when none active.
-	NearestExpiry *time.Time
-	// MedianScan is nil when no scan finished in the period, distinct from a
-	// median of zero, and must not render as "0s".
-	MedianScan *time.Duration
-}
-
-// Finding is one row of the findings list.
-type Finding struct {
-	// ID is the api's uuid as a string, since it goes straight back into a URL.
-	ID     string
-	RuleID string
-	// Engine names the analyser that raised it; two engines may use the same
-	// rule id.
-	Engine   string
-	Severity string
-	State    string
-	Title    string
-	// Detail is the rule's own prose, the same text the detail pane shows in
-	// full — present on the row too so a reader can learn what a rule means
-	// on hover, before selecting it.
-	Detail string
-	// Subject is `community/slack-digest@0.5.1`, assembled here rather than
-	// by the api to avoid repeating it in four places.
-	Subject   string
-	PackageID string
-	Version   string
-	// Verdict is the SUBJECT VERSION's verdict, carried raw and NOT collapsed
-	// onto view.Scan's three pills: on this screen, awaiting a decision vs.
-	// having had one is the entire subject of the page.
-	Verdict  string
-	RaisedAt time.Time
-	// EvidencePath/Line are the PRIMARY location only. Line is 0 when the
-	// finding names a file without one; line numbers are 1-based, so 0 is
-	// unambiguous and saves a pointer.
-	EvidencePath string
-	EvidenceLine int
-}
-
-// FindingsPage is one page of findings.
-type FindingsPage struct {
-	Findings []Finding
-	Total    int
-	Page     int
-	PageSize int
-}
-
-// FindingDetail is the detail pane: the finding, all of its evidence, and
-// every check that ran.
-type FindingDetail struct {
-	Finding
-	// Explanation is the rule pack's prose, bundle-adjacent text rendered escaped.
-	Explanation string
-	Evidence    []Evidence
-	// Checks is every check the scan ran, passes included: a pane showing
-	// only failures could not be told apart from one where nothing else ran.
-	Checks   []Check
-	Scan     Scan
-	Override *Override
-}
-
-// Evidence is one location a finding points at. Path and Quote are
-// attacker-controlled bundle content: escaped on render, always.
-type Evidence struct {
-	Path  string
-	Line  int
-	Quote string
-	Role  string
-}
-
-// Check is one check the scan ran.
-type Check struct {
-	ID string
-	// Engine names the analyser this row belongs to.
-	Engine string
-	Label  string
-	// Explain is what this check looks for, in general, as the scan recorded
-	// it — not this scan's result, which is Result and WarnCount below.
-	Explain string
-	// Result is pass, fail or warn, canonical and unrendered.
-	Result    string
-	WarnCount int
-}
-
-// Scan is the scan that raised the finding.
-type Scan struct {
-	PackVersion string
-	StartedAt   time.Time
-	// FinishedAt is nil while the scan is in flight.
-	FinishedAt *time.Time
-	Verdict    string
-	// TimedOut: a scan that ran out of budget, whose verdict must never be
-	// presented as a clean bill of health.
-	TimedOut bool
-}
-
-// Override is the recorded acceptance of a finding.
-type Override struct {
-	Reviewer  string
-	Note      string
-	ExpiresAt *time.Time
-	DecidedAt time.Time
-}
-
-// Decision is what an accept or a reject answers with.
-type Decision struct {
-	ID    string
-	State string
-	// Verdict is the subject version's verdict AFTER the decision: an accept
-	// leaves it flagged, only a reject makes it rejected.
-	Verdict   string
-	ExpiresAt *time.Time
-}
-
-// AuditEntry is one row of the audit log.
-type AuditEntry struct {
-	ID         string
-	OccurredAt time.Time
-	Actor      string
-	// ActorKind is identity or system, carried rather than inferred from
-	// Actor: a screen must not attribute a system row to a person.
-	ActorKind string
-	Kind      string
-	// Text quotes package, profile and host names a publisher chose. Escaped
-	// on render, always.
-	Text   string
-	Source string
-}
-
-// AuditPage is one page of the audit log.
-type AuditPage struct {
-	Entries  []AuditEntry
-	Total    int
-	Page     int
-	PageSize int
-}
-
-// Badges is the shell's three counts.
-type Badges struct {
-	Packages     int
-	Profiles     int
-	OpenFindings int
-}
-
-// ScannerSummary reads GET /v1/scanner/summary. days of 0 takes the api's own
-// window rather than asserting one from this side.
-func (c *Client) ScannerSummary(ctx context.Context, days int) (ScannerSummary, error) {
+// ScannerSummary reads the scanner summary; days of 0 takes the api's window.
+func (c *Client) ScannerSummary(ctx context.Context, days int) (view.ScannerSummary, error) {
 	params := &apiclient.ScannerSummaryParams{}
 	if days > 0 {
 		params.Days = ptr(int64(days))
@@ -190,38 +27,41 @@ func (c *Client) ScannerSummary(ctx context.Context, days int) (ScannerSummary, 
 
 	resp, err := c.api.ScannerSummaryWithResponse(ctx, params)
 	if err != nil {
-		return ScannerSummary{}, fmt.Errorf("read the scanner summary: %w", err)
+		return view.ScannerSummary{}, fmt.Errorf("read the scanner summary: %w", err)
 	}
 	if resp.JSON200 == nil {
-		return ScannerSummary{}, fmt.Errorf("read the scanner summary: %w",
+		return view.ScannerSummary{}, fmt.Errorf("read the scanner summary: %w",
 			governanceError(resp.HTTPResponse, resp.Body))
 	}
 
 	body := resp.JSON200
-	out := ScannerSummary{
+	out := view.ScannerSummary{
 		PeriodDays:      int(body.PeriodDays),
 		VersionsScanned: int(body.VersionsScanned),
 		Quarantined:     int(body.Quarantined),
 		OverridesActive: int(body.OverridesActive),
-		NearestExpiry:   body.NearestOverrideExpiry,
+	}
+	if body.NearestOverrideExpiry != nil {
+		out.NearestExpiry = view.Until(*body.NearestOverrideExpiry, c.now())
 	}
 	if body.MedianScanSeconds != nil {
-		median := time.Duration(*body.MedianScanSeconds * float64(time.Second))
-		out.MedianScan = &median
+		// nil stays empty; a median that rounds to nothing is still a measurement.
+		out.MedianScan = view.Duration(time.Duration(*body.MedianScanSeconds * float64(time.Second)))
+		if out.MedianScan == "" {
+			out.MedianScan = "0ms"
+		}
 	}
 	return out, nil
 }
 
-// FindingQuery is the findings list's filter, in the api's vocabulary. Empty
-// strings mean no filter, which is what the api's `all` is.
+// FindingQuery is the findings filter in the api's vocabulary; empty means `all`.
 type FindingQuery struct {
 	State    string
 	Severity string
 	Page     int
 }
 
-// Findings reads GET /v1/findings.
-func (c *Client) Findings(ctx context.Context, q FindingQuery) (FindingsPage, error) {
+func (c *Client) Findings(ctx context.Context, q FindingQuery) (view.FindingsPage, error) {
 	params := &apiclient.ListFindingsParams{}
 	if q.State != "" {
 		params.State = ptr(apiclient.ListFindingsParamsState(q.State))
@@ -235,115 +75,84 @@ func (c *Client) Findings(ctx context.Context, q FindingQuery) (FindingsPage, er
 
 	resp, err := c.api.ListFindingsWithResponse(ctx, params)
 	if err != nil {
-		return FindingsPage{}, fmt.Errorf("list findings: %w", err)
+		return view.FindingsPage{}, fmt.Errorf("list findings: %w", err)
 	}
 	if resp.JSON200 == nil {
-		return FindingsPage{}, fmt.Errorf("list findings: %w",
+		return view.FindingsPage{}, fmt.Errorf("list findings: %w",
 			governanceError(resp.HTTPResponse, resp.Body))
 	}
 
 	body := resp.JSON200
-	page := FindingsPage{
-		Findings: make([]Finding, 0, len(body.Findings)),
+	page := view.FindingsPage{
+		Rows:     make([]view.FindingRow, 0, len(body.Findings)),
 		Total:    int(body.Total),
 		Page:     int(body.Page),
 		PageSize: int(body.PageSize),
 	}
+	now := c.now()
 	for i := range body.Findings {
-		page.Findings = append(page.Findings, finding(&body.Findings[i]))
+		page.Rows = append(page.Rows, findingRow(&body.Findings[i], now))
 	}
 	return page, nil
 }
 
-// Finding reads GET /v1/findings/{id}. A 404 becomes view.ErrNotFound, and so
-// does an id that is not a uuid: the id reaches this method out of a URL a
-// person can edit, so "no such finding" is the honest answer to a malformed one.
-func (c *Client) Finding(ctx context.Context, id string) (FindingDetail, error) {
+// Finding maps a 404, and an id that is not a uuid, to view.ErrNotFound: the id
+// comes from an editable URL.
+func (c *Client) Finding(ctx context.Context, id string) (view.FindingDetail, error) {
 	parsed, err := uuid.Parse(id)
 	if err != nil {
-		return FindingDetail{}, view.ErrNotFound
+		return view.FindingDetail{}, view.ErrNotFound
 	}
 
 	resp, err := c.api.GetFindingWithResponse(ctx, parsed)
 	if err != nil {
-		return FindingDetail{}, fmt.Errorf("get finding %s: %w", id, err)
+		return view.FindingDetail{}, fmt.Errorf("get finding %s: %w", id, err)
 	}
 	if resp.JSON200 == nil {
 		if resp.HTTPResponse != nil && resp.HTTPResponse.StatusCode == http.StatusNotFound {
-			return FindingDetail{}, view.ErrNotFound
+			return view.FindingDetail{}, view.ErrNotFound
 		}
-		return FindingDetail{}, fmt.Errorf("get finding %s: %w", id,
+		return view.FindingDetail{}, fmt.Errorf("get finding %s: %w", id,
 			governanceError(resp.HTTPResponse, resp.Body))
 	}
 
 	body := resp.JSON200
-	out := FindingDetail{
-		Finding: Finding{
-			ID:        body.Id.String(),
-			RuleID:    body.RuleId,
-			Engine:    body.Engine,
-			Severity:  string(body.Severity),
-			State:     string(body.State),
-			Title:     body.Title,
-			Detail:    deref(body.Detail),
-			Subject:   body.PackageId + "@" + body.Version,
-			PackageID: body.PackageId,
-			Version:   body.Version,
-			Verdict:   string(body.Verdict),
-			RaisedAt:  body.RaisedAt,
+	now := c.now()
+	out := view.FindingDetail{
+		FindingRow: view.FindingRow{
+			ID:          body.Id.String(),
+			RuleID:      body.RuleId,
+			Engine:      body.Engine,
+			Title:       body.Title,
+			Explanation: deref(body.Detail),
+			Subject:     body.PackageId + "@" + body.Version,
+			PackageID:   body.PackageId,
+			Version:     body.Version,
+			Severity:    view.Severity(body.Severity),
+			State:       view.FindingState(body.State),
+			Verdict:     view.Verdict(body.Verdict),
+			Raised:      view.Relative(body.RaisedAt, now),
 		},
-		Explanation: deref(body.Detail),
-		Evidence:    make([]Evidence, 0, len(body.Evidence)),
-		Checks:      make([]Check, 0, len(body.Checks)),
-		Scan: Scan{
-			PackVersion: body.Scan.PackVersion,
-			StartedAt:   body.Scan.StartedAt,
-			FinishedAt:  body.Scan.FinishedAt,
-			Verdict:     string(body.Scan.Verdict),
-			TimedOut:    body.Scan.TimedOut,
-		},
+		Scan: scanMeta(body.Scan),
 	}
-	// The primary location is taken from the evidence rows rather than
-	// duplicated by the api: reading it off the row whose role says
-	// `primary` keeps one source of it here.
 	for _, item := range body.Evidence {
-		out.Evidence = append(out.Evidence, Evidence{
-			Path:  item.Path,
-			Line:  int(derefInt(item.Line)),
-			Quote: deref(item.Quote),
-			Role:  string(item.Role),
-		})
-		if string(item.Role) == evidenceRolePrimary && out.EvidencePath == "" {
-			out.EvidencePath = item.Path
-			out.EvidenceLine = int(derefInt(item.Line))
-		}
+		addEvidence(&out, item)
 	}
 	for _, check := range body.Checks {
-		out.Checks = append(out.Checks, Check{
+		out.Checks = append(out.Checks, view.Check{
 			ID: check.CheckId, Engine: check.Engine, Label: check.Label, Explain: check.Explain,
-			Result: string(check.Result), WarnCount: int(check.WarnCount),
+			Result: view.CheckResult(check.Result), WarnCount: int(check.WarnCount),
 		})
 	}
-	if body.Override != nil {
-		out.Override = &Override{
-			Reviewer:  body.Override.Reviewer,
-			Note:      deref(body.Override.Note),
-			ExpiresAt: body.Override.ExpiresAt,
-			DecidedAt: body.Override.DecidedAt,
-		}
-	}
+	out.Override = findingOverride(body.Override, now)
 	return out, nil
 }
 
-const evidenceRolePrimary = "primary"
-
-// AcceptFinding posts POST /v1/findings/{id}/accept. days of 0 lets the api
-// apply its own default: an override's lifetime is policy, and policy lives
-// on the side that owns the row.
-func (c *Client) AcceptFinding(ctx context.Context, id, note string, days int) (Decision, error) {
+// AcceptFinding accepts a finding; days of 0 lets the api apply its policy default.
+func (c *Client) AcceptFinding(ctx context.Context, id, note string, days int) error {
 	parsed, err := uuid.Parse(id)
 	if err != nil {
-		return Decision{}, view.ErrNotFound
+		return view.ErrNotFound
 	}
 
 	body := apiclient.AcceptFindingJSONRequestBody{Note: note}
@@ -353,21 +162,20 @@ func (c *Client) AcceptFinding(ctx context.Context, id, note string, days int) (
 
 	resp, err := c.api.AcceptFindingWithResponse(ctx, parsed, body)
 	if err != nil {
-		return Decision{}, fmt.Errorf("accept finding %s: %w", id, err)
+		return fmt.Errorf("accept finding %s: %w", id, err)
 	}
 	if resp.JSON200 == nil {
-		return Decision{}, fmt.Errorf("accept finding %s: %w", id,
+		return fmt.Errorf("accept finding %s: %w", id,
 			governanceError(resp.HTTPResponse, resp.Body))
 	}
-	return decision(resp.JSON200), nil
+	return nil
 }
 
-// RejectFinding posts POST /v1/findings/{id}/reject. There is no expiry to pass:
-// rejection is terminal.
-func (c *Client) RejectFinding(ctx context.Context, id, note string) (Decision, error) {
+// RejectFinding rejects a finding. Rejection is terminal, so there is no expiry.
+func (c *Client) RejectFinding(ctx context.Context, id, note string) error {
 	parsed, err := uuid.Parse(id)
 	if err != nil {
-		return Decision{}, view.ErrNotFound
+		return view.ErrNotFound
 	}
 
 	body := apiclient.RejectFindingJSONRequestBody{}
@@ -377,66 +185,92 @@ func (c *Client) RejectFinding(ctx context.Context, id, note string) (Decision, 
 
 	resp, err := c.api.RejectFindingWithResponse(ctx, parsed, body)
 	if err != nil {
-		return Decision{}, fmt.Errorf("reject finding %s: %w", id, err)
+		return fmt.Errorf("reject finding %s: %w", id, err)
 	}
 	if resp.JSON200 == nil {
-		return Decision{}, fmt.Errorf("reject finding %s: %w", id,
+		return fmt.Errorf("reject finding %s: %w", id,
 			governanceError(resp.HTTPResponse, resp.Body))
 	}
-	return decision(resp.JSON200), nil
+	return nil
 }
 
-// Audit reads GET /v1/audit.
-func (c *Client) Audit(ctx context.Context, page int) (AuditPage, error) {
-	params := &apiclient.ListAuditParams{}
+func (c *Client) Audit(ctx context.Context, page int, filter view.AuditFilter) (view.AuditPage, error) {
+	params := &apiclient.ListAuditParams{
+		SubjectId: optional(filter.SubjectID),
+		Namespace: optional(filter.Namespace),
+	}
+	if filter.SubjectKind != "" {
+		params.SubjectKind = ptr(apiclient.ListAuditParamsSubjectKind(filter.SubjectKind))
+	}
 	if page > 0 {
 		params.Page = ptr(int64(page))
 	}
 
 	resp, err := c.api.ListAuditWithResponse(ctx, params)
 	if err != nil {
-		return AuditPage{}, fmt.Errorf("read the audit log: %w", err)
+		return view.AuditPage{}, fmt.Errorf("read the audit log: %w", err)
 	}
 	if resp.JSON200 == nil {
-		return AuditPage{}, fmt.Errorf("read the audit log: %w",
+		return view.AuditPage{}, fmt.Errorf("read the audit log: %w",
 			governanceError(resp.HTTPResponse, resp.Body))
 	}
 
 	body := resp.JSON200
-	out := AuditPage{
-		Entries:  make([]AuditEntry, 0, len(body.Entries)),
+	out := view.AuditPage{
+		Rows:     make([]view.AuditRow, 0, len(body.Entries)),
 		Total:    int(body.Total),
 		Page:     int(body.Page),
 		PageSize: int(body.PageSize),
 	}
-	for _, entry := range body.Entries {
-		out.Entries = append(out.Entries, AuditEntry{
-			ID:         entry.Id.String(),
-			OccurredAt: entry.OccurredAt,
-			Actor:      entry.Actor,
-			ActorKind:  string(entry.ActorKind),
-			Kind:       string(entry.Kind),
-			Text:       entry.Text,
-			Source:     deref(entry.Source),
-		})
+	for i := range body.Entries {
+		out.Rows = append(out.Rows, auditRow(&body.Entries[i]))
 	}
 	return out, nil
 }
 
-// AuditExport is the streamed export, the ONE method here that does not
-// decode a body: it calls the raw client rather than ExportAuditWithResponse,
-// whose generated wrapper reads the entire body into memory first —
-// undoing the api's own streaming. The reader is the CALLER's to close, and
-// the caller must expect a stream that stops early: a truncated export
-// arrives as a short 200 whose last line is not the api's completeness sentinel.
-func (c *Client) AuditExport(ctx context.Context) (io.ReadCloser, string, error) {
-	resp, err := c.api.ExportAudit(ctx)
+func auditRow(entry *apiclient.AuditEntry) view.AuditRow {
+	row := view.AuditRow{
+		ID:        entry.Id.String(),
+		At:        view.Timestamp(entry.OccurredAt),
+		Actor:     entry.Actor,
+		System:    string(entry.ActorKind) == view.ActorKindSystem,
+		Kind:      string(entry.Kind),
+		Text:      entry.Text,
+		Source:    deref(entry.Source),
+		SubjectID: deref(entry.SubjectId),
+		Namespace: deref(entry.Namespace),
+	}
+	if entry.SubjectKind != nil {
+		row.SubjectKind = string(*entry.SubjectKind)
+	}
+	switch row.SubjectKind {
+	case "package":
+		row.Package = row.SubjectID
+	case "version", "finding":
+		if entry.Data != nil {
+			row.Package, _ = (*entry.Data)["package"].(string)
+		}
+	}
+	return row
+}
+
+// AuditExport streams the export through the raw client, because the generated
+// WithResponse wrapper buffers the whole body. The caller closes the reader, and a
+// truncated export arrives as a short 200 without the api's completeness sentinel.
+func (c *Client) AuditExport(ctx context.Context, filter view.AuditFilter) (io.ReadCloser, string, error) {
+	params := &apiclient.ExportAuditParams{
+		SubjectId: optional(filter.SubjectID),
+		Namespace: optional(filter.Namespace),
+	}
+	if filter.SubjectKind != "" {
+		params.SubjectKind = ptr(apiclient.ExportAuditParamsSubjectKind(filter.SubjectKind))
+	}
+	resp, err := c.api.ExportAudit(ctx, params)
 	if err != nil {
 		return nil, "", fmt.Errorf("export the audit log: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		// Drained and closed rather than handed back: an error response is a
-		// problem document, not an export.
+		// An error response is a problem document, not an export.
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
 		_ = resp.Body.Close()
 		return nil, "", fmt.Errorf("export the audit log: %w", governanceError(resp, nil))
@@ -444,54 +278,87 @@ func (c *Client) AuditExport(ctx context.Context) (io.ReadCloser, string, error)
 	return resp.Body, resp.Header.Get("Content-Type"), nil
 }
 
-// Badges reads GET /v1/badges — the shell's counts, one call per page render.
-func (c *Client) Badges(ctx context.Context) (Badges, error) {
+// Badges reads the shell's counts, one call per page render.
+func (c *Client) Badges(ctx context.Context) (view.Badges, error) {
 	resp, err := c.api.GetBadgesWithResponse(ctx)
 	if err != nil {
-		return Badges{}, fmt.Errorf("read the badge counts: %w", err)
+		return view.Badges{}, fmt.Errorf("read the badge counts: %w", err)
 	}
 	if resp.JSON200 == nil {
-		return Badges{}, fmt.Errorf("read the badge counts: %w",
+		return view.Badges{}, fmt.Errorf("read the badge counts: %w",
 			governanceError(resp.HTTPResponse, resp.Body))
 	}
-	return Badges{
+	return view.Badges{
 		Packages:     int(resp.JSON200.Packages),
 		Profiles:     int(resp.JSON200.Profiles),
 		OpenFindings: int(resp.JSON200.OpenFindings),
 	}, nil
 }
 
-func finding(from *apiclient.FindingSummary) Finding {
-	return Finding{
-		ID:           from.Id.String(),
-		RuleID:       from.RuleId,
-		Engine:       from.Engine,
-		Severity:     string(from.Severity),
-		State:        string(from.State),
-		Title:        from.Title,
-		Detail:       deref(from.Detail),
-		Subject:      from.PackageId + "@" + from.Version,
-		PackageID:    from.PackageId,
-		Version:      from.Version,
-		Verdict:      string(from.Verdict),
-		RaisedAt:     from.RaisedAt,
-		EvidencePath: deref(from.EvidencePath),
-		EvidenceLine: int(derefInt(from.EvidenceLine)),
+func findingRow(from *apiclient.FindingSummary, now time.Time) view.FindingRow {
+	row := view.FindingRow{
+		ID:          from.Id.String(),
+		RuleID:      from.RuleId,
+		Engine:      from.Engine,
+		Title:       from.Title,
+		Explanation: deref(from.Detail),
+		Subject:     from.PackageId + "@" + from.Version,
+		PackageID:   from.PackageId,
+		Version:     from.Version,
+		Severity:    view.Severity(from.Severity),
+		State:       view.FindingState(from.State),
+		Verdict:     view.Verdict(from.Verdict),
+		Raised:      view.Relative(from.RaisedAt, now),
 	}
+	if from.EvidencePath != nil {
+		row.Primary = &view.Evidence{Path: *from.EvidencePath, Line: int(derefInt(from.EvidenceLine))}
+	}
+	return row
 }
 
-func decision(from *apiclient.FindingDecision) Decision {
-	return Decision{
-		ID:        from.Id.String(),
-		State:     string(from.State),
-		Verdict:   string(from.Verdict),
-		ExpiresAt: from.ExpiresAt,
+func scanMeta(from apiclient.FindingScan) view.ScanMeta {
+	out := view.ScanMeta{
+		PackVersion: from.PackVersion,
+		Started:     view.Timestamp(from.StartedAt),
+		Verdict:     view.Verdict(from.Verdict),
+		TimedOut:    from.TimedOut,
 	}
+	if from.FinishedAt != nil {
+		out.Finished = view.Timestamp(*from.FinishedAt)
+	}
+	return out
 }
 
-// governanceError adds the 403 branch to statusError. The two refusals must
-// not collapse into one another: signing in again does not acquire a role,
-// so treating a 403 as a 401 sends a person round a loop that cannot end.
+// addEvidence finds the primary location by role: the api promises no order.
+func addEvidence(out *view.FindingDetail, item apiclient.FindingEvidence) {
+	evidence := view.Evidence{Path: item.Path, Line: int(derefInt(item.Line)), Quote: deref(item.Quote)}
+	if string(item.Role) == evidencePrimary && out.Primary == nil {
+		out.Primary = &evidence
+		return
+	}
+	out.Supporting = append(out.Supporting, evidence)
+}
+
+const evidencePrimary = "primary"
+
+func findingOverride(from *apiclient.FindingOverride, now time.Time) *view.Override {
+	if from == nil {
+		return nil
+	}
+	out := &view.Override{
+		Reviewer: from.Reviewer,
+		Note:     deref(from.Note),
+		Decided:  view.Timestamp(from.DecidedAt),
+	}
+	if from.ExpiresAt != nil {
+		out.Expires = view.Until(*from.ExpiresAt, now)
+		out.Lapse = view.Lapse(*from.ExpiresAt, now)
+	}
+	return out
+}
+
+// governanceError adds 403 to statusError. Treating a 403 as a 401 would loop a
+// person through sign-in, which never grants a role.
 func governanceError(resp *http.Response, body []byte) error {
 	if resp != nil && resp.StatusCode == http.StatusForbidden {
 		return ErrForbidden

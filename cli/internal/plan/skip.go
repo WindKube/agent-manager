@@ -28,6 +28,10 @@ const (
 	SkipEntryKindUnsupported = "entry-kind-not-installable"
 
 	SkipTargetUnwritable = "target-unwritable"
+
+	// SkipServedBySharedRoot: the agent already loads this skill from another
+	// target's skill root written by the same profile.
+	SkipServedBySharedRoot = "served-by-shared-skills-root"
 )
 
 // The skip reasons lockfile.schema.json enumerates.

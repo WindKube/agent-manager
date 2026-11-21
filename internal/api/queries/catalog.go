@@ -16,10 +16,8 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The catalog read runs two statements, issued concurrently: one for the
-// filtered page, one for the facet counts and the total. Two are simpler
-// than a GROUPING SETS monster or counting in Go, independently cacheable,
-// and the latency is max() rather than sum().
+// The catalog read runs two concurrent statements, the page and the facet
+// counts, so latency is max() rather than sum().
 
 type CatalogSort string
 
@@ -29,8 +27,7 @@ const (
 	CatalogSortUpdated CatalogSort = "updated"
 )
 
-// CatalogStatus is the status filter; the empty value is "All". Verified is
-// both conditions — a verified publisher and a clean verdict.
+// CatalogStatus is the status filter; the empty value is "All".
 type CatalogStatus string
 
 const (
@@ -40,8 +37,7 @@ const (
 	CatalogStatusFlagged   CatalogStatus = "flagged"
 )
 
-// CatalogPageSize bounds: the page size arrives from a client, and an
-// unbounded one turns a paged read into a full dump.
+// Catalog page size bounds; the size arrives from a client.
 const (
 	DefaultCatalogPageSize = 10
 	MaxCatalogPageSize     = 100
@@ -51,9 +47,8 @@ const (
 // with unbounded cardinality, and the whole list ships when a menu opens.
 const maxTagOptions = 200
 
-// CatalogFilter is one catalog request. Categories narrow disjunctively,
-// tags conjunctively: a category widens ("infra OR data"), a tag narrows
-// ("terraform AND aws").
+// CatalogFilter is one catalog request. Categories combine with OR, tags
+// with AND.
 type CatalogFilter struct {
 	Principal  auth.Principal
 	Text       string
@@ -93,7 +88,7 @@ func (f CatalogFilter) normalise() CatalogFilter {
 const maxSelections = 64
 
 // Catalog answers one catalog request. db must be a pool, not a
-// transaction: the two statements are issued concurrently.
+// transaction: the two statements run concurrently.
 func Catalog(ctx context.Context, db bun.IDB, filter CatalogFilter) (contract.CatalogPage, error) {
 	filter = filter.normalise()
 
@@ -119,8 +114,7 @@ func Catalog(ctx context.Context, db bun.IDB, filter CatalogFilter) (contract.Ca
 		return contract.CatalogPage{}, err
 	}
 
-	// A page number that outran the result set is re-read at the last page
-	// rather than answered empty.
+	// A page past the end is re-read at the last page rather than answered empty.
 	pages := (facets.Total + filter.PageSize - 1) / filter.PageSize
 	if len(rows) == 0 && facets.Total > 0 && filter.Page > pages {
 		filter.Page = pages
@@ -139,29 +133,21 @@ func Catalog(ctx context.Context, db bun.IDB, filter CatalogFilter) (contract.Ca
 	}, nil
 }
 
-// catalogFrom is the relation every catalog statement reads. A package
-// reaches the catalog only through `latest_version_id`, and only while
-// that version is visible, since commit-last publishing leaves a
-// half-published version as an invisible row.
+// catalogFrom is the relation every catalog statement reads; a half-published
+// version is an invisible row, hence the `visible` join.
 const catalogFrom = `
 from package as pkg
 join publisher as pub on pub.id = pkg.publisher_id
 join version as ver on ver.id = pkg.latest_version_id and ver.visible
 left join category as cat on cat.id = pkg.category_id`
 
-// catalogID is the rendered package id, `namespace/name`, matching the
-// shape internal/blob builds into the object key. It reads
-// package.namespace rather than split_part(pub.slug, '/', 1): the column
-// is held to the publisher's first segment by a composite foreign key, so
-// it cannot drift.
+// catalogID is the rendered package id, `namespace/name`, matching the shape
+// internal/blob builds into the object key.
 const catalogID = `pkg.namespace || '/' || pkg.name`
 
-// catalogSearch: the needle must be a substring of one of name, id,
-// publisher or a single tag. The obvious form — concatenate all four and
-// match the whole string — matches across the gaps between them, so
-// `redactor example` would falsely match `example/pii-redactor`. Four
-// predicates instead. `position(lower(?) in ...)` rather than ILIKE: the
-// needle is user input and `%`/`_` are ILIKE wildcards.
+// catalogSearch matches each field separately, since a concatenation would
+// match across field gaps. It uses position() rather than ILIKE because `%`
+// and `_` in user input are ILIKE wildcards.
 const catalogSearch = `(
      position(lower(?) in lower(` + catalogID + `)) > 0
   or position(lower(?) in lower(pub.slug)) > 0
@@ -169,8 +155,7 @@ const catalogSearch = `(
   or exists (select 1 from unnest(ver.tags) as tag where position(lower(?) in lower(tag)) > 0)
 )`
 
-// predicates accumulates a WHERE clause and its arguments together, so a
-// clause can never drift out of order from its argument.
+// predicates accumulates WHERE clauses with their arguments so they stay in order.
 type predicates struct {
 	clauses []string
 	args    []any
@@ -189,9 +174,6 @@ func (p *predicates) where() string {
 }
 
 // baseFilters constrains both the result set and every facet count.
-// PackageReadable is the one predicate every package-scoped statement
-// composes (queries.go), so the catalog, the facet counts and the detail
-// screen can never disagree about what "readable" means.
 func (f CatalogFilter) baseFilters() *predicates {
 	p := &predicates{}
 	readable, readableArgs := PackageReadable("pkg", f.Principal)
@@ -205,9 +187,7 @@ func (f CatalogFilter) baseFilters() *predicates {
 	}
 	switch f.Status {
 	case CatalogStatusVerified:
-		// Both, not just the publisher flag: the `example` namespace is not
-		// the same claim as verified, so `slug like 'example/%'` would
-		// quietly make a namespace into a trust badge.
+		// Both conditions: a namespace alone must not act as a trust badge.
 		p.add("pub.verified and ver.verdict = 'clean'")
 	case CatalogStatusCommunity:
 		p.add("not pub.verified")
@@ -224,8 +204,8 @@ func (f CatalogFilter) categoryClause(alias string) (clause string, args []any) 
 	return alias + " in (?)", []any{bun.List(f.Categories)}
 }
 
-// tagClause: `@>` is array containment, so every selected tag must be
-// present, and it is the operator the tags GIN index answers.
+// tagClause uses `@>` so every selected tag must be present and the tags GIN
+// index applies.
 func (f CatalogFilter) tagClause(alias string) (clause string, args []any) {
 	if len(f.Tags) == 0 {
 		return "", nil
@@ -250,9 +230,9 @@ func (f CatalogFilter) orderBy() string {
 	return "order by " + column + " " + direction + ", pkg.id"
 }
 
-// catalogRows is the page half of the catalog read. `uses` is aggregated
-// once and joined, not counted per row: there is no index on package_id
-// alone, so a correlated count would scan the table once per package.
+// catalogRows is the page half of the catalog read. `uses` is aggregated once
+// and joined because, with no index on package_id alone, a correlated count
+// would scan the table per package.
 func catalogRows(ctx context.Context, db bun.IDB, f CatalogFilter) ([]contract.CatalogPackage, error) {
 	where := f.baseFilters()
 	if clause, args := f.categoryClause("cat.name"); clause != "" {
@@ -314,11 +294,9 @@ type catalogFacets struct {
 	Tags       []contract.CatalogFacetOption
 }
 
-// catalogFacetCounts: categories are disjunctive, so their count is taken
-// with the category filter removed — otherwise every unselected option
-// reads zero. Tags are conjunctive, so their count is a drill-down: it
-// keeps the tag filter on and reports the current results that also carry
-// this tag. The total rides the same statement.
+// catalogFacetCounts counts categories with the category filter removed,
+// otherwise every unselected option reads zero; tags keep the tag filter on
+// as a drill-down.
 func catalogFacetCounts(ctx context.Context, db bun.IDB, f CatalogFilter) (catalogFacets, error) {
 	base := f.baseFilters()
 	categoryClause, categoryArgs := f.categoryClause("base.category")
@@ -445,8 +423,8 @@ func nonEmpty(clauses []string) []string {
 	return kept
 }
 
-// distinct drops blanks/duplicates and orders what's left, so equivalent
-// requests produce the same statement.
+// distinct drops blanks and duplicates and sorts, so equivalent requests
+// produce the same statement.
 func distinct(values []string) []string {
 	if len(values) == 0 {
 		return nil

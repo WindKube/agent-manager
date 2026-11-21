@@ -348,9 +348,7 @@ func objectCount(n int) string {
 	return strconv.Itoa(n) + " objects"
 }
 
-// bucketSettingClass reuses am-kv-none's muted, italic treatment for Unknown: it
-// is already what this page uses for "a value this screen genuinely does not
-// have", one row up, for a scan still running or an override never recorded.
+// bucketSettingClass reuses am-kv-none's muted treatment for Unknown.
 func bucketSettingClass(setting view.BucketSetting) string {
 	if !setting.Known {
 		return "am-kv-val am-kv-none"
@@ -391,7 +389,7 @@ func recentFetches(s view.Storage) templ.Component {
 			var templ_7745c5c3_Var17 string
 			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(row.At)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/storage.templ`, Line: 128, Col: 47}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/storage.templ`, Line: 125, Col: 47}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 			if templ_7745c5c3_Err != nil {
@@ -404,7 +402,7 @@ func recentFetches(s view.Storage) templ.Component {
 			var templ_7745c5c3_Var18 string
 			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(row.Kind)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/storage.templ`, Line: 130, Col: 49}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/storage.templ`, Line: 127, Col: 49}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 			if templ_7745c5c3_Err != nil {
@@ -417,7 +415,7 @@ func recentFetches(s view.Storage) templ.Component {
 			var templ_7745c5c3_Var19 string
 			templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(row.Ref)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/storage.templ`, Line: 133, Col: 50}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/storage.templ`, Line: 130, Col: 50}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 			if templ_7745c5c3_Err != nil {
@@ -435,7 +433,7 @@ func recentFetches(s view.Storage) templ.Component {
 				var templ_7745c5c3_Var20 string
 				templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(row.Detail)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/storage.templ`, Line: 135, Col: 46}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/storage.templ`, Line: 132, Col: 46}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 				if templ_7745c5c3_Err != nil {
@@ -475,7 +473,7 @@ func recentFetches(s view.Storage) templ.Component {
 			var templ_7745c5c3_Var23 string
 			templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(row.OutcomeLabel())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/storage.templ`, Line: 138, Col: 74}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/storage.templ`, Line: 135, Col: 74}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 			if templ_7745c5c3_Err != nil {

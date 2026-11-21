@@ -34,10 +34,11 @@ type PreviewEntry struct {
 }
 
 type PreviewComponent struct {
-	Kind string `json:"kind" enum:"skill,mcp,ext" example:"skill"`
+	Kind string `json:"kind" enum:"skill,mcp,ext,agent,command,hook" example:"skill"`
 	Name string `json:"name" example:"terraform-review"`
 	Path string `json:"path" example:"skills/terraform-review/SKILL.md"`
 	Note string `json:"note,omitempty" example:"SKILL.md + scripts/"`
+	ComponentSurface
 }
 
 // PreviewCapability is a declared expectation, not evidence: a finding is
@@ -64,6 +65,20 @@ type PackageVisibilityUpdate struct {
 	Visibility string `json:"visibility" enum:"organisation,team,private" doc:"Who may see the package in the catalog." example:"team"`
 }
 
+// PackageTrackingUpdate is the body of PUT
+// /v1/packages/{namespace}/{name}/tracking.
+type PackageTrackingUpdate struct {
+	TrackUpstream bool   `json:"trackUpstream" doc:"Register new upstream tags matching tagPattern as they appear."`
+	TagPattern    string `json:"tagPattern,omitempty" maxLength:"100" doc:"A glob a tag must match. Absent keeps the current pattern. A prerelease tag is registered only when the pattern itself contains a hyphen." example:"v*"`
+}
+
+// PackageSignerUpdate is the body of PUT
+// /v1/packages/{namespace}/{name}/signer. Both empty clears the signer.
+type PackageSignerUpdate struct {
+	Issuer   string `json:"issuer,omitempty" maxLength:"512" doc:"The exact OIDC issuer the signing certificate must carry." example:"https://token.actions.githubusercontent.com"`
+	Identity string `json:"identity,omitempty" maxLength:"512" doc:"An RE2 regular expression the certificate identity (its URI or email SAN) must match in full; it is anchored at both ends." example:"https://github\\.com/acme/skills/\\.github/workflows/release\\.yaml@refs/tags/v.*"`
+}
+
 // PackageRegistered is an acknowledgement, not a published version: bytes
 // are fetched by `worker fetcher`, so the version has no digest yet.
 type PackageRegistered struct {
@@ -80,7 +95,7 @@ type PackageRegistered struct {
 	ObjectKey string `json:"objectKey" example:"skills/example/platform-toolkit/1.3.0/bundle.tar.zst"`
 
 	Verdict string `json:"verdict" enum:"scanning,clean,flagged,rejected" doc:"Always scanning here: the scan has not run." example:"scanning"`
-	Visible bool   `json:"visible" doc:"Always false here. Commit-last (FR-008): the fetcher flips it."`
+	Visible bool   `json:"visible" doc:"Always false here. Commit-last: the fetcher flips it."`
 
 	Preview *PackagePreview `json:"preview,omitempty" doc:"Present for an upload, where the archive was inspected in-process before the version row was written."`
 }

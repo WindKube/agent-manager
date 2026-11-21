@@ -13,9 +13,6 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The files panel's two methods, with the api stubbed and the assertions on
-// the wire — same reasoning as the profile methods' own test file.
-
 func TestPackageFilesMapsTheListSizesAndDefault(t *testing.T) {
 	client := clientAgainst(t, func(w http.ResponseWriter, r *http.Request) {
 		require.True(t, strings.HasSuffix(r.URL.Path, "/packages/example/toolkit/files"))

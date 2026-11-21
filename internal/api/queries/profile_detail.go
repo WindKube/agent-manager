@@ -16,19 +16,16 @@ import (
 	"agent-manager/internal/api/contract"
 	"agent-manager/internal/auth"
 	"agent-manager/internal/domain/resolve"
+	"agent-manager/internal/domain/signer"
 	"agent-manager/internal/store/models"
 )
 
-// The gate is not in this file: every statement below loads facts and
-// internal/domain/resolve decides what they mean, so a `case when verdict =
-// 'flagged'` in SQL here would be a second, disagreeing implementation.
-// Statements run on a bun.IDB and are not concurrent, unlike Package's four
-// goroutines: PublishRevision resolves inside its own transaction, and a
-// bun.Tx is one connection.
+// The statements below only load facts; internal/domain/resolve decides what
+// they mean, so never encode gate logic in SQL here. They run sequentially
+// because PublishRevision resolves inside its own transaction (one connection).
 
 // ProfileFacts is the profile row and the caller's standing on it.
-// ForkedFrom is lineage only — nothing reads it to decide what a fork
-// resolves to. HeadRevision is 0 when nothing has been published yet.
+// ForkedFrom is lineage only; HeadRevision is 0 when nothing is published.
 type ProfileFacts struct {
 	ID            uuid.UUID
 	Slug          string
@@ -43,20 +40,16 @@ type ProfileFacts struct {
 }
 
 // ProfileResolution is one profile resolved under the organisation's gate.
-// Both the detail screen and the publish command build from this, so a
-// revision freezes exactly what the screen displayed.
+// The detail screen and the publish command share it, so a revision freezes
+// exactly what the screen displayed.
 type ProfileResolution struct {
-	Profile ProfileFacts
-	Gate    models.ScanGate
-	// RequireSignatures is org_policy.require_signed_bundles, passed
-	// through to the resolver rather than evaluated here.
+	Profile           ProfileFacts
+	Gate              models.ScanGate
 	RequireSignatures bool
-	// Targets are the enabled sync targets in the vocabulary's own order:
-	// advisory to a client, never read by anything here.
+	// Targets are the enabled sync targets in the vocabulary's own order.
 	Targets []string
 	Result  resolve.Result
-	// entries carries the per-row catalog facts the resolver does not deal
-	// in, index-aligned with Result.Entries.
+	// entries is index-aligned with Result.Entries.
 	entries []profileEntryRow
 }
 
@@ -84,16 +77,14 @@ func (r ProfileResolution) Lockfile(revision int, note string, at time.Time) con
 	)
 }
 
-// ErrNoPolicy is returned when `org_policy` holds no singleton row. It is an
-// error and not a default: the gate decides what a machine may install, and
-// the only defaults available are "let everything through" (a bypass) or
-// "block everything" (an outage dressed as safety).
+// ErrNoPolicy is returned when `org_policy` holds no singleton row. There is
+// no safe default: allowing everything is a bypass, blocking everything an outage.
 var ErrNoPolicy = errors.New("org_policy holds no row, so there is no scan gate to resolve under")
 
 // profileFactsSQL identifies the profile and the caller's standing on it.
-// %s is the readability predicate; %s is the caller's role. `min(role)` is
-// the most privileged role held, since `membership_role` is declared
-// privilege-first (owner, maintainer, reviewer, consumer).
+// The first %s is the caller's role, the second the readability predicate.
+// `min(role)` is the most privileged role, as `membership_role` is declared
+// privilege-first.
 const profileFactsSQL = `
 select
   p.id,
@@ -110,22 +101,15 @@ from profile as p
 left join profile as up on up.id = p.forked_from_id
 where p.slug = ? and %s`
 
-// Profile reads one profile row under the readability predicate. An
-// unreadable profile is indistinguishable from a missing one, so as not to
-// confirm a private profile's existence by its slug.
+// Profile reads one readable profile row; an unreadable one is ErrNotFound.
 func Profile(ctx context.Context, db bun.IDB, p auth.Principal, slug string) (ProfileFacts, error) {
 	return readProfile(ctx, db, p, slug, false)
 }
 
-// LockProfile is the same read with the profile row locked until the
-// caller's transaction ends. `for update of p`, not a bare `for update`,
-// because Postgres refuses a row lock on the nullable side of the outer
-// join to the fork's upstream.
-//
-// It does not make the head revision number safe to allocate from: under
-// READ COMMITTED, max(seq) beside the lock can be one behind a concurrent
-// publish — whoever allocates a sequence re-reads it after the lock is
-// held (see commands.PublishRevision).
+// LockProfile is Profile with the row locked until the caller's transaction
+// ends (`for update of p`: Postgres refuses to lock the outer join's nullable
+// side). HeadRevision may still be stale under READ COMMITTED, so allocators
+// re-read it after locking.
 func LockProfile(ctx context.Context, tx bun.IDB, p auth.Principal, slug string) (ProfileFacts, error) {
 	return readProfile(ctx, tx, p, slug, true)
 }
@@ -141,8 +125,7 @@ func readProfile(ctx context.Context, db bun.IDB, p auth.Principal, slug string,
 		role = "(select min(m.role)::text from membership as m where m.profile_id = p.id and " + subject + ")"
 	}
 
-	// The role subquery is rendered before the WHERE clause, so its
-	// arguments come first.
+	// The role subquery precedes the WHERE clause, so its arguments come first.
 	query := fmt.Sprintf(profileFactsSQL, role, predicate)
 	if forUpdate {
 		query += " for update of p"
@@ -176,12 +159,8 @@ func ResolveProfile(ctx context.Context, db bun.IDB, p auth.Principal, slug stri
 	return ResolveProfileFacts(ctx, db, facts, p)
 }
 
-// ResolveProfileFacts is the half a caller that already identified the
-// profile runs, without re-reading it through the readability predicate,
-// which would be a second, weaker answer. p is who the resolution is FOR:
-// a package whose visibility narrowed since it was added resolves for this
-// principal exactly as PackageReadable says it should, and never resolves
-// for anybody else's sake — see profileCandidates.
+// ResolveProfileFacts resolves an already identified profile. p is who the
+// resolution is for: packages p cannot read offer no candidates.
 func ResolveProfileFacts(ctx context.Context, db bun.IDB, facts ProfileFacts, p auth.Principal) (ProfileResolution, error) {
 	out := ProfileResolution{Profile: facts}
 
@@ -225,26 +204,18 @@ func ResolveProfileFacts(ctx context.Context, db bun.IDB, facts ProfileFacts, p 
 	}
 
 	if out.Result, err = resolve.Resolve(input); err != nil {
-		// Not a 404: the stored rows are a combination the resolver
-		// refuses — corruption or an old validator's leftover.
+		// Not a 404: the stored rows are a combination the resolver refuses.
 		return ProfileResolution{}, fmt.Errorf("resolve profile %s: %w", facts.Slug, err)
 	}
 	return out, nil
 }
 
-// profileEntriesSQL is the profile's ordered entry set. `latest` joins
-// through `package.latest_version_id`, the same relation the catalog reads —
-// deliberately not the newest candidate the resolver picked, since
-// answering both questions from one value is how a row claims a package is
-// clean because the version it fell back to is. The order-by carries a
-// tie-break because `position` has no unique constraint.
-//
-// %s is PackageReadable, folded into the `latest` join rather than the
-// WHERE clause: a curator may see WHICH packages a profile they can read
-// holds (the id, name and kind below are never gated on it), but a
-// package whose visibility has narrowed since it was added answers with
-// no latest version at all — the same empty state an unpublished package
-// already produces, not a distinguishable one.
+// profileEntriesSQL is the profile's ordered entry set. `latest` is the
+// catalog's latest version, deliberately not the resolver's pick, so a
+// fallback version can't make a package look clean. `position` is not unique,
+// hence the tie-break. %s is PackageReadable in the `latest` join, not the
+// WHERE clause: a narrowed package still lists, but with no latest version,
+// indistinguishable from an unpublished one.
 const profileEntriesSQL = `
 select
   pkg.id,
@@ -292,25 +263,12 @@ func profileEntries(ctx context.Context, db bun.IDB, p auth.Principal, profileID
 }
 
 // profileCandidatesSQL is every published version of a profile's packages,
-// with the facts the gate reads about each. It is every version, not the
-// latest: `block` falls back to the most recent clean version, and handing
-// over only the latest row would produce a plausible, wrong answer.
-// `digest is not null` drops a version whose bytes have not landed, so a
-// pin at one is `pin-target-missing` rather than a bundle the store lacks.
-//
-// The two laterals answer different questions: `flag` is how the version's
-// problem reads to a human (ignoring finding state, so a rejected
-// version's exclusion still names the rule that rejected it); `acc` is the
-// acceptance that lapses soonest. `has_open` means an acceptance counts for
-// nothing while any finding on the version is still open.
-//
-// The join to `package` carries %s, PackageReadable: a package whose
-// visibility has narrowed since it joined a profile offers this resolution
-// NO candidates at all, so the resolver's own "nothing to resolve" path
-// (ReasonNoCleanVersionAvailable / ReasonPinTargetMissing) is what excludes
-// it — there is no separate visibility reason to invent, and none of these
-// notes says why, which is the point: this must read the same as a package
-// that genuinely has no clean version, not as one this identity may not see.
+// not just the latest, since `block` falls back to the newest clean one.
+// `digest is not null` drops versions whose bytes have not landed. `flag`
+// ignores finding state so a rejection still names its rule; `acc` is the
+// acceptance that lapses soonest. %s is PackageReadable on the package join:
+// an unreadable package offers no candidates, so it reads exactly like one
+// with no clean version rather than revealing it exists.
 const profileCandidatesSQL = `
 select
   ver.package_id,
@@ -320,7 +278,12 @@ select
   ver.visible and ver.dist_tag <> 'archived',
   ver.digest,
   ver.object_key,
-  coalesce(sig.ref, ''),
+  case when sig.kind = 'cosign-bundle' then coalesce(sig.ref, '') else '' end,
+  coalesce(sig.result::text, ''),
+  coalesce(sig.signer_issuer, ''),
+  coalesce(sig.signer_identity, ''),
+  coalesce(pkg.expected_signer_issuer, ''),
+  coalesce(pkg.expected_signer_identity, ''),
   coalesce(flag.rule_id, ''),
   coalesce(flag.evidence_path, ''),
   exists (select 1 from finding as open_fnd
@@ -381,6 +344,8 @@ func profileCandidates(ctx context.Context, db bun.IDB, p auth.Principal,
 			candidate resolve.Candidate
 			digest    []byte
 			ref       string
+			observed  signer.Observed
+			expected  signer.Expected
 			ruleID    string
 			path      string
 			hasOpen   bool
@@ -389,18 +354,22 @@ func profileCandidates(ctx context.Context, db bun.IDB, p auth.Principal,
 			expires   sql.NullTime
 		)
 		if err := rows.Scan(&packageID, &candidate.ID, &candidate.Semver, &candidate.Verdict,
-			&candidate.Visible, &digest, &candidate.ObjectKey, &ref, &ruleID, &path,
+			&candidate.Visible, &digest, &candidate.ObjectKey, &ref,
+			&observed.Result, &observed.Issuer, &observed.Identity, &expected.Issuer, &expected.Identity,
+			&ruleID, &path,
 			&hasOpen, &reviewer, &note, &expires); err != nil {
 			return nil, fmt.Errorf("scan a candidate version: %w", err)
 		}
 
 		candidate.Digest = "sha256:" + hex.EncodeToString(digest)
+		// Evaluated against the current expected signer, so changing it
+		// re-decides every version.
 		if ref != "" {
-			candidate.Signature = &resolve.Signature{Ref: ref}
+			candidate.Signature = resolve.NewSignature(ref, signer.Evaluate(observed, expected),
+				observed.Issuer, observed.Identity)
 		}
 		candidate.FlagDetail = flagDetail(ruleID, path)
-		// An acceptance permits nothing while any finding on the version
-		// is still open.
+		// An acceptance permits nothing while any finding is still open.
 		if !hasOpen && reviewer != "" {
 			candidate.Override = &resolve.Override{Reviewer: reviewer, Note: note}
 			if expires.Valid {
@@ -416,8 +385,8 @@ func profileCandidates(ctx context.Context, db bun.IDB, p auth.Principal,
 	return out, nil
 }
 
-// flagDetail renders a finding the same way internal/seed does. It is
-// bundle content: escape it at render.
+// flagDetail renders a finding as internal/seed does. It is bundle content:
+// escape it at render.
 func flagDetail(ruleID, path string) string {
 	switch {
 	case ruleID == "":
@@ -449,8 +418,7 @@ func profileTargets(ctx context.Context, db bun.IDB, profileID uuid.UUID) ([]str
 		return nil, fmt.Errorf("read the profile's sync targets: %w", err)
 	}
 
-	// The vocabulary's order, not the rows' order, so two documents
-	// differing only in row order don't report a change nobody made.
+	// Vocabulary order, so row order never shows up as a change.
 	out := make([]string, 0, len(enabled))
 	for _, target := range models.EnumTypes()[models.PGSyncTargetKind] {
 		if slices.Contains(enabled, target) {
@@ -549,11 +517,9 @@ func targetsOf(enabled []string) []contract.ProfileTarget {
 	return out
 }
 
-// profileMembersSQL is the sharing panel. `order by mem.role` is the enum's
-// order so the panel lists the most privileged first without the screen
-// holding a copy of the precedence. The identity join is a lateral with a
-// limit because a membership names an email or a subject, and it supplies
-// a display name only — a membership row is authoritative on its own.
+// profileMembersSQL is the sharing panel, most privileged first by enum
+// order. The identity lateral only supplies a display name; a membership
+// may match by email or subject, hence the limit.
 const profileMembersSQL = `
 select mem.subject_kind::text, mem.subject_ref, mem.role::text, coalesce(who.display_name, '')
 from membership as mem
@@ -636,15 +602,12 @@ func headLockfile(ctx context.Context, db bun.IDB, profileID uuid.UUID) (contrac
 }
 
 // markUnpublished sets each row's Unpublished flag and reports whether the
-// profile has anything to publish. It compares what would actually reach a
-// machine — resolved version, mode, verdict, override, exclusions, targets
-// — and deliberately not the gate itself, nor a skip's detail text (a
-// rescan rewording a finding should not mark every affected profile edited).
+// profile has anything to publish. It compares only what reaches a machine,
+// not skip detail text, so a reworded finding doesn't mark profiles edited.
 func markUnpublished(entries []contract.ProfileEntry, targets []string,
 	head contract.Lockfile, published bool,
 ) bool {
 	if !published {
-		// Everything is unpublished, including a profile with no entries.
 		for i := range entries {
 			entries[i].Unpublished = true
 		}
@@ -677,7 +640,6 @@ func markUnpublished(entries []contract.ProfileEntry, targets []string,
 		changed = changed || entry.Unpublished
 		seen++
 	}
-	// An id the head revision holds and the draft does not. Checked anyway
-	// so a widened grant can't make a removal publish silently.
+	// Catches entries removed since the head revision.
 	return changed || seen != len(head.Entries)+len(head.Skipped)
 }

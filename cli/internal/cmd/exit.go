@@ -5,9 +5,8 @@ import (
 	"fmt"
 )
 
-// Code is a process exit status, following convergence-tool convention
-// (terraform's -detailed-exitcode): steady state is 0, "changed" is a
-// distinct non-error code above the error codes.
+// Code is a process exit status, following terraform's -detailed-exitcode
+// convention: steady state is 0 and "changed" is a distinct non-error code.
 type Code int
 
 const (
@@ -17,8 +16,7 @@ const (
 	CodeRefused   Code = 3 // the user can fix it; retrying alone cannot
 )
 
-// codeNames is the only place a Code becomes a word; the exit-code test
-// walks it, so a fifth code can't be added without a name.
+// codeNames is walked by the exit-code test, so a new code can't lack a name.
 var codeNames = map[Code]string{
 	CodeNoChanges: "no-changes",
 	CodeFailure:   "failure",
@@ -34,8 +32,6 @@ func (c Code) String() string {
 	return fmt.Sprintf("Code(%d)", int(c))
 }
 
-// refusal is a wrapper, not a sentinel, so the message shown is always the
-// wrapped one.
 type refusal struct{ err error }
 
 func (r refusal) Error() string { return r.err.Error() }
@@ -61,8 +57,8 @@ func IsRefusal(err error) bool {
 	return errors.As(err, &r)
 }
 
-// ExitCode: an error always wins over outcome (4 of 12 installed then
-// failed is a failure, not a success with changes).
+// ExitCode maps a verb's outcome and error to a Code; an error always wins
+// over outcome.
 func ExitCode(outcome Code, err error) Code {
 	if err != nil {
 		if IsRefusal(err) {

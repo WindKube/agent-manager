@@ -8,24 +8,19 @@ import (
 	"github.com/99designs/keyring"
 )
 
-// Available reads keyring's own registry rather than a build-constraint
-// mirror kept here, which could drift after a library upgrade. Compiled-in
-// is not the same as reachable (e.g. secret-service on a headless box).
+// Available reads keyring's own registry of compiled-in backends, which need not be reachable.
 func Available() []keyring.BackendType {
 	return keyring.AvailableBackends()
 }
 
-// required is the backend set a shippable build must have, per GOOS; CGO
-// isn't a separate axis since darwin's toolchain is the only one that can
-// silently drop it (keychain.go is behind `darwin && cgo`).
+// required is the backend set a shippable build must have, per GOOS.
 var required = map[string][]keyring.BackendType{
 	"darwin": {keyring.KeychainBackend},
 	"linux":  {keyring.SecretServiceBackend},
 }
 
-// Verify refuses a build whose platform credential store was dropped at
-// compile time (on darwin, CGO_ENABLED=0 silently falls back to `pass` or a
-// file); file/pass backends are the sanctioned fallback, so not required.
+// Verify refuses a build whose platform credential store was dropped at compile time; on darwin,
+// CGO_ENABLED=0 silently falls back to `pass` or a file.
 func Verify(goos string, available []keyring.BackendType) error {
 	want, ok := required[goos]
 	if !ok {

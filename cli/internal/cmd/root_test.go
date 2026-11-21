@@ -10,11 +10,6 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/hub"
 )
 
-// The refusal hub.New composes names a flag by string. If root.go registered a
-// different literal, the error would tell a user to pass a flag amctl does not
-// have — the kind of defect no compiler and no happy-path test can see, because
-// each half is individually correct. Both sides are asserted here so neither can
-// be renamed alone.
 func TestThePlaintextFlagIsTheOneTheRefusalNames(t *testing.T) {
 	root, _ := cmd.NewRootCmd(io.Discard, io.Discard)
 
@@ -27,8 +22,7 @@ func TestThePlaintextFlagIsTheOneTheRefusalNames(t *testing.T) {
 		"the refusal must name the flag that answers it")
 }
 
-// The flag exists to be typed deliberately, so it must not have a one-letter
-// shorthand that a person could hit by accident next to -v.
+// A one-letter shorthand could be hit by accident next to -v.
 func TestThePlaintextFlagHasNoShorthand(t *testing.T) {
 	root, _ := cmd.NewRootCmd(io.Discard, io.Discard)
 	require.Empty(t, root.PersistentFlags().Lookup(hub.PlaintextFlagName).Shorthand)

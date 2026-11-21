@@ -6,9 +6,7 @@ import (
 	"github.com/99designs/keyring"
 )
 
-// fallbackHints are labelled as guesses in the message, since keyring.Open
-// discards the opener's own error and amctl can only name which backend
-// did not open, not why.
+// fallbackHints are guesses, since keyring.Open discards the opener's own error.
 var fallbackHints = map[keyring.BackendType]string{
 	keyring.SecretServiceBackend: "no Secret Service is running on the session bus (a headless or SSH session), or the login keyring is locked",
 	keyring.KeychainBackend:      "the login keychain is locked, or access was denied",
@@ -36,8 +34,7 @@ func fallbackWarning(goos string, available, notOpened []keyring.BackendType, ch
 		fallbackDestination(chosen, fileDir))
 }
 
-// fallbackReason distinguishes two facts: missing from the build (a build
-// problem) versus present but wouldn't open (a machine problem).
+// fallbackReason tells a build problem (missing backend) from a machine problem (would not open).
 func fallbackReason(goos string, want, available, notOpened []keyring.BackendType) string {
 	if err := Verify(goos, available); err != nil {
 		return err.Error() + "."

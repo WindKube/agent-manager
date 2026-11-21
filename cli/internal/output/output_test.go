@@ -83,7 +83,6 @@ func TestEveryResultRendersInBothFormats(t *testing.T) {
 }
 
 func TestLoginResultHasNowhereToPutAToken(t *testing.T) {
-	// No token may reach any output stream; the result type has nowhere to put one.
 	var buf bytes.Buffer
 	secret := "am_tok_this-must-never-appear"
 	require.NoError(t, RendererFor(FormatJSON).Render(&buf, LoginResult{
@@ -148,8 +147,7 @@ func TestSyncResultHumanCollapsesTargetUnwritableSkipsButNotOthers(t *testing.T)
 			skipLines = append(skipLines, l)
 		}
 	}
-	// One collapsed line for the three codex skips, plus one each for the two
-	// entry-level reasons: three lines, not five.
+	// One collapsed codex line plus the two other skips.
 	require.Len(t, skipLines, 3)
 
 	var collapsed string

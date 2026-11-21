@@ -8,17 +8,11 @@ import (
 	"github.com/uptrace/bun"
 )
 
-// Delivery is at-least-once, so every handler must be able to tell a
-// redelivery from a new instruction. The answer comes from the job's target
-// row, never the queue, which has no memory to consult. The predicates live
-// here rather than in each handler so the fetcher's answer and the
-// scanner's cannot drift apart.
+// Delivery is at-least-once; redeliveries are detected from the job's target
+// row, never the queue, and the predicates live here so handlers cannot drift.
 
 // Delivered reports whether the work a job describes is already on record.
-// SubjectID is the version id for both real kinds; SubjectVersion is the
-// semver for a fetch and the rule-pack version for a scan, which is what
-// makes "rescan under a new rule pack" work — the key moves, so the guard
-// opens.
+// For a scan SubjectVersion is the rule-pack version, so a new pack reopens the guard.
 func Delivered(ctx context.Context, db bun.IDB, job Job) (bool, error) {
 	if db == nil {
 		return false, fmt.Errorf("idempotency check for %s: no database handle", job.Kind)
@@ -29,27 +23,24 @@ func Delivered(ctx context.Context, db bun.IDB, job Job) (bool, error) {
 		return bytesCommitted(ctx, db, job.SubjectID)
 	case KindScan:
 		return scanRecorded(ctx, db, job.SubjectID, job.SubjectVersion)
+	case KindNotify:
+		return webhookDelivered(ctx, db, job.SubjectID, job.SubjectVersion)
 	case KindRescanSweep:
-		// A sweep is not guarded here. It reads the catalog and fans out to
-		// per-version scan jobs, and each of those carries the guard above, so
-		// suppressing the sweep itself would only skip a fan-out that is already
-		// idempotent.
+		// The per-version scan jobs a sweep fans out to are guarded themselves.
 		return false, nil
 	default:
 		return false, fmt.Errorf("idempotency check: unknown job kind %q", job.Kind)
 	}
 }
 
-// bytesCommitted answers "does this version already have committed bytes?".
-// The digest is the record that they landed: written in the same
-// transaction as the object key and never mutated afterwards.
+// bytesCommitted reports whether the version has a digest, which is written
+// with the object key and never mutated.
 func bytesCommitted(ctx context.Context, db bun.IDB, versionID uuid.UUID) (bool, error) {
 	if versionID == uuid.Nil {
 		return false, fmt.Errorf("fetch idempotency check: no subject version id")
 	}
 
-	// bun formats raw SQL with `?` and passes no arguments to the driver, so a `$1`
-	// here would reach Postgres unbound.
+	// bun formats raw SQL with `?` and passes no driver args, so `$1` would be unbound.
 	var committed bool
 	err := db.QueryRowContext(ctx,
 		`select coalesce((select digest is not null from version where id = ?), false)`,
@@ -60,10 +51,8 @@ func bytesCommitted(ctx context.Context, db bun.IDB, versionID uuid.UUID) (bool,
 	return committed, nil
 }
 
-// scanRecorded answers "has this version been scanned at this rule-pack version?".
-// It is the Go-side reading of the `unique (version_id, pack_version)` key, so a
-// handler can skip the work instead of inserting and catching a constraint
-// violation.
+// scanRecorded checks the `unique (version_id, pack_version)` key up front so a
+// handler can skip work instead of catching a constraint violation.
 func scanRecorded(ctx context.Context, db bun.IDB, versionID uuid.UUID, packVersion string) (bool, error) {
 	if versionID == uuid.Nil {
 		return false, fmt.Errorf("scan idempotency check: no subject version id")
@@ -80,4 +69,20 @@ func scanRecorded(ctx context.Context, db bun.IDB, versionID uuid.UUID, packVers
 		return false, fmt.Errorf("read scan history for version %s: %w", versionID, err)
 	}
 	return recorded, nil
+}
+
+// webhookDelivered reports whether the receiver already accepted the event with a 2xx.
+func webhookDelivered(ctx context.Context, db bun.IDB, subscriptionID uuid.UUID, eventID string) (bool, error) {
+	if subscriptionID == uuid.Nil || eventID == "" {
+		return false, fmt.Errorf("notify idempotency check: no subscription or event")
+	}
+	var delivered bool
+	err := db.QueryRowContext(ctx,
+		`select exists (select 1 from webhook_delivery
+		 where subscription_id = ? and event_id = ?::uuid and status_code between 200 and 299)`,
+		subscriptionID, eventID).Scan(&delivered)
+	if err != nil {
+		return false, fmt.Errorf("read deliveries of event %s to webhook %s: %w", eventID, subscriptionID, err)
+	}
+	return delivered, nil
 }

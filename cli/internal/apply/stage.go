@@ -52,10 +52,8 @@ type Staged struct {
 }
 
 // Stage extracts a verified bundle into a staging directory beside the
-// destination. It never re-implements archive's extraction or caps, never
-// re-verifies the digest, never checks home containment (the caller's job
-// before Stage runs), and never touches Dest itself — that's Swap's, so the
-// two together are exactly one mutation of the tree.
+// destination. It does not re-verify the digest or check home containment,
+// and never touches Dest: Swap does the one mutation of the tree.
 func Stage(ctx context.Context, req StageRequest) (*Staged, error) {
 	parent, _, err := splitDest(req.Dest)
 	if err != nil {
@@ -114,11 +112,9 @@ func Stage(ctx context.Context, req StageRequest) (*Staged, error) {
 	return staged, nil
 }
 
-// openStagingRoot creates <parent>/.amctl-staging and returns a root
-// confined to it, created and lstat-ed through a root on the parent rather
-// than os.OpenRoot on the full path: the latter resolves its own argument
-// normally, so a planted `.amctl-staging` symlink would confine extraction
-// to wherever it points, outside the home, without ever building that path.
+// openStagingRoot creates <parent>/.amctl-staging and returns a root confined
+// to it. It goes through a root on the parent because os.OpenRoot on the full
+// path would follow a planted `.amctl-staging` symlink outside the home.
 func openStagingRoot(parent string) (*os.Root, error) {
 	if err := os.MkdirAll(parent, dirPerm); err != nil {
 		return nil, fmt.Errorf("%w: create %s: %w", ErrStaging, parent, err)

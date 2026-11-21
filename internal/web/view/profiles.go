@@ -2,11 +2,8 @@ package view
 
 import "strconv"
 
-// The Profiles screens' view models.
-//
-// Every entry's resolved version, verdict and policy note arrive from the hub
-// already decided by internal/domain/resolve. Nothing here recomputes a gate
-// outcome — it only turns the api's closed vocabulary into a sentence.
+// Resolved versions, verdicts and policy notes arrive already decided by internal/domain/resolve; nothing
+// here recomputes a gate outcome.
 
 // ProfileRow is one profile as the list names it.
 type ProfileRow struct {
@@ -15,10 +12,9 @@ type ProfileRow struct {
 	Visibility   string
 	PackageCount int
 	HeadRevision int
+	CanCurate    bool
 }
 
-// Unpublished is a profile with no revision at all — created but never
-// published, which is a real and common state.
 func (r ProfileRow) Unpublished() bool { return r.HeadRevision == 0 }
 
 func (r ProfileRow) RevisionLabel() string {
@@ -32,9 +28,7 @@ func (r ProfileRow) VisibilityLabel() string { return visibilityLabels[r.Visibil
 
 func (r ProfileRow) Href() string { return "/profiles/" + r.Slug }
 
-// visibilityLabels is shared between profile and package visibility: both
-// vocabularies spell "organisation" and "private" the same way, and "team"
-// (package-only) and "shared" (profile-only) each answer to one of them.
+// visibilityLabels covers both profile and package visibility vocabularies.
 var visibilityLabels = map[string]string{
 	"organisation": "Organisation",
 	"shared":       "Shared",
@@ -42,8 +36,7 @@ var visibilityLabels = map[string]string{
 	"private":      "Private",
 }
 
-// ProfileVisibilities is the create form's vocabulary, in the order a person
-// reads them: the safest default first.
+// ProfileVisibilities is the create form's vocabulary, safest default first.
 var ProfileVisibilities = []struct{ Value, Label string }{
 	{"private", "Private"},
 	{"shared", "Shared"},
@@ -61,15 +54,9 @@ var ProfileDefaultPolicies = []struct{ Value, Label string }{
 type Profiles struct {
 	Rows []ProfileRow
 	GovernanceState
-	Notice *Notice
-	// CanCreate is the list-level form of the same role gate the detail screen
-	// applies per action: an identity resolving to no role cannot create a
-	// profile either, and the form is absent rather than offered and refused.
+	Notice    *Notice
 	CanCreate bool
-	// CreateRefused carries the api's own sentence when the create form was
-	// submitted and refused — the slug is taken, the visibility is not a value
-	// the api knows. It renders inline, on the same request, so nothing here is
-	// text a forwarded link could have put in the hub's mouth.
+	// CreateRefused is the api's refusal, rendered on the same request so a forwarded link cannot inject text.
 	CreateRefused string
 }
 
@@ -86,10 +73,7 @@ func (p Profiles) Count() string {
 	}
 }
 
-// ---- the detail screen --------------------------------------------------
-
-// ProfileOutcome is the gate's effect on one entry, in the resolver's own
-// closed vocabulary (internal/domain/resolve.Outcome).
+// ProfileOutcome is the gate's effect on one entry, mirroring internal/domain/resolve.Outcome.
 type ProfileOutcome string
 
 const (
@@ -130,8 +114,7 @@ func (o ProfileOutcome) Tone() string {
 	}
 }
 
-// SkipReasonLabel turns the resolver's exclusion reason into a sentence
-// fragment. The values mirror internal/domain/resolve.Reason.
+// SkipReasonLabel phrases an internal/domain/resolve.Reason.
 func SkipReasonLabel(reason string) string {
 	switch reason {
 	case "flagged-blocked-by-gate":
@@ -151,8 +134,7 @@ func SkipReasonLabel(reason string) string {
 	}
 }
 
-// EntryModeLabel is the profile's own setting for one entry, never relabelled
-// by what the gate then did to it.
+// EntryModeLabel is the profile's own setting for one entry, never relabelled by what the gate did.
 func EntryModeLabel(mode string) string {
 	switch mode {
 	case "latest":
@@ -166,8 +148,7 @@ func EntryModeLabel(mode string) string {
 	}
 }
 
-// ProfileMemberRoleLabel is a membership role, distinct from the
-// organisation roles view.Viewer resolves.
+// ProfileMemberRoleLabel labels a membership role, distinct from the organisation roles Viewer resolves.
 func ProfileMemberRoleLabel(role string) string {
 	switch role {
 	case "owner":
@@ -183,7 +164,6 @@ func ProfileMemberRoleLabel(role string) string {
 	}
 }
 
-// ProfileMemberRoles is the sharing form's role vocabulary.
 var ProfileMemberRoles = []struct{ Value, Label string }{
 	{"owner", "Owner"},
 	{"maintainer", "Maintainer"},
@@ -191,24 +171,22 @@ var ProfileMemberRoles = []struct{ Value, Label string }{
 	{"consumer", "Consumer"},
 }
 
-// ProfileMemberKinds is the sharing form's subject-kind vocabulary.
 var ProfileMemberKinds = []struct{ Value, Label string }{
 	{"user", "Person"},
 	{"group", "Identity-provider group"},
 }
 
-// targetLabels and targetPaths are the two things a screen says about an agent
-// directory convention that the api's bare enum value does not: what to call it
-// and where a client writes it. Neither affects what the server stores, only
-// how the choice reads.
+// targetLabels and targetPaths are display-only: what to call a sync target and where a client writes it.
 var targetLabels = map[string]string{
 	"claude-code": "Claude Code",
 	"codex":       "Codex",
+	"opencode":    "OpenCode",
 }
 
 var targetPaths = map[string]string{
 	"claude-code": "~/.claude/skills/",
-	"codex":       "~/.codex/prompts/",
+	"codex":       "~/.agents/skills/",
+	"opencode":    "~/.config/opencode/",
 }
 
 // ProfileTargetRow is one sync target and whether this profile enables it.
@@ -236,11 +214,6 @@ type ProfileSkip struct {
 func (s ProfileSkip) ReasonLabel() string { return SkipReasonLabel(s.Reason) }
 
 // ProfileOverride is the acceptance a flagged version resolved under.
-//
-// Unlike the scanner's Override, a nil Expires here genuinely means the
-// acceptance does not lapse — the hub has already turned the lockfile schema's
-// required-but-sometimes-absent zero instant back into that absence at the
-// door (see hub.EntryOverride).
 type ProfileOverride struct {
 	Reviewer string
 	Note     string
@@ -261,30 +234,24 @@ type ProfileEntryRow struct {
 	LatestVersion string
 	LatestVerdict Verdict
 
-	// Version and Verdict are what this entry actually resolves to, empty
-	// exactly when Outcome is OutcomeSkipped.
+	// Version and Verdict are empty exactly when Outcome is OutcomeSkipped.
 	Version string
 	Verdict Verdict
 	Digest  string
 
 	Outcome ProfileOutcome
-	// Note is the gate's policy note, rendered verbatim from the api. It is
-	// never recomposed here — the resolver decided what happened and this is
-	// its sentence about it.
+	// Note is the resolver's policy note, rendered verbatim and never recomposed.
 	Note     string
 	Skip     *ProfileSkip
 	Override *ProfileOverride
 
-	// Unpublished means this row would resolve differently from the head
-	// revision's lockfile: nothing has reached a machine yet.
+	// Unpublished means this row would resolve differently from the head revision's lockfile.
 	Unpublished bool
 }
 
 func (e ProfileEntryRow) ModeLabel() string { return EntryModeLabel(e.Mode) }
 
-// PinTarget is the version a "Pin" control on this row would freeze: what it
-// currently resolves to, or its latest catalog version when the gate excluded
-// it and there is nothing else to pin to.
+// PinTarget is what the row resolves to, or its latest catalog version when the gate excluded it.
 func (e ProfileEntryRow) PinTarget() string {
 	if e.Version != "" {
 		return e.Version
@@ -294,8 +261,7 @@ func (e ProfileEntryRow) PinTarget() string {
 
 func (e ProfileEntryRow) CanFloat() bool { return e.Mode != "latest" }
 
-// PinFieldValue prefills the row's editable pin input: the version already
-// pinned, or PinTarget as a starting guess when the row is not pinned yet.
+// PinFieldValue is the pinned version, or PinTarget as a starting guess.
 func (e ProfileEntryRow) PinFieldValue() string {
 	if e.Mode == "pinned" {
 		return e.PinnedVersion
@@ -311,9 +277,7 @@ type ProfileMemberRow struct {
 	DisplayName string
 }
 
-// Label is the display name when the hub has one, and the raw subject
-// otherwise — an email, a subject, or a group name the identity provider
-// spells however it spells it.
+// Label is the display name when the hub has one, and the raw subject otherwise.
 func (m ProfileMemberRow) Label() string {
 	if m.DisplayName != "" {
 		return m.DisplayName
@@ -338,41 +302,27 @@ type ProfileRevisionRow struct {
 	PublishedBy string
 }
 
-// ProfilePermissions is what this identity may do here, so the screen can
-// disable a control rather than offer one the api will refuse.
+// ProfilePermissions is what this identity may do here, so the screen can disable rather than hide a control.
 type ProfilePermissions struct {
 	Curate  bool
 	Share   bool
 	Publish bool
-	// Delete is the role check alone (owner only). Whether the profile is
-	// ALSO clean enough to delete (no published revision) is a fact of the
-	// profile, not the role, and Profile.CanDelete combines the two.
+	// Delete is the role check alone; Profile.CanDelete also requires no published revision.
 	Delete bool
 }
 
-// CurateDisabledReason is why the float and pin controls are disabled for a
-// viewer whose role on this profile does not include curating it.
 const CurateDisabledReason = "Your role on this profile may not change its entries."
 
-// ShareDisabledReason is why the sharing form is disabled for anyone but the
-// owner. MembershipRole.MayShare is owner-only by design — a maintainer who
-// could re-share could widen an access decision the owner made — and this is
-// the screen saying so rather than hiding the form.
+// ShareDisabledReason explains why sharing is owner-only.
 const ShareDisabledReason = "Only this profile's owner may change who it is shared with: a " +
 	"maintainer who could re-share it could widen an access decision the owner made."
 
-// PublishDisabledReason is why the publish-revision control is disabled for a
-// viewer whose role on this profile does not include publishing it.
 const PublishDisabledReason = "Your role on this profile may not publish a revision."
 
-// ProfileDeleteRoleReason is why the delete-profile control is disabled for
-// a viewer who is not this profile's owner.
 const ProfileDeleteRoleReason = "Only this profile's owner may delete it."
 
-// ProfileDeleteHasRevisionsReason is why the delete-profile control is
-// disabled even for an owner: a published revision is what a client may
-// already have synced, and FR-034 forbids deleting one, so deleting the
-// profile that holds it is refused rather than cascaded.
+// ProfileDeleteHasRevisionsReason: published revisions are never deleted, since a client may have synced
+// them, so deleting their profile is refused rather than cascaded.
 const ProfileDeleteHasRevisionsReason = "This profile has published revisions that a client " +
 	"may already have synced. Deleting it would either orphan that history or remove a " +
 	"revision, which this hub never does."
@@ -397,8 +347,7 @@ type Profile struct {
 	HeadRevision  int
 	ForkedFrom    string
 
-	// Role is legitimately empty: a profile with organisation visibility is
-	// readable by everyone and most readers hold no membership.
+	// Role is empty for a reader with no membership, e.g. of an organisation-visible profile.
 	Role        string
 	Permissions ProfilePermissions
 
@@ -409,25 +358,18 @@ type Profile struct {
 	Targets   []ProfileTargetRow
 	Revisions []ProfileRevisionRow
 
-	// AddOptions is every catalog package this profile does not already hold,
-	// for the "Add package" control. Empty for a viewer who may not curate, and
-	// whenever the catalog cannot be read.
+	// AddOptions is every catalog package this profile does not hold; empty for a non-curator or when the
+	// catalog cannot be read.
 	AddOptions []ProfileAddOption
 
 	GovernanceState
-	// Missing is a slug in the URL that names nothing this identity may read —
-	// an unreadable profile answers exactly as a missing one, so a caller cannot
-	// tell a private profile from one that does not exist.
+	// Missing covers both a nonexistent and an unreadable profile, so a private one cannot be probed.
 	Missing bool
 	Notice  *Notice
-	// Refusal carries the api's own sentence for a curation request it
-	// understood but refused (a name already shared twice, a range on an entry
-	// that holds no versions in it). It renders inline on the same request.
+	// Refusal is the api's refusal of a curation request, rendered on the same request.
 	Refusal string
 
-	// Diff is "Show diff": present exactly when the URL carries a revision
-	// query parameter, the same plain-round-trip idiom the audit screen uses
-	// for its own detail panel.
+	// Diff is set exactly when the URL carries a revision query parameter.
 	Diff *RevisionDiffPanel
 }
 
@@ -435,9 +377,6 @@ func (p Profile) VisibilityLabel() string { return visibilityLabels[p.Visibility
 
 func (p Profile) DefaultPolicyLabel() string { return DefaultPolicyLabel(p.DefaultPolicy) }
 
-// DefaultPolicyLabel is the free function Profile.DefaultPolicyLabel wraps,
-// so the revision diff panel can label a from/to pair without a Profile to
-// hang it off of.
 func DefaultPolicyLabel(policy string) string {
 	for _, option := range ProfileDefaultPolicies {
 		if option.Value == policy {
@@ -449,8 +388,6 @@ func DefaultPolicyLabel(policy string) string {
 
 func (p Profile) GateLabel() string { return GateLabel(p.Gate) }
 
-// GateLabel is the free function Profile.GateLabel wraps, for the same
-// reason DefaultPolicyLabel is.
 func GateLabel(gate string) string {
 	switch gate {
 	case "block":
@@ -478,9 +415,6 @@ func (p Profile) HeadRevisionLabel() string {
 	return "r" + strconv.Itoa(p.HeadRevision)
 }
 
-// SkillEntries and PluginEntries split Entries by kind, so the screen can
-// name and empty-state skills and plugins separately instead of one
-// undifferentiated "Packages" list.
 func (p Profile) SkillEntries() []ProfileEntryRow { return p.entriesOfKind(KindSkill) }
 
 func (p Profile) PluginEntries() []ProfileEntryRow { return p.entriesOfKind(KindPlugin) }
@@ -499,9 +433,7 @@ func (p Profile) MembersEmpty() bool { return len(p.Members) == 0 }
 
 func (p Profile) RevisionsEmpty() bool { return len(p.Revisions) == 0 }
 
-// CanDelete combines the role check the api reported with the one business
-// fact that also has to hold: a profile with a published revision refuses
-// to delete regardless of role (see ProfileDeleteHasRevisionsReason).
+// CanDelete combines the role check with ProfileDeleteHasRevisionsReason's rule.
 func (p Profile) CanDelete() bool { return p.Permissions.Delete && p.HeadRevision == 0 }
 
 // DeleteDisabledReason is empty exactly when CanDelete is true.
@@ -516,9 +448,6 @@ func (p Profile) DeleteDisabledReason() string {
 	}
 }
 
-// SkillAddOptions and PluginAddOptions split AddOptions by kind, so the Add
-// skill and Add plugin controls each offer only their own kind rather than
-// one list a person has to read the kind column of.
 func (p Profile) SkillAddOptions() []ProfileAddOption { return p.addOptionsOfKind(KindSkill) }
 
 func (p Profile) PluginAddOptions() []ProfileAddOption { return p.addOptionsOfKind(KindPlugin) }

@@ -7,33 +7,38 @@ type PackageDetail struct {
 	Name      string           `json:"name" doc:"The manifest name. No manifest field and no column carries a human title." example:"platform-toolkit"`
 	Kind      string           `json:"kind" enum:"plugin,skill" doc:"Decided by which manifest is at the tree root, never by a manifest field." example:"plugin"`
 	Publisher PackagePublisher `json:"publisher"`
-	Category  string           `json:"category,omitempty" doc:"The admin-curated category (FR-049). Empty when none was chosen." example:"Infrastructure"`
+	Category  string           `json:"category,omitempty" doc:"The admin-curated category. Empty when none was chosen." example:"Infrastructure"`
 
 	Visibility string `json:"visibility" enum:"organisation,team,private" doc:"Who may see this package." example:"organisation"`
 	// Owner is the identity that registered the package, empty on a
 	// package that predates the owner column. Display only: access is
 	// decided server-side, never by comparing this string.
 	Owner string `json:"owner,omitempty" example:"kwiatrzyk@example.com"`
-	// CanChangeVisibility is FR-126: the caller is the owner or a catalog
-	// admin. The control is shown to every reader and disabled otherwise,
-	// never hidden.
+	// CanChangeVisibility is true for the owner or a catalog admin. The control
+	// is shown to every reader and disabled otherwise, never hidden.
 	CanChangeVisibility bool `json:"canChangeVisibility"`
 
 	Description string `json:"description,omitempty" example:"Platform guardrails, ADR authoring and service scaffolding."`
 
-	Origin  PackageOrigin `json:"origin"`
-	Version string        `json:"version" doc:"The latest visible version's semver — the one the panels below describe." example:"1.3.0"`
-	Verdict string        `json:"verdict" enum:"scanning,clean,flagged,rejected" example:"clean"`
-	Tags    []string      `json:"tags" doc:"The latest version's manifest keywords. Tags belong to the version, not the package."`
+	Origin PackageOrigin `json:"origin"`
+	// Source is absent on a package registered before sources were recorded.
+	Source *PackageSource `json:"source,omitempty"`
+	// Tracking is present for a package registered from git, the only kind
+	// with upstream tags to follow.
+	Tracking *PackageTracking `json:"tracking,omitempty"`
+	Signer   PackageSigner    `json:"signer"`
+	Version  string           `json:"version" doc:"The latest visible version's semver — the one the panels below describe." example:"1.3.0"`
+	Verdict  string           `json:"verdict" enum:"scanning,clean,flagged,rejected" example:"clean"`
+	Tags     []string         `json:"tags" doc:"The latest version's manifest keywords. Tags belong to the version, not the package."`
 
 	ManifestObject string `json:"manifestObject" enum:"plugin.json,SKILL.md" example:"plugin.json"`
 	// Manifest is verbatim and unformatted: a Go map would reorder it.
 	Manifest string `json:"manifest"`
 
-	Components   []PackageComponent  `json:"components" doc:"Derived from the FILE TREE. No manifest field enumerates components (FR-017, R1)."`
+	Components   []PackageComponent  `json:"components" doc:"Derived from the FILE TREE. No manifest field enumerates components."`
 	Capabilities PackageCapabilities `json:"capabilities"`
 	Versions     []PackageVersion    `json:"versions" doc:"Every visible version, newest first."`
-	Dependents   []PackageDependent  `json:"dependents" doc:"Profiles using this package that the CALLER MAY READ, and no others (FR-044)."`
+	Dependents   []PackageDependent  `json:"dependents" doc:"Profiles using this package that the CALLER MAY READ, and no others."`
 }
 
 type PackagePublisher struct {
@@ -51,11 +56,58 @@ type PackageOrigin struct {
 	ParentName string `json:"parentName,omitempty" example:"platform-toolkit"`
 }
 
+// PackageSource is where the package was last registered from.
+type PackageSource struct {
+	Kind         string `json:"kind" enum:"upload,git,archive-url" example:"git"`
+	URL          string `json:"url,omitempty" doc:"The canonical repository for git, the requested URL for an archive; absent for an upload." example:"https://github.com/acme/skills"`
+	Ref          string `json:"ref,omitempty" doc:"The git ref as requested: a tag, a branch or HEAD." example:"v1.2.0"`
+	Subdirectory string `json:"subdirectory,omitempty" example:"pdf"`
+}
+
+// PackageTracking is the package's upstream check.
+type PackageTracking struct {
+	TrackUpstream  bool       `json:"trackUpstream"`
+	TagPattern     string     `json:"tagPattern" example:"v*"`
+	LastCheckedAt  *time.Time `json:"lastCheckedAt,omitempty"`
+	LastCheckError string     `json:"lastCheckError,omitempty" doc:"Why the last check could not list the upstream tags; absent when it could."`
+	// CanChange is the same owner-or-catalog-admin gate as
+	// canChangeVisibility.
+	CanChange bool `json:"canChange"`
+}
+
+// PackageSigner is who the package's versions must be signed by to resolve
+// while the organisation requires signatures.
+type PackageSigner struct {
+	Issuer    string `json:"issuer,omitempty" doc:"The exact OIDC issuer expected; absent when no signer is configured." example:"https://token.actions.githubusercontent.com"`
+	Identity  string `json:"identity,omitempty" doc:"The RE2 pattern the signer's identity must match in full." example:"https://github\\.com/acme/skills/\\.github/workflows/release\\.yaml@refs/tags/v.*"`
+	CanChange bool   `json:"canChange" doc:"The caller is the owner or a catalog admin."`
+}
+
+// VersionSignature is a version's Sigstore signature bound to its package's
+// expected signer as it reads now; only verified-matching is a pass.
+type VersionSignature struct {
+	Status   string     `json:"status" enum:"unsigned,invalid,verified-no-expected-signer,verified-unexpected-signer,verified-matching" doc:"verified-matching is the only trustworthy value: the bundle verified against the downloaded archive AND its signer matches the package's expected signer. verified-no-expected-signer and verified-unexpected-signer verified cryptographically but prove nothing about who should have signed." example:"verified-matching"`
+	Issuer   string     `json:"issuer,omitempty" doc:"The signing certificate's OIDC issuer, when the bundle verified." example:"https://token.actions.githubusercontent.com"`
+	Identity string     `json:"identity,omitempty" doc:"The signing certificate's identity, when the bundle verified. Publisher-controlled text." example:"https://github.com/acme/skills/.github/workflows/release.yaml@refs/tags/v1.2.0"`
+	Reason   string     `json:"reason,omitempty" doc:"Why the bundle did not verify, when it did not."`
+	Ref      string     `json:"ref,omitempty" doc:"Where the bundle was found." example:"https://github.com/acme/skills/releases/download/v1.2.0/skills.tar.gz.sigstore.json"`
+	SignedAt *time.Time `json:"signedAt,omitempty"`
+}
+
 type PackageComponent struct {
-	Kind string `json:"kind" enum:"skill,mcp,ext" example:"skill"`
+	Kind string `json:"kind" enum:"skill,mcp,ext,agent,command,hook" example:"skill"`
 	Name string `json:"name" example:"terraform-module-review"`
-	Path string `json:"path" example:"skills/terraform-module-review"`
+	Path string `json:"path" doc:"Unique within the version. A component inside a JSON document is file#/json/pointer." example:"skills/terraform-module-review"`
 	Note string `json:"note,omitempty" example:"SKILL.md + scripts/"`
+	ComponentSurface
+}
+
+// ComponentSurface is what a hook or MCP server runs or reaches.
+type ComponentSurface struct {
+	Event     string `json:"event,omitempty" doc:"A hook's event." example:"PreToolUse"`
+	Matcher   string `json:"matcher,omitempty" doc:"A hook's tool matcher; absent matches every tool." example:"Bash"`
+	Transport string `json:"transport,omitempty" enum:"stdio,http,sse" doc:"An MCP server's transport." example:"stdio"`
+	Target    string `json:"target,omitempty" doc:"A hook's command, a stdio server's command line, or a remote server's URL host. Publisher-controlled text." example:"npx -y @acme/mcp@1.2.3"`
 }
 
 type PackageCapabilities struct {
@@ -70,7 +122,7 @@ type PackageCapabilities struct {
 
 type PackageCapability struct {
 	Name   string   `json:"name" enum:"network,filesystem.read,filesystem.write,shell" example:"network"`
-	Level  string   `json:"level" enum:"scoped,allowlisted,review" doc:"How much trust it demands. A shell capability is never below review (FR-018)." example:"allowlisted"`
+	Level  string   `json:"level" enum:"scoped,allowlisted,review" doc:"How much trust it demands. A shell capability is never below review." example:"allowlisted"`
 	Detail []string `json:"detail" doc:"The scoping: hosts for network, paths for filesystem, command names for shell."`
 	// Indefinite means the analysis found targets it could not name; Detail
 	// is then a sample, not the whole set.
@@ -85,9 +137,15 @@ type PackageVersion struct {
 	ObjectKey string    `json:"objectKey" example:"skills/example/platform-toolkit/1.3.0/bundle.tar.zst"`
 	Digest    string    `json:"digest,omitempty" pattern:"^sha256:[0-9a-f]{64}$" doc:"Empty while a registration is still being fetched: the digest is computed on write."`
 	SizeBytes int64     `json:"sizeBytes,omitempty"`
+	// SourceURL is where these bytes came from: the repository for git, the
+	// URL that answered after redirects (no query) for an archive.
+	SourceURL    string `json:"sourceUrl,omitempty" example:"https://github.com/acme/skills"`
+	SourceRef    string `json:"sourceRef,omitempty" doc:"The git ref as requested for this version." example:"v1.2.0"`
+	SourceCommit string `json:"sourceCommit,omitempty" pattern:"^[0-9a-f]{40}$" doc:"The git commit the bytes were downloaded at, resolved from sourceRef before the download." example:"3f9c2e1d8b7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e"`
 	// PinnedBy is scoped to profiles the caller may read: an unscoped count
 	// beside a scoped list would leak private profiles' existence.
-	PinnedBy int `json:"pinnedBy"`
+	PinnedBy  int              `json:"pinnedBy"`
+	Signature VersionSignature `json:"signature"`
 }
 
 // PackageDependent is scoped the same way /v1/profiles is: a caller can't

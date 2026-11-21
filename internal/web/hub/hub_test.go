@@ -15,11 +15,8 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The api is a stub here, and the assertions are on the WIRE: the raw query
-// string it receives and the raw JSON it answers with. Asserting against
-// apiclient's structs instead would let a mapping bug in this package cancel out
-// against the same bug in the test, and the whole point of this package is that
-// the two roles only ever meet over HTTP.
+// Assertions are on the wire: asserting against apiclient's structs would let a
+// mapping bug cancel out against the same bug in the test.
 
 func TestTheScreensVocabularyReachesTheApiAsTheOperationsVocabulary(t *testing.T) {
 	var got string
@@ -40,9 +37,8 @@ func TestTheScreensVocabularyReachesTheApiAsTheOperationsVocabulary(t *testing.T
 	})
 	require.NoError(t, err)
 
-	// The chips are the design's labels — "Plugins", "Verified" — and the
-	// operation's enums are lowercase singulars. Sending a label would be a 422 the
-	// person sees as an empty catalog.
+	// Sending the design's chip labels instead of the api's enums would be a 422
+	// shown as an empty catalog.
 	require.Contains(t, got, "kind=plugin&")
 	require.Contains(t, got, "status=verified")
 	require.Contains(t, got, "q=terraform")
@@ -51,8 +47,7 @@ func TestTheScreensVocabularyReachesTheApiAsTheOperationsVocabulary(t *testing.T
 	require.Contains(t, got, "page=3")
 	require.Contains(t, got, "pageSize=10")
 
-	// Repeated rather than comma-joined: the operation declares these exploded, and
-	// a category called "Security & compliance" has no separator a join could use.
+	// Exploded, not joined: "Security & compliance" has no safe separator.
 	require.Equal(t, 2, strings.Count(got, "category="), got)
 	require.Equal(t, 2, strings.Count(got, "tag="), got)
 	require.Contains(t, got, "category=Infrastructure")
@@ -92,14 +87,11 @@ func TestARowIsRenderedFromTheApisAnswerAndNothingElse(t *testing.T) {
 	require.Equal(t, "Security & compliance", first.Category)
 
 	second := page.Rows[1]
-	// A rejected version is the strongest case of "do not adopt without reading the
-	// finding", so it shares the Flagged pill rather than inventing a fourth.
 	require.Equal(t, view.ScanFlagged, second.Scan)
 	require.Equal(t, "just now", second.Updated)
 	require.Empty(t, second.Category, "an absent category is empty, not the literal null")
 	require.NotNil(t, second.Tags, "a row with no tags renders an empty list, never a nil range")
 
-	// Selection is the screen's state, not the api's: the api counts, this marks.
 	require.Equal(t, []view.FacetOption{
 		{Label: "Security & compliance", Count: 2},
 		{Label: "Data", Count: 1, Selected: true},
@@ -118,8 +110,7 @@ func TestA401IsTheSignedOutStateAndEveryOtherRefusalIsAnError(t *testing.T) {
 		require.ErrorIs(t, err, view.ErrSignedOut)
 	})
 
-	// The negative control: if every refusal mapped to signed out, the test above
-	// would pass for the wrong reason and a broken api would ask people to log in.
+	// Negative control: otherwise a broken api would ask people to log in.
 	t.Run("every other refusal stays an error", func(t *testing.T) {
 		for _, status := range []int{http.StatusForbidden, http.StatusUnprocessableEntity,
 			http.StatusInternalServerError, http.StatusBadGateway} {
@@ -138,8 +129,7 @@ func TestA401IsTheSignedOutStateAndEveryOtherRefusalIsAnError(t *testing.T) {
 	})
 }
 
-// Principle II from the other side of the hop: the header the api actually
-// receives is built from the caller's own token and from nothing else.
+// The Authorization header is built from the caller's own token and nothing else.
 func TestTheAuthorizationHeaderIsTheCallersTokenOrIsAbsent(t *testing.T) {
 	var seen string
 	var present bool
@@ -153,9 +143,7 @@ func TestTheAuthorizationHeaderIsTheCallersTokenOrIsAbsent(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "Bearer the-callers-own-session-token", seen)
 
-	// No token, no header. Sending an empty bearer would be a different request
-	// from sending none, and the api would answer it the same way for now — but a
-	// header that is always present is one nobody notices going stale.
+	// No token, no header: an always-present header is one nobody notices going stale.
 	_, err = client.Catalog(t.Context(), view.CatalogQuery{})
 	require.NoError(t, err)
 	require.False(t, present, "an unauthenticated request must carry no Authorization header at all")
@@ -174,8 +162,7 @@ func TestTheRegistrationBannerShowsTheIdTheCatalogWillShow(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.True(t, result.Registered)
-	// namespace/name. Concatenating the publisher whole gives
-	// example/security/pii-redactor, which is not an id the catalog can ever show.
+	// namespace/name; the whole publisher slug would give an id the catalog never shows.
 	require.Equal(t, "example/pii-redactor", result.ID)
 	require.Equal(t, "1.4.2", result.Version)
 }
@@ -194,8 +181,7 @@ func TestARefusedRegistrationIsAResultToRenderAndNotAnError(t *testing.T) {
 	require.Equal(t, "the archive declares no manifest", result.Message)
 }
 
-// Registration is fully authenticated and stays that way, so its 401 is not the
-// catalog's: it is a person to send to a login, not a finding about their bundle.
+// Registration's 401 means send the person to sign in, not a finding about the bundle.
 func TestASignedOutRegistrationIsWordedAsALoginAndNotAsARejectedArchive(t *testing.T) {
 	client := clientAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
@@ -211,9 +197,7 @@ func TestASignedOutRegistrationIsWordedAsALoginAndNotAsARejectedArchive(t *testi
 		"nothing about the archive was judged, so nothing may say it was")
 }
 
-// The tags field follows the same rule as the rest of the modal's form:
-// omitted rather than sent blank, so the common case of no tags reaches the
-// api exactly as it did before this field existed.
+// Empty tags are omitted rather than sent blank.
 func TestRegisterOmitsTagsWhenEmptyAndSendsThemRawWhenSet(t *testing.T) {
 	var forms []map[string]string
 	client := clientAgainst(t, func(w http.ResponseWriter, r *http.Request) {
@@ -262,8 +246,7 @@ func clientAgainst(t *testing.T, handler http.HandlerFunc, opts ...hub.Option) *
 
 func writeCatalog(w http.ResponseWriter, body string) {
 	w.Header().Set("Content-Type", "application/json")
-	// Compacted so the stub answers the bytes a real api would rather than the
-	// indentation this file needs to stay readable.
+	// Compacted so the stub answers the bytes a real api would.
 	var out any
 	if err := json.Unmarshal([]byte(body), &out); err != nil {
 		panic(err)

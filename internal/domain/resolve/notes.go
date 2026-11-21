@@ -3,11 +3,12 @@ package resolve
 import (
 	"fmt"
 	"strings"
+
+	"agent-manager/internal/domain/signer"
 )
 
-// The sentences the profile screen renders under an entry. They live next
-// to the rules so there's no separate template restating what the gate
-// did. Every note carries FlagDetail verbatim: escape at render.
+// Notes are the sentences the profile screen renders under an entry. Every
+// note carries FlagDetail verbatim: escape at render.
 
 // dateLayout is date-only and UTC: an hour or a timezone isn't actionable.
 const dateLayout = "2006-01-02"
@@ -41,8 +42,7 @@ func lapsedOn(override *Override) string {
 	return override.ExpiresAt.UTC().Format(dateLayout)
 }
 
-// noteFlagged is empty for a clean version; nobody reads a note that says
-// nothing happened.
+// noteFlagged is empty for a clean version.
 func noteFlagged(gate Gate, candidate Candidate, verdict disposition) string {
 	if candidate.Verdict != VerdictFlagged {
 		return ""
@@ -69,7 +69,6 @@ func noteFlagged(gate Gate, candidate Candidate, verdict disposition) string {
 	}
 }
 
-// notePassedOver is the first half of a downgrade note.
 func notePassedOver(newest Candidate, reason Reason, resolved string) string {
 	switch reason {
 	case ReasonFlaggedBlockedByGate:
@@ -85,9 +84,8 @@ func notePassedOver(newest Candidate, reason Reason, resolved string) string {
 			newest.Semver, resolved)
 	case ReasonUnsignedSignaturesRequired:
 		return fmt.Sprintf(
-			"%s carries no signature reference and this organisation requires signed bundles, "+
-				"so this entry resolved to %s instead.",
-			newest.Semver, resolved)
+			"%s and this organisation requires signed bundles, so this entry resolved to %s instead.",
+			signatureProblem(newest), resolved)
 	case ReasonFlaggedAwaitingApproval, ReasonPinTargetMissing:
 		return ""
 	}
@@ -136,8 +134,7 @@ func noteSkipped(candidate Candidate, reason Reason, mode Mode) string {
 			candidate.Semver)
 
 	case ReasonUnsignedSignaturesRequired:
-		return fmt.Sprintf("%s carries no signature reference and this organisation requires signed bundles.",
-			candidate.Semver)
+		return signatureProblem(candidate) + " and this organisation requires signed bundles."
 
 	case ReasonPinTargetMissing:
 		return notePinTargetMissing()
@@ -152,4 +149,24 @@ func notePinTargetMissing() string {
 
 func noteNothingToResolve() string {
 	return "No version of this package is available to resolve."
+}
+
+// signatureProblem says why a candidate's signature does not satisfy the
+// policy. The identity is attacker-controlled: escape at render.
+func signatureProblem(candidate Candidate) string {
+	sig := candidate.Signature
+	switch sig.status() {
+	case signer.StatusInvalid:
+		return fmt.Sprintf("%s has a signature that did not verify", candidate.Semver)
+	case signer.StatusNoExpectedSigner:
+		return fmt.Sprintf("%s is signed by %s (%s), but its package has no expected signer configured",
+			candidate.Semver, sig.Identity, sig.Issuer)
+	case signer.StatusUnexpectedSigner:
+		return fmt.Sprintf("%s is signed by %s (%s), which is not its package's expected signer",
+			candidate.Semver, sig.Identity, sig.Issuer)
+	case signer.StatusMatching:
+		return fmt.Sprintf("%s is signed by its package's expected signer", candidate.Semver)
+	default:
+		return fmt.Sprintf("%s carries no Sigstore signature", candidate.Semver)
+	}
 }

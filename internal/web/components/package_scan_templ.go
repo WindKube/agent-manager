@@ -10,27 +10,11 @@ import templruntime "github.com/a-h/templ/runtime"
 
 import "agent-manager/internal/web/view"
 
-// PackageScanPanel is the package detail screen's collapsible security
-// section (owner request: "on the skill view, there should be a collapsible
-// section (default hidden) that shows the security scan result and
-// approval and comment"): the latest version's verdict and engine, its
-// findings with severity, evidence and the check they came from, and any
-// reviewer decision.
-//
-// It is read-only. Reusing it does not offer the accept/reject decision:
-// that stays on the Scanner screen, whose review form redirects back to
-// /scanner and would strand a reviewer who decided from here. Instead this
-// panel reuses the Scanner screen's own findingRow, evidencePanel,
-// checkMatrix, scanPanel and overridePanel (scanner.templ) so the two
-// screens render one finding one way, never a second copy of it.
-//
-// Collapsed by default via a local datastar signal, never sent to the
-// server (the underscore prefix). Every finding this panel can show already
-// arrived with the rest of the page's render (package_scan.go's loadScan),
-// so expanding it costs no round trip — the content is inline in the
-// document from the first byte, hidden by the same inline style="display:none"
-// the catalog's own overlays use, so nothing here paints visible before
-// datastar attaches.
+// PackageScanPanel is the package detail screen's collapsible, read-only security
+// section. Accept/reject stays on the Scanner screen, whose form redirects to
+// /scanner; this panel reuses the Scanner's own templates so a finding renders one way.
+// The content is inline from the first byte, collapsed by a local underscore signal
+// and inline display:none, so expanding costs no round trip.
 func PackageScanPanel(scan view.PackageScan) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -59,7 +43,7 @@ func PackageScanPanel(scan view.PackageScan) templ.Component {
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(scan.Summary())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/package_scan.templ`, Line: 30, Col: 48}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/package_scan.templ`, Line: 14, Col: 48}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
@@ -152,12 +136,8 @@ func scanPanelBody(scan view.PackageScan) templ.Component {
 	})
 }
 
-// scanFinding is one finding: its severity, rule, state and engine
-// (findingRow), the rule pack's own prose when it recorded one, its
-// evidence (evidencePanel) and, when a reviewer decided it, that decision
-// (overridePanel). A rejected finding carries no override row — Reject
-// writes no override, only the version's verdict — so the audit log, not
-// this finding, is where its reviewer and note are recorded.
+// scanFinding is one finding and, when decided, its override. Reject writes no
+// override, so a rejected finding's reviewer and note live in the audit log.
 func scanFinding(finding view.FindingDetail) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -186,7 +166,7 @@ func scanFinding(finding view.FindingDetail) templ.Component {
 		var templ_7745c5c3_Var5 string
 		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue("scan-finding-" + finding.ID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/package_scan.templ`, Line: 86, Col: 63}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/package_scan.templ`, Line: 66, Col: 63}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 		if templ_7745c5c3_Err != nil {
@@ -208,7 +188,7 @@ func scanFinding(finding view.FindingDetail) templ.Component {
 			var templ_7745c5c3_Var6 string
 			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(finding.Explanation)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/package_scan.templ`, Line: 89, Col: 43}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/package_scan.templ`, Line: 69, Col: 43}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 			if templ_7745c5c3_Err != nil {

@@ -11,9 +11,8 @@ type Profile struct {
 	Visibility   string `json:"visibility,omitempty" enum:"organisation,shared,private" doc:"How this profile came to be readable by this identity." example:"organisation"`
 	PackageCount int    `json:"packageCount" doc:"Packages in the head revision, excluding skipped entries." example:"12"`
 	HeadRevision int    `json:"headRevision" doc:"The most recent published revision number." example:"7"`
-	// CanCurate is FR-126 at list scope: owner or maintainer membership, so a
-	// caller can offer this profile as an add-to-profile target without a
-	// per-profile detail read just to find out.
+	// CanCurate lets a caller offer this profile as an add-to-profile target
+	// without a per-profile detail read.
 	CanCurate bool `json:"canCurate" doc:"Whether this identity's role on this profile lets it change what the profile holds."`
 }
 
@@ -30,8 +29,8 @@ type Lockfile struct {
 	Gate          string          `json:"gate" enum:"block,approval,warn-with-override" doc:"The org scan gate in force at resolution. Recorded so a lockfile explains itself later." example:"approval"`
 	DefaultPolicy string          `json:"defaultPolicy,omitempty" enum:"floating-latest,pinned,range" example:"pinned"`
 	Entries       []LockfileEntry `json:"entries" doc:"Packages this revision resolves to an exact version."`
-	Skipped       []LockfileSkip  `json:"skipped" doc:"FR-036: an excluded package is reported with its reason, never silently omitted."`
-	Targets       []string        `json:"targets" enum:"claude-code,codex" doc:"Which agent directories the CLI should write. Advisory to the client; the server stores nothing per target (FR-039)."`
+	Skipped       []LockfileSkip  `json:"skipped" doc:"An excluded package is reported with its reason, never silently omitted."`
+	Targets       []string        `json:"targets" enum:"claude-code,codex,opencode" doc:"Which agent directories the CLI should write. Advisory to the client; the server stores nothing per target."`
 }
 
 type LockfileProfile struct {
@@ -58,11 +57,9 @@ type LockfileOverride struct {
 	ExpiresAt time.Time `json:"expiresAt"`
 }
 
-// Verified stays false until cryptographic verification ships and must
-// never be rendered as a pass.
 type LockfileSignature struct {
 	Ref      string `json:"ref,omitempty" example:"sigstore:acme/code-review@2.4.1"`
-	Verified *bool  `json:"verified,omitempty" doc:"False until Sigstore verification ships (FR-048a). Never render a false value as a pass."`
+	Verified *bool  `json:"verified,omitempty" doc:"True only when the Sigstore bundle verified against the archive the hub downloaded AND its signer matches the package's expected signer. False covers a bundle that did not verify and one signed by anyone else, or with no expected signer configured; never render it as a pass."`
 }
 
 type LockfileSkip struct {
@@ -74,7 +71,7 @@ type LockfileSkip struct {
 
 type DeviceAuthorizeRequest struct {
 	ClientID string `json:"client_id" doc:"The CLI's registered OAuth client identifier." example:"agent-manager-cli"`
-	Host     string `json:"host" doc:"Hostname of the requesting machine. Bound to the authorisation and displayed to the approving human (FR-041), so approval is an informed act." example:"dev-laptop-01"`
+	Host     string `json:"host" doc:"Hostname of the requesting machine. Bound to the authorisation and displayed to the approving human, so approval is an informed act." example:"dev-laptop-01"`
 	Scope    string `json:"scope,omitempty" doc:"Space-delimited scopes. Omitted means the client's default scope." example:"profiles:read bundles:read"`
 }
 
@@ -90,9 +87,8 @@ type DeviceAuthorization struct {
 	Interval                int    `json:"interval" doc:"Minimum seconds between polls of /v1/device/token." example:"5"`
 }
 
-// DeviceTokenRequest arrives form-encoded, as RFC 8628 requires; the
-// operation declares the media type by hand since huma models an object
-// body as JSON.
+// DeviceTokenRequest arrives form-encoded, as RFC 8628 requires; the operation
+// declares the media type by hand since huma models an object body as JSON.
 type DeviceTokenRequest struct {
 	GrantType  string `json:"grant_type" const:"urn:ietf:params:oauth:grant-type:device_code" doc:"Fixed by RFC 8628 3.4. No other grant type is accepted here."`
 	DeviceCode string `json:"device_code" doc:"The device_code handed back by /v1/device/authorize."`
@@ -125,8 +121,29 @@ type SyncReport struct {
 	Profile  string   `json:"profile" doc:"Slug of the profile that was synced." example:"platform-baseline"`
 	Revision int      `json:"revision" doc:"The exact revision the client resolved against." example:"7"`
 	Host     string   `json:"host" doc:"Hostname the sync landed on, for the audit row." example:"dev-laptop-01"`
-	Targets  []string `json:"targets" enum:"claude-code,codex" doc:"Agent directories the client actually wrote."`
+	Targets  []string `json:"targets" enum:"claude-code,codex,opencode" doc:"Agent directories the client actually wrote."`
 	Skipped  []string `json:"skipped,omitempty" doc:"Entry ids the client skipped locally, if any."`
+
+	MachineID         string              `json:"machineId,omitempty" format:"uuid" doc:"A random id the client generated once and keeps. Without it the sync is recorded but no machine inventory is kept." example:"0193a8e2-6b1f-7c3a-9d4e-2f5b8c1a7e60"`
+	OS                string              `json:"os,omitempty" maxLength:"32" example:"darwin"`
+	Arch              string              `json:"arch,omitempty" maxLength:"32" example:"arm64"`
+	AmctlVersion      string              `json:"amctlVersion,omitempty" maxLength:"64" example:"0.9.0"`
+	Installed         []SyncInstall       `json:"installed,omitempty" maxItems:"5000" doc:"Every entry of this profile installed on the machine after this sync. Replaces what the machine reported for this profile before."`
+	SkippedComponents []SyncComponentSkip `json:"skippedComponents,omitempty" maxItems:"5000" doc:"Components of entries this sync wrote that the client did not place."`
+}
+
+type SyncInstall struct {
+	ID      string `json:"id" minLength:"3" maxLength:"256" doc:"namespace/name" example:"acme/code-review"`
+	Version string `json:"version" minLength:"1" maxLength:"128" example:"2.4.1"`
+	Target  string `json:"target" enum:"claude-code,codex,opencode" example:"claude-code"`
+	Changed bool   `json:"changed,omitempty" doc:"This sync wrote the entry. The component skips of an entry it did not write carry over from the report that did."`
+}
+
+type SyncComponentSkip struct {
+	Entry     string `json:"entry" minLength:"1" maxLength:"256" doc:"namespace/name of the installed entry." example:"acme/code-review"`
+	Target    string `json:"target" enum:"claude-code,codex,opencode" example:"claude-code"`
+	Component string `json:"component" minLength:"1" maxLength:"256" doc:"The component's kind and name." example:"mcp-server lint"`
+	Reason    string `json:"reason" minLength:"1" maxLength:"1024" example:"no claude CLI on PATH"`
 }
 
 type Health struct {

@@ -5,18 +5,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
-
-	"agent-manager/internal/web"
-	"agent-manager/internal/web/fixture"
 )
 
-// TestCrossSitePostsAreRefused is the second line of defence behind
-// SameSite=Lax: a state-changing request whose Sec-Fetch-Site or Origin names
-// another site is refused before it reaches a handler.
+// TestCrossSitePostsAreRefused is the second line of defence behind SameSite=Lax.
 func TestCrossSitePostsAreRefused(t *testing.T) {
-	h := web.New(web.Deps{Catalog: fixture.New(), Log: zerolog.Nop()}, web.Options{}).Handler()
+	_, h := newServer(t)
 
 	for _, tc := range []struct {
 		name   string

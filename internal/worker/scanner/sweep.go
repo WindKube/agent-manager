@@ -13,14 +13,11 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// maxSweepVersions bounds one sweep, so a package with many published
-// versions cannot turn one publish into a job that runs for an hour.
+// maxSweepVersions keeps one publish from turning into an hour-long sweep.
 const maxSweepVersions = 50
 
 // Sweeper works one `rescan-sweep` job. `am_scanner` holds no grant on
-// `outbox`, so this handler cannot enqueue per-version scan jobs; it
-// performs them instead, in-process, through the same handler a queued scan
-// goes through.
+// `outbox`, so it runs the per-version scans in-process instead of enqueuing them.
 type Sweeper struct {
 	river.WorkerDefaults[SweepJob]
 
@@ -30,7 +27,7 @@ type Sweeper struct {
 // NewSweeper builds the rescan handler over an existing scan handler.
 func NewSweeper(w *Worker) *Sweeper { return &Sweeper{worker: w} }
 
-// Timeout is River's per-job budget for a sweep.
+// Timeout is River's per-job budget.
 func (s *Sweeper) Timeout(*river.Job[SweepJob]) time.Duration { return sweepTimeout }
 
 // Work runs one sweep.
@@ -39,7 +36,7 @@ func (s *Sweeper) Work(ctx context.Context, job *river.Job[SweepJob]) error {
 	return err
 }
 
-// SweepOutcome is what one sweep did.
+// SweepOutcome summarises one sweep.
 type SweepOutcome struct {
 	// Enabled is the org policy's answer; a disabled policy is not a failure.
 	Enabled   bool
@@ -49,9 +46,8 @@ type SweepOutcome struct {
 	Failed    int
 }
 
-// Sweep rescans the package's other versions under the running rule pack:
-// every visible version with committed bytes that has no scan at the
-// running pack version, not only already-approved ones.
+// Sweep rescans every visible, committed version of the package that has no
+// scan at the running fingerprint, not only approved ones.
 func (s *Sweeper) Sweep(ctx context.Context, job SweepJob) (SweepOutcome, error) {
 	log := s.worker.deps.Log.With().
 		Str("job", "rescan-sweep").
@@ -79,8 +75,7 @@ func (s *Sweeper) Sweep(ctx context.Context, job SweepJob) (SweepOutcome, error)
 
 	outcome := SweepOutcome{Enabled: true, Examined: len(candidates)}
 	for _, candidate := range candidates {
-		// A sweep is best effort per version: one unreadable bundle must not
-		// stop the rest of the package from being rescanned.
+		// Best effort per version: one unreadable bundle must not stop the rest.
 		result, scanErr := s.worker.scan(ctx, candidate, false)
 		switch {
 		case scanErr != nil:
@@ -112,9 +107,8 @@ func (s *Sweeper) Sweep(ctx context.Context, job SweepJob) (SweepOutcome, error)
 	return outcome, nil
 }
 
-// rescanEnabled reads the org policy: the scanner reads it, not the fetcher,
-// because `am_scanner` holds the grant on `org_policy` and `am_fetcher` does
-// not.
+// rescanEnabled is read here rather than in the fetcher because only
+// `am_scanner` holds the grant on `org_policy`.
 func (s *Sweeper) rescanEnabled(ctx context.Context) (bool, error) {
 	var enabled bool
 	err := s.worker.deps.DB.QueryRowContext(ctx,
@@ -129,7 +123,6 @@ func (s *Sweeper) rescanEnabled(ctx context.Context) (bool, error) {
 	return enabled, nil
 }
 
-// candidates is the package's versions that the running pack has not judged.
 func (s *Sweeper) candidates(ctx context.Context, job SweepJob) ([]Job, error) {
 	rows, err := s.worker.deps.DB.QueryContext(ctx,
 		`select v.id, v.semver, v.object_key, p.namespace, p.name
@@ -171,6 +164,5 @@ func (s *Sweeper) candidates(ctx context.Context, job SweepJob) ([]Job, error) {
 	return out, nil
 }
 
-// errNoPolicy is here so a missing singleton reads as a configuration
-// failure rather than "rescan is off".
+// errNoPolicy makes a missing singleton a configuration failure rather than "rescan is off".
 var errNoPolicy = errors.New("org_policy holds no row with id 1")

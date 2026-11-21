@@ -7,18 +7,14 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/hub"
 )
 
-// pkg is one package version the fake can serve bundle bytes for. Publisher
-// (a two-segment slug) and namespace (its first segment) are kept distinct
-// on purpose — conflating them already shipped as a bug three times
-// hub-side — and the bundle path's `{publisher}` param actually takes the
-// namespace, so two publishers sharing one namespace are modelled here too.
+// pkg is one package version the fake can serve. Publisher and namespace are kept distinct, since the
+// bundle path's `{publisher}` param actually takes the namespace.
 type pkg struct {
 	ID        string // namespace/name
 	Version   string
 	Publisher string // publisher slug: two segments, first of which is the namespace
 	Kind      hub.LockfileEntryKind
 
-	// serve decides what GET /v1/bundles/... does with this package.
 	serve serveMode
 
 	blob blob
@@ -31,12 +27,8 @@ const (
 	serveRedirect                   // 307 to a same-host pre-signed URL
 	serveForbidden                  // 403: rejected by the gate, mid-sync
 
-	// serveRedirectStale is the 307 offload path's negative control: the hub
-	// answers 307 but the Location's signature is one the object store
-	// rejects with 403 — what an expired or clock-skewed pre-signed URL
-	// looks like on the wire. A store 403 and a hub 403 mean opposite things
-	// (infrastructure failure vs. the scan gate), and this is the only
-	// fixture that can tell the two apart.
+	// serveRedirectStale answers 307 to a URL the object store rejects with 403, as an expired
+	// pre-signed URL would; it tells a store 403 from the hub's scan gate.
 	serveRedirectStale
 )
 
@@ -49,10 +41,7 @@ func (p pkg) objectKey() string {
 	return "bundles/" + p.ID + "/" + p.Version + "/bundle.tar.zst"
 }
 
-// digestOverride, when set on an entry, is the digest written into the lockfile
-// INSTEAD of the digest of the bytes served. It is a real sha256 of real other
-// bytes, never a hand-mangled string, so a client that fails the comparison fails
-// it the way it would in production.
+// digestOverride, when set, locks a real digest of another bundle instead of the bytes served.
 type entrySpec struct {
 	pkgID          string
 	resolution     hub.LockfileEntryResolution
@@ -87,15 +76,13 @@ const (
 	slugPresigned      = "presigned-bundles"
 	slugPresignedStale = "presigned-stale"
 	slugFutureSkip     = "future-skip-reason"
-	slugUnwritable     = "unwritable-target"
+	slugBothTargets    = "both-targets"
+	slugPlugin         = "every-target-plugin"
 	slugMissing        = "no-such-profile"
 )
 
-// futureSkipReason is outside the frozen schema's enum, on purpose: the CLI
-// ships separately from the hub and must report an unrecognised reason
-// verbatim rather than drop it. One profile serves this value with the
-// enum relaxed only for it, so that is the one deviation the self-test
-// asserts is happening.
+// futureSkipReason is deliberately outside the schema's enum: the CLI must report an unrecognised
+// reason verbatim. It is the one schema deviation the self-test allows.
 const futureSkipReason = "quarantined-by-org-policy"
 
 func catalog() []*pkg {
@@ -108,33 +95,22 @@ func catalog() []*pkg {
 		{ID: "contoso/offloaded", Version: "1.2.0", Publisher: "contoso/tools", Kind: "skill", serve: serveRedirect},
 		{ID: "contoso/offloaded-stale", Version: "1.2.0", Publisher: "contoso/tools", Kind: "skill", serve: serveRedirectStale},
 		{ID: "acme/code-review", Version: "2.4.0", Publisher: "acme/platform", Kind: "skill"}, // older rev, differs in content not just number
+		{ID: "acme/toolkit", Version: "1.0.0", Publisher: "acme/platform", Kind: "plugin"},
 	}
 	for _, p := range pkgs {
+		if p.Kind == hub.Plugin {
+			p.blob = packBundle(pluginFiles(p.ID, p.Version))
+			continue
+		}
 		p.blob = packBundle(skillFiles(p.ID, p.Version))
 	}
 	return pkgs
 }
 
 func profiles() []profileSpec {
-	// TWO target fixtures, and which profile gets which is load-bearing.
-	//
-	// An earlier version put both contract targets on every profile, reasoning
-	// that "the fake serves what the hub may serve" and that a fake naming only
-	// the shipped target could not exercise ErrR2Unresolved. The first half is
-	// right and the conclusion was wrong: because codex is unwritable by design,
-	// naming it on EVERY profile meant every profile the fake serves is refused,
-	// so the fake could not serve the happy path at all. The idempotence and
-	// interruption properties had no syncable profile to run against, and the
-	// sync verb's own tests had to stand up a rewriting reverse proxy to get
-	// one.
-	//
-	// The real hub's own seeded lockfile names claude-code only
-	// (internal/api/integration_test.go, storedLockfile), so that is the shipping
-	// case and it belongs on the profiles that model a working sync. The skip
-	// gets a profile of its own, named for it, so it is still exercised — by a
-	// test that asks for it rather than by every test incidentally.
+	// Most profiles name claude-code only, as the real hub's seed does; one names two targets.
 	writable := []hub.LockfileTargets{"claude-code"}
-	unwritable := []hub.LockfileTargets{"claude-code", "codex"}
+	both := []hub.LockfileTargets{"claude-code", "codex"}
 	return []profileSpec{
 		{
 			slug: slugBaseline, name: "Platform baseline", visibility: "organisation",
@@ -154,8 +130,7 @@ func profiles() []profileSpec {
 						{pkgID: "acme/code-review@2.4.1", resolution: "pinned", verdict: "clean",
 							signature: &hub.LockfileSignature{
 								Ref: ptr("sigstore:acme/code-review@2.4.1"),
-								// False until Sigstore verification ships. The schema's own
-								// words: never render a false value as a pass.
+								// False until Sigstore verification ships.
 								Verified: ptr(false),
 							}},
 						{pkgID: "acme/lint-guard@1.0.3", resolution: "latest", verdict: "flagged",
@@ -166,8 +141,6 @@ func profiles() []profileSpec {
 							}},
 						{pkgID: "example/doc-writer@0.9.0", resolution: "range", verdict: "clean"},
 					},
-					// Three of the six legal reasons. Every one of these must reach the
-					// user with the hub's own wording.
 					skipped: []hub.LockfileSkip{
 						{Id: "acme/legacy-helper", Reason: "flagged-awaiting-approval",
 							Detail: ptr("SH-NET-002 in postinstall.sh"), WouldHaveResolvedTo: ptr("1.9.0")},
@@ -228,15 +201,22 @@ func profiles() []profileSpec {
 			}},
 		},
 		{
-			// The ErrR2Unresolved case: a lockfile naming a target this client
-			// cannot write, alongside one it can. codex is reported as a SKIP
-			// naming the target — never silently dropped — while claude-code
-			// still installs.
-			slug: slugUnwritable, name: "Names an unwritable target", visibility: "organisation",
+			slug: slugBothTargets, name: "Names two targets", visibility: "organisation",
 			revisions: []revisionSpec{{
-				revision: 1, gate: "approval", policy: "pinned", targets: unwritable,
+				revision: 1, gate: "approval", policy: "pinned", targets: both,
 				entries: []entrySpec{
 					{pkgID: "acme/code-review@2.4.1", resolution: "pinned", verdict: "clean"},
+				},
+				skipped: []hub.LockfileSkip{},
+			}},
+		},
+		{
+			slug: slugPlugin, name: "A plugin for every target", visibility: "organisation",
+			revisions: []revisionSpec{{
+				revision: 1, gate: "approval", policy: "pinned",
+				targets: []hub.LockfileTargets{"claude-code", "codex", "opencode"},
+				entries: []entrySpec{
+					{pkgID: "acme/toolkit@1.0.0", resolution: "pinned", verdict: "clean"},
 				},
 				skipped: []hub.LockfileSkip{},
 			}},

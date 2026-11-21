@@ -1,8 +1,6 @@
-// Package fetcher is the `worker fetcher` role: the only role in this system
-// that may write bundle bytes. `visible` flips in the same transaction as
-// the digest and the scan hand-off, so a readable version is always
-// complete; a crash before that leaves orphaned bytes rather than a
-// half-published one.
+// Package fetcher is the `worker fetcher` role, the only role that may write
+// bundle bytes. `visible` flips in the same transaction as the digest and scan
+// hand-off, so a crash leaves orphaned bytes rather than a half-published version.
 package fetcher
 
 import (
@@ -18,6 +16,7 @@ import (
 	"agent-manager/internal/domain/pkgspec"
 	"agent-manager/internal/fetch"
 	"agent-manager/internal/outbox"
+	"agent-manager/internal/signing"
 	"agent-manager/internal/worker"
 )
 
@@ -32,9 +31,8 @@ const Concurrency = 4
 // cap since a slow remote is the usual reason a fetch is slow.
 const jobTimeout = 10 * time.Minute
 
-// Definition is the whole description of the role. Blob: AccessReadWrite is
-// the entire mechanism behind "only the fetcher may write bundle bytes" —
-// the bootstrap hands out a blob.Writer for that value and no other.
+// Definition describes the role. Blob: AccessReadWrite is what makes the
+// fetcher the only role handed a blob.Writer.
 func Definition() worker.Definition {
 	return worker.Definition{
 		Name:   RoleName,
@@ -45,6 +43,7 @@ func Definition() worker.Definition {
 			Outbound: true,
 		},
 		Register: register,
+		Periodic: periodic,
 	}
 }
 
@@ -53,7 +52,14 @@ func register(deps worker.Deps, workers *river.Workers) error {
 	if err != nil {
 		return err
 	}
-	return river.AddWorkerSafely(workers, handler)
+	if addErr := river.AddWorkerSafely(workers, handler); addErr != nil {
+		return addErr
+	}
+	upstream, err := NewUpstream(deps)
+	if err != nil {
+		return err
+	}
+	return river.AddWorkerSafely(workers, upstream)
 }
 
 // Worker works one `fetch` job.
@@ -62,14 +68,16 @@ type Worker struct {
 
 	deps      worker.Deps
 	sources   *fetch.Registry
+	git       fetch.GitSource
 	committer *blob.Committer
 	limits    bundle.Limits
 	validator *pkgspec.Validator
 	enqueue   outbox.Enqueuer
+	verifier  *signing.Verifier
 }
 
-// New assembles the handler from what the bootstrap handed the role. A nil
-// dependency here means the Definition and the bootstrap disagree.
+// New assembles the handler. A nil dependency means the Definition and the
+// bootstrap disagree.
 func New(deps worker.Deps) (*Worker, error) {
 	switch {
 	case deps.DB == nil:
@@ -80,19 +88,22 @@ func New(deps worker.Deps) (*Worker, error) {
 		return nil, errors.New("fetcher: no object-store writer, so it could not store a bundle")
 	case deps.Fetch == nil:
 		return nil, errors.New("fetcher: no outbound client")
+	case deps.Signatures == nil:
+		return nil, errors.New("fetcher: no signature verifier")
 	}
 
 	validator, err := pkgspec.Default()
 	if err != nil {
 		return nil, fmt.Errorf("fetcher: %w", err)
 	}
-	git, err := fetch.NewGitSource(deps.Fetch)
+	git, err := fetch.NewGitSource(deps.Fetch, deps.GitHubToken)
 	if err != nil {
 		return nil, fmt.Errorf("fetcher: %w", err)
 	}
 
 	return &Worker{
 		deps: deps,
+		git:  git,
 		sources: fetch.NewRegistry(
 			fetch.NewUploadSource(),
 			git,
@@ -102,6 +113,7 @@ func New(deps worker.Deps) (*Worker, error) {
 		limits:    bundle.DefaultLimits(),
 		validator: validator,
 		enqueue:   outbox.NewWriter(),
+		verifier:  deps.Signatures,
 	}, nil
 }
 

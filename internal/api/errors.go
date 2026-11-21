@@ -16,8 +16,7 @@ import (
 )
 
 // newHumaError replaces huma's default ErrorModel with contract.Error, so every
-// failure this API produces has one shape — including the 422s huma generates
-// from request validation, which no handler ever sees.
+// failure has one shape, including huma's own validation 422s.
 func newHumaError(status int, msg string, errs ...error) huma.StatusError {
 	out := contract.NewError(status, msg)
 	for _, err := range errs {
@@ -35,9 +34,8 @@ func newHumaError(status int, msg string, errs ...error) huma.StatusError {
 	return out
 }
 
-// stampCorrelation is a huma response transformer, which is where the correlation
-// id reaches the body: huma.NewError has no context to read it from, and a client
-// that can quote the id in a bug report is the whole reason it exists (FR-059).
+// stampCorrelation puts the correlation id into error bodies; huma.NewError has no
+// context to read it from.
 func stampCorrelation(ctx huma.Context, _ string, v any) (any, error) {
 	if err, ok := v.(*contract.Error); ok && err.CorrelationID == "" {
 		err.CorrelationID = CorrelationFrom(ctx.Context())
@@ -45,11 +43,8 @@ func stampCorrelation(ctx huma.Context, _ string, v any) (any, error) {
 	return v, nil
 }
 
-// fail maps a domain error onto the wire.
-//
-// The 500 branch deliberately does not echo err: an internal message may name a
-// table, a constraint or a host. It is logged with the correlation id instead, so
-// the client's id and the server's log line are joinable.
+// fail maps a domain error onto the wire. The 500 branch does not echo err, which
+// may name tables or hosts; it is logged with the correlation id instead.
 func fail(log zerolog.Logger, err error) error {
 	switch {
 	case errors.Is(err, queries.ErrNotFound):
@@ -62,9 +57,7 @@ func fail(log zerolog.Logger, err error) error {
 	}
 }
 
-// notFound and methodNotAllowed keep gin's own misses in the same shape as
-// everything huma produces. Without them the two most common client mistakes are
-// the only responses in the whole API with a different body.
+// notFound and methodNotAllowed keep gin's own misses in the same error shape as huma's.
 func notFound(c *gin.Context) {
 	writeGinError(c, http.StatusNotFound, "no operation at "+c.Request.URL.Path)
 }
@@ -80,8 +73,7 @@ func writeGinError(c *gin.Context, status int, detail string) {
 	c.AbortWithStatusJSON(status, body)
 }
 
-// recovery turns a panic into the same error shape, logged with the correlation
-// id and the stack. gin's own Recovery writes a bare 500 with no body. It runs
+// recovery turns a panic into the same error shape, logged with the stack. It runs
 // after correlation, so the context already carries the request's logger.
 func recovery() gin.HandlerFunc {
 	return func(c *gin.Context) {

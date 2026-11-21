@@ -19,11 +19,8 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The three identity operations' container-free half (T033, T035, T036, T037).
-// What needs a database — the row a mint writes, the audit rows, and a role that
-// changes under a live session — is in session_integration_test.go.
+// The identity operations' container-free half; the database half is in session_integration_test.go.
 
-// idTokens stands in for the api's ID-token verifier.
 type idTokens struct {
 	claims auth.Claims
 	err    error
@@ -33,9 +30,8 @@ func (v idTokens) Verify(context.Context, string) (auth.Claims, error) { return 
 
 const mintSecret = "a-configured-session-mint-secret"
 
-// mintRequest posts a session mint from a named address. The address matters:
-// the refusal cap is keyed on it, so a table test that reused one would have its
-// later cases answered 429 by its earlier ones.
+// mintRequest takes an address because the refusal cap is keyed on it; reusing
+// one would get later table cases a 429.
 func mintRequest(t *testing.T, h http.Handler, secret, from string) *httptest.ResponseRecorder {
 	t.Helper()
 
@@ -72,9 +68,7 @@ func TestTheDocumentSaysTheSessionMintIsAuthenticatedByItsOwnSchemeAndNotThatItI
 func TestTheOnlyOperationThatDoesNotRequireASessionTokenIsTheMintAndThePublicThree(t *testing.T) {
 	doc := api.Document(api.Options{})
 
-	// Named rather than derived: the point is that the set is short and that
-	// growing it is a deliberate act. Deriving the expectation from the same
-	// Security fields the middleware reads would assert nothing.
+	// Named rather than derived from the Security fields, which would assert nothing.
 	unauthenticated := map[string]bool{
 		"health": true, "deviceAuthorize": true, "deviceToken": true, "createSession": true,
 	}
@@ -103,20 +97,14 @@ func TestTheOnlyOperationThatDoesNotRequireASessionTokenIsTheMintAndThePublicThr
 func TestTheSessionMintIsRefusedWithoutTheSecretAndNeedsNoBearerToken(t *testing.T) {
 	h := handler(t, api.Deps{
 		SessionMintSecret: mintSecret,
-		// Refusing, so the request that gets past the secret can be recognised by
-		// the status only the verifier produces — no database needed to tell the two
-		// halves of this test apart.
+		// Refusing, so passing the secret check is recognisable by the verifier's status.
 		IDTokens: idTokens{err: errors.New("the signature did not verify")},
 	})
 
-	// No Authorization header anywhere below. This operation's caller is a role
-	// holding a secret, not a person holding a session, so a missing bearer token
-	// must not be what refuses it — if it were, the web role could never call it.
+	// No Authorization header below: the caller holds a secret, not a session.
 	require.Equal(t, http.StatusUnauthorized, mintRequest(t, h, "", "198.51.100.1").Code)
 	require.Equal(t, http.StatusUnauthorized, mintRequest(t, h, "not-the-secret", "198.51.100.2").Code)
 
-	// The right secret reaches the verifier, which is the proof that the secret —
-	// and not a session — is what admits this call.
 	require.Equal(t, http.StatusUnprocessableEntity, mintRequest(t, h, mintSecret, "198.51.100.3").Code)
 }
 
@@ -134,8 +122,7 @@ func TestAHubWithNoSharedSecretRefusesEveryMintAsUnavailable(t *testing.T) {
 func TestRefusedMintsAreCappedPerAddressAndSucceedingOnesAreNotCounted(t *testing.T) {
 	h := handler(t, api.Deps{
 		SessionMintSecret: mintSecret,
-		// A verifier that always refuses, so a request that passed the secret check
-		// still fails — with a status the cap must NOT count.
+		// Always refuses, with a status the cap must not count.
 		IDTokens: idTokens{err: errors.New("the signature did not verify")},
 	})
 
@@ -151,14 +138,10 @@ func TestRefusedMintsAreCappedPerAddressAndSucceedingOnesAreNotCounted(t *testin
 	require.NoError(t, err, "a 429 with no Retry-After tells a caller to retry immediately")
 	require.Positive(t, retryAfter)
 
-	// The cap is on this address and not on the operation: another caller's
-	// sign-ins must not be collateral damage from one attacker.
+	// The cap is per address, so one attacker does not lock out other callers.
 	require.Equal(t, http.StatusUnauthorized, mintRequest(t, h, "guess", "203.0.113.8").Code)
 
-	// And the property that makes the cap safe to set this low: an ACCEPTED
-	// secret is never counted, however many times the mint then fails for another
-	// reason. A cap on attempts would be a cap on how many people may sign in per
-	// minute, because behind one proxy every sign-in shares this key.
+	// An accepted secret is never counted; behind one proxy every sign-in shares this key.
 	const web = "203.0.113.20"
 	for i := range 20 {
 		require.Equalf(t, http.StatusUnprocessableEntity, mintRequest(t, h, mintSecret, web).Code,
@@ -184,9 +167,7 @@ func TestTheViewerIsWhatThisRequestResolvedToAndNothingElse(t *testing.T) {
 			},
 		},
 		{
-			// FR-117. The role is empty and hasRole is false, and the two are
-			// separate fields so a screen cannot fall through this state into an
-			// empty catalog.
+			// hasRole is separate from role so a screen cannot fall through into an empty catalog.
 			name: "an identity whose groups map to nothing",
 			principal: auth.Principal{
 				Subject: "sub-new", Email: "newcomer@example.dev", DisplayName: "A Newcomer",
@@ -198,10 +179,7 @@ func TestTheViewerIsWhatThisRequestResolvedToAndNothingElse(t *testing.T) {
 			},
 		},
 		{
-			// A provider is not obliged to release an email, and a viewer with no
-			// groups at all must serialise as an empty array rather than as null:
-			// a screen that iterates null is a screen that renders nothing where it
-			// meant to render "you hold no groups".
+			// No groups must serialise as [] rather than null.
 			name:      "an identity with no email and no groups",
 			principal: auth.Principal{Subject: "sub-bare", DisplayName: "sub-bare"},
 			want:      contract.Viewer{Subject: "sub-bare", DisplayName: "sub-bare", Groups: []string{}},

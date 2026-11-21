@@ -4,24 +4,23 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
+	tuffetcher "github.com/theupdateframework/go-tuf/v2/metadata/fetcher"
 
 	"agent-manager/internal/blob"
 	"agent-manager/internal/config"
 	"agent-manager/internal/fetch"
+	"agent-manager/internal/signing"
 	"agent-manager/internal/store"
 )
 
-// Config is the credential set the worker bootstrap may draw on. Nothing here
-// is `required`: which credentials a role must have is stated by its Needs,
-// and Build fails fast when a declared need has no credential behind it.
-// Marking them required in the env struct instead would force every role to
-// carry every credential it does not use. Per-role knobs (the rule-pack
-// directory, the scan budget) stay in the role's own struct in
-// internal/config, read by its Definition, not here.
+// Config is the credential set the worker bootstrap may draw on. Nothing is
+// `required` here: a role's Needs say which credentials it must have, and
+// Build fails fast when one is missing.
 type Config struct {
 	config.Observability
 
@@ -30,6 +29,11 @@ type Config struct {
 	BlobURL           string        `env:"BLOB_URL"`
 	FetchTimeout      time.Duration `env:"FETCH_TIMEOUT" envDefault:"60s"`
 	OutboundAllowlist []string      `env:"OUTBOUND_ALLOWLIST" envSeparator:","`
+	GitHubToken       string        `env:"GITHUB_TOKEN"`
+	UpstreamInterval  time.Duration `env:"UPSTREAM_INTERVAL" envDefault:"1h"`
+	// SigstoreTrustedRoot is a trusted_root.json; empty fetches the public-good
+	// root over TUF through the outbound client.
+	SigstoreTrustedRoot string `env:"SIGSTORE_TRUSTED_ROOT"`
 }
 
 // Built is a role's dependencies plus the handles that back them.
@@ -40,9 +44,7 @@ type Built struct {
 	bucket *blob.Bucket
 }
 
-// Queue is the pool River works against. It is opened alongside the
-// application handle, so it is nil for a role that declares no database
-// access.
+// Queue is the pool River works against; nil for a role with no database access.
 func (b *Built) Queue() *pgxpool.Pool {
 	if b.store == nil {
 		return nil
@@ -65,11 +67,9 @@ func (b *Built) Close() error {
 	return errors.Join(errs...)
 }
 
-// Build constructs exactly what def.Needs declares, and nothing else. An
-// undeclared capability comes back nil: a role that did not declare Blob:
-// AccessReadWrite gets a nil BlobWrite, which panics on first use in a test
-// rather than quietly widening the role's reach in production. A declared
-// capability with no credential behind it is a startup error, not a nil.
+// Build constructs exactly what def.Needs declares. An undeclared capability
+// comes back nil rather than widening the role's reach; a declared one with no
+// credential behind it is a startup error.
 func Build(ctx context.Context, def Definition, cfg Config, log zerolog.Logger) (*Built, error) {
 	if def.Name == "" {
 		return nil, errors.New("worker definition has no name")
@@ -113,8 +113,7 @@ func Build(ctx context.Context, def Definition, cfg Config, log zerolog.Logger) 
 		built.bucket = bucket
 		built.Deps.BlobRead = bucket.Reader()
 
-		// The write half only for AccessReadWrite: this branch is the whole
-		// of "the fetcher is the only role with object-store write access".
+		// This branch is what keeps the fetcher the only role with object-store write access.
 		if def.Needs.Blob == AccessReadWrite {
 			built.Deps.BlobWrite = bucket.Writer()
 		}
@@ -129,7 +128,34 @@ func Build(ctx context.Context, def Definition, cfg Config, log zerolog.Logger) 
 			return nil, fmt.Errorf("worker %s: build the outbound client: %w", def.Name, err)
 		}
 		built.Deps.Fetch = client
+		built.Deps.GitHubToken = cfg.GitHubToken
+
+		verifier, err := signing.New(signing.Options{
+			TrustedRootPath: cfg.SigstoreTrustedRoot,
+			Fetcher:         tufFetcher(client),
+		})
+		if err != nil {
+			if closeErr := built.Close(); closeErr != nil {
+				log.Error().Err(closeErr).Msg("closing partially built dependencies")
+			}
+			return nil, fmt.Errorf("worker %s: %w", def.Name, err)
+		}
+		built.Deps.Signatures = verifier
 	}
 
 	return built, nil
+}
+
+// tufFetcher sends the Sigstore TUF downloads through the SSRF-guarded client
+// rather than go-tuf's own http.DefaultClient.
+func tufFetcher(client fetch.Client) *tuffetcher.DefaultFetcher {
+	f := tuffetcher.NewDefaultFetcher()
+	f.SetHTTPClient(guardedDoer{client: client})
+	return f
+}
+
+type guardedDoer struct{ client fetch.Client }
+
+func (d guardedDoer) Do(req *http.Request) (*http.Response, error) {
+	return d.client.Do(req.Context(), req)
 }

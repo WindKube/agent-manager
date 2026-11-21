@@ -13,13 +13,8 @@ import (
 	"agent-manager/internal/worker/scanner/checks"
 )
 
-// service is the engine reached over its REST interface.
-//
-// The client is a plain http.Client and deliberately not internal/fetch: that
-// one is the sanctioned client for URLs a USER supplied, and it refuses
-// private, loopback and link-local destinations on every hop. This address is
-// operator configuration naming a service inside the deployment, which is
-// exactly what internal/fetch exists to refuse.
+// service uses a plain http.Client, not internal/fetch: the engine is an
+// operator-configured internal address, which internal/fetch exists to refuse.
 type service struct {
 	opts Options
 	http *http.Client
@@ -37,8 +32,7 @@ func New(opts Options) (Client, error) {
 	}, nil
 }
 
-// maxResponseBytes bounds what is read back. The engine is trusted to be the
-// engine, not to be bug-free.
+// maxResponseBytes bounds what is read back; the engine is trusted, not bug-free.
 const maxResponseBytes = 32 << 20
 
 func (s *service) Version(ctx context.Context) (string, error) {
@@ -80,12 +74,8 @@ func (s *service) Scan(ctx context.Context, tree Tree) (Result, error) {
 	return translate(rep, s.opts.Threshold)
 }
 
-// analyzerToggles are sent on every request. The engine already defaults each
-// of these to false; they are sent explicitly so that the request this project
-// makes states its own analyzer set rather than inheriting one, and so a test
-// can assert it. None of them is reachable from Options: every analyzer here
-// needs an API key or a network call, and the engine takes those keys as
-// request HEADERS, which this client never sets.
+// analyzerToggles are sent explicitly so the request states its own analyzer set
+// rather than inheriting engine defaults. They are not reachable from Options.
 var analyzerToggles = map[string]string{
 	"use_behavioral": "true",
 	"use_llm":        "false",
@@ -96,8 +86,7 @@ var analyzerToggles = map[string]string{
 	"enable_meta":    "false",
 }
 
-// uploadFilename must end in .zip; the engine rejects any other name. It is
-// display metadata only — the engine writes the upload under a name of its own.
+// uploadFilename must end in .zip or the engine rejects the upload.
 const uploadFilename = "bundle.zip"
 
 func (s *service) uploadBody(zipped []byte) (body []byte, contentType string, err error) {
@@ -164,9 +153,8 @@ func (s *service) do(req *http.Request, out any) error {
 	return nil
 }
 
-// statusError separates a package the engine declined from an engine that
-// failed. The first is a blind spot on one version; the second reduces
-// coverage across the catalog and must reach the caller as a failure.
+// statusError separates a declined package (a blind spot on one version) from a
+// failed engine, which must reach the caller as a failure.
 func statusError(req *http.Request, resp *http.Response) error {
 	detail := errorDetail(resp.Body)
 	switch resp.StatusCode {
@@ -179,8 +167,7 @@ func statusError(req *http.Request, resp *http.Response) error {
 	}
 }
 
-// errorDetail reads the engine's own message. It is the engine's text, but it
-// quotes the package's file names back, so it is clipped like bundle content.
+// errorDetail is clipped like bundle content because it echoes package file names.
 func errorDetail(body io.Reader) string {
 	raw, err := io.ReadAll(io.LimitReader(body, 8<<10))
 	if err != nil || len(raw) == 0 {

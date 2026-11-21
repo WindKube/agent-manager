@@ -12,40 +12,22 @@ import (
 	"github.com/uptrace/bun"
 
 	"agent-manager/internal/domain/capability"
+	"agent-manager/internal/store/audit"
 	"agent-manager/internal/store/models"
 )
 
-// The rows half of the seed. One transaction: either the dataset is there or it
-// is not, and a half-loaded catalog is not a state any screen should have to
-// render.
-//
-// IDENTIFIERS ARE DERIVED, not generated. Every id below is uuid v5 over the
-// row's natural key, so a re-run computes the same id, every insert can carry
-// `on conflict do nothing`, and no step has to read back what the step before it
-// wrote. That is what makes the one-shot safe to repeat (the compose service may
-// run on every `up`) and it also makes a partially-applied run self-heal: the
-// rows that landed are skipped and the rest are written, with the cross-references
-// still agreeing.
-//
-// `category` is the one exception, and the reason is worth knowing before
-// changing it: the category facet recovers the admin-curated order from the row
-// ids, which only works because they are uuid v7 and sort by creation. A derived
-// id would order the vocabulary arbitrarily, so those rows keep generated ids and
-// are read back.
-//
-// Nothing is updated and nothing is deleted. A dataset change therefore needs a
-// fresh database rather than a re-run — the seed fills an empty schema, it does
-// not reconcile one.
+// Rows are written in one transaction. Ids are uuid v5 over each row's natural
+// key, so re-runs compute the same ids and every insert can use `on conflict do
+// nothing`. `category` is the exception: its uuid v7 ids carry the curated order.
+// Nothing is updated or deleted, so a dataset change needs a fresh database.
 
-// idNamespace anchors the derived ids. It is arbitrary and must never change: it
-// is what makes "the same row" mean the same uuid across runs and machines.
+// idNamespace anchors the derived ids and must never change.
 var idNamespace = uuid.MustParse("9f1a6f5e-3c2b-4d7a-8e11-6a0c5f2d4b83")
 
 func seedID(kind, key string) uuid.UUID {
 	return uuid.NewSHA1(idNamespace, []byte(kind+"\x00"+key))
 }
 
-// index is the built dataset addressed the way the row writers need it.
 type index struct {
 	byRef  map[string]*builtVersion
 	latest map[string]*builtVersion
@@ -110,8 +92,7 @@ func writeRows(
 	})
 }
 
-// writeCategories inserts the vocabulary in curated order and reads the ids back.
-// See the note at the top of this file for why these ids are generated.
+// writeCategories inserts the vocabulary in curated order and reads the generated ids back.
 func writeCategories(ctx context.Context, tx bun.Tx) (map[string]uuid.UUID, error) {
 	rows := make([]models.Category, 0, len(categories))
 	for _, name := range categories {
@@ -168,19 +149,21 @@ func writeCatalog(
 		row := models.Package{
 			ID:          seedID("package", spec.id()),
 			PublisherID: seedID("publisher", spec.publisher),
-			// Held to the publisher's own first segment by a composite foreign key, so
-			// this cannot name a namespace the publisher does not belong to.
-			Namespace:  namespaceOf(spec.publisher),
-			Name:       spec.name,
-			Kind:       spec.kind,
-			CategoryID: &categoryID,
-			Visibility: models.PackageVisibilityOrganisation,
-			CreatedAt:  now,
-			UpdatedAt:  now,
+			Namespace:   namespaceOf(spec.publisher),
+			Name:        spec.name,
+			Kind:        spec.kind,
+			CategoryID:  &categoryID,
+			Visibility:  models.PackageVisibilityOrganisation,
+			CreatedAt:   now,
+			UpdatedAt:   now,
 		}
 		if spec.parent != "" {
 			parent := seedID("package", spec.parent)
 			row.ParentPackageID = &parent
+		}
+		if spec.signer != "" {
+			row.ExpectedSignerIssuer = "https://token.actions.githubusercontent.com"
+			row.ExpectedSignerIdentity = spec.signer
 		}
 		packageRows = append(packageRows, row)
 	}
@@ -224,19 +207,19 @@ func writeCatalog(
 		for _, tag := range tags {
 			tagRows = append(tagRows, models.VersionTag{VersionID: versionID, Tag: tag, CreatedAt: createdAt})
 		}
-		for _, component := range version.inspected.Components {
+		for i := range version.inspected.Components {
+			component := &version.inspected.Components[i]
 			kind := models.ComponentKind(component.Kind)
 			if !kind.Valid() {
 				return fmt.Errorf("seed %s: component kind %q", version.ref, component.Kind)
 			}
 			componentRows = append(componentRows, models.Component{
 				VersionID: versionID, Path: component.Path, Kind: kind,
-				Name: component.Name, Note: component.Note, CreatedAt: createdAt,
+				Name: component.Name, Note: component.Note, Event: component.Event, Matcher: component.Matcher,
+				Transport: component.Transport, Target: component.Target, CreatedAt: createdAt,
 			})
 		}
-		// Kind `none` states that no signature was supplied, which is a row the
-		// screens can read rather than a missing row they have to interpret (001
-		// FR-048a, R9).
+		// An explicit `none` row rather than a missing one.
 		signatureRows = append(signatureRows, models.Signature{
 			VersionID: versionID, Kind: models.SignatureKindNone,
 			CreatedAt: createdAt, UpdatedAt: createdAt,
@@ -263,10 +246,8 @@ func writeCatalog(
 		return err
 	}
 
-	// The pointer comes last: a package is invisible to the catalog until it names
-	// a visible version, so this is the seed's own commit-last step. It is an
-	// update rather than a column on the insert above because the foreign key runs
-	// the other way — the version row has to exist first.
+	// The latest pointer is set last, the seed's commit-last step: a package is
+	// invisible to the catalog until it names a version.
 	for id, version := range idx.latest {
 		if _, err := tx.NewUpdate().Model((*models.Package)(nil)).
 			Set("latest_version_id = ?", seedID("version", version.ref.String())).
@@ -279,9 +260,7 @@ func writeCatalog(
 	return nil
 }
 
-// versionTags is the fetcher's rule, restated because the seed must produce the
-// same shape it does: version.tags is version_tag denormalised for the catalog's
-// GIN index, so both are sorted and deduplicated.
+// versionTags mirrors the fetcher: sorted and deduplicated.
 func versionTags(keywords []string) []string {
 	out := make([]string, 0, len(keywords))
 	for _, tag := range keywords {
@@ -293,14 +272,8 @@ func versionTags(keywords []string) []string {
 	return out
 }
 
-// capabilities writes both sides of FR-027's comparison.
-//
-// The `expected` rows are READ BACK out of the stored manifest by
-// capability.Expected rather than written from the dataset, so the panel cannot
-// show a declaration the manifest does not carry. The `inferred` rows are the
-// scanner's output and the seed stands in for it until the scanner worker is
-// registered; a version whose scan has not finished gets rows of neither source,
-// which is the state the panel must render as "not scanned yet".
+// capabilities writes expected and inferred capability rows. Expected rows are
+// read back from the stored manifest; an unscanned version gets neither.
 func capabilities(built []*builtVersion, now time.Time) ([]models.Capability, error) {
 	rows := make([]models.Capability, 0, len(built)*3)
 	for _, version := range built {
@@ -342,10 +315,7 @@ func capabilityRow(
 	indefinite bool,
 	at time.Time,
 ) (models.Capability, error) {
-	// FR-018's floor, applied to both sources for the same reason the domain
-	// applies it: a level is a claim about how much trust the capability demands,
-	// not about who wrote it down, and an indefinite target set is not a list a
-	// reviewer can accept once.
+	// The same level floor the domain applies, to both sources.
 	if name == capability.Shell || indefinite {
 		level = string(capability.LevelReview)
 	}
@@ -423,9 +393,7 @@ func writeScans(
 		started := createdAt.Add(12 * time.Second)
 
 		if !version.spec.scanned {
-			// In flight. `finished_at is null` is what makes the detail page say the
-			// version has not been scanned, and it is the design's "Scan pending"
-			// badge as a row rather than as a rendering rule.
+			// In flight: a null finished_at renders as "Scan pending".
 			scanRows = append(scanRows, models.Scan{
 				ID: scanID, VersionID: seedID("version", ref), PackVersion: packVersion,
 				StartedAt: now.Add(-90 * time.Second), Verdict: models.VerdictScanning,
@@ -508,8 +476,7 @@ func writeScans(
 	return insert("overrides", &overrideRows)
 }
 
-// findingFor is the seeded finding against one version, addressed as
-// publisher/name@semver, or nil where the dataset raised none.
+// findingFor returns the finding for publisher/name@semver, or nil.
 func findingFor(ref string) *findingSpec {
 	for i := range designFindings {
 		if designFindings[i].pkg+"@"+designFindings[i].semver == ref {
@@ -519,10 +486,8 @@ func findingFor(ref string) *findingSpec {
 	return nil
 }
 
-// findingRaisedAt and findingDecidedAt are the two instants a seeded finding
-// carries. They are functions rather than arithmetic inlined at the one call site
-// because profile resolution reads the acceptance expiry these produce, and two
-// spellings of "when was this decided" is two answers to when an override lapses.
+// findingRaisedAt and findingDecidedAt are shared with profile resolution, so
+// both agree on when an override lapses.
 func findingRaisedAt(version *builtVersion, now time.Time) time.Time {
 	return now.Add(-version.spec.age).Add(time.Minute)
 }
@@ -534,9 +499,7 @@ func findingDecidedAt(spec *findingSpec, version *builtVersion, now time.Time) t
 	return now.Add(-3 * time.Hour)
 }
 
-// scanDuration spreads the seeded scans around the design's 18 s median so the
-// scanner screen's median figure is computed from rows rather than displayed from
-// a constant.
+// scanDuration spreads seeded scans around an 18 s median.
 func scanDuration(i int) time.Duration {
 	return time.Duration(18+3*(i%5-2)) * time.Second
 }
@@ -551,29 +514,26 @@ func identityBy(email string) (uuid.UUID, bool) {
 }
 
 func writeAudit(insert func(string, any) error, versions int, now time.Time) error {
-	// audit_event is append-only by revoked grant (FR-052): no update, no delete,
-	// no truncate, for any role. So the idempotence of these rows cannot come from
-	// an upsert — it comes from the derived id and `on conflict do nothing`, which
-	// is the one shape the grants permit.
+	// audit_event grants allow no update, so idempotence must come from derived ids
+	// and `on conflict do nothing`.
 	rows := make([]models.AuditEvent, 0, 8)
 	for _, spec := range auditRows(versions) {
-		rows = append(rows, models.AuditEvent{
-			ID:         seedID("audit", spec.text),
-			OccurredAt: now.Add(-spec.ago),
-			Actor:      spec.actor,
-			ActorKind:  spec.actorKind,
-			Kind:       spec.kind,
-			Text:       spec.text,
-			Source:     spec.source,
+		event, err := audit.New(audit.Entry{
+			Kind: spec.kind, Action: spec.action, Actor: spec.actor, ActorKind: spec.actorKind,
+			Text: spec.text, Source: spec.source, Subject: spec.subject,
 		})
+		if err != nil {
+			return err
+		}
+		event.ID = seedID("audit", spec.text)
+		event.OccurredAt = now.Add(-spec.ago)
+		rows = append(rows, *event)
 	}
 	return insert("audit events", &rows)
 }
 
-// locate reads a finding's evidence off the bytes the seed just packed. The
-// dataset states the offending line; the path, the line number and the quote come
-// from the stored tree, so evidence cannot point at a line the bundle does not
-// contain.
+// locate finds a finding's evidence in the packed bytes, so it cannot point at a
+// line the bundle lacks.
 func (b *builtVersion) locate(rule string) (path string, line int32, quote string, err error) {
 	flaw := b.pkg.flaw
 	if flaw == nil || !flaw.carriedBy(b.ref.Semver) {

@@ -1,13 +1,7 @@
 package commands
 
-// The invariant the Scanner screen was contradicting: an acceptance this product
-// records ALWAYS lapses.
-//
-// `expires_at` is nullable, the column predates the requirement, and nothing here
-// writes a null one — which is a sentence in a comment until something asserts it.
-// It was worth asserting: six places in internal/web told reviewers that leaving
-// the expiry field blank granted an override that never lapses, and blank is
-// exactly the input this function turns into thirty days.
+// An override this product records always lapses: blank expiry input becomes
+// the default lifetime, never "forever".
 
 import (
 	"testing"

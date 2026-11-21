@@ -9,24 +9,34 @@ import (
 
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
+	"github.com/riverqueue/river/rivertype"
 	"github.com/rs/zerolog"
 
 	"agent-manager/internal/logging"
+	"agent-manager/internal/metrics"
+	"agent-manager/internal/outbox"
 )
 
 // stopTimeout bounds the graceful shutdown: River stops fetching immediately
 // and then waits for jobs in flight.
 const stopTimeout = 30 * time.Second
 
-// Run is the whole bootstrap for `agent-manager worker run <name>`. Nothing
-// here knows which role it is running: this function is what a new
-// Definition must not have to touch.
+// Run is the role-agnostic bootstrap for `agent-manager worker run <name>`.
 func Run(ctx context.Context, def Definition, cfg Config) error {
 	log := logging.New("worker/"+def.Name, cfg.LogLevel, cfg.LogFormat)
 	ctx = logging.Into(ctx, log)
 
 	if len(def.Queues) == 0 {
 		return fmt.Errorf("worker %s declares no queues, so it would never work a job", def.Name)
+	}
+
+	var periodic []PeriodicJob
+	if def.Periodic != nil {
+		jobs, periodicErr := def.Periodic(cfg)
+		if periodicErr != nil {
+			return fmt.Errorf("worker %s: %w", def.Name, periodicErr)
+		}
+		periodic = jobs
 	}
 
 	built, err := Build(ctx, def, cfg, log)
@@ -57,20 +67,26 @@ func Run(ctx context.Context, def Definition, cfg Config) error {
 		queues[name] = river.QueueConfig{MaxWorkers: concurrency}
 	}
 
-	periodic := make([]*river.PeriodicJob, 0, len(def.Periodic))
-	for i := range def.Periodic {
-		periodic = append(periodic, &def.Periodic[i])
-	}
-
 	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
-		Logger:       slog.New(zerolog.NewSlogHandler(log)),
-		PeriodicJobs: periodic,
-		Queues:       queues,
-		Workers:      workers,
+		Logger:     slog.New(zerolog.NewSlogHandler(log)),
+		Middleware: []rivertype.Middleware{outbox.TraceMiddleware()},
+		Queues:     queues,
+		Workers:    workers,
 	})
 	if err != nil {
 		return fmt.Errorf("worker %s: build the river client: %w", def.Name, err)
 	}
+
+	stopMetrics, err := metrics.Serve(ctx, cfg.MetricsBind, log)
+	if err != nil {
+		return err
+	}
+	defer stopMetrics()
+
+	events, unsubscribe := client.Subscribe(jobEventKinds...)
+	defer unsubscribe()
+	go recordJobEvents(events)
+	go metrics.Poll(ctx, outbox.QueueSampleInterval, outbox.SampleQueues(pool, queueNames(def), log))
 
 	log.Info().
 		Str("db", def.Needs.DB.String()).
@@ -82,6 +98,8 @@ func Run(ctx context.Context, def Definition, cfg Config) error {
 	if startErr := client.Start(ctx); startErr != nil {
 		return fmt.Errorf("worker %s: start: %w", def.Name, startErr)
 	}
+
+	schedule(ctx, client, periodic, log)
 
 	<-ctx.Done()
 

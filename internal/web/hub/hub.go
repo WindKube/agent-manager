@@ -1,10 +1,6 @@
-// Package hub is the web role's door to the api, and the only one it has.
-// `serve web` holds no datastore credential, so everything it renders
-// arrives over HTTP through internal/apiclient, GENERATED from the document
-// internal/api emits.
-//
-// Nothing here decides what the catalog means: this package translates the
-// screen's vocabulary into the operation's and back.
+// Package hub is the web role's only door to the api. `serve web` holds no
+// datastore credential, so everything it renders arrives through the generated
+// internal/apiclient; this package only translates screen vocabulary to the api's.
 package hub
 
 import (
@@ -22,9 +18,9 @@ import (
 type Client struct {
 	api *apiclient.ClientWithResponses
 	now func() time.Time
-	// mintSecret buys exactly one operation: sent on that one request, never
-	// installed on the client, so nothing else this role calls can carry it.
+	// mintSecret is sent on the one mint request only, never installed on the client.
 	mintSecret string
+	transport  http.RoundTripper
 }
 
 // Option tunes the client.
@@ -35,33 +31,38 @@ func WithClock(now func() time.Time) Option {
 	return func(c *Client) { c.now = now }
 }
 
-// WithSessionMintSecret gives the client the shared secret the session mint
-// requires. Without it MintSession refuses before it reaches the api: there
-// is no default, and an empty value is the api's cue to refuse every mint.
+// WithSessionMintSecret sets the shared secret the session mint requires; without
+// it MintSession refuses before reaching the api.
 func WithSessionMintSecret(secret string) Option {
 	return func(c *Client) { c.mintSecret = secret }
 }
 
-// New builds the client. It performs no I/O and does not reach the api, so
-// a hub whose api is not up yet still starts.
+// WithTransport sets the round tripper calls to the api go through; nil keeps
+// http.DefaultTransport.
+func WithTransport(rt http.RoundTripper) Option {
+	return func(c *Client) { c.transport = rt }
+}
+
+// New builds the client without I/O, so a hub whose api is not up yet still starts.
 func New(baseURL string, opts ...Option) (*Client, error) {
+	client := &Client{now: func() time.Time { return time.Now().UTC() }}
+	for _, opt := range opts {
+		opt(client)
+	}
+
 	api, err := apiclient.NewClientWithResponses(baseURL, apiclient.WithHTTPClient(&http.Client{
-		// A hop with no timeout is how a slow api turns into a web role with
-		// no free workers.
+		Transport: client.transport,
+		// Without a timeout a slow api exhausts the web role's workers.
 		Timeout: 15 * time.Second,
 	}), apiclient.WithRequestEditorFn(bearer))
 	if err != nil {
 		return nil, fmt.Errorf("build the api client for %s: %w", baseURL, err)
 	}
-
-	client := &Client{api: api, now: func() time.Time { return time.Now().UTC() }}
-	for _, opt := range opts {
-		opt(client)
-	}
+	client.api = api
 	return client, nil
 }
 
-// Catalog implements web.CatalogSource against GET /v1/packages.
+// Catalog calls GET /v1/packages.
 func (c *Client) Catalog(ctx context.Context, q view.CatalogQuery) (view.CatalogPage, error) {
 	q = q.Normalise()
 
@@ -131,9 +132,8 @@ func row(entry *apiclient.CatalogPackage, now time.Time) view.Row {
 	return out
 }
 
-// scanOf collapses four verdicts onto three pills. `rejected` shows as
-// Flagged rather than a fourth state: "do not adopt without reading the
-// finding" applies to a rejected version most strongly of all.
+// scanOf collapses four verdicts onto three pills; `rejected` shows as Flagged
+// because "read the finding first" applies to it most of all.
 func scanOf(verdict string) view.Scan {
 	switch verdict {
 	case "clean":
@@ -159,8 +159,7 @@ func options(counts []apiclient.CatalogFacetOption, selected []string) []view.Fa
 	return out
 }
 
-// kindParam and statusParam translate chip labels into the operation's
-// vocabulary: the screen says "Plugins", the API says "plugin".
+// kindParam and statusParam translate chip labels into the api's vocabulary.
 func kindParam(kind string) string {
 	switch kind {
 	case view.KindFilterPlugins:
@@ -187,9 +186,15 @@ func statusParam(status string) string {
 
 func ptr[T any](v T) *T { return &v }
 
-// bearer forwards the caller's own session token, and only ever theirs. A
-// request outside a signed-in browser session carries no Authorization
-// header, and the web role must not appear to have a fallback.
+func optional(v string) *string {
+	if v == "" {
+		return nil
+	}
+	return &v
+}
+
+// bearer forwards the caller's own session token and nothing else: the web role
+// must have no fallback credential.
 func bearer(ctx context.Context, req *http.Request) error {
 	if token := view.TokenFrom(ctx); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -197,9 +202,8 @@ func bearer(ctx context.Context, req *http.Request) error {
 	return nil
 }
 
-// statusError turns a response the client could not decode into something a
-// log line can carry. The body is deliberately NOT included. A 401 is the
-// exception: it is the signed-out state, and the caller renders it as a screen.
+// statusError omits the body deliberately. A 401 maps to view.ErrSignedOut, which
+// the caller renders as a screen.
 func statusError(resp *http.Response, body []byte) error {
 	if resp == nil {
 		return errors.New("no response")

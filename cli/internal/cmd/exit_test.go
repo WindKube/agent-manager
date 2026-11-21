@@ -10,9 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// allCodes is written out by name, not derived from codeNames, so the two are
-// independent: a copy-paste that made two constants equal collapses codeNames
-// but leaves this slice four long, and the length comparison below catches it.
+// allCodes is written out by name, not derived from codeNames, so two equal
+// constants collapse codeNames but not this slice.
 var allCodes = []Code{CodeNoChanges, CodeFailure, CodeChanged, CodeRefused}
 
 func TestExitCodesAreDistinct(t *testing.T) {
@@ -28,9 +27,6 @@ func TestExitCodesAreDistinct(t *testing.T) {
 	})
 
 	t.Run("no two names alias the same number", func(t *testing.T) {
-		// codeNames is keyed by Code. If two constants were accidentally equal,
-		// the later map entry would overwrite the earlier one and this length
-		// would drop below four while nothing else looked wrong.
 		require.Len(t, codeNames, len(allCodes),
 			"codeNames has %d entries for %d codes: two constants share a value, or a code has no name",
 			len(codeNames), len(allCodes))
@@ -43,8 +39,7 @@ func TestExitCodesAreDistinct(t *testing.T) {
 	})
 
 	t.Run("success with no changes is the only zero", func(t *testing.T) {
-		// The whole point: a script under `set -e` must not abort on the
-		// steady state, and must be able to tell it from every other outcome.
+		// A script under `set -e` must not abort on the steady state.
 		require.Equal(t, 0, int(CodeNoChanges))
 		for _, c := range []Code{CodeFailure, CodeChanged, CodeRefused} {
 			require.NotZero(t, int(c), "%s must not be zero", c)
@@ -93,9 +88,6 @@ func TestRefuseKeepsTheMessageAndTheChain(t *testing.T) {
 	require.False(t, IsRefusal(inner))
 }
 
-// The rest of this file drives the real command tree, because an exit code
-// nothing produces is not worth asserting.
-
 func TestMainExitCodes(t *testing.T) {
 	cases := []struct {
 		name string
@@ -103,9 +95,7 @@ func TestMainExitCodes(t *testing.T) {
 		want Code
 	}{
 		{"version succeeds with nothing changed", []string{"version"}, CodeNoChanges},
-		// sync and status both go through Prepare, so a missing --hub refuses
-		// before any request or record read, which is FR-039's ordering seen
-		// from the exit code.
+		// Prepare refuses a missing --hub before any request or record read.
 		{"sync with no hub is a refusal", []string{"sync"}, CodeRefused},
 		{"status with no hub is a refusal", []string{"status"}, CodeRefused},
 		{"no arguments prints help and exits zero", nil, CodeNoChanges},
@@ -122,7 +112,6 @@ func TestMainExitCodes(t *testing.T) {
 }
 
 func TestEveryVerbIsWiredAndExitsZero(t *testing.T) {
-	// T002's contract: five verbs, each reachable.
 	for _, verb := range []string{"login", "logout", "sync", "status", "version"} {
 		t.Run(verb+" is reachable", func(t *testing.T) {
 			root, _ := NewRootCmd(&bytes.Buffer{}, &bytes.Buffer{})
@@ -134,8 +123,7 @@ func TestEveryVerbIsWiredAndExitsZero(t *testing.T) {
 }
 
 func TestGlobalFlagsBindToOptionsNotGlobals(t *testing.T) {
-	// Two trees at once, with different values, is the case a package-level
-	// flag variable cannot survive.
+	// Two trees at once is the case a package-level flag variable cannot survive.
 	rootA, optsA := NewRootCmd(&bytes.Buffer{}, &bytes.Buffer{})
 	rootB, optsB := NewRootCmd(&bytes.Buffer{}, &bytes.Buffer{})
 
@@ -156,8 +144,6 @@ func TestGlobalFlagsBindToOptionsNotGlobals(t *testing.T) {
 }
 
 func TestVersionPrintsAndStaysOffTheDiagnosticStream(t *testing.T) {
-	// CI smokes the built binary with `amctl version`, so a broken -ldflags
-	// stamp has to be visible here too.
 	t.Run("human", func(t *testing.T) {
 		var result, diag bytes.Buffer
 		require.Equal(t, CodeNoChanges, Main([]string{"version"}, &result, &diag))
@@ -186,10 +172,7 @@ func TestVersionPrintsAndStaysOffTheDiagnosticStream(t *testing.T) {
 }
 
 func TestDiagnosticsNeverReachTheResultStream(t *testing.T) {
-	// FR-035: a refusal is reported on the diagnostic stream, and the result
-	// stream stays empty rather than gaining an unparseable line. status with
-	// no --hub refuses before it ever calls Emit, which is what this needs;
-	// the property being tested belongs to output.Streams and not to this verb.
+	// A refusal goes to the diagnostic stream; the result stream stays empty.
 	var result, diag bytes.Buffer
 	require.Equal(t, CodeRefused, Main([]string{"--output", "json", "status"}, &result, &diag))
 	require.Empty(t, result.String())

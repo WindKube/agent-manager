@@ -10,13 +10,8 @@ import templruntime "github.com/a-h/templ/runtime"
 
 import "agent-manager/internal/web/view"
 
-// The sign-in screen (FR-108, FR-109) and the state a signed-in identity that
-// maps to no role lands on (FR-117). contracts/auth.md is authoritative for both,
-// including which of its eleven failures the notice carries.
-//
-// SignInScreen is a whole document rather than a screen inside Layout: the shell's
-// sidebar is navigation to screens a signed-out visitor may not render, and
-// offering it here would be a page of links that all bounce back to this one.
+// SignInScreen is a whole document rather than a screen inside Layout: the
+// sidebar would be links that all bounce back here.
 func SignInScreen(s Shell, in view.SignIn) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -45,7 +40,7 @@ func SignInScreen(s Shell, in view.SignIn) templ.Component {
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(s.Theme)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 15, Col: 40}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 10, Col: 40}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
 		if templ_7745c5c3_Err != nil {
@@ -66,7 +61,7 @@ func SignInScreen(s Shell, in view.SignIn) templ.Component {
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(ProductName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 22, Col: 46}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 17, Col: 46}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
@@ -77,14 +72,14 @@ func SignInScreen(s Shell, in view.SignIn) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if in.Notice != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "   <div class=\"am-signin-alert\" id=\"signin-notice\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, " <div class=\"am-signin-alert\" id=\"signin-notice\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var4 string
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(in.Notice)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 28, Col: 65}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 21, Col: 65}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 			if templ_7745c5c3_Err != nil {
@@ -103,7 +98,7 @@ func SignInScreen(s Shell, in view.SignIn) templ.Component {
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(in.Detail)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 31, Col: 79}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 24, Col: 79}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 			if templ_7745c5c3_Err != nil {
@@ -121,7 +116,7 @@ func SignInScreen(s Shell, in view.SignIn) templ.Component {
 		var templ_7745c5c3_Var6 string
 		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(ProductName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 34, Col: 32}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 27, Col: 32}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 		if templ_7745c5c3_Err != nil {
@@ -134,7 +129,7 @@ func SignInScreen(s Shell, in view.SignIn) templ.Component {
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(in.ProviderName())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 34, Col: 62}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 27, Col: 62}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {
@@ -152,7 +147,7 @@ func SignInScreen(s Shell, in view.SignIn) templ.Component {
 			var templ_7745c5c3_Var8 string
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(in.ProviderName())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 40, Col: 26}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 33, Col: 26}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 			if templ_7745c5c3_Err != nil {
@@ -170,7 +165,7 @@ func SignInScreen(s Shell, in view.SignIn) templ.Component {
 			var templ_7745c5c3_Var9 templ.SafeURL
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinURLErrs(in.LoginHref())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 45, Col: 77}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 38, Col: 77}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
@@ -183,7 +178,7 @@ func SignInScreen(s Shell, in view.SignIn) templ.Component {
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(in.Action())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 46, Col: 20}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 39, Col: 20}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 			if templ_7745c5c3_Err != nil {
@@ -216,9 +211,8 @@ func SignInScreen(s Shell, in view.SignIn) templ.Component {
 	})
 }
 
-// credentialHint is FR-119's development affordance, behind both of the gates
-// ShowCredentials checks. It says out loud that it is switched on: a hint nobody
-// meant to publish is one an operator has to be able to recognise on sight.
+// credentialHint is a development affordance behind both ShowCredentials gates,
+// and announces that it is switched on so an operator recognises it on sight.
 func credentialHint(in view.SignIn) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -252,7 +246,7 @@ func credentialHint(in view.SignIn) templ.Component {
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(credential.Username)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 73, Col: 60}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 65, Col: 60}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 			if templ_7745c5c3_Err != nil {
@@ -265,7 +259,7 @@ func credentialHint(in view.SignIn) templ.Component {
 			var templ_7745c5c3_Var13 string
 			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(credential.Password)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 74, Col: 60}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 66, Col: 60}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 			if templ_7745c5c3_Err != nil {
@@ -283,7 +277,7 @@ func credentialHint(in view.SignIn) templ.Component {
 				var templ_7745c5c3_Var14 string
 				templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(credential.Role)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 76, Col: 49}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 68, Col: 49}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 				if templ_7745c5c3_Err != nil {
@@ -307,15 +301,9 @@ func credentialHint(in view.SignIn) templ.Component {
 	})
 }
 
-// NoRoleScreen is FR-117: signed in, holding no role.
-//
-// A distinct screen, with a distinct id and distinct copy, and the FIRST sentence
-// of the body is the one that matters — that this hub has content and this viewer
-// may not read it. An empty catalog and an unmapped identity look identical on a
-// screen that only says "nothing here", and the two ask their reader for
-// completely different things: one to register a package, the other to be given a
-// role. 001's am-empty-auth set the precedent for the signed-out state; this is the
-// same distinction one step further in.
+// NoRoleScreen is signed in, holding no role. Its first sentence says the hub has
+// content this viewer may not read, because an empty catalog and an unmapped
+// identity ask for different things: register a package, or be given a role.
 func NoRoleScreen(n view.NoRole) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -344,7 +332,7 @@ func NoRoleScreen(n view.NoRole) templ.Component {
 		var templ_7745c5c3_Var16 string
 		templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(n.Viewer.Email)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 108, Col: 45}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 94, Col: 45}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 		if templ_7745c5c3_Err != nil {
@@ -367,7 +355,7 @@ func NoRoleScreen(n view.NoRole) templ.Component {
 				var templ_7745c5c3_Var17 string
 				templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(group)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 113, Col: 41}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/signin.templ`, Line: 99, Col: 41}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 				if templ_7745c5c3_Err != nil {

@@ -6,12 +6,9 @@ import (
 	"strings"
 )
 
-// The published `name` patterns open with a negative lookahead that RE2
-// cannot parse, failing the whole schema at load time. So the vendored bytes
-// stay byte-identical on disk, the lookahead is stripped from the in-memory
-// copy at compile time (embed.go), and the `--`/`..` prohibition it
-// expressed is re-applied here by CheckName. The transform fails closed: a
-// vendored pattern that is not the string below is a load-time error.
+// The published `name` pattern has a negative lookahead RE2 cannot parse, so
+// embed.go strips it from the in-memory schema and CheckName re-applies the
+// `--`/`..` prohibition. A vendored pattern that differs fails at load.
 
 const (
 	// lookaheadNamePattern is the published pattern, verbatim.
@@ -19,16 +16,15 @@ const (
 	re2NamePattern       = `^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$`
 	NameMaxLength        = 64
 
-	// NameSchemaPath is where a validator would have reported a pattern
-	// failure, so CheckName's findings can't be told apart from the schema-enforced half.
+	// NameSchemaPath makes CheckName's findings indistinguishable from the
+	// schema-enforced half.
 	NameSchemaPath = "/properties/name/pattern"
 )
 
 var nameRE = regexp.MustCompile(re2NamePattern)
 
-// forbiddenNameRuns are the two sequences the lookahead excluded: doubling a
-// separator makes a name look like another — `foo--bar`/`foo..bar` read as
-// `foo-bar`/`foo.bar` at a glance, and this hub keys identity off the name.
+// forbiddenNameRuns are excluded because `foo--bar` reads as `foo-bar` at a
+// glance, and identity is keyed off the name.
 var forbiddenNameRuns = []string{"--", ".."}
 
 func CheckName(name string) []Problem {

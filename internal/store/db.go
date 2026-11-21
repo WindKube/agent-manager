@@ -1,12 +1,8 @@
-// Package store owns the relational handles. It hands out a bun.IDB for the
-// application schema and a raw pgx pool for the queue, and nothing else.
+// Package store owns the relational handles: a bun.IDB for the application
+// schema and a raw pgx pool for the River queue.
 //
-// Two databases, two pools, two URLs: `agent_manager` holds the application
-// schema, `river` holds the queue and nothing else. No foreign key crosses
-// between them and no migration tool sees both, so Open refuses to start when
-// the two URLs address the same database — that misconfiguration is what
-// would put Atlas, a diff tool with DROP TABLE in its vocabulary, in front of
-// River's tables.
+// The two must be separate databases: Open refuses a shared one, since that
+// would put Atlas (which can DROP TABLE) in front of River's tables.
 package store
 
 import (
@@ -32,9 +28,7 @@ type Handle struct {
 	queue *pgxpool.Pool
 }
 
-// Open connects both databases and verifies both are reachable. appURL
-// addresses `agent_manager`, queueURL addresses `river` — separate parameters
-// on purpose, so one URL for both is a defect this signature cannot express.
+// Open connects to and pings both the `agent_manager` and `river` databases.
 func Open(ctx context.Context, appURL, queueURL string) (*Handle, error) {
 	if appURL == "" {
 		return nil, errors.New("application database url is empty")
@@ -69,8 +63,6 @@ func Open(ctx context.Context, appURL, queueURL string) (*Handle, error) {
 	h := &Handle{app: app, queue: queue}
 	h.sqldb = stdlib.OpenDBFromPool(app)
 	h.bun = bun.NewDB(h.sqldb, pgdialect.New())
-	// Every table, so relations resolve on first use rather than on first
-	// query that happens to need one.
 	h.bun.RegisterModel(models.All()...)
 	h.bun.AddQueryHook(bundebug.NewQueryHook(
 		bundebug.WithEnabled(false),
@@ -84,13 +76,10 @@ func Open(ctx context.Context, appURL, queueURL string) (*Handle, error) {
 	return h, nil
 }
 
-// DB is the application-schema handle the worker Deps contract carries.
-// bun.IDB already covers RunInTx and BeginTx, so nothing needs the concrete
-// *bun.DB.
+// DB is the application-schema handle.
 func (h *Handle) DB() bun.IDB { return h.bun }
 
-// Queue is the pool River owns. It deliberately exposes no bun.IDB: nothing
-// in the application schema references the queue.
+// Queue is the pool River owns.
 func (h *Handle) Queue() *pgxpool.Pool { return h.queue }
 
 func (h *Handle) Ping(ctx context.Context) error {
@@ -103,8 +92,7 @@ func (h *Handle) Ping(ctx context.Context) error {
 	return nil
 }
 
-// Close drains both pools. The sql.DB rides the application pool, so it
-// closes first and the pool second.
+// Close drains both pools; the sql.DB wraps the app pool, so it closes first.
 func (h *Handle) Close() error {
 	var errs []error
 	if h.sqldb != nil {
@@ -121,8 +109,7 @@ func (h *Handle) Close() error {
 	return errors.Join(errs...)
 }
 
-// sameDatabase reports whether two pool configs address one database.
-// Comparing the URLs as strings would miss two spellings of the same target.
+// sameDatabase compares parsed host/port/db, since URL strings can spell one target differently.
 func sameDatabase(a, b *pgxpool.Config) bool {
 	return a.ConnConfig.Host == b.ConnConfig.Host &&
 		a.ConnConfig.Port == b.ConnConfig.Port &&

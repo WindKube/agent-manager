@@ -48,9 +48,7 @@ func TestHighestRoleTakesTheMostPrivilegedMappedGroup(t *testing.T) {
 	}
 }
 
-// The ranking is a Go list and the value set is a Postgres enum. If a role is
-// added to the enum and not to the ranking, HighestRole silently ignores it —
-// which fails closed, but silently. This is the test that makes it loud.
+// Roles missing from the precedence list fail closed silently; this makes it loud.
 func TestEveryOrgRoleTheSchemaAllowsIsRanked(t *testing.T) {
 	values := models.EnumTypes()[models.PGOrgRole]
 	require.NotEmpty(t, values, "the org_role enum has no values — this test would pass vacuously")
@@ -65,7 +63,6 @@ func TestHashTokenYieldsNoUsableCredential(t *testing.T) {
 	token, err := auth.NewToken()
 	require.NoError(t, err)
 
-	// 32 bytes of crypto/rand, base64url without padding.
 	raw, err := base64.RawURLEncoding.DecodeString(token)
 	require.NoError(t, err)
 	require.Len(t, raw, 32)
@@ -118,7 +115,6 @@ func TestPrincipalRefsNameOnlyWhatAMembershipMayMatch(t *testing.T) {
 }
 
 func TestCLISourceIdentifiesTheHost(t *testing.T) {
-	// FR-050: a client source identifies the host.
 	require.Equal(t, "cli / dev-laptop-01", auth.CLISource("dev-laptop-01"))
 	require.True(t, strings.HasPrefix(auth.CLISource("x"), "cli / "))
 }

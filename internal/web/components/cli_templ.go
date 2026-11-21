@@ -128,9 +128,8 @@ func CLIScreen(s view.CLI) templ.Component {
 	})
 }
 
-// cliRejected is the three states where the code itself is no good. They are
-// cards rather than am-empty rows, because am-empty is a full-bleed divider
-// under the header and this screen's content sits inside the page gutter.
+// cliRejected uses cards rather than am-empty, which is full-bleed and this
+// screen's content sits inside the page gutter.
 func cliRejected(id, text string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -159,7 +158,7 @@ func cliRejected(id, text string) templ.Component {
 		var templ_7745c5c3_Var6 string
 		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(id)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 53, Col: 33}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 52, Col: 33}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 		if templ_7745c5c3_Err != nil {
@@ -172,7 +171,7 @@ func cliRejected(id, text string) templ.Component {
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(text)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 55, Col: 28}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 54, Col: 28}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {
@@ -216,7 +215,7 @@ func cliCodeForm(s view.CLI) templ.Component {
 		var templ_7745c5c3_Var9 string
 		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue(s.UserCode)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 71, Col: 22}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 70, Col: 22}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
 		if templ_7745c5c3_Err != nil {
@@ -230,8 +229,6 @@ func cliCodeForm(s view.CLI) templ.Component {
 	})
 }
 
-// cliPending is the confirm step: the host and the countdown the viewer must
-// see before they decide.
 func cliPending(s view.CLI) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -260,7 +257,7 @@ func cliPending(s view.CLI) templ.Component {
 		var templ_7745c5c3_Var11 string
 		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(s.Pending.RequestingHost)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 88, Col: 56}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 85, Col: 56}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 		if templ_7745c5c3_Err != nil {
@@ -273,7 +270,7 @@ func cliPending(s view.CLI) templ.Component {
 		var templ_7745c5c3_Var12 string
 		templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(s.Countdown)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 90, Col: 54}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 87, Col: 54}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 		if templ_7745c5c3_Err != nil {
@@ -286,7 +283,7 @@ func cliPending(s view.CLI) templ.Component {
 		var templ_7745c5c3_Var13 string
 		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.ResolveAttributeValue(s.UserCode)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 92, Col: 60}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 89, Col: 60}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var13)
 		if templ_7745c5c3_Err != nil {
@@ -340,7 +337,7 @@ func cliNoPending(s view.CLI) templ.Component {
 			var templ_7745c5c3_Var15 string
 			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(s.Command)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 113, Col: 42}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 110, Col: 42}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 			if templ_7745c5c3_Err != nil {
@@ -353,7 +350,7 @@ func cliNoPending(s view.CLI) templ.Component {
 			var templ_7745c5c3_Var16 string
 			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(s.HubURL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 115, Col: 41}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/cli.templ`, Line: 112, Col: 41}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 			if templ_7745c5c3_Err != nil {

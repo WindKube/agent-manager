@@ -1,0 +1,41 @@
+{{- with .Values.metrics.serviceMonitor }}
+{{- if .enabled }}
+# One headless Service over every role's metrics port, so a single
+# ServiceMonitor scrapes them all; the component label tells them apart.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "am.fullname" $ }}-metrics
+  labels:
+    {{- include "am.labels" (dict "root" $ "role" "metrics") | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: {{ $.Chart.Name }}
+    app.kubernetes.io/instance: {{ $.Release.Name }}
+    agent-manager.io/metrics: "true"
+  ports:
+    - name: metrics
+      port: {{ $.Values.metrics.port }}
+      targetPort: metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "am.fullname" $ }}
+  labels:
+    {{- include "am.labels" (dict "root" $ "role" "metrics") | nindent 4 }}
+    {{- with .labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "am.selectorLabels" (dict "root" $ "role" "metrics") | nindent 6 }}
+  podTargetLabels:
+    - app.kubernetes.io/component
+  endpoints:
+    - port: metrics
+      interval: {{ .interval }}
+{{- end }}
+{{- end }}

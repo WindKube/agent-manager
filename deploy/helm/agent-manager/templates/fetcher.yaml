@@ -1,0 +1,1 @@
+{{ include "am.deployment" (dict "root" . "role" "fetcher" "args" (list "worker" "run" "fetcher")) }}

@@ -15,29 +15,14 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The profile curation surface (003 T078-T083, 001 US5).
-//
-// Authorisation here has two layers and they answer different questions. FR-044
-// readability decides whether the profile EXISTS as far as this caller is
-// concerned, and it is a WHERE clause inside every query and command — a profile
-// this identity may not read is a 404 on every one of these paths, because a 403
-// would confirm the slug and that is the enumeration FR-044 forbids. The caller's
-// MEMBERSHIP role then decides what they may do to a profile they can see, and
-// that refusal IS a 403 naming what the action needed: the caller already knows
-// the profile is there, so the only useful thing left to tell them is which role
-// would have worked.
-//
-// The one path with no membership to consult is creating a profile, which is
-// gated on the organisation role instead. Everything else deliberately ignores
-// the organisation role: a catalog admin cannot read a private profile they hold
-// no membership on, so letting one publish an organisation-visible profile they
-// are not a member of would be an authorisation model with two answers.
+// The profile curation surface. Readability decides whether a profile exists for
+// the caller: an unreadable one is a 404, never a 403 that would confirm the slug.
+// The membership role then decides what they may do, and that refusal is a 403.
+// Only creation uses the organisation role; everything else ignores it.
 
 type profileSlugInput struct {
 	Slug string `path:"slug" doc:"The profile's URL-safe identifier. It may carry several segments, as the design's example/platform-engineer does." example:"example/platform-engineer"`
 }
-
-// ---- GET /v1/profiles/{slug} -------------------------------------------------
 
 type profileDetailOutput struct {
 	Body contract.ProfileDetail
@@ -53,15 +38,7 @@ func (s *Server) getProfile(ctx context.Context, in *profileSlugInput) (*profile
 	return &profileDetailOutput{Body: detail}, nil
 }
 
-// ---- POST /v1/profiles -------------------------------------------------------
-
-// profileCreateRoles is who may create a profile.
-//
-// Everything except read-only and the empty role, which is the same shape
-// registerPackage's refusal has: a contractor mapped to `read-only` may consume
-// what the organisation publishes and may not create organisation state. The
-// empty role matches nothing here for the reason requireRole states — a default
-// is how an unmapped group acquires privilege.
+// profileCreateRoles is everyone except read-only and the empty role.
 var profileCreateRoles = []models.OrgRole{
 	models.OrgRoleCatalogAdmin,
 	models.OrgRoleScannerReviewer,
@@ -97,8 +74,6 @@ func (s *Server) createProfile(ctx context.Context, in *createProfileInput) (*cr
 	return &createProfileOutput{Body: profile}, nil
 }
 
-// ---- PUT /v1/profiles/{slug}/entries -----------------------------------------
-
 type setEntriesInput struct {
 	Slug string `path:"slug"`
 	Body contract.ProfileEntries
@@ -109,8 +84,6 @@ func (s *Server) setProfileEntries(ctx context.Context, in *setEntriesInput) (*p
 		return commands.SetProfileEntries(ctx, s.deps.DB, principal, in.Slug, in.Body)
 	})
 }
-
-// ---- POST /v1/profiles/{slug}/entries/remove ---------------------------------
 
 type removeEntryInput struct {
 	Slug string `path:"slug"`
@@ -123,8 +96,6 @@ func (s *Server) removeProfileEntry(ctx context.Context, in *removeEntryInput) (
 	})
 }
 
-// ---- PUT /v1/profiles/{slug}/sharing -----------------------------------------
-
 type setSharingInput struct {
 	Slug string `path:"slug"`
 	Body contract.ProfileSharing
@@ -135,8 +106,6 @@ func (s *Server) setProfileSharing(ctx context.Context, in *setSharingInput) (*p
 		return commands.SetProfileSharing(ctx, s.deps.DB, principal, in.Slug, in.Body)
 	})
 }
-
-// ---- PUT /v1/profiles/{slug}/targets -----------------------------------------
 
 type setTargetsInput struct {
 	Slug string `path:"slug"`
@@ -149,15 +118,8 @@ func (s *Server) setProfileTargets(ctx context.Context, in *setTargetsInput) (*p
 	})
 }
 
-// mutateProfile runs one curation command and answers with the profile as it now
-// stands.
-//
-// Re-reading rather than echoing the request is the point. A pin the caller set
-// changes what the profile RESOLVES to, and the resolution is the gate's answer
-// rather than the request's — a body that echoed "pinned to 2.0.0" while the gate
-// had blocked that version would be a screen that disagrees with the lockfile it
-// is about to publish. The read is a second statement after the command's
-// transaction has committed, so it reports committed state and nothing else.
+// mutateProfile runs one curation command and answers with the profile re-read
+// after commit, since the gate, not the request, decides what it resolves to.
 func (s *Server) mutateProfile(ctx context.Context, slug string,
 	mutate func(auth.Principal) error,
 ) (*profileDetailOutput, error) {
@@ -173,18 +135,14 @@ func (s *Server) mutateProfile(ctx context.Context, slug string,
 	return &profileDetailOutput{Body: detail}, nil
 }
 
-// ---- POST /v1/profiles/{slug}/revisions --------------------------------------
-
 type publishRevisionInput struct {
 	Slug string `path:"slug"`
 	Body contract.RevisionPublish
 }
 
 type publishRevisionOutput struct {
-	// Location names the revision that was created, which is the number the
-	// caller could not choose. A client that wants the document again reads it
-	// from here rather than guessing head+1 — the sequence is allocated inside the
-	// transaction and a concurrent publish may hold the number the caller expected.
+	// Location names the revision created; the sequence is allocated in the
+	// transaction, so clients must not guess head+1.
 	Location string `header:"Location" doc:"The published revision's own path."`
 	Body     contract.Lockfile
 }
@@ -202,8 +160,6 @@ func (s *Server) publishRevision(ctx context.Context, in *publishRevisionInput) 
 	}, nil
 }
 
-// ---- DELETE /v1/profiles/{slug} -----------------------------------------------
-
 func (s *Server) deleteProfile(ctx context.Context, in *profileSlugInput) (*struct{}, error) {
 	principal, _ := PrincipalFrom(ctx)
 	if err := commands.DeleteProfile(ctx, s.deps.DB, principal, in.Slug); err != nil {
@@ -212,29 +168,20 @@ func (s *Server) deleteProfile(ctx context.Context, in *profileSlugInput) (*stru
 	return &struct{}{}, nil
 }
 
-// profileFailure maps the profile commands' refusals onto the wire.
-//
-// queries.ErrNotFound reaches fail() and becomes the 404 that makes an unreadable
-// profile indistinguishable from a missing one. A membership refusal is a 403
-// carrying the sentence, because the caller can already see the profile and the
-// only useful thing left to say is which role would have worked (FR-126).
+// profileFailure maps the profile commands' refusals onto the wire. Unreadable
+// profiles are a 404, indistinguishable from missing; membership refusals are a 403.
 func profileFailure(ctx context.Context, err error) error {
 	var notPermitted *commands.NotPermittedError
 	switch {
 	case errors.As(err, &notPermitted):
 		return huma.Error403Forbidden(notPermitted.Error())
 	case errors.Is(err, commands.ErrProfileExists), errors.Is(err, commands.ErrProfileHasRevisions):
-		// A 409 and not a 422: the request is well formed and the caller is
-		// permitted; the resource's own state is what refuses it. Same
-		// reading registerPackage's immutability conflict and DeleteCategory's
-		// still-in-use refusal both use.
+		// A 409: the request is well formed; the resource's own state refuses it.
 		return huma.Error409Conflict(err.Error())
 	case errors.Is(err, commands.ErrProfileRefused):
 		return huma.Error422UnprocessableEntity(err.Error())
 	case errors.Is(err, queries.ErrNoPolicy):
-		// Not the caller's mistake and not something to explain to them: a hub with
-		// no policy row has no gate, and every resolution is refused until an
-		// operator fixes it.
+		// No policy row means no gate: an operator problem, not the caller's.
 		return fail(logging.From(ctx), err)
 	default:
 		return fail(logging.From(ctx), err)

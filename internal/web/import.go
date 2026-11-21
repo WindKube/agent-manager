@@ -10,23 +10,11 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The registration modal's two round trips (US1, FR-001 and FR-005).
-//
-// The browser posts to the WEB role, which forwards to the api over
-// internal/apiclient. It never addresses the api itself: a page that did would
-// need the api reachable from the browser's network and would put the api's CORS
-// policy in the critical path of a screen.
-
-// maxImportBytes bounds the request at this hop. It is deliberately a shade
-// larger than FR-001's 25 MB archive cap, because the real cap belongs to the
-// api — the role that unpacks the bytes — and a web role that refused first
-// would answer a size violation with a different message than the CLI gets. This
-// is here only so a hostile body cannot make the hop buffer without limit.
+// maxImportBytes is a shade above the api's 25 MB archive cap so the api, not
+// this hop, reports size violations; it only stops unbounded buffering.
 const maxImportBytes = 27 << 20
 
-// multipartMemory is how much of the form stays in memory before it spills to a
-// temporary file. An archive is streamed onwards, so buffering it whole here
-// would be paying twice.
+// multipartMemory is how much of the form stays in memory before spilling to disk.
 const multipartMemory = 1 << 20
 
 func (s *Server) importPreview(c *gin.Context) {
@@ -41,7 +29,7 @@ func (s *Server) importPreview(c *gin.Context) {
 	}
 	defer func() { _ = file.Close() }()
 
-	preview, err := s.deps.Registrar.Preview(session(c), view.Archive{
+	preview, err := s.deps.Hub.Preview(session(c), view.Archive{
 		Filename: header.Filename,
 		Size:     header.Size,
 		Content:  file,
@@ -74,9 +62,7 @@ func (s *Server) importRegister(c *gin.Context) {
 		Visibility:   c.PostForm("visibility"),
 		Tags:         c.PostForm("tags"),
 	}
-	// Which tab was showing is not sent as a signal — every modal signal is
-	// underscore-prefixed and never leaves the browser — so it is inferred from
-	// what arrived, which is also the only thing the api can act on.
+	// Modal signals are underscore-prefixed and never sent, so the tab is inferred from what arrived.
 	if file, header, err := c.Request.FormFile("archive"); err == nil {
 		defer func() { _ = file.Close() }()
 		registration.Tab = view.ImportUpload
@@ -86,7 +72,7 @@ func (s *Server) importRegister(c *gin.Context) {
 	} else {
 		registration.Tab = view.ImportURL
 	}
-	result, err := s.deps.Registrar.Register(session(c), registration)
+	result, err := s.deps.Hub.Register(session(c), registration)
 	if err != nil {
 		logFrom(c).Error().Err(err).Msg("register package")
 		s.patchImportProblem(c, "the hub could not be reached")
@@ -95,10 +81,7 @@ func (s *Server) importRegister(c *gin.Context) {
 
 	sse := datastar.NewSSE(c.Writer, c.Request)
 
-	// A registration that was accepted is finished, so the modal goes away and
-	// the outcome moves to the screen behind it. Leaving the modal open with an
-	// acknowledgement in it invited a second press of the same button, which
-	// registers the same version again and is refused as a conflict.
+	// Close the modal on success: leaving it open invites a duplicate registration.
 	if result.Registered {
 		if err := sse.PatchElementTempl(components.CatalogNotice(registeredNotice(result))); err != nil {
 			logFrom(c).Error().Err(err).Msg("patch the registration notice")
@@ -114,8 +97,7 @@ func (s *Server) importRegister(c *gin.Context) {
 		logFrom(c).Error().Err(err).Msg("patch import result")
 		return
 	}
-	// FR-005 again: a refusal that came with a report shows the report, so the
-	// person can see which entry the hub objected to rather than only that it did.
+	// A refusal with a report shows it, so the person sees which entry was objected to.
 	if result.Preview != nil {
 		if err := sse.PatchElementTempl(components.ImportPreviewPanel(result.Preview)); err != nil {
 			logFrom(c).Error().Err(err).Msg("patch import preview")
@@ -123,9 +105,7 @@ func (s *Server) importRegister(c *gin.Context) {
 	}
 }
 
-// registeredNotice is the acknowledgement, on the screen the person is returned
-// to. The tone is warn rather than ok for the same reason the banner's was: a
-// 202 means the fetch is queued and nothing has been scanned yet.
+// registeredNotice is warn rather than ok: a 202 means nothing has been scanned yet.
 func registeredNotice(result view.ImportResult) *view.Notice {
 	text := "Registered " + result.ID
 	if result.Version != "" {
@@ -134,9 +114,7 @@ func registeredNotice(result view.ImportResult) *view.Notice {
 	return &view.Notice{Tone: "warn", Text: text + ". The fetch is queued; the scan follows it."}
 }
 
-// closedImportSignals shuts the modal and empties every field in it. Resetting
-// matters as much as closing: reopening a modal still holding the last
-// registration's URL is how the same version gets submitted twice.
+// closedImportSignals also resets every field, so reopening cannot resubmit the last registration.
 func closedImportSignals() map[string]any {
 	return map[string]any{
 		"_importOpen":      false,
@@ -152,16 +130,7 @@ func closedImportSignals() map[string]any {
 	}
 }
 
-// parseImportForm parses the multipart body under a cap and refuses when the role has
-// no registrar. Nil is a real state — the screen tests run against the fixture,
-// which cannot register — so it is answered with the same banner a refusal uses
-// rather than with a panic.
 func (s *Server) parseImportForm(c *gin.Context) bool {
-	if s.deps.Registrar == nil {
-		s.patchImportProblem(c, "this hub is not configured to accept registrations")
-		return false
-	}
-
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxImportBytes)
 	if err := c.Request.ParseMultipartForm(multipartMemory); err != nil {
 		logFrom(c).Warn().Err(err).Msg("parse the registration form")
@@ -171,9 +140,7 @@ func (s *Server) parseImportForm(c *gin.Context) bool {
 	return true
 }
 
-// patchImportProblem answers with the modal's own banner rather than an HTTP
-// status: the request came from datastar, and a bare 400 would leave the person
-// looking at a modal that did nothing.
+// patchImportProblem answers in the modal's banner: a bare 400 would leave a modal that did nothing.
 func (s *Server) patchImportProblem(c *gin.Context, message string) {
 	sse := datastar.NewSSE(c.Writer, c.Request)
 	if err := sse.PatchElementTempl(components.ImportResultBanner(

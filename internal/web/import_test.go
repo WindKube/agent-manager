@@ -10,39 +10,39 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
-	"agent-manager/internal/web"
+	"agent-manager/internal/apiclient"
 	"agent-manager/internal/web/components"
-	"agent-manager/internal/web/fixture"
+	"agent-manager/internal/web/fakeapi"
 	"agent-manager/internal/web/view"
 )
 
-// registrar is a web.Registrar stand-in that records what it was asked to
-// register, so a test can assert what the form actually sent rather than only
-// that the request succeeded.
-type registrar struct {
-	got view.Registration
-	// refusal makes Register answer the way the api answers a conflict: a result
-	// that is not Registered, carrying the problem detail.
-	refusal string
+// registerServer answers every registration as accepted: example/thing at
+// whatever version the form sent.
+func registerServer(t *testing.T) (*fakeapi.API, http.Handler) {
+	t.Helper()
+	api, h := newServer(t)
+	api.Handle("registerPackage", func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseMultipartForm(1<<20))
+		fakeapi.JSON(w, http.StatusAccepted, apiclient.PackageRegistered{
+			Publisher: "example/platform", Name: "thing", Version: r.FormValue("version"),
+		})
+	})
+	return api, h
 }
 
-func (r *registrar) Preview(context.Context, view.Archive) (view.ImportPreview, error) {
-	return view.ImportPreview{}, nil
+func registered(t *testing.T, api *fakeapi.API) *multipart.Form {
+	t.Helper()
+	calls := api.Calls("registerPackage")
+	require.Len(t, calls, 1)
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(calls[0].Body))
+	req.Header = calls[0].Header
+	require.NoError(t, req.ParseMultipartForm(1<<20))
+	return req.MultipartForm
 }
 
-func (r *registrar) Register(_ context.Context, registration view.Registration) (view.ImportResult, error) {
-	r.got = registration
-	if r.refusal != "" {
-		return view.ImportResult{Message: r.refusal}, nil
-	}
-	return view.ImportResult{Registered: true, ID: "example/thing", Version: registration.Version}, nil
-}
-
-// postMultipart submits the import form the way a browser does: multipart, not
-// urlencoded, which is what the archive field requires.
+// postMultipart submits the import form as multipart, which the archive field requires.
 func postMultipart(t *testing.T, h http.Handler, fields map[string]string) *httptest.ResponseRecorder {
 	t.Helper()
 	var body bytes.Buffer
@@ -60,11 +60,9 @@ func postMultipart(t *testing.T, h http.Handler, fields map[string]string) *http
 	return rec
 }
 
-// The registration modal (T046). What can regress silently is the markup the R7
-// budget and FR-055 depend on, which is what this asserts.
-
 func TestTheImportModalIsOnTheCatalogAndCostsNoRoundTrip(t *testing.T) {
-	body := get(t, handler(t, fixture.New()), "/catalog").Body.String()
+	_, h := newServer(t)
+	body := get(t, h, "/catalog").Body.String()
 
 	t.Run("both header buttons open it, each on the tab the design names", func(t *testing.T) {
 		require.Contains(t, body, `data-on:click="$_importOpen = true; $_importTab = 'upload'"`)
@@ -72,9 +70,8 @@ func TestTheImportModalIsOnTheCatalogAndCostsNoRoundTrip(t *testing.T) {
 	})
 
 	t.Run("every signal it touches is one datastar never sends", func(t *testing.T) {
-		// The underscore prefix is what keeps opening the modal, switching tabs and
-		// attaching a file off the wire. Drop it and each of those becomes a round
-		// trip, with nothing else looking different.
+		// The underscore prefix keeps these off the wire; without it each modal
+		// interaction becomes a silent round trip.
 		for _, signal := range []string{
 			"_importOpen", "_importTab", "_importFile",
 			"_importURL", "_importRef", "_importSubdir", "_importPublisher", "_importVersion", "_importTags",
@@ -84,10 +81,8 @@ func TestTheImportModalIsOnTheCatalogAndCostsNoRoundTrip(t *testing.T) {
 				"%s appears without its underscore, which would send it on every patch", signal)
 		}
 
-		// And the debounced listener's include filter still names none of them, so
-		// there are two independent reasons this markup cannot fetch. The filter is
-		// read out of the page rather than compared to a literal, so a signal added
-		// to it later is caught here.
+		// The debounced listener's include filter must name none of them either.
+		// It is read out of the page so a later addition is caught.
 		const filterAttr = `data-on-signal-patch-filter="`
 		start := strings.Index(body, filterAttr)
 		require.GreaterOrEqual(t, start, 0, "the debounced listener's include filter is gone")
@@ -98,31 +93,26 @@ func TestTheImportModalIsOnTheCatalogAndCostsNoRoundTrip(t *testing.T) {
 	})
 
 	t.Run("its fetch sites are all deliberate acts, never signal-driven", func(t *testing.T) {
-		// The modal submits now, so the claim is no longer "it cannot fetch" — it is
-		// that nothing it fetches is reachable from a signal patch. One debounced
-		// site plus the header's refresh button, both firing the same query, and
-		// every @post here hangs off a click or a file being attached.
+		// Nothing it fetches is reachable from a signal patch: two catalog query
+		// sites, and every @post hangs off a click, change or submit.
 		require.Equal(t, 2, strings.Count(body, "/catalog/results"))
 
 		for _, site := range []string{"/catalog/import/preview", "/catalog/import"} {
 			at := strings.Index(body, "@post(&#39;"+site+"&#39;")
 			require.GreaterOrEqualf(t, at, 0, "%s is not posted to", site)
-			// The nearest preceding data-on: attribute is the one that fires it. An
-			// attribute name is the claim being tested, so it is read out of the
-			// markup rather than assumed from where the templ source puts it.
+			// The nearest preceding data-on: attribute is the one that fires it.
 			handler := body[strings.LastIndex(body[:at], "data-on:"):]
 			handler = handler[:strings.IndexByte(handler, '=')]
 			require.Containsf(t, []string{"data-on:click", "data-on:change", "data-on:submit"}, handler,
 				"%s is posted from %s, which is not a deliberate act", site, handler)
 		}
 
-		// And the browser still never addresses the api: the web role is the hop.
+		// The browser never addresses the api directly.
 		require.NotContains(t, body, "/v1/packages")
 	})
 
 	t.Run("the overlay is hidden before the script runs", func(t *testing.T) {
-		// A visible full-viewport backdrop would swallow every click on the catalog
-		// underneath it.
+		// A visible full-viewport backdrop would swallow every click underneath.
 		require.Contains(t, body, `class="am-import-backdrop" style="display:none;`)
 	})
 
@@ -131,7 +121,7 @@ func TestTheImportModalIsOnTheCatalogAndCostsNoRoundTrip(t *testing.T) {
 		for _, name := range []string{"Infrastructure", "Data", "Documentation"} {
 			require.Containsf(t, body, `<option value="`+name+`">`+name+`</option>`, "category %q", name)
 		}
-		// FR-049: only the curated names, and no way to add one from here.
+		// Only the curated names, with no way to add one from here.
 		require.NotContains(t, body, `id="import-category-new"`)
 	})
 
@@ -142,10 +132,8 @@ func TestTheImportModalIsOnTheCatalogAndCostsNoRoundTrip(t *testing.T) {
 	})
 }
 
-// FR-055 is the one that a screenshot cannot catch. Every string in the panel
-// comes from a manifest — a path, a note, a schema path — and templ escaping is
-// what stands between that and stored XSS. internal/archcheck bans templ.Raw
-// under internal/web; this proves the escaping actually happens.
+// Every panel string comes from a manifest, and templ escaping is what stands
+// between that and stored XSS. archcheck bans templ.Raw; this proves escaping happens.
 func TestManifestDerivedStringsInTheImportPanelAreEscaped(t *testing.T) {
 	hostile := `<img src=x onerror="alert(1)">`
 
@@ -174,7 +162,6 @@ func TestManifestDerivedStringsInTheImportPanelAreEscaped(t *testing.T) {
 	require.NotContains(t, rendered, `onerror="alert(1)"`)
 	require.Contains(t, rendered, "&lt;img src=x")
 
-	// The panel still says what it has to say (FR-005, US1 scenario 3).
 	require.Contains(t, rendered, "outside spec, dropped")
 	require.Contains(t, rendered, "plugin.json /additionalProperties")
 	require.Contains(t, rendered, "✓")
@@ -204,24 +191,19 @@ func TestTheEntryMarkAndItsColourCannotDisagree(t *testing.T) {
 }
 
 func TestTheImportFormHasAVersionFieldAndAUsablePublisherPlaceholder(t *testing.T) {
-	body := get(t, handler(t, fixture.New()), "/catalog").Body.String()
+	_, h := newServer(t)
+	body := get(t, h, "/catalog").Body.String()
 
 	require.Contains(t, body, `id="import-version"`)
 	require.Contains(t, body, `name="version"`)
 	require.Contains(t, body, `placeholder="1.0.0"`)
-	// A bare namespace is a legal publisher too, but the placeholder models the
-	// more common two-segment shape.
 	require.Contains(t, body, `placeholder="example/platform"`)
 }
 
-// TestUploadingASkillCanBeRegisteredNowThatVersionIsOnTheForm is GAP 2: a
-// SKILL.md manifest carries no version, so the api refuses the upload unless
-// the form supplies one.
+// A SKILL.md manifest carries no version, so the api refuses an upload unless the
+// form supplies one.
 func TestUploadingASkillCanBeRegisteredNowThatVersionIsOnTheForm(t *testing.T) {
-	reg := &registrar{}
-	h := web.New(web.Deps{
-		Registrar: reg, Viewers: fixture.SignedInViewers(), Log: zerolog.Nop(),
-	}, web.Options{}).Handler()
+	api, h := registerServer(t)
 
 	rec := postMultipart(t, h, map[string]string{
 		"publisher": "example/platform",
@@ -231,34 +213,24 @@ func TestUploadingASkillCanBeRegisteredNowThatVersionIsOnTheForm(t *testing.T) {
 	})
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, "1.0.0", reg.got.Version)
+	require.Equal(t, []string{"1.0.0"}, registered(t, api).Value["version"])
 	require.Contains(t, rec.Body.String(), "1.0.0")
 }
 
 func TestTheCatalogStillRendersWithoutAPreview(t *testing.T) {
-	// The resting state: no archive has been validated, so FR-005's panel is ABSENT
-	// rather than blank. An empty panel would be a report about no tree at all.
-	body := get(t, handler(t, fixture.New()), "/catalog").Body.String()
-	require.Equal(t, http.StatusOK, get(t, handler(t, fixture.New()), "/catalog").Code)
+	// No archive validated yet, so the panel is absent rather than blank.
+	_, h := newServer(t)
+	rec := get(t, h, "/catalog")
+	body := rec.Body.String()
+	require.Equal(t, http.StatusOK, rec.Code)
 	require.NotContains(t, body, "Archive contents")
 }
 
-// registerHandler is the modal's own handler, wired to a registrar a test can
-// steer. handler(t, fixture.New()) cannot register at all.
-func registerHandler(t *testing.T, reg *registrar) http.Handler {
-	t.Helper()
-	return web.New(web.Deps{
-		Registrar: reg, Viewers: fixture.SignedInViewers(), Log: zerolog.Nop(),
-	}, web.Options{}).Handler()
-}
-
-// An accepted registration is finished, and the modal has to go. Leaving it open
-// with an acknowledgement in it is what let the same version be submitted twice:
-// the second attempt reached a unique index on (package_id, semver) and the
-// button read as doing nothing.
+// An open modal after acceptance let the same version be submitted twice, hitting
+// the unique (package_id, semver) index.
 func TestAnAcceptedRegistrationClosesTheModalAndSaysSoOnTheScreen(t *testing.T) {
-	reg := &registrar{}
-	rec := postMultipart(t, registerHandler(t, reg), map[string]string{
+	_, h := registerServer(t)
+	rec := postMultipart(t, h, map[string]string{
 		"publisher": "example/platform",
 		"name":      "release-notes",
 		"version":   "1.0.0",
@@ -269,8 +241,7 @@ func TestAnAcceptedRegistrationClosesTheModalAndSaysSoOnTheScreen(t *testing.T) 
 	require.Contains(t, body, `"_importOpen":false`,
 		"the modal stayed open, so the same version can be registered again from it")
 
-	// Resetting matters as much as closing: a modal reopened still holding the
-	// last registration's fields is the same defect one press later.
+	// A reopened modal holding the last fields is the same defect one press later.
 	for _, signal := range []string{
 		"_importFile", "_importURL", "_importRef", "_importSubdir",
 		"_importPublisher", "_importName", "_importVersion", "_importKind", "_importTags",
@@ -287,11 +258,12 @@ func TestAnAcceptedRegistrationClosesTheModalAndSaysSoOnTheScreen(t *testing.T) 
 	})
 }
 
-// The other half: a refusal must NOT close the modal. The fields are still
-// wanted, because the person is about to correct one of them.
+// A refusal keeps the modal open: the person is about to correct a field.
 func TestARefusedRegistrationKeepsTheModalOpenWithTheReason(t *testing.T) {
-	reg := &registrar{refusal: "example/thing@1.0.0 is already published and its bytes are immutable"}
-	rec := postMultipart(t, registerHandler(t, reg), map[string]string{
+	api, h := newServer(t)
+	api.Fail("registerPackage", http.StatusConflict,
+		"example/thing@1.0.0 is already published and its bytes are immutable")
+	rec := postMultipart(t, h, map[string]string{
 		"publisher": "example/platform",
 		"name":      "release-notes",
 		"version":   "1.0.0",
@@ -304,28 +276,26 @@ func TestARefusedRegistrationKeepsTheModalOpenWithTheReason(t *testing.T) {
 	require.NotContains(t, body, `id="catalog-notice"`)
 }
 
-// Closing the modal is not enough on its own: the button is live for as long as
-// the request takes, which is the window the double submit actually happened in.
+// Closing the modal is not enough: the button is live while the request is in flight.
 func TestTheSubmitControlIsDeadWhileItsOwnRequestIsInFlight(t *testing.T) {
-	body := get(t, handler(t, fixture.New()), "/catalog").Body.String()
+	_, h := newServer(t)
+	body := get(t, h, "/catalog").Body.String()
 
 	require.Contains(t, body, `data-indicator="_importBusy"`,
 		"nothing reports that the registration is in flight")
 	require.Regexp(t, `data-attr:disabled="\$_importBusy \|\|`, body,
 		"the submit control does not consult the in-flight signal, so it stays pressable")
 
-	// The signal is underscore-prefixed, which is what keeps it out of every
-	// request this modal makes. The signal block is an HTML attribute, so it
-	// arrives escaped.
+	// The signal block is an HTML attribute, so it arrives escaped.
 	require.Contains(t, html.UnescapeString(body), `"_importBusy":false`,
 		"the in-flight signal has no declared value, so the disabled expression reads it before the plugin sets it")
 }
 
 func TestTheFormAsksForANameAndAKindAndForwardsBoth(t *testing.T) {
-	body := get(t, handler(t, fixture.New()), "/catalog").Body.String()
+	_, h := newServer(t)
+	body := get(t, h, "/catalog").Body.String()
 
-	// A repository name is what the api falls back to, and for a repository of
-	// many skills that produced "skills".
+	// Without a name the api falls back to the repository name, e.g. "skills".
 	require.Contains(t, body, `id="import-name"`)
 	require.Contains(t, body, `name="name"`)
 
@@ -335,55 +305,52 @@ func TestTheFormAsksForANameAndAKindAndForwardsBoth(t *testing.T) {
 	require.Contains(t, body, "Detect from the manifest",
 		"kind comes from the manifest at the tree root; a selector with no such default would present a guess as a setting")
 
-	reg := &registrar{}
-	postMultipart(t, registerHandler(t, reg), map[string]string{
+	api, reg := registerServer(t)
+	postMultipart(t, reg, map[string]string{
 		"publisher": "example/platform",
 		"name":      "code-review",
 		"version":   "1.2.3",
 		"kind":      "skill",
 	})
-	require.Equal(t, "code-review", reg.got.Name)
-	require.Equal(t, "skill", reg.got.Kind)
+	form := registered(t, api)
+	require.Equal(t, []string{"code-review"}, form.Value["name"])
+	require.Equal(t, []string{"skill"}, form.Value["kind"])
 }
 
-// Both tabs get the field, and it forwards unparsed: splitting, deduping and
-// validating is the api's job, not this hop's.
+// Tags forward unparsed: splitting, deduping and validating is the api's job.
 func TestTheFormAsksForTagsOnBothTabsAndForwardsThemUnparsed(t *testing.T) {
-	body := get(t, handler(t, fixture.New()), "/catalog").Body.String()
+	_, h := newServer(t)
+	body := get(t, h, "/catalog").Body.String()
 
 	require.Contains(t, body, `id="import-tags"`)
 	require.Contains(t, body, `name="tags"`)
 	require.Contains(t, body, `placeholder="terraform, aws, guardrails"`)
 
-	reg := &registrar{}
-	postMultipart(t, registerHandler(t, reg), map[string]string{
+	api, reg := registerServer(t)
+	postMultipart(t, reg, map[string]string{
 		"publisher": "example/platform",
 		"name":      "code-review",
 		"version":   "1.2.3",
 		"tags":      " terraform, aws ,,terraform",
 	})
-	require.Equal(t, " terraform, aws ,,terraform", reg.got.Tags,
+	require.Equal(t, []string{" terraform, aws ,,terraform"}, registered(t, api).Value["tags"],
 		"the web role forwards the raw field; the api is what splits, dedupes and validates it")
 }
 
-// Leaving the field empty is the common case, and it must keep working
-// exactly as it did before this field existed.
 func TestTheFormWorksWithNoTags(t *testing.T) {
-	reg := &registrar{}
-	rec := postMultipart(t, registerHandler(t, reg), map[string]string{
+	api, h := registerServer(t)
+	rec := postMultipart(t, h, map[string]string{
 		"publisher": "example/platform",
 		"name":      "release-notes",
 		"version":   "1.0.0",
 	})
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Empty(t, reg.got.Tags)
+	require.NotContains(t, registered(t, api).Value, "tags")
 }
 
-// The owner asked for both removed by screenshot: the explanatory panel above
-// the buttons and the footer note beside them. Both must be gone, and the
-// buttons themselves must still render and still work.
 func TestTheImportModalHasNoExplanatoryBannerOrFooterNote(t *testing.T) {
-	body := get(t, handler(t, fixture.New()), "/catalog").Body.String()
+	_, h := newServer(t)
+	body := get(t, h, "/catalog").Body.String()
 
 	require.NotContains(t, body, "The hub unpacks the tree",
 		"the registration modal's explanatory panel is still on the page")

@@ -12,9 +12,7 @@ import (
 	"strings"
 )
 
-// Class is what went wrong with a hub call, at a granularity a person can
-// act on. Class 0 is what ClassOf returns for an error that didn't come
-// from here.
+// Class is what went wrong with a hub call. Class 0 means the error didn't come from here.
 type Class int
 
 const (
@@ -111,11 +109,8 @@ func (c Class) Retryable() bool {
 	}
 }
 
-// OpError is every error this package produces for a call that reached the
-// network layer (named OpError since the generated client owns `Error`). It
-// deliberately holds no *http.Request/*http.Response/http.Header or bearer
-// token: wrapping the request "for context" would stringify Authorization
-// into every %+v log line; hub_test.go greps every field to enforce this.
+// OpError is every error this package produces for a call that reached the network layer. It holds
+// no request, response or header, which would stringify Authorization into every %+v log line.
 type OpError struct {
 	Class         Class
 	Op            string // the operationId that failed: "getRevision", "health", ...
@@ -195,9 +190,7 @@ func ClassOf(err error) Class {
 func classifyTransport(op, target string, err error) *OpError {
 	class := ClassUnreachable
 
-	// http.ErrSchemeMismatch: net/http replaces tls.RecordHeaderError with it
-	// rather than wrapping it, so errors.As on the TLS type alone would miss
-	// the https-at-a-plaintext-hub case --allow-plaintext-hub exists for.
+	// net/http replaces tls.RecordHeaderError with http.ErrSchemeMismatch rather than wrapping it.
 	var certErr *tls.CertificateVerificationError
 	var unknownAuthority x509.UnknownAuthorityError
 	var hostnameErr x509.HostnameError

@@ -15,13 +15,9 @@ import (
 const module = "agent-manager"
 
 type rule struct {
-	// name is what the failure message calls this boundary.
-	name string
-	// why explains the consequence of breaking it, so a failure teaches.
-	why string
-	// scope matches the packages the rule governs.
-	scope func(pkgPath string) bool
-	// forbidden reports whether an import is illegal inside scope.
+	name      string
+	why       string
+	scope     func(pkgPath string) bool
 	forbidden func(importPath string) bool
 }
 
@@ -57,18 +53,18 @@ var rules = []rule{
 	},
 	{
 		name: "web imports only its own tree, the api client and the domain",
-		why: "task T033. The web role's door to data is internal/apiclient (constitution " +
+		why: "The web role's door to data is internal/apiclient (constitution " +
 			"principle V: generated, never hand-copied). An import of any other first-party " +
 			"package is how a role that must hold no datastore credential acquires one by " +
 			"transitive dependency — and a transitive acquisition is invisible in the role's " +
-			"own env-var struct. internal/logging is allowed because FR-059 requires every " +
+			"own env-var struct. internal/logging is allowed because the spec requires every " +
 			"role to emit correlated structured logs and a second logging setup would be worse.",
 		scope:     under("internal/web"),
 		forbidden: firstPartyOutside(webMayImport),
 	},
 	{
 		name: "datastore access is confined to the roles that hold its credential",
-		why: "task T033 and constitution principle II. This rule is stated as an allowlist so " +
+		why: "This rule is stated as an allowlist so " +
 			"it fails CLOSED: a package added tomorrow cannot reach the store or the bucket " +
 			"until it is named here, with a reason. A missing grant fails the first time the " +
 			"code runs; an excess one produces no error anywhere, ever, which is why the " +
@@ -84,12 +80,9 @@ var rules = []rule{
 	},
 	{
 		name: "the scanner never executes bundle content",
-		why: "constitution principle III and FR-021: static analysis only. os/exec in the scan " +
+		why: "Static analysis only. os/exec in the scan " +
 			"tree is the exact defect that requirement exists to prevent.",
-		// Both paths, because the tree moved. contracts/worker.md put the scan
-		// packages under internal/scan; they landed under internal/worker/scanner,
-		// beside the role that runs them, and a rule scoped only to the old path is a
-		// rule that passes because it governs nothing.
+		// Both paths, so the rule cannot pass by governing nothing.
 		scope:     anyOf(under("internal/scan"), under("internal/worker/scanner")),
 		forbidden: anyOf(exact("os/exec"), exact("plugin")),
 	},
@@ -103,58 +96,83 @@ var rules = []rule{
 			"tree is not the same as running anything out of one.",
 		scope: anyOf(
 			under("internal/scan"),
-			// under() is a prefix, so the engine package has to be excluded by
-			// name rather than by being outside the scope.
+			// under() is a prefix match, so the engine package is excluded by name.
 			andNot(under("internal/worker/scanner"), under("internal/worker/scanner/engine")),
 		),
 		forbidden: exact("net/http"),
 	},
+	{
+		name: "signature verification opens no connection of its own",
+		why: "the fetcher's outbound credential boundary is the SSRF-guarded internal/fetch client. " +
+			"internal/signing reaches the Sigstore TUF mirror only through the fetcher the role hands " +
+			"it, which is that client; a net/http import here is how a second, unguarded client appears.",
+		scope:     under("internal/signing"),
+		forbidden: anyOf(exact("net/http"), under(module+"/internal/store"), under(module+"/internal/blob")),
+	},
+	{
+		name: "the notifier holds no object-store credential and opens no socket of its own",
+		why: "worker notifier posts to URLs a catalog-admin typed in, so its only door to the network " +
+			"is the SSRF-guarded internal/fetch client the bootstrap hands it, and it never needs a " +
+			"bundle. A blob import is a credential it is deliberately not given; a net import is how " +
+			"an unguarded dialer appears beside the guarded one.",
+		scope: under("internal/worker/notifier"),
+		forbidden: anyOf(
+			under(module+"/internal/blob"),
+			under("gocloud.dev/blob"),
+			exact("net"),
+		),
+	},
+	{
+		name: "the webhook vocabulary is free of I/O",
+		why: "internal/notify is shared by the api, which holds no outbound client, and the notifier, " +
+			"which holds no object store; anything it links reaches both roles.",
+		scope: under("internal/notify"),
+		forbidden: anyOf(
+			under(module+"/internal/store"),
+			under(module+"/internal/blob"),
+			exact("github.com/uptrace/bun"),
+			under("github.com/jackc/pgx"),
+			exact("net/http"),
+		),
+	},
 }
 
-// andNot narrows a scope: in it when pred says so and except does not.
 func andNot(pred, except func(string) bool) func(string) bool {
 	return func(path string) bool { return pred(path) && !except(path) }
 }
 
-// webMayImport is every first-party package internal/web is allowed to import.
-// Each entry carries the reason it is there; anything absent is refused.
+// webMayImport is every first-party package internal/web may import; anything
+// absent is refused.
 var webMayImport = []func(string) bool{
-	// The web role's only door to data (constitution principle V).
+	// The web role's only door to data.
 	under(module + "/internal/apiclient"),
-	// Entities and rules, which internal/domain keeps pure by its own rule above.
+	// Kept pure by its own rule above.
 	under(module + "/internal/domain"),
-	// FR-059: a correlation id in every log line, from one logging setup.
+	// One logging setup for correlated logs.
 	under(module + "/internal/logging"),
-	// Its own view models, fixtures and templ components.
 	under(module + "/internal/web"),
 }
 
 // mayTouchDatastore is every package allowed to link the store, the bucket or a
-// database driver, with the reason each one needs it.
+// database driver. It is an allowlist so new packages fail closed.
 var mayTouchDatastore = []func(string) bool{
-	// Owns the relational schema and mediates every mutation.
 	under("internal/api"),
 	// Sessions and the group-to-role map are rows the api reads through it.
 	under("internal/auth"),
-	// The role bootstraps: runAPI and runWorker are where a connection is opened.
+	// The role bootstraps, where connections are opened.
 	under("internal/cli"),
-	// The outbox rows and the relay that drains them (R5).
 	under("internal/outbox"),
-	// The one-shot that loads the representative dataset (FR-057). It stands in
-	// for the fetcher as well as the api: a seeded version has to have bytes
-	// behind its object_key, so this is the only package besides internal/worker
-	// that holds the bucket's writer half.
+	// The only package besides internal/worker holding the bucket's writer half,
+	// since seeded versions need bytes behind their object_key.
 	under("internal/seed"),
-	// The store and the bucket themselves.
 	under("internal/store"),
 	under("internal/blob"),
-	// `worker fetcher` is the only role that may write bundle bytes; `worker
-	// scanner` reads them and writes verdicts.
+	// Only `worker fetcher` writes bundle bytes; scanner and notifier read.
 	under("internal/worker"),
 }
 
-// firstPartyOutside forbids any first-party import not matched by the allowlist,
-// and permits every stdlib and third-party import.
+// firstPartyOutside forbids first-party imports outside the allowlist and
+// permits all stdlib and third-party ones.
 func firstPartyOutside(allowed []func(string) bool) func(string) bool {
 	return func(importPath string) bool {
 		if !strings.HasPrefix(importPath, module+"/") {
@@ -164,8 +182,6 @@ func firstPartyOutside(allowed []func(string) bool) func(string) bool {
 	}
 }
 
-// firstPartyOutsideScope selects every package in this module except the ones the
-// allowlist names.
 func firstPartyOutsideScope(allowed []func(string) bool) func(string) bool {
 	return func(pkgPath string) bool { return !anyOf(allowed...)(pkgPath) }
 }
@@ -209,12 +225,8 @@ func anyOf(preds ...func(string) bool) func(string) bool {
 	}
 }
 
-// unsafeTemplHelpers are the templ entry points that emit their argument without
-// escaping it. FR-055 and constitution principle III forbid them on
-// package-derived content, and this check bans them outright under internal/web:
-// nothing there needs one, so "not used at all" is both stricter and cheaper to
-// enforce than "used only on trusted values". T111 is the full version, which has
-// to reason about where a value came from.
+// unsafeTemplHelpers emit their argument unescaped. They are banned outright
+// under internal/web, which is stricter and simpler than tracking trusted values.
 var unsafeTemplHelpers = map[string]string{
 	"Raw":              "emits its argument as markup with no escaping",
 	"JSUnsafeFuncCall": "emits its argument into a script context with no escaping",
@@ -252,7 +264,7 @@ func TestWebNeverBypassesTemplEscaping(t *testing.T) {
 				found++
 				require.Failf(t, "unescaped rendering under internal/web",
 					"%s calls templ.%s at %s, which %s.\n\n"+
-						"FR-055 is absolute: anything from a manifest, an instruction file or scan "+
+						"Anything from a manifest, an instruction file or scan "+
 						"evidence is escaped. templ escapes by default, so the fix is to interpolate "+
 						"the value and delete the call.",
 					pkg.PkgPath, sel.Sel.Name, pkg.Fset.Position(call.Pos()), why)

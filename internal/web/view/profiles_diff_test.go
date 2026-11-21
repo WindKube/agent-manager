@@ -8,9 +8,7 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// TestDiffRevisionsReportsWhatChanged covers each shape of change
-// DiffRevisions must report, one at a time, against an otherwise identical
-// pair of revisions so a test failure names exactly what broke.
+// TestDiffRevisionsReportsWhatChanged covers each shape of change one at a time against an otherwise identical pair.
 func TestDiffRevisionsReportsWhatChanged(t *testing.T) {
 	t.Run("a package added", func(t *testing.T) {
 		older := view.LockfileSnapshot{Revision: 4, Entries: []view.LockfileEntrySnapshot{
@@ -178,9 +176,6 @@ func TestDiffRevisionsReportsWhatChanged(t *testing.T) {
 		require.Empty(t, diff.SkipsChanged)
 	})
 
-	// Revision 1 has no predecessor. The panel says that plainly and shows
-	// what the revision introduced, rather than rendering an empty diff or
-	// treating "no older revision" as an error.
 	t.Run("revision 1 has no predecessor", func(t *testing.T) {
 		newer := view.LockfileSnapshot{
 			Revision: 1, Gate: "warn-with-override", DefaultPolicy: "floating-latest",
@@ -207,14 +202,10 @@ func TestDiffRevisionsReportsWhatChanged(t *testing.T) {
 		require.False(t, diff.GateChanged())
 		require.False(t, diff.DefaultPolicyChanged())
 		require.False(t, diff.TargetsChanged())
-		// Empty() is defined over a delta and revision 1 has none; the panel
-		// itself tells first-revision apart from a genuinely unchanged diff.
 		require.False(t, diff.Empty())
 	})
 }
 
-// A target list is a set: the lockfile makes no promise about its order, so a
-// reordering is not a change the panel may claim.
 func TestDiffRevisionsDoesNotReportAReorderedTargetListAsAChange(t *testing.T) {
 	older := view.LockfileSnapshot{Revision: 1, Targets: []string{"claude-code", "codex"}}
 	newer := view.LockfileSnapshot{Revision: 2, Targets: []string{"codex", "claude-code"}}

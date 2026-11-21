@@ -12,7 +12,6 @@ import (
 	"agent-manager/internal/bundle"
 )
 
-// tree is a Tree built from a map, standing in for *checks.Bundle.
 type tree map[string][]byte
 
 func (t tree) Paths() []string {
@@ -20,8 +19,7 @@ func (t tree) Paths() []string {
 	for path := range t {
 		out = append(out, path)
 	}
-	// Sorted, because zipTree writes members in the order it is given and the
-	// request bytes are asserted below.
+	// Sorted, because the request bytes are asserted below.
 	for i := 0; i < len(out); i++ {
 		for j := i + 1; j < len(out); j++ {
 			if out[j] < out[i] {
@@ -42,8 +40,6 @@ func (t tree) File(path string) (bundle.File, bool) {
 
 func TestZipTree(t *testing.T) {
 	t.Run("members are serialised non-executable whatever the publisher shipped", func(t *testing.T) {
-		// The engine reads content. An executable bit it never looks at is a bit
-		// not worth carrying into another process's temp directory.
 		packed, err := zipTree(tree{"setup.sh": []byte("#!/bin/sh\necho hi\n")})
 		require.NoError(t, err)
 
@@ -71,9 +67,6 @@ func TestZipTree(t *testing.T) {
 	})
 
 	t.Run("a tree past the engine's entry cap is over cap, not a request", func(t *testing.T) {
-		// This project extracts up to 10 000 entries and the engine's upload
-		// endpoint takes 500, compiled in rather than configurable. A package
-		// between the two is a blind spot the caller records, not a failure.
 		big := tree{}
 		for i := 0; i <= maxEntries; i++ {
 			big[fmt.Sprintf("f%05d.md", i)] = []byte("x")

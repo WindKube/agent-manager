@@ -5,16 +5,10 @@ import (
 	"strconv"
 )
 
-// The "Show diff" panel's comparison (US5's revision history, extended).
-//
-// The lockfile is the durable record of what a revision resolved to, so the
-// diff is computed from two of them rather than from a stored delta: there is
-// no other source of truth to drift from.
+// Revision diffs are computed from two lockfiles rather than a stored delta, so there is no second source
+// of truth to drift.
 
-// LockfileSnapshot is one revision's lockfile, reduced to what a diff
-// compares. Keeping this separate from hub.RevisionLockfile is what makes
-// DiffRevisions a pure function over plain data instead of one more consumer
-// of the hub's wire shape.
+// LockfileSnapshot is one revision's lockfile, reduced to what a diff compares.
 type LockfileSnapshot struct {
 	Revision      int
 	Gate          string
@@ -24,14 +18,12 @@ type LockfileSnapshot struct {
 	Skipped       []LockfileSkipSnapshot
 }
 
-// LockfileEntrySnapshot is one resolved package.
 type LockfileEntrySnapshot struct {
 	ID         string
 	Version    string
 	Resolution string
 }
 
-// LockfileSkipSnapshot is one excluded package and why.
 type LockfileSkipSnapshot struct {
 	ID     string
 	Reason string
@@ -45,8 +37,7 @@ type RemovedPackage struct {
 	ID, Version, Resolution string
 }
 
-// ChangedPackage is a package present in both revisions whose version,
-// resolution mode, or both, differ.
+// ChangedPackage is a package present in both revisions whose version or resolution mode differs.
 type ChangedPackage struct {
 	ID                           string
 	VersionFrom, VersionTo       string
@@ -65,8 +56,7 @@ type SkipChanged struct{ ID, ReasonFrom, ReasonTo string }
 // RevisionDiff is what changed between one revision and its predecessor.
 type RevisionDiff struct {
 	Revision int
-	// FirstRevision is revision 1's case: there is no predecessor, so
-	// everything below is what this revision INTRODUCED rather than a delta.
+	// FirstRevision means there is no predecessor, so everything below was introduced rather than changed.
 	FirstRevision bool
 
 	GateFrom, GateTo                   string
@@ -92,10 +82,7 @@ func (d RevisionDiff) TargetsChanged() bool {
 	return !d.FirstRevision && !slices.Equal(d.TargetsFrom, d.TargetsTo)
 }
 
-// Empty is true when nothing changed: every package, skip, gate, policy and
-// target the two revisions carry agree. Never true for FirstRevision, which
-// always has something to introduce (or, when the profile started with
-// nothing, is rendered as its own state rather than through this check).
+// Empty is true when nothing changed; never for FirstRevision, which renders as its own state.
 func (d RevisionDiff) Empty() bool {
 	return !d.FirstRevision &&
 		len(d.Added) == 0 && len(d.Removed) == 0 && len(d.Changed) == 0 &&
@@ -103,11 +90,8 @@ func (d RevisionDiff) Empty() bool {
 		!d.GateChanged() && !d.DefaultPolicyChanged() && !d.TargetsChanged()
 }
 
-// DiffRevisions compares newer against older, its immediate predecessor.
-// older is nil exactly for revision 1, which has none: everything in newer is
-// then reported as introduced rather than as an empty diff, and the two
-// revision-scoped fields (gate, default policy, targets) are left blank
-// rather than false-reported as "changed from nothing".
+// DiffRevisions compares newer against its immediate predecessor. older is nil for revision 1: everything
+// is then reported as introduced, and gate, policy and targets are left blank rather than "changed from nothing".
 func DiffRevisions(newer LockfileSnapshot, older *LockfileSnapshot) RevisionDiff {
 	diff := RevisionDiff{Revision: newer.Revision}
 
@@ -124,8 +108,7 @@ func DiffRevisions(newer LockfileSnapshot, older *LockfileSnapshot) RevisionDiff
 
 	diff.GateFrom, diff.GateTo = older.Gate, newer.Gate
 	diff.DefaultPolicyFrom, diff.DefaultPolicyTo = older.DefaultPolicy, newer.DefaultPolicy
-	// Sorted copies, so the panel never reports a reordering as a change: the
-	// target list is a set, and the lockfile does not promise an order.
+	// Targets are a set with no promised order, so compare sorted copies.
 	diff.TargetsFrom, diff.TargetsTo = slices.Sorted(slices.Values(older.Targets)), slices.Sorted(slices.Values(newer.Targets))
 
 	priorEntry := make(map[string]LockfileEntrySnapshot, len(older.Entries))
@@ -179,23 +162,16 @@ func DiffRevisions(newer LockfileSnapshot, older *LockfileSnapshot) RevisionDiff
 	return diff
 }
 
-// RevisionDiffPanel is what "Show diff" opens: a plain server round trip,
-// closed by a link back, like the audit screen's own detail panel.
+// RevisionDiffPanel is what "Show diff" opens.
 type RevisionDiffPanel struct {
 	Revision int
-	// Missing is a revision query naming no revision this profile has, or
-	// one this identity may not read — the same answer for a nonexistent
-	// thing and one that cannot be read that the rest of this screen gives.
+	// Missing covers both a nonexistent and an unreadable revision.
 	Missing bool
-	// PredecessorUnavailable is Revision itself reading fine while its
-	// predecessor did not: a real read failure, said plainly rather than
-	// rendered as a silently empty diff.
+	// PredecessorUnavailable is a read failure of the predecessor, shown plainly rather than as an empty diff.
 	PredecessorUnavailable bool
 	Diff                   RevisionDiff
 }
 
-// RevisionDiffHref opens one revision's diff panel without disturbing the
-// rest of the page.
 func RevisionDiffHref(slug string, revision int) string {
 	return ProfileHref(slug) + "?revision=" + strconv.Itoa(revision)
 }

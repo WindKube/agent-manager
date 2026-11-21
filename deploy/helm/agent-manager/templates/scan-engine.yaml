@@ -1,0 +1,87 @@
+{{- with .Values.scanEngine }}
+{{- if .enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "am.fullname" $ }}-scan-engine
+  labels:
+    {{- include "am.labels" (dict "root" $ "role" "scan-engine") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "am.selectorLabels" (dict "root" $ "role" "scan-engine") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "am.labels" (dict "root" $ "role" "scan-engine") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "am.fullname" $ }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: scan-engine
+          image: {{ .image.repository }}:{{ required "scanEngine.image.tag is required" .image.tag }}
+          imagePullPolicy: {{ .image.pullPolicy }}
+          # No credential of this system's, by design.
+          env:
+            - name: HOME
+              value: /tmp
+          ports:
+            - name: http
+              containerPort: {{ .port }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            {{- toYaml .resources | nindent 12 }}
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with $.Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "am.fullname" $ }}-scan-engine
+  labels:
+    {{- include "am.labels" (dict "root" $ "role" "scan-engine") | nindent 4 }}
+spec:
+  selector:
+    {{- include "am.selectorLabels" (dict "root" $ "role" "scan-engine") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .port }}
+      targetPort: http
+{{- end }}
+{{- end }}

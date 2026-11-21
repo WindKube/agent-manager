@@ -8,8 +8,7 @@ import (
 )
 
 func TestEveryRoleIsASubcommand(t *testing.T) {
-	// Principle I: roles are selected at run time by subcommand. If one of these
-	// paths disappears, a deployable unit has silently moved to another build.
+	// If one of these paths disappears, a deployable unit has moved to another build.
 	paths := [][]string{
 		{"serve", "api"},
 		{"serve", "web"},

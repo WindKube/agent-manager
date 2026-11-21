@@ -14,22 +14,15 @@ import (
 	"github.com/uptrace/bun"
 
 	"agent-manager/internal/auth"
+	"agent-manager/internal/store/audit"
 	"agent-manager/internal/store/models"
 )
 
-// The RFC 8628 device authorisation flow's write side. Four transitions:
-// AuthorizeDevice creates a `pending` row, ApproveDevice/DenyDevice are a
-// human's two possible decisions, and ConsumeDevice turns an `approved`
-// row into exactly one access token; `expired` is reached lazily by
-// ConsumeDevice since this role holds no DELETE on the table.
-
-// The errors a poll can end in, one per RFC 8628 §3.5 value. They are
-// sentinels rather than an enum-shaped return so a caller who forgets one
-// falls through to invalid_grant — terminal, the safe direction to fail.
+// The RFC 8628 §3.5 poll outcomes. Sentinels, so a caller who forgets one
+// falls through to invalid_grant, the safe direction to fail.
 var (
-	// ErrDeviceCodeUnknown covers an unknown code, a code presented under
-	// the wrong client_id, or a malformed request: one error for all three
-	// so an attacker can't learn which case applied.
+	// ErrDeviceCodeUnknown also covers a wrong client_id or a malformed
+	// request, so an attacker can't tell which applied.
 	ErrDeviceCodeUnknown = errors.New("device code is unknown")
 	ErrDeviceCodePending = errors.New("device authorisation is still pending")
 	ErrDeviceCodeTooFast = errors.New("device authorisation was polled faster than the advertised interval")
@@ -41,23 +34,18 @@ var (
 	ErrUserCodeUndecidable = errors.New("user code is unknown, expired or already decided")
 )
 
-// userCodeAlphabet is Crockford base32 minus I, L, O, U, dropping L too so
-// normaliseUserCode's I/L -> 1 mapping is unambiguous. Exactly 32 glyphs
-// so `byte % 32` over uniform crypto/rand bytes is itself uniform.
+// userCodeAlphabet is Crockford base32 (no I, L, O, U). Exactly 32 glyphs so
+// `byte % 32` over crypto/rand bytes stays uniform; the check below enforces it.
 const userCodeAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
-// Compile-time check that the alphabet stays 32 glyphs, since a silent
-// drift would skew the modulo above.
 var _ [32]struct{} = [len(userCodeAlphabet)]struct{}{}
 
-// userCodeLength is 8 glyphs from a 32-glyph alphabet: 40 bits, not enough
-// to be a secret on its own, so the rate limit on POST /v1/device/authorize
-// bounds how many codes are live at once instead.
+// userCodeLength gives 40 bits, too few to be a secret alone; the rate limit
+// on POST /v1/device/authorize bounds how many codes are live instead.
 const userCodeLength = 8
 
-// NewUserCode draws a fresh human-typable code in the contract's HKQ2-9FTL
-// shape, from crypto/rand: a predictable sequence here is a pre-authorised
-// login.
+// NewUserCode draws a human-typable HKQ2-9FTL-shaped code from crypto/rand;
+// a predictable sequence here would be a pre-authorised login.
 func NewUserCode() (string, error) {
 	buf := make([]byte, userCodeLength)
 	if _, err := rand.Read(buf); err != nil {
@@ -74,10 +62,9 @@ func NewUserCode() (string, error) {
 	return string(out), nil
 }
 
-// normaliseUserCode forgives case, space, the separator, and I/L -> 1, O -> 0
-// (the confusable glyphs Crockford excludes); U is not folded since Crockford
-// drops it to avoid obscenity, not confusability. It repairs typography only:
-// a normalised code that names no pending row is still just one error.
+// normaliseUserCode forgives case, spaces, the separator, and the confusables
+// I/L -> 1, O -> 0. U is not folded: Crockford drops it for obscenity, not
+// confusability.
 func normaliseUserCode(typed string) string {
 	var out strings.Builder
 	out.Grow(len(typed) + 1)
@@ -100,25 +87,20 @@ func normaliseUserCode(typed string) string {
 	return code
 }
 
-// DeviceCodeHash is what the device_code_hash column holds: sha256, not a
-// KDF, since the input already carries 256 bits from crypto/rand. Hashing
-// the client_id IN enforces "same client_id that opened the authorisation"
-// without a separate column — a mismatched client_id hashes to a row that
-// doesn't exist, same as an unknown code. The NUL separator stops
-// ("ab","c") and ("a","bc") from colliding.
+// DeviceCodeHash is sha256 (not a KDF; the code already has 256 bits).
+// Hashing the client_id in binds the code to the client that opened it: a
+// mismatched client_id finds no row. The NUL separator prevents collisions.
 func DeviceCodeHash(clientID, deviceCode string) []byte {
 	sum := sha256.Sum256([]byte(clientID + "\x00" + deviceCode))
 	return sum[:]
 }
 
-// DeviceAuthorizeInput opens an authorisation; there is no identity here,
-// by design.
+// DeviceAuthorizeInput opens an authorisation; there is no identity here.
 type DeviceAuthorizeInput struct {
 	ClientID string
 	Host     string
-	// Scope is accepted but deliberately not stored: what a device token may
-	// do comes only from the approving identity's role, resolved per
-	// request, never from a string the client asked for.
+	// Scope is accepted but not stored: a device token's rights come only from
+	// the approving identity's role, never from what the client asked for.
 	Scope string
 	TTL   time.Duration
 }
@@ -131,13 +113,12 @@ type DeviceAuthorizeResult struct {
 	ExpiresAt  time.Time
 }
 
-// deviceCodeAttempts redraws both codes on a unique-constraint collision:
-// never-deleted rows mean uniqueness is against every code ever issued.
+// deviceCodeAttempts bounds redraws on a unique-constraint collision; rows are
+// never deleted, so uniqueness is against every code ever issued.
 const deviceCodeAttempts = 3
 
-// AuthorizeDevice opens a pending authorisation bound to the requesting
-// host. It writes no audit row: there is no actor yet, since nobody has
-// decided anything. The audited event is the human's later approval.
+// AuthorizeDevice opens a pending authorisation bound to the requesting host.
+// No audit row: there is no actor until a human decides.
 func AuthorizeDevice(ctx context.Context, db bun.IDB, in DeviceAuthorizeInput) (DeviceAuthorizeResult, error) {
 	if in.ClientID == "" {
 		return DeviceAuthorizeResult{}, fmt.Errorf("device authorisation needs a client id")
@@ -152,8 +133,6 @@ func AuthorizeDevice(ctx context.Context, db bun.IDB, in DeviceAuthorizeInput) (
 	expiresAt := time.Now().UTC().Add(in.TTL)
 
 	for range deviceCodeAttempts {
-		// auth.NewToken/HashToken, not a second "high-entropy token" impl,
-		// so the device code and session token can't disagree on safety.
 		deviceCode, err := auth.NewToken()
 		if err != nil {
 			return DeviceAuthorizeResult{}, err
@@ -187,16 +166,14 @@ func AuthorizeDevice(ctx context.Context, db bun.IDB, in DeviceAuthorizeInput) (
 		"could not open a device authorisation with a free user code in %d attempts", deviceCodeAttempts)
 }
 
-// ApproveDevice records approval and returns the host, shown to the
-// approver before they decide — the RFC 8628 phishing defence: bound at
-// issue, with the deciding identity recorded.
+// ApproveDevice records approval and returns the host, which the approver is
+// shown before deciding (the RFC 8628 phishing defence).
 func ApproveDevice(ctx context.Context, db bun.IDB, p auth.Principal, userCode string) (string, error) {
 	return decideDevice(ctx, db, p, userCode, models.DeviceAuthStateApproved)
 }
 
-// DenyDevice refuses a pending user code, terminal. It does not write
-// approved_by_identity_id — that would read as an approval — so who
-// denied lives only in the audit row.
+// DenyDevice refuses a pending user code. It doesn't set
+// approved_by_identity_id, so who denied lives only in the audit row.
 func DenyDevice(ctx context.Context, db bun.IDB, p auth.Principal, userCode string) (string, error) {
 	return decideDevice(ctx, db, p, userCode, models.DeviceAuthStateDenied)
 }
@@ -212,15 +189,13 @@ func decideDevice(
 		return "", fmt.Errorf("deciding a device authorisation needs an identity")
 	}
 
-	var host string
+	var decided models.DeviceAuthorization
 	err := db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		update := tx.NewUpdate().
 			Model((*models.DeviceAuthorization)(nil)).
 			Set("state = ?", state).
 			Set("updated_at = now()").
-			// The WHERE clause is the guard, not a read-then-check: a code
-			// already decided, consumed or expired matches no row, refused
-			// by the database rather than a Go branch a race could beat.
+			// The WHERE clause is the guard, so a race can't beat a Go-side check.
 			Where("user_code = ?", code).
 			Where("state = ?", models.DeviceAuthStatePending).
 			Where("expires_at > now()")
@@ -240,32 +215,30 @@ func decideDevice(
 			return ErrUserCodeUndecidable
 		}
 
-		// Read back in the same transaction, so the host is this row's.
 		if err := tx.NewSelect().
 			Model((*models.DeviceAuthorization)(nil)).
-			Column("requesting_host").
+			Column("id", "requesting_host").
 			Where("user_code = ?", code).
-			Scan(ctx, &host); err != nil {
+			Scan(ctx, &decided.ID, &decided.RequestingHost); err != nil {
 			return fmt.Errorf("read requesting host: %w", err)
 		}
 
-		actor := p.Email
-		if actor == "" {
-			actor = p.Subject
-		}
+		host := decided.RequestingHost
 		verb := "approved"
 		if state == models.DeviceAuthStateDenied {
 			verb = "denied"
 		}
-		// audit_kind has no `deny` value; `login` covers both, and the
-		// device code must never appear in this text.
-		return writeAudit(ctx, tx, models.AuditKindLogin, actor, string(models.ActorKindIdentity),
-			fmt.Sprintf("%s %s a CLI login on %s", actor, verb, host), auth.CLISource(host))
+		// audit_kind has no `deny`; neither code may appear in this row.
+		audit := identityAudit(p, models.AuditKindLogin, verb,
+			fmt.Sprintf("%s %s a CLI login on %s", memberRef(p), verb, host),
+			audit.Device(decided.ID, host))
+		audit.Source = auth.CLISource(host)
+		return writeAudit(ctx, tx, audit)
 	})
 	if err != nil {
 		return "", err
 	}
-	return host, nil
+	return decided.RequestingHost, nil
 }
 
 // DeviceTokenInput is one poll of POST /v1/device/token.
@@ -273,8 +246,7 @@ type DeviceTokenInput struct {
 	ClientID   string
 	DeviceCode string
 	TokenTTL   time.Duration
-	// Interval must match what /v1/device/authorize advertised: it's the
-	// threshold slow_down is decided against.
+	// Interval must match what /v1/device/authorize advertised.
 	Interval time.Duration
 }
 
@@ -285,9 +257,7 @@ type DeviceTokenResult struct {
 	Host        string
 }
 
-// deviceExpireSQL moves a lapsed code to `expired`, not deleting it (no
-// DELETE grant here). It touches only the polled row, not a sweep — inert
-// since every WHERE clause also tests expires_at.
+// deviceExpireSQL marks the polled row expired; this role has no DELETE grant.
 const deviceExpireSQL = `
 update device_authorization
    set state = 'expired', updated_at = now()
@@ -295,10 +265,8 @@ update device_authorization
    and expires_at <= now()
    and state in ('pending', 'approved')`
 
-// deviceReadSQL reads the state plus the two facts the poll-rate rule
-// needs, both derived in SQL so the comparison uses the database's clock —
-// the one clock shared across api replicas. `?` not `$1`: bun formats
-// placeholders inline, so a `$N` would reach Postgres unbound.
+// deviceReadSQL derives the poll-rate facts in SQL so they use the database
+// clock shared across replicas. `?` not `$1`: bun formats placeholders inline.
 const deviceReadSQL = `
 select
   id,
@@ -310,19 +278,16 @@ select
 from device_authorization
 where device_code_hash = ?`
 
-// devicePollSQL implements slow_down: updated_at is reused as the
-// last-poll marker (deviceReadSQL compares it) instead of process memory,
-// which would break the moment the api runs as two replicas.
+// devicePollSQL reuses updated_at as the last-poll marker rather than process
+// memory, which would break with more than one api replica.
 const devicePollSQL = `
 update device_authorization
    set updated_at = now()
  where id = ? and state = 'pending'`
 
-// deviceConsumeSQL is the `approved` -> `consumed` transition. The expiry
-// check lives in `returning`, not `where`: a WHERE guard evaluated before
-// a lock wait is not re-checked once the wait ends unless the blocker
-// modified the row, so a row that lapses mid-wait would pass it there.
-// clock_timestamp(), not now(), which would report a time before the wait.
+// deviceConsumeSQL checks expiry in `returning`, not `where`, because a WHERE
+// guard isn't re-evaluated after a lock wait unless the blocker modified the
+// row. clock_timestamp(), since now() would predate the wait.
 const deviceConsumeSQL = `
 update device_authorization
    set state = 'consumed', updated_at = now()
@@ -330,11 +295,9 @@ update device_authorization
 returning expires_at > clock_timestamp()`
 
 // ConsumeDevice exchanges an approved device code for exactly one access
-// token. The transition and the session insert are one transaction: two
-// concurrent polls both issue the UPDATE, the second blocks then matches
-// nothing, which a read-then-write would not guarantee. Everything before
-// that transition runs outside it, since a poll must commit its poll
-// stamp even when it then returns an error.
+// token; of two concurrent polls the second's UPDATE matches nothing. The
+// steps before that transaction run outside it so the poll stamp commits
+// even when the poll returns an error.
 func ConsumeDevice(ctx context.Context, db bun.IDB, in DeviceTokenInput) (DeviceTokenResult, error) {
 	if in.ClientID == "" || in.DeviceCode == "" {
 		return DeviceTokenResult{}, ErrDeviceCodeUnknown
@@ -386,7 +349,7 @@ func ConsumeDevice(ctx context.Context, db bun.IDB, in DeviceTokenInput) (Device
 		return DeviceTokenResult{}, ErrDeviceCodeUsed
 	case models.DeviceAuthStateApproved:
 	default:
-		// An unranked state: fail closed with a terminal error.
+		// Fail closed on an unknown state.
 		return DeviceTokenResult{}, ErrDeviceCodeUnknown
 	}
 
@@ -410,21 +373,17 @@ func ConsumeDevice(ctx context.Context, db bun.IDB, in DeviceTokenInput) (Device
 		scanErr := tx.QueryRowContext(ctx, deviceConsumeSQL, id).Scan(&stillLive)
 		switch {
 		case errors.Is(scanErr, sql.ErrNoRows):
-			// Not `approved` when the statement reached it: a race lost, or
-			// already consumed. Single use means the loser gets no token.
+			// Lost a race or already consumed: single use.
 			return ErrDeviceCodeUsed
 		case scanErr != nil:
 			return fmt.Errorf("consume device authorisation: %w", scanErr)
 		case !stillLive:
-			// Lapsed before the transition landed; the rollback means
-			// nothing was consumed and no session opened.
+			// Lapsed mid-wait; the rollback undoes the consume.
 			return ErrDeviceCodeExpired
 		}
 
-		// This grants the approving human's permissions, re-derived per
-		// request through auth.Resolver — approving a device code delegates
-		// your own access to the bound host, hence it's a `session` row
-		// (the one path bearer tokens resolve through) and not a new format.
+		// A plain session for the approver: approving delegates your own
+		// access, re-derived per request like any bearer token.
 		session := &models.Session{
 			ID:         models.NewID(),
 			TokenHash:  auth.HashToken(token),
@@ -435,8 +394,7 @@ func ConsumeDevice(ctx context.Context, db bun.IDB, in DeviceTokenInput) (Device
 			return fmt.Errorf("open device session: %w", execErr)
 		}
 		return nil
-		// No audit row: the decision was already audited by ApproveDevice,
-		// and a second `login` row here would look like two sign-ins.
+		// No audit row: ApproveDevice already audited the decision.
 	})
 	if err != nil {
 		return DeviceTokenResult{}, err

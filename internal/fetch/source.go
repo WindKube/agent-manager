@@ -2,13 +2,17 @@ package fetch
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
+	"net/url"
 	"sort"
 	"strings"
 
 	"agent-manager/internal/bundle"
+	"agent-manager/internal/repourl"
 )
 
 // SourceKind names the three shapes a registration accepts.
@@ -29,10 +33,17 @@ type SourceRef struct {
 	Ref          string
 	Subdirectory string
 
+	// Commit pins a git fetch to a SHA already resolved from Ref; empty
+	// means the source resolves Ref itself.
+	Commit string
+
 	// Archive and ArchiveName are set for the upload kind only. The reader is
 	// not size-bounded here: the extraction caps are internal/bundle's.
 	Archive     io.Reader
 	ArchiveName string
+
+	// SigstoreBundle is a bundle uploaded beside the archive (upload only).
+	SigstoreBundle []byte
 
 	// Limits overrides the extraction caps; zero takes the defaults.
 	Limits bundle.Limits
@@ -49,6 +60,101 @@ type Tree struct {
 
 	// Origin is human-readable provenance for the audit row.
 	Origin string
+
+	// SourceURL is where the bytes came from: the canonical repository for
+	// git, the URL that answered after redirects for an archive, empty for
+	// an upload.
+	SourceURL string
+
+	// Commit is the SHA a git tree was downloaded at.
+	Commit string
+
+	// ArchiveDigest is the sha256 of the archive exactly as it was received,
+	// which is what a publisher signs; the stored bundle is a repack.
+	ArchiveDigest [32]byte
+
+	// Signatures are the Sigstore bundles found for the archive, best
+	// candidate first. None means the source published no signature.
+	Signatures []SignatureCandidate
+}
+
+// SignatureCandidate is one Sigstore bundle and where it was found.
+type SignatureCandidate struct {
+	Origin string
+	Bundle []byte
+}
+
+// SigstoreSuffix is what a Sigstore bundle published beside an artefact is
+// named with.
+const SigstoreSuffix = ".sigstore.json"
+
+// maxSignatureBytes bounds a bundle read off a remote; real ones are a few KiB.
+const maxSignatureBytes = 1 << 20
+
+// digesting hashes everything read through it.
+type digesting struct {
+	r io.Reader
+	h hash.Hash
+}
+
+func newDigesting(r io.Reader) *digesting { return &digesting{r: r, h: sha256.New()} }
+
+func (d *digesting) Read(p []byte) (int, error) {
+	n, err := d.r.Read(p)
+	d.h.Write(p[:n])
+	return n, err
+}
+
+// sum drains what extraction left unread (a trailer, padding), bounded, so
+// the digest covers the whole archive.
+func (d *digesting) sum() [32]byte {
+	_, _ = io.Copy(io.Discard, io.LimitReader(d, bundle.DefaultMaxCompressedBytes))
+	var out [32]byte
+	copy(out[:], d.h.Sum(nil))
+	return out
+}
+
+// Provenance is a registration's source as the package and version rows
+// record it.
+type Provenance struct {
+	Kind         SourceKind
+	URL          string
+	Ref          string
+	Subdirectory string
+}
+
+// ProvenanceOf derives the recorded source without touching the network: a
+// git URL becomes its canonical repository and an absent ref DefaultRef; any
+// URL loses its userinfo.
+func ProvenanceOf(ref SourceRef) Provenance {
+	out := Provenance{Kind: ref.Kind, Subdirectory: strings.Trim(ref.Subdirectory, "/")}
+	switch ref.Kind {
+	case SourceGit:
+		if repo, err := repourl.ParseWith(ref.URL, ref.Ref, ref.Subdirectory); err == nil {
+			out.URL, out.Ref, out.Subdirectory = repoURL(repo, ref.URL), repo.Ref, repo.Subdir
+		} else {
+			out.URL, out.Ref = withoutSecrets(ref.URL), ref.Ref
+		}
+		if out.Ref == "" {
+			out.Ref = DefaultRef
+		}
+	case SourceArchiveURL:
+		out.URL = withoutSecrets(ref.URL)
+	}
+	return out
+}
+
+func withoutSecrets(raw string) string {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		raw, _, _ = strings.Cut(raw, "?")
+		raw, _, _ = strings.Cut(raw, "#")
+		return credentialsInURL.ReplaceAllString(raw, "//")
+	}
+	parsed.User = nil
+	// A query is where presigned URLs carry their signature; it must not be stored or shown.
+	parsed.RawQuery, parsed.ForceQuery, parsed.Fragment, parsed.RawFragment = "", false, "", ""
+	return parsed.String()
 }
 
 // Source turns a SourceRef into a Tree.

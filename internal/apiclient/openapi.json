@@ -27,15 +27,21 @@
             "type": "string"
           },
           "actorKind": {
-            "description": "system is a worker with no person behind it, which a screen must not attribute to anybody.",
+            "description": "system is a worker with no person behind it, which a screen must not attribute to anybody; service-token is a scoped non-human credential, named by its token name.",
             "enum": [
               "identity",
-              "system"
+              "system",
+              "service-token"
             ],
             "examples": [
               "identity"
             ],
             "type": "string"
+          },
+          "data": {
+            "additionalProperties": {},
+            "description": "Small, stable keys describing the event: always action, plus subject identifiers such as name, semver, package, ruleId, profile and revision. Never a secret or a free-form note.",
+            "type": "object"
           },
           "id": {
             "format": "uuid",
@@ -53,10 +59,19 @@
               "policy",
               "role",
               "category",
-              "secret"
+              "secret",
+              "token",
+              "webhook"
             ],
             "examples": [
               "approve"
+            ],
+            "type": "string"
+          },
+          "namespace": {
+            "description": "The package namespace, on a package, version or finding subject.",
+            "examples": [
+              "community"
             ],
             "type": "string"
           },
@@ -71,8 +86,37 @@
             ],
             "type": "string"
           },
+          "subjectId": {
+            "description": "The subject's id: namespace/name for a package, namespace/name@semver for a version, the group name for a mapping, 1 for the policy, and a uuid for everything else.",
+            "examples": [
+              "community/slack-digest@0.5.1"
+            ],
+            "type": "string"
+          },
+          "subjectKind": {
+            "description": "What the row is about.",
+            "enum": [
+              "package",
+              "version",
+              "finding",
+              "profile",
+              "revision",
+              "category",
+              "mapping",
+              "policy",
+              "identity",
+              "device",
+              "service-token",
+              "machine",
+              "webhook"
+            ],
+            "examples": [
+              "version"
+            ],
+            "type": "string"
+          },
           "text": {
-            "description": "The human-readable record of what happened. It quotes package and profile names, so it is rendered escaped (FR-055).",
+            "description": "The human-readable record of what happened. It quotes package and profile names, so it is rendered escaped.",
             "examples": [
               "override granted for community/aws-cost-explainer@2.0.0"
             ],
@@ -114,7 +158,7 @@
             "type": "integer"
           },
           "total": {
-            "description": "Rows in the log. The export returns all of them (FR-051).",
+            "description": "Rows in the log. The export returns all of them.",
             "examples": [
               512
             ],
@@ -150,7 +194,7 @@
             "type": "integer"
           },
           "profiles": {
-            "description": "Profiles this identity may read, and no others (FR-044).",
+            "description": "Profiles this identity may read, and no others.",
             "examples": [
               4
             ],
@@ -240,7 +284,7 @@
         "additionalProperties": false,
         "properties": {
           "category": {
-            "description": "The admin-curated category (FR-049). Empty when none was chosen.",
+            "description": "The admin-curated category. Empty when none was chosen.",
             "examples": [
               "Infrastructure"
             ],
@@ -290,7 +334,7 @@
             "type": "string"
           },
           "uses": {
-            "description": "Profiles containing this package, derived at query time and never self-reported (R8).",
+            "description": "Profiles containing this package, derived at query time and never self-reported.",
             "examples": [
               42
             ],
@@ -318,7 +362,7 @@
             "type": "string"
           },
           "visibility": {
-            "description": "Who may see this package (FR-016).",
+            "description": "Who may see this package.",
             "enum": [
               "organisation",
               "team",
@@ -384,7 +428,7 @@
             "type": "array"
           },
           "total": {
-            "description": "Packages matching every filter, across all pages. This is FR-015's live count.",
+            "description": "Packages matching every filter, across all pages.",
             "examples": [
               10
             ],
@@ -443,6 +487,120 @@
         "required": [
           "groupName",
           "role"
+        ],
+        "type": "object"
+      },
+      "CreateServiceTokenRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expiresAt": {
+            "description": "Required, and at most one year from now. There is no token that never expires.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "description": "What the token is for, shown in the list and the audit log.",
+            "examples": [
+              "release pipeline"
+            ],
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "scopes": {
+            "description": "sync:profile/\u003cslug\u003e to resolve, download and report syncs of one profile the creator can read, or read:catalog for read-only catalog, package and scan reads. There are no write scopes.",
+            "examples": [
+              [
+                "sync:profile/example/platform-engineer"
+              ]
+            ],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "scopes",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
+      "CreateWebhookRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "eventTypes": {
+            "description": "The event types to deliver, or the single entry * for every one.",
+            "examples": [
+              [
+                "scan.completed",
+                "waiver.expiring"
+              ]
+            ],
+            "items": {
+              "enum": [
+                "*",
+                "package.version.registered",
+                "package.version.stored",
+                "package.version.fetch-failed",
+                "package.version.deleted",
+                "package.deleted",
+                "scan.completed",
+                "finding.accepted",
+                "finding.rejected",
+                "waiver.expiring",
+                "waiver.expired",
+                "profile.revision.published",
+                "policy.changed",
+                "service-token.created",
+                "service-token.revoked",
+                "machine.forgotten"
+              ],
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "type": "array"
+          },
+          "name": {
+            "description": "What the webhook is for.",
+            "examples": [
+              "security channel"
+            ],
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "namespaces": {
+            "description": "Only events about packages in these namespaces. Absent or empty delivers every namespace, and events with no namespace.",
+            "examples": [
+              [
+                "platform"
+              ]
+            ],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "url": {
+            "description": "https only, with no credentials in it and not a private or loopback address.",
+            "examples": [
+              "https://hooks.example.com/agent-manager"
+            ],
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "url",
+          "eventTypes"
         ],
         "type": "object"
       },
@@ -508,7 +666,7 @@
             "type": "string"
           },
           "host": {
-            "description": "Hostname of the requesting machine. Bound to the authorisation and displayed to the approving human (FR-041), so approval is an informed act.",
+            "description": "Hostname of the requesting machine. Bound to the authorisation and displayed to the approving human, so approval is an informed act.",
             "examples": [
               "dev-laptop-01"
             ],
@@ -739,7 +897,7 @@
             "type": "integer"
           },
           "note": {
-            "description": "Why this risk is accepted. Required: an override with no stated reason is an unexplained exception, and FR-028 asks for a recorded note.",
+            "description": "Why this risk is accepted. Required: an override with no stated reason is an unexplained exception.",
             "examples": [
               "Network call is to our own registry"
             ],
@@ -860,7 +1018,7 @@
         "additionalProperties": false,
         "properties": {
           "checks": {
-            "description": "Every check the scan ran and its result, including the ones that passed (FR-025).",
+            "description": "Every check the scan ran and its result, including the ones that passed.",
             "items": {
               "$ref": "#/components/schemas/FindingCheck"
             },
@@ -878,7 +1036,7 @@
             "type": "string"
           },
           "evidence": {
-            "description": "Every location this finding points at, cause first. Rendered escaped, always (FR-055).",
+            "description": "Every location this finding points at, cause first. Rendered escaped, always.",
             "items": {
               "$ref": "#/components/schemas/FindingEvidence"
             },
@@ -1079,7 +1237,7 @@
             "type": "string"
           },
           "timedOut": {
-            "description": "The scan exceeded its budget. Its verdict is not a clean bill of health (FR-031).",
+            "description": "The scan exceeded its budget. Its verdict is not a clean bill of health.",
             "type": "boolean"
           },
           "verdict": {
@@ -1126,7 +1284,7 @@
             "type": "integer"
           },
           "evidencePath": {
-            "description": "The PRIMARY location's path. Rendered escaped, always: it is bundle content (FR-055).",
+            "description": "The PRIMARY location's path. Rendered escaped, always: it is bundle content.",
             "examples": [
               "scripts/digest.sh"
             ],
@@ -1150,7 +1308,7 @@
             "type": "string"
           },
           "ruleId": {
-            "description": "Stable rule identifier (FR-024).",
+            "description": "Stable rule identifier.",
             "examples": [
               "SH-NET-002"
             ],
@@ -1435,18 +1593,19 @@
             "type": "string"
           },
           "skipped": {
-            "description": "FR-036: an excluded package is reported with its reason, never silently omitted.",
+            "description": "An excluded package is reported with its reason, never silently omitted.",
             "items": {
               "$ref": "#/components/schemas/LockfileSkip"
             },
             "type": "array"
           },
           "targets": {
-            "description": "Which agent directories the CLI should write. Advisory to the client; the server stores nothing per target (FR-039).",
+            "description": "Which agent directories the CLI should write. Advisory to the client; the server stores nothing per target.",
             "items": {
               "enum": [
                 "claude-code",
-                "codex"
+                "codex",
+                "opencode"
               ],
               "type": "string"
             },
@@ -1612,7 +1771,7 @@
             "type": "string"
           },
           "verified": {
-            "description": "False until Sigstore verification ships (FR-048a). Never render a false value as a pass.",
+            "description": "True only when the Sigstore bundle verified against the archive the hub downloaded AND its signer matches the package's expected signer. False covers a bundle that did not verify and one signed by anyone else, or with no expected signer configured; never render it as a pass.",
             "type": "boolean"
           }
         },
@@ -1657,6 +1816,292 @@
         "required": [
           "id",
           "reason"
+        ],
+        "type": "object"
+      },
+      "Machine": {
+        "additionalProperties": false,
+        "properties": {
+          "amctlVersion": {
+            "examples": [
+              "0.9.0"
+            ],
+            "type": "string"
+          },
+          "arch": {
+            "examples": [
+              "arm64"
+            ],
+            "type": "string"
+          },
+          "firstSeenAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "hostname": {
+            "examples": [
+              "dev-laptop-01"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "description": "The random id the CLI generated for itself.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "lastProfile": {
+            "description": "Slug of the profile the last report synced.",
+            "examples": [
+              "platform-baseline"
+            ],
+            "type": "string"
+          },
+          "lastRevision": {
+            "examples": [
+              7
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "lastSeenAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "os": {
+            "examples": [
+              "darwin"
+            ],
+            "type": "string"
+          },
+          "reportedBy": {
+            "description": "The person behind the last report: the reporter, or the service token's creator.",
+            "examples": [
+              "kw@example.com"
+            ],
+            "type": "string"
+          },
+          "serviceToken": {
+            "description": "Name of the service token that filed the last report, if one did.",
+            "examples": [
+              "ci-runner"
+            ],
+            "type": "string"
+          },
+          "stale": {
+            "description": "No report for longer than staleAfterDays. Computed on read.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "hostname",
+          "firstSeenAt",
+          "lastSeenAt",
+          "stale",
+          "lastProfile",
+          "lastRevision",
+          "reportedBy"
+        ],
+        "type": "object"
+      },
+      "MachineDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "installs": {
+            "description": "Installs from profiles and of packages this identity may read, as of each profile's last report.",
+            "items": {
+              "$ref": "#/components/schemas/MachineInstall"
+            },
+            "type": "array"
+          },
+          "machine": {
+            "$ref": "#/components/schemas/Machine"
+          },
+          "skipped": {
+            "description": "What the latest report of each readable profile did not install, without packages this identity may not read.",
+            "items": {
+              "$ref": "#/components/schemas/MachineSkip"
+            },
+            "type": "array"
+          },
+          "staleAfterDays": {
+            "examples": [
+              14
+            ],
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "machine",
+          "staleAfterDays",
+          "installs",
+          "skipped"
+        ],
+        "type": "object"
+      },
+      "MachineInstall": {
+        "additionalProperties": false,
+        "properties": {
+          "package": {
+            "description": "namespace/name",
+            "examples": [
+              "acme/code-review"
+            ],
+            "type": "string"
+          },
+          "profile": {
+            "examples": [
+              "platform-baseline"
+            ],
+            "type": "string"
+          },
+          "target": {
+            "enum": [
+              "claude-code",
+              "codex",
+              "opencode"
+            ],
+            "examples": [
+              "claude-code"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "examples": [
+              "2.4.1"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "package",
+          "version",
+          "target",
+          "profile"
+        ],
+        "type": "object"
+      },
+      "MachineList": {
+        "additionalProperties": false,
+        "properties": {
+          "machines": {
+            "description": "Most recently seen first.",
+            "items": {
+              "$ref": "#/components/schemas/Machine"
+            },
+            "type": "array"
+          },
+          "page": {
+            "examples": [
+              1
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "pageSize": {
+            "examples": [
+              50
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "staleAfterDays": {
+            "examples": [
+              14
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Machines matching every filter, across all pages.",
+            "examples": [
+              42
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "versions": {
+            "description": "With a package filter, how many of the matching machines hold each of its versions.",
+            "items": {
+              "$ref": "#/components/schemas/MachineVersionCount"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "machines",
+          "total",
+          "page",
+          "pageSize",
+          "staleAfterDays"
+        ],
+        "type": "object"
+      },
+      "MachineSkip": {
+        "additionalProperties": false,
+        "properties": {
+          "component": {
+            "examples": [
+              "mcp-server lint"
+            ],
+            "type": "string"
+          },
+          "entry": {
+            "examples": [
+              "acme/code-review"
+            ],
+            "type": "string"
+          },
+          "profile": {
+            "examples": [
+              "platform-baseline"
+            ],
+            "type": "string"
+          },
+          "reason": {
+            "examples": [
+              "no claude CLI on PATH"
+            ],
+            "type": "string"
+          },
+          "target": {
+            "description": "Absent when the whole entry was skipped.",
+            "enum": [
+              "claude-code",
+              "codex",
+              "opencode"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile",
+          "entry"
+        ],
+        "type": "object"
+      },
+      "MachineVersionCount": {
+        "additionalProperties": false,
+        "properties": {
+          "machines": {
+            "description": "Machines in this listing's scope with this version installed.",
+            "examples": [
+              12
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "version": {
+            "examples": [
+              "2.4.1"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "machines"
         ],
         "type": "object"
       },
@@ -1736,8 +2181,16 @@
             "description": "A version from a non-verified publisher is flagged for review rather than becoming immediately distributable.",
             "type": "boolean"
           },
+          "packagesWithoutExpectedSigner": {
+            "description": "Packages with a published version and no expected signer: every one of them is excluded from resolution while requireSignedBundles is set.",
+            "examples": [
+              3
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
           "requireSignedBundles": {
-            "description": "A version with no recorded signature reference is excluded from every resolution while this is set.",
+            "description": "While set, a version resolves only if its Sigstore signature verified against the downloaded archive and its signer matches the package's expected signer. A package with no expected signer configured resolves nothing; packagesWithoutExpectedSigner counts them.",
             "type": "boolean"
           },
           "rescanOnNewVersion": {
@@ -1757,6 +2210,7 @@
         "required": [
           "scanGate",
           "requireSignedBundles",
+          "packagesWithoutExpectedSigner",
           "communityNeedsReview",
           "rescanOnNewVersion",
           "allowPersonalProfiles"
@@ -1849,7 +2303,7 @@
             "type": "boolean"
           },
           "level": {
-            "description": "How much trust it demands. A shell capability is never below review (FR-018).",
+            "description": "How much trust it demands. A shell capability is never below review.",
             "enum": [
               "scoped",
               "allowlisted",
@@ -1883,14 +2337,31 @@
       "PackageComponent": {
         "additionalProperties": false,
         "properties": {
+          "event": {
+            "description": "A hook's event.",
+            "examples": [
+              "PreToolUse"
+            ],
+            "type": "string"
+          },
           "kind": {
             "enum": [
               "skill",
               "mcp",
-              "ext"
+              "ext",
+              "agent",
+              "command",
+              "hook"
             ],
             "examples": [
               "skill"
+            ],
+            "type": "string"
+          },
+          "matcher": {
+            "description": "A hook's tool matcher; absent matches every tool.",
+            "examples": [
+              "Bash"
             ],
             "type": "string"
           },
@@ -1907,8 +2378,28 @@
             "type": "string"
           },
           "path": {
+            "description": "Unique within the version. A component inside a JSON document is file#/json/pointer.",
             "examples": [
               "skills/terraform-module-review"
+            ],
+            "type": "string"
+          },
+          "target": {
+            "description": "A hook's command, a stdio server's command line, or a remote server's URL host. Publisher-controlled text.",
+            "examples": [
+              "npx -y @acme/mcp@1.2.3"
+            ],
+            "type": "string"
+          },
+          "transport": {
+            "description": "An MCP server's transport.",
+            "enum": [
+              "stdio",
+              "http",
+              "sse"
+            ],
+            "examples": [
+              "stdio"
             ],
             "type": "string"
           }
@@ -1991,21 +2482,21 @@
             "$ref": "#/components/schemas/PackageCapabilities"
           },
           "category": {
-            "description": "The admin-curated category (FR-049). Empty when none was chosen.",
+            "description": "The admin-curated category. Empty when none was chosen.",
             "examples": [
               "Infrastructure"
             ],
             "type": "string"
           },
           "components": {
-            "description": "Derived from the FILE TREE. No manifest field enumerates components (FR-017, R1).",
+            "description": "Derived from the FILE TREE. No manifest field enumerates components.",
             "items": {
               "$ref": "#/components/schemas/PackageComponent"
             },
             "type": "array"
           },
           "dependents": {
-            "description": "Profiles using this package that the CALLER MAY READ, and no others (FR-044).",
+            "description": "Profiles using this package that the CALLER MAY READ, and no others.",
             "items": {
               "$ref": "#/components/schemas/PackageDependent"
             },
@@ -2067,12 +2558,21 @@
           "publisher": {
             "$ref": "#/components/schemas/PackagePublisher"
           },
+          "signer": {
+            "$ref": "#/components/schemas/PackageSigner"
+          },
+          "source": {
+            "$ref": "#/components/schemas/PackageSource"
+          },
           "tags": {
             "description": "The latest version's manifest keywords. Tags belong to the version, not the package.",
             "items": {
               "type": "string"
             },
             "type": "array"
+          },
+          "tracking": {
+            "$ref": "#/components/schemas/PackageTracking"
           },
           "verdict": {
             "enum": [
@@ -2121,6 +2621,7 @@
           "visibility",
           "canChangeVisibility",
           "origin",
+          "signer",
           "version",
           "verdict",
           "tags",
@@ -2416,7 +2917,7 @@
             "type": "string"
           },
           "visible": {
-            "description": "Always false here. Commit-last (FR-008): the fetcher flips it.",
+            "description": "Always false here. Commit-last: the fetcher flips it.",
             "type": "boolean"
           }
         },
@@ -2437,7 +2938,7 @@
         "additionalProperties": false,
         "properties": {
           "checks": {
-            "description": "Every check the scan ran, passes included (FR-025).",
+            "description": "Every check the scan ran, passes included.",
             "items": {
               "$ref": "#/components/schemas/FindingCheck"
             },
@@ -2554,6 +3055,147 @@
         ],
         "type": "object"
       },
+      "PackageSigner": {
+        "additionalProperties": false,
+        "properties": {
+          "canChange": {
+            "description": "The caller is the owner or a catalog admin.",
+            "type": "boolean"
+          },
+          "identity": {
+            "description": "The RE2 pattern the signer's identity must match in full.",
+            "examples": [
+              "https://github\\.com/acme/skills/\\.github/workflows/release\\.yaml@refs/tags/v.*"
+            ],
+            "type": "string"
+          },
+          "issuer": {
+            "description": "The exact OIDC issuer expected; absent when no signer is configured.",
+            "examples": [
+              "https://token.actions.githubusercontent.com"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "canChange"
+        ],
+        "type": "object"
+      },
+      "PackageSignerUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "identity": {
+            "description": "An RE2 regular expression the certificate identity (its URI or email SAN) must match in full; it is anchored at both ends.",
+            "examples": [
+              "https://github\\.com/acme/skills/\\.github/workflows/release\\.yaml@refs/tags/v.*"
+            ],
+            "maxLength": 512,
+            "type": "string"
+          },
+          "issuer": {
+            "description": "The exact OIDC issuer the signing certificate must carry.",
+            "examples": [
+              "https://token.actions.githubusercontent.com"
+            ],
+            "maxLength": 512,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "PackageSource": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "upload",
+              "git",
+              "archive-url"
+            ],
+            "examples": [
+              "git"
+            ],
+            "type": "string"
+          },
+          "ref": {
+            "description": "The git ref as requested: a tag, a branch or HEAD.",
+            "examples": [
+              "v1.2.0"
+            ],
+            "type": "string"
+          },
+          "subdirectory": {
+            "examples": [
+              "pdf"
+            ],
+            "type": "string"
+          },
+          "url": {
+            "description": "The canonical repository for git, the requested URL for an archive; absent for an upload.",
+            "examples": [
+              "https://github.com/acme/skills"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
+      },
+      "PackageTracking": {
+        "additionalProperties": false,
+        "properties": {
+          "canChange": {
+            "type": "boolean"
+          },
+          "lastCheckError": {
+            "description": "Why the last check could not list the upstream tags; absent when it could.",
+            "type": "string"
+          },
+          "lastCheckedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "tagPattern": {
+            "examples": [
+              "v*"
+            ],
+            "type": "string"
+          },
+          "trackUpstream": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "trackUpstream",
+          "tagPattern",
+          "canChange"
+        ],
+        "type": "object"
+      },
+      "PackageTrackingUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "tagPattern": {
+            "description": "A glob a tag must match. Absent keeps the current pattern. A prerelease tag is registered only when the pattern itself contains a hyphen.",
+            "examples": [
+              "v*"
+            ],
+            "maxLength": 100,
+            "type": "string"
+          },
+          "trackUpstream": {
+            "description": "Register new upstream tags matching tagPattern as they appear.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "trackUpstream"
+        ],
+        "type": "object"
+      },
       "PackageVersion": {
         "additionalProperties": false,
         "properties": {
@@ -2587,9 +3229,33 @@
             "format": "int64",
             "type": "integer"
           },
+          "signature": {
+            "$ref": "#/components/schemas/VersionSignature"
+          },
           "sizeBytes": {
             "format": "int64",
             "type": "integer"
+          },
+          "sourceCommit": {
+            "description": "The git commit the bytes were downloaded at, resolved from sourceRef before the download.",
+            "examples": [
+              "3f9c2e1d8b7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e"
+            ],
+            "pattern": "^[0-9a-f]{40}$",
+            "type": "string"
+          },
+          "sourceRef": {
+            "description": "The git ref as requested for this version.",
+            "examples": [
+              "v1.2.0"
+            ],
+            "type": "string"
+          },
+          "sourceUrl": {
+            "examples": [
+              "https://github.com/acme/skills"
+            ],
+            "type": "string"
           },
           "verdict": {
             "enum": [
@@ -2616,7 +3282,8 @@
           "verdict",
           "createdAt",
           "objectKey",
-          "pinnedBy"
+          "pinnedBy",
+          "signature"
         ],
         "type": "object"
       },
@@ -2702,14 +3369,31 @@
       "PreviewComponent": {
         "additionalProperties": false,
         "properties": {
+          "event": {
+            "description": "A hook's event.",
+            "examples": [
+              "PreToolUse"
+            ],
+            "type": "string"
+          },
           "kind": {
             "enum": [
               "skill",
               "mcp",
-              "ext"
+              "ext",
+              "agent",
+              "command",
+              "hook"
             ],
             "examples": [
               "skill"
+            ],
+            "type": "string"
+          },
+          "matcher": {
+            "description": "A hook's tool matcher; absent matches every tool.",
+            "examples": [
+              "Bash"
             ],
             "type": "string"
           },
@@ -2728,6 +3412,25 @@
           "path": {
             "examples": [
               "skills/terraform-review/SKILL.md"
+            ],
+            "type": "string"
+          },
+          "target": {
+            "description": "A hook's command, a stdio server's command line, or a remote server's URL host. Publisher-controlled text.",
+            "examples": [
+              "npx -y @acme/mcp@1.2.3"
+            ],
+            "type": "string"
+          },
+          "transport": {
+            "description": "An MCP server's transport.",
+            "enum": [
+              "stdio",
+              "http",
+              "sse"
+            ],
+            "examples": [
+              "stdio"
             ],
             "type": "string"
           }
@@ -2901,7 +3604,7 @@
             "type": "string"
           },
           "forkOf": {
-            "description": "Slug of a profile to fork. Its entries are COPIED at this instant; the fork never sees an upstream revision published afterwards (FR-038). The upstream must be readable by this identity.",
+            "description": "Slug of a profile to fork. Its entries are COPIED at this instant; the fork never sees an upstream revision published afterwards. The upstream must be readable by this identity.",
             "examples": [
               "example/sre-oncall"
             ],
@@ -2933,7 +3636,7 @@
             "type": "string"
           },
           "visibility": {
-            "description": "Defaults to private. A new profile is not readable by the whole organisation until somebody says so (FR-037, FR-044).",
+            "description": "Defaults to private. A new profile is not readable by the whole organisation until somebody says so.",
             "enum": [
               "organisation",
               "shared",
@@ -2955,7 +3658,7 @@
         "additionalProperties": false,
         "properties": {
           "defaultPolicy": {
-            "description": "The profile's own default, which a per-entry mode overrides (FR-032).",
+            "description": "The profile's own default, which a per-entry mode overrides.",
             "enum": [
               "floating-latest",
               "pinned",
@@ -2970,14 +3673,14 @@
             "type": "string"
           },
           "entries": {
-            "description": "Every package this profile holds, in the profile's own order — INCLUDING the ones the gate excludes, which are reported and never silently omitted (FR-036).",
+            "description": "Every package this profile holds, in the profile's own order — INCLUDING the ones the gate excludes, which are reported and never silently omitted.",
             "items": {
               "$ref": "#/components/schemas/ProfileEntry"
             },
             "type": "array"
           },
           "forkedFrom": {
-            "description": "Slug of the profile this was forked from. Lineage only: a fork never inherits the upstream's future revisions (FR-038).",
+            "description": "Slug of the profile this was forked from. Lineage only: a fork never inherits the upstream's future revisions.",
             "examples": [
               "example/sre-oncall"
             ],
@@ -3003,7 +3706,7 @@
             "type": "integer"
           },
           "members": {
-            "description": "Individual members and identity-provider groups, with the role each holds (FR-037).",
+            "description": "Individual members and identity-provider groups, with the role each holds.",
             "items": {
               "$ref": "#/components/schemas/ProfileMember"
             },
@@ -3024,10 +3727,10 @@
           },
           "permissions": {
             "$ref": "#/components/schemas/ProfilePermissions",
-            "description": "What this identity may do here. FR-126: a screen disables what it may not do rather than offering it and being refused."
+            "description": "What this identity may do here. A screen disables what it may not do rather than offering it and being refused."
           },
           "revisions": {
-            "description": "Published history, most recent first. Previous revisions stay readable for ever (FR-034).",
+            "description": "Published history, most recent first. Previous revisions stay readable for ever.",
             "items": {
               "$ref": "#/components/schemas/ProfileRevision"
             },
@@ -3206,14 +3909,14 @@
           },
           "skip": {
             "$ref": "#/components/schemas/LockfileSkip",
-            "description": "Present exactly when outcome is skipped. The same shape the lockfile publishes, so the screen and the CLI report an exclusion identically (FR-036)."
+            "description": "Present exactly when outcome is skipped. The same shape the lockfile publishes, so the screen and the CLI report an exclusion identically."
           },
           "unpublished": {
             "description": "This row would resolve differently from the head revision's lockfile. Nothing reaches a machine until a revision is published.",
             "type": "boolean"
           },
           "verdict": {
-            "description": "The RESOLVED version's verdict. The vocabulary is narrower than the catalog's on purpose: a rejected version never resolves, under any gate (FR-029).",
+            "description": "The RESOLVED version's verdict. The vocabulary is narrower than the catalog's on purpose: a rejected version never resolves, under any gate.",
             "enum": [
               "scanning",
               "clean",
@@ -3367,7 +4070,7 @@
             "type": "boolean"
           },
           "publish": {
-            "description": "May publish a revision. Owner or maintainer — a consumer may not (FR-037).",
+            "description": "May publish a revision. Owner or maintainer — a consumer may not.",
             "type": "boolean"
           },
           "share": {
@@ -3487,7 +4190,8 @@
           "target": {
             "enum": [
               "claude-code",
-              "codex"
+              "codex",
+              "opencode"
             ],
             "examples": [
               "claude-code"
@@ -3509,7 +4213,8 @@
             "items": {
               "enum": [
                 "claude-code",
-                "codex"
+                "codex",
+                "opencode"
               ],
               "type": "string"
             },
@@ -3827,6 +4532,113 @@
         ],
         "type": "object"
       },
+      "ServiceToken": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "description": "The email or subject of the person who created it.",
+            "examples": [
+              "kwiatrzyk@example.com"
+            ],
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "description": "Accurate to about a minute. Absent until first use.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "examples": [
+              "release pipeline"
+            ],
+            "type": "string"
+          },
+          "revokedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "scopes": {
+            "examples": [
+              [
+                "sync:profile/example/platform-engineer"
+              ]
+            ],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "expired",
+              "revoked"
+            ],
+            "examples": [
+              "active"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "scopes",
+          "createdBy",
+          "createdAt",
+          "expiresAt",
+          "status"
+        ],
+        "type": "object"
+      },
+      "ServiceTokenCreated": {
+        "additionalProperties": false,
+        "properties": {
+          "secret": {
+            "description": "The bearer secret, prefixed amst_. Returned once; the hub stores only its hash.",
+            "examples": [
+              "amst_3q2-7wEXAMPLEonlyEXAMPLEonlyEXAMPLEonly"
+            ],
+            "type": "string"
+          },
+          "token": {
+            "$ref": "#/components/schemas/ServiceToken"
+          }
+        },
+        "required": [
+          "token",
+          "secret"
+        ],
+        "type": "object"
+      },
+      "ServiceTokenList": {
+        "additionalProperties": false,
+        "properties": {
+          "tokens": {
+            "description": "Most recently created first.",
+            "items": {
+              "$ref": "#/components/schemas/ServiceToken"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "tokens"
+        ],
+        "type": "object"
+      },
       "Session": {
         "additionalProperties": false,
         "properties": {
@@ -3953,14 +4765,143 @@
         ],
         "type": "object"
       },
+      "SyncComponentSkip": {
+        "additionalProperties": false,
+        "properties": {
+          "component": {
+            "description": "The component's kind and name.",
+            "examples": [
+              "mcp-server lint"
+            ],
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "entry": {
+            "description": "namespace/name of the installed entry.",
+            "examples": [
+              "acme/code-review"
+            ],
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reason": {
+            "examples": [
+              "no claude CLI on PATH"
+            ],
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          },
+          "target": {
+            "enum": [
+              "claude-code",
+              "codex",
+              "opencode"
+            ],
+            "examples": [
+              "claude-code"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "entry",
+          "target",
+          "component",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "SyncInstall": {
+        "additionalProperties": false,
+        "properties": {
+          "changed": {
+            "description": "This sync wrote the entry. The component skips of an entry it did not write carry over from the report that did.",
+            "type": "boolean"
+          },
+          "id": {
+            "description": "namespace/name",
+            "examples": [
+              "acme/code-review"
+            ],
+            "maxLength": 256,
+            "minLength": 3,
+            "type": "string"
+          },
+          "target": {
+            "enum": [
+              "claude-code",
+              "codex",
+              "opencode"
+            ],
+            "examples": [
+              "claude-code"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "examples": [
+              "2.4.1"
+            ],
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "target"
+        ],
+        "type": "object"
+      },
       "SyncReport": {
         "additionalProperties": false,
         "properties": {
+          "amctlVersion": {
+            "examples": [
+              "0.9.0"
+            ],
+            "maxLength": 64,
+            "type": "string"
+          },
+          "arch": {
+            "examples": [
+              "arm64"
+            ],
+            "maxLength": 32,
+            "type": "string"
+          },
           "host": {
             "description": "Hostname the sync landed on, for the audit row.",
             "examples": [
               "dev-laptop-01"
             ],
+            "type": "string"
+          },
+          "installed": {
+            "description": "Every entry of this profile installed on the machine after this sync. Replaces what the machine reported for this profile before.",
+            "items": {
+              "$ref": "#/components/schemas/SyncInstall"
+            },
+            "maxItems": 5000,
+            "type": "array"
+          },
+          "machineId": {
+            "description": "A random id the client generated once and keeps. Without it the sync is recorded but no machine inventory is kept.",
+            "examples": [
+              "0193a8e2-6b1f-7c3a-9d4e-2f5b8c1a7e60"
+            ],
+            "format": "uuid",
+            "type": "string"
+          },
+          "os": {
+            "examples": [
+              "darwin"
+            ],
+            "maxLength": 32,
             "type": "string"
           },
           "profile": {
@@ -3985,12 +4926,21 @@
             },
             "type": "array"
           },
+          "skippedComponents": {
+            "description": "Components of entries this sync wrote that the client did not place.",
+            "items": {
+              "$ref": "#/components/schemas/SyncComponentSkip"
+            },
+            "maxItems": 5000,
+            "type": "array"
+          },
           "targets": {
             "description": "Agent directories the client actually wrote.",
             "items": {
               "enum": [
                 "claude-code",
-                "codex"
+                "codex",
+                "opencode"
               ],
               "type": "string"
             },
@@ -4055,6 +5005,58 @@
         ],
         "type": "object"
       },
+      "UpdateWebhookRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "description": "Re-enabling clears the reason a webhook was disabled.",
+            "type": "boolean"
+          },
+          "eventTypes": {
+            "items": {
+              "enum": [
+                "*",
+                "package.version.registered",
+                "package.version.stored",
+                "package.version.fetch-failed",
+                "package.version.deleted",
+                "package.deleted",
+                "scan.completed",
+                "finding.accepted",
+                "finding.rejected",
+                "waiver.expiring",
+                "waiver.expired",
+                "profile.revision.published",
+                "policy.changed",
+                "service-token.created",
+                "service-token.revoked",
+                "machine.forgotten"
+              ],
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "namespaces": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "url": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "VersionDeleted": {
         "additionalProperties": false,
         "properties": {
@@ -4066,6 +5068,58 @@
         },
         "required": [
           "pinnedByProfiles"
+        ],
+        "type": "object"
+      },
+      "VersionSignature": {
+        "additionalProperties": false,
+        "properties": {
+          "identity": {
+            "description": "The signing certificate's identity, when the bundle verified. Publisher-controlled text.",
+            "examples": [
+              "https://github.com/acme/skills/.github/workflows/release.yaml@refs/tags/v1.2.0"
+            ],
+            "type": "string"
+          },
+          "issuer": {
+            "description": "The signing certificate's OIDC issuer, when the bundle verified.",
+            "examples": [
+              "https://token.actions.githubusercontent.com"
+            ],
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why the bundle did not verify, when it did not.",
+            "type": "string"
+          },
+          "ref": {
+            "description": "Where the bundle was found.",
+            "examples": [
+              "https://github.com/acme/skills/releases/download/v1.2.0/skills.tar.gz.sigstore.json"
+            ],
+            "type": "string"
+          },
+          "signedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "description": "verified-matching is the only trustworthy value: the bundle verified against the downloaded archive AND its signer matches the package's expected signer. verified-no-expected-signer and verified-unexpected-signer verified cryptographically but prove nothing about who should have signed.",
+            "enum": [
+              "unsigned",
+              "invalid",
+              "verified-no-expected-signer",
+              "verified-unexpected-signer",
+              "verified-matching"
+            ],
+            "examples": [
+              "verified-matching"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
         ],
         "type": "object"
       },
@@ -4094,7 +5148,7 @@
             "type": "array"
           },
           "hasRole": {
-            "description": "Whether any group this identity holds maps to a role at all (FR-117). False is a screen state, not an error.",
+            "description": "Whether any group this identity holds maps to a role at all. False is a screen state, not an error.",
             "type": "boolean"
           },
           "role": {
@@ -4124,6 +5178,226 @@
           "email",
           "hasRole",
           "groups"
+        ],
+        "type": "object"
+      },
+      "Webhook": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "description": "The email or subject of the person who created it.",
+            "examples": [
+              "kwiatrzyk@example.com"
+            ],
+            "type": "string"
+          },
+          "disabledReason": {
+            "description": "Why the hub disabled it, when it did; absent when a person did.",
+            "examples": [
+              "the receiver answered 410 Gone"
+            ],
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "eventTypes": {
+            "examples": [
+              [
+                "scan.completed"
+              ]
+            ],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "lastDeliveryAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastDeliveryError": {
+            "type": "string"
+          },
+          "lastDeliveryStatus": {
+            "description": "The HTTP status of the last attempt; absent when it got no response.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "examples": [
+              "security channel"
+            ],
+            "type": "string"
+          },
+          "namespaces": {
+            "description": "Empty means every namespace.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "url": {
+            "examples": [
+              "https://hooks.example.com/agent-manager"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "url",
+          "eventTypes",
+          "namespaces",
+          "enabled",
+          "createdBy",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "WebhookCreated": {
+        "additionalProperties": false,
+        "properties": {
+          "secret": {
+            "description": "The signing secret, whsec_ and base64. Returned once.",
+            "examples": [
+              "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw"
+            ],
+            "type": "string"
+          },
+          "webhook": {
+            "$ref": "#/components/schemas/Webhook"
+          }
+        },
+        "required": [
+          "webhook",
+          "secret"
+        ],
+        "type": "object"
+      },
+      "WebhookDelivery": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt": {
+            "examples": [
+              1
+            ],
+            "format": "int64",
+            "type": "integer"
+          },
+          "durationMs": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "error": {
+            "type": "string"
+          },
+          "eventId": {
+            "description": "The audit event delivered, and the Webhook-Id header the receiver saw.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "eventType": {
+            "examples": [
+              "scan.completed"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "occurredAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "responseBody": {
+            "description": "The first KiB of the receiver's answer.",
+            "type": "string"
+          },
+          "statusCode": {
+            "description": "Absent when no response arrived.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "eventId",
+          "eventType",
+          "attempt",
+          "durationMs",
+          "occurredAt"
+        ],
+        "type": "object"
+      },
+      "WebhookDeliveryList": {
+        "additionalProperties": false,
+        "properties": {
+          "deliveries": {
+            "description": "Newest first, at most 100, kept for 30 days.",
+            "items": {
+              "$ref": "#/components/schemas/WebhookDelivery"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "deliveries"
+        ],
+        "type": "object"
+      },
+      "WebhookList": {
+        "additionalProperties": false,
+        "properties": {
+          "eventTypes": {
+            "description": "Every event type a subscription can select.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "webhooks": {
+            "description": "Most recently created first.",
+            "items": {
+              "$ref": "#/components/schemas/Webhook"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "webhooks",
+          "eventTypes"
+        ],
+        "type": "object"
+      },
+      "WebhookSecret": {
+        "additionalProperties": false,
+        "properties": {
+          "secret": {
+            "description": "The new signing secret, whsec_ and base64. The previous one stops signing immediately.",
+            "examples": [
+              "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "secret"
         ],
         "type": "object"
       }
@@ -4160,9 +5434,56 @@
   "paths": {
     "/v1/audit": {
       "get": {
-        "description": "One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. There is deliberately no filter. The export below must return the full CURRENT SCOPE (FR-051), and with no filters the current scope is the whole log — a filter added here without being added there would quietly stop that holding. Rows are append-only, enforced by revoked grants rather than by anything in this process (FR-052). `text` quotes package and profile names, so it is rendered escaped.",
+        "description": "One page of `audit_event`, ordered by when it happened, newest first, served by the index created for exactly that read. Optional filters narrow it to one subject or one package namespace; the export takes the same filters, so it always returns the page's full CURRENT SCOPE. Rows written before subjects were recorded carry none and match no subject filter. Rows are append-only, enforced by revoked grants rather than by anything in this process. `text` quotes package and profile names, so it is rendered escaped.",
         "operationId": "listAudit",
         "parameters": [
+          {
+            "description": "Only rows about this kind of subject. package also matches the rows about its versions and findings.",
+            "explode": false,
+            "in": "query",
+            "name": "subjectKind",
+            "schema": {
+              "description": "Only rows about this kind of subject. package also matches the rows about its versions and findings.",
+              "enum": [
+                "package",
+                "version",
+                "finding",
+                "profile",
+                "revision",
+                "category",
+                "mapping",
+                "policy",
+                "identity",
+                "device",
+                "service-token",
+                "machine",
+                "webhook"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only rows about this subject id; pair it with subjectKind.",
+            "explode": false,
+            "in": "query",
+            "name": "subjectId",
+            "schema": {
+              "description": "Only rows about this subject id; pair it with subjectKind.",
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only rows whose subject is in this package namespace.",
+            "explode": false,
+            "in": "query",
+            "name": "namespace",
+            "schema": {
+              "description": "Only rows whose subject is in this package namespace.",
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
           {
             "description": "Clamped into range: a page past the end returns the last one.",
             "explode": false,
@@ -4218,7 +5539,7 @@
                 }
               }
             },
-            "description": "`page` or `pageSize` is outside its range."
+            "description": "`page` or `pageSize` is outside its range, or a filter is invalid."
           },
           "500": {
             "content": {
@@ -4239,8 +5560,57 @@
     },
     "/v1/audit/export": {
       "get": {
-        "description": "FR-051: the full current scope, not the visible page. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.",
+        "description": "The full current scope, not the visible page — the whole log, or what the same filters as listAudit select. Newline-delimited JSON, one row per line, streamed — the rows are never materialised, because `audit_event` is the one table in this schema designed to grow without bound. NDJSON rather than CSV because an audit row's text quotes names a publisher chose, and a spreadsheet evaluates a cell that begins with `=`. The LAST LINE is a completeness sentinel. A streamed response cannot fail — its status was sent before the first row was read — so a stream that ends without that line was truncated and the export is incomplete.",
         "operationId": "exportAudit",
+        "parameters": [
+          {
+            "description": "Only rows about this kind of subject. package also matches the rows about its versions and findings.",
+            "explode": false,
+            "in": "query",
+            "name": "subjectKind",
+            "schema": {
+              "description": "Only rows about this kind of subject. package also matches the rows about its versions and findings.",
+              "enum": [
+                "package",
+                "version",
+                "finding",
+                "profile",
+                "revision",
+                "category",
+                "mapping",
+                "policy",
+                "identity",
+                "device",
+                "service-token",
+                "machine",
+                "webhook"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only rows about this subject id; pair it with subjectKind.",
+            "explode": false,
+            "in": "query",
+            "name": "subjectId",
+            "schema": {
+              "description": "Only rows about this subject id; pair it with subjectKind.",
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only rows whose subject is in this package namespace.",
+            "explode": false,
+            "in": "query",
+            "name": "namespace",
+            "schema": {
+              "description": "Only rows whose subject is in this package namespace.",
+              "maxLength": 200,
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -4272,6 +5642,16 @@
             },
             "description": "Missing, expired or invalid token."
           },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A filter is invalid."
+          },
           "500": {
             "content": {
               "application/problem+json": {
@@ -4291,7 +5671,7 @@
     },
     "/v1/badges": {
       "get": {
-        "description": "The three counts the sidebar renders, in one call: packages visible in the catalog, profiles THIS IDENTITY may read, and findings awaiting a decision (FR-121). One operation because the shell renders on every screen, so three would be three round trips per page. Three indexed counts over the base tables and not a projection: principle VIII sanctions exactly one and it is not spent here (research R5). The profile count is the length of the list the Profiles screen shows and cannot be more: a count including a profile the reader cannot open would leak its existence by arithmetic.",
+        "description": "The three counts the sidebar renders, in one call: packages visible in the catalog, profiles THIS IDENTITY may read, and findings awaiting a decision. One operation because the shell renders on every screen, so three would be three round trips per page. Three indexed counts over the base tables and not a projection: principle VIII sanctions exactly one and it is not spent here. The profile count is the length of the list the Profiles screen shows and cannot be more: a count including a profile the reader cannot open would leak its existence by arithmetic.",
         "operationId": "getBadges",
         "responses": {
           "200": {
@@ -4333,7 +5713,7 @@
     },
     "/v1/bundles/{publisher}/{name}/{version}": {
       "get": {
-        "description": "Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate (FR-029).",
+        "description": "Returns the `bundle.tar.zst` bytes, or a 307 to a pre-signed object-store URL. The `Digest` header carries the sha256 the client MUST verify before writing anything to disk. A rejected version is never served regardless of gate.",
         "operationId": "getBundle",
         "parameters": [
           {
@@ -4447,7 +5827,7 @@
     },
     "/v1/device/authorizations/{user_code}": {
       "get": {
-        "description": "Shows the requesting host and remaining validity BEFORE the viewer confirms (FR-041), so approval is an informed act. Refuses distinguishably when the code is unknown, expired or already decided (FR-042). The path parameter is a bearer-equivalent secret for the length of its validity and is never logged verbatim (see the api role's correlation middleware).",
+        "description": "Shows the requesting host and remaining validity BEFORE the viewer confirms, so approval is an informed act. Refuses distinguishably when the code is unknown, expired or already decided. The path parameter is a bearer-equivalent secret for the length of its validity and is never logged verbatim (see the api role's correlation middleware).",
         "operationId": "lookupDeviceCode",
         "parameters": [
           {
@@ -4531,7 +5911,7 @@
     },
     "/v1/device/authorizations/{user_code}/approve": {
       "post": {
-        "description": "The confirm action (US6). Moves the code from pending to approved in one transaction and writes the `login` audit row naming the host, source `cli / \u003chost\u003e` (FR-050). Single-use: a second approval of the same code refuses the same way any already-decided code does.",
+        "description": "The confirm action. Moves the code from pending to approved in one transaction and writes the `login` audit row naming the host, source `cli / \u003chost\u003e`. Single-use: a second approval of the same code refuses the same way any already-decided code does.",
         "operationId": "approveDeviceCode",
         "parameters": [
           {
@@ -4697,7 +6077,7 @@
     },
     "/v1/device/token": {
       "post": {
-        "description": "Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued (FR-042). The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request (FR-040, FR-044).",
+        "description": "Standard RFC 8628 polling. A code that has expired, been consumed, or been approved by an identity other than the requester is refused and no token is issued. The issued token is a session for the identity that APPROVED the authorisation, so the machine holds exactly that person's access, re-derived from their groups on every request.",
         "operationId": "deviceToken",
         "requestBody": {
           "content": {
@@ -4869,7 +6249,7 @@
     },
     "/v1/findings/{id}": {
       "get": {
-        "description": "The detail pane of 001 US4 scenario 2: severity, rule, subject, the prose explanation, EVERY evidence location, and EVERY check the raising scan ran — passes included (FR-025). The passes are not padding. A pane showing only failures cannot be told apart from one where nothing else ran, so the absence of a finding would be indistinguishable from the absence of a check, which is the distinction the whole matrix exists for. Evidence and check labels are bundle content and identity-provider content respectively: every consumer renders them escaped (FR-055).",
+        "description": "The detail pane: severity, rule, subject, the prose explanation, EVERY evidence location, and EVERY check the raising scan ran — passes included. The passes are not padding. A pane showing only failures cannot be told apart from one where nothing else ran, so the absence of a finding would be indistinguishable from the absence of a check, which is the distinction the whole matrix exists for. Evidence and check labels are bundle content and identity-provider content respectively: every consumer renders them escaped.",
         "operationId": "getFinding",
         "parameters": [
           {
@@ -4944,7 +6324,7 @@
     },
     "/v1/findings/{id}/accept": {
       "post": {
-        "description": "Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction (FR-028, FR-050). The version's verdict is NOT changed. US4 scenario 3 makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it (FR-126) — this refusal is the backstop, not the mechanism.",
+        "description": "Approves the finding, records the override carrying the reviewer's identity, their note and an expiry, and writes ONE audit row of kind `approve` — all in one transaction. The version's verdict is NOT changed. Accepting makes the version distributable SUBJECT TO THE GATE, and the override is what the gate reads; rewriting the verdict to clean would make an accepted version indistinguishable from one that never had a finding, under every gate, for ever. Re-accepting an already-accepted finding replaces the decision, which is what a reviewer extending an expiring override does. A rejected finding cannot be accepted: rejection is terminal (409). Requires the scanner-reviewer role. The screen must also hide or disable the action for an identity that lacks it — this refusal is the backstop, not the mechanism.",
         "operationId": "acceptFinding",
         "parameters": [
           {
@@ -5067,7 +6447,7 @@
     },
     "/v1/findings/{id}/reject": {
       "post": {
-        "description": "Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all (FR-029), so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.",
+        "description": "Rejects the finding, sets the subject version's verdict to `rejected`, and writes ONE audit row — in one transaction. This is TERMINAL and it is not an accept with a different flag. A rejected version cannot be resolved by any profile REGARDLESS OF GATE and is never served at all, so there is no expiry to set and no field in which to suggest there is one. An override already recorded on the finding is left in place: it is the record of a decision that really was taken, it stops counting as active, and it can permit nothing once the verdict is terminal. The audit kind is `approve` because `audit_kind` has no `reject` value and adding one is a migration; the row's text is what distinguishes the two. Requires the scanner-reviewer role.",
         "operationId": "rejectFinding",
         "parameters": [
           {
@@ -5180,7 +6560,7 @@
     },
     "/v1/health": {
       "get": {
-        "description": "Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case (FR-058).",
+        "description": "Liveness and readiness in one probe: 200 when every dependency this role needs is reachable, 503 otherwise. Has no authenticated variant and no client error case.",
         "operationId": "health",
         "responses": {
           "200": {
@@ -5208,6 +6588,292 @@
         "summary": "Liveness and readiness",
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/v1/machines": {
+      "get": {
+        "description": "A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. A package filter names a package this identity can read, and then also counts the matching machines per version. Stale is computed on read.",
+        "operationId": "listMachines",
+        "parameters": [
+          {
+            "description": "Only machines with this package installed, as namespace/name.",
+            "explode": false,
+            "in": "query",
+            "name": "package",
+            "schema": {
+              "description": "Only machines with this package installed, as namespace/name.",
+              "examples": [
+                "acme/code-review"
+              ],
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only machines with this version of the package installed; needs package.",
+            "explode": false,
+            "in": "query",
+            "name": "version",
+            "schema": {
+              "description": "Only machines with this version of the package installed; needs package.",
+              "examples": [
+                "2.4.1"
+              ],
+              "maxLength": 128,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only machines that reported this profile.",
+            "explode": false,
+            "in": "query",
+            "name": "profile",
+            "schema": {
+              "description": "Only machines that reported this profile.",
+              "examples": [
+                "platform-baseline"
+              ],
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only stale machines, or only fresh ones.",
+            "explode": false,
+            "in": "query",
+            "name": "stale",
+            "schema": {
+              "description": "Only stale machines, or only fresh ones.",
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Clamped into range: a page past the end returns the last one.",
+            "explode": false,
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "description": "Clamped into range: a page past the end returns the last one.",
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "default": 50,
+              "format": "int64",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MachineList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A service token cannot read the machine inventory."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The package, version or profile filter names nothing this identity can read."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Machines that reported a sync",
+        "tags": [
+          "machines"
+        ]
+      }
+    },
+    "/v1/machines/{id}": {
+      "delete": {
+        "description": "Deletes the machine and its inventory and writes one `sync` audit row. A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. The sync events it reported stay. A machine that reports again reappears.",
+        "operationId": "forgetMachine",
+        "parameters": [
+          {
+            "description": "The machine's id, as listed.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The machine's id, as listed.",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Forgotten."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A service token cannot read the machine inventory."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such machine, or not one this identity may see."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Forget a machine",
+        "tags": [
+          "machines"
+        ]
+      },
+      "get": {
+        "description": "A catalog-admin sees every machine; anyone else sees the machines whose last report was theirs or one of their service tokens'. Installs and skips list only profiles and packages this identity can read.",
+        "operationId": "getMachine",
+        "parameters": [
+          {
+            "description": "The machine's id, as listed.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The machine's id, as listed.",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MachineDetail"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A service token cannot read the machine inventory."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such machine, or not one this identity may see."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "One machine's installs and latest skips",
+        "tags": [
+          "machines"
         ]
       }
     },
@@ -5908,16 +7574,16 @@
     },
     "/v1/packages": {
       "get": {
-        "description": "One page of the catalog with both facet option sets and the live total, from two statements issued concurrently (R4). The two facets count differently, and the asymmetry is FR-013's: CATEGORIES are disjunctive, so each option is counted with the category filter removed; TAGS are conjunctive, so each option is counted against the current results — the number selecting it actually yields. Browsing requires a session: public anonymous browsing is out of scope (spec.md).",
+        "description": "One page of the catalog with both facet option sets and the live total, from two statements issued concurrently. The two facets count differently, and the asymmetry is this: CATEGORIES are disjunctive, so each option is counted with the category filter removed; TAGS are conjunctive, so each option is counted against the current results — the number selecting it actually yields. Browsing requires a session: public anonymous browsing is out of scope.",
         "operationId": "listPackages",
         "parameters": [
           {
-            "description": "Case-insensitive substring, matched against name, id, publisher and tags (FR-010).",
+            "description": "Case-insensitive substring, matched against name, id, publisher and tags.",
             "explode": false,
             "in": "query",
             "name": "q",
             "schema": {
-              "description": "Case-insensitive substring, matched against name, id, publisher and tags (FR-010).",
+              "description": "Case-insensitive substring, matched against name, id, publisher and tags.",
               "examples": [
                 "terraform"
               ],
@@ -5925,13 +7591,13 @@
             }
           },
           {
-            "description": "Mutually exclusive single selection (FR-011).",
+            "description": "Mutually exclusive single selection.",
             "explode": false,
             "in": "query",
             "name": "kind",
             "schema": {
               "default": "all",
-              "description": "Mutually exclusive single selection (FR-011).",
+              "description": "Mutually exclusive single selection.",
               "enum": [
                 "all",
                 "plugin",
@@ -5958,12 +7624,12 @@
             }
           },
           {
-            "description": "Repeatable. Selected categories narrow DISJUNCTIVELY (FR-013).",
+            "description": "Repeatable. Selected categories narrow DISJUNCTIVELY.",
             "explode": true,
             "in": "query",
             "name": "category",
             "schema": {
-              "description": "Repeatable. Selected categories narrow DISJUNCTIVELY (FR-013).",
+              "description": "Repeatable. Selected categories narrow DISJUNCTIVELY.",
               "items": {
                 "type": "string"
               },
@@ -5971,12 +7637,12 @@
             }
           },
           {
-            "description": "Repeatable. Selected tags narrow CONJUNCTIVELY (FR-013).",
+            "description": "Repeatable. Selected tags narrow CONJUNCTIVELY.",
             "explode": true,
             "in": "query",
             "name": "tag",
             "schema": {
-              "description": "Repeatable. Selected tags narrow CONJUNCTIVELY (FR-013).",
+              "description": "Repeatable. Selected tags narrow CONJUNCTIVELY.",
               "items": {
                 "type": "string"
               },
@@ -5998,13 +7664,13 @@
             }
           },
           {
-            "description": "Descending first, ascending on a second click (FR-014).",
+            "description": "Descending first, ascending on a second click.",
             "explode": false,
             "in": "query",
             "name": "dir",
             "schema": {
               "default": "desc",
-              "description": "Descending first, ascending on a second click (FR-014).",
+              "description": "Descending first, ascending on a second click.",
               "enum": [
                 "desc",
                 "asc"
@@ -6086,7 +7752,7 @@
         ]
       },
       "post": {
-        "description": "Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed (FR-008).",
+        "description": "Creates the publisher, the package and an invisible version, enqueues the fetch and writes the audit row, in one transaction. The response is an acknowledgement and not a published version: the bytes are fetched, validated, packed and committed by `worker fetcher`, which is the only role that may write them. A version becomes visible only once all of that has landed.",
         "operationId": "registerPackage",
         "requestBody": {
           "content": {
@@ -6109,6 +7775,9 @@
                 },
                 "ref": {
                   "contentType": "text/plain"
+                },
+                "sigstoreBundle": {
+                  "contentType": "application/json,application/octet-stream"
                 },
                 "source": {
                   "contentType": "text/plain"
@@ -6139,7 +7808,7 @@
                     "type": "string"
                   },
                   "category": {
-                    "description": "A category name or slug from the admin-curated vocabulary (FR-049).",
+                    "description": "A category name or slug from the admin-curated vocabulary.",
                     "examples": [
                       "Infrastructure"
                     ],
@@ -6177,8 +7846,15 @@
                     ],
                     "type": "string"
                   },
+                  "sigstoreBundle": {
+                    "contentEncoding": "binary",
+                    "contentMediaType": "application/octet-stream",
+                    "description": "Optional, upload only: a Sigstore bundle (.sigstore.json) over the archive's exact bytes, as cosign sign-blob --bundle writes it. The fetcher verifies it and records the signer; a git or archive-url source is checked for a bundle published beside it instead.",
+                    "format": "binary",
+                    "type": "string"
+                  },
                   "source": {
-                    "description": "Which of FR-001's three shapes this is.",
+                    "description": "Which of the three source shapes this is.",
                     "enum": [
                       "upload",
                       "git",
@@ -6277,7 +7953,7 @@
                 }
               }
             },
-            "description": "FR-007: this publisher/name@version already exists — published and immutable, or still resolving an earlier registration — and cannot be registered again."
+            "description": "This publisher/name@version already exists — published and immutable, or still resolving an earlier registration — and cannot be registered again."
           },
           "413": {
             "content": {
@@ -6318,7 +7994,7 @@
     },
     "/v1/packages/preview": {
       "post": {
-        "description": "FR-005's pre-submit answer: every entry with a validation mark, the discarded paths named, the components the FILE TREE reveals, and — when a manifest fails — the schema path that refused it. Writes nothing, and runs the same validation the fetcher runs, so the panel a user approves is the tree that gets stored.",
+        "description": "The pre-submit answer: every entry with a validation mark, the discarded paths named, the components the FILE TREE reveals, and — when a manifest fails — the schema path that refused it. Writes nothing, and runs the same validation the fetcher runs, so the panel a user approves is the tree that gets stored.",
         "operationId": "previewPackage",
         "requestBody": {
           "content": {
@@ -6498,7 +8174,7 @@
         ]
       },
       "get": {
-        "description": "Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package (FR-016). The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read (FR-044), and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.",
+        "description": "Description, origin, tags, manifest, components, capabilities, version history and dependent profiles for one package. The path is the package id, whose two segments are the namespace and the name. Two panels are scoped to the caller: the dependent profiles are exactly the ones this identity may read, and each version's `pinnedBy` counts only those — an unscoped count beside a scoped list would leak the existence of private profiles by arithmetic. `capabilities.scanned` distinguishes a version that was scanned and reaches nothing from one that has never been scanned; the two produce identical empty lists, and only that flag tells them apart.",
         "operationId": "getPackage",
         "parameters": [
           {
@@ -6578,7 +8254,7 @@
     },
     "/v1/packages/{namespace}/{name}/files": {
       "get": {
-        "description": "Every regular file the LATEST VISIBLE version's bundle holds. The `component` table records only the significant components — a skill's directory, an MCP server — not a full file list, so this unpacks the bundle itself, under the same extraction caps the fetcher enforces on ingestion, and does so again on every call: nothing here stores a byte-level file list to answer from instead. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029). `default` names this version's own SKILL.md or plugin.json when the bundle has one at its root, since that is the file most worth reading first.",
+        "description": "Every regular file the LATEST VISIBLE version's bundle holds. The `component` table records only the significant components — a skill's directory, an MCP server — not a full file list, so this unpacks the bundle itself, under the same extraction caps the fetcher enforces on ingestion, and does so again on every call: nothing here stores a byte-level file list to answer from instead. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one. `default` names this version's own SKILL.md or plugin.json when the bundle has one at its root, since that is the file most worth reading first.",
         "operationId": "listPackageFiles",
         "parameters": [
           {
@@ -6792,7 +8468,7 @@
     },
     "/v1/packages/{namespace}/{name}/scan": {
       "get": {
-        "description": "The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one (FR-029).",
+        "description": "The Scanner screen's own rows — verdict, engine, findings, evidence and any reviewer decision — scoped to one package's LATEST VISIBLE version instead of paged across all of them (the package detail screen's collapsible security section). `scanned` distinguishes a version scanned clean from one never scanned, exactly as getPackage's `capabilities.scanned` does: both produce an empty findings list. A rejected version is never served, exactly as GET /v1/bundles/{publisher}/{name}/{version} refuses one.",
         "operationId": "getPackageScan",
         "parameters": [
           {
@@ -6877,6 +8553,266 @@
         "summary": "The latest visible version's scan result, to show beside the package",
         "tags": [
           "catalog"
+        ]
+      }
+    },
+    "/v1/packages/{namespace}/{name}/signer": {
+      "put": {
+        "description": "Sets the exact OIDC issuer and the identity pattern (RE2, matched in full) a version's verified Sigstore signer must satisfy for the version to resolve while the organisation requires signed bundles. Both empty clears it. Takes effect at the next resolution; no signature is re-verified. One audit row of kind `policy`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.",
+        "operationId": "setPackageSigner",
+        "parameters": [
+          {
+            "description": "The publishing namespace — the FIRST segment of the publisher slug.",
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "description": "The publishing namespace — the FIRST segment of the publisher slug.",
+              "examples": [
+                "example"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "The package name within that namespace.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "The package name within that namespace.",
+              "examples": [
+                "platform-toolkit"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PackageSignerUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageDetail"
+                }
+              }
+            },
+            "description": "Changed. The body is the package as it now reads."
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is missing or is not valid JSON."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity may not change this package's expected signer."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such package, or it is not readable by this identity."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body must be sent as application/json."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Only one of issuer and identity was given, one is too long, or the identity is not an RE2 pattern."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Set the signer a package's versions must be signed by",
+        "tags": [
+          "packages"
+        ]
+      }
+    },
+    "/v1/packages/{namespace}/{name}/tracking": {
+      "put": {
+        "description": "Opts a package registered from git in or out of the fetcher's periodic upstream check, which registers each new tag matching the pattern exactly as a registration would: version, fetch job and audit row, then the ordinary fetch, scan and gate. One audit row of kind `fetch`. Requires the package's recorded owner or a catalog admin. The response is the package as it now reads.",
+        "operationId": "setPackageTracking",
+        "parameters": [
+          {
+            "description": "The publishing namespace — the FIRST segment of the publisher slug.",
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "description": "The publishing namespace — the FIRST segment of the publisher slug.",
+              "examples": [
+                "example"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "The package name within that namespace.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "The package name within that namespace.",
+              "examples": [
+                "platform-toolkit"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PackageTrackingUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageDetail"
+                }
+              }
+            },
+            "description": "Changed. The body is the package as it now reads."
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body is missing or is not valid JSON."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "This identity may not change this package's upstream tracking."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such package, or it is not readable by this identity."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request body must be sent as application/json."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The pattern is not a glob, or the package was not registered from git."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Track a git package's upstream tags",
+        "tags": [
+          "packages"
         ]
       }
     },
@@ -6986,7 +8922,7 @@
     },
     "/v1/packages/{namespace}/{name}/visibility": {
       "put": {
-        "description": "Organisation, team or private (FR-126), in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.",
+        "description": "Organisation, team or private, in one transaction with one audit row of kind `share`. Team means the caller's own identity-provider groups: there is no team-membership entity here, so a package's team visibility is read against whichever groups its owner carried at registration. Requires the package's recorded owner or a catalog admin — nobody else, including a caller who can otherwise see the package. The response is the package as it now reads, not an echo of the request.",
         "operationId": "setPackageVisibility",
         "parameters": [
           {
@@ -7116,7 +9052,7 @@
     },
     "/v1/profiles": {
       "get": {
-        "description": "Returns exactly the profiles this identity may read via direct membership or group mapping, and no others (FR-044). Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate (FR-126), so a caller choosing among them need not read every one's detail just to find out which allow it.",
+        "description": "Returns exactly the profiles this identity may read via direct membership or group mapping, and no others. Not a filtered view of a larger list — unreadable profiles are not enumerated at all. Each row carries canCurate, so a caller choosing among them need not read every one's detail just to find out which allow it.",
         "operationId": "listProfiles",
         "responses": {
           "200": {
@@ -7156,7 +9092,7 @@
         ]
       },
       "post": {
-        "description": "Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards (FR-038) — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.",
+        "description": "Creates a profile and records the caller as its OWNER, in one transaction with one audit row of kind `profile`. The owner membership is not a courtesy: every other profile operation is authorised by membership role, and `am_api` holds no DELETE on `membership`, so a profile created without one would be permanently uneditable. `forkOf` copies the named profile's entries as they stand at this instant and records the lineage. A fork NEVER inherits a revision the upstream publishes afterwards — not by configuration but by construction: nothing reads `forked_from_id` in the other direction. The upstream must be readable by this identity. Visibility defaults to `private`: a profile nobody has chosen to publish is not readable by the whole organisation. Requires an organisation role above read-only.",
         "operationId": "createProfile",
         "requestBody": {
           "content": {
@@ -7268,7 +9204,7 @@
     },
     "/v1/profiles/{slug}": {
       "delete": {
-        "description": "Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: FR-034 forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.",
+        "description": "Deletes the profile, its entries, its membership and its sync targets, in one transaction with one audit row of kind `profile`. Refuses with 409 when the profile holds any published revision — the foreign key from `revision` has no ON DELETE clause, so this is the database's own refusal, and it is deliberate: the design forbids deleting a revision, and a client may already have synced one. A profile that has never been published carries no such row and deletes cleanly. Requires owner on the profile.",
         "operationId": "deleteProfile",
         "parameters": [
           {
@@ -7346,7 +9282,7 @@
         ]
       },
       "get": {
-        "description": "The profile detail screen (001 US5): every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted (FR-036). The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` is 001 US5 scenario 1: a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.",
+        "description": "The profile detail screen: every package the profile holds, what each one resolves to, its scan state, and what the gate did about it — INCLUDING the entries the gate excludes, which are reported with their reason and never silently omitted. The gate's effect is COMPUTED by the one resolver internal/domain/resolve holds, the same code the published lockfile and the CLI's sync go through. It is not restated in this query, because two implementations of the gate is how the screen and the machine start disagreeing about what is installed. `latestVersion` / `latestVerdict` are what the CATALOG offers and are the row's scan badge; `version` / `verdict` are what the entry actually resolves to and are absent when it is excluded. The two differ exactly when the gate did something. `unpublishedChanges` exists because a pin toggled here reaches no machine until a revision is published, and this says a revision is owed.",
         "operationId": "getProfile",
         "parameters": [
           {
@@ -7392,7 +9328,7 @@
                 }
               }
             },
-            "description": "No such profile, or not readable by this identity. The two are deliberately one answer (FR-044)."
+            "description": "No such profile, or not readable by this identity. The two are deliberately one answer."
           },
           "500": {
             "content": {
@@ -7413,7 +9349,7 @@
     },
     "/v1/profiles/{slug}/entries": {
       "put": {
-        "description": "Float or pin per package (FR-032), in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED (001 US5 scenario 1). This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.",
+        "description": "Float or pin per package, in one transaction with one audit row of kind `profile`. NOT DURABLE UNTIL A REVISION IS PUBLISHED. This writes the draft — `profile_entry` — and nothing a machine syncs changes until POST /v1/profiles/{slug}/revisions freezes it. The response is the profile as it now resolves, with `unpublished` set on every row that differs from the head revision. The body is the WHOLE ordered set, because position is what an ordered set means and a patch cannot express a reorder. Naming a package the profile does not hold adds it. OMITTING one it does hold is REFUSED and named, to catch a client acting on stale state — POST .../entries/remove is the explicit way to take one out. Requires owner or maintainer on the profile.",
         "operationId": "setProfileEntries",
         "parameters": [
           {
@@ -7637,7 +9573,7 @@
     },
     "/v1/profiles/{slug}/revisions": {
       "post": {
-        "description": "Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile` (001 US5 scenario 5, FR-033). The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown (003 US5 scenario 3). THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one (FR-034). Requires owner or maintainer on the profile — a consumer may not publish.",
+        "description": "Freezes the current resolution as a new sequential revision and writes one audit row of kind `profile`. The body is the lockfile it wrote. The lockfile comes from the resolver, through the same code path the detail screen reads, so a revision cannot freeze a resolution nobody was shown. THE NUMBER IS THE SERVER'S. There is no field in which to name one, it is allocated under a row lock on the profile so two racing publishes serialise into r15 and r16 with no gap, and `unique (profile_id, seq)` refuses a duplicate outright. REPUBLISHING A NUMBER IS REFUSED, NOT OVERWRITTEN, and the refusal is a constraint rather than a branch (principle IV). Every previous revision stays readable for ever: `am_api` holds no DELETE on `revision` and no UPDATE path reaches one. Requires owner or maintainer on the profile — a consumer may not publish.",
         "operationId": "publishRevision",
         "parameters": [
           {
@@ -7757,7 +9693,7 @@
     },
     "/v1/profiles/{slug}/revisions/{revision}": {
       "get": {
-        "description": "`revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted (FR-036).",
+        "description": "`revision` accepts `head` or an integer. The response body conforms to lockfile.schema.json, including the `skipped` array — a gate-excluded package is reported with its reason, never silently omitted.",
         "operationId": "getRevision",
         "parameters": [
           {
@@ -7842,7 +9778,7 @@
     },
     "/v1/profiles/{slug}/sharing": {
       "put": {
-        "description": "Individual members and IdP groups at the four levels FR-037 names — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. FR-037 is about roles, a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh (FR-045) and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision (FR-038); sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.",
+        "description": "Individual members and IdP groups at four levels — owner, maintainer, reviewer, consumer — in one transaction with one audit row of kind `share`. An UPSERT of roles and not a replacement of the membership set: a subject the body does not name keeps the role it has. This is about roles: a demotion is an update of `role`, and `am_api` holds no DELETE on `membership`. A body that would leave the profile with NO OWNER is refused, because nothing could add one back — only an owner may change sharing. A group is matched against the `groups` claim on every request rather than expanded into people, so losing a mapped group takes effect at the next token refresh and a near-miss on the group's name silently grants nothing. Nothing here can make a fork inherit a revision; sharing grants access to this profile and creates no relationship between two of them. Requires owner on the profile.",
         "operationId": "setProfileSharing",
         "parameters": [
           {
@@ -7954,7 +9890,7 @@
     },
     "/v1/profiles/{slug}/targets": {
       "put": {
-        "description": "The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores (001 US5 scenario 7, FR-039). Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.",
+        "description": "The enabled set, in full, with one audit row of kind `profile`. An omitted target is disabled rather than removed — `sync_target.enabled` is a column, which is how a replacement works with no DELETE grant. A TARGET AFFECTS ONLY WHAT A CLIENT WRITES LOCALLY, never what the server stores. Nothing the resolver reads changes here and no version resolves differently; the list rides in the lockfile so a client knows where to put what it already resolved. An empty list is legal and means the profile writes nothing until somebody chooses. Requires owner or maintainer on the profile.",
         "operationId": "setProfileTargets",
         "parameters": [
           {
@@ -8118,17 +10054,17 @@
     },
     "/v1/scanner/summary": {
       "get": {
-        "description": "Versions that reached a verdict in the period, how many packages are quarantined, how many acceptances are still in force and when the first of them lapses, and the median time from a scan starting to its verdict (001 US4 scenario 1). `quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged versions: a superseded flagged version is not quarantining anything, because nothing resolves to it. `nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when there is nothing to report — no active override and no finished scan are different statements from \"expires now\" and \"instant\".",
+        "description": "Versions that reached a verdict in the period, how many packages are quarantined, how many acceptances are still in force and when the first of them lapses, and the median time from a scan starting to its verdict. `quarantined` counts packages whose LATEST VISIBLE version is flagged, not flagged versions: a superseded flagged version is not quarantining anything, because nothing resolves to it. `nearestOverrideExpiry` and `medianScanSeconds` are ABSENT rather than zero when there is nothing to report — no active override and no finished scan are different statements from \"expires now\" and \"instant\".",
         "operationId": "scannerSummary",
         "parameters": [
           {
-            "description": "The window the scanned count and the median are computed over. The design's card says 30 days; the parameter is what keeps that caption a value rather than a constant (FR-121).",
+            "description": "The window the scanned count and the median are computed over. The design's card says 30 days; the parameter is what keeps that caption a value rather than a constant.",
             "explode": false,
             "in": "query",
             "name": "days",
             "schema": {
               "default": 30,
-              "description": "The window the scanned count and the median are computed over. The design's card says 30 days; the parameter is what keeps that caption a value rather than a constant (FR-121).",
+              "description": "The window the scanned count and the median are computed over. The design's card says 30 days; the parameter is what keeps that caption a value rather than a constant.",
               "format": "int64",
               "maximum": 365,
               "minimum": 1,
@@ -8184,9 +10120,199 @@
         ]
       }
     },
+    "/v1/service-tokens": {
+      "get": {
+        "description": "The caller's own tokens, or every token for a catalog-admin. Never carries a secret or its hash.",
+        "operationId": "listServiceTokens",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceTokenList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A service token cannot manage service tokens."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "The service tokens the caller may manage",
+        "tags": [
+          "service-tokens"
+        ]
+      },
+      "post": {
+        "description": "Mints a non-human bearer credential for CI and headless machines and writes one `token` audit row. The secret is returned in this response and never again. Every sync:profile scope must name a profile the caller can read now.",
+        "operationId": "createServiceToken",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateServiceTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceTokenCreated"
+                }
+              }
+            },
+            "description": "Created."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A service token cannot manage service tokens."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A scope is unknown or names a profile the caller cannot read, or the expiry is missing, past or more than a year away."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Create a scoped service token",
+        "tags": [
+          "service-tokens"
+        ]
+      }
+    },
+    "/v1/service-tokens/{id}": {
+      "delete": {
+        "description": "Effective on the token's next request, and writes one `token` audit row. The creator or a catalog-admin may revoke; revoking a revoked token is a no-op.",
+        "operationId": "revokeServiceToken",
+        "parameters": [
+          {
+            "description": "The token's id, as listed.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The token's id, as listed.",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Revoked."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "A service token cannot manage service tokens."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such token, or not one the caller may manage."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Revoke a service token",
+        "tags": [
+          "service-tokens"
+        ]
+      }
+    },
     "/v1/sessions": {
       "post": {
-        "description": "The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row (FR-111), and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.",
+        "description": "The one operation in this system whose caller is a ROLE rather than a person, and it can mint a session for any subject — its rules are contracts/auth.md's and its justification is the sole row of the plan's Complexity Tracking table. The web role owns the browser's origin and therefore the cookie; this role owns the relational schema and therefore the session row, and this call is the whole of what crosses that gap. It takes the RAW ID token and verifies it here, against the configured issuer, audience and signing keys: verification lives in the role that owns identity, the caller's own parsing is not trusted, and the shared secret is therefore defence in depth rather than the only control. Refused outright when no shared secret is configured — there is no default and no development bypass, because an unauthenticated session mint is an account-takeover primitive. Refusals are rate-limited per caller address.",
         "operationId": "createSession",
         "requestBody": {
           "content": {
@@ -8293,7 +10419,7 @@
     },
     "/v1/sessions/current": {
       "delete": {
-        "description": "Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction (FR-114, FR-115). Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.",
+        "description": "Expires the session this request presented, server-side, and writes the sign-out audit row in the same transaction. Clearing the cookie is the caller's courtesy to the browser, not the mechanism: a replayed cookie is refused here afterwards, indistinguishably from a token that never existed. Exactly this session and no other — expiring every session the identity holds would be a remote sign-out, which is a real feature and a later one.",
         "operationId": "deleteSession",
         "responses": {
           "204": {
@@ -8380,7 +10506,7 @@
     },
     "/v1/sync": {
       "post": {
-        "description": "Writes one sync_event and one audit row of kind `sync` (FR-050, R8). One call per sync, not per package — install counts are aggregated server-side from the revision's contents.",
+        "description": "Writes one sync_event and one audit row of kind `sync`. One call per sync, not per package — install counts are aggregated server-side from the revision's contents. A report carrying `machineId` also upserts that machine and replaces its installs and skips for the profile in the same transaction; one without it is recorded with no machine. An installed id@version the hub does not hold is a 422.",
         "operationId": "reportSync",
         "requestBody": {
           "content": {
@@ -8445,7 +10571,7 @@
     },
     "/v1/viewer": {
       "get": {
-        "description": "The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL (FR-117) — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate (FR-118).",
+        "description": "The display name, email and role of the identity behind this request, plus whether any group it holds maps to a role AT ALL — signed in with no role is a screen state a person must be told about, never an empty catalog. Resolved on this request and not cached: the session resolver joins group_role_map every time, which is what makes an admin's mapping change take effect on the next request with nothing to invalidate.",
         "operationId": "getViewer",
         "responses": {
           "200": {
@@ -8484,6 +10610,438 @@
           "identity"
         ]
       }
+    },
+    "/v1/webhooks": {
+      "get": {
+        "description": "Never carries a secret.",
+        "operationId": "listWebhooks",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Webhooks are managed by a catalog-admin."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Every webhook subscription",
+        "tags": [
+          "webhooks"
+        ]
+      },
+      "post": {
+        "description": "Stores a subscription and writes one `webhook` audit row. The signing secret is returned in this response and never again.",
+        "operationId": "createWebhook",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWebhookRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookCreated"
+                }
+              }
+            },
+            "description": "Created."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Webhooks are managed by a catalog-admin."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The URL is not https, carries credentials or names a private address, or an event type is unknown."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Subscribe a URL to events",
+        "tags": [
+          "webhooks"
+        ]
+      }
+    },
+    "/v1/webhooks/{id}": {
+      "delete": {
+        "operationId": "deleteWebhook",
+        "parameters": [
+          {
+            "description": "The webhook's id, as listed.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The webhook's id, as listed.",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Webhooks are managed by a catalog-admin."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such webhook."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Delete a webhook and its delivery log",
+        "tags": [
+          "webhooks"
+        ]
+      },
+      "patch": {
+        "description": "Changes only the fields given and writes one `webhook` audit row.",
+        "operationId": "updateWebhook",
+        "parameters": [
+          {
+            "description": "The webhook's id, as listed.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The webhook's id, as listed.",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWebhookRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Webhook"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Webhooks are managed by a catalog-admin."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such webhook."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The resulting webhook would be invalid."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Change a webhook's name, URL, filters or whether it is enabled",
+        "tags": [
+          "webhooks"
+        ]
+      }
+    },
+    "/v1/webhooks/{id}/deliveries": {
+      "get": {
+        "description": "The newest 100 attempts of the last 30 days, with the first KiB of each response.",
+        "operationId": "listWebhookDeliveries",
+        "parameters": [
+          {
+            "description": "The webhook's id, as listed.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The webhook's id, as listed.",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookDeliveryList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Webhooks are managed by a catalog-admin."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such webhook."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "A webhook's recent delivery attempts",
+        "tags": [
+          "webhooks"
+        ]
+      }
+    },
+    "/v1/webhooks/{id}/secret": {
+      "post": {
+        "description": "The new secret is returned once and signs every delivery from now on, retries included.",
+        "operationId": "rotateWebhookSecret",
+        "parameters": [
+          {
+            "description": "The webhook's id, as listed.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "description": "The webhook's id, as listed.",
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookSecret"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Missing, expired or invalid token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Webhooks are managed by a catalog-admin."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "No such webhook."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "The request could not be completed."
+          }
+        },
+        "summary": "Replace a webhook's signing secret",
+        "tags": [
+          "webhooks"
+        ]
+      }
     }
   },
   "security": [
@@ -8513,6 +11071,10 @@
       "name": "identity"
     },
     {
+      "description": "Which machines reported a sync, and what each one has installed.",
+      "name": "machines"
+    },
+    {
       "description": "Counts the application shell renders.",
       "name": "navigation"
     },
@@ -8525,8 +11087,16 @@
       "name": "scanner"
     },
     {
+      "description": "Scoped, expiring, non-human credentials for CI and headless machines.",
+      "name": "service-tokens"
+    },
+    {
       "description": "Probes a supervisor calls. Unauthenticated.",
       "name": "system"
+    },
+    {
+      "description": "Signed outbound notifications of catalog, scan and governance events.",
+      "name": "webhooks"
     }
   ]
 }

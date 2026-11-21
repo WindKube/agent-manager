@@ -11,9 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// exploding is an Open that fails the test if it is ever called: an
-// environment token "takes precedence" only means something if the store is
-// never opened, not merely never preferred.
+// exploding fails the test if called: an environment token must mean the store is never opened.
 func exploding(t *testing.T) func() (*Store, error) {
 	t.Helper()
 	return func() (*Store, error) {
@@ -42,22 +40,18 @@ func TestAnEnvironmentTokenNeverOpensTheStore(t *testing.T) {
 	require.Equal(t, sentinelToken, got.Credential.Token)
 	require.Equal(t, hubA, got.Credential.Hub)
 	require.True(t, got.Credential.FromEnvironment())
-	// The environment states no lifetime, and there is nothing in an opaque
-	// token to read one out of. Inventing one would refuse a token that works.
 	require.True(t, got.Credential.ExpiresAt.IsZero())
 	require.False(t, got.Credential.Expired(time.Now()))
 }
 
 func TestAnEnvironmentTokenLeavesNoTraceOnDisk(t *testing.T) {
-	// The strongest form of the same claim, through the PRODUCTION wiring:
-	// opening a store creates <state root>/credentials, so if that directory
-	// does not exist afterwards then nothing opened one.
+	// Through the production wiring: opening a store creates <state root>/credentials.
 	root := t.TempDir()
 	credDir := filepath.Join(root, DirName)
 	t.Setenv(TokenEnvVar, sentinelToken)
 
 	r := NewResolver(Options{StateRoot: root, Warnf: func(string, ...any) {
-		t.Error("FR-003's fallback warning fired on a machine that supplied a token from the environment")
+		t.Error("the fallback warning fired on a machine that supplied a token from the environment")
 	}})
 	got, found, err := r.Resolve(hubA)
 	require.NoError(t, err)
@@ -69,9 +63,7 @@ func TestAnEnvironmentTokenLeavesNoTraceOnDisk(t *testing.T) {
 }
 
 func TestWithoutTheEnvironmentTokenTheStoreIsOpened(t *testing.T) {
-	// The negative control for the test above. Without it, an assertion that a
-	// directory does not exist proves nothing about whether the store would
-	// otherwise have been opened.
+	// Negative control for the test above.
 	root := t.TempDir()
 	credDir := filepath.Join(root, DirName)
 	t.Setenv(TokenEnvVar, "")
@@ -102,8 +94,7 @@ func TestAnEnvironmentTokenBeatsAStoredOne(t *testing.T) {
 	require.Equal(t, sentinelToken, got.Credential.Token)
 	require.Zero(t, opens)
 
-	// And the stored one is untouched: the environment overrides, it does not
-	// overwrite.
+	// The environment overrides the stored credential; it does not overwrite it.
 	stored, found, err := store.Load(hubA)
 	require.NoError(t, err)
 	require.True(t, found)
@@ -139,10 +130,7 @@ func TestResolveFallsBackToTheStore(t *testing.T) {
 }
 
 func TestResolveDoesNotRejectAnExpiredCredential(t *testing.T) {
-	// Whose problem an expiry is belongs to the verb: `status` must report it,
-	// and `sync` must be able to say "your token expired at X" rather than "no
-	// credential". So Resolve returns it and Credential.Expired is how a caller
-	// asks.
+	// Expiry is the verb's call, so `sync` can say "your token expired at X" rather than "no credential".
 	root := t.TempDir()
 	store, err := Open(Options{StateRoot: root, Backends: []keyring.BackendType{keyring.FileBackend}})
 	require.NoError(t, err)
@@ -175,7 +163,6 @@ func TestResolvePropagatesAStoreThatWillNotOpen(t *testing.T) {
 }
 
 func TestTokenEnvVarIsTheOneDocumentedName(t *testing.T) {
-	// Pinned deliberately: this is part of the CLI's contract with CI, so
-	// renaming it silently breaks every pipeline that sets it.
+	// Part of the CLI's contract with CI pipelines.
 	require.Equal(t, "AMCTL_TOKEN", TokenEnvVar)
 }

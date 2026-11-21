@@ -1,11 +1,8 @@
 package hub
 
-// This file is the CLI's whole view of the hub. Everything above it talks to
-// Hub, never the generated *Client: the bearer token is injected in ONE
-// http.RoundTripper scoped to the hub's origin (never leaks to a redirect),
-// and every hub answer becomes a Class in ONE place. It also bypasses
-// ClientWithResponses: ParseListProfilesResponse et al. io.ReadAll the body
-// uncapped and can't tell a bad JSON body from a transport failure.
+// Everything above this file talks to Hub, never the generated *Client: the bearer token is injected in
+// one origin-scoped RoundTripper, and every hub answer becomes a Class in one place. ClientWithResponses
+// is bypassed because it reads bodies uncapped and can't tell bad JSON from a transport failure.
 
 import (
 	"context"
@@ -28,9 +25,7 @@ const (
 	opReportSync      = "reportSync"
 	opDeviceAuthorize = "deviceAuthorize"
 	opDeviceToken     = "deviceToken"
-	// OpGetBundle: bundles.go issues that call itself, bypassing
-	// GetBundleWithResponse, which buffers the whole bundle before any digest
-	// check.
+	// OpGetBundle is issued by bundles.go itself, since GetBundleWithResponse buffers the whole bundle.
 	OpGetBundle = "getBundle"
 )
 
@@ -42,9 +37,7 @@ const PlaintextFlagName = "allow-plaintext-hub"
 // Client.CheckRedirect otherwise removes.
 const maxRedirects = 10
 
-// maxBodyBytes caps every JSON body read here (never a bundle; see Raw), four
-// orders of magnitude over the largest real lockfile, so a hostile endpoint
-// can't make the CLI allocate until it dies.
+// maxBodyBytes caps every JSON body read here, so a hostile endpoint can't make the CLI allocate until it dies.
 const maxBodyBytes = 32 << 20
 
 // revisionPattern is the contract's own `^(head|[0-9]+)$`, checked locally
@@ -72,9 +65,7 @@ type Hub struct {
 	insecure bool
 }
 
-// New validates the URL, wires the bearer transport and returns a Hub. It
-// makes no network call: the home and TLS checks must both land before
-// anything dials.
+// New validates the URL and wires the bearer transport. It makes no network call.
 func New(cfg Config) (*Hub, error) {
 	raw := strings.TrimSpace(cfg.URL)
 	if raw == "" {
@@ -101,8 +92,7 @@ func New(cfg Config) (*Hub, error) {
 	if u.Host == "" {
 		return nil, fmt.Errorf("%w: %q has no host", ErrHubURL, raw)
 	}
-	// Not echoed: net/http copies URL credentials onto every redirect target,
-	// so echoing the password into this refusal is the same leak in a hat.
+	// Not echoed: that would leak the password into the refusal.
 	if u.User != nil {
 		return nil, fmt.Errorf("%w: hub URL carries credentials in the URL; authenticate with `amctl login`", ErrHubURL)
 	}
@@ -125,8 +115,7 @@ func New(cfg Config) (*Hub, error) {
 	httpc.Transport = &bearerTransport{
 		base:   base,
 		origin: originOf(u),
-		// A closure, not a string field: fmt prints an unexported func field
-		// as an address, which is what keeps a careless %+v from leaking it.
+		// A closure, not a string, so a careless %+v prints an address instead of the token.
 		token:     func() string { return token },
 		userAgent: agent,
 	}
@@ -144,9 +133,7 @@ func (h *Hub) URL() string { return h.base.String() }
 // Insecure lets a verb warn on the diagnostic stream every run, not just where the flag was parsed.
 func (h *Hub) Insecure() bool { return h.insecure }
 
-// Raw is for getBundle only: it must stream the body to compute a digest
-// before a byte reaches the tree. Anything else should use a Hub method, or
-// classification stops being in one place.
+// Raw is for getBundle only, which must stream the body; anything else should use a Hub method.
 func (h *Hub) Raw() ClientInterface { return h.gen }
 
 // HTTPClient is what a caller following getBundle's 307 by hand must use: a
@@ -234,9 +221,8 @@ func (h *Hub) DeviceAuthorize(ctx context.Context, req DeviceAuthorizeRequest) (
 	return decodeJSON[DeviceAuthorization](opDeviceAuthorize, a, body)
 }
 
-// DeviceFlowError is RFC 8628's 400 body, not a failure: authorization_pending
-// and slow_down are normal, and must not be ClassRequest, or a poll loop
-// would abort on its first tick. This type reports the code and judges nothing.
+// DeviceFlowError is RFC 8628's 400 body, not a failure: classifying it as ClassRequest would abort
+// a poll loop on authorization_pending.
 type DeviceFlowError struct {
 	Code DeviceTokenErrorError
 }
@@ -340,16 +326,11 @@ func (h *Hub) opURL(path string) string {
 	return safeURL(&u)
 }
 
-// bearerTransport is why the bearer token never leaks to a redirect target.
-// Do not delete as redundant with the stdlib: net/http DELIBERATELY
-// preserves Authorization across same-host/subdomain/port-only redirects
-// (verified in net/http/client.go; pinned by
-// TestStandardLibraryLeaksOnSameHostAndSubdomainRedirects). The token goes
-// on the FIRST hop only (req.Response == nil) to the hub's own origin.
+// bearerTransport sends the token on the first hop only, to the hub's own origin. Not redundant:
+// net/http deliberately preserves Authorization across same-host and subdomain redirects.
 type bearerTransport struct {
-	base   http.RoundTripper
-	origin string
-	// token is a closure, not a string field; see New for the measurement.
+	base      http.RoundTripper
+	origin    string
 	token     func() string
 	userAgent string
 }
@@ -371,11 +352,8 @@ func (t *bearerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return t.base.RoundTrip(out)
 }
 
-// stripAuthorizationOnRedirect is not redundant with bearerTransport:
-// net/http copies the header onto the new request BEFORE calling
-// CheckRedirect, so this removes it from the request object itself. Also
-// reimposes net/http's own redirect limit, which setting CheckRedirect
-// otherwise removes.
+// stripAuthorizationOnRedirect is not redundant with bearerTransport: net/http copies the header onto
+// the new request before calling CheckRedirect. It also reimposes the default redirect limit.
 func stripAuthorizationOnRedirect(next func(*http.Request, []*http.Request) error) func(*http.Request, []*http.Request) error {
 	return func(req *http.Request, via []*http.Request) error {
 		req.Header.Del("Authorization")
@@ -389,10 +367,8 @@ func stripAuthorizationOnRedirect(next func(*http.Request, []*http.Request) erro
 	}
 }
 
-// originOf is scheme://host:port with the default port made explicit and the
-// host lower-cased, so https://Hub.Example.com:443 and https://hub.example.com
-// compare equal. Deliberately does NOT fold a trailing dot on the host: fails
-// closed (token withheld) rather than risk a wrong DNS-canonicalisation guess.
+// originOf is scheme://host:port, lower-cased with the default port explicit. A trailing dot is not
+// folded, so it fails closed rather than guess at DNS canonicalisation.
 func originOf(u *url.URL) string {
 	if u == nil {
 		return ""

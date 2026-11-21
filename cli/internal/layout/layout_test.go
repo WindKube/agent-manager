@@ -44,9 +44,7 @@ func skill(id, version string) layout.Request {
 	return layout.Request{ID: id, Version: version, Kind: record.KindSkill}
 }
 
-// Expected paths are hand-written — user scope is $CLAUDE_CONFIG_DIR/skills,
-// else ~/.claude/skills, and a skill is <root>/<dir>/SKILL.md — not read
-// back from a run.
+// Expected paths are hand-written, not read back from a run.
 func TestClaudeCodePlacesAStandaloneSkillWhereTheAgentLooks(t *testing.T) {
 	t.Parallel()
 
@@ -96,8 +94,6 @@ func TestClaudeCodePlacesAStandaloneSkillWhereTheAgentLooks(t *testing.T) {
 	}
 }
 
-// XDG_CONFIG_HOME is not read at all; this package reads no environment, so
-// the assertion is that setting it changes nothing.
 func TestClaudeCodeIgnoresXDGConfigHome(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "/home/tester/.config")
 
@@ -107,10 +103,7 @@ func TestClaudeCodeIgnoresXDGConfigHome(t *testing.T) {
 	require.NotContains(t, got.Dest, ".config")
 }
 
-// The interesting half is not that the two differ but that the mapping is
-// injective: a hyphen may appear inside either segment, so a
-// single-character separator would map two distinct packages onto one
-// directory.
+// A hyphen may appear inside either segment, so a single-character separator would not be injective.
 func TestFR023CollidingNamesAcrossPublishersGetDistinctDirectories(t *testing.T) {
 	t.Parallel()
 
@@ -222,9 +215,7 @@ func TestPackageIDAcceptsWhatTheHubCanStore(t *testing.T) {
 	}
 }
 
-// The removable set per entry is exactly {dest, dest+AsideSuffix}, so a
-// package legitimately installed at x.amctl-old would sit inside the
-// removable set of the package at x and prune would delete a live install.
+// A package installed at x.amctl-old would sit in x's removable set and be pruned as x's aside.
 func TestNoPackageInstallsToAnAsideOrStagingPath(t *testing.T) {
 	t.Parallel()
 
@@ -317,7 +308,7 @@ func TestClaudeCodePluginAdoptingSubdirsAreRefusedAndTheMarkerIsNotOne(t *testin
 		require.False(t, layout.IsClaudeCodePluginAdoptingSubdir(name), name)
 	}
 	require.False(t, layout.IsClaudeCodePluginAdoptingSubdir(layout.MarkerFileName),
-		"the FR-022 marker must never be a name that turns the skill into a plugin")
+		"the marker must never be a name that turns the skill into a plugin")
 	require.True(t, strings.HasPrefix(layout.MarkerFileName, "."),
 		"a non-dot marker shares the namespace of the skill's own referenced files")
 }
@@ -334,8 +325,6 @@ func TestClaudeCodeRefusesTheReservedSyncDirectory(t *testing.T) {
 		"the reserved directory is `synced` itself; a namespaced sibling is a different directory")
 }
 
-// A plugin routes to amctl's own unpacked copy, one per target, and only
-// when the registry was given a plugin root.
 func TestPlacingAPluginRoutesToThePluginRoot(t *testing.T) {
 	t.Parallel()
 
@@ -526,8 +515,6 @@ func TestRegistryConfigRefusals(t *testing.T) {
 	}
 }
 
-// A destination that is not absolute and clean cannot even be checked for
-// containment, and record.Entry refuses it.
 func TestEveryDestinationIsAbsoluteCleanAndUnderTheRoot(t *testing.T) {
 	t.Parallel()
 
@@ -550,7 +537,6 @@ func TestEveryDestinationIsAbsoluteCleanAndUnderTheRoot(t *testing.T) {
 	}
 }
 
-// The marker answers "which package and version is this" with no hub.
 func TestMarkerIdentifiesThePackageWithoutTheHub(t *testing.T) {
 	t.Parallel()
 
@@ -648,8 +634,7 @@ func TestMarkerRefusals(t *testing.T) {
 	})
 }
 
-// APFS folds case, so two ids differing only in case share one directory;
-// recorded here so internal/plan has a named thing to compare.
+// APFS folds case, so two ids differing only in case share one directory.
 func TestDestCollisionKeyExposesTheCaseFoldingHazard(t *testing.T) {
 	t.Parallel()
 

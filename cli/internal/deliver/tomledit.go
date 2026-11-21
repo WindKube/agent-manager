@@ -26,7 +26,6 @@ func parseTOML(doc []byte) (map[string]any, error) {
 	return m, nil
 }
 
-// tomlTable returns the value at mcp_servers.<key>, nil when absent.
 func tomlTable(doc map[string]any, key string) any {
 	servers, _ := doc[codexServersTable].(map[string]any)
 	return servers[key]
@@ -254,7 +253,6 @@ func bareKeyChar(c byte) bool {
 	return c == '_' || c == '-' || ('0' <= c && c <= '9') || ('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z')
 }
 
-// tomlString renders a TOML basic string.
 func tomlString(s string) string {
 	var b strings.Builder
 	b.WriteByte('"')

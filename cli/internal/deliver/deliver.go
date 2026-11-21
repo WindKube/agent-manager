@@ -1,8 +1,6 @@
-// Package deliver places a plugin's components into each agent's own
-// locations: skill directories, agent and command files, MCP server entries
-// and hooks. Every place it writes is recorded with a fingerprint of what it
-// wrote, and nothing is overwritten or removed unless it still matches that
-// fingerprint (or --force says so, by name).
+// Package deliver places a plugin's components into each agent's own locations.
+// Every write is recorded with a fingerprint, and nothing is overwritten or removed unless it still
+// matches that fingerprint or --force names it.
 package deliver
 
 import (
@@ -311,7 +309,6 @@ func (d *Deliverer) removeOne(ctx context.Context, target record.Target, c recor
 	return s.remove(ctx, have)
 }
 
-// slotOf rebuilds the slot a recorded component lives in, for removal.
 func (d *Deliverer) slotOf(target record.Target, c record.Component) (slot, error) {
 	switch c.Kind {
 	case record.ComponentSkill:

@@ -154,7 +154,6 @@ func tomlMultiline(s string) string {
 	return "'''\n" + s + "'''"
 }
 
-// fileSlot is one agent or command file.
 type fileSlot struct {
 	d    *Deliverer
 	comp record.Component

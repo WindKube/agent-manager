@@ -84,11 +84,9 @@ func ZipMemberRule(mode fs.FileMode) Rule {
 	}
 }
 
-// Droppable reports whether an extractor that never writes links may leave a
-// member breaking r out of the tree instead of refusing the archive. Only
-// symlinks and hardlinks qualify: ordinary repositories carry them, whereas a
-// device, fifo or socket says the archive is hostile or broken. Whether to
-// drop at all is the extractor's policy.
+// Droppable reports whether an extractor may skip a member breaking r instead of refusing the
+// archive. Only links qualify: ordinary repositories carry them, whereas a device, fifo or socket
+// says the archive is hostile or broken.
 func (r Rule) Droppable() bool {
 	return r == RejectSymlink || r == RejectHardlink
 }

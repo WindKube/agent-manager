@@ -1,22 +1,7 @@
-// This file is a *gate*, not a unit test of production code. It exercises
-// the rename sequence directly against the filesystem through `gateSwap`, a
-// helper local to this file, deliberately kept alongside swap.go's own
-// tests:
-//
-//   - it proves the sequence is sound on the platform the test runs on, and
-//   - it pins the exact ordering, the exact aside-name derivation, and the
-//     exact per-step interruption outcomes swap.go must reproduce.
-//
-// `gateSwap` is the specification; `swap.go` is the implementation. Two
-// independent statements of the same sequence are worth their duplication —
-// a test that only calls the code under test cannot notice that the code
-// changed the ordering, because it changed with it. swap_impl_test.go
-// additionally asserts that swap.go's own aside suffix equals
-// gateAsideSuffix, so the two cannot drift apart silently.
-//
-// The property being established: a crash at any step of an entry's
-// replacement leaves the destination wholly the old version or wholly the
-// new (or absent, which is explicitly permitted) — never a mixture.
+// This file is a gate: gateSwap is an independent statement of the rename
+// sequence swap.go implements, pinning its ordering, aside name and per-step
+// interruption outcomes, so a reordering in swap.go can't pass unnoticed. A
+// crash at any step must leave the destination wholly old, wholly new or absent.
 
 package apply
 
@@ -36,33 +21,11 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/record"
 )
 
-// gateAsideSuffix is appended to the destination path to name the place the
-// old version is moved to. Two properties of this name are load-bearing:
-//
-//   - It is derived deterministically from the destination, not randomised.
-//     The installation record stores destination paths, so a deterministic
-//     suffix means the set of paths amctl may ever remove is exactly
-//     {dest, dest+suffix} for each recorded entry, which holds by
-//     construction rather than by care: cleanup is a walk of the record,
-//     never a glob over a directory amctl does not own. A random token
-//     would force a glob.
-//   - It is a sibling of the destination, in the same parent directory.
-//     Step 2 is then guaranteed to be an intra-filesystem rename, which a
-//     central `~/.agent-manager/trash/` would not be — see the EXDEV test.
-//
-// The caller must guarantee no package ever legitimately installs to a path
-// ending in this suffix. internal/layout owns that guarantee.
-//
-// It is record.AsideSuffix and not a literal of its own: the determinism
-// above is what closes the removable set to {dest, dest+suffix}, and record
-// is the package that has to be able to compute that set, so the constant
-// belongs there — a second copy here is exactly how the two drift and leave
-// an orphaned .amctl-old that nothing ever removes.
+// gateAsideSuffix is deterministic, so the removable set is exactly {dest,
+// dest+suffix} and cleanup never globs, and a sibling of dest, so step 2 is
+// always an intra-filesystem rename.
 const gateAsideSuffix = record.AsideSuffix
 
-// gateStep numbers the sequence. swap.go must implement these steps in this
-// order, and a crash immediately after step N must leave the observable
-// state this file asserts for N.
 type gateStep int
 
 const (
@@ -92,61 +55,22 @@ func (s gateStep) String() string {
 	return fmt.Sprintf("gateStep(%d)", int(s))
 }
 
-// errGateInterrupted stands in for the process being killed. It is returned
-// *after* the requested step has completed and, unlike a real error, it
-// does not run step 3's rollback — which is the whole point: a crash cannot
-// roll back, so the state it leaves behind is what the sequence has to hold
-// for.
+// errGateInterrupted stands in for the process being killed after a step; unlike
+// a real error it skips step 3's rollback, because a crash cannot roll back.
 var errGateInterrupted = errors.New("interrupted")
 
-// gateOutcome carries the two errors the sequence treats as NON-fatal. Both
-// happen after the new version is already in place, so failing the entry on
-// either would report a failure for an installation that succeeded — the exact
-// inversion of "prefer failing closed" that would be wrong here.
+// gateOutcome carries the two non-fatal errors; both happen after the new
+// version is in place, so failing the entry would misreport a good install.
 type gateOutcome struct {
 	SyncDirErr     error // step 4
 	RemoveAsideErr error // step 5
 }
 
-// gateSwap is the sequence swap.go implements against real entries.
-//
-// Why not simply os.Rename(staging, dest):
-//
-// Measured: through Go's os package, os.Rename fails on an existing
-// directory destination, empty or not. $GOROOT/src/os/file_unix.go's
-// rename() Lstats newname first and returns EEXIST outright if it is a
-// directory, without ever reaching syscall.Rename. Measured on linux/arm64,
-// go1.26.6: os.Rename(dir, EMPTY dir) = EEXIST, os.Rename(dir, NON-EMPTY
-// dir) = EEXIST, os.Rename(dir, SYMLINK->dir) = ENOTDIR, os.Rename(dir,
-// ABSENT) = nil. Only the last one is usable.
-//
-// So the aside step is the only way os.Rename installs over anything at
-// all, and dest must be absent before step 3 runs. The raw POSIX call is
-// more permissive than Go's wrapper (syscall.Rename(dir, EMPTY dir) = nil,
-// measured), so anyone "fixing" the EEXIST by dropping to syscall.Rename or
-// golang.org/x/sys gets a swap that works for empty destinations and fails
-// with ENOTEMPTY for real upgrades. TestR3NaiveRenameOverAnExistingDestination
-// pins all of it.
-//
-// Why step 2 tolerates ENOENT instead of stat-ing first: a Stat-then-branch
-// implementation has two code paths (a three-step swap when no old version
-// exists, a five-step swap when one does) and a TOCTOU window between the
-// stat and the rename. Tolerating ENOENT collapses both into one path.
-// amctl also holds a per-home lock, so the only writer that can race here
-// is one that is not amctl, which is out of scope and stated as such.
-//
-// Why step 3 rolls back but a crash does not: a failed entry must leave the
-// machine unchanged, and after step 2 the machine is changed — dest is
-// absent. Rolling back on a step-3 error restores the old version and makes
-// the failed entry a true no-op. A crash cannot do that, which is what
-// makes step 1 necessary.
-//
-// Why step 1 RECLAIMS rather than discards: a crash between steps 2 and 3
-// leaves dest absent and the aside holding a complete old version (rename is
-// atomic, so the aside is never partial). Discarding it destroys the only copy
-// of the version the record claims, and if this run then fails at step 3 there
-// is nothing to roll back to. Reclaiming restores the invariant "dest holds the
-// version the record claims" before the swap begins.
+// gateSwap is the reference sequence. A plain os.Rename(staging, dest) fails
+// with EEXIST on any existing directory (Go Lstats first), and syscall.Rename
+// only works onto an empty one, so dest must be moved aside first. Step 1
+// reclaims rather than discards an aside with no dest: it is the only copy of
+// the recorded version and step 3's rollback target.
 func gateSwap(staging, dest string, stopAfter gateStep) (gateOutcome, error) {
 	var out gateOutcome
 	aside := dest + gateAsideSuffix
@@ -155,9 +79,7 @@ func gateSwap(staging, dest string, stopAfter gateStep) (gateOutcome, error) {
 		return out, errGateInterrupted
 	}
 
-	// STEP 1 — reclaim or discard a leftover aside from an earlier interrupted
-	// swap. An aside that outlives its swap is a slow leak: nothing else in
-	// amctl will ever look at that path.
+	// STEP 1 — reclaim or discard a leftover aside from an interrupted swap.
 	if _, err := os.Lstat(aside); err == nil {
 		_, destErr := os.Lstat(dest)
 		switch {
@@ -166,8 +88,7 @@ func gateSwap(staging, dest string, stopAfter gateStep) (gateOutcome, error) {
 				return out, fmt.Errorf("reclaim leftover %s: %w", aside, rerr)
 			}
 		default:
-			// dest exists, so the aside is a superseded duplicate: a crash
-			// after step 3 but before step 5. dest is authoritative.
+			// Crash after step 3: dest is authoritative.
 			if rerr := os.RemoveAll(aside); rerr != nil {
 				return out, fmt.Errorf("discard stale %s: %w", aside, rerr)
 			}
@@ -179,10 +100,7 @@ func gateSwap(staging, dest string, stopAfter gateStep) (gateOutcome, error) {
 		return out, errGateInterrupted
 	}
 
-	// STEP 2 — move the old version aside. ENOENT means there was no old
-	// version, which is not an error. os.Rename does NOT follow a symlink at
-	// dest: the link itself moves, and whatever it pointed at is untouched.
-	// That is the behaviour amctl wants — see the symlink tests.
+	// STEP 2 — move the old version (or a symlink itself) aside; ENOENT means none.
 	if err := os.Rename(dest, aside); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return out, fmt.Errorf("move %s aside: %w", dest, err)
 	}
@@ -190,9 +108,7 @@ func gateSwap(staging, dest string, stopAfter gateStep) (gateOutcome, error) {
 		return out, errGateInterrupted
 	}
 
-	// STEP 3 — move the staged tree into place. dest is absent at this point,
-	// so this is the one rename that must succeed, and it succeeds on all three
-	// platforms only because dest is absent.
+	// STEP 3 — move the staged tree into place, rolling back on failure.
 	if err := os.Rename(staging, dest); err != nil {
 		if _, serr := os.Lstat(dest); errors.Is(serr, fs.ErrNotExist) {
 			if rerr := os.Rename(aside, dest); rerr != nil && !errors.Is(rerr, fs.ErrNotExist) {
@@ -206,35 +122,20 @@ func gateSwap(staging, dest string, stopAfter gateStep) (gateOutcome, error) {
 		return out, errGateInterrupted
 	}
 
-	// STEP 4 — fsync the destination's PARENT directory, so the directory entry
-	// created by step 3 survives a power loss. NON-FATAL: see gateOutcome.
-	//
-	// This does NOT make the entry durable on its own. rename is a metadata
-	// operation; the file *contents* staged in step 0 may still be in page
-	// cache, and on a delayed-allocation filesystem a power loss here yields a
-	// destination directory full of zero-length files — which is exactly the
-	// "mixture" that must never happen. Durability of the staged content is
-	// stage's job: every extracted file must be fsynced before the staging
-	// tree is handed to the swap. Durability of the directory entry is this
-	// step's.
+	// STEP 4 — fsync dest's parent so the rename survives a power loss; non-fatal.
+	// File content durability is stage's job.
 	out.SyncDirErr = gateSyncDir(filepath.Dir(dest))
 	if stopAfter == gateStepSynced {
 		return out, errGateInterrupted
 	}
 
-	// STEP 5 — remove the aside. NON-FATAL: the new version is already in
-	// place, so a permission quirk or a busy file in the old tree must not fail
-	// the entry — that would report a broken install for a working one. It is
-	// reported as a leftover to clean next run instead.
+	// STEP 5 — remove the aside; non-fatal, reported as a leftover.
 	out.RemoveAsideErr = os.RemoveAll(aside)
 	return out, nil
 }
 
-// gateSyncDir fsyncs a directory. On darwin Go's os.File.Sync is
-// fcntl(F_FULLFSYNC), not fsync(2) — verified in
-// $GOROOT/src/internal/poll/fd_fsync_darwin.go, which cites golang/go#26650
-// ("on OS X, SYS_FSYNC doesn't fully flush contents to disk"). So the same Go
-// call gives a real barrier on both linux and darwin.
+// gateSyncDir fsyncs a directory; on darwin os.File.Sync is F_FULLFSYNC
+// (golang/go#26650), a real barrier there too.
 func gateSyncDir(dir string) error {
 	f, err := os.Open(dir)
 	if err != nil {
@@ -244,8 +145,6 @@ func gateSyncDir(dir string) error {
 	return f.Sync()
 }
 
-// --- fixtures ---------------------------------------------------------------
-
 type gateVersion string
 
 const (
@@ -253,13 +152,8 @@ const (
 	gateNew gateVersion = "new"
 )
 
-// gateManifest is the source of truth for what each tree contains. Expected
-// values in the tests below are derived from THIS, never from observing a run.
-//
-// The two trees deliberately do not have the same file set: only-in-old.md
-// exists in the old version and not the new. A swap that merges instead of
-// replacing (a CopyDir implementation, say) leaves it behind, and that is the
-// most likely wrong implementation of this task.
+// gateManifest defines each tree. The file sets differ on purpose, so a swap
+// that merges instead of replacing leaves only-in-old.md behind.
 func gateManifest(v gateVersion) map[string]string {
 	switch v {
 	case gateOld:
@@ -290,8 +184,7 @@ func gateWriteTree(t *testing.T, root string, v gateVersion) string {
 	return root
 }
 
-// The observable states. Exactly three are permitted at a destination:
-// absent, wholly old, wholly new. Every other value is a failure.
+// Only absent, wholly old and wholly new are permitted at a destination.
 const (
 	gateStateAbsent   = "absent"
 	gateStateOld      = "wholly the old version"
@@ -302,9 +195,8 @@ const (
 	gateStateSymlink  = "a symlink"
 )
 
-// gateState classifies a path by full content comparison against both
-// manifests. A VERSION marker alone is not enough: a merged tree can carry the
-// new marker and the old files, and that is the case this must catch.
+// gateState compares full content, since a merged tree can carry the new
+// VERSION file alongside old files.
 func gateState(t *testing.T, path string) string {
 	t.Helper()
 
@@ -364,7 +256,6 @@ func gateEqual(a, b map[string]string) bool {
 	return true
 }
 
-// gateFixture is one destination-plus-staging pair inside a fake home.
 type gateFixture struct {
 	home    string
 	dest    string
@@ -386,9 +277,7 @@ func newGateFixture(t *testing.T) gateFixture {
 	}
 }
 
-// stageNew (re)creates the staged new version. A re-run after a crash re-stages
-// from the digest-addressed cache, so recreating it is the faithful simulation
-// of a second `amctl sync`, not a shortcut.
+// stageNew re-creates the staged tree, as a second `amctl sync` would.
 func (f gateFixture) stageNew(t *testing.T) {
 	t.Helper()
 	require.NoError(t, os.RemoveAll(f.staging))
@@ -402,12 +291,6 @@ func (f gateFixture) installOld(t *testing.T) {
 	gateWriteTree(t, f.dest, gateOld)
 }
 
-// --- the gate ---------------------------------------------------------------
-
-// TestR3InterruptionAtEveryStepLeavesOldOrNew is the gate proper.
-//
-// Expected states are hand-derived from the sequence, not from a run. If
-// swap.go reorders the steps, this table is what disagrees with it.
 func TestR3InterruptionAtEveryStepLeavesOldOrNew(t *testing.T) {
 	tests := []struct {
 		stopAfter    gateStep
@@ -417,9 +300,6 @@ func TestR3InterruptionAtEveryStepLeavesOldOrNew(t *testing.T) {
 	}{
 		{gateStepNone, gateStateOld, gateStateAbsent, false},
 		{gateStepReclaimed, gateStateOld, gateStateAbsent, false},
-		// The only window in which the destination is absent. Absent is
-		// permitted; what is not permitted is half-written, and rename
-		// cannot produce that.
 		{gateStepAsided, gateStateAbsent, gateStateOld, true},
 		{gateStepMovedIn, gateStateNew, gateStateOld, true},
 		{gateStepSynced, gateStateNew, gateStateOld, true},
@@ -442,12 +322,11 @@ func TestR3InterruptionAtEveryStepLeavesOldOrNew(t *testing.T) {
 			got := gateState(t, f.dest)
 			require.Contains(t,
 				[]string{gateStateAbsent, gateStateOld, gateStateNew}, got,
-				"FR-024: the destination must be absent, wholly old or wholly new, got %s", got)
+				"the destination must be absent, wholly old or wholly new, got %s", got)
 			require.Equal(t, tc.wantDest, got)
 			require.Equal(t, tc.wantAside, gateState(t, f.aside))
 
-			// An aside nothing will ever clean up is a slow leak, not
-			// atomicity. Prove the NEXT run cleans it and converges.
+			// The next run must clean up and converge.
 			f.stageNew(t)
 			out, rerr := gateSwap(f.staging, f.dest, gateStepComplete)
 			require.NoError(t, rerr)
@@ -459,10 +338,9 @@ func TestR3InterruptionAtEveryStepLeavesOldOrNew(t *testing.T) {
 	}
 }
 
-// TestR3ReclaimingALeftoverAsideRestoresARollbackTarget is the negative control
-// for step 1. An implementation that DISCARDS the leftover instead of reclaiming
-// it passes every test above and fails this one: after a crash in the
-// dest-absent window, a second failure would leave the entry gone for good.
+// TestR3ReclaimingALeftoverAsideRestoresARollbackTarget fails an implementation
+// that discards rather than reclaims the aside left by a crash in the
+// dest-absent window.
 func TestR3ReclaimingALeftoverAsideRestoresARollbackTarget(t *testing.T) {
 	f := newGateFixture(t)
 	f.installOld(t)
@@ -473,8 +351,7 @@ func TestR3ReclaimingALeftoverAsideRestoresARollbackTarget(t *testing.T) {
 	require.Equal(t, gateStateAbsent, gateState(t, f.dest))
 	require.Equal(t, gateStateOld, gateState(t, f.aside))
 
-	// The second run fails at step 3 — the staged tree is missing, standing in
-	// for any step-3 failure (EXDEV, ENOSPC, a permission change).
+	// A missing staged tree stands in for any step-3 failure.
 	missing := filepath.Join(filepath.Dir(f.staging), "sha256-never-staged")
 	_, err = gateSwap(missing, f.dest, gateStepComplete)
 	require.Error(t, err)
@@ -484,8 +361,6 @@ func TestR3ReclaimingALeftoverAsideRestoresARollbackTarget(t *testing.T) {
 		"step 1 must reclaim the leftover aside so step 3 has something to roll back to")
 }
 
-// TestR3StepThreeFailureRollsBackToTheOldVersion: "leave the machine
-// unchanged for it" applied to a swap that has already moved the old aside.
 func TestR3StepThreeFailureRollsBackToTheOldVersion(t *testing.T) {
 	f := newGateFixture(t)
 	f.installOld(t)
@@ -497,15 +372,12 @@ func TestR3StepThreeFailureRollsBackToTheOldVersion(t *testing.T) {
 	require.Equal(t, gateStateAbsent, gateState(t, f.aside), "the rollback consumes the aside")
 }
 
-// TestR3DestinationShapes covers the shapes that break the naive version.
 func TestR3DestinationShapes(t *testing.T) {
 	tests := []struct {
 		name  string
 		setUp func(t *testing.T, f gateFixture)
 	}{
 		{
-			// The three-step case: nothing to move aside. Step 2's ENOENT
-			// tolerance is what makes this the same code path as the rest.
 			name:  "the destination does not exist yet",
 			setUp: func(_ *testing.T, _ gateFixture) {},
 		},
@@ -520,10 +392,6 @@ func TestR3DestinationShapes(t *testing.T) {
 			},
 		},
 		{
-			// A regular file where a directory belongs. os.Rename moves a file
-			// as happily as a directory, so the aside step handles this with no
-			// special case — but only because nothing in the sequence calls
-			// MkdirAll(dest) or os.Remove(dest) expecting a directory.
 			name: "the destination is a regular file where a directory is expected",
 			setUp: func(t *testing.T, f gateFixture) {
 				require.NoError(t, os.WriteFile(f.dest, []byte("not a directory"), 0o644))
@@ -553,9 +421,6 @@ func TestR3DestinationShapes(t *testing.T) {
 	}
 }
 
-// TestR3SwapReplacesRatherThanMerges — the control against a CopyDir
-// implementation. only-in-old.md exists in the old tree and not the new, so a
-// merge leaves it behind and gateState reports a mixture.
 func TestR3SwapReplacesRatherThanMerges(t *testing.T) {
 	f := newGateFixture(t)
 	f.installOld(t)
@@ -573,35 +438,9 @@ func TestR3SwapReplacesRatherThanMerges(t *testing.T) {
 	require.Equal(t, gateStateNew, gateState(t, f.dest))
 }
 
-// --- symlinks ---------------------------------------------------------------
-
-// TestR3ASymlinkAtTheDestinationIsReplacedNotFollowed records a decision.
-//
-// THE DECISION: amctl replaces a symlink at an entry's destination with a real
-// directory. It does NOT resolve the link and swap at the resolved location.
-//
-// WHY. os.Rename operates on the link, not its target, on every platform in
-// scope, so this is also the behaviour we get for free — but it is chosen, not
-// inherited, for two reasons:
-//
-//  1. amctl must not write outside the invoking user's home, checked on the
-//     resolved path. Following a symlink at the destination is exactly how
-//     amctl would write outside the home without ever constructing a path
-//     outside it: /home/u/.claude/skills/x -> /etc/whatever. Not following
-//     means the write lands where the path says it lands.
-//  2. The symlinked-dotfiles case argues the same way. When ~/.claude
-//     itself is a symlink into a dotfiles repo, the parent is the link and
-//     the kernel resolves it during the rename anyway — the entry's own
-//     destination is a real directory inside the repo and everything
-//     works. A symlink at the entry destination is a different thing:
-//     amctl never creates one (extraction refuses symlinks), so its
-//     presence means a human put it there.
-//
-// The consequence, which belongs to apply.go and not to swap.go: because a
-// symlink at the destination is by definition not something amctl wrote,
-// the caller must refuse the entry unless --force is given. swap.go is
-// unconditional by design; the guard is the caller's, and swap.go's doc
-// comment must say so.
+// TestR3ASymlinkAtTheDestinationIsReplacedNotFollowed pins that a symlink at
+// the destination is replaced, never followed: following it is how amctl would
+// write outside the home. Refusing it without --force is apply.go's job.
 func TestR3ASymlinkAtTheDestinationIsReplacedNotFollowed(t *testing.T) {
 	f := newGateFixture(t)
 
@@ -612,8 +451,7 @@ func TestR3ASymlinkAtTheDestinationIsReplacedNotFollowed(t *testing.T) {
 	gateRequireSymlink(t, linked, f.dest)
 	f.stageNew(t)
 
-	// Mid-swap: the aside must be the LINK, and the link's target must be
-	// untouched. Checked at step 2 because step 5 removes the aside.
+	// Checked at step 2 because step 5 removes the aside.
 	_, err := gateSwap(f.staging, f.dest, gateStepAsided)
 	require.ErrorIs(t, err, errGateInterrupted)
 	asideInfo, err := os.Lstat(f.aside)
@@ -633,8 +471,6 @@ func TestR3ASymlinkAtTheDestinationIsReplacedNotFollowed(t *testing.T) {
 	require.True(t, destInfo.IsDir())
 	require.Equal(t, gateStateNew, gateState(t, f.dest))
 
-	// The load-bearing assertion: nothing was written through the link, and
-	// removing the aside removed the link, not the tree it pointed at.
 	body, err := os.ReadFile(sentinel)
 	require.NoError(t, err)
 	require.Equal(t, "a human wrote this", string(body),
@@ -644,11 +480,8 @@ func TestR3ASymlinkAtTheDestinationIsReplacedNotFollowed(t *testing.T) {
 	require.Len(t, entries, 1, "the symlink's target directory must be untouched")
 }
 
-// TestR3ASymlinkPointingOutsideTheHomeIsNotWrittenThrough is the
-// containment half of the decision above, stated as an assertion rather
-// than as prose.
 func TestR3ASymlinkPointingOutsideTheHomeIsNotWrittenThrough(t *testing.T) {
-	outside := t.TempDir() // a second root, standing in for anywhere not under home
+	outside := t.TempDir()
 	f := newGateFixture(t)
 
 	require.NotEqual(t, outside, f.home)
@@ -670,7 +503,7 @@ func TestR3ASymlinkPointingOutsideTheHomeIsNotWrittenThrough(t *testing.T) {
 	for _, e := range entries {
 		names = append(names, e.Name())
 	}
-	require.Equal(t, before, names, "FR-020: nothing may be written or removed outside the home")
+	require.Equal(t, before, names, "nothing may be written or removed outside the home")
 	require.Equal(t, gateStateNew, gateState(t, f.dest))
 }
 
@@ -681,15 +514,8 @@ func gateRequireSymlink(t *testing.T, target, link string) {
 	}
 }
 
-// --- negative controls: what the naive version does -------------------------
-
-// TestR3NaiveRenameOverAnExistingDestination proves step 2 is load-bearing
-// rather than ceremony, and pins the measured semantics of both os.Rename and
-// the raw syscall so nobody "simplifies" the sequence into either of them.
-//
-// Without a negative control here, an implementation that dropped the
-// aside step would look correct in review and would fail on every platform
-// at the first upgrade.
+// TestR3NaiveRenameOverAnExistingDestination pins os.Rename and syscall.Rename
+// semantics so nobody "simplifies" the aside step away.
 func TestR3NaiveRenameOverAnExistingDestination(t *testing.T) {
 	t.Run("os.Rename onto a non-empty directory fails", func(t *testing.T) {
 		f := newGateFixture(t)
@@ -725,8 +551,6 @@ func TestR3NaiveRenameOverAnExistingDestination(t *testing.T) {
 			"POSIX rename DOES replace an empty destination directory, so dropping to syscall looks like a fix")
 		require.Equal(t, gateStateNew, gateState(t, f.dest))
 
-		// ...and then it fails on the very next real upgrade, which is what
-		// makes it worse than the EEXIST it was reached for.
 		f.stageNew(t)
 		require.ErrorIs(t, syscall.Rename(f.staging, f.dest), syscall.ENOTEMPTY,
 			"POSIX rename onto a NON-empty directory is ENOTEMPTY: the syscall shortcut only ever worked by accident")
@@ -746,24 +570,14 @@ func TestR3NaiveRenameOverAnExistingDestination(t *testing.T) {
 	})
 }
 
-// gateRequireRenameOntoDirErr asserts the SPECIFIC failure of renaming onto an
-// existing directory. A negative control that accepts any error has stopped
-// testing anything.
 func gateRequireRenameOntoDirErr(t *testing.T, err error) {
 	t.Helper()
 	require.ErrorIs(t, err, syscall.EEXIST,
 		"os/file_unix.go returns EEXIST for a directory destination before it calls syscall.Rename")
 }
 
-// TestR3AStaleAsideBlocksTheNaiveAsideRename is the negative control for step 1
-// as a *mechanical* requirement, separate from the recovery argument in
-// TestR3ReclaimingALeftoverAsideRestoresARollbackTarget: without step 1, the
-// second swap of an entry that crashed once fails at step 2 forever.
-//
-// Measured note: it fails even when the leftover aside is EMPTY, for the same
-// reason as the naive rename above — Go refuses a directory destination
-// outright. An implementation that only cleared a NON-empty aside would still
-// wedge.
+// TestR3AStaleAsideBlocksTheNaiveAsideRename: without step 1, an entry that
+// crashed once fails step 2 forever, even with an empty leftover aside.
 func TestR3AStaleAsideBlocksTheNaiveAsideRename(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -786,7 +600,6 @@ func TestR3AStaleAsideBlocksTheNaiveAsideRename(t *testing.T) {
 			require.Error(t, err, "step 2 cannot run while an aside is in the way")
 			gateRequireRenameOntoDirErr(t, err)
 
-			// The sequence handles it because step 1 clears the way first.
 			f.stageNew(t)
 			out, serr := gateSwap(f.staging, f.dest, gateStepComplete)
 			require.NoError(t, serr)
@@ -797,23 +610,9 @@ func TestR3AStaleAsideBlocksTheNaiveAsideRename(t *testing.T) {
 	}
 }
 
-// --- EXDEV ------------------------------------------------------------------
-
-// TestR3CrossDeviceStagingCollapsesTheWholeScheme settles where the staging
-// directory has to live.
-//
-// THE DECISION: the staging directory MUST be a sibling of the destination —
-// `<dest-parent>/.amctl-staging/<digest>` — not a central
-// `~/.agent-manager/staging/<digest>`. An atomic swap by rename requires
-// staging and destination on the same filesystem, and amctl cannot assume they
-// are: an agent directory is frequently a symlink into a dotfiles repo, which
-// may be a different mount, an encrypted volume, a network share, or a tmpfs.
-//
-// AND: swap.go must detect a cross-device rename and fail the entry naming both
-// paths. It must NOT fall back to a recursive copy. A copy is not atomic, so
-// the fallback would silently convert the one requirement of this task into its
-// opposite — a destination that can be observed half-written. Failing closed
-// with an actionable message is the correct outcome.
+// TestR3CrossDeviceStagingCollapsesTheWholeScheme is why staging must be a
+// sibling of the destination: a cross-device rename fails, and a copy fallback
+// would not be atomic.
 func TestR3CrossDeviceStagingCollapsesTheWholeScheme(t *testing.T) {
 	f := newGateFixture(t)
 	f.installOld(t)
@@ -834,24 +633,17 @@ func TestR3CrossDeviceStagingCollapsesTheWholeScheme(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, gateIsCrossDevice(err), "the specific failure must be a cross-device rename, got %v", err)
 
-	// The rollback still works, because the aside is a sibling of the
-	// destination and therefore always on the destination's filesystem.
+	// The aside is a sibling, so the rollback still works.
 	require.Equal(t, gateStateOld, gateState(t, f.dest),
 		"a cross-device staging directory must leave the old version in place")
 	require.Equal(t, gateStateAbsent, gateState(t, f.aside))
 }
 
-// gateOtherFilesystemDir returns a writable directory that is likely to be on a
-// different filesystem from t.TempDir(). Only linux has a dependable one
-// without privileges.
 func gateOtherFilesystemDir(t *testing.T) string {
 	t.Helper()
 	if runtime.GOOS != "linux" {
 		t.Skipf("%s: no unprivileged second filesystem to construct EXDEV with; see the R3 notes", runtime.GOOS)
 	}
-	// t.TempDir() is deliberately NOT used here: it honours TMPDIR, which on
-	// every machine this runs on is the same filesystem as the destination —
-	// the exact thing this test needs to avoid.
 	dir, err := os.MkdirTemp("/dev/shm", "amctl-r3-") //nolint:usetesting // a second filesystem is the point
 	if err != nil {
 		t.Skipf("linux: /dev/shm not usable as a second filesystem: %v", err)
@@ -864,35 +656,9 @@ func gateIsCrossDevice(err error) bool {
 	return err != nil && errors.Is(err, syscall.EXDEV)
 }
 
-// --- durability -------------------------------------------------------------
-
-// TestR3ParentDirectoryFsync settles whether the code should fsync.
-//
-// THE ANSWER: yes on linux and darwin, best-effort and non-fatal. rename(2) is
-// atomic with respect to concurrent observers but says
-// nothing about durability — POSIX and Linux's rename(2) both stay silent, and
-// the standing advice (LWN, "Ensuring data reaches disk", Jeff Layton, 2011;
-// SQLite's atomic-commit notes; Dan Luu's "Files are hard", 2015) is that the
-// containing directory must be fsynced for a rename to survive a power loss.
-// Go gives a real barrier on both platforms: os.File.Sync is fsync(2) on linux
-// and fcntl(F_FULLFSYNC) on darwin (see $GOROOT/src/internal/poll/
-// fd_fsync_darwin.go, citing golang/go#26650).
-//
-// WHY IT IS NON-FATAL, and why this is a should rather than a must: the record
-// is written AFTER the swap (plan.md's on-disk state model). If the rename is
-// lost to a power cut, the record write that follows it is lost too, so the
-// record does not end up claiming an entry that is not there. The ordering, not
-// the fsync, is what keeps the two consistent. The fsync narrows the window in
-// which a durable record could outlive a non-durable rename; it does not create
-// the safety.
-//
-// What it does not buy, which is the part worth writing down: fsyncing
-// the parent makes the directory entry durable, not the file content
-// underneath it. On a delayed-allocation filesystem, a power loss shortly
-// after the swap can leave the destination present and full of zero-length
-// files — a mixture that no amount of care in swap.go can prevent. Content
-// durability is stage's: it must fsync every extracted file before handing
-// the tree over.
+// TestR3ParentDirectoryFsync: rename(2) says nothing about durability, so the
+// parent is fsynced. It is non-fatal because the record is written after the
+// swap; that ordering, not the fsync, keeps the two consistent.
 func TestR3ParentDirectoryFsync(t *testing.T) {
 	f := newGateFixture(t)
 	f.installOld(t)
@@ -904,8 +670,6 @@ func TestR3ParentDirectoryFsync(t *testing.T) {
 	require.NoError(t, out.SyncDirErr, "fsync of the destination's parent directory must succeed")
 	require.Equal(t, gateStateNew, gateState(t, f.dest))
 }
-
-// --- shape of the contract --------------------------------------------------
 
 func TestR3AsideNameIsASiblingDerivedFromTheDestination(t *testing.T) {
 	f := newGateFixture(t)
@@ -942,12 +706,8 @@ func TestR3RepeatedSwapsLeaveNothingBehind(t *testing.T) {
 	require.Equal(t, gateStateNew, gateState(t, f.dest))
 }
 
-// TestR3PlatformsInScope states, as an executable fact, which platform this
-// run verified. Darwin shares every assertion above except the cross-device
-// one, and that it is verified only when the cli unit-test job runs on a
-// macos-latest runner. Windows is not a target and is refused here rather than
-// skipped, so a build for it fails loudly instead of reporting a pass it never
-// measured.
+// TestR3PlatformsInScope fails rather than skips on an unsupported OS, so a
+// pass is never reported for a platform nobody measured.
 func TestR3PlatformsInScope(t *testing.T) {
 	require.Contains(t, []string{"linux", "darwin"}, runtime.GOOS,
 		"plan.md's Technical Context names four targets over two operating systems")

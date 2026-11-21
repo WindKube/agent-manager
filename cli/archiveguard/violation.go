@@ -1,8 +1,5 @@
-// Package archiveguard holds the security checks shared by every extractor of
-// untrusted archives in this repository: path validation, member-type policy,
-// the decompression and ratio caps, and the wall-clock budget. It does no I/O
-// of its own; each extractor reads and writes its own way and asks this
-// package for every decision, so a fix here lands in all of them at once.
+// Package archiveguard holds the security checks shared by every extractor of untrusted archives.
+// It does no I/O, so a fix here lands in every extractor at once.
 package archiveguard
 
 import "fmt"

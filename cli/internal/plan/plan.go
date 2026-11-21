@@ -72,7 +72,7 @@ type Change struct {
 	// Dest is the routed destination; a later prune removes RemovablePaths(), derived from it.
 	Dest string
 
-	Version string        // the hub's resolved version for this revision
+	Version string
 	Digest  record.Digest // 32 bytes, not a string — comparing formatted digests stops being a digest check
 
 	Resolution string // how the hub resolved (latest/pinned/range); reporting only

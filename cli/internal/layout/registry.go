@@ -62,9 +62,7 @@ var constructors = map[record.Target]func(Config) (Target, error){
 	record.TargetOpenCode:   newOpenCodeTarget,
 }
 
-// withdrawnTargets are contract values nothing implements, with the reason
-// to print; unlike a gated target these await a design change, so
-// Selection.Withdrawn reports the gap rather than refusing the sync.
+// withdrawnTargets are contract values nothing implements; Selection reports them rather than refusing the sync.
 var withdrawnTargets = map[record.Target]string{
 	"agents-md": "agents-md was withdrawn from the contract: the convention documents only a repository-root " +
 		"AGENTS.md and no per-user location, and one shared file cannot be installed per package, marked with a " +
@@ -73,8 +71,7 @@ var withdrawnTargets = map[record.Target]string{
 
 type Registry struct{ cfg Config }
 
-// NewRegistry refuses a relative HomeDir, CLAUDE_CONFIG_DIR or CODEX_HOME
-// rather than joining it with a working directory, since every destination
+// NewRegistry refuses a relative HomeDir, CLAUDE_CONFIG_DIR or CODEX_HOME since every destination
 // must be absolute. A relative XDG_CONFIG_HOME is ignored, as the XDG spec says.
 func NewRegistry(cfg Config) (*Registry, error) {
 	if cfg.HomeDir == "" {
@@ -141,9 +138,8 @@ type Selection struct {
 	Reasons   map[record.Target]string
 }
 
-// Select intersects a lockfile's advisory `targets` array with this build. A
-// gated target is a hard refusal; withdrawn/unknown land in Selection to be
-// reported; an empty writable set is ErrNoWritableTarget regardless.
+// Select intersects a lockfile's advisory `targets` with this build. Withdrawn and unknown targets
+// land in Selection; an empty writable set is ErrNoWritableTarget.
 func (r *Registry) Select(names []string) (Selection, error) {
 	sel := Selection{Reasons: map[record.Target]string{}}
 	seen := map[record.Target]struct{}{}

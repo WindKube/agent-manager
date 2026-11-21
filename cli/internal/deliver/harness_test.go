@@ -61,7 +61,6 @@ func newHarness(t *testing.T) *harness {
 	}
 }
 
-// pluginEntry packs files as a plugin bundle and returns its lockfile entry.
 func (h *harness) pluginEntry(id, version string, files map[string]string) hub.LockfileEntry {
 	b := packBundle(h.t, files)
 	sum := sha256.Sum256(b)
@@ -285,7 +284,6 @@ func packBundle(t *testing.T, files map[string]string) []byte {
 	return out.Bytes()
 }
 
-// kitFiles is a small plugin: two skills, by default.
 func kitFiles(extra map[string]string) map[string]string {
 	files := map[string]string{
 		"plugin.json":           `{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"kit","version":"1.0.0","description":"kit"}`,

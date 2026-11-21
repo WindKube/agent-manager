@@ -219,7 +219,6 @@ func memberIndex(obj *hujson.Object, name string) int {
 	return -1
 }
 
-// indentUnit is one level of indentation as the file already uses it.
 func indentUnit(obj *hujson.Object) string {
 	if len(obj.Members) > 0 {
 		if ind := lastLineIndent(string(obj.Members[0].Name.BeforeExtra)); ind != "" {
@@ -332,7 +331,6 @@ func jsoncAppend(doc []byte, value any, path ...string) ([]byte, error) {
 	})
 }
 
-// jsoncSetElem replaces element i of the array at path.
 func jsoncSetElem(doc []byte, i int, value any, path ...string) ([]byte, error) {
 	return editArray(doc, path, func(arr *hujson.Array, indent, unit string, list []any) ([]any, error) {
 		b, err := marshalIndentJSON(value, indent+unit, unit)

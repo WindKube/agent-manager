@@ -5,10 +5,8 @@ import (
 	"io"
 )
 
-// Guard tracks one extraction's budget: entries seen, compressed bytes
-// consumed and decompressed bytes produced. Every cap is checked as bytes
-// stream, never after: by then a bomb has already landed. A Guard is not safe
-// for concurrent use.
+// Guard tracks one extraction's budget. Every cap is checked as bytes stream, never after, because
+// by then a bomb has already landed. Not safe for concurrent use.
 type Guard struct {
 	lim          Limits
 	archiveSize  int64
@@ -22,10 +20,8 @@ func NewGuard(lim Limits) *Guard {
 	return &Guard{lim: lim.WithDefaults()}
 }
 
-// SetArchiveSize clamps the ratio denominator to the archive's real byte count.
-// A zip can point several members at the same bytes and re-read its central
-// directory, so without the clamp an attacker inflates their own allowance.
-// size must be measured, never declared by the archive.
+// SetArchiveSize clamps the ratio denominator to the archive's measured size, since a zip can point
+// several members at the same bytes and so inflate its own allowance.
 func (g *Guard) SetArchiveSize(size int64) { g.archiveSize = size }
 
 // Consumed records n compressed bytes read from the input.
@@ -41,9 +37,8 @@ func (g *Guard) Compressed() int64 { return g.compressed }
 // Decompressed returns the decompressed bytes produced so far.
 func (g *Guard) Decompressed() int64 { return g.decompressed }
 
-// CheckCompressed refuses once more than MaxCompressedBytes have been consumed.
-// An oversized stream usually surfaces as a truncated one, so extractors ask
-// this before reporting a read failure as malformed.
+// CheckCompressed refuses once more than MaxCompressedBytes have been consumed. An oversized stream
+// usually surfaces as a truncated one, so extractors ask this before calling a read failure malformed.
 func (g *Guard) CheckCompressed() error {
 	if g.compressed > g.lim.MaxCompressedBytes {
 		return tooLarge(CapCompressedSize, "")
@@ -60,9 +55,8 @@ func (g *Guard) CountEntry(member string) error {
 	return nil
 }
 
-// Produced records n decompressed bytes of member, whose running total is
-// entryTotal, and refuses the chunk that busts the per-entry cap, the total
-// cap or the compression ratio. Call it before the chunk is used.
+// Produced records n decompressed bytes of member and refuses the chunk that busts the per-entry,
+// total or ratio cap. Call it before the chunk is used.
 func (g *Guard) Produced(n, entryTotal int64, member string) error {
 	if entryTotal > g.lim.MaxEntryBytes {
 		return tooLarge(CapEntrySize, member)
@@ -119,9 +113,8 @@ const MaxTrailerBytes = 1 << 20
 // ErrTrailingData reports more than MaxTrailerBytes after the end of the archive.
 var ErrTrailingData = errors.New("trailing data after end of archive")
 
-// DrainTrailer reads r to its end so the compression layer verifies its own
-// checksum; without it a truncated archive looks complete once the tar end
-// marker arrives. It returns ErrTrailingData or the read error.
+// DrainTrailer reads r to its end so the compression layer verifies its checksum; otherwise a
+// truncated archive looks complete once the tar end marker arrives.
 func DrainTrailer(r io.Reader) error {
 	n, err := io.Copy(io.Discard, io.LimitReader(r, MaxTrailerBytes+1))
 	if err != nil {

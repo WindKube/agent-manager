@@ -18,10 +18,7 @@ const (
 	hubA = "https://hub.example.com"
 	hubB = "https://other.example.com:8443"
 
-	// Hand-written digests rather than hashes of something: the expected
-	// on-disk bytes below are derived from the source of truth (the schema and
-	// the struct tags) and not from observing a run, so every value in them
-	// has to be one a human can check by eye.
+	// Hand-written digests, so the expected bytes can be checked by eye.
 	digestHex = "abababababababababababababababababababababababababababababababab"
 	fileHex   = "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
 )
@@ -35,35 +32,28 @@ func mustDigest(t *testing.T, hex string) record.Digest {
 
 func installedAt() time.Time { return time.Date(2026, 8, 27, 10, 11, 12, 0, time.UTC) }
 
-// A record's dest is a path on THIS machine and validation requires it to be
-// absolute, so the fixtures spell one out. The JSON form is hand-written rather
-// than derived with json.Marshal, which would hand the encoding assertion to
-// the code under test.
+// Dests must be absolute on this machine. The JSON form is hand-written, not
+// json.Marshal'd, so the encoding assertion isn't delegated to the code under test.
 const (
 	destRoot     = "/home/u"
 	destJSONRoot = "/home/u"
 	sep          = "/"
 )
 
-// skillDest is a fixture destination under the platform's absolute root.
 func skillDest(name string) string {
 	return filepath.Join(destRoot, ".claude", "skills", name)
 }
 
-// skillDestJSON is skillDest spelled as JSON encodes it. Assembled from the
-// hand-written escaped root rather than from the encoder.
 func skillDestJSON(name string) string {
 	return destJSONRoot + sep + ".claude" + sep + "skills" + sep + name
 }
 
-// uncleanDest is skillDest("x") with a `..` left in it, built without
-// filepath.Join because Join cleans — which is the whole point of the fixture.
+// uncleanDest is built without filepath.Join, which would clean it.
 func uncleanDest() string {
 	return destRoot + sep + ".." + sep + filepath.Base(destRoot) +
 		sep + ".claude" + sep + "skills" + sep + "x"
 }
 
-// smallRecord is the record the golden bytes below describe.
 func smallRecord(t *testing.T) *record.Record {
 	t.Helper()
 	r := record.New(hubA)
@@ -91,14 +81,8 @@ func smallRecord(t *testing.T) *record.Record {
 	return r
 }
 
-// goldenSmall is hand-written from the struct tags and the JSON encoder's
-// documented rules (field order as declared, map keys sorted, two-space
-// indent), NOT copied out of a test run. A golden captured from output encodes
-// whatever the encoder happened to do, including a bug.
-// golden is goldenSmall with the platform's destination substituted in. The
-// shape — field order as declared, map keys sorted, two-space indent, the short
-// `h`/`s`/`m`/`k` keys, the decimal modes 420 and 493 — is still entirely
-// hand-derived; only the one value that cannot be platform-independent moves.
+// golden is hand-written from the struct tags and encoder rules, never copied
+// from output, with only the platform's destination substituted in.
 func golden() string {
 	return strings.ReplaceAll(goldenSmall, "@DEST@", skillDestJSON("code-review"))
 }
@@ -255,8 +239,7 @@ func TestAbsentFileIsAnEmptyRecordAndNotAnError(t *testing.T) {
 	require.Equal(t, record.SchemaVersion, got.SchemaVersion)
 	require.Empty(t, got.Refs())
 
-	// Reading must not create anything: `status --offline` on a machine that
-	// has never synced must not fabricate a hub directory.
+	// `status --offline` on a never-synced machine must not create a hub directory.
 	_, statErr := os.Stat(filepath.Dir(p))
 	require.ErrorIs(t, statErr, os.ErrNotExist)
 }
@@ -307,16 +290,13 @@ func TestARecordForOneHubIsRefusedAgainstAnother(t *testing.T) {
 	require.Contains(t, err.Error(), hubA, "the refusal must name the hub the record belongs to")
 	require.Contains(t, err.Error(), hubB, "and the hub this run is against")
 
-	// The check is exact string equality on purpose: internal/cmd owns hub
-	// identity, and a second canonicalisation here would eventually disagree
-	// with the directory naming.
+	// Exact equality on purpose: internal/cmd owns hub canonicalisation.
 	_, err = record.Load(p, hubA+"/")
 	require.ErrorIs(t, err, record.ErrHubMismatch)
 }
 
-// A corrupt record must not be read as empty. "Empty" means "prune nothing,
-// reinstall everything", which would leave an installed tree on disk
-// permanently unremovable.
+// An empty record means "prune nothing", which would leave a corrupt record's
+// tree permanently unremovable.
 func TestACorruptRecordIsRefusedAndNeverTreatedAsEmpty(t *testing.T) {
 	t.Parallel()
 
@@ -354,8 +334,6 @@ func TestACorruptRecordIsRefusedAndNeverTreatedAsEmpty(t *testing.T) {
 	}
 }
 
-// The write is atomic: a record half-written by a killed process leaves the
-// previous record intact. Proven by actually leaving a partial file behind.
 func TestAKilledWriteLeavesThePreviousRecordIntact(t *testing.T) {
 	t.Parallel()
 
@@ -364,11 +342,8 @@ func TestAKilledWriteLeavesThePreviousRecordIntact(t *testing.T) {
 	_, err := record.Save(p, first)
 	require.NoError(t, err)
 
-	// What a process killed between the create and the rename leaves: a
-	// partial file under the temp name, in the same directory, with a
-	// half-written document in it. Discovered by name shape, not by asking the
-	// package — a temp name only the package knows would make this test
-	// vacuous the day the name changes.
+	// A partial temp file, as a process killed before the rename leaves; found
+	// by name shape so a renamed temp prefix can't make this vacuous.
 	dir := filepath.Dir(p)
 	partial := filepath.Join(dir, ".state.json.amctl-tmp-3141592")
 	require.NoError(t, os.WriteFile(partial, []byte(`{"schemaVersion":1,"hub":"https://hub.exa`), 0o600))
@@ -377,8 +352,7 @@ func TestAKilledWriteLeavesThePreviousRecordIntact(t *testing.T) {
 	require.NoError(t, err, "a leftover partial write must not affect reading the record")
 	require.Equal(t, first, got, "the previous record must be intact, byte for byte")
 
-	// The next successful save collects the leftover rather than leaving it to
-	// accumulate one per crash forever.
+	// The next successful save collects the leftover.
 	second := smallRecord(t)
 	second.Profiles[0].Revision = 8
 	wrote, err := record.Save(p, second)
@@ -393,8 +367,7 @@ func TestAKilledWriteLeavesThePreviousRecordIntact(t *testing.T) {
 	require.Equal(t, []string{p}, names(t, dir), "nothing but the record may be left behind")
 }
 
-// A reader must never observe a torn record. A direct write to the final name
-// passes every other test in this file and fails this one.
+// A direct write to the final name passes every other test and fails this one.
 func TestNoReaderEverObservesATornRecord(t *testing.T) {
 	t.Parallel()
 
@@ -442,8 +415,6 @@ func TestNoReaderEverObservesATornRecord(t *testing.T) {
 	wg.Wait()
 }
 
-// A second run against an unchanged hub makes no filesystem modification;
-// that has to be true of the record too, not only of the tree.
 func TestSavingAnUnchangedRecordWritesNothing(t *testing.T) {
 	t.Parallel()
 
@@ -468,8 +439,6 @@ func TestSavingAnUnchangedRecordWritesNothing(t *testing.T) {
 	require.True(t, wrote, "a changed record must be written")
 }
 
-// The complete set of paths amctl may remove for an entry is two literal
-// names derived from one recorded destination; no glob exists or is needed.
 func TestRemovablePathsIsTheDestinationAndItsDeterministicAside(t *testing.T) {
 	t.Parallel()
 
@@ -482,18 +451,13 @@ func TestRemovablePathsIsTheDestinationAndItsDeterministicAside(t *testing.T) {
 		skillDest("code-review") + record.AsideSuffix,
 	}, e.RemovablePaths())
 
-	// Both members are siblings under the destination's own parent: a central
-	// trash directory would make the swap's rollback fail with EXDEV exactly
-	// when it is needed.
+	// Siblings, so the swap's rollback never hits EXDEV.
 	parent := filepath.Dir(e.Dest)
 	for _, p := range e.RemovablePaths() {
 		require.Equal(t, parent, filepath.Dir(p))
 	}
 }
 
-// One destination claimed by two profiles is legitimate: the same package at
-// the same version in two profiles is one directory. Prune must consult this
-// before removing anything.
 func TestTwoProfilesMayClaimOneDestination(t *testing.T) {
 	t.Parallel()
 
@@ -550,9 +514,8 @@ func TestProfileHelpers(t *testing.T) {
 	require.True(t, r.IsEmpty())
 }
 
-// Every one of these is a shape amctl could not have written, so it is either
-// corruption or a hand edit. Each asserts the specific refusal, because a
-// negative case that fails for the wrong reason has stopped testing anything.
+// Each case is a shape amctl could not have written, and asserts the specific
+// refusal.
 func TestValidateRefusesRecordsAmctlCouldNotHaveWritten(t *testing.T) {
 	t.Parallel()
 
@@ -686,8 +649,7 @@ func TestValidateRefusesRecordsAmctlCouldNotHaveWritten(t *testing.T) {
 			require.ErrorIs(t, err, record.ErrInvalid)
 			require.Contains(t, err.Error(), tc.wantMsg)
 
-			// Save must refuse the same shape, and must not leave the
-			// destination file or any temp behind when it does.
+			// Save must refuse it too, leaving no file or temp behind.
 			p := recordPath(t)
 			wrote, saveErr := record.Save(p, r)
 			require.ErrorIs(t, saveErr, record.ErrInvalid)
@@ -709,8 +671,7 @@ func TestValidateRefusesRecordsAmctlCouldNotHaveWritten(t *testing.T) {
 
 	t.Run("the valid record this table mutates really is valid", func(t *testing.T) {
 		t.Parallel()
-		// The negative control. Without it, a table whose every row failed for
-		// an unrelated reason would look exactly like this one.
+		// Negative control: a valid record passes.
 		require.NoError(t, base(t).Validate())
 	})
 }
@@ -744,9 +705,8 @@ func TestDigestEncoding(t *testing.T) {
 		require.JSONEq(t, `"sha256:`+digestHex+`"`, string(b))
 	})
 
-	// Every rejected spelling below is a real encoding of a real digest
-	// elsewhere in this system; accepting any of them would let the field
-	// hold two spellings of one value.
+	// Each rejected spelling is a real digest encoding used elsewhere; accepting
+	// one would give the field two spellings of one value.
 	for _, tc := range []struct{ name, body string }{
 		{"the response header's base64 encoding", `"sha-256=q6urq6urq6urq6urq6urq6urq6urq6urq6urq6urq6s="`},
 		{"the cache's filename encoding", `"sha256-` + digestHex + `"`},
@@ -768,9 +728,7 @@ func TestDigestEncoding(t *testing.T) {
 func TestPathIsTheRecordInsideTheHubDirectory(t *testing.T) {
 	t.Parallel()
 
-	// The seam with internal/cmd: this package is GIVEN the per-hub directory
-	// and never derives it from a URL, so there is no second opinion here on
-	// what makes two hub URLs the same hub.
+	// The per-hub directory is given, never derived from a URL.
 	hubDir := filepath.Join(string(filepath.Separator)+"h", ".agent-manager", "hub.example.com-1a2b")
 	require.Equal(t, filepath.Join(hubDir, "state.json"), record.Path(hubDir))
 	require.Equal(t, "state.json", record.FileName)
@@ -779,8 +737,6 @@ func TestPathIsTheRecordInsideTheHubDirectory(t *testing.T) {
 func TestLoadRefusesWithoutAnExpectedHub(t *testing.T) {
 	t.Parallel()
 
-	// The hub check is the whole point of Load's second argument; a caller
-	// that has not resolved a hub yet must not get a record it cannot check.
 	got, err := record.Load(recordPath(t), "")
 	require.Error(t, err)
 	require.Nil(t, got)
@@ -806,8 +762,7 @@ func names(t *testing.T, dir string) []string {
 	return out
 }
 
-// big is a record large enough that a non-atomic write would be observed torn
-// by a concurrent reader rather than landing in one page.
+// big is large enough that a non-atomic write would be observed torn.
 func big(t *testing.T, revision int) *record.Record {
 	t.Helper()
 	entries := make([]record.Entry, 0, 200)

@@ -1,60 +1,9 @@
-// This file measures idempotence on the FILESYSTEM, not on the CLI's report.
-//
-// The claim is "a second run against an unchanged hub makes no filesystem
-// modification", and the only witness worth having is the filesystem itself. A
-// build that re-downloaded every bundle, re-extracted it, re-swapped the
-// destination and rewrote state.json with byte-identical content would report
-// "nothing to do" and exit 0 quite happily — every counter it keeps is a
-// counter of what it DECIDED, not of what it wrote. sync_test.go's
-// TestASecondSyncChangesNothing asserts the verb's own account; this file
-// asserts the tree, over the whole home: the agent directories, the
-// hand-written skill beside them, `~/.agent-manager/<hub>/state.json` and the
-// bundle cache.
-//
-// # THE FIVE CHANNELS, AND WHICH FAILURE EACH ONE CATCHES
-//
-// A single signal is not enough, because the three shapes a broken sync takes
-// are each invisible to some of them:
-//
-//   - the path set — an added or removed file. Granularity-free.
-//   - content sha256, size, mode, symlink target — a re-extract that produced
-//     different bytes, and a permission change (which moves ctime, not mtime,
-//     so no timestamp check sees it at all).
-//   - mtime — an IN-PLACE rewrite of identical bytes. This is the only channel
-//     that sees it: same path, same size, same hash, same inode. It is
-//     therefore not corroboration here, it is the primary signal for the most
-//     likely defect, which is why the granularity work below is not optional.
-//   - file identity (os.SameFile) — an atomic swap that replaces the
-//     destination with identical bytes. If the extractor ever restored mtimes
-//     from the archive header, mtime would go blind and this is what still
-//     fires. Sound in ONE direction only: SameFile false proves a replacement,
-//     SameFile true does not prove there was none — an inode number can be
-//     reused. Used as a detector, never as a licence.
-//   - the request log — run two must not re-download a bundle. The cache is
-//     the second most likely place for a silent rewrite, and a re-download that
-//     landed identical bytes is invisible to every channel above (cache.Put
-//     writes the same file), so it is observed on the wire.
-//
-// # MTIME GRANULARITY, WHICH IS A REAL TRAP AND IS MEASURED, NOT ASSUMED
-//
-// Many filesystems store 1-second mtimes; HFS+ is 1 s and exFAT is 2 s. Two
-// syncs inside one tick have identical mtimes whatever happened between them,
-// so an mtime comparison over a fast test would be quietly vacuous — passing
-// because it cannot see, which is the failure mode this suite's rules single
-// out. idemMtimeSettle measures the property actually needed — "after how long
-// is a write DISTINGUISHABLE by stored mtime here?" — by writing, sleeping and
-// writing again with a doubling delay, and the test then waits that long
-// between the two syncs. So any write run two performs lands in a later tick
-// than run one's, on whatever filesystem the suite happens to be on. If no
-// delay up to four seconds separates two writes, the mtime channel is dropped
-// with a loud log and the other four still carry the assertion; papering over
-// it by comparing mtimes anyway would be worse than saying so.
-//
-// TestTheIdempotenceCheckSeesWhatABrokenSyncWouldDo and
-// TestARealReinstallOfIdenticalBytesIsSeenByThisCheck are the negative
-// controls: eight synthetic mutations, one per channel, plus a re-install
-// driven by production code. Without them "no differences" is a claim about a
-// comparison nobody proved could fail.
+// This file measures idempotence on the filesystem, not on the CLI's report:
+// a build that rewrote everything with identical bytes would still report
+// "nothing to do". Five channels each catch a different defect: the path set,
+// content/mode/symlink target, mtime (the only witness of an in-place identical
+// rewrite), file identity (an atomic swap), and the request log (a re-download).
+// Mtime granularity is measured by idemMtimeSettle rather than assumed.
 package cmd
 
 import (
@@ -76,12 +25,7 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/output"
 )
 
-// ---------------------------------------------------------------- snapshots
-
-// idemNode is one path as it exists on disk. info is kept so os.SameFile can
-// answer the identity question, which needs the FileInfo and not a field of it:
-// the inode number lives in a per-platform Sys() value, and os.SameFile is the
-// portable way to ask.
+// idemNode keeps info so os.SameFile can answer the identity question portably.
 type idemNode struct {
 	dir   bool
 	mode  fs.FileMode
@@ -92,17 +36,9 @@ type idemNode struct {
 	info  fs.FileInfo
 }
 
-// idemSnapshot walks every path under home, including `~/.agent-manager`.
-//
-// Lstat, not Stat: a symlink is recorded as a symlink and its target string
-// compared, because a check that followed links could not tell a replaced link
-// from an unchanged one.
-//
-// Directory mtimes ARE recorded, unlike sync_test.go's treeSnapshot, which
-// drops them because the per-home lock and the record's temp file move the
-// state root's own mtime on every run. Dropping them would miss a directory
-// whose child was re-created, so they are kept and the one directory that
-// legitimately moves is named, asserted to move, and excluded by name.
+// idemSnapshot walks every path under home with Lstat, so a replaced symlink
+// is visible. Directory mtimes are kept; the state root, which legitimately
+// moves on every run, is excluded by name.
 func idemSnapshot(t *testing.T, home string) map[string]idemNode {
 	t.Helper()
 	out := map[string]idemNode{}
@@ -149,9 +85,6 @@ func idemSnapshot(t *testing.T, home string) map[string]idemNode {
 	return out
 }
 
-// idemChange is one difference between two snapshots. Structured rather than a
-// string so the test can decide per CHANNEL what is allowed, instead of
-// pattern-matching its own error messages.
 type idemChange struct {
 	rel    string
 	what   string
@@ -160,10 +93,8 @@ type idemChange struct {
 
 func (c idemChange) String() string { return fmt.Sprintf("%s: %s (%s)", c.rel, c.what, c.detail) }
 
-// idemDiff reports every difference between two snapshots of the same home.
-//
-// withMtime is false only when idemMtimeSettle could not establish that this
-// filesystem distinguishes two writes at all; see the package comment.
+// idemDiff reports every difference between two snapshots; withMtime is false
+// when this filesystem cannot distinguish two writes.
 func idemDiff(before, after map[string]idemNode, withMtime bool) []idemChange {
 	var out []idemChange
 	add := func(rel, what, format string, args ...any) {
@@ -177,10 +108,7 @@ func idemDiff(before, after map[string]idemNode, withMtime bool) []idemChange {
 		}
 		switch {
 		case b.mode.Type() != a.mode.Type():
-			// A kind change is reported INSTEAD of the field comparisons: the
-			// hash of a file and the target of a symlink are not comparable
-			// quantities, and reporting five differences for one event buries
-			// the one that says what happened.
+			// A kind change replaces the field comparisons, which would be meaningless across kinds.
 			add(rel, "kind", "%s -> %s", b.mode.Type(), a.mode.Type())
 			continue
 		case b.mode != a.mode:
@@ -253,23 +181,12 @@ func idemLines(changes []idemChange) string {
 	return strings.Join(lines, "\n")
 }
 
-// ---------------------------------------------------------------- mtime granularity
-
-// idemMtimeSettle measures how long the test filesystem needs before a write is
-// distinguishable by stored mtime, and returns a delay to wait between the two
-// syncs plus whether mtime is usable as a channel at all.
-//
-// It measures the property the test needs rather than "the granularity": write,
-// stat, sleep d, write, stat, and double d until the two stored mtimes differ.
-// That is one measurement instead of a chain of inferences from a claimed tick
-// size, and it is correct on a 1 s HFS+ volume, a 2 s exFAT one and a
-// nanosecond tmpfs alike. The returned delay is twice the first d that worked,
-// for slack against a boundary landing badly.
+// idemMtimeSettle returns how long to wait between syncs so a write is
+// distinguishable by stored mtime, doubling a probe delay until two writes
+// differ, and whether mtime is usable at all.
 func idemMtimeSettle(t *testing.T) (time.Duration, bool) {
 	t.Helper()
-	// A directory of its own, on the same filesystem as the test home (both come
-	// from t.TempDir): probing inside the home would move the very mtimes the
-	// test is about to compare.
+	// Outside the test home: probing inside it would move the mtimes under test.
 	path := filepath.Join(t.TempDir(), "mtime-probe")
 	write := func(i int) time.Time {
 		require.NoError(t, os.WriteFile(path, []byte{byte(i)}, 0o600))
@@ -292,19 +209,14 @@ func idemMtimeSettle(t *testing.T) (time.Duration, bool) {
 			return 2 * d, true
 		}
 	}
-	// Not a skip and not a failure: the other four channels still hold, and
-	// saying so is better than comparing timestamps that cannot differ.
+	// Not a skip: the other four channels still hold.
 	t.Logf("mtime channel DROPPED: no delay up to 4s made two writes distinguishable on this "+
 		"filesystem (%s), so an identical in-place rewrite cannot be detected by mtime here; "+
 		"the path set, content hashes, modes and file identity still carry the assertion", path)
 	return 0, false
 }
 
-// ---------------------------------------------------------------- request log
-
-// idemRequestLog records request paths in order. It is how "run two did not
-// re-download a bundle" is observed on the wire rather than inferred from the
-// CLI's report, which is the whole point of this file.
+// idemRequestLog records request paths, so a re-download is observed on the wire.
 type idemRequestLog struct {
 	next http.RoundTripper
 
@@ -335,23 +247,18 @@ func (l *idemRequestLog) since(mark int) []string {
 	return append([]string(nil), l.seen[mark:]...)
 }
 
-// idemEnv wires a sync env with the request log spliced in front of the
-// transport the fake handed over, so TLS still verifies.
+// idemEnv splices the request log in front of the fake's transport, so TLS still verifies.
 func idemEnv(t *testing.T) (*syncEnv, *idemRequestLog, syncFlags) {
 	t.Helper()
 	tg := startSyncFake(t)
 	env := newSyncEnv(t, tg)
 	log := &idemRequestLog{next: env.deps.httpClient.Transport}
 	env.deps.httpClient = &http.Client{Transport: log}
-	// The decoys are not decoration here: without them "the other agent
-	// directories were not touched" would be a statement about directories that
-	// do not exist, and the hand-written skill in ~/.claude/skills is the path
-	// this check protects.
+	// Without the decoys "other agent directories were not touched" would be vacuous.
 	plantDecoyAgentDirectories(t, env.home)
 	return env, log, baselineFlags(tg)
 }
 
-// idemRel is a path's key in a snapshot: home-relative and slash-separated.
 func idemRel(t *testing.T, home, path string) string {
 	t.Helper()
 	rel, err := filepath.Rel(home, path)
@@ -359,13 +266,9 @@ func idemRel(t *testing.T, home, path string) string {
 	return filepath.ToSlash(rel)
 }
 
-// installedSkills are the directories the fake's healthy profile installs, in
-// their disambiguated form. Hand-written from the fixture rather
-// than read back from the tree, so a run that installed nothing fails here
-// instead of making the whole measurement vacuous.
+// installedSkills is hand-written from the fixture, so a run that installed
+// nothing fails rather than making the measurement vacuous.
 var installedSkills = []string{"acme--code-review", "acme--lint-guard", "example--doc-writer"}
-
-// ---------------------------------------------------------------- the property
 
 func TestASecondSyncModifiesNothingOnDisk(t *testing.T) {
 	env, log, flags := idemEnv(t)
@@ -393,11 +296,8 @@ func TestASecondSyncModifiesNothingOnDisk(t *testing.T) {
 	second := idemSnapshot(t, env.home)
 	changes := idemDiff(first, second, mtimeUsable)
 
-	// The self-check. `~/.agent-manager` gets the write probe and the sync
-	// lock created and unlinked inside it on EVERY run, so its own mtime must
-	// move. If it did not, the settle was too short or mtime is not being
-	// compared, and every "unchanged" assertion below would be passing because
-	// it cannot see rather than because nothing happened.
+	// Self-check: the state root's mtime must move on every run (probe and lock),
+	// or every "unchanged" assertion below is blind.
 	if mtimeUsable {
 		require.True(t, idemHasChange(changes, DirName, "mtime"),
 			"the write probe and the sync lock are created and unlinked inside %s on every run, so its "+
@@ -405,24 +305,14 @@ func TestASecondSyncModifiesNothingOnDisk(t *testing.T) {
 			DirName, idemLines(changes))
 	}
 
-	// The record first, and ahead of the general comparison rather than after it,
-	// because a `require` stops at the first failure: behind the sweep below this
-	// assertion could never fire and would be a dead check with a good message.
-	// It earns its place because it is the most likely violation that LOOKS
-	// legitimate — record.Save returns `wrote bool` and skips a write whose bytes
-	// match, so a moved mtime here is a real defect and not a test artefact.
+	// record.Save skips a byte-identical write, so a moved mtime here is a real
+	// defect. Checked before the sweep, since require stops at the first failure.
 	require.Empty(t, idemChangesFor(changes, recordRel),
-		"FR-025: %s was rewritten by the second sync; record.Save must skip a write whose bytes are "+
+		"%s was rewritten by the second sync; record.Save must skip a write whose bytes are "+
 			"unchanged:\n%s", recordRel, idemLines(idemChangesFor(changes, recordRel)))
 
-	// Everything else must be untouched. The state root itself is excluded by
-	// NAME, and only for mtime and size — the two fields a created-and-unlinked
-	// child can move — never for its contents, which are compared path by path
-	// like every other path. Measured on this filesystem, mtime is the only one
-	// that actually moves and the whole difference list after run two is one
-	// line; size is allowed as well because a directory's reported size is
-	// block-granular and a transient child grows it on some filesystems, which
-	// would otherwise fail this test for the lock rather than for the tree.
+	// The state root is excluded by name, for mtime and size only: a transient
+	// child (the lock) moves both on some filesystems.
 	var offenders []idemChange
 	for _, c := range changes {
 		if c.rel == DirName && (c.what == "mtime" || c.what == "size") {
@@ -431,10 +321,9 @@ func TestASecondSyncModifiesNothingOnDisk(t *testing.T) {
 		offenders = append(offenders, c)
 	}
 	require.Empty(t, offenders,
-		"FR-025/SC-002: the second sync modified the filesystem:\n%s", idemLines(offenders))
+		"the second sync modified the filesystem:\n%s", idemLines(offenders))
 
-	// And the cache: run two must not re-download. A re-download that landed
-	// identical bytes leaves no trace on disk at all, so it is observed here.
+	// A re-download that landed identical bytes leaves no trace on disk.
 	after := log.since(mark)
 	require.NotEmpty(t, after, "the second run must really have talked to the hub")
 	var bundles []string
@@ -443,7 +332,7 @@ func TestASecondSyncModifiesNothingOnDisk(t *testing.T) {
 			bundles = append(bundles, p)
 		}
 	}
-	require.Empty(t, bundles, "FR-025: the second sync re-downloaded %d bundle(s): %v", len(bundles), bundles)
+	require.Empty(t, bundles, "the second sync re-downloaded %d bundle(s): %v", len(bundles), bundles)
 	require.Condition(t, func() bool {
 		for _, p := range after {
 			if strings.Contains(p, "/revisions/") {
@@ -454,24 +343,18 @@ func TestASecondSyncModifiesNothingOnDisk(t *testing.T) {
 	}, "the second run must have fetched the lockfile, or it did nothing and proved nothing: %v", after)
 }
 
-// ---------------------------------------------------------------- negative controls
-
 func TestTheIdempotenceCheckSeesWhatABrokenSyncWouldDo(t *testing.T) {
-	// Each case is a mutation a plausibly broken sync performs on run two,
-	// applied to a converged tree, and the assertion is that idemDiff names the
-	// path and the channel. Without this the property test's "no differences" is
-	// unfalsifiable.
+	// Negative controls: each mutation is something a broken run two might do,
+	// and idemDiff must name its path and channel.
 	settle, mtimeUsable := idemMtimeSettle(t)
 
 	skillDir := func(env *syncEnv) string { return filepath.Join(env.skillsRoot(), installedSkills[0]) }
 
 	cases := []struct {
-		name string
-		// mutate performs the mutation and returns the home-relative path whose
-		// change is expected.
+		name   string
 		mutate func(t *testing.T, env *syncEnv) string
 		what   string
-		// needsMtime marks the mutations that ONLY mtime can see.
+		// needsMtime marks the mutations that only mtime can see.
 		needsMtime bool
 	}{
 		{
@@ -520,10 +403,8 @@ func TestTheIdempotenceCheckSeesWhatABrokenSyncWouldDo(t *testing.T) {
 		{
 			name: "an atomic swap that preserved both the bytes and the mtime is caught by file identity",
 			mutate: func(t *testing.T, env *syncEnv) string {
-				// The extractor sets no timestamps today, so this models the
-				// build in which it starts restoring them from the archive
-				// header: same path, same bytes, same mode, same mtime, new
-				// inode. mtime and the hash both go blind; identity does not.
+				// Models an extractor restoring archive mtimes: same bytes, mode and mtime,
+				// new inode. Only identity can see it.
 				p := filepath.Join(skillDir(env), "SKILL.md")
 				info, err := os.Lstat(p)
 				require.NoError(t, err)
@@ -589,9 +470,8 @@ func TestTheIdempotenceCheckSeesWhatABrokenSyncWouldDo(t *testing.T) {
 	}
 }
 
-// rewriteIdentically writes a file's own bytes back over it, preserving its
-// mode. This is what a sync that re-installs unconditionally does to every file
-// it manages, and the reason the mtime channel exists.
+// rewriteIdentically writes a file's own bytes back over it, as an
+// unconditional re-install would.
 func rewriteIdentically(t *testing.T, path string) {
 	t.Helper()
 	info, err := os.Lstat(path)
@@ -602,16 +482,8 @@ func rewriteIdentically(t *testing.T, path string) {
 }
 
 // TestARealReinstallOfIdenticalBytesIsSeenByThisCheck is the negative control
-// driven by PRODUCTION code rather than by a synthetic touch, which is the only
-// kind that proves the check would fire against a real defect.
-//
-// Deleting the record puts the second sync in exactly the state a build with
-// broken change detection is in permanently: every entry looks like an install.
-// apply's guard finds amctl's own marker at the destination with no record
-// row — its "interrupted between the install and the record write" case — and
-// re-installs, which re-extracts and re-swaps BYTE-IDENTICAL content. The
-// verb's own report is honest about what it decided; only the filesystem
-// knows the work was done twice.
+// driven by production code: deleting the record makes run two re-install
+// byte-identical content, which only the filesystem can see.
 func TestARealReinstallOfIdenticalBytesIsSeenByThisCheck(t *testing.T) {
 	env, log, flags := idemEnv(t)
 	settle, mtimeUsable := idemMtimeSettle(t)
@@ -638,9 +510,7 @@ func TestARealReinstallOfIdenticalBytesIsSeenByThisCheck(t *testing.T) {
 			"noticed a broken sync doing the same thing on every run; it reported:\n%s",
 		skillRel, idemLines(changes))
 
-	// The same run must still not have touched the hand-written skill beside
-	// the installed ones, and must not have re-downloaded: the cache still
-	// holds every bundle, so a re-install is a local operation.
+	// The cache still holds every bundle, so a re-install must not re-download.
 	require.Empty(t, idemChangesFor(changes, handWritten),
 		"a forced re-install modified a path amctl's record never claimed")
 	for _, p := range log.since(mark) {

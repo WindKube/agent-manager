@@ -46,8 +46,7 @@ type Options struct {
 
 	Backends []keyring.BackendType // nil means AllowedBackends()
 
-	// goos and available let a test exercise another platform's fallback
-	// message; no darwin machine was available to write that message on.
+	// goos and available let a test exercise another platform's fallback message.
 	goos      string
 	available []keyring.BackendType
 }
@@ -58,11 +57,8 @@ type Store struct { // one keyring backend, chosen and named at Open
 	fileDir string
 }
 
-// AllowedBackends is Available() minus keyctl: the kernel keyring is
-// memory-only (gone at reboot, gone when the uid's last process exits) and
-// ranks ahead of `pass`/file, so a headless Linux box would silently lose
-// the token with no event at all. `pass` stays in: it's durable and what a
-// CGO_ENABLED=0 darwin build actually lands on.
+// AllowedBackends is Available() minus keyctl: the kernel keyring is memory-only and ranks ahead of
+// `pass`/file, so a headless Linux box would silently lose the token.
 func AllowedBackends() []keyring.BackendType {
 	return allowedFrom(Available())
 }
@@ -78,11 +74,9 @@ func allowedFrom(available []keyring.BackendType) []keyring.BackendType {
 	return out
 }
 
-// Open walks the backend order one at a time, since keyring.Open cannot be
-// asked which backend it picked (unexported concrete types, bare interface
-// returned). It does not refuse a build whose platform store is missing —
-// that's VerifyCurrent's job at build time — since refusing here would
-// leave a static darwin binary user with no way to log in at all.
+// Open tries one backend at a time, since keyring.Open cannot report which one it picked. A missing
+// platform store is VerifyCurrent's job at build time; refusing here would leave a static darwin
+// binary with no way to log in.
 func Open(opts Options) (*Store, error) {
 	if opts.StateRoot == "" {
 		return nil, errors.New("credentials: no state root given; pass cmd.Home.Root")
@@ -118,16 +112,13 @@ func Open(opts Options) (*Store, error) {
 
 		LibSecretCollectionName: libSecretCollection,
 
-		// FilePasswordFunc must return something; amctl has no interactive
-		// prompt, and a hardcoded non-empty constant would look like
-		// encryption while being a key published in this file. checkFileMode
-		// is the real confidentiality boundary for the fallback, not this.
+		// A hardcoded passphrase would only look like encryption; checkFileMode is the real
+		// confidentiality boundary for the file fallback.
 		FilePasswordFunc: emptyPassphrase,
 		FileDir:          fileDir,
 
 		PassPrefix: ServiceName,
-		// PassDir stays empty: keyring then honours PASSWORD_STORE_DIR or
-		// ~/.password-store, the user's own store, not ours to relocate.
+		// PassDir stays empty so keyring honours the user's own PASSWORD_STORE_DIR.
 	}
 
 	var (
@@ -161,9 +152,7 @@ func Open(opts Options) (*Store, error) {
 
 func emptyPassphrase(string) (string, error) { return "", nil }
 
-// refuseToPrompt is unreachable today (KeychainName is empty, so keychain
-// never creates one) but set anyway so a future config change fails loudly
-// instead of nil-dereferencing.
+// refuseToPrompt is unreachable with an empty KeychainName, but set so a config change fails loudly.
 func refuseToPrompt(prompt string) (string, error) {
 	return "", fmt.Errorf("the credential store asked for a passphrase (%q) and amctl has no flag to supply one; unlock it first", prompt)
 }
@@ -207,9 +196,7 @@ func (s *Store) Save(c Credential) error {
 		return fmt.Errorf("cannot store the credential for %s in the %s credential store: %w", c.Hub, s.backend, err)
 	}
 
-	// Post-condition, not formality: if the library's file mode ever
-	// changes, the token is already written by the time this notices, so
-	// remove it rather than leave it readable.
+	// If the library's file mode ever changes, remove the token rather than leave it readable.
 	if err := s.checkFileMode(key); err != nil {
 		if s.backend == keyring.FileBackend {
 			_ = s.ring.Remove(key)
@@ -219,9 +206,8 @@ func (s *Store) Save(c Credential) error {
 	return nil
 }
 
-// Check exists so `amctl login` can refuse before spending a device-grant
-// approval on a token that would fail to save; Open itself doesn't run this,
-// since hub B's bad file mode is no reason to fail a verb writing hub A.
+// Check lets `amctl login` refuse before spending a device-grant approval on a token that would fail
+// to save. Open does not run it, since hub B's bad file mode is no reason to fail a verb for hub A.
 func (s *Store) Check(hubURL string) error {
 	if hubURL == "" {
 		return errors.New("cannot check a credential store without a hub")
@@ -274,10 +260,7 @@ func isMissing(err error) bool {
 	return errors.Is(err, keyring.ErrKeyNotFound) || errors.Is(err, fs.ErrNotExist)
 }
 
-// itemKey is a readable prefix plus a SHA-256 digest of the hub URL: the
-// digest is what makes it injective, the prefix is lossy on purpose and
-// carries no identity. Deliberately not shared with cmd.Hub.Dir — sharing
-// would close an import cycle, since internal/cmd imports this package.
+// itemKey is a lossy readable prefix plus a SHA-256 digest of the hub URL, which carries the identity.
 func itemKey(hubURL string) string {
 	sum := sha256.Sum256([]byte(hubURL))
 	return keyPrefix + readablePrefix(hubURL) + "-" + hex.EncodeToString(sum[:])[:hubDigestLen]
@@ -306,15 +289,11 @@ func readablePrefix(hubURL string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-// filePath assumes keyring's identity mapping (it escapes only "/", which
-// itemKey never emits) — asserted, not trusted: see
-// TestTheFileFallbackWritesThePathWePredict. A wrong prediction wouldn't
-// error, it would make checkFileMode stat a missing file and silently pass.
+// filePath assumes keyring's identity mapping, which a test asserts: a wrong prediction would make
+// checkFileMode stat a missing file and silently pass.
 func (s *Store) filePath(key string) string { return filepath.Join(s.fileDir, key) }
 
-// checkFileMode refuses rather than repairing: a silent chmod would hide
-// that the token has been exposed, and is wrong outright for a symlink.
-// Applies only to the file backend, never inferred from runtime.GOOS alone.
+// checkFileMode refuses rather than repairing, since a silent chmod would hide that the token was exposed.
 func (s *Store) checkFileMode(key string) error {
 	if s.backend != keyring.FileBackend {
 		return nil
@@ -333,8 +312,7 @@ func (s *Store) checkFileMode(key string) error {
 	info, err := os.Lstat(path)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		// Nothing stored yet. keyring creates it 0600 and open(2) masks that
-		// with the umask, so the result can only be narrower.
+		// keyring creates it 0600, and the umask can only narrow that.
 		return nil
 	case err != nil:
 		return fmt.Errorf("cannot check the permissions of %s: %w", path, err)

@@ -1,8 +1,5 @@
-// Package pluginparts reads an Agent Plugins bundle into the components a
-// client installs one by one: skills, MCP servers, and the Claude Code
-// agents, commands and hooks that live in the com.anthropic.claude-code
-// extension directory or namespace object. Reading is lenient below the
-// manifest: a component file that does not parse is named in Problems.
+// Package pluginparts reads an Agent Plugins bundle into the components a client installs one by one.
+// Reading is lenient below the manifest: a component file that does not parse is named in Problems.
 package pluginparts
 
 import (

@@ -15,32 +15,16 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/hub"
 )
 
-// This file is this package's own self-test: it checks that what the fake
-// SERVES conforms to the frozen contract. It lives in `package fake` because
-// a couple of cases need the catalog. The behavioural tests live in
-// behaviour_test.go, in `package fake_test`, which cannot reach anything
-// unexported — that seam is enforced by the compiler rather than by a
-// comment.
-//
-// Note for whoever writes internal/hub's own tests: package hub's IN-PACKAGE
-// test files cannot import this package, because fake imports hub and Go
-// treats that as an import cycle. Use `package hub_test` there. That is a
-// real constraint but not the reason for the dependency direction; see
-// doc.go.
+// The fake's self-test that what it serves conforms to the contract; internal because some cases need the catalog.
 
-// response is the fetched result with the body already read and closed. It exists
-// so no *http.Response escapes fetch: a helper that hands one back leaves every
-// caller responsible for a Close it cannot be checked for.
+// response is the fetched result with the body already read and closed.
 type response struct {
 	Status int
 	Header http.Header
 	Body   []byte
 }
 
-// fetch does one GET and returns the whole response, body included and closed.
-// Redirects are NOT followed: this walk is about what each response says, and a 307
-// followed silently would hide the pre-signed hop entirely. The behavioural test
-// that does follow one builds its own client.
+// fetch does one GET without following redirects, so the pre-signed hop stays visible.
 func fetch(t *testing.T, tg Target, path, token string) response {
 	t.Helper()
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, tg.BaseURL+path, http.NoBody)
@@ -58,10 +42,7 @@ func fetch(t *testing.T, tg Target, path, token string) response {
 	return response{Status: resp.StatusCode, Header: resp.Header, Body: b}
 }
 
-// servedLockfiles fetches every lockfile the fake serves, THROUGH THE API: the
-// slugs and heads come from listProfiles and the older revision from the fixture
-// descriptor. Nothing here reads h.lockfiles, so the same walk works against a
-// real hub.
+// servedLockfiles fetches every lockfile through the API, so the same walk works against a real hub.
 func servedLockfiles(t *testing.T, tg Target) map[string][]byte {
 	t.Helper()
 	resp := fetch(t, tg, "/v1/profiles", tg.Token)
@@ -89,8 +70,7 @@ func TestServedLockfilesConformToTheFrozenSchema(t *testing.T) {
 	schema := lockfileSchema(t)
 
 	bodies := servedLockfiles(t, tg)
-	// Nine: eight profile heads plus the baseline's older revision. Asserted so a
-	// profile silently dropped from the catalog cannot shrink this test to nothing.
+	// Eight profile heads plus the baseline's older revision.
 	require.Len(t, bodies, 9)
 
 	for key, body := range bodies {
@@ -99,10 +79,7 @@ func TestServedLockfilesConformToTheFrozenSchema(t *testing.T) {
 			require.NoError(t, json.Unmarshal(body, &doc))
 			v := &validator{}
 			if strings.HasPrefix(key, slugFutureSkip+"/") {
-				// The one profile that deliberately carries a reason the frozen enum
-				// does not list, because the CLI must pass an
-				// unrecognised reason through verbatim and it cannot be tested
-				// against a fake that only serves the six.
+				// Deliberately carries a reason the enum does not list.
 				v.relaxEnumAt = "/skipped/0/reason"
 			}
 			v.check(schema, doc, "")
@@ -111,8 +88,7 @@ func TestServedLockfilesConformToTheFrozenSchema(t *testing.T) {
 	}
 }
 
-// The relaxation above is only safe if it is the ONLY deviation. If that profile
-// drifted in some other way, relaxEnumAt would hide it.
+// relaxEnumAt is only safe if it is that profile's only deviation.
 func TestTheUnknownSkipReasonProfileDeviatesInExactlyOneWay(t *testing.T) {
 	h := New(Options{})
 	defer h.Close()
@@ -141,7 +117,7 @@ func TestTheBaselineLockfileReportsSkippedEntriesWithLegalReasons(t *testing.T) 
 	var lf hub.Lockfile
 	require.NoError(t, json.Unmarshal(resp.Body, &lf))
 
-	require.NotEmpty(t, lf.Skipped, "FR-011 cannot be exercised against an empty skipped array")
+	require.NotEmpty(t, lf.Skipped, "verbatim skip reasons cannot be exercised against an empty skipped array")
 	reasons := map[hub.LockfileSkipReason]bool{}
 	for _, s := range lf.Skipped {
 		require.True(t, s.Reason.Valid(), "%q is not one of the six legal reasons", s.Reason)
@@ -150,10 +126,7 @@ func TestTheBaselineLockfileReportsSkippedEntriesWithLegalReasons(t *testing.T) 
 	require.GreaterOrEqual(t, len(reasons), 2, "at least two distinct reasons must appear")
 }
 
-// The distinct-directory requirement is about namespace/name, so the fake must contain a namespace shared by
-// two publishers. The lockfile carries no publisher field, so the publisher half of
-// this assertion reads the catalog directly — it is a property of the fixture, not
-// of a response, and there is nothing on the wire that could carry it.
+// Reads the catalog directly, since the lockfile carries no publisher field.
 func TestTwoPublishersShareOneNamespaceInTheCatalog(t *testing.T) {
 	h := New(Options{})
 	defer h.Close()
@@ -172,13 +145,11 @@ func TestTwoPublishersShareOneNamespaceInTheCatalog(t *testing.T) {
 		}
 	}
 	require.Len(t, namespaces, 1, "the two fixture ids must sit in ONE namespace")
-	require.Len(t, publishers, 2, "the two fixture ids must come from TWO publishers, or FR-023 is untestable")
+	require.Len(t, publishers, 2, "the two fixture ids must come from TWO publishers")
 	require.NotEqual(t, ids[0], ids[1])
 }
 
-// The digest header and the bytes cannot be allowed to disagree. This re-derives
-// both through internal/cache's parsers — an independent implementation of the same
-// two encodings — rather than through the blob helper that produced them.
+// Re-derived through internal/cache's parsers, independently of the blob helper that produced them.
 func TestDigestHeaderAndLockfileDigestMatchTheServedBytes(t *testing.T) {
 	h := New(Options{})
 	defer h.Close()
@@ -228,8 +199,6 @@ func TestDigestHeaderAndLockfileDigestMatchTheServedBytes(t *testing.T) {
 var userCodePattern = regexp.MustCompile(`^[0-9A-HJ-NP-TV-Z]{4}-[0-9A-HJ-NP-TV-Z]{4}$`)
 
 func TestUserCodesMatchTheContractShape(t *testing.T) {
-	// 500 draws: the alphabet excludes I, L, O and U, and a single draw would not
-	// notice one of them slipping in.
 	for range 500 {
 		code := randomUserCode()
 		require.Regexp(t, userCodePattern, code)

@@ -6,21 +6,16 @@ import (
 	"strings"
 )
 
-// Target `claude-code`: a skill is a directory named for its own identity
-// (not SKILL.md's frontmatter `name`) containing SKILL.md, under
-// $CLAUDE_CONFIG_DIR/skills (user scope, default ~/.claude) or
-// <project>/.claude/skills. A plugin is never installed as a Claude Code
-// plugin (that is agent-owned marketplace state); its parts are placed one by one.
+// Target `claude-code`: skills live under $CLAUDE_CONFIG_DIR/skills (default ~/.claude/skills).
+// A plugin is never installed as a Claude Code plugin (agent-owned marketplace state); its parts are placed one by one.
 const (
 	ClaudeCodeConfigDirEnv  = "CLAUDE_CONFIG_DIR" // only env var that relocates the user-scope root
 	ClaudeCodeConfigDirName = ".claude"
 	SkillEntryFile          = "SKILL.md"
 	skillsSubdir            = "skills"
 
-	// MarkerFileName is the package/version marker beside SKILL.md;
-	// dot-prefixed to avoid the spec's conventional names and SKILL.md's
-	// relative links. Never a plugin-adopting subdir name; state.json, not
-	// this marker, is the pruning authority.
+	// MarkerFileName is the package/version marker beside SKILL.md, dot-prefixed to stay clear of
+	// the skill's own files. state.json, not this marker, is the pruning authority.
 	MarkerFileName = ".agent-manager.json"
 )
 

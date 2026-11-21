@@ -8,10 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The expectations here are hand-derived from Semantic Versioning 2.0.0 §10 and
-// §11 — build metadata ignored, prerelease lower than release, numeric
-// identifiers compared numerically and ranked below alphanumeric ones — and not
-// from running this code.
+// Expectations are hand-derived from Semantic Versioning 2.0.0 §10 and §11.
 func TestVersionsAreOrderedBySemverPrecedenceAndNotLexicographically(t *testing.T) {
 	t.Parallel()
 
@@ -27,7 +24,7 @@ func TestVersionsAreOrderedBySemverPrecedenceAndNotLexicographically(t *testing.
 		{"a major bump moves up", "1.999.999", "2.0.0", DirectionUp},
 		{"identical versions are the same version", "2.4.1", "2.4.1", DirectionSame},
 
-		// Semver §11.3: a prerelease has LOWER precedence than the release.
+		// §11.3: a prerelease ranks below the release.
 		{"leaving a prerelease moves up", "1.0.0-rc.1", "1.0.0", DirectionUp},
 		{"entering a prerelease moves down", "1.0.0", "1.0.0-rc.1", DirectionDown},
 
@@ -39,19 +36,15 @@ func TestVersionsAreOrderedBySemverPrecedenceAndNotLexicographically(t *testing.
 		{"beta.2 to beta.11 moves up, numerically", "1.0.0-beta.2", "1.0.0-beta.11", DirectionUp},
 		{"beta.11 to rc.1 moves up", "1.0.0-beta.11", "1.0.0-rc.1", DirectionUp},
 
-		// §10: build metadata is ignored for precedence, so there is no
-		// direction to report even though the strings differ.
+		// §10: build metadata is ignored for precedence.
 		{"build metadata alone gives no direction", "1.2.3", "1.2.3+build.7", DirectionUnknown},
 		{"a padded core gives no direction", "1.0", "1.0.0", DirectionUnknown},
 
-		// Not semver at all. Numeric-segment comparison still gets the two
-		// common cases right.
+		// Not semver, but numeric segments still order correctly.
 		{"a date-shaped version orders by its segments", "2024-01-15", "2024-02-01", DirectionUp},
 		{"a four-segment version orders by its last segment", "1.2.3.4", "1.2.3.5", DirectionUp},
 
-		// A documented quirk rather than a claim: §11.4.3 puts every
-		// alphanumeric field above every numeric one, and applying that to
-		// something that is not semver makes "v2" outrank "2".
+		// Quirk: §11.4.3 ranks alphanumeric above numeric, so "v2" outranks "2".
 		{"a v-prefix outranks a bare number, which is semver's rule misapplied", "v2", "2", DirectionDown},
 
 		{"an empty installed version is an add, not a comparison", "", "1.0.0", DirectionNone},
@@ -67,9 +60,6 @@ func TestVersionsAreOrderedBySemverPrecedenceAndNotLexicographically(t *testing.
 	}
 }
 
-// The negative control for the case above it: prove that the naive comparison
-// really would get these wrong, so the numeric handling is doing work rather
-// than agreeing with a shortcut.
 func TestLexicographicComparisonWouldGetTheseBackwards(t *testing.T) {
 	t.Parallel()
 
@@ -91,7 +81,7 @@ func TestLexicographicComparisonWouldGetTheseBackwards(t *testing.T) {
 func TestTheSemverExampleChainIsStrictlyIncreasing(t *testing.T) {
 	t.Parallel()
 
-	// Semver 2.0.0 §11.4's example, verbatim.
+	// §11.4's example, verbatim.
 	chain := []string{
 		"1.0.0-alpha",
 		"1.0.0-alpha.1",
@@ -121,9 +111,7 @@ func TestTheSemverExampleChainIsStrictlyIncreasing(t *testing.T) {
 func TestAnOversizedNumericSegmentIsNotOrderedRatherThanTruncated(t *testing.T) {
 	t.Parallel()
 
-	// 21 digits overflows uint64. Truncating would invent an ordering; treating
-	// the field as alphanumeric at least does not claim one that is wrong in a
-	// silent direction.
+	// 21 digits overflows uint64; it is treated as alphanumeric, not truncated.
 	huge := "1." + strings.Repeat("9", 21) + ".0"
 	sign, ok := CompareVersions(huge, "1.0.0")
 	require.True(t, ok)
@@ -133,8 +121,6 @@ func TestAnOversizedNumericSegmentIsNotOrderedRatherThanTruncated(t *testing.T) 
 func TestACustomComparerReplacesTheDefaultEntirely(t *testing.T) {
 	t.Parallel()
 
-	// The shape a Masterminds/semver comparer would have. Proves the seam is
-	// real: nothing else in the package reaches for CompareVersions.
 	alwaysDown := func(string, string) (int, bool) { return 1, true }
 	require.Equal(t, DirectionDown, DirectionOf(alwaysDown, "1.0.0", "9.9.9"))
 	require.Equal(t, DirectionUp, DirectionOf(nil, "1.0.0", "9.9.9"))
@@ -142,8 +128,7 @@ func TestACustomComparerReplacesTheDefaultEntirely(t *testing.T) {
 	declines := func(string, string) (int, bool) { return 0, false }
 	require.Equal(t, DirectionUnknown, DirectionOf(declines, "1.0.0", "9.9.9"))
 
-	// A nil comparer never asks about an add, so a comparer that panics is
-	// never reached for one.
+	// No comparer is consulted for an add.
 	panics := func(string, string) (int, bool) { panic("must not be consulted for an add") }
 	require.Equal(t, DirectionNone, DirectionOf(panics, "", "1.0.0"))
 }

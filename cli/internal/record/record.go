@@ -31,7 +31,7 @@ const (
 // IsValid reports whether k is one of the contract's kinds.
 func (k Kind) IsValid() bool { return k == KindSkill || k == KindPlugin }
 
-// Target is one agent's directory convention; `agents-md` was removed.
+// Target is one agent's directory convention.
 type Target string
 
 // The contract's target values.
@@ -116,9 +116,8 @@ func (d *Digest) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// FileMark is one installed file's account. No mtime (a same-size edit within
-// a millisecond of install is byte-identical in mtime here), no ctime
-// (darwin's Stat_t has none), no inode (the swap's rename changes it on every install).
+// FileMark is one installed file's account. mtime, ctime and inode are left
+// out on purpose: none of them reliably detects an edit across platforms and swaps.
 type FileMark struct {
 	SHA256 string `json:"h"` // the detector; everything else here is secondary
 	Size   int64  `json:"s"` // cheap short-circuit: a differing size is sufficient for `modified`, never for `unmodified`
@@ -157,8 +156,7 @@ func (f Fingerprint) IsZero() bool {
 
 // Entry is one installed package, for one target, in one profile.
 type Entry struct {
-	// ID is `namespace/name`, exactly two segments — not `publisher/name`,
-	// which would build a bundle URL with three where the contract has two.
+	// ID is `namespace/name`, exactly two segments.
 	ID string `json:"id"`
 
 	Version string `json:"version"` // verbatim, as the hub resolved and amctl installed it
@@ -479,7 +477,6 @@ func validateDest(id, dest string) error {
 // otherwise send --force outside the entry root.
 func (f Fingerprint) validate(id string) error {
 	if f.IsZero() {
-		// Absent is allowed and means unverifiable, not silently unmodified.
 		return nil
 	}
 	if f.Algo == "" {

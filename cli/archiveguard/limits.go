@@ -2,8 +2,7 @@ package archiveguard
 
 import "time"
 
-// Extraction caps. Every value is a security parameter, so each states why it
-// is that number instead of a round one.
+// Extraction caps. Each is a security parameter, so each states why it is that number.
 const (
 	// DefaultMaxCompressedBytes is the upload limit the product states; every
 	// other size cap is derived from it.
@@ -13,9 +12,8 @@ const (
 	// skill trees are text; anything past this is not one.
 	DefaultMaxDecompressedBytes int64 = 250 << 20
 
-	// DefaultMaxCompressionRatio is the cap that actually stops bombs: a size cap
-	// alone lets a 24 MB archive consume 249 MB first, so it is enforced per
-	// chunk as bytes stream, never at the end.
+	// DefaultMaxCompressionRatio is the cap that actually stops bombs; a size cap alone lets a 24 MB
+	// archive consume 249 MB first.
 	DefaultMaxCompressionRatio int64 = 100
 
 	// DefaultRatioGraceBytes keeps the ratio cap off tiny archives, where tar
@@ -38,9 +36,8 @@ const (
 	DefaultMaxDuration = 60 * time.Second
 )
 
-// Limits bounds one extraction. A non-positive field takes the default rather
-// than meaning unlimited: these are security caps, so the empty value must be
-// the safe one.
+// Limits bounds one extraction. A non-positive field takes the default rather than meaning
+// unlimited, so the zero value is the safe one.
 type Limits struct {
 	MaxCompressedBytes   int64
 	MaxDecompressedBytes int64

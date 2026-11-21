@@ -27,15 +27,11 @@ const clientID = "agent-manager-cli"
 // loginDeps is everything login reaches outside its own process, as a struct
 // (not package vars) so two logins in one test binary don't share a clock.
 type loginDeps struct {
-	// clock is production device.System(); a test injects a non-sleeping one.
-	clock device.Clock
-	// httpClient nil means net/http's default; the fake hub hands tests one
-	// that trusts its self-signed cert.
-	httpClient *http.Client
+	clock      device.Clock
+	httpClient *http.Client // nil means net/http's default
 	hostname   func() (string, error)
-	// backends nil means credentials.AllowedBackends()'s policy order.
-	backends  []keyring.BackendType
-	lookupEnv func(string) (string, bool)
+	backends   []keyring.BackendType // nil means credentials.AllowedBackends()'s order
+	lookupEnv  func(string) (string, bool)
 }
 
 func productionLoginDeps() loginDeps {
@@ -46,11 +42,8 @@ func productionLoginDeps() loginDeps {
 	}
 }
 
-// newLoginCmd builds `amctl login`. It runs with no TTY — nothing reads
-// stdin or prompts — since the device grant exists so a machine never has
-// to collect a credential interactively. With no TTY to ask, a missing
-// --hub is refused rather than defaulted from env or a stored value, and
-// login never opens a browser: it only prints the URL and code.
+// newLoginCmd builds `amctl login`. It never prompts or opens a browser: the
+// device grant exists so a machine never collects a credential interactively.
 func newLoginCmd(opts *Options) *cobra.Command {
 	return &cobra.Command{
 		Use:   "login",
@@ -68,10 +61,9 @@ func newLoginCmd(opts *Options) *cobra.Command {
 	}
 }
 
-// runLogin validates home, hub and the credential store's writability before
-// any packet leaves, so a machine that can't store the token never sends a
-// human to approve one — credentials.Open alone doesn't check that; only
-// store.Check (called here as pre-flight) does.
+// runLogin checks the credential store is writable (store.Check) before any
+// packet leaves, so a machine that can't store the token never sends a human
+// to approve one.
 func runLogin(ctx context.Context, opts *Options, deps loginDeps) error {
 	s := opts.Streams()
 
@@ -102,8 +94,7 @@ func runLogin(ctx context.Context, opts *Options, deps loginDeps) error {
 			return storeFailure(err)
 		}
 		if token, ok := lookupEnv(deps.lookupEnv)(credentials.TokenEnvVar); ok && token != "" {
-			// Not a refusal: the credential is still stored correctly, but the
-			// env token will still outrank it for every other verb.
+			// Not a refusal: the credential is still stored, but the env token outranks it.
 			s.Warnf("%s is set, so every other command will use that token in preference to the credential this login stores",
 				credentials.TokenEnvVar)
 		}
@@ -111,8 +102,7 @@ func runLogin(ctx context.Context, opts *Options, deps loginDeps) error {
 		flow, err := device.Begin(ctx, hubTransport{h: client}, deps.clock, device.AuthorizeRequest{
 			ClientID: clientID,
 			Host:     host, // shown to the approving human
-			// Scope deliberately empty: an omitted scope means the hub's
-			// default, and a hardcoded list here would be a second opinion.
+			// Scope empty: the hub's default applies, rather than a second opinion here.
 		})
 		if err != nil {
 			return err
@@ -124,7 +114,6 @@ func runLogin(ctx context.Context, opts *Options, deps loginDeps) error {
 			return loginFailure(err)
 		}
 
-		// hub tokens are opaque, so expires_in is the only statement of lifetime.
 		cred := credentials.Issued(target.URL, tok.AccessToken(), int64(tok.ExpiresIn.Seconds()), deps.clock.Now())
 
 		cred.Identity = host // the machine, not a person: no endpoint names one
@@ -142,16 +131,13 @@ func runLogin(ctx context.Context, opts *Options, deps loginDeps) error {
 }
 
 // showAuthorization writes the user code and verification URL to the
-// diagnostic stream, unconditionally, in both output formats — never stdout,
-// since `--output json` must leave stdout one parseable document and stderr
-// is what stays visible when stdout is redirected. This is the one place a
-// credential-shaped value is deliberately written to a stream; the URL's
-// `?user_code=` is exactly what internal/leakscan's pattern hunts for, so no
-// test may echo this text into its own output.
+// diagnostic stream, never stdout, so `--output json` leaves stdout one
+// parseable document. The URL's `?user_code=` is what internal/leakscan hunts
+// for, so no test may echo this text into its own output.
 func showAuthorization(s *output.Streams, f *device.Flow) {
 	w := s.Diag
 	if w == nil {
-		return // no second stream to fall back to without breaking the contract above
+		return
 	}
 	msg := fmt.Sprintf("\nTo authorise this machine, open\n\n    %s\n\nand enter\n\n    %s\n\n",
 		f.VerificationURI(), f.UserCode())
@@ -179,12 +165,12 @@ func machineHostname(fn func() (string, error)) (string, error) {
 	return host, nil
 }
 
-// openStore: credentials.Open never returns ErrFileMode (store.Check is the
-// mode gate), so only ErrNoStore maps to CodeRefused here.
+// openStore maps credentials.ErrNoStore to a refusal; Open never returns
+// ErrFileMode (store.Check is the mode gate).
 func openStore(home Home, s *output.Streams, backends []keyring.BackendType) (*credentials.Store, error) {
 	store, err := credentials.Open(credentials.Options{
 		StateRoot: home.Root,
-		Warnf:     s.Warnf, // reports a backend fallback on stderr, never silently
+		Warnf:     s.Warnf,
 		Backends:  backends,
 	})
 	switch {
@@ -205,14 +191,10 @@ func storeFailure(err error) error {
 	return fmt.Errorf("the credential could not be stored: %w", err)
 }
 
-// loginFailure maps a device-flow end into a message and exit code. The
-// three device sentinels become CodeRefused; everything else is returned
-// unchanged since internal/hub already classified it (unreachable /
-// unauthorised / forbidden / not-found) and rewriting would flatten that.
-// Cancellation is checked first and wraps only the sentinel, not the chain:
-// a cancelled poll otherwise surfaces as "hub unreachable" for a hub that
-// was answering fine — losing which endpoint was in flight, which a Ctrl-C'd
-// user doesn't need anyway.
+// loginFailure maps a device-flow end into a message and exit code; anything
+// not a device sentinel is returned unchanged since internal/hub already
+// classified it. Cancellation wraps only the sentinel, not the chain, or a
+// cancelled poll would surface as "hub unreachable".
 func loginFailure(err error) error {
 	switch {
 	case errors.Is(err, context.Canceled):
@@ -239,7 +221,7 @@ func lookupEnv(fn func(string) (string, bool)) func(string) (string, bool) {
 	return fn
 }
 
-// hubTransport adapts *hub.Hub to device.Transport; translates and judges nothing.
+// hubTransport adapts *hub.Hub to device.Transport.
 type hubTransport struct{ h *hub.Hub }
 
 func (t hubTransport) Authorize(ctx context.Context, req device.AuthorizeRequest) (device.Authorization, error) {
@@ -273,12 +255,9 @@ func (t hubTransport) Authorize(ctx context.Context, req device.AuthorizeRequest
 	}, nil
 }
 
-// wireSeconds converts an unbounded wire `seconds` field to a time.Duration,
-// refusing rather than clamping: `seconds * time.Second` wraps silently
-// above ~9.22e9s, and a wrapped interval (e.g. 18446744074 -> 290ms) would
-// pass device's zero/negative check and silently break "never polls faster
-// than told". Judging a plausible interval is internal/device's job, not
-// this translation layer's, so this only guards representability.
+// wireSeconds converts a wire `seconds` field to a time.Duration, refusing
+// rather than wrapping: a wrapped interval (18446744074 -> 290ms) would pass
+// device's checks and break "never polls faster than told".
 func wireSeconds(field string, seconds int64) (time.Duration, error) {
 	const maxSeconds = int64(math.MaxInt64 / time.Second)
 	if seconds > maxSeconds || seconds < -maxSeconds {
@@ -293,8 +272,7 @@ func (t hubTransport) Poll(ctx context.Context, req device.PollRequest) (*device
 		ClientId: req.ClientID, DeviceCode: req.DeviceCode,
 		GrantType: hub.UrnIetfParamsOauthGrantTypeDeviceCode,
 	})
-	// RFC 8628's 400 envelope is the protocol, not a failure; classifying
-	// which codes are terminal is internal/device's job, not this one's.
+	// RFC 8628's 400 envelope is the protocol, not a failure; internal/device classifies it.
 	var flow *hub.DeviceFlowError
 	if errors.As(err, &flow) {
 		return nil, device.ErrorCode(flow.Code), nil
@@ -306,8 +284,7 @@ func (t hubTransport) Poll(ctx context.Context, req device.PollRequest) (*device
 	if tok.RefreshToken != nil {
 		refresh = *tok.RefreshToken
 	}
-	// Same guard here: a wrapped expires_in rounds to a lifetime of zero,
-	// which credentials.Issued reads as "never expires" — worse than refusing.
+	// A wrapped expires_in could round to zero, which credentials.Issued reads as "never expires".
 	expiresIn, err := wireSeconds("expires_in", tok.ExpiresIn)
 	if err != nil {
 		return nil, "", err

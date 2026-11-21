@@ -1,10 +1,7 @@
 package hub
 
-// This file is the only place bundle bytes are fetched: a miss streams to a
-// temp file while hashing, and cache.PutReader renames only on a matching
-// hash, so no unverified byte reaches the install tree. Always fetch via
-// h.Raw()/h.HTTPClient() (bearerTransport, hub.go) rather than a fresh
-// http.Client, whose redirect default leaks Authorization cross-host.
+// The only place bundle bytes are fetched; cache.PutReader keeps only bytes matching the digest. Always
+// fetch via h.Raw()/h.HTTPClient(), since a fresh http.Client's redirect default leaks Authorization.
 
 import (
 	"context"
@@ -29,10 +26,8 @@ var (
 	ErrOffline = errors.New("bundle is not in the cache and fetching is disabled")
 )
 
-// BundleRef is one lockfile entry reduced to what addressing its bundle
-// needs. THE TRAP: the bundle path's `{publisher}` segment actually holds
-// the NAMESPACE, not a publisher slug (which is itself two segments and
-// can't fit in one) — hence Namespace, never Publisher, below.
+// BundleRef is one lockfile entry reduced to what addressing its bundle needs. The path's
+// `{publisher}` segment actually holds the namespace, not a publisher slug.
 type BundleRef struct {
 	ID        string       // the lockfile entry id verbatim, `namespace/name`
 	Namespace string       // ID's first segment; the value the `publisher` param takes
@@ -41,9 +36,8 @@ type BundleRef struct {
 	Digest    cache.Digest // both the cache key and what downloaded bytes are checked against
 }
 
-// ParseBundleRef refuses an id that is not exactly two non-empty segments;
-// it is never joined, truncated or padded, since any repair would address a
-// different package than the lockfile named.
+// ParseBundleRef refuses an id that is not exactly two non-empty segments; any repair would address
+// a different package.
 func ParseBundleRef(e LockfileEntry) (BundleRef, error) {
 	ns, name, ok := strings.Cut(e.Id, "/")
 	switch {
@@ -96,9 +90,7 @@ func (r BundleRef) validate() error {
 	return nil
 }
 
-// validBundleSegment hand-derives the hub's object-key charset
-// (`^[A-Za-z0-9][A-Za-z0-9._+-]*$`; restated, not imported: hub is a
-// separate module). NOT internal/layout's stricter filesystem validation.
+// validBundleSegment restates the hub's object-key charset `^[A-Za-z0-9][A-Za-z0-9._+-]*$`.
 func validBundleSegment(what, id, seg string) error {
 	if seg == "" {
 		return fmt.Errorf("%w: entry %q has an empty %s", ErrBundleRef, id, what)
@@ -180,8 +172,7 @@ func NewDownloader(h *Hub, c BundleCache) (*Downloader, error) {
 	return &Downloader{hub: h, cache: c}, nil
 }
 
-// Offline returns a NEW Downloader (not a flag flip): --offline is per-run,
-// and a mutable shared flag would leak one caller's mode into another's.
+// Offline returns a new Downloader so one caller's mode cannot leak into another's.
 func (d *Downloader) Offline() *Downloader {
 	c := *d
 	c.offline = true
@@ -196,10 +187,8 @@ type Bundle struct {
 	FromCache bool // no request was made
 }
 
-// Fetch's bytes are already hashed by internal/cache. A caller may stage
-// them without further checking, but must not skip the extractor's own
-// caps — a separate defence for a bundle that is exactly what the hub
-// promised and still hostile.
+// Fetch's bytes are already verified, but a caller must not skip the extractor's own caps: a bundle
+// can be exactly what the hub promised and still hostile.
 func (d *Downloader) Fetch(ctx context.Context, ref BundleRef) (*Bundle, error) {
 	if err := ref.validate(); err != nil {
 		return nil, err
@@ -210,8 +199,7 @@ func (d *Downloader) Fetch(ctx context.Context, ref BundleRef) (*Bundle, error) 
 	case err == nil:
 		return &Bundle{Ref: ref, Bytes: b, FromCache: true}, nil
 	case !errors.Is(err, cache.ErrMiss):
-		// Not a miss: the cache dir itself is unusable, and downloading would
-		// only fail again at the write.
+		// The cache dir itself is unusable; downloading would only fail again at the write.
 		return nil, fmt.Errorf("reading bundle %s from the cache at %s: %w", ref, d.cache.Root(), err)
 	}
 	missErr := err
@@ -247,8 +235,7 @@ func (d *Downloader) download(ctx context.Context, ref BundleRef) error {
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		// Classified, not discarded: carries the hub's own reason (e.g. a
-		// scan-gate 403 the sync verb turns into a reported skip).
+		// Classified, so a scan-gate 403 can become a reported skip.
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
 		if e := ClassifyStatus(OpGetBundle, resp, body, http.StatusOK); e != nil {
 			return attributeOffload(e, resp)
@@ -259,17 +246,14 @@ func (d *Downloader) download(ctx context.Context, ref BundleRef) error {
 		}
 	}
 
-	// Checked before any body byte is read: disagreeing fails fast.
-	// Missing/unreadable is tolerated — the body's own hash is the
-	// authority — this is only an early exit, never a skipped check.
+	// An early exit only; a missing header is tolerated since the body's own hash is the authority.
 	if raw := strings.TrimSpace(resp.Header.Get(digestHeader)); raw != "" {
 		if got, perr := cache.ParseHeaderDigest(raw); perr == nil && got != ref.Digest {
 			return &DigestMismatchError{Ref: ref, Want: ref.Digest, Got: got, Source: DigestSourceHeader}
 		}
 	}
 
-	// Hashed twice: this reader just names the digest that arrived,
-	// cache.PutReader's hash is what actually decides whether it's kept.
+	// This reader only names the digest that arrived; cache.PutReader decides whether it's kept.
 	hr := &hashingReader{r: resp.Body, h: sha256.New()}
 	putErr := d.cache.PutReader(ref.Digest, hr)
 	switch {
@@ -283,8 +267,6 @@ func (d *Downloader) download(ctx context.Context, ref BundleRef) error {
 			ref, cache.MaxBundleBytes, putErr)
 	}
 
-	// PutReader refused: a complete read hashing to the wrong digest is a
-	// mismatch (nothing written); anything else is a cache-write failure.
 	if got, derr := hr.digest(); derr == nil && hr.complete && got != ref.Digest {
 		return &DigestMismatchError{
 			Ref: ref, Want: ref.Digest, Got: got, Source: DigestSourceBody, Bytes: hr.n,
@@ -293,11 +275,8 @@ func (d *Downloader) download(ctx context.Context, ref BundleRef) error {
 	return fmt.Errorf("bundle %s could not be cached in %s: %w", ref, d.cache.Root(), putErr)
 }
 
-// attributeOffload re-classifies a status from the 307's object-store
-// target: its 403/404 must not read as ClassForbidden/ClassNotFound, which
-// the sync verb answers by skipping the entry and exiting 0. Origin
-// comparison doesn't work (the offload URL may share host/subdomain/port),
-// so this checks whether a redirect happened at all (Request.Response set).
+// attributeOffload re-classifies an object-store 403/404 as ClassOffload, since the sync verb skips on
+// ClassForbidden/ClassNotFound. It checks whether a redirect happened, as the origin may match.
 func attributeOffload(err error, resp *http.Response) error {
 	if resp == nil || resp.Request == nil || resp.Request.Response == nil {
 		return err
@@ -320,10 +299,8 @@ func responseURL(resp *http.Response, target string) string {
 	return target
 }
 
-// hashingReader hashes what it passes through so a mismatch can name the
-// digest that arrived (cache.PutReader enforces but only reports as text).
-// `complete` is load-bearing: without it a dropped connection would produce
-// a prefix hash reported as a tampered bundle.
+// hashingReader lets a mismatch name the digest that arrived. Without `complete`, a dropped
+// connection would be reported as a tampered bundle.
 type hashingReader struct {
 	r io.Reader
 	h hash.Hash
@@ -349,9 +326,7 @@ func (r *hashingReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// digest is the sha256 of everything read so far. It round-trips through the
-// lockfile encoding on purpose: cache.Digest exposes no raw-bytes
-// constructor, so a value only ever comes from Compute or a parser.
+// digest round-trips through the lockfile encoding since cache.Digest has no raw-bytes constructor.
 func (r *hashingReader) digest() (cache.Digest, error) {
 	return cache.ParseLockfileDigest("sha256:" + hex.EncodeToString(r.h.Sum(nil)))
 }

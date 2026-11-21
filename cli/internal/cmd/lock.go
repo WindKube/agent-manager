@@ -13,35 +13,29 @@ import (
 	"time"
 )
 
-// Concurrent syncs on one home are refused via an O_CREATE|O_EXCL file at
-// ~/.agent-manager/sync.lock. Staleness is decided by heartbeat (a holder
-// refreshes the lock's mtime every lockHeartbeat; older than lockStaleAfter
-// is stale) — the pid-liveness check in liveness.go only ever SHORTENS that
-// wait, never replaces it, since pid reuse, container namespaces and a
-// merely frozen (not dead) holder all make it lie toward "alive" only.
+// Concurrent syncs on one home are refused via an O_CREATE|O_EXCL lock file.
+// Staleness is decided by the heartbeat-refreshed mtime; the pid check in
+// liveness.go only shortens that wait, since pid reuse, containers and frozen
+// holders all make it lie toward "alive".
 const (
 	lockHeartbeat  = 15 * time.Second
 	lockStaleAfter = 90 * time.Second // six heartbeats; wrong here costs two concurrent syncs
 )
 
-// ErrLocked marks the refusal: another amctl holds this home's sync lock.
-// Callers match on it with errors.Is; the message names the other holder.
+// ErrLocked marks the refusal when another amctl holds this home's sync lock.
 var ErrLocked = errors.New("another amctl is syncing this home")
 
-// Holder is what a lock file records, so a refusal can name a pid, host and
-// start time instead of saying "busy". Nothing here is secret or trusted for
-// anything beyond a message and the pid accelerator above.
+// Holder is what a lock file records, so a refusal can name who holds it.
+// Nothing here is trusted beyond the message and the pid check.
 type Holder struct {
 	PID     int    `json:"pid"`
 	Host    string `json:"host"` // os.Hostname at acquisition; skips the pid check in another container
 	Version string `json:"version"`
-	// AcquiredAt is NOT what staleness is measured from — that's the file's
-	// heartbeat-refreshed mtime.
+	// AcquiredAt is informational; staleness is measured from the file's mtime.
 	AcquiredAt time.Time `json:"acquiredAt"`
 	Token      string    `json:"token"` // lets a holder notice its lock was reclaimed
 }
 
-// String renders a holder for the refusal message.
 func (h Holder) String() string {
 	s := fmt.Sprintf("process %d on host %q", h.PID, h.Host)
 	if !h.AcquiredAt.IsZero() {
@@ -93,9 +87,8 @@ func defaultLockOptions() lockOptions {
 // accidentally matches.
 const unknownHost = "?unknown"
 
-// Acquire takes the per-home sync lock, or refuses (CodeRefused) naming
-// whoever holds it. It never blocks or waits: a queued sync would be
-// indistinguishable from a hung CLI, and the caller decides whether to retry.
+// Acquire takes the per-home sync lock, or refuses naming whoever holds it.
+// It never waits: a queued sync would be indistinguishable from a hung CLI.
 func Acquire(h Home) (*Lock, error) { return acquire(h, defaultLockOptions()) }
 
 func acquire(h Home, o lockOptions) (*Lock, error) {
@@ -223,9 +216,8 @@ func (l *Lock) Path() string { return l.path }
 
 func (l *Lock) Holder() Holder { return l.holder }
 
-// Release stops the heartbeat and removes the lock file. Idempotent and safe
-// from a defer, including mid-panic. Does NOT remove a lock file that is no
-// longer ours (Lost): that would hand a third run a free pass.
+// Release stops the heartbeat and removes the lock file; it is idempotent.
+// It never removes a lock that is no longer ours, which would hand a third run a free pass.
 func (l *Lock) Release() error {
 	if !l.released.CompareAndSwap(false, true) {
 		return nil
@@ -237,7 +229,6 @@ func (l *Lock) Release() error {
 	if l.lost.Load() {
 		return fmt.Errorf("the sync lock %s was reclaimed by another amctl while this run held it", l.path)
 	}
-	// Verify ownership before unlinking.
 	if holder, _, err := readLock(l.path); err == nil && holder.Token != l.holder.Token {
 		l.lost.Store(true)
 		return fmt.Errorf("the sync lock %s is now held by %s; leaving it in place", l.path, holder)
@@ -281,7 +272,8 @@ func readLock(path string) (Holder, os.FileInfo, error) {
 	return h, info, nil
 }
 
-// removeIfUnchanged unlinks path only if it's unchanged since judged stale, narrowing (not closing) the reclaim race.
+// removeIfUnchanged unlinks path only if it is unchanged since judged stale,
+// narrowing (not closing) the reclaim race.
 func removeIfUnchanged(path string, judged os.FileInfo) error {
 	fresh, err := os.Stat(path)
 	if err != nil {

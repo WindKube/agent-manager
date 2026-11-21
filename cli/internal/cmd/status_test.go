@@ -21,9 +21,8 @@ func statusDepsFor() statusDeps {
 	return statusDeps{backends: fileBackendOnly()}
 }
 
-// writeEntry writes content at dest/name and returns the record.Fingerprint
-// that describes it as actually written — mode read back from disk, never
-// assumed, the same rule internal/record's own comment gives for FileMark.
+// writeEntry writes content at dest/name and returns its record.Fingerprint,
+// with the mode read back from disk rather than assumed.
 func writeEntry(t *testing.T, dest, name, content string) record.Fingerprint {
 	t.Helper()
 	require.NoError(t, os.MkdirAll(dest, 0o700))
@@ -130,7 +129,6 @@ func TestStatusReportsAMissingEntryAsDrift(t *testing.T) {
 	home := testHome(t)
 	hubURL := "https://hub.example.com"
 	dest := filepath.Join(home, ".claude", "skills", "acme--code-review")
-	// Never written: the record claims it, the disk does not have it.
 
 	saveTestRecord(t, home, hubURL, record.Profile{
 		Slug: "base", Revision: 1, InstalledAt: time.Now(),
@@ -190,8 +188,7 @@ func TestStatusReportsAnUnfingerprintedEntryAsUnverifiableDrift(t *testing.T) {
 		Entries: []record.Entry{{
 			ID: "acme/code-review", Version: "2.4.1", Digest: mustParseDigest(t, 1),
 			Kind: record.KindSkill, Target: record.TargetClaudeCode, Dest: dest,
-			// No Fingerprint: every entry installed by this build today, since
-			// T049's fingerprinter is not wired into a production sync yet.
+			// No Fingerprint, as in a record written by an older build.
 		}},
 	})
 
@@ -220,11 +217,8 @@ func TestStatusWithoutAHubRefusesNamingTheFlag(t *testing.T) {
 	_ = diag
 }
 
-// TestStatusReportsAFileEditedAfterSyncAsModified is the end-to-end proof that
-// a real sync's fingerprint and status's drift check agree: sync now wires
-// apply.TreeFingerprinter into production (cmd/sync.go), so an entry it
-// installs is no longer "unverifiable" — editing it by hand afterwards must
-// show up as `modified`, naming the edited path.
+// TestStatusReportsAFileEditedAfterSyncAsModified proves a real sync's
+// fingerprint and status's drift check agree.
 func TestStatusReportsAFileEditedAfterSyncAsModified(t *testing.T) {
 	tg := startSyncFake(t)
 	env := newSyncEnv(t, tg)

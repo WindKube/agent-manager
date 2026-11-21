@@ -23,8 +23,7 @@ const DirName = ".agent-manager"
 // and two syncs racing on one skills directory interleave regardless.
 const LockFileName = "sync.lock"
 
-// maxDirNameLen is our own budget for a per-hub directory name (not the
-// filesystem's 255-byte limit): prefix + "-" + 16 hex, with room to spare
+// maxDirNameLen is our own budget for a per-hub directory name, leaving room
 // for a `.amctl-tmp-*` sibling.
 const maxDirNameLen = 64
 
@@ -43,9 +42,7 @@ var ErrHomeUnwritable = errors.New("home directory is not writable")
 // ErrHubURL marks a hub URL amctl refuses to turn into an identity.
 var ErrHubURL = errors.New("invalid hub URL")
 
-// Home is a validated per-user state root; the only way to obtain one is
-// ResolveHome, so every downstream consumer (internal/cache, internal/record,
-// lock.go) can take a path and skip the question.
+// Home is a validated per-user state root, obtained only from ResolveHome.
 type Home struct {
 	UserHome string
 	Var      string // env var actually consulted, so a refusal names something the user can act on
@@ -60,7 +57,7 @@ type Hub struct {
 }
 
 // homeEnvVar names the variable os.UserHomeDir consults, so a refusal names
-// something the user can actually set.
+// something the user can set.
 func homeEnvVar() string { return homeEnvVarFor(runtime.GOOS) }
 
 func homeEnvVarFor(goos string) string {
@@ -74,18 +71,15 @@ func homeEnvVarFor(goos string) string {
 	}
 }
 
-// ResolveHome resolves and validates amctl's state root by a REAL WRITE, not
-// a mode-bit check: an NFS root-squash, an ACL or SELinux denial all present
-// as an 0700 directory, so this creates the root and then a probe file
-// inside it. It never creates the user's home itself (an absent home is a
-// broken environment, not ours to repair), and it refuses `.agent-manager`
-// being an absolute symlink — os.Root's openat resolution won't follow one.
+// ResolveHome resolves and validates amctl's state root by a real write, not
+// a mode-bit check: NFS root-squash, ACL or SELinux denials all look like an
+// 0700 directory. It never creates the user's home itself.
 func ResolveHome() (Home, error) {
 	v := homeEnvVar()
 
 	userHome, err := os.UserHomeDir()
 	if err != nil {
-		// Said here, not from os.UserHomeDir's own error, which always spells it "$HOME".
+		// Not os.UserHomeDir's own error, which always says "$HOME".
 		return Home{}, Refusef("%w: %s is unset or empty; set it to the directory amctl should keep its state in", ErrHomeUnset, v)
 	}
 	if !filepath.IsAbs(userHome) {
@@ -116,15 +110,13 @@ func (h Home) probe() error { // creates the state root, proves it accepts a wri
 	}
 	defer func() { _ = root.Close() }()
 
-	// 0700: neither the record nor the cache is another user's business, and
-	// a group-writable cache is a way to hand amctl bytes it will then extract.
+	// 0700: a group-writable cache would let others hand amctl bytes it then extracts.
 	if mkErr := root.Mkdir(DirName, 0o700); mkErr != nil && !errors.Is(mkErr, fs.ErrExist) {
 		return Refusef("%w: cannot create %s (%s=%s): %w%s",
 			ErrHomeUnwritable, h.Root, h.Var, h.UserHome, mkErr, symlinkHint(mkErr))
 	}
 
-	// Fixed name, not random: two racing amctl runs want the same answer, and
-	// a fixed name overwrites crash litter instead of accumulating it.
+	// Fixed name so crash litter is overwritten instead of accumulating.
 	probe := DirName + "/.amctl-write-probe"
 	f, err := root.OpenFile(probe, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
@@ -140,8 +132,8 @@ func (h Home) probe() error { // creates the state root, proves it accepts a wri
 	return nil
 }
 
-// symlinkHint turns os.Root's opaque "path escapes from parent" into the one
-// fix that works, because nothing about that message suggests a symlink.
+// symlinkHint explains os.Root's opaque "path escapes from parent", which
+// nothing suggests is about a symlink.
 func symlinkHint(err error) string {
 	if err == nil || !strings.Contains(err.Error(), "escapes from parent") {
 		return ""
@@ -155,14 +147,10 @@ func symlinkHint(err error) string {
 // never-synced machine has no empty directories claiming otherwise.
 func (h Home) HubDir(hub Hub) string { return filepath.Join(h.Root, hub.Dir) }
 
-// LockPath: see lock.go.
 func (h Home) LockPath() string { return filepath.Join(h.Root, LockFileName) }
 
 // Prepare validates the state root and the hub's identity before running
-// work, structurally rather than by convention: work is the network half,
-// and there's no path through this function that reaches it with an invalid
-// home or an unparseable hub. Every verb that touches the network must go
-// through here.
+// work. Every verb that touches the network must go through here.
 func Prepare(hubURL string, work func(Home, Hub) error) error {
 	home, err := ResolveHome()
 	if err != nil {
@@ -176,11 +164,8 @@ func Prepare(hubURL string, work func(Home, Hub) error) error {
 }
 
 // ParseHub turns a user-supplied hub URL into a canonical URL and directory
-// name. Missing scheme means https, host is case-folded, default port and a
-// trailing slash are dropped — but scheme, a non-default port and a
-// non-empty path all stay part of identity: two hubs differing only in
-// those are NOT merged. Userinfo, a query/fragment, non-http(s) schemes and
-// any control char or non-[a-z0-9._-] host byte are refused, not normalised.
+// name. Scheme, non-default port and path stay part of identity; userinfo,
+// query, fragment and unusual host bytes are refused, not normalised.
 func ParseHub(raw string) (Hub, error) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
@@ -190,7 +175,7 @@ func ParseHub(raw string) (Hub, error) {
 		return Hub{}, Refusef("%w: %q contains a control character at byte %d", ErrHubURL, s, i)
 	}
 	if !hasScheme(s) {
-		s = "https://" + s // a bare `hub.example.com[:port]` means https
+		s = "https://" + s
 	}
 
 	u, err := url.Parse(s)
@@ -229,20 +214,16 @@ func ParseHub(raw string) (Hub, error) {
 
 	canonical := scheme + "://" + host + port + p
 	dir := hubDirName(canonical)
-	// A backstop, not a formality: this function has a blast radius, so the
-	// invariant is asserted rather than argued. Firing means amctl's own bug.
+	// A backstop: firing means amctl's own bug.
 	if err := validatePathComponent(dir); err != nil {
 		return Hub{}, fmt.Errorf("internal: derived an unusable directory name for %q: %w", canonical, err)
 	}
 	return Hub{URL: canonical, Dir: dir}, nil
 }
 
-// hasScheme reports whether s already carries a URL scheme. Not a search for
-// "://" (an opaque URL like `https:hub.example.com` has none) and not "a
-// scheme token before the first colon" either, since RFC 3986 lets a scheme
-// contain dots and `hub.example.com:8443` would parse as one. The
-// disambiguator: a colon followed by a digit is a port on a bare host,
-// anything else after a valid scheme token is a real scheme.
+// hasScheme reports whether s already carries a URL scheme. A scheme may
+// contain dots, so `hub.example.com:8443` is told apart by the digit after
+// the colon, which makes it a port.
 func hasScheme(s string) bool {
 	if strings.Contains(s, "://") {
 		return true
@@ -321,8 +302,7 @@ func canonicalPort(u *url.URL, scheme, raw string) (string, error) {
 }
 
 func canonicalPath(u *url.URL, raw string) (string, error) {
-	// u.Path is already percent-decoded, so a `%2e%2e` in the raw URL is a
-	// `..` here and gets refused below rather than arriving intact.
+	// u.Path is percent-decoded, so a raw `%2e%2e` is refused below as `..`.
 	if strings.ContainsRune(u.Path, '\\') {
 		return "", Refusef("%w: %q has a backslash in its path", ErrHubURL, raw)
 	}
@@ -348,11 +328,8 @@ func canonicalPath(u *url.URL, raw string) (string, error) {
 	return p, nil
 }
 
-// hubDirName is `<readable prefix>-<16 hex of SHA-256(canonical)>`: the hash
-// makes it injective and traversal-proof, and the prefix carries no
-// identity — it's lossy on purpose, and nothing may ever compare or parse
-// it. validatePathComponent still asserts the result can't collide with
-// `.`, `..`, a reserved device name, or a trailing dot/space.
+// hubDirName is `<readable prefix>-<16 hex of SHA-256(canonical)>`. The hash
+// carries identity; the prefix is lossy and must never be compared or parsed.
 func hubDirName(canonical string) string {
 	sum := sha256.Sum256([]byte(canonical))
 	suffix := hex.EncodeToString(sum[:])[:hubDigestLen]
@@ -388,9 +365,7 @@ func readablePrefix(canonical string) string {
 }
 
 // reservedDeviceNames are the DOS device names, refused even off Windows
-// since a home directory is routinely synced across machines. Deliberately a
-// superset of the documented list: over-rejecting a name amctl never
-// generates costs nothing.
+// since a home directory is routinely synced across machines.
 var reservedDeviceNames = map[string]bool{
 	"con": true, "prn": true, "aux": true, "nul": true,
 	"conin$": true, "conout$": true,
@@ -400,9 +375,8 @@ var reservedDeviceNames = map[string]bool{
 	"lpt5": true, "lpt6": true, "lpt7": true, "lpt8": true, "lpt9": true,
 }
 
-// validatePathComponent refuses anything that is not a single, boring,
-// portable directory name, checked unconditionally (no runtime.GOOS switch)
-// since a state root is routinely synced between machines.
+// validatePathComponent refuses anything that is not a single portable
+// directory name, on every OS.
 func validatePathComponent(name string) error {
 	switch {
 	case name == "":
@@ -418,15 +392,13 @@ func validatePathComponent(name string) error {
 			return errors.New("contains a NUL")
 		case unicode.IsControl(r):
 			return fmt.Errorf("contains control character %q", r)
-		// `:` is legal on darwin but a separator elsewhere — the trap.
 		case strings.ContainsRune(`/\:*?"<>|`, r):
 			return fmt.Errorf("contains %q, which is not portable in a filename", r)
 		case r >= utf8Max:
 			return fmt.Errorf("contains non-ASCII %q", r)
 		}
 	}
-	// Some filesystems silently strip a trailing dot/space, colliding `hub-a.`
-	// with `hub-a` — the exact collision this function exists to prevent.
+	// Some filesystems strip a trailing dot/space, colliding `hub-a.` with `hub-a`.
 	if last := name[len(name)-1]; last == '.' || last == ' ' {
 		return fmt.Errorf("ends in %q, which some filesystems strip", last)
 	}

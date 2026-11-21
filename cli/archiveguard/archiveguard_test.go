@@ -262,8 +262,7 @@ func TestGuardCountsRealInput(t *testing.T) {
 	requireViolation(t, g.CheckCompressed(), KindTooLarge, CapCompressedSize)
 }
 
-// A real bomb against the default caps: 64 MiB of zeros gzipped to a few
-// kilobytes must trip the ratio long before it is fully produced.
+// 64 MiB of zeros must trip the ratio long before it is fully produced.
 func TestGuardStopsAGzipBomb(t *testing.T) {
 	t.Parallel()
 

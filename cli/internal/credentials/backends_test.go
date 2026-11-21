@@ -8,11 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// compiledIn is the exact backend set, in keyring's own try-order, that a
-// release build must expose per GOOS. Hand-derived from keyring's build
-// constraints per platform, not from observing a run, which would encode a
-// CGO_ENABLED regression as the expectation. darwin requires cgo to reach
-// this set; linux does not.
+// compiledIn is hand-derived from keyring's build constraints, not observed from a run, which would
+// encode a CGO_ENABLED regression as the expectation.
 var compiledIn = map[string][]keyring.BackendType{
 	"darwin": {
 		keyring.KeychainBackend,
@@ -28,8 +25,7 @@ var compiledIn = map[string][]keyring.BackendType{
 	},
 }
 
-// A static darwin build loses keychain.go and keyring silently promotes
-// pass, then file; this is the input the guard exists to reject.
+// A static darwin build silently promotes pass, then file; the guard exists to reject this.
 var darwinWithoutCGO = []keyring.BackendType{
 	keyring.PassBackend,
 	keyring.FileBackend,

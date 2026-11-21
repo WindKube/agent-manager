@@ -30,8 +30,7 @@ type PollRequest struct {
 	DeviceCode string
 }
 
-// Authorization is the authorisation endpoint's answer, seconds converted to
-// durations.
+// Authorization is the authorisation endpoint's answer.
 type Authorization struct {
 	DeviceCode              string
 	UserCode                string
@@ -50,8 +49,7 @@ type Issued struct {
 	RefreshToken string
 }
 
-// Transport is the narrowest view of the hub this package needs, declared by
-// the consumer so the state machine can be driven by a fake with no HTTP.
+// Transport is the narrowest view of the hub this package needs.
 type Transport interface {
 	Authorize(ctx context.Context, req AuthorizeRequest) (Authorization, error)
 	// Poll returns exactly one of: a token (*Issued set, code ""), an RFC
@@ -60,13 +58,8 @@ type Transport interface {
 	Poll(ctx context.Context, req PollRequest) (*Issued, ErrorCode, error)
 }
 
-// Flow is one authorisation in progress: the codes, the deadline and the
-// interval currently in force. Not safe for concurrent use, and not
-// resumable once Wait returns.
-//
-// Every field carrying a code is held in a closure rather than a string: a
-// func field prints only as an address under %v/%+v/%#v, which is what
-// stops a careless fmt.Sprintf("%+v", flow) from leaking a code.
+// Flow is one authorisation in progress. Not safe for concurrent use.
+// Codes are held in closures, not strings, so no fmt verb on a Flow can leak one.
 type Flow struct {
 	transport Transport
 	clk       Clock
@@ -126,9 +119,7 @@ func Begin(ctx context.Context, t Transport, clk Clock, req AuthorizeRequest) (*
 	}, nil
 }
 
-// validate refuses an authorisation that cannot be polled: an interval at or
-// past the code's own lifetime can never complete, and catching that up
-// front avoids printing a code that is already doomed.
+// validate refuses an authorisation that cannot be polled, so a doomed code is never shown.
 func validate(a Authorization) error {
 	interval := normaliseInterval(a.Interval)
 	switch {
@@ -148,7 +139,6 @@ func validate(a Authorization) error {
 	}
 }
 
-// normaliseInterval clamps a zero or negative interval to defaultInterval.
 func normaliseInterval(d time.Duration) time.Duration {
 	if d <= 0 {
 		return defaultInterval
@@ -175,8 +165,7 @@ func (f *Flow) String() string {
 		f.verificationURI, f.interval, f.polls)
 }
 
-// Token is an issued credential and its lifetime. The token is behind a
-// closure-typed field, not a string, so no fmt verb can render it.
+// Token is an issued credential, held in closures so no fmt verb can render it.
 type Token struct {
 	access  func() string
 	refresh func() string
@@ -242,7 +231,6 @@ func (f *Flow) Wait(ctx context.Context) (*Token, error) {
 	}
 }
 
-// apply is the state transition for one poll answer.
 func (f *Flow) apply(code ErrorCode) error {
 	if !code.Continues() {
 		return terminalError(code)
@@ -253,8 +241,7 @@ func (f *Flow) apply(code ErrorCode) error {
 	return nil
 }
 
-// pause waits out the interval, or refuses a wait that would end after the
-// code expires rather than let a doomed poll run.
+// pause waits out the interval, or refuses a wait that would end after the code expires.
 func (f *Flow) pause(ctx context.Context) error {
 	remaining := f.expiresAt.Sub(f.clk.Now())
 	switch {
@@ -270,7 +257,6 @@ func (f *Flow) pause(ctx context.Context) error {
 	return nil
 }
 
-// issue turns the transport's answer into a Token.
 func (f *Flow) issue(i Issued) (*Token, error) {
 	if i.AccessToken == "" {
 		return nil, fmt.Errorf("%w: the hub reported success with no access token", ErrProtocol)

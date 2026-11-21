@@ -1,24 +1,9 @@
-// login's and logout's assertions live in this one file because the two
-// verbs share every helper below and are the two halves of one
-// requirement: login writes exactly one credential and logout removes
-// exactly that one.
+// login's and logout's tests share this file and its helpers.
 //
-// How these tests assert, and why it looks awkward.
-//
-// Nothing here prints the captured output of a login. The diagnostic
-// stream carries the user code and the verification_uri_complete URL, and
-// that URL embeds the code as `?user_code=...` — precisely the shape
-// internal/leakscan's run-wide scan hunts for in the whole suite's output.
-// A require.Contains that failed would print its haystack, put the code
-// into the output the leak-scan gate reads, and turn one red test into a
-// permanent second failure in a different package. So assertions over
-// these buffers use require.True/False with a hand-written message and
-// never hand testify the haystack — the same discipline leakscan_test.go
-// applies to itself.
-//
-// For the same reason no test in this file uses leakscan's sentinel user code:
-// a display assertion needs the fake hub's own randomly generated code, which
-// it has to read back anyway in order to approve the authorisation.
+// The diagnostic stream carries the user code inside a `?user_code=` URL, which
+// internal/leakscan hunts for in the suite's output, so assertions over these
+// buffers use require.True/False with a hand-written message and never hand
+// testify the haystack.
 package cmd
 
 import (
@@ -53,22 +38,13 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/output"
 )
 
-// testHost is the hostname bound to the authorisation, injected so the test
-// does not depend on the machine it runs on.
 const testHost = "login-test-host"
 
-// advertisedInterval is what the fake hub puts in `interval`. It is ONE SECOND
-// and not the five the RFC defaults to, so an assertion that the client waited
-// this long proves the value came off the wire rather than out of
-// internal/device's own default.
+// advertisedInterval is one second, not the RFC's default five, so a recorded
+// wait of this length proves the value came off the wire.
 const advertisedInterval = time.Second
 
-// ---------------------------------------------------------------- helpers
-
-// syncBuffer is an io.Writer a test can read while another goroutine writes to
-// it. login blocks waiting for approval, so the code it printed has to be
-// readable before it returns, and a bytes.Buffer read from two goroutines is a
-// data race the -race build correctly refuses.
+// syncBuffer is an io.Writer safe to read while login writes to it from another goroutine.
 type syncBuffer struct {
 	mu sync.Mutex
 	b  strings.Builder
@@ -86,21 +62,10 @@ func (s *syncBuffer) String() string {
 	return s.b.String()
 }
 
-// gateClock is device.Clock with the sleeping taken out and the ordering put
-// in. Wait records the duration it was asked for, advances the clock by exactly
-// that much, and then blocks until the test releases it.
-//
-// The recording is what proves the durations are the intervals the
-// client was told to honour, and they are asserted against what the fake
-// advertised. The blocking is what makes the suite deterministic — a test can
-// be certain login has polled once and is now between polls, which is the only
-// moment at which it can approve, deny or expire the authorisation and know
-// which poll will see it.
-//
-// The clock is also the FAKE HUB's clock (fake.Options.Now), deliberately. The
-// fake enforces the interval it advertised, so if the client's notion of time
-// and the server's disagreed, a client that waited exactly as long as it was
-// told would still earn slow_down.
+// gateClock is device.Clock with the sleeping taken out: Wait records the
+// duration, advances the clock by it, and blocks until the test releases it, so
+// a test knows which poll will see an approval, denial or expiry. It is also the
+// fake hub's clock, or a client waiting exactly as told would earn slow_down.
 type gateClock struct {
 	mu      sync.Mutex
 	now     time.Time
@@ -141,8 +106,6 @@ func (c *gateClock) recorded() []time.Duration {
 	return append([]time.Duration(nil), c.waits...)
 }
 
-// waitForFirstPause blocks until login has polled once and parked between
-// polls. It is the synchronisation point every negative case needs.
 func (c *gateClock) waitForFirstPause(t *testing.T) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -157,17 +120,8 @@ func (c *gateClock) waitForFirstPause(t *testing.T) {
 
 func (c *gateClock) letItPoll() { close(c.release) }
 
-// steppingClock is device.Clock with no gate in it: Wait advances the clock by
-// exactly what it was asked for and returns immediately.
-//
-// It exists because gateClock cannot serve a test that has to observe what a
-// MISBEHAVING flow does. gateClock's Wait parks until the test releases it, so a
-// flow that polls when it should not would hang the suite until go test's
-// ten-minute panic rather than failing on an assertion — and a regression that
-// hangs is one somebody reruns and shrugs at. Verified both ways: with the
-// overflow guard removed, this clock makes
-// TestLoginRefusesDeviceSecondsItCannotMeasure fail on the poll count in
-// milliseconds.
+// steppingClock advances by what Wait is asked for and returns at once. A
+// misbehaving flow under gateClock would hang the suite instead of failing an assertion.
 type steppingClock struct {
 	mu  sync.Mutex
 	now time.Time
@@ -195,9 +149,7 @@ func (c *steppingClock) Wait(ctx context.Context, d time.Duration) error {
 	return nil
 }
 
-// testHome points HOME at a scratch directory. Every verb resolves its
-// state root from HOME, so a test that skipped this would write into the
-// developer's own ~/.agent-manager.
+// testHome points HOME at a scratch directory so no test writes the developer's ~/.agent-manager.
 func testHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
@@ -205,13 +157,8 @@ func testHome(t *testing.T) string {
 	return home
 }
 
-// fileBackendOnly forces the credential store to the file fallback.
-//
-// Not a shortcut: the alternative is a suite whose result depends on
-// whether a Secret Service happens to be running on the machine, and on
-// Linux CI that is the difference between exercising the fallback and
-// exercising nothing. internal/credentials owns the per-backend round
-// trip; these tests own the wiring.
+// fileBackendOnly forces the file fallback, so results don't depend on
+// whether a Secret Service is running.
 func fileBackendOnly() []keyring.BackendType {
 	return []keyring.BackendType{keyring.FileBackend}
 }
@@ -226,9 +173,7 @@ func openTestStore(t *testing.T, home string) *credentials.Store {
 	return store
 }
 
-// testOptions builds the Options a verb sees, with the two streams captured.
-// It bypasses cobra on purpose: the flag plumbing is exit_test.go's subject,
-// and these tests are about what the verb does with the values.
+// testOptions bypasses cobra: flag plumbing is exit_test.go's subject.
 func testOptions(hubURL string, format output.Format) (opts *Options, result, diag *syncBuffer) {
 	result, diag = &syncBuffer{}, &syncBuffer{}
 	opts = &Options{Hub: hubURL, Output: string(format), result: result, diag: diag}
@@ -253,11 +198,7 @@ func logoutDepsFor() logoutDeps {
 	}
 }
 
-// startFake starts the fake hub over TLS with the test's clock.
-//
-// TLS is not optional: amctl refuses a plaintext hub without
-// --allow-plaintext-hub, so a test of the normal path against a plain
-// http fake would be testing the refusal.
+// startFake uses TLS, or a test of the normal path would hit the plaintext refusal.
 func startFake(t *testing.T, clk *gateClock) fake.Target {
 	t.Helper()
 	h := fake.New(fake.Options{
@@ -271,10 +212,7 @@ func startFake(t *testing.T, clk *gateClock) fake.Target {
 	return h.Target()
 }
 
-// displayedUserCode is the code login printed, read back off the diagnostic
-// stream. The anchor is login's own layout — the code alone on a line, indented
-// — rather than a loose search for the shape, so a timestamp elsewhere in the
-// message cannot be mistaken for a code.
+// displayedUserCode anchors on login's own layout, so a timestamp can't be mistaken for a code.
 var displayedUserCode = regexp.MustCompile(`(?m)^ {4}([0-9A-HJ-NP-TV-Z]{4}-[0-9A-HJ-NP-TV-Z]{4})\s*$`)
 
 func codeFrom(t *testing.T, diag *syncBuffer) string {
@@ -286,13 +224,10 @@ func codeFrom(t *testing.T, diag *syncBuffer) string {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	t.Fatal("login never displayed a user code on the diagnostic stream (FR-001, RFC 8628 3.3)")
+	t.Fatal("login never displayed a user code on the diagnostic stream (RFC 8628 3.3)")
 	return ""
 }
 
-// runLoginAsync starts login and returns a channel carrying its error. login
-// blocks on human approval, so every case that needs to act mid-flow needs it
-// off the test's own goroutine.
 func runLoginAsync(opts *Options, deps loginDeps) <-chan error {
 	done := make(chan error, 1)
 	go func() { done <- runLogin(context.Background(), opts, deps) }()
@@ -310,13 +245,8 @@ func awaitLogin(t *testing.T, done <-chan error) error {
 	}
 }
 
-// ---------------------------------------------------------------- the flow
-
-// TestLoginStoresACredentialTheStoreCanReadBack is the whole happy path, and
-// it deliberately does not believe login's own report: the credential
-// is read back through internal/credentials, which is how every other verb will
-// find it. A login that printed a perfect result and stored nothing would pass
-// any test that only read the result.
+// The credential is read back through internal/credentials rather than
+// trusting login's report.
 func TestLoginStoresACredentialTheStoreCanReadBack(t *testing.T) {
 	home := testHome(t)
 	clk := newGateClock()
@@ -332,9 +262,7 @@ func TestLoginStoresACredentialTheStoreCanReadBack(t *testing.T) {
 	clk.letItPoll()
 	require.NoError(t, awaitLogin(t, done))
 
-	// The reason the interval is one second here: internal/device
-	// defaults to the RFC's five when the hub omits `interval`, so a
-	// recorded wait of exactly one second can only have come off the wire.
+	// internal/device defaults to five seconds, so a one-second wait came off the wire.
 	require.Equal(t, []time.Duration{advertisedInterval}, clk.recorded(),
 		"the client must wait exactly the interval the hub advertised, once, between its two polls")
 
@@ -346,20 +274,13 @@ func TestLoginStoresACredentialTheStoreCanReadBack(t *testing.T) {
 	require.True(t, found, "login reported success and stored no credential")
 	require.Equal(t, canonical.URL, stored.Hub)
 	require.NotEmpty(t, stored.Token)
-	require.Equal(t, testHost, stored.Identity, "FR-001: the credential records the host the grant was bound to")
+	require.Equal(t, testHost, stored.Identity, "the credential records the host the grant was bound to")
 
-	// The lifetime is the hub's `expires_in` measured from the clock at
-	// receipt, which is one interval after the start. Hand-derived from the
-	// fake's TokenTTL rather than read out of the result: the token is opaque
-	// and there is nothing in it to check this against, so if this arithmetic is
-	// wrong nothing else will ever notice.
+	// Hand-derived from the fake's TokenTTL: the token is opaque, so nothing else would catch a wrong lifetime.
 	require.Equal(t, start.Add(advertisedInterval).Add(time.Hour), stored.ExpiresAt)
 	require.False(t, stored.Expired(stored.ExpiresAt.Add(-time.Second)))
 	require.True(t, stored.Expired(stored.ExpiresAt))
 
-	// With the real value rather than a sentinel: the fake's tokens are
-	// random, so this is the only place the actual issued token can be
-	// checked against everything the run printed.
 	require.False(t, strings.Contains(result.String(), stored.Token),
 		"the access token reached the result stream")
 	require.False(t, strings.Contains(diag.String(), stored.Token),
@@ -368,20 +289,15 @@ func TestLoginStoresACredentialTheStoreCanReadBack(t *testing.T) {
 	require.True(t, strings.Contains(result.String(), canonical.URL), "the result must name the hub")
 	require.True(t, strings.Contains(result.String(), testHost), "the result must name the identity")
 	require.False(t, strings.Contains(result.String(), code),
-		"FR-007: the user code must not reach a report")
+		"the user code must not reach a report")
 
-	// At the command layer: the fallback is reported on the diagnostic
-	// stream, and it names the backend actually chosen.
+	// The fallback is reported on the diagnostic stream, naming the backend chosen.
 	require.True(t, strings.Contains(diag.String(), `using "file"`),
 		"the fallback to a file was not reported on the diagnostic stream")
 }
 
-// TestLoginPutsTheCodeOnStderrAndOneJSONDocumentOnStdout pins that split.
-//
-// The user code cannot go to the result stream, because under --output json
-// that stream must be a single parseable document and the code is only useful
-// before the document exists. This is the assertion that pins the decision: one
-// document on stdout, the code on stderr, in the same run.
+// Under --output json stdout must be one document, and the code is only
+// useful before the document exists.
 func TestLoginPutsTheCodeOnStderrAndOneJSONDocumentOnStdout(t *testing.T) {
 	testHome(t)
 	clk := newGateClock()
@@ -417,16 +333,9 @@ func TestLoginPutsTheCodeOnStderrAndOneJSONDocumentOnStdout(t *testing.T) {
 		"a user code inside the JSON document breaks every scripted caller")
 }
 
-// TestLoginRunsWithNoTerminalAndNeverPrompts covers the clause that
-// applies to login: the device grant exists so that the machine needing a
-// credential never has to collect one, so login works under a pipe with
-// no flag at all. Under `go test` neither stream is a terminal and both
-// are plain buffers here, so a login that consulted one, or read stdin,
-// could not complete.
-//
-// The mechanical half of the same claim is
-// TestNoVerbReachesForATerminalOrStandardInput; this half proves the verb
-// actually finishes.
+// Under `go test` neither stream is a terminal, so a login that consulted one
+// or read stdin could not complete. TestNoVerbReachesForATerminalOrStandardInput
+// is the static half.
 func TestLoginRunsWithNoTerminalAndNeverPrompts(t *testing.T) {
 	home := testHome(t)
 	clk := newGateClock()
@@ -449,10 +358,7 @@ func TestLoginRunsWithNoTerminalAndNeverPrompts(t *testing.T) {
 	require.True(t, found)
 }
 
-// TestLoginWithoutAHubRefusesNamingTheFlag: the one question login would
-// otherwise ask is which hub; with no TTY there is nobody to ask, so it
-// refuses and names --hub. This runs the real command tree, because the
-// flag has to be the one the tree registers.
+// Runs the real command tree, since the flag must be the one the tree registers.
 func TestLoginWithoutAHubRefusesNamingTheFlag(t *testing.T) {
 	testHome(t)
 	var result, diag syncBuffer
@@ -462,12 +368,8 @@ func TestLoginWithoutAHubRefusesNamingTheFlag(t *testing.T) {
 	require.Empty(t, result.String(), "a refusal on the result stream would corrupt the json document")
 }
 
-// TestLoginRefusesAPlaintextHubUntilTheFlagIsPassed checks both directions.
-//
-// Both directions, because the refusal is only worth having if the flag
-// actually lifts it: without the flag the error is hub.ErrInsecureHub and the
-// exit code is CodeRefused, and with it the same URL gets as far as the network
-// and fails for a network reason instead.
+// The refusal is only worth having if the flag lifts it: with it, the same URL
+// fails for a network reason instead.
 func TestLoginRefusesAPlaintextHubUntilTheFlagIsPassed(t *testing.T) {
 	clk := newGateClock()
 
@@ -491,16 +393,11 @@ func TestLoginRefusesAPlaintextHubUntilTheFlagIsPassed(t *testing.T) {
 		require.NotErrorIs(t, err, hub.ErrInsecureHub, "the flag must lift exactly this refusal")
 		require.ErrorIs(t, err, hub.ErrUnreachable, "and nothing else: the URL is a dead port")
 		require.Contains(t, diag.String(), "plaintext",
-			"FR-041: a plaintext run warns on the diagnostic stream every time")
+			"a plaintext run warns on the diagnostic stream every time")
 	})
 }
 
-// ---------------------------------------------------------------- refusals
-
-// TestLoginReportsADenialAndExitsNonZero is the denial sibling: the human
-// said no. It must be reported as a denial, exit non-zero, and leave nothing
-// stored — a login that wrote a credential it never received is the worst
-// possible outcome here.
+// A login that stored a credential it never received is the worst outcome here.
 func TestLoginReportsADenialAndExitsNonZero(t *testing.T) {
 	home := testHome(t)
 	clk := newGateClock()
@@ -527,12 +424,8 @@ func TestLoginReportsADenialAndExitsNonZero(t *testing.T) {
 	require.False(t, found, "a denied login stored a credential")
 }
 
-// TestLoginReportsAnExpiredCodeAndStopsPolling covers an expired device code.
-//
-// The "does not loop" half is the assertion that matters and it is the one
-// easiest to fake: it is proven by the number of PAUSES, because continuing to
-// poll requires waiting out an interval first. Exactly one pause means exactly
-// two polls — the pending one and the expired one — and no third.
+// Proven by the number of pauses: one pause means exactly two polls, the
+// pending one and the expired one.
 func TestLoginReportsAnExpiredCodeAndStopsPolling(t *testing.T) {
 	home := testHome(t)
 	clk := newGateClock()
@@ -561,18 +454,8 @@ func TestLoginReportsAnExpiredCodeAndStopsPolling(t *testing.T) {
 	require.False(t, found, "an expired login stored a credential")
 }
 
-// TestLoginDistinguishesUnreachableFromEveryOtherFailure checks five outcomes.
-//
-// The four HTTP classes are driven by a server that answers the device
-// authorisation with one fixed status, which is the only way to reach 401 and
-// 403 on this path at all: /v1/device/authorize is unauthenticated, so a real
-// hub has nothing to reject. That is the point of the test — "something went
-// wrong" is not an acceptable diagnosis even for a status this endpoint should
-// never return.
-//
-// The fifth row is the one login can actually meet in the field, and it is
-// deliberately in the same table: a hub that is reachable, is a hub, and refuses
-// the authorisation must not be confused with a hub that is not there.
+// A fixed-status server is the only way to reach 401/403 on the
+// unauthenticated authorize endpoint; a refusing hub must not read as a missing one.
 func TestLoginDistinguishesUnreachableFromEveryOtherFailure(t *testing.T) {
 	statuses := []struct {
 		name  string
@@ -598,7 +481,7 @@ func TestLoginDistinguishesUnreachableFromEveryOtherFailure(t *testing.T) {
 			opts, _, _ := testOptions(srv.URL, output.FormatHuman)
 			err := runLogin(context.Background(), opts, loginDepsFor(newGateClock(), srv.Client()))
 			require.ErrorIs(t, err, tc.want)
-			require.Equal(t, tc.class, hub.ClassOf(err), "FR-040: the class must survive the device flow")
+			require.Equal(t, tc.class, hub.ClassOf(err), "the class must survive the device flow")
 			require.NotErrorIs(t, err, hub.ErrUnreachable,
 				"a hub that answered is not an unreachable hub")
 		})
@@ -606,8 +489,7 @@ func TestLoginDistinguishesUnreachableFromEveryOtherFailure(t *testing.T) {
 
 	t.Run("a hub that is not there is reported as unreachable", func(t *testing.T) {
 		testHome(t)
-		// Port 1 is reserved and nothing listens on it; a dial there fails
-		// without waiting for a timeout.
+		// Port 1 is reserved; a dial there fails without waiting for a timeout.
 		opts, _, _ := testOptions("https://127.0.0.1:1", output.FormatHuman)
 		err := runLogin(context.Background(), opts, loginDepsFor(newGateClock(), nil))
 		require.ErrorIs(t, err, hub.ErrUnreachable)
@@ -636,21 +518,17 @@ func TestLoginDistinguishesUnreachableFromEveryOtherFailure(t *testing.T) {
 	})
 }
 
-// TestLoginRefusesAHomeItCannotUse: the home check happens before any
-// network request. The hub here is a dead port, so if the ordering were
-// the other way round the error would be about the network instead.
+// The hub is a dead port, so a network-first ordering would surface a network error instead.
 func TestLoginRefusesAHomeItCannotUse(t *testing.T) {
 	t.Setenv("HOME", "")
 	opts, _, _ := testOptions("https://127.0.0.1:1", output.FormatHuman)
 	err := runLogin(context.Background(), opts, loginDepsFor(newGateClock(), nil))
 	require.ErrorIs(t, err, ErrHomeUnset)
 	require.NotErrorIs(t, err, hub.ErrUnreachable,
-		"FR-039: the home directory is validated before anything is dialled")
+		"the home directory is validated before anything is dialled")
 	require.Equal(t, CodeRefused, ExitCode(opts.Outcome, err))
 }
 
-// TestLoginWarnsThatAnEnvironmentTokenOutranksWhatItStores: the
-// credential is still stored, and the user is told it will be ignored.
 // Silence here would let someone believe a login took effect.
 func TestLoginWarnsThatAnEnvironmentTokenOutranksWhatItStores(t *testing.T) {
 	testHome(t)
@@ -673,17 +551,14 @@ func TestLoginWarnsThatAnEnvironmentTokenOutranksWhatItStores(t *testing.T) {
 	clk.letItPoll()
 	require.NoError(t, awaitLogin(t, done))
 
-	// require.True and not require.Contains: this diagnostic stream carries the
-	// user code, and a failing Contains would print it. See the file comment.
+	// require.True, not Contains: this stream carries the user code.
 	require.True(t, strings.Contains(diag.String(), credentials.TokenEnvVar),
 		"login must say that the environment token will be used in preference to what it stored")
 	require.False(t, strings.Contains(diag.String(), "an-environment-token"),
-		"FR-007: naming the variable is the point; printing its value is not")
+		"naming the variable is the point; printing its value is not")
 }
 
-// TestLoginRefusesWithoutAHostnameToBindTo is the negative control: the
-// hostname is what the approving human sees, so a login that could not
-// read one must refuse rather than send an anonymous request.
+// The approving human sees the hostname, so a login without one must refuse.
 func TestLoginRefusesWithoutAHostnameToBindTo(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -705,15 +580,9 @@ func TestLoginRefusesWithoutAHostnameToBindTo(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------- refusals that must come FIRST
-
-// plantCredentialFile stores a credential for hubURL through the real store and
-// then widens the mode of whatever file that produced.
-//
-// The path is DISCOVERED by listing the directory rather than recomputed here:
-// the item key is derived by unexported code in internal/credentials, and a
-// wrong guess would chmod nothing and leave this test green for the wrong
-// reason.
+// plantCredentialFile stores a credential through the real store and widens
+// the file's mode. The path is discovered by listing, since the item key is
+// derived by unexported code and a wrong guess would chmod nothing.
 func plantCredentialFile(t *testing.T, home, hubURL string, mode fs.FileMode) string {
 	t.Helper()
 	require.NoError(t, openTestStore(t, home).Save(
@@ -727,21 +596,9 @@ func plantCredentialFile(t *testing.T, home, hubURL string, mode fs.FileMode) st
 	return path
 }
 
-// TestLoginRefusesAWideCredentialStoreBeforeSendingAnyoneToABrowser: the
-// permission check ordered against the hostname check, and the ordering
-// is the whole requirement.
-//
-// Measured before the fix: with a 0644 credential file already present for the
-// hub — a restore from backup, an rsync without -p, a container COPY, since
-// keyring itself always creates 0600 — login opened the store without objection
-// (credentials.Open touches no item), printed the user code, waited, the human
-// approved, the device grant was consumed, and only then did Save refuse. The
-// approval was spent on a token that was never stored and the stale wide file
-// still held the old one.
-//
-// The hub here is a DEAD PORT, which is the assertion doing the work: if the
-// mode check still ran after the device flow, this would fail as unreachable
-// instead. Nothing is displayed and no packet leaves.
+// A wide credential file (restored from backup, rsync without -p) used to be
+// refused only at Save, after the human approved and the grant was spent. The
+// hub is a dead port, so a mode check after the device flow would fail as unreachable.
 func TestLoginRefusesAWideCredentialStoreBeforeSendingAnyoneToABrowser(t *testing.T) {
 	// Port 1 is reserved and nothing listens on it.
 	const deadHub = "https://127.0.0.1:1"
@@ -783,11 +640,9 @@ func TestLoginRefusesAWideCredentialStoreBeforeSendingAnyoneToABrowser(t *testin
 			require.ErrorContains(t, err, tc.want)
 			require.ErrorContains(t, err, path)
 			require.NotErrorIs(t, err, hub.ErrUnreachable,
-				"FR-004 must be decided before the hub is dialled, or a human approves a login that cannot be stored")
+				"the mode check must be decided before the hub is dialled, or a human approves a login that cannot be stored")
 
-			// Nothing was displayed and nothing was reported. require.False and
-			// not require.Contains: see the file comment on not handing testify
-			// a haystack that may carry a code.
+			// require.False, not Contains: the haystack may carry a code.
 			require.False(t, displayedUserCode.MatchString(diag.String()),
 				"login displayed a user code for an authorisation it was never going to be able to store")
 			require.Empty(t, result.String(), "a refused login emits no result")
@@ -816,16 +671,12 @@ func TestLoginRefusesAWideCredentialStoreBeforeSendingAnyoneToABrowser(t *testin
 	})
 }
 
-// hostileHub answers /v1/device/authorize with numbers of the test's choosing
-// and every poll with authorization_pending, counting the polls.
-//
-// It is a raw handler and not the fake hub deliberately: fake.Options takes
-// durations and rounds them into sanity, so it CANNOT express the wire values
-// this test is about. The whole defect lived in the int64-seconds-to-Duration
-// conversion, which only a raw body can drive.
-// hostilePollCap bounds a hostile hub's patience. See the token handler.
+// hostilePollCap ends a flow that would otherwise poll forever, so the poll
+// count fails instead of the suite hanging; a passing run never reaches it.
 const hostilePollCap = 5
 
+// hostileHub is a raw handler, not the fake: fake.Options rounds durations
+// into sanity and cannot express the wire values under test.
 func hostileHub(t *testing.T, body string, polls *atomic.Int64) fake.Target {
 	t.Helper()
 	mux := http.NewServeMux()
@@ -837,13 +688,6 @@ func hostileHub(t *testing.T, body string, polls *atomic.Int64) fake.Target {
 		n := polls.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		// authorization_pending would be the honest answer forever, and forever
-		// is the problem: with the overflow guard removed, an `expires_in` of
-		// -9223372037 wraps to a POSITIVE 292 years, so the flow polls until the
-		// heat death of the test binary and the regression shows up as a
-		// ten-minute panic instead of a failed assertion. The cap ends the flow
-		// so the poll count below is what fails. It is deliberately larger than
-		// the zero polls this test demands, so a passing run never reaches it.
 		if n > hostilePollCap {
 			_, _ = io.WriteString(w, `{"error":"access_denied"}`)
 			return
@@ -855,22 +699,9 @@ func hostileHub(t *testing.T, body string, polls *atomic.Int64) fake.Target {
 	return fake.Target{BaseURL: srv.URL, HTTPClient: srv.Client()}
 }
 
-// TestLoginRefusesDeviceSecondsItCannotMeasure is about the arithmetic,
-// and the poll count is the assertion that matters.
-//
-// `expires_in` and `interval` are unbounded int64 seconds on the wire, and
-// time.Duration is int64 nanoseconds: `seconds * time.Second` wraps above
-// about 9.22e9 seconds. Measured before the fix, with interval
-// 18446744074 and expires_in 5, the adapter produced 290.448ms,
-// internal/device had nothing to object to — normaliseInterval catches
-// zero and negative, which is all a wrap can present as — and login made
-// eighteen HTTP polls inside the five-second window against a hub that
-// had asked for one poll every 584 years. Scaled to a normal 900-second
-// window that is roughly 3,100 polls instead of 180.
-//
-// So every row here asserts zero polls of the token endpoint. An assertion that
-// only checked for an error would have passed with the defect present, because
-// the flow did eventually fail — it just hammered the hub first.
+// `seconds * time.Second` wraps above ~9.22e9s; an interval of 18446744074
+// became 290ms and login hammered the hub. Every row asserts zero polls, since
+// checking only for an error would pass with the defect present.
 func TestLoginRefusesDeviceSecondsItCannotMeasure(t *testing.T) {
 	const codes = `"device_code":"dc","user_code":"WXYZ-2345","verification_uri":"https://hub.example.com/device"`
 	for _, tc := range []struct {
@@ -889,18 +720,13 @@ func TestLoginRefusesDeviceSecondsItCannotMeasure(t *testing.T) {
 			want: "expires_in is 18446744074 seconds",
 		},
 		{
-			// The wrap is symmetric: -9223372037 seconds becomes a
-			// positive 292 years, so bounding only the upper end would
-			// leave this one live.
+			// The wrap is symmetric, so bounding only the upper end would leave this live.
 			name: "a negative expires_in that wraps positive",
 			body: `{` + codes + `,"expires_in":-9223372037,"interval":5}`,
 			want: "expires_in is -9223372037 seconds",
 		},
 		{
-			// Representable, so the adapter passes it on; internal/device is
-			// what refuses a flow that cannot complete. In the same table
-			// because from login's side it is the same class of hub and must not
-			// print a code either.
+			// Representable, so internal/device is what refuses it; it still must not print a code.
 			name: "an interval longer than the code lives, which needs no overflow at all",
 			body: `{` + codes + `,"expires_in":900,"interval":86400}`,
 			want: "no window in which it could be approved",
@@ -917,7 +743,7 @@ func TestLoginRefusesDeviceSecondsItCannotMeasure(t *testing.T) {
 			require.ErrorIs(t, err, device.ErrProtocol)
 			require.ErrorContains(t, err, tc.want)
 			require.Zero(t, polls.Load(),
-				"FR-002: the token endpoint was polled %d times for an authorisation that could never be polled legally", polls.Load())
+				"the token endpoint was polled %d times for an authorisation that could never be polled legally", polls.Load())
 			require.False(t, displayedUserCode.MatchString(diag.String()),
 				"a code was shown for an authorisation the client had already decided it could not honour")
 			require.Empty(t, result.String())
@@ -925,21 +751,8 @@ func TestLoginRefusesDeviceSecondsItCannotMeasure(t *testing.T) {
 	}
 }
 
-// TestAnInterruptedLoginIsNotBlamedOnTheHub is about a diagnosis, not a failure:
-// both cases below already ended the flow correctly.
-//
-// A context cancelled while a poll is in flight comes back through
-// internal/hub's classifyTransport, which classifies a cancelled request
-// as ClassUnreachable — correct for that package, since nothing answered.
-// Measured before the fix, wrapping that chain produced "login was
-// interrupted before it was approved: … hub unreachable at https://…:
-// context canceled", for a hub that was answering perfectly.
-//
-// Latency worth knowing: nothing in amctl installs a signal handler, so
-// cmd.Context() is context.Background() and Ctrl-C kills the process outright.
-// This path is reached today only by a caller passing its own cancellable
-// context. It is asserted anyway, because it goes live the moment someone wires
-// signal.NotifyContext and a wrong class is cheaper to fix now.
+// internal/hub classifies a cancelled request as unreachable, so wrapping that
+// chain blamed a hub that was answering fine.
 func TestAnInterruptedLoginIsNotBlamedOnTheHub(t *testing.T) {
 	assertInterrupted := func(t *testing.T, err error) {
 		t.Helper()
@@ -949,7 +762,7 @@ func TestAnInterruptedLoginIsNotBlamedOnTheHub(t *testing.T) {
 		require.NotErrorIs(t, err, hub.ErrUnreachable,
 			"the hub was answering; only the caller stopped")
 		require.Zero(t, hub.ClassOf(err),
-			"an interrupted login must carry no FR-040 class, or a script switching on ClassOf blames the network")
+			"an interrupted login must carry no hub class, or a script switching on ClassOf blames the network")
 		require.NotContains(t, err.Error(), "unreachable")
 		require.ErrorContains(t, err, "interrupted")
 	}
@@ -964,8 +777,7 @@ func TestAnInterruptedLoginIsNotBlamedOnTheHub(t *testing.T) {
 				`"verification_uri":"https://hub.example.com/device","expires_in":900,"interval":1}`)
 		})
 		mux.HandleFunc("/v1/device/token", func(w http.ResponseWriter, _ *http.Request) {
-			// Cancel with the request on the wire, then answer slowly enough
-			// that the cancellation is what the client sees.
+			// Cancel with the request on the wire, then answer slowly enough that the cancellation is what the client sees.
 			cancel()
 			time.Sleep(200 * time.Millisecond)
 			w.Header().Set("Content-Type", "application/json")
@@ -999,15 +811,7 @@ func TestAnInterruptedLoginIsNotBlamedOnTheHub(t *testing.T) {
 	})
 }
 
-// ---------------------------------------------------------------- logout
-
-// TestLogoutRemovesTheCredentialAndTouchesNothingElse proves it byte-for-byte.
-//
-// The tree is snapshotted by content, so "touches nothing installed" is a
-// byte-level claim and not a claim about which functions logout calls. The
-// seeded record is written as raw bytes rather than through internal/record on
-// purpose: what is being proven is that logout does not rewrite it, and raw
-// bytes prove that more directly than a re-serialisation would.
+// The record is seeded as raw bytes, so a rewrite of it is caught directly.
 func TestLogoutRemovesTheCredentialAndTouchesNothingElse(t *testing.T) {
 	home := testHome(t)
 	hubURL := "https://hub.example.com"
@@ -1017,9 +821,7 @@ func TestLogoutRemovesTheCredentialAndTouchesNothingElse(t *testing.T) {
 	store := openTestStore(t, home)
 	require.NoError(t, store.Save(credentials.Issued(canonical.URL, "a-stored-token", 3600, time.Now())))
 
-	// An installed tree: amctl's own per-hub record, and packages in the
-	// two places a target writes. An unmanaged neighbour is here too,
-	// because the failure this guards against does not distinguish them.
+	// amctl's record, packages in both target locations, and an unmanaged neighbour.
 	seeded := map[string]string{
 		filepath.Join(DirName, canonical.Dir, "state.json"):                `{"schemaVersion":"1.0.0","hub":"` + canonical.URL + `","profiles":[]}`,
 		filepath.Join(DirName, "cache", "sha256-abc", "bundle.zst"):        "not really a bundle",
@@ -1042,15 +844,13 @@ func TestLogoutRemovesTheCredentialAndTouchesNothingElse(t *testing.T) {
 	require.Contains(t, result.String(), canonical.URL)
 
 	require.Equal(t, before, snapshot(t, home),
-		"FR-008: logout altered something installed")
+		"logout altered something installed")
 
 	_, found, err := openTestStore(t, home).Load(canonical.URL)
 	require.NoError(t, err)
 	require.False(t, found, "logout left the credential behind")
 
-	// The negative control, kept in the suite rather than run once by hand: a
-	// comparison that cannot fail is a comparison nobody has checked, and the
-	// way this one would silently stop working is by excluding too much.
+	// Negative control: the way this comparison would silently stop working is by excluding too much.
 	t.Run("the comparison notices a change to any of the three trees", func(t *testing.T) {
 		for _, rel := range []string{
 			filepath.Join(DirName, canonical.Dir, "state.json"),
@@ -1060,10 +860,7 @@ func TestLogoutRemovesTheCredentialAndTouchesNothingElse(t *testing.T) {
 			path := filepath.Join(home, rel)
 			original, readErr := os.ReadFile(path)
 			require.NoError(t, readErr)
-			// Re-baselined per file: restoring the previous one moved its
-			// mtime, so comparing every round against the original snapshot
-			// would start passing for the wrong reason from the second
-			// iteration on.
+			// Re-baselined per file: restoring the previous one moved its mtime.
 			base := snapshot(t, home)
 			require.NoError(t, os.WriteFile(path, append(original, '!'), 0o600))
 			require.NotEqual(t, base, snapshot(t, home), "a changed %s went unnoticed", rel)
@@ -1072,10 +869,7 @@ func TestLogoutRemovesTheCredentialAndTouchesNothingElse(t *testing.T) {
 	})
 }
 
-// TestLogoutOfOneHubLeavesAnotherHubsCredentialAlone: two hubs, one
-// logout. No server is needed: logout makes no request, which is itself
-// part of the requirement — see newLogoutCmd on why it constructs no hub
-// client.
+// No server is needed: logout makes no request.
 func TestLogoutOfOneHubLeavesAnotherHubsCredentialAlone(t *testing.T) {
 	home := testHome(t)
 	first, err := ParseHub("https://first.example.com")
@@ -1101,11 +895,7 @@ func TestLogoutOfOneHubLeavesAnotherHubsCredentialAlone(t *testing.T) {
 	require.Equal(t, "second-token", kept.Token)
 }
 
-// TestLogoutFindsWhatLoginStoredHoweverTheHubWasSpelled is the invariant that
-// makes the pair work at all: both verbs key the credential on the CANONICAL
-// hub URL, so the spelling the operator happened to type is irrelevant. A
-// second opinion on canonicalisation in either verb would produce a logout that
-// removes nothing and reports success.
+// Both verbs key on the canonical hub URL, or logout would remove nothing and report success.
 func TestLogoutFindsWhatLoginStoredHoweverTheHubWasSpelled(t *testing.T) {
 	for _, spelling := range []string{
 		"hub.example.com",
@@ -1131,9 +921,7 @@ func TestLogoutFindsWhatLoginStoredHoweverTheHubWasSpelled(t *testing.T) {
 	}
 }
 
-// TestLogoutWhenNothingIsStoredSucceedsAndSaysSo: logout twice, and logout on a
-// machine that never logged in, are both reasonable things for a provisioning
-// script to do. Exit 0, and a message rather than silence.
+// Logout twice, or on a machine that never logged in, is normal for a provisioning script.
 func TestLogoutWhenNothingIsStoredSucceedsAndSaysSo(t *testing.T) {
 	testHome(t)
 	opts, result, _ := testOptions("https://hub.example.com", output.FormatJSON)
@@ -1154,8 +942,6 @@ func TestLogoutWhenNothingIsStoredSucceedsAndSaysSo(t *testing.T) {
 		"a script must be able to tell 'removed one' from 'there was none' without parsing prose")
 }
 
-// TestLogoutWarnsThatAnEnvironmentTokenStillAuthenticates: removing the
-// stored credential does not log this shell out.
 func TestLogoutWarnsThatAnEnvironmentTokenStillAuthenticates(t *testing.T) {
 	testHome(t)
 	opts, _, diag := testOptions("https://hub.example.com", output.FormatHuman)
@@ -1168,9 +954,6 @@ func TestLogoutWarnsThatAnEnvironmentTokenStillAuthenticates(t *testing.T) {
 	require.False(t, strings.Contains(diag.String(), "an-environment-token"))
 }
 
-// TestLogoutRefusesAHomeItCannotUse: the same ordering as login, for the
-// verb that has no network call to be ordered against — the home is
-// still the first thing that has to be true.
 func TestLogoutRefusesAHomeItCannotUse(t *testing.T) {
 	t.Setenv("HOME", "")
 	opts, _, _ := testOptions("https://hub.example.com", output.FormatHuman)
@@ -1179,8 +962,6 @@ func TestLogoutRefusesAHomeItCannotUse(t *testing.T) {
 	require.Equal(t, CodeRefused, ExitCode(opts.Outcome, err))
 }
 
-// TestLogoutWithoutAHubRefusesNamingTheFlag: logout has exactly one
-// question and it is the same one as login's.
 func TestLogoutWithoutAHubRefusesNamingTheFlag(t *testing.T) {
 	testHome(t)
 	var result, diag syncBuffer
@@ -1189,11 +970,7 @@ func TestLogoutWithoutAHubRefusesNamingTheFlag(t *testing.T) {
 	require.Empty(t, result.String())
 }
 
-// TestLogoutOfAPlaintextHubWorksWithoutTheFlag is the decision in
-// newLogoutCmd's comment, asserted rather than argued: logout builds no hub
-// client, so deleting a credential stored for an http:// hub does not require
-// re-typing the flag that permitted storing it. The alternative leaves the token
-// on disk, which is the opposite of what the user asked for.
+// Logout builds no hub client, so removing an http:// hub's credential doesn't need the flag again.
 func TestLogoutOfAPlaintextHubWorksWithoutTheFlag(t *testing.T) {
 	home := testHome(t)
 	canonical, err := ParseHub("http://hub.example.com")
@@ -1212,18 +989,9 @@ func TestLogoutOfAPlaintextHubWorksWithoutTheFlag(t *testing.T) {
 	require.False(t, found)
 }
 
-// TestNoVerbReachesForATerminalOrStandardInput is the no-TTY contract as
-// a property of the source rather than of one code path.
-//
-// A behavioural test can only prove that the paths it exercises do not prompt.
-// This proves that no path CAN: nothing in internal/cmd names os.Stdin or a
-// terminal check, so there is nothing to prompt with. It is the same shape of
-// gate internal/device uses to keep the clock behind its interface, and it
-// carries the same negative control — a synthetic file that does prompt, which
-// the detector must catch.
-//
-// If a verb ever genuinely needs an interactive path, this test is
-// where the conversation starts: it wants a flag beside it.
+// TestNoVerbReachesForATerminalOrStandardInput proves no path can prompt:
+// nothing in internal/cmd names os.Stdin or a terminal check. A synthetic
+// prompting file is the negative control.
 func TestNoVerbReachesForATerminalOrStandardInput(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	require.NoError(t, err)
@@ -1238,7 +1006,7 @@ func TestNoVerbReachesForATerminalOrStandardInput(t *testing.T) {
 		require.NoError(t, readErr)
 		checked++
 		for _, found := range interactiveUses(t, name, string(src)) {
-			t.Errorf("%s: %s — every command must run with no TTY (FR-037); a prompt needs a flag beside it", name, found)
+			t.Errorf("%s: %s — every command must run with no TTY; a prompt needs a flag beside it", name, found)
 		}
 	}
 	require.GreaterOrEqual(t, checked, 5, "the scan did not read the package it is guarding")
@@ -1256,10 +1024,7 @@ func TestNoVerbReachesForATerminalOrStandardInput(t *testing.T) {
 	})
 }
 
-// interactiveUses reports every reference to standard input or to a terminal
-// check in one Go source file. It works over the AST rather than over the text
-// so that the words appearing in a comment — as they do all over login.go —
-// cannot fire it.
+// interactiveUses walks the AST, so the words in a comment cannot fire it.
 func interactiveUses(t *testing.T, name, src string) []string {
 	t.Helper()
 	forbidden := map[string]map[string]bool{
@@ -1290,9 +1055,6 @@ func interactiveUses(t *testing.T, name, src string) []string {
 	return found
 }
 
-// ---------------------------------------------------------------- snapshot
-
-// fileState is one path's identity for the snapshot comparison.
 type fileState struct {
 	Mode    fs.FileMode
 	Size    int64
@@ -1300,13 +1062,8 @@ type fileState struct {
 	ModTime time.Time
 }
 
-// snapshot fingerprints every file under root by content, mode and mtime.
-//
-// Two deliberate exclusions, and each is a thing logout is ALLOWED to change:
-// the credential directory itself, and directory modification times, which
-// change whenever a file inside one is created or removed. Everything else —
-// including every file's mtime — is compared, so a logout that rewrote the
-// installation record byte-for-identically would still be caught.
+// snapshot fingerprints every file under root by content, mode and mtime,
+// excluding only what logout may change: the credential directory and directory mtimes.
 func snapshot(t *testing.T, root string) map[string]fileState {
 	t.Helper()
 	skip := filepath.Join(root, DirName, credentials.DirName)

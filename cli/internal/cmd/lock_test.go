@@ -21,18 +21,14 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/record"
 )
 
-// lockHome builds a Home over a temp directory without going through
-// ResolveHome, so a lock test cannot fail for a home-resolution reason.
 func lockHome(t *testing.T) Home {
 	t.Helper()
 	dir := t.TempDir()
 	return Home{UserHome: dir, Var: homeEnvVar(), Root: filepath.Join(dir, DirName)}
 }
 
-// fastOpts shrinks the heartbeat and the staleness window so a test does not
-// wait 90 seconds. The intervals are OPTIONS rather than package variables on
-// purpose: a mutable package knob plus -shuffle plus -race is a race in the
-// test harness rather than in the code under test.
+// fastOpts shrinks the heartbeat and staleness window. They are options, not
+// package variables, since a mutable package knob under -race is a harness race.
 func fastOpts(o lockOptions) lockOptions {
 	o.heartbeat = 5 * time.Millisecond
 	o.staleAfter = 200 * time.Millisecond
@@ -82,10 +78,7 @@ func TestReleaseIsIdempotent(t *testing.T) {
 	require.NoError(t, l.Release())
 }
 
-// Refuse, do not interleave and do not wait. This is the two-goroutine
-// (really two in-process acquisitions) form: it proves the O_EXCL
-// exclusion, the exit code and the message. It does not prove exclusion
-// across processes — TestASecondPROCESSRefusesAndNamesTheHolder does that.
+// In-process form; TestASecondPROCESSRefusesAndNamesTheHolder covers exclusion across processes.
 func TestASecondAcquireRefusesNamingTheHolder(t *testing.T) {
 	h := lockHome(t)
 
@@ -97,35 +90,28 @@ func TestASecondAcquireRefusesNamingTheHolder(t *testing.T) {
 	second, err := Acquire(h)
 	require.Error(t, err)
 	require.Nil(t, second)
-	require.Less(t, time.Since(start), 2*time.Second, "FR-038 refuses; it must not block or wait")
+	require.Less(t, time.Since(start), 2*time.Second, "Acquire refuses; it must not block or wait")
 
 	require.ErrorIs(t, err, ErrLocked)
 	require.True(t, IsRefusal(err), "a concurrent sync is user-fixable: wait, or kill the other run")
 	require.Equal(t, CodeRefused, ExitCode(CodeNoChanges, err),
-		"exit.go's CodeRefused is the user-fixable class, and FR-038 is in its doc comment")
+		"exit.go's CodeRefused is the user-fixable class")
 
-	// Naming the holder is the point of recording one. Asserting only that an
-	// error occurred would pass against "busy".
 	msg := err.Error()
 	require.Contains(t, msg, strconv.Itoa(first.Holder().PID))
 	require.Contains(t, msg, first.Holder().Host)
 	require.Contains(t, msg, h.LockPath())
 	require.Contains(t, msg, first.Holder().AcquiredAt.UTC().Format(time.RFC3339))
 
-	// The refusal is printed, so it must carry nothing but process facts.
 	require.NotContains(t, msg, "token")
 	require.NotContains(t, msg, first.Holder().Token)
 
-	// The first holder still holds it, and its file is untouched.
 	require.FileExists(t, h.LockPath())
 	require.False(t, first.Lost())
 }
 
-// The two-PROCESS case. The in-process test above shares one runtime, one
-// os.OpenFile implementation and one page cache, so it cannot distinguish
-// "O_EXCL excludes" from "the Go runtime serialised us"; and it cannot produce
-// a holder that dies without unwinding. This re-executes the test binary,
-// SIGKILLs the child, and then proves both halves.
+// Re-executes the test binary and SIGKILLs the child: only a real second
+// process proves O_EXCL exclusion and produces a holder that dies without unwinding.
 func TestASecondPROCESSRefusesAndNamesTheHolder(t *testing.T) {
 	if os.Getenv("AMCTL_LOCK_HELPER") != "" {
 		return // see lockHelperProcess
@@ -143,7 +129,6 @@ func TestASecondPROCESSRefusesAndNamesTheHolder(t *testing.T) {
 		_ = child.Wait()
 	})
 
-	// Wait for the child to report the pid it locked with.
 	childPID := readHelperPID(t, stdout)
 	require.NotEqual(t, os.Getpid(), childPID)
 
@@ -153,23 +138,18 @@ func TestASecondPROCESSRefusesAndNamesTheHolder(t *testing.T) {
 	require.Contains(t, err.Error(), strconv.Itoa(childPID),
 		"the refusal must name the other process, not merely report that something failed")
 
-	// Kill the holder without letting it unwind: the lock file survives, which
-	// is exactly the state the staleness rule exists for.
 	require.NoError(t, child.Process.Kill())
 	_, _ = child.Process.Wait()
 	require.FileExists(t, h.LockPath())
 
-	// The pid accelerator: same host, process gone, so this is reclaimed
-	// immediately rather than after lockStaleAfter. If it waited for the
-	// heartbeat window this test would time out, which is the assertion.
+	// Same host, process gone: reclaimed at once, or this times out.
 	l, err := Acquire(h)
 	require.NoError(t, err, "a lock left by a SIGKILLed process must not wedge the machine")
 	require.Equal(t, os.Getpid(), l.Holder().PID)
 	require.NoError(t, l.Release())
 }
 
-// TestLockHelperProcess is not a test. It is the child half of the test above:
-// it takes the lock, prints its pid and blocks until it is killed.
+// TestLockHelperProcess is not a test: it is the child half of the test above.
 func TestLockHelperProcess(t *testing.T) {
 	root := os.Getenv("AMCTL_LOCK_HELPER")
 	if root == "" {
@@ -212,8 +192,6 @@ func readHelperPID(t *testing.T, stdout interface{ Read([]byte) (int, error) }) 
 	return 0
 }
 
-// A lock whose recorded process is gone ON THIS HOST is reclaimed at once,
-// without waiting out the heartbeat window.
 func TestAStaleLockFromADeadProcessOnThisHostIsReclaimedImmediately(t *testing.T) {
 	h := lockHome(t)
 	o := defaultLockOptions()
@@ -232,8 +210,7 @@ func TestAStaleLockFromADeadProcessOnThisHostIsReclaimedImmediately(t *testing.T
 	require.NoError(t, l.Release())
 }
 
-// A lock recorded by ANOTHER host is never pid-checked — a pid means nothing
-// across a host or container boundary — so only the heartbeat can reclaim it.
+// A pid means nothing across a host or container boundary.
 func TestAStaleLockFromAnotherHostIsReclaimedOnlyByTheHeartbeatWindow(t *testing.T) {
 	h := lockHome(t)
 	o := fastOpts(defaultLockOptions())
@@ -254,10 +231,7 @@ func TestAStaleLockFromAnotherHostIsReclaimedOnlyByTheHeartbeatWindow(t *testing
 	})
 }
 
-// The failure mode of an mtime timeout is a sync that legitimately runs longer
-// than the timeout being declared dead. The heartbeat is what prevents that, so
-// it is asserted directly: a holder that started long ago but is still beating
-// keeps its lock.
+// A holder that started long ago but is still heartbeating keeps its lock.
 func TestALongRunningSyncKeepsItsLockBecauseTheHeartbeatKeepsBeating(t *testing.T) {
 	h := lockHome(t)
 	o := fastOpts(defaultLockOptions())
@@ -266,24 +240,17 @@ func TestALongRunningSyncKeepsItsLockBecauseTheHeartbeatKeepsBeating(t *testing.
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = l.Release() })
 
-	// Backdate the recorded start time far past staleAfter. Staleness must not
-	// be measured from AcquiredAt.
+	// Staleness must not be measured from AcquiredAt.
 	holder := l.Holder()
 	holder.AcquiredAt = time.Now().Add(-1 * time.Hour).UTC()
 	body, err := json.Marshal(holder)
 	require.NoError(t, err)
-	// Atomically, and not with os.WriteFile: that truncates, and the heartbeat
-	// is reading this file every few milliseconds. Landing in the gap between
-	// the truncate and the write, it reads an empty file, takes the lock for
-	// lost and stops beating for good — which fails this test perhaps one run
-	// in a hundred. tryCreate writes with O_EXCL and nothing rewrites the file
-	// afterwards, so a torn read is something only a test can produce; the way
-	// not to produce it is to replace the file rather than rewrite it.
+	// Replace atomically, not with os.WriteFile: a heartbeat read between its
+	// truncate and write sees an empty file and takes the lock for lost.
 	tmp := l.Path() + ".backdated"
 	require.NoError(t, os.WriteFile(tmp, body, 0o600))
 	require.NoError(t, os.Rename(tmp, l.Path()))
 
-	// Wait well past staleAfter. The heartbeat must keep the mtime current.
 	time.Sleep(4 * o.staleAfter)
 
 	_, err = acquire(h, o)
@@ -309,8 +276,7 @@ func TestTheHeartbeatRefreshesTheLockFilesMtime(t *testing.T) {
 	}, 5*time.Second, 5*time.Millisecond, "the heartbeat must put the mtime back")
 }
 
-// The frozen-holder case from lock.go's comment: a holder whose lock was
-// reclaimed from under it must notice, because nothing else can tell it.
+// A holder whose lock was reclaimed while frozen must notice; nothing else can tell it.
 func TestAHolderWhoseLockWasReclaimedReportsLost(t *testing.T) {
 	h := lockHome(t)
 	o := fastOpts(defaultLockOptions())
@@ -318,14 +284,12 @@ func TestAHolderWhoseLockWasReclaimedReportsLost(t *testing.T) {
 	l, err := acquire(h, o)
 	require.NoError(t, err)
 
-	// Simulate a reclaim by another run: replace the file with a different
-	// token, which is exactly what tryCreate would leave behind.
+	// Simulate a reclaim by another run.
 	writeLockFile(t, h, Holder{PID: 999999, Host: "thief", Token: "zzzz"}, time.Now())
 
 	require.Eventually(t, l.Lost, 5*time.Second, 5*time.Millisecond,
 		"the token check on each heartbeat is the only way a holder can find out")
 
-	// Release must NOT delete the new holder's lock.
 	err = l.Release()
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "reclaimed")
@@ -335,13 +299,6 @@ func TestAHolderWhoseLockWasReclaimedReportsLost(t *testing.T) {
 	require.Equal(t, "zzzz", holder.Token, "the thief's lock must survive our Release")
 }
 
-// TestASyncWhoseLockWasReclaimedStopsBeforeWriting is the other half of the test
-// above, and it is what makes the detection a mitigation rather than a fact
-// nobody reads. Lock.Lost's own doc says "a caller that sees true should stop
-// before it writes anything more"; until this was wired, `sync` discarded the
-// *Lock at WithLock and Lost had no production call site at all, so a holder
-// frozen past the staleness window resumed and kept swapping entries in a tree
-// another amctl was already applying to.
 func TestASyncWhoseLockWasReclaimedStopsBeforeWriting(t *testing.T) {
 	h := lockHome(t)
 	l, err := acquire(h, fastOpts(defaultLockOptions()))
@@ -352,7 +309,6 @@ func TestASyncWhoseLockWasReclaimedStopsBeforeWriting(t *testing.T) {
 	r := &syncRun{opts: opts, s: opts.Streams(), home: h, lock: l}
 	require.NoError(t, r.stillOurs(), "a lock we still hold is not a reason to stop")
 
-	// Another run reclaims it while this one is frozen.
 	writeLockFile(t, h, Holder{PID: 999999, Host: "thief", Token: "zzzz"}, time.Now())
 	require.Eventually(t, l.Lost, 5*time.Second, 5*time.Millisecond)
 
@@ -361,7 +317,6 @@ func TestASyncWhoseLockWasReclaimedStopsBeforeWriting(t *testing.T) {
 	require.Contains(t, err.Error(), h.LockPath(), "the message must name the lock")
 	require.False(t, IsRefusal(err), "nothing the user did caused this and re-running is the fix")
 
-	// And the apply phase refuses before it opens the tree.
 	applied, aerr := r.apply(t.Context(), plan.Plan{}, record.New("https://hub.example.com"),
 		filepath.Join(h.Root, "hub", record.FileName), nil, nil, nil)
 	require.Error(t, aerr)
@@ -369,8 +324,7 @@ func TestASyncWhoseLockWasReclaimedStopsBeforeWriting(t *testing.T) {
 	require.Nil(t, applied, "nothing may be attempted once the lock is somebody else's")
 }
 
-// A corrupt lock file is still a lock: treating it as absent would be a way to
-// defeat the lock by writing garbage into it.
+// Treating a corrupt lock file as absent would let garbage bytes defeat the lock.
 func TestACorruptLockFileIsRefusedRatherThanIgnored(t *testing.T) {
 	h := lockHome(t)
 	require.NoError(t, os.MkdirAll(h.Root, 0o700))
@@ -395,7 +349,6 @@ func TestWithLockReleasesOnANormalReturn(t *testing.T) {
 	require.True(t, ran)
 	require.NoFileExists(t, h.LockPath())
 
-	// And the lock is immediately re-acquirable, which is the observable half.
 	l, err := Acquire(h)
 	require.NoError(t, err)
 	require.NoError(t, l.Release())
@@ -410,8 +363,6 @@ func TestWithLockReturnsTheWorkErrorAndStillReleases(t *testing.T) {
 	require.NoFileExists(t, h.LockPath())
 }
 
-// Released on a panic. Claimed in Release's doc comment, so it is proved: a
-// panicking sync must not leave the machine locked until the heartbeat expires.
 func TestWithLockReleasesWhileAPanicUnwinds(t *testing.T) {
 	h := lockHome(t)
 
@@ -425,9 +376,7 @@ func TestWithLockReleasesWhileAPanicUnwinds(t *testing.T) {
 	require.NoError(t, l.Release())
 }
 
-// Exactly one of N concurrent acquirers wins, and every loser gets ErrLocked
-// rather than a corrupt lock or a second success. Run under -race, this is also
-// the race detector's look at the heartbeat goroutine.
+// Under -race this is also the race detector's look at the heartbeat goroutine.
 func TestExactlyOneOfManyConcurrentAcquirersWins(t *testing.T) {
 	h := lockHome(t)
 	require.NoError(t, os.MkdirAll(h.Root, 0o700))
@@ -459,15 +408,14 @@ func TestExactlyOneOfManyConcurrentAcquirersWins(t *testing.T) {
 			}
 		}()
 	}
-	// Hold the winner until every loser has had its turn, so a loser cannot
-	// win by arriving after the winner released.
+	// Hold the winner until every loser has had its turn.
 	require.Eventually(t, func() bool { return wins.Load()+locked.Load()+int64(len(other)) == n },
 		10*time.Second, time.Millisecond)
 	close(release)
 	wg.Wait()
 
 	require.Empty(t, other, "no acquirer may fail for a reason other than ErrLocked")
-	require.Equal(t, int64(1), wins.Load(), "FR-038: two syncs must not both proceed")
+	require.Equal(t, int64(1), wins.Load(), "two syncs must not both proceed")
 	require.Equal(t, int64(n-1), locked.Load())
 	require.NoFileExists(t, h.LockPath())
 }
@@ -504,8 +452,7 @@ func TestIsStaleRules(t *testing.T) {
 	}
 }
 
-// processAlive answers "alive" to every question it cannot answer, because the
-// only unsafe direction is calling a live holder dead.
+// The only unsafe direction is calling a live holder dead.
 func TestProcessAliveFailsTowardsAlive(t *testing.T) {
 	require.True(t, processAlive(os.Getpid()), "our own process is alive")
 	require.False(t, processAlive(0), "pid 0 is not a holder")
@@ -513,12 +460,8 @@ func TestProcessAliveFailsTowardsAlive(t *testing.T) {
 	require.False(t, processAlive(deadPID(t)))
 }
 
-// removeIfUnchanged is the reclaim guard: it must not unlink a lock whose
-// holder heartbeated after the staleness judgment.
 func TestRemoveIfUnchangedRefusesAFileThatChangedSinceItWasJudged(t *testing.T) {
-	// The FileInfo comes from an open HANDLE, because that is how readLock
-	// obtains the one this guard is given in production (f.Stat(), not
-	// os.Stat).
+	// From an open handle, as readLock obtains it in production.
 	newLock := func(t *testing.T) (string, os.FileInfo) {
 		t.Helper()
 		p := filepath.Join(t.TempDir(), "sync.lock")
@@ -542,10 +485,8 @@ func TestRemoveIfUnchangedRefusesAFileThatChangedSinceItWasJudged(t *testing.T) 
 		require.FileExists(t, p)
 	})
 
-	// A DIFFERENT file at the same path with the SAME mtime: the mtime check
-	// alone cannot see this, so it isolates the SameFile half of the guard.
-	// Constructed by rename rather than by delete-and-recreate, because a
-	// recreated file can land on the recycled inode and defeat the point.
+	// A different file with the same mtime isolates the SameFile check. Made by
+	// rename, since a recreated file can land on the recycled inode.
 	t.Run("a different file at the same path blocks the unlink", func(t *testing.T) {
 		p, judged := newLock(t)
 		other := p + ".other"
@@ -571,8 +512,7 @@ func TestRemoveIfUnchangedRefusesAFileThatChangedSinceItWasJudged(t *testing.T) 
 		require.ErrorIs(t, removeIfUnchanged(p, judged), os.ErrNotExist)
 	})
 
-	// The negative control: without this, the three cases above would also pass
-	// against a removeIfUnchanged that never removed anything.
+	// Control: the cases above would also pass against a removeIfUnchanged that never removes.
 	t.Run("an unchanged file is unlinked", func(t *testing.T) {
 		p, judged := newLock(t)
 		require.NoError(t, removeIfUnchanged(p, judged))
@@ -598,8 +538,7 @@ func writeLockFile(t *testing.T, h Home, holder Holder, mod time.Time) {
 	require.NoError(t, os.Chtimes(h.LockPath(), mod, mod))
 }
 
-// deadPID returns a pid that is not running: a child that has been reaped, so
-// the kernel has genuinely released it rather than a number guessed to be free.
+// deadPID returns the pid of a reaped child rather than a number guessed to be free.
 func deadPID(t *testing.T) int {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], "-test.run=TestLockHelperProcessThatExitsImmediately")

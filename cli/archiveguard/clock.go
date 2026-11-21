@@ -20,10 +20,8 @@ func StartClock(ctx context.Context, d time.Duration) (c *Clock, cancel context.
 	return &Clock{parent: ctx, ctx: cctx, budget: d}, cancel
 }
 
-// Err returns nil while time remains. The caller's own cancellation or deadline
-// passes through wrapped, never as a Violation: a shutdown is not an archive
-// defect, nor may it be blamed on a budget that never expired. Only the budget
-// expiring is a KindTimeout Violation. The parent is checked first because the
+// Err returns nil while time remains. The caller's own cancellation passes through wrapped, never as
+// a Violation, since a shutdown is not an archive defect; the parent is checked first because the
 // budget's context inherits its deadline.
 func (c *Clock) Err() error {
 	if err := c.parent.Err(); err != nil {

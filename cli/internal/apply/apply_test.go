@@ -1,12 +1,6 @@
-// What is asserted here is the order and the refusals, because
-// those are the two things a reader cannot recover from apply.go by inspection:
-// that the record is written after the swap and per entry, that a run killed in
-// the window between them converges, and that every destination amctl did not
-// write is refused rather than replaced.
-//
-// Staging and swapping themselves are stage_test.go's and swap_test.go's; this
-// file only asserts that they are called in the right order with the right
-// arguments.
+// These tests assert ordering and refusals: the record is written after each
+// swap, a run killed between the two converges, and every destination amctl
+// did not write is refused rather than replaced.
 
 package apply
 
@@ -35,8 +29,6 @@ const (
 	applyProfile = "platform"
 )
 
-// fixture
-
 type applyLog struct {
 	warns  []string
 	debugs []string
@@ -60,9 +52,8 @@ func (l *applyLog) warnedAbout(t *testing.T, substr string) bool {
 	return false
 }
 
-// applyBundles is a BundleSource over a table keyed by `id@version`, plus an
-// optional hook that runs before each hand-over so a test can observe the
-// state of the tree at that moment.
+// applyBundles is a BundleSource keyed by `id@version`, with an optional hook
+// run before each hand-over to observe the tree.
 type applyBundles struct {
 	byRef  map[string][]byte
 	before func(c plan.Change)
@@ -110,7 +101,6 @@ func newApplyFixture(t *testing.T) *applyFixture {
 
 func (f *applyFixture) dest(dirName string) string { return filepath.Join(f.skills, dirName) }
 
-// add registers a bundle for id@version and returns the change that installs it.
 func (f *applyFixture) add(t *testing.T, id, version string, bundle []byte) plan.Change {
 	t.Helper()
 	d, err := record.ParseDigest(cache.Compute(bundle).Lockfile())
@@ -172,16 +162,13 @@ func planOf(changes ...plan.Change) plan.Plan {
 	return p
 }
 
-// loadedRecord is the record as it exists ON DISK, which is the only copy that
-// matters for a crash: the in-memory one dies with the process.
+// loadedRecord reads the record from disk, the only copy that survives a crash.
 func loadedRecord(t *testing.T, f *applyFixture) *record.Record {
 	t.Helper()
 	rec, err := record.Load(f.recPath, applyHub)
 	require.NoError(t, err)
 	return rec
 }
-
-// the happy path, and what it must leave on disk
 
 func TestApplyInstallsAnEntryAndRecordsIt(t *testing.T) {
 	f := newApplyFixture(t)
@@ -199,7 +186,7 @@ func TestApplyInstallsAnEntryAndRecordsIt(t *testing.T) {
 	rec := loadedRecord(t, f)
 	prof, ok := rec.ProfileBySlug(applyProfile)
 	require.True(t, ok)
-	require.Equal(t, 7, prof.Revision, "the resolved revision is recorded, never `head` (FR-013)")
+	require.Equal(t, 7, prof.Revision, "the resolved revision is recorded, never `head`")
 	require.Equal(t, []record.Target{record.TargetClaudeCode}, prof.Targets)
 	require.Len(t, prof.Entries, 1)
 	require.Equal(t, c.Dest, prof.Entries[0].Dest)
@@ -207,8 +194,6 @@ func TestApplyInstallsAnEntryAndRecordsIt(t *testing.T) {
 	require.Equal(t, c.Digest, prof.Entries[0].Digest)
 }
 
-// TestApplyWritesTheProvenanceMarkerBesideTheEntryFile: the directory says
-// which package and version it holds with no hub and no network.
 func TestApplyWritesTheProvenanceMarkerBesideTheEntryFile(t *testing.T) {
 	f := newApplyFixture(t)
 	c := f.add(t, "acme/lint-go", "1.4.0", skillBundle(t))
@@ -234,8 +219,6 @@ func TestApplyWritesTheProvenanceMarkerBesideTheEntryFile(t *testing.T) {
 		"SKILL.md is never stamped: it would rewrite bytes verified by digest and break R4's fingerprint")
 }
 
-// TestApplyLeavesNoStagingDirectoryBehind — the staging root is shared between
-// entries under one parent, so it is pruned once at the end and only when empty.
 func TestApplyLeavesNoStagingDirectoryBehind(t *testing.T) {
 	f := newApplyFixture(t)
 	one := f.add(t, "acme/lint-go", "1.4.0", skillBundle(t))
@@ -247,14 +230,11 @@ func TestApplyLeavesNoStagingDirectoryBehind(t *testing.T) {
 	require.DirExists(t, one.Dest)
 	require.DirExists(t, two.Dest)
 	require.NotEqual(t, one.Dest, two.Dest,
-		"two publishers sharing a package name install to distinct directories (FR-023)")
+		"two publishers sharing a package name install to distinct directories")
 }
 
-// the order: swap, then record, per entry
-
-// orderProbe is a Fingerprinter whose Modes call happens exactly in the window
-// between the swap and the record write, which is where the ordering is
-// observable at all.
+// orderProbe observes the tree from Modes, which runs between the swap and the
+// record write.
 type orderProbe struct {
 	t       *testing.T
 	f       *applyFixture
@@ -272,7 +252,6 @@ func (p *orderProbe) Hash(staged *Staged) (record.Fingerprint, error) {
 			SHA256: strings.Repeat("a", 64), Size: 1, Mode: 0o644, Kind: record.FileKindRegular,
 		}
 	}
-	// The staged tree is still staged and the destination is untouched.
 	require.DirExists(p.t, staged.Path, "content is hashed from the staged tree, before the swap")
 	return record.Fingerprint{Algo: record.FingerprintAlgo, Files: files}, nil
 }
@@ -297,9 +276,7 @@ func TestApplyWritesTheRecordAfterTheSwapAndPerEntry(t *testing.T) {
 	two := f.add(t, "beta/fmt-go", "0.9.1", skillBundle(t))
 
 	probe := &orderProbe{t: t, f: f}
-	// The second entry's fetch asserts the FIRST entry is already recorded,
-	// which is what makes the per-entry claim different from a single write at
-	// the end.
+	// The second entry's fetch asserts the first is already recorded.
 	f.bundles.before = func(c plan.Change) {
 		if c.ID != two.ID {
 			return
@@ -317,10 +294,6 @@ func TestApplyWritesTheRecordAfterTheSwapAndPerEntry(t *testing.T) {
 	require.Equal(t, 2, res.RecordWrites, "one record write per entry, and none wasted at the end")
 }
 
-// TestApplyFailsTheEntryWhenItsFingerprintCannotBeTaken — a fingerprint
-// taken before the swap is the only chance to have one, so failing to take
-// it fails the entry rather than installing something that could never be
-// verified afterwards.
 func TestApplyFailsTheEntryWhenItsFingerprintCannotBeTaken(t *testing.T) {
 	f := newApplyFixture(t)
 	c := f.add(t, "acme/lint-go", "1.4.0", skillBundle(t))
@@ -338,15 +311,9 @@ func TestApplyFailsTheEntryWhenItsFingerprintCannotBeTaken(t *testing.T) {
 	require.NoFileExists(t, f.recPath, "no record is written for an entry that did not land")
 }
 
-// TestApplyStopsWritingWhenTheCallerSaysItNoLongerOwnsTheTree is Config.Continue.
-//
-// The hazard is the one the per-home lock cannot prevent: a holder frozen past
-// the staleness window is declared stale, a second amctl reclaims the lock and
-// starts applying, and the first resumes with no idea. internal/cmd's Lock
-// heartbeat detects it; this is the seam that acts on it, and the assertion that
-// matters is that the entries which ALREADY landed stay landed and recorded —
-// they were installed while the answer was still yes, and nothing here can
-// un-write them.
+// TestApplyStopsWritingWhenTheCallerSaysItNoLongerOwnsTheTree covers a lock
+// holder declared stale mid-run: it must stop, and entries already landed must
+// stay recorded.
 func TestApplyStopsWritingWhenTheCallerSaysItNoLongerOwnsTheTree(t *testing.T) {
 	f := newApplyFixture(t)
 	first := f.add(t, "acme/lint-go", "1.4.0", skillBundle(t))
@@ -370,9 +337,7 @@ func TestApplyStopsWritingWhenTheCallerSaysItNoLongerOwnsTheTree(t *testing.T) {
 	require.Len(t, res.Failed, 1)
 	require.Empty(t, res.Refusals(), "losing the lock is not the user's to fix with --force")
 
-	// Whichever entry went first is on disk WITH its record row: the record is
-	// written per entry, immediately after its swap, so an abandoned run leaves
-	// no installed-but-unrecorded entry behind.
+	// The first entry is on disk with its record row.
 	rec := loadedRecord(t, f)
 	installed := res.Installed[0].Change
 	require.Len(t, rec.ByID(installed.ID), 1)
@@ -380,14 +345,8 @@ func TestApplyStopsWritingWhenTheCallerSaysItNoLongerOwnsTheTree(t *testing.T) {
 	require.NoDirExists(t, res.Failed[0].Change.Dest, "the abandoned entry was never staged")
 }
 
-// the aside a swap could not remove
-
 // leftoverAsideFixture installs 1.4.0, then upgrades to 1.5.0 with step 5's
-// RemoveAll made to fail, so the destination ends up with an `.amctl-old`
-// beside it. The obstruction is a subdirectory inside the old tree that
-// cannot be emptied, which is the case that made step 5 non-fatal.
-//
-// It returns the upgrade change and the path of the aside.
+// RemoveAll obstructed, leaving an `.amctl-old` beside the destination.
 func leftoverAsideFixture(t *testing.T, f *applyFixture) (upgrade plan.Change, aside string) {
 	t.Helper()
 	a := f.add(t, "acme/lint-go", "1.4.0", skillBundle(t))
@@ -411,19 +370,12 @@ func leftoverAsideFixture(t *testing.T, f *applyFixture) (upgrade plan.Change, a
 	return b, aside
 }
 
-// TestAConvergedRunSweepsAnAsideAnEarlierSwapCouldNotRemove is the whole point
-// of sweeping the plan rather than its writes.
-//
-// After the record write the entry is Unchanged on every later run, so Swap —
-// the only other code that removes an aside — is never called for it again. The
-// leftover was therefore permanent: a complete copy of the old skill living in
-// ~/.claude/skills beside the live one, which the agent may load, and which then
-// makes every future change to that entry fail on Swap's step 1.
+// TestAConvergedRunSweepsAnAsideAnEarlierSwapCouldNotRemove: an Unchanged
+// entry never runs Swap again, so only the sweep can remove its aside.
 func TestAConvergedRunSweepsAnAsideAnEarlierSwapCouldNotRemove(t *testing.T) {
 	f := newApplyFixture(t)
 	b, aside := leftoverAsideFixture(t, f)
 
-	// Whatever held the old tree lets go — the handle closes, the scan finishes.
 	require.NoError(t, os.Chmod(filepath.Join(aside, "references"), 0o700))
 
 	converged := b
@@ -438,9 +390,6 @@ func TestAConvergedRunSweepsAnAsideAnEarlierSwapCouldNotRemove(t *testing.T) {
 	require.DirExists(t, b.Dest, "and the live install is untouched")
 }
 
-// TestASweepReportsAnAsideItStillCannotRemove keeps the first half honest: while
-// the obstruction is there the leftover must be REPORTED on every run, not
-// silently forgotten because the run had nothing to install.
 func TestASweepReportsAnAsideItStillCannotRemove(t *testing.T) {
 	f := newApplyFixture(t)
 	b, aside := leftoverAsideFixture(t, f)
@@ -456,33 +405,16 @@ func TestASweepReportsAnAsideItStillCannotRemove(t *testing.T) {
 		"the operator has to be told which path to remove, or the entry is stuck forever")
 }
 
-// TestTheSweepNeverRemovesAnAsideWhoseDestinationIsAbsent is the sweep's
-// negative control, and the one shape that would make it destructive.
-//
-// A crash inside Swap's single-rename window between steps 2 and 3 leaves the
-// destination absent and the aside holding the ONLY complete copy of the version
-// the record claims. A sweep that removed it would delete the entry outright.
-//
-// WHAT THIS ASSERTS CHANGED, AND WHY IT IS STRONGER NOW. This test used to
-// require the ASIDE to still be on disk afterwards, because a plan calling the
-// entry unchanged made the run write nothing, so preserving the aside for
-// some later run to reclaim was the best available outcome — and it left
-// the tree non-convergent in the meantime. Apply now promotes an
-// "unchanged" entry whose destination is GONE to a write (presentAndGone), so
-// Swap step 1 reclaims the aside in THIS run: the aside is renamed back to the
-// destination and installed over. The property under test is unchanged — the only
-// complete copy is never destroyed — and it is now asserted at the destination,
-// where the entry belongs, rather than at the aside path where it was stranded.
-// res.Reclaimed is checked so that "it is at dest" cannot be satisfied by a fresh
-// extraction from the bundle cache that happened to leave the same bytes there
-// while the only copy was deleted.
+// TestTheSweepNeverRemovesAnAsideWhoseDestinationIsAbsent: after a crash
+// between Swap steps 2 and 3 the aside is the only copy. Apply re-installs the
+// vanished entry and Swap reclaims the aside; res.Reclaimed proves it was not
+// simply re-extracted after the copy was deleted.
 func TestTheSweepNeverRemovesAnAsideWhoseDestinationIsAbsent(t *testing.T) {
 	f := newApplyFixture(t)
 	c := f.add(t, "acme/lint-go", "1.4.0", skillBundle(t))
 	_, err := f.applier(t).Apply(context.Background(), planOf(c))
 	require.NoError(t, err)
 
-	// The state a crash between steps 2 and 3 leaves.
 	aside := c.Dest + AsideSuffix
 	require.NoError(t, os.Rename(c.Dest, aside))
 
@@ -505,16 +437,13 @@ func TestTheSweepNeverRemovesAnAsideWhoseDestinationIsAbsent(t *testing.T) {
 	require.NoDirExists(t, aside, "and nothing is left stranded at the aside path")
 }
 
-// convergence after a crash between the swap and the record write
-
 func TestApplyAdoptsItsOwnLeftoverFromAnInterruptedRun(t *testing.T) {
 	f := newApplyFixture(t)
 	c := f.add(t, "acme/lint-go", "1.4.0", skillBundle(t))
 	_, err := f.applier(t).Apply(context.Background(), planOf(c))
 	require.NoError(t, err)
 
-	// Simulate the process dying between the swap and the record write: the
-	// tree is there, the record row is not.
+	// Simulate dying between the swap and the record write.
 	require.NoError(t, os.RemoveAll(filepath.Dir(f.recPath)))
 	f.rec = record.New(applyHub)
 
@@ -525,12 +454,8 @@ func TestApplyAdoptsItsOwnLeftoverFromAnInterruptedRun(t *testing.T) {
 	require.Len(t, loadedRecord(t, f).ByID(c.ID), 1, "the record row is restored")
 }
 
-// TestApplyAdoptsAnotherProfilesShareOfADestinationWithoutTheInterruptedWarning
-// is the other source of a marker with no row for THIS profile: a second
-// profile installing the same package at the same version and digest, which
-// plan.Compute's version-split check has already confirmed agree. That is
-// ordinary sharing, not a crash, and must read as such rather than as
-// "a previous sync was interrupted".
+// TestApplyAdoptsAnotherProfilesShareOfADestinationWithoutTheInterruptedWarning:
+// a second profile sharing the same install is ordinary sharing, not a crash.
 func TestApplyAdoptsAnotherProfilesShareOfADestinationWithoutTheInterruptedWarning(t *testing.T) {
 	f := newApplyFixture(t)
 	c := f.add(t, "acme/lint-go", "1.4.0", skillBundle(t))
@@ -554,16 +479,9 @@ func TestApplyAdoptsAnotherProfilesShareOfADestinationWithoutTheInterruptedWarni
 	require.Len(t, refs, 2, "both profiles now claim the entry")
 }
 
-// republishFixture is the state a run killed between the swap and the record
-// write leaves behind for a REPUBLISH: the hub served new bytes under an
-// unchanged version, the tree and the marker are at the new digest, and the
-// record still names the old one. It returns the OpReplace change that
-// reconciles it.
-//
-// It is built by installing, republishing with --force and then winding the
-// record's digest back, because that produces the real on-disk artefacts —
-// the swapped tree and amctl's own marker — rather than a hand-written
-// approximation of them.
+// republishFixture leaves the state of a republish killed between swap and
+// record write: tree and marker at the new digest, record at the old. It
+// returns the OpReplace change that reconciles it.
 func republishFixture(t *testing.T, f *applyFixture) plan.Change {
 	t.Helper()
 	first := f.add(t, "acme/lint-go", "1.4.0", skillBundle(t))
@@ -601,15 +519,8 @@ func republishFixture(t *testing.T, f *applyFixture) plan.Change {
 	return c
 }
 
-// TestApplyAdoptsItsOwnLeftoverFromAnInterruptedRepublish is the same
-// convergence as the test above, for the one write plan.change emits whose
-// From.Version EQUALS the version being installed: plan.OpReplace, the hub
-// republishing a version with different bytes.
-//
-// It has its own test because the guard used to key on `From.Version !=
-// Version`, which cannot see this case at all — so a machine whose tree was
-// already correct refused forever, needing a --force nobody could know to give,
-// which is verbatim the failure the upgrade branch exists to prevent.
+// TestApplyAdoptsItsOwnLeftoverFromAnInterruptedRepublish covers OpReplace,
+// where From.Version equals the version being installed.
 func TestApplyAdoptsItsOwnLeftoverFromAnInterruptedRepublish(t *testing.T) {
 	f := newApplyFixture(t)
 	c := republishFixture(t, f)
@@ -628,18 +539,13 @@ func TestApplyAdoptsItsOwnLeftoverFromAnInterruptedRepublish(t *testing.T) {
 	require.Equal(t, c.Digest, refs[0].Entry.Digest, "the record is caught up to what is on disk")
 }
 
-// TestApplyDoesNotAdoptAMarkerWhoseDigestIsNotTheChangesIsTheNegativeControl
-// for the branch above. The adoption is allowed to fire only when the tree is
-// byte-for-byte the install this change would perform; a marker at the right id,
-// target and VERSION but a third digest is not amctl's finished install of this
-// change, and letting it through would silence verifyUnmodified for every
-// upgrade.
+// TestApplyDoesNotAdoptAMarkerWhoseDigestIsNotTheChanges: adopting on a
+// version match alone would silence verifyUnmodified for every upgrade.
 func TestApplyDoesNotAdoptAMarkerWhoseDigestIsNotTheChanges(t *testing.T) {
 	f := newApplyFixture(t)
 	c := republishFixture(t, f)
 
-	// The plan now wants a THIRD set of bytes at the same version. The tree and
-	// its marker hold the second, so the marker no longer names this change.
+	// The plan now wants a third set of bytes at the same version.
 	third := packBundle(t,
 		file("SKILL.md", "---\nname: lint-go\n---\nthe body, republished twice\n"),
 		file("references/style.md", "a reference\n"),
@@ -660,10 +566,6 @@ func TestApplyDoesNotAdoptAMarkerWhoseDigestIsNotTheChanges(t *testing.T) {
 	require.Len(t, res.Refusals(), 1)
 }
 
-// TestApplyRefusesAnUnrecordedDestinationWithoutAMarker is the negative control
-// for the test above: with the marker gone, the same directory is somebody
-// else's work and is refused. It is what proves the adoption above is doing its
-// job through the marker and not through "the directory happens to be there".
 func TestApplyRefusesAnUnrecordedDestinationWithoutAMarker(t *testing.T) {
 	f := newApplyFixture(t)
 	c := f.add(t, "acme/lint-go", "1.4.0", skillBundle(t))
@@ -685,7 +587,7 @@ func TestApplyRefusesAnUnrecordedDestinationWithoutAMarker(t *testing.T) {
 
 	body, err := os.ReadFile(handwritten)
 	require.NoError(t, err)
-	require.Equal(t, "mine, not amctl's\n", string(body), "FR-028: the file amctl did not write survives byte-identical")
+	require.Equal(t, "mine, not amctl's\n", string(body), "the file amctl did not write survives byte-identical")
 }
 
 func TestApplyRefusesAMarkerForADifferentPackage(t *testing.T) {
@@ -697,9 +599,7 @@ func TestApplyRefusesAMarkerForADifferentPackage(t *testing.T) {
 	require.NoError(t, os.RemoveAll(filepath.Dir(f.recPath)))
 	f.rec = record.New(applyHub)
 
-	// A change for a DIFFERENT id whose destination happens to be the same
-	// directory. The marker names acme/lint-go, so it is not this entry's
-	// leftover and the overwrite is refused.
+	// A different id at the same directory: the marker is not this entry's.
 	other := mine
 	other.ID = "beta/fmt-go"
 	f.bundles.byRef[other.ID+"@"+other.Version] = f.bundles.byRef[mine.ID+"@"+mine.Version]
@@ -707,8 +607,6 @@ func TestApplyRefusesAMarkerForADifferentPackage(t *testing.T) {
 	_, err = f.applier(t).Apply(context.Background(), planOf(other))
 	require.ErrorIs(t, err, ErrUnrecorded)
 }
-
-// the three refusals, and --force naming what it destroys
 
 func TestApplyRefusesASymlinkAtTheDestination(t *testing.T) {
 	if err := os.Symlink("target", filepath.Join(t.TempDir(), "probe")); err != nil {
@@ -731,9 +629,7 @@ func TestApplyRefusesASymlinkAtTheDestination(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, elsewhere, link, "the link is untouched by a refusal")
 
-	// --force replaces the LINK and leaves what it pointed at alone: writing
-	// through it is how amctl would write outside the home without ever
-	// constructing a path outside it.
+	// --force replaces the link and leaves what it pointed at alone.
 	res, err := f.applier(t, func(cfg *Config) { cfg.Force = true }).Apply(context.Background(), planOf(c))
 	require.NoError(t, err)
 	require.Len(t, res.Installed, 1)
@@ -749,7 +645,6 @@ func TestApplyRefusesASymlinkAtTheDestination(t *testing.T) {
 	require.Equal(t, "not amctl's\n", string(body), "nothing was written through the link")
 }
 
-// stubVerifier is a stubbed Verifier.
 type stubVerifier struct {
 	changed []string
 	err     error
@@ -876,8 +771,7 @@ func TestApplyReinstallsWhenTheRecordClaimsAnEntryThatIsGone(t *testing.T) {
 	same.Op = plan.OpUpgrade
 	same.From = &plan.Installed{Version: "1.4.0", Digest: c.Digest, Fingerprinted: true}
 
-	// No verifier is wired, and it does not matter: nothing is at the
-	// destination, so there is nothing to destroy and nothing to verify.
+	// No verifier is needed: nothing is at the destination.
 	res, err := f.applier(t).Apply(context.Background(), planOf(same))
 	require.NoError(t, err)
 	require.Len(t, res.Installed, 1)
@@ -885,11 +779,8 @@ func TestApplyReinstallsWhenTheRecordClaimsAnEntryThatIsGone(t *testing.T) {
 	require.DirExists(t, c.Dest)
 }
 
-// the run-wide refusals
-
-// TestApplyRefusesAPlanWithConflictsBeforeStagingAByte covers FR-012, FR-023
-// and an unknown target together, because all three arrive as a plan.Conflict
-// and the requirement is the same for each: refuse BEFORE writing.
+// TestApplyRefusesAPlanWithConflictsBeforeStagingAByte covers every conflict
+// kind, since each must refuse before writing.
 func TestApplyRefusesAPlanWithConflictsBeforeStagingAByte(t *testing.T) {
 	unknown := fmt.Errorf("target agents-md: %w", layout.ErrUnknownTarget)
 	cases := []struct {
@@ -980,11 +871,6 @@ func TestApplyRefusesAnUnresolvedRevision(t *testing.T) {
 	require.Contains(t, err.Error(), "head")
 }
 
-// partial syncs, removals, idempotence
-
-// TestApplyReportsWhichEntriesLandedWhenOneFails is plan.md's Risks
-// requirement: a sync that fails at one entry says which others landed and
-// still exits non-zero.
 func TestApplyReportsWhichEntriesLandedWhenOneFails(t *testing.T) {
 	f := newApplyFixture(t)
 	one := f.add(t, "acme/lint-go", "1.4.0", skillBundle(t))
@@ -1012,8 +898,6 @@ func TestApplyReportsWhichEntriesLandedWhenOneFails(t *testing.T) {
 	require.Len(t, loadedRecord(t, f).Refs(), 2, "the record claims exactly what is on disk")
 }
 
-// TestApplyRefusesToReportARemovalItCannotPerform — the whole point of the
-// Pruner seam. A build with no pruner must not exit 0 having removed nothing.
 func TestApplyRefusesToReportARemovalItCannotPerform(t *testing.T) {
 	f := newApplyFixture(t)
 	c := f.add(t, "acme/lint-go", "1.4.0", skillBundle(t))
@@ -1031,7 +915,7 @@ func TestApplyRefusesToReportARemovalItCannotPerform(t *testing.T) {
 	require.Len(t, res.Failed, 1)
 	require.DirExists(t, c.Dest, "the entry is still installed, which is exactly what the error says")
 	require.Len(t, loadedRecord(t, f).Refs(), 1,
-		"the record row is KEPT: dropping it before the files would make them unremovable (FR-028)")
+		"the record row is KEPT: dropping it before the files would make them unremovable")
 }
 
 type stubPruner struct {
@@ -1065,7 +949,6 @@ func TestApplyDropsTheRecordRowOnlyAfterAPrunerRemovedTheFiles(t *testing.T) {
 	require.Len(t, res.Removed, 1)
 	require.Empty(t, loadedRecord(t, f).Refs())
 
-	// And when the pruner fails, the row stays.
 	f2 := newApplyFixture(t)
 	c2 := f2.add(t, "acme/lint-go", "1.4.0", skillBundle(t))
 	_, err = f2.applier(t).Apply(context.Background(), planOf(c2))
@@ -1097,9 +980,8 @@ func TestApplyDropsARetainedRowWithoutTouchingTheFiles(t *testing.T) {
 	require.Empty(t, loadedRecord(t, f).ByID(c.ID))
 }
 
-// TestApplyWritesNothingOnAnUnchangedRun is apply's half of idempotence,
-// asserted by mtime across the whole tree rather than by what the Result
-// claims.
+// TestApplyWritesNothingOnAnUnchangedRun checks mtimes across the tree rather
+// than trusting the Result.
 func TestApplyWritesNothingOnAnUnchangedRun(t *testing.T) {
 	f := newApplyFixture(t)
 	c := f.add(t, "acme/lint-go", "1.4.0", skillBundle(t))
@@ -1118,12 +1000,10 @@ func TestApplyWritesNothingOnAnUnchangedRun(t *testing.T) {
 	require.Zero(t, res.RecordWrites, "state.json must not be rewritten by a run that changed nothing")
 
 	require.Equal(t, before, treeSnapshot(t, f.home),
-		"a second run against an unchanged hub makes no filesystem modification (FR-025)")
+		"a second run against an unchanged hub makes no filesystem modification")
 }
 
-// treeSnapshot is every path under root with the metadata a modification would
-// move: mode, size and mtime. It is deliberately NOT the CLI's own report of
-// what it did.
+// treeSnapshot is every path under root with its mode, size and mtime.
 func treeSnapshot(t *testing.T, root string) map[string]string {
 	t.Helper()
 	out := map[string]string{}

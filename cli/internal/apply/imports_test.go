@@ -1,55 +1,13 @@
-// The boundaries this codebase's security model is made of, compiled
-// rather than remembered.
+// These tests compile the CLI's security boundaries: only internal/plan's
+// reporting code may import a semver library (the hub resolves, the CLI does
+// not), and only internal/apply may both know where the agent tree is and
+// mutate it.
 //
-// Two of them:
-//
-//   - The hub resolves; the CLI does not. Masterminds/semver may be
-//     imported only by internal/plan's reporting code, never by anything
-//     that chooses a version. A second implementation of resolution here
-//     would be a second answer, and the two would eventually disagree.
-//   - internal/apply is the only package that mutates the agent tree, and
-//     it may not decide where the tree is.
-//
-// # Mechanism, and what it cannot see
-//
-// The scan is go/parser over this module's source, from the stdlib. The hub's
-// internal/archcheck uses golang.org/x/tools/go/packages for the same job;
-// x/tools is not a dependency of the CLI module and go.mod is the
-// orchestrator's, so the same shape is built on go/parser instead. internal/cmd
-// and internal/leakscan already scan this way, so this is the module's
-// established mechanism rather than a new one.
-//
-// What that costs, stated because a boundary nobody knows the limits of is
-// worse than none:
-//
-//   - It sees DIRECT imports only. A package that reaches semver through
-//     internal/plan links semver into its binary and is not reported. That is
-//     the right granularity for this rule — the question is which package
-//     CONTAINS resolution logic, not which binary links the library — but it is
-//     not the same question as "who can call semver".
-//   - It matches CALL NAMES syntactically and resolves no types. `root.Rename`
-//     and `os.Rename` both match; so would a method called Rename on something
-//     unrelated. False positives land only inside packages the rules already
-//     permit, and the rules are allowlists, so the failure direction is a noisy
-//     pass rather than a silent one.
-//   - It cannot see a mutation performed through a value another package handed
-//     over. Staged.OpenRoot returns an *os.Root over a staged tree, and any
-//     holder of one can write through it; what closes that is the rule on who
-//     may import internal/apply at all, not a call-name scan.
-//   - It exempts _test.go files from the mutation rules. Tests build hostile
-//     fixtures and must be able to write anywhere; what covers behaviour is
-//     containment_test.go's walk over a real sync, not this file.
-//
-// A blanket ban on os.Remove/os.Rename/os.WriteFile across the module was
-// rejected: internal/cache, internal/record, internal/credentials and
-// internal/cmd's lock all legitimately write — to ~/.agent-manager and to
-// the credential file, which are amctl's own state and not an agent's
-// tree. Exempting four packages of twelve would measure nothing, and the
-// three named calls do not cover the writes anyway — internal/apply and
-// internal/archive mutate through *os.Root, so a grep for `os.Rename`
-// misses `root.Rename` entirely. The rule that is actually true is the
-// conjunction below: knowing where the agent tree is and mutating it is
-// internal/apply's alone.
+// The scan is go/parser over this module's source. It sees direct imports
+// only, matches call names syntactically (root.Rename and os.Rename alike),
+// and exempts _test.go files from the mutation rules. A blanket ban on
+// os.Rename and friends would be useless: amctl's own state legitimately
+// writes, and internal/apply mutates through *os.Root anyway.
 
 package apply
 
@@ -70,14 +28,12 @@ import (
 
 const cliModule = "github.com/WindKube/agent-manager/cli"
 
-// semverModule is the version-resolution library kept out of the CLI. The
-// prefix is matched rather than the exact path so that a major-version
-// bump — .../semver/v4 — does not walk through the boundary.
+// semverModule is matched as a prefix so a major-version bump (.../semver/v4)
+// does not slip through.
 const semverModule = "github.com/Masterminds/semver"
 
-// mutatingCalls are the call names that write to, replace or unlink something.
-// Both spellings are here on purpose: os.Rename and root.Rename are the same
-// operation, and the containment-critical packages only ever use the second.
+// mutatingCalls are call names that write, replace or unlink; matched by name so
+// both os.Rename and root.Rename count.
 var mutatingCalls = map[string]bool{
 	"Remove": true, "RemoveAll": true, "Rename": true, "WriteFile": true,
 	"Create": true, "CreateTemp": true, "Mkdir": true, "MkdirAll": true,
@@ -85,11 +41,9 @@ var mutatingCalls = map[string]bool{
 	"OpenFile": true,
 }
 
-// destinationDerivation is internal/layout's API for deciding where an
-// entry goes. internal/apply must never call it: the mutator receives
-// destinations, it does not compute them, and that is what keeps the
-// containment check on one path per entry rather than on every path a
-// mutator might invent.
+// destinationDerivation is internal/layout's API for deciding where an entry
+// goes. internal/apply must never call it, so containment is checked on one
+// given path per entry rather than any path a mutator might invent.
 var destinationDerivation = map[string]bool{
 	"layout.NewRegistry":      true,
 	"layout.NewClaudeCode":    true,
@@ -107,8 +61,6 @@ type pkgInfo struct {
 
 func (p *pkgInfo) mutates() bool { return len(p.mutators) > 0 }
 
-// scanModule parses every .go file under root and groups the results by
-// directory, which is one Go package per directory in this module.
 func scanModule(t *testing.T, root, module string) map[string]*pkgInfo {
 	t.Helper()
 	pkgs := map[string]*pkgInfo{}
@@ -176,28 +128,10 @@ func scanModule(t *testing.T, root, module string) map[string]*pkgInfo {
 	return pkgs
 }
 
-// collectCalls records two different things from two different node types, and
-// the split is load-bearing.
-//
-// `selectors` is every qualified SelectorExpr, called or not, because the
-// destination-derivation rule asks whether internal/apply so much as MENTIONS
-// layout.NewRegistry.
-//
-// `mutators` is only a SelectorExpr in the function position of a
-// CallExpr. It used to be every SelectorExpr whose final name matched,
-// which counted a field read as a mutation: `p.Remove` in internal/plan's
-// compute.go — a read of Plan.Remove, the slice of removals — made the
-// pure planning package register as a mutator and therefore unable to
-// import internal/layout at all. That is what kept layout.DestCollisionKey,
-// written for internal/plan and documented as belonging there, from ever
-// being called; the case-folding hazard it closes was open the whole time.
-//
-// What the narrowing gives up is a mutating function used as a VALUE —
-// `defer r.Remove` or passing os.RemoveAll to something. No such use exists in
-// this module, and the rule it feeds is a conjunction with an import, so the
-// cost is bounded to a package that both knows the agent tree and launders its
-// writes through a function value. TestBoundariesFireOnASyntheticViolation
-// pins both directions: a call is still seen, a field read is not.
+// collectCalls records `selectors` as every qualified SelectorExpr, called or
+// not, and `mutators` only for a SelectorExpr in call position, so a field read
+// like plan's `p.Remove` is not a mutation. A mutating function passed as a
+// value is not seen; no such use exists.
 func collectCalls(f *ast.File, info *pkgInfo, file string) {
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch node := n.(type) {
@@ -235,19 +169,16 @@ func moduleRootOf(t *testing.T) string {
 	}
 }
 
-// the rules
-
 type boundary struct {
-	name string
-	why  string
-	// check reports every violation as a sentence.
+	name  string
+	why   string
 	check func(pkgs map[string]*pkgInfo, module string) []string
 }
 
 func boundaries() []boundary {
 	return []boundary{
 		{
-			name: "the CLI holds no version-resolution logic (FR-009, T042b)",
+			name: "the CLI holds no version-resolution logic",
 			why: "The hub resolves; the CLI applies. Masterminds/semver may be imported only by " +
 				"internal/plan, whose direction.go is REPORTING — it turns two versions the hub " +
 				"already chose into an arrow for a human. Anything that CHOOSES a version is a " +
@@ -258,7 +189,7 @@ func boundaries() []boundary {
 			}),
 		},
 		{
-			name: "only internal/cmd may import internal/apply (T042)",
+			name: "only internal/cmd may import internal/apply",
 			why: "internal/apply is the only package that mutates the agent tree, so the set of " +
 				"packages that can reach it is the set of places a write can originate. It is an " +
 				"allowlist so it fails CLOSED: a package added tomorrow cannot install anything " +
@@ -273,7 +204,7 @@ func boundaries() []boundary {
 			}),
 		},
 		{
-			name: "the deciding half is pure (T036, T034)",
+			name: "the deciding half is pure",
 			why: "internal/plan and internal/layout compute what to do and where it goes, with no " +
 				"I/O whatsoever: that is what makes --dry-run free and what makes every path " +
 				"decision testable without a filesystem. An import of os or net/http there is the " +
@@ -285,7 +216,7 @@ func boundaries() []boundary {
 			}),
 		},
 		{
-			name: "knowing where the agent tree is AND mutating it is internal/apply's alone (T042)",
+			name: "knowing where the agent tree is AND mutating it is internal/apply's alone",
 			why: "This is the conjunction that is actually true, and the reason a blanket ban on " +
 				"os.Remove/os.Rename/os.WriteFile is not: internal/cache, internal/record, " +
 				"internal/credentials and internal/cmd all write, to ~/.agent-manager and the " +
@@ -294,8 +225,8 @@ func boundaries() []boundary {
 				"and only because it imports layout for the plugin-adopting subdirectory set while " +
 				"writing solely into the staging destination internal/apply hands it. internal/cmd " +
 				"is a NARROWED third member: it must construct layout's registry, because layout's " +
-				"own package comment puts home and environment resolution in the command layer " +
-				"(FR-039), and it must write amctl's own state root — the per-home sync lock, the " +
+				"own package comment puts home and environment resolution in the command layer, " +
+				"and it must write amctl's own state root — the per-home sync lock, the " +
 				"write probe, the credential file. Its carve-out therefore permits deriving a " +
 				"destination and writing under ~/.agent-manager, and still forbids the two calls " +
 				"that installing into a layout-derived destination actually requires: a RENAME, " +
@@ -335,10 +266,10 @@ func boundaries() []boundary {
 			},
 		},
 		{
-			name: "the mutator does not derive a destination (T042, FR-020)",
+			name: "the mutator does not derive a destination",
 			why: "internal/apply RECEIVES destinations from internal/plan, which got them from " +
 				"internal/layout. If it could build one itself there would be two answers to " +
-				"'where does this entry go', and FR-020's containment check — which runs on the " +
+				"'where does this entry go', and the containment check — which runs on the " +
 				"destination it is handed — would be checking the wrong one.",
 			check: func(pkgs map[string]*pkgInfo, _ string) []string {
 				info := pkgs[cliModule+"/internal/apply"]
@@ -413,8 +344,6 @@ func sortedKeys[V any](m map[string]V) []string {
 	return out
 }
 
-// the assertions
-
 func TestImportBoundaries(t *testing.T) {
 	pkgs := scanModule(t, moduleRootOf(t), cliModule)
 	for _, b := range boundaries() {
@@ -426,12 +355,8 @@ func TestImportBoundaries(t *testing.T) {
 	}
 }
 
-// TestTheScanSeesWhatTheRulesAreAbout is the liveness check, and it is not
-// decoration: four of the five rules above are allowlists, and an allowlist is
-// vacuously true if the scan finds nothing to test it against. This asserts the
-// scan really does see internal/apply importing internal/layout and calling
-// mutating functions — so the conjunction rule has a live member — and that
-// internal/plan is really there for the semver rule to be about.
+// TestTheScanSeesWhatTheRulesAreAbout guards against the allowlist rules
+// passing vacuously because the scan found nothing.
 func TestTheScanSeesWhatTheRulesAreAbout(t *testing.T) {
 	pkgs := scanModule(t, moduleRootOf(t), cliModule)
 
@@ -443,10 +368,8 @@ func TestTheScanSeesWhatTheRulesAreAbout(t *testing.T) {
 	require.True(t, apply.mutates(), "the scan must see internal/apply's own mutating calls")
 	require.NotEmpty(t, apply.mutators["os.MkdirAll"], "stage.go's os.MkdirAll, seen by name")
 
-	// internal/cmd's narrowed carve-out has a live premise: it really does
-	// import layout and really does mutate, so the carve-out is doing work
-	// rather than describing an empty set — and it really does rename nothing,
-	// which is the half that makes it safe.
+	// internal/cmd's carve-out is live: it imports layout and mutates, but
+	// renames nothing.
 	cmdPkg := pkgs[cliModule+"/internal/cmd"]
 	require.NotNil(t, cmdPkg)
 	require.True(t, cmdPkg.imports[cliModule+"/internal/layout"],
@@ -458,9 +381,7 @@ func TestTheScanSeesWhatTheRulesAreAbout(t *testing.T) {
 			"internal/cmd renames nothing; %s would install into a layout-derived destination", call)
 	}
 
-	// The receiver's NAME is not asserted, only that a Rename is reached through
-	// something other than the os package: that is the call a grep for
-	// os.Rename would MISS, and the whole reason this scan is not a grep.
+	// A Rename through something other than os is what a grep would miss.
 	viaRoot := false
 	for call := range apply.mutators {
 		if strings.HasSuffix(call, ".Rename") && call != "os.Rename" {
@@ -479,17 +400,13 @@ func TestTheScanSeesWhatTheRulesAreAbout(t *testing.T) {
 	require.NotNil(t, pkgs[cliModule+"/internal/cmd"], "the apply-import rule's one permitted package")
 }
 
-// TestSemverIsNotADependencyYetAndTheRuleIsATripwire says out loud what
-// this rule is currently worth. Masterminds/semver is not in go.mod at all —
-// internal/plan implements semver 2.0.0 §10/§11 ordering itself, in
-// direction.go, for reporting — so the rule is a tripwire rather than a
-// constraint on existing code. TestBoundariesFireOnASyntheticViolation is what
-// proves the tripwire is armed.
+// TestSemverIsNotADependencyYetAndTheRuleIsATripwire: semver is not in go.mod,
+// so the rule is a tripwire, armed per TestBoundariesFireOnASyntheticViolation.
 func TestSemverIsNotADependencyYetAndTheRuleIsATripwire(t *testing.T) {
 	mod, err := os.ReadFile(filepath.Join(moduleRootOf(t), "go.mod"))
 	require.NoError(t, err)
 	if strings.Contains(string(mod), semverModule) {
-		t.Log("Masterminds/semver is now a dependency; the FR-009 rule is a live constraint, " +
+		t.Log("Masterminds/semver is now a dependency; the version-resolution rule is a live constraint, " +
 			"not a tripwire, and this test's premise is stale")
 		return
 	}
@@ -501,13 +418,8 @@ func TestSemverIsNotADependencyYetAndTheRuleIsATripwire(t *testing.T) {
 	}
 }
 
-// TestBoundariesFireOnASyntheticViolation is the negative control for all five
-// rules AND for the scan underneath them. Each case is a module-shaped source
-// tree containing exactly one violation; the assertion is that the rule reports
-// it and names the package.
-//
-// It exists because a boundary test that has never been seen to fail is
-// indistinguishable from one whose predicate is inverted.
+// TestBoundariesFireOnASyntheticViolation is the negative control for every
+// rule and the scan: each case is a module tree with exactly one violation.
 func TestBoundariesFireOnASyntheticViolation(t *testing.T) {
 	const mod = "example.com/fake"
 
@@ -519,7 +431,7 @@ func TestBoundariesFireOnASyntheticViolation(t *testing.T) {
 	}{
 		{
 			name: "a verb importing semver",
-			rule: "the CLI holds no version-resolution logic (FR-009, T042b)",
+			rule: "the CLI holds no version-resolution logic",
 			files: map[string]string{
 				"internal/cmd/sync.go": "package cmd\n\nimport semver \"" + semverModule + "/v3\"\n\nvar _ = semver.MustParse\n",
 			},
@@ -527,7 +439,7 @@ func TestBoundariesFireOnASyntheticViolation(t *testing.T) {
 		},
 		{
 			name: "semver inside internal/plan, which is allowed",
-			rule: "the CLI holds no version-resolution logic (FR-009, T042b)",
+			rule: "the CLI holds no version-resolution logic",
 			files: map[string]string{
 				"internal/plan/direction.go": "package plan\n\nimport semver \"" + semverModule + "/v3\"\n\nvar _ = semver.MustParse\n",
 			},
@@ -535,7 +447,7 @@ func TestBoundariesFireOnASyntheticViolation(t *testing.T) {
 		},
 		{
 			name: "semver reached from a test file",
-			rule: "the CLI holds no version-resolution logic (FR-009, T042b)",
+			rule: "the CLI holds no version-resolution logic",
 			files: map[string]string{
 				"internal/hub/hub_test.go": "package hub\n\nimport semver \"" + semverModule + "\"\n\nvar _ = semver.MustParse\n",
 			},
@@ -543,7 +455,7 @@ func TestBoundariesFireOnASyntheticViolation(t *testing.T) {
 		},
 		{
 			name: "a package other than internal/cmd importing internal/apply",
-			rule: "only internal/cmd may import internal/apply (T042)",
+			rule: "only internal/cmd may import internal/apply",
 			files: map[string]string{
 				"internal/hub/install.go": "package hub\n\nimport \"" + cliModule + "/internal/apply\"\n\nvar _ = apply.Swap\n",
 			},
@@ -551,7 +463,7 @@ func TestBoundariesFireOnASyntheticViolation(t *testing.T) {
 		},
 		{
 			name: "the pure half reaching for the filesystem",
-			rule: "the deciding half is pure (T036, T034)",
+			rule: "the deciding half is pure",
 			files: map[string]string{
 				"internal/plan/compute.go": "package plan\n\nimport \"os\"\n\nvar _ = os.Stat\n",
 			},
@@ -559,7 +471,7 @@ func TestBoundariesFireOnASyntheticViolation(t *testing.T) {
 		},
 		{
 			name: "a package that knows the agent tree and writes to it",
-			rule: "knowing where the agent tree is AND mutating it is internal/apply's alone (T042)",
+			rule: "knowing where the agent tree is AND mutating it is internal/apply's alone",
 			files: map[string]string{
 				"internal/hub/cleanup.go": "package hub\n\nimport (\n\t\"os\"\n\n\t\"" + mod + "/internal/layout\"\n)\n\n" +
 					"func f(d string) { _ = os.RemoveAll(layout.StagingRoot(d)) }\n",
@@ -568,7 +480,7 @@ func TestBoundariesFireOnASyntheticViolation(t *testing.T) {
 		},
 		{
 			name: "a package that writes to its own state and does NOT know the agent tree",
-			rule: "knowing where the agent tree is AND mutating it is internal/apply's alone (T042)",
+			rule: "knowing where the agent tree is AND mutating it is internal/apply's alone",
 			files: map[string]string{
 				"internal/cache/cache.go": "package cache\n\nimport \"os\"\n\nfunc f(d string) { _ = os.RemoveAll(d) }\n",
 			},
@@ -576,7 +488,7 @@ func TestBoundariesFireOnASyntheticViolation(t *testing.T) {
 		},
 		{
 			name: "a FIELD named Remove, read but never called, is not a mutation",
-			rule: "knowing where the agent tree is AND mutating it is internal/apply's alone (T042)",
+			rule: "knowing where the agent tree is AND mutating it is internal/apply's alone",
 			files: map[string]string{
 				"internal/plan/compute.go": "package plan\n\nimport \"" + mod + "/internal/layout\"\n\n" +
 					"type P struct{ Remove []string }\n\n" +
@@ -586,7 +498,7 @@ func TestBoundariesFireOnASyntheticViolation(t *testing.T) {
 		},
 		{
 			name: "the same name CALLED is still a mutation",
-			rule: "knowing where the agent tree is AND mutating it is internal/apply's alone (T042)",
+			rule: "knowing where the agent tree is AND mutating it is internal/apply's alone",
 			files: map[string]string{
 				"internal/plan/compute.go": "package plan\n\nimport (\n\t\"os\"\n\n\t\"" + mod + "/internal/layout\"\n)\n\n" +
 					"func f(d string) { _ = os.Remove(layout.StagingRoot(d)) }\n",
@@ -595,7 +507,7 @@ func TestBoundariesFireOnASyntheticViolation(t *testing.T) {
 		},
 		{
 			name: "a mutation through an os.Root, which a grep for os.Rename would miss",
-			rule: "knowing where the agent tree is AND mutating it is internal/apply's alone (T042)",
+			rule: "knowing where the agent tree is AND mutating it is internal/apply's alone",
 			files: map[string]string{
 				"internal/hub/swap.go": "package hub\n\nimport (\n\t\"os\"\n\n\t\"" + mod + "/internal/layout\"\n)\n\n" +
 					"func f(r *os.Root, d string) { _ = layout.StagingRoot(d); _ = r.Rename(\"a\", \"b\") }\n",

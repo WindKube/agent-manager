@@ -1,34 +1,9 @@
-// Package leakscan proves that nothing in this CLI writes a token, a device
-// code or a user code anywhere. It lives in its own directory because the
-// gate re-runs the whole module's test suite in a child process, so it
-// belongs to no single package.
+// Package leakscan checks that nothing in this CLI writes a token, a device code or a user code
+// anywhere. The user code alone may be shown once, live, on the diagnostic stream, as RFC 8628 requires.
 //
-// The access token and the device code are unconditional: neither is ever
-// shown to a human or typed by one, so any occurrence anywhere is a defect.
-// The user code is not unconditional: RFC 8628 requires the client to
-// display it, so the rule enforced here is narrower — it may be written
-// once, live, to the interactive diagnostic stream, but must never reach a
-// result document, the installation record, a log line, or an error value.
-//
-// Three detectors, each with a gap the others cover:
-//
-//  1. TestNoSecretReachesAnyOutputOfTheWholeSuite re-runs the whole suite in
-//     a child process and scans everything printed, including output that
-//     bypassed testing.T entirely. It cannot see a value it cannot name, so
-//     the fake hub's randomly generated tokens are covered instead by a
-//     credential-assignment shape pattern (`access_token=`, `Bearer x`, …),
-//     and it cannot see what no test exercised.
-//  2. The planting tests drive the real credential-carrying code with
-//     sentinel values through every fmt verb and error branch reachable
-//     without a network, and are the anti-vacuity mechanism for detector 1:
-//     each logs plantMarker, and the scan fails if that marker is absent.
-//  3. TestNoResultTypeCanCarryACredential walks every output.Result
-//     implementation's fields structurally, so it cannot rot, but is blind
-//     to anything that is not a Result.
-//
-// The union is not a proof: a leak of a randomly generated token, on a path
-// no test runs, in a shape that doesn't look like an assignment, would pass
-// all three.
+// Three detectors cover each other's gaps: a re-run of the whole suite whose output is scanned, planting
+// tests that push sentinels through every fmt verb and error branch (and prove the scan saw live output),
+// and a structural walk of every output.Result type.
 package leakscan
 
 import (
@@ -63,12 +38,8 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/record"
 )
 
-// The known test secrets. They are long, unmistakable and unlike anything
-// else the suite prints, so a match is a leak and never a coincidence.
-// sentinelUserCode is a legal user code under the contract's pattern so
-// nothing rejects it as malformed, and it is banned from the suite's output
-// outright: the one legitimate write of a user code is the live display,
-// which a test must instead assert using the fake hub's own random code.
+// Sentinels are unmistakable, so a match is a leak and never a coincidence. sentinelUserCode is banned
+// outright; a test asserting the live display must use the fake hub's random code instead.
 const (
 	sentinelAccessToken  = "amctl-sc010-access-token-9f3c1d5b7a2e4680"
 	sentinelRefreshToken = "amctl-sc010-refresh-token-4c8a6b1e0d9f2735"
@@ -90,40 +61,30 @@ func sentinels() []sentinel {
 	}
 }
 
-// childEnvVar stops the run-wide scan from re-entering itself. Without it the
-// child's own leakscan package would spawn a grandchild, and so on.
+// childEnvVar stops the run-wide scan from re-entering itself in the child.
 const childEnvVar = "AMCTL_LEAKSCAN_CHILD"
 
-// plantMarker is logged by every planting test. The run-wide scan requires it
-// in the child's output: it travels the same path a leak would, so its presence
-// proves the scan is reading live output rather than an empty buffer.
+// plantMarker travels the same path a leak would, so its presence proves the scan read live output.
 const plantMarker = "leakscan: exercised"
 
-// credentialAssignment matches the shape of a leak rather than the value of
-// one: a credential-ish key immediately followed by a value. This covers
-// the fake hub's randomly generated tokens, which an exact scan cannot name.
-// The keyword list is bounded by \b on both sides, so `token_type` does not
-// match; AMCTL_TOKEN is listed whole for the same reason.
+// credentialAssignment matches the shape of a leak, covering the fake hub's random tokens that an exact
+// scan cannot name. \b on both sides keeps `token_type` from matching.
 var credentialAssignment = regexp.MustCompile(
 	`(?i)\b(amctl[_-]?token|access[_-]?token|refresh[_-]?token|device[_-]?code|user[_-]?code|token|bearer|authorization|passphrase|password|api[_-]?key)\b["']?\s*[:=]+\s*("?[^\s",}&]+)`)
 
-// redactedValue is the only exemption to credentialAssignment: a key with a
-// visibly redacted value is the thing FR-007 asks for, not a violation of it.
-// Nothing here exempts a key whose value is an actual string.
+// redactedValue is the only exemption to credentialAssignment: a visibly redacted value.
 var redactedValue = regexp.MustCompile(`(?i)^"?(redacted|\*+|<[^>]*>|-+|nil|null|none|unset|empty|""|''|\[?redacted\]?)"?$`)
 
 type finding struct {
 	line int
 	what string
-	// excerpt has every sentinel replaced by its name, so a gate that
-	// reprints the secret it caught does not leak it into what the next run scans.
+	// excerpt has sentinels replaced by name so a failure does not leak into the next scan.
 	excerpt string
 }
 
 func (f finding) String() string { return fmt.Sprintf("line %d: %s: %s", f.line, f.what, f.excerpt) }
 
-// scan is the whole detector, as a pure function over text so it can have a
-// negative control instead of being trusted.
+// scan is a pure function over text so it can have a negative control.
 func scan(text string) []finding {
 	var out []finding
 	for i, line := range strings.Split(text, "\n") {
@@ -142,21 +103,14 @@ func scan(text string) []finding {
 	return out
 }
 
-// childPanicMargin is how much sooner the child's own -timeout fires than
-// the deadline this process enforces, long enough for `go test` to write a
-// full goroutine dump before the pipe closes.
+// childPanicMargin lets the child's own -timeout fire early enough to write a goroutine dump.
 const childPanicMargin = 90 * time.Second
 
-// childTimeoutPanic is what `go test` prints when a test binary exceeds its
-// own -timeout.
 const childTimeoutPanic = "panic: test timed out after"
 
-// panicExcerptBytes bounds the goroutine dump a hang reports.
 const panicExcerptBytes = 4000
 
-// redactBlock is redact for a multi-line excerpt: the whole block is capped
-// rather than each line truncated, which would throw away the stack frames
-// that make a dump worth printing.
+// redactBlock caps the whole block rather than each line, keeping the stack frames of a dump.
 func redactBlock(s string, limit int) string {
 	for _, sent := range sentinels() {
 		s = strings.ReplaceAll(s, sent.value, "<the test "+sent.name+">")
@@ -167,12 +121,10 @@ func redactBlock(s string, limit int) string {
 	return s
 }
 
-// timeoutTailBytes is how much of the child's output a timeout failure shows.
 const timeoutTailBytes = 1500
 
-// finishedPackages makes a timeout actionable: `go test ./...` buffers a
-// package's output until it finishes, so the hung one is precisely the one
-// missing from this list.
+// finishedPackages makes a timeout actionable: `go test ./...` buffers output per package, so the hung
+// one is the one missing from this list.
 func finishedPackages(out string) []string {
 	var pkgs []string
 	for _, line := range strings.Split(out, "\n") {
@@ -188,8 +140,6 @@ func finishedPackages(out string) []string {
 	return pkgs
 }
 
-// tail is the last n bytes of s, for a failure message that has to show
-// something without showing 160KB of it.
 func tail(s string, n int) string {
 	if len(s) <= n {
 		return s
@@ -207,32 +157,21 @@ func redact(line string) string {
 	return line
 }
 
-// ---------------------------------------------------------------- detector 1
-
-// TestNoSecretReachesAnyOutputOfTheWholeSuite re-runs the module's suite in
-// a child process and scans everything it printed. -v is required, not
-// cosmetic: without it a passing test's t.Log output is discarded. The
-// child's exit status is deliberately not asserted, since a broken sibling
-// test is that sibling's failure; what is asserted is that the child
-// produced a suite's worth of output, so a compile failure cannot pass this
-// gate by producing nothing to scan.
+// TestNoSecretReachesAnyOutputOfTheWholeSuite needs -v, or a passing test's t.Log output is discarded.
+// The child's exit status is not asserted (a broken sibling is that sibling's failure), but a suite's
+// worth of output is, so a compile failure cannot pass by producing nothing to scan.
 func TestNoSecretReachesAnyOutputOfTheWholeSuite(t *testing.T) {
 	if os.Getenv(childEnvVar) != "" {
 		t.Skip("child run: the suite is being scanned by the parent")
 	}
 	root := moduleRoot(t)
 
-	// The child's deadline must be shorter than this test's own -test.timeout,
-	// or a child that outlives its parent makes the parent panic with
-	// nothing scanned at all.
+	// A child that outlives this test's own -test.timeout would panic the parent with nothing scanned.
 	budget := childBudget(t)
 	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
 
-	// The child's own -timeout is deliberately shorter than the deadline
-	// above: when `go test` hits its own timeout it panics and dumps every
-	// goroutine's stack, naming the hung test, which is captured below. When
-	// the context wins instead there is nothing to read but the clock.
+	// The child's -timeout is shorter than ctx so a hang yields a goroutine dump naming the hung test.
 	cmd := exec.CommandContext(ctx, goTool(t), "test", "-count=1", "-v",
 		"-timeout="+(budget-childPanicMargin).String(), "./...")
 	cmd.Dir = root
@@ -240,11 +179,8 @@ func TestNoSecretReachesAnyOutputOfTheWholeSuite(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 	captured := string(out)
 	if err != nil {
-		// Not a failure of this gate; see the doc comment.
 		t.Logf("the child suite exited non-zero (%v); scanning its output anyway", err)
 	}
-	// A child killed by the deadline did not finish the suite, so a clean
-	// scan proves nothing about the part that never ran.
 	if i := strings.Index(captured, childTimeoutPanic); i >= 0 {
 		t.Fatalf("the child suite hung and timed itself out, so this scan covered only part of it "+
 			"(captured %d bytes).\npackages that finished: %s\nthe child's own report, from the panic:\n%s",
@@ -259,11 +195,8 @@ func TestNoSecretReachesAnyOutputOfTheWholeSuite(t *testing.T) {
 			timeoutTailBytes, redact(tail(captured, timeoutTailBytes)))
 	}
 
-	// Anti-vacuity: each of these must hold before a clean scan means
-	// anything, since a scan of a buffer nothing was written to passes
-	// forever. require's own Contains/Greater are avoided deliberately,
-	// since they print the whole haystack (the suite's output) on failure,
-	// which would re-emit any secret into the output the next run scans.
+	// Anti-vacuity checks. require.Contains is avoided because it prints the haystack on failure,
+	// re-emitting any secret into the output the next run scans.
 	requireOutput := func(cond bool, why string) {
 		t.Helper()
 		if !cond {
@@ -285,13 +218,11 @@ func TestNoSecretReachesAnyOutputOfTheWholeSuite(t *testing.T) {
 	}
 
 	for _, f := range scan(captured) {
-		t.Errorf("FR-007 violation in the suite's output: %s", f)
+		t.Errorf("leak in the suite's output: %s", f)
 	}
 }
 
-// TestScanCatchesTheLeaksItIsGivenOnPurpose is the permanent negative
-// control: each leaky case is output the scan must reject, and the clean
-// cases are false positives it must not invent, taken from real suite output.
+// TestScanCatchesTheLeaksItIsGivenOnPurpose is the negative control; clean cases come from real suite output.
 func TestScanCatchesTheLeaksItIsGivenOnPurpose(t *testing.T) {
 	leaky := []struct {
 		name string
@@ -331,12 +262,6 @@ func TestScanCatchesTheLeaksItIsGivenOnPurpose(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------- detector 2
-
-// TestTheDeviceFlowNeverRendersTheCodesItHolds drives device.Flow through
-// every answer the token endpoint can give, with the sentinel codes in it,
-// and checks the error and every fmt verb, including %#v, which does not
-// consult String.
 func TestTheDeviceFlowNeverRendersTheCodesItHolds(t *testing.T) {
 	answers := []struct {
 		name    string
@@ -353,9 +278,7 @@ func TestTheDeviceFlowNeverRendersTheCodesItHolds(t *testing.T) {
 		{name: "pending until the window closes", code: device.CodeAuthorizationPending, wantErr: device.ErrExpired},
 		{name: "slow down until the window closes", code: device.CodeSlowDown, wantErr: device.ErrExpired},
 		{
-			// A transport error is wrapped verbatim, which puts the burden on
-			// whatever produces it to not have put the device code in it;
-			// this test cannot verify that itself.
+			// Wrapped verbatim: keeping the device code out of it is the producer's job.
 			name:    "a transport failure",
 			pollErr: errTransportPassedThrough,
 			wantErr: errTransportPassedThrough,
@@ -375,9 +298,7 @@ func TestTheDeviceFlowNeverRendersTheCodesItHolds(t *testing.T) {
 				device.AuthorizeRequest{ClientID: "amctl", Host: "leakscan.example"})
 			require.NoError(t, err)
 
-			// The two accessors allowed to return the user code, asserted
-			// rather than assumed so a Flow that stopped returning it would
-			// not make every other assertion here pass vacuously.
+			// Asserted so a Flow that stopped returning the code would not make the rest pass vacuously.
 			require.Equal(t, sentinelUserCode, flow.UserCode())
 			require.Contains(t, flow.VerificationURIComplete(), sentinelUserCode)
 
@@ -392,8 +313,6 @@ func TestTheDeviceFlowNeverRendersTheCodesItHolds(t *testing.T) {
 	planted(t, len(answers))
 }
 
-// errTransportPassedThrough is the transport error the stub returns,
-// asserted with errors.Is to prove the specific pass-through.
 var errTransportPassedThrough = errors.New("connection reset by peer")
 
 func TestAnIssuedTokenNeverRendersItself(t *testing.T) {
@@ -410,8 +329,7 @@ func TestAnIssuedTokenNeverRendersItself(t *testing.T) {
 	tok, err := flow.Wait(context.Background())
 	require.NoError(t, err)
 
-	// The accessors must still work, or a Token that stopped returning the
-	// token would pass every leak assertion below while breaking login.
+	// Otherwise a Token that stopped returning the token would pass every leak assertion below.
 	require.Equal(t, sentinelAccessToken, tok.AccessToken())
 	refresh, ok := tok.RefreshToken()
 	require.True(t, ok)
@@ -425,8 +343,6 @@ func TestAnIssuedTokenNeverRendersItself(t *testing.T) {
 	planted(t, 1)
 }
 
-// TestACredentialNeverRendersItsToken covers credentials.Credential's fmt
-// verbs, the fallback warning, and the error a corrupt store produces.
 func TestACredentialNeverRendersItsToken(t *testing.T) {
 	const hubURL = "https://hub.leakscan.example"
 
@@ -434,8 +350,7 @@ func TestACredentialNeverRendersItsToken(t *testing.T) {
 	store, err := credentials.Open(credentials.Options{
 		StateRoot: t.TempDir(),
 		Warnf:     func(f string, a ...any) { fmt.Fprintf(&warnings, f+"\n", a...) },
-		// The file backend: the only one whose corrupt-blob path can be
-		// exercised on any platform, and it keeps this test off the real keychain.
+		// The only backend whose corrupt-blob path works on every platform, and off the real keychain.
 		Backends: []keyring.BackendType{keyring.FileBackend},
 	})
 	require.NoError(t, err)
@@ -453,9 +368,7 @@ func TestACredentialNeverRendersItsToken(t *testing.T) {
 	requireNoSentinel(t, "the fallback warning", warnings.String())
 	requireNoSentinel(t, "the store location", store.Location())
 
-	// json.Marshal is a separate serialiser from the fmt verbs above: it
-	// ignores String and GoString entirely, so an exported Token field with
-	// no `json:"-"` tag would marshal the raw credential.
+	// json.Marshal ignores String and GoString, so an untagged exported Token field would leak.
 	requireNoSentinelInJSON(t, "the credential", cred)
 	requireNoSentinelInJSON(t, "the resolved credential", loaded)
 	requireNoSentinelInJSON(t, "a struct holding a credential", struct {
@@ -464,8 +377,7 @@ func TestACredentialNeverRendersItsToken(t *testing.T) {
 	}{cred, credentials.Resolved{Credential: loaded, Source: credentials.SourceStore, Location: store.Location()}})
 
 	t.Run("the error from a store it cannot read", func(t *testing.T) {
-		// Overwrite the item keyring just wrote with content that has the
-		// token in the clear; the key is discovered by listing rather than recomputed.
+		// Overwrite the stored item with the token in the clear.
 		dir := credentialDir(t, store)
 		items, err := os.ReadDir(dir)
 		require.NoError(t, err)
@@ -484,7 +396,7 @@ func TestACredentialNeverRendersItsToken(t *testing.T) {
 		t.Setenv(credentials.TokenEnvVar, sentinelAccessToken)
 		resolved, found, err := credentials.Resolver{
 			Open: func() (*credentials.Store, error) {
-				t.Fatal("FR-005: the store must not be opened when the environment supplies a token")
+				t.Fatal("the store must not be opened when the environment supplies a token")
 				return nil, nil
 			},
 		}.Resolve(hubURL)
@@ -501,9 +413,7 @@ func TestACredentialNeverRendersItsToken(t *testing.T) {
 	planted(t, 7)
 }
 
-// credentialDir recovers the fallback directory from the store's own
-// rendering of it, "file (<dir>)", rather than duplicating the join of
-// StateRoot and DirName.
+// credentialDir recovers the fallback directory from the store's own "file (<dir>)" rendering.
 func credentialDir(t *testing.T, s *credentials.Store) string {
 	t.Helper()
 	loc := s.Location()
@@ -511,9 +421,7 @@ func credentialDir(t *testing.T, s *credentials.Store) string {
 	return strings.TrimSuffix(strings.TrimPrefix(loc, "file ("), ")")
 }
 
-// TestTheHubClientNeverRendersItsBearerToken puts the sentinel token into a
-// real hub.Hub and makes it fail two ways, since an error that dumped the
-// request would leak the Authorization header.
+// An error that dumped the request would leak the Authorization header.
 func TestTheHubClientNeverRendersItsBearerToken(t *testing.T) {
 	f := fake.New(fake.Options{TLS: true})
 	defer f.Close()
@@ -545,19 +453,14 @@ func TestTheHubClientNeverRendersItsBearerToken(t *testing.T) {
 	planted(t, 2)
 }
 
-// ---------------------------------------------------------------- detector 3
-
-// credentialFieldNames must not exist on anything this CLI renders or
-// records, matched as a substring so Token, AccessToken and tokenValue all trip.
+// credentialFieldNames are matched as substrings so Token, AccessToken and tokenValue all trip.
 var credentialFieldNames = []string{
 	"token", "secret", "password", "passphrase", "credential",
 	"authorization", "bearer", "apikey", "api_key",
 	"devicecode", "device_code", "usercode", "user_code",
 }
 
-// TestNoResultTypeCanCarryACredential is the half that cannot rot: the set
-// of Result implementations is read out of internal/output's source, so a
-// sixth type fails this test until it is listed here and walked.
+// The Result implementations are read from internal/output's source, so a new one fails until walked here.
 func TestNoResultTypeCanCarryACredential(t *testing.T) {
 	results := []output.Result{
 		output.LoginResult{},
@@ -589,9 +492,7 @@ func TestNoResultTypeCanCarryACredential(t *testing.T) {
 	})
 }
 
-// TestLoginResultRendersExactlyTheFieldsItIsAllowed pins the JSON document
-// by its key set. The reflection walk above would catch a field called
-// Token; this catches a field called Blob whose contents happen to be one.
+// The reflection walk catches a field called Token; this catches a field called Blob holding one.
 func TestLoginResultRendersExactlyTheFieldsItIsAllowed(t *testing.T) {
 	expiry := time.Unix(1_700_003_600, 0).UTC()
 	res := output.LoginResult{
@@ -617,7 +518,7 @@ func TestLoginResultRendersExactlyTheFieldsItIsAllowed(t *testing.T) {
 	}
 	sort.Strings(keys)
 	require.Equal(t, []string{"expires", "hub", "identity", "store"}, keys,
-		"the login result document gained a field; FR-007 forbids one holding a credential")
+		"the login result document gained a field")
 
 	var human bytes.Buffer
 	require.NoError(t, output.HumanRenderer{}.Render(&human, res))
@@ -644,7 +545,7 @@ func forbidCredentialFields(t *testing.T, typ reflect.Type, path string, seen ma
 		tag := strings.Split(f.Tag.Get("json"), ",")[0]
 		for _, bad := range credentialFieldNames {
 			require.NotContains(t, strings.ToLower(f.Name), bad,
-				"%s.%s reads as a credential; FR-007 forbids a rendered or recorded type having anywhere to put one", path, f.Name)
+				"%s.%s reads as a credential", path, f.Name)
 			require.NotContains(t, strings.ToLower(tag), bad,
 				"%s.%s serialises as %q, which reads as a credential", path, f.Name, tag)
 		}
@@ -652,17 +553,14 @@ func forbidCredentialFields(t *testing.T, typ reflect.Type, path string, seen ma
 	}
 }
 
-// resultTypesDeclaredInSource returns the receiver type of every
-// `Kind() string` method in internal/output, discovered rather than listed.
+// resultTypesDeclaredInSource returns the receiver of every Kind method in internal/output.
 func resultTypesDeclaredInSource(t *testing.T) []string {
 	t.Helper()
 	dir := filepath.Join(moduleRoot(t), "internal", "output")
 	entries, err := os.ReadDir(dir)
 	require.NoError(t, err)
 
-	// One ParseFile per file rather than parser.ParseDir (deprecated, ignores
-	// build tags); parsing every file errs toward finding more Result types
-	// than a build would compile, the safe direction here.
+	// Parsing every file regardless of build tags errs toward finding more Result types, the safe direction.
 	fset := token.NewFileSet()
 	var names []string
 	for _, e := range entries {
@@ -696,26 +594,16 @@ func receiverTypeName(expr ast.Expr) string {
 	}
 }
 
-// ---------------------------------------------------------------- helpers
-
-// requireNoSentinel reports the sentinel by name and never reprints its
-// value, so a failure here does not itself leak into the scanned output.
+// requireNoSentinel never reprints the value, so a failure does not itself leak into the scanned output.
 func requireNoSentinel(t *testing.T, what, text string) {
 	t.Helper()
 	for _, s := range sentinels() {
 		require.NotContains(t, text, s.value,
-			"%s contains the test %s (FR-007); rendered length %d", what, s.name, len(text))
+			"%s contains the test %s; rendered length %d", what, s.name, len(text))
 	}
 }
 
-// device.Flow previously leaked its user code under %#v via a plain string
-// field, since %#v does not consult String. internal/device now holds that
-// field in a closure like the other two; keep it that way.
-
-// requireNoSentinelInJSON is a separate defence from the fmt one: a type
-// whose String method redacts is still marshalled field by field. A type
-// that cannot be marshalled fails here too, deliberately, since that would
-// make the assertion vacuous.
+// requireNoSentinelInJSON fails on an unmarshallable type too, since that would make it vacuous.
 func requireNoSentinelInJSON(t *testing.T, what string, v any) {
 	t.Helper()
 	blob, err := json.Marshal(v)
@@ -723,9 +611,7 @@ func requireNoSentinelInJSON(t *testing.T, what string, v any) {
 	requireNoSentinel(t, what+" marshalled as JSON", string(blob))
 }
 
-// requireNoSentinelInAnyVerb checks the five fmt verbs a careless debug
-// print reaches for; %#v and %+v matter most, since neither is served by a
-// String method on an unexported field.
+// requireNoSentinelInAnyVerb matters most for %#v and %+v, which bypass String on unexported fields.
 func requireNoSentinelInAnyVerb(t *testing.T, what string, v any) {
 	t.Helper()
 	for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%q"} {
@@ -733,17 +619,13 @@ func requireNoSentinelInAnyVerb(t *testing.T, what string, v any) {
 	}
 }
 
-// planted logs the marker the run-wide scan requires; n is only ever
-// printed, so a reader can see how much was exercised.
 func planted(t *testing.T, n int) {
 	t.Helper()
 	t.Logf("%s %d credential-bearing renderings", plantMarker, n)
 }
 
-// childBudget is how long the child suite may run, comfortably inside
-// whatever deadline the parent was given via -test.timeout. An absent
-// deadline gets a generous fixed budget rather than an unbounded one, since
-// an unbounded child in CI hangs until the runner kills it with no output.
+// childBudget fits inside the parent's -test.timeout. With no deadline it is still bounded, since an
+// unbounded child in CI hangs until the runner kills it with no output.
 func childBudget(t *testing.T) time.Duration {
 	t.Helper()
 	const (
@@ -761,7 +643,6 @@ func childBudget(t *testing.T) time.Duration {
 	if budget := parent - margin; budget > 0 {
 		return budget
 	}
-	// The parent's own deadline is tighter than the margin; use most of it.
 	return parent / 2
 }
 
@@ -780,10 +661,7 @@ func moduleRoot(t *testing.T) string {
 	}
 }
 
-// goTool is the go binary on PATH; runtime.GOROOT is deliberately not used,
-// since it is deprecated and meaningless once a binary moves. A missing
-// toolchain fails rather than skips, since a leak gate that quietly skips is
-// indistinguishable from one that passed.
+// goTool fails rather than skips without a toolchain: a quietly skipped leak gate looks like a pass.
 func goTool(t *testing.T) string {
 	t.Helper()
 	path, err := exec.LookPath("go")
@@ -791,8 +669,7 @@ func goTool(t *testing.T) string {
 	return path
 }
 
-// stubTransport is a device.Transport that answers every poll the same
-// way, since the interesting variation is in the answer, not the sequence.
+// stubTransport answers every poll the same way.
 type stubTransport struct {
 	code   device.ErrorCode
 	issued *device.Issued
@@ -814,8 +691,7 @@ func (s *stubTransport) Poll(context.Context, device.PollRequest) (*device.Issue
 	return s.issued, s.code, s.err
 }
 
-// steppingClock advances by exactly what it is asked to wait, so a flow that
-// polls until the window closes terminates in microseconds instead of hanging.
+// steppingClock advances by exactly what it is asked to wait, so nothing actually sleeps.
 type steppingClock struct{ now time.Time }
 
 func (c *steppingClock) Now() time.Time { return c.now }

@@ -53,13 +53,9 @@ type Result struct {
 	DecompressedBytes int64
 }
 
-// Extract writes a tar+zstd bundle into dest under lim. dest must not exist and
-// its parent must: creating the root here is what makes every component beneath
-// it one this call made, so none can be a symlink and every leaf opens O_EXCL.
-//
-// It does not clean up after a failure (the caller owns dest's parent), does not
-// check dest is under the home directory (internal/apply does), and does not
-// verify the digest (that happens before bytes reach this package).
+// Extract writes a tar+zstd bundle into dest under lim. dest must not exist and its parent must:
+// creating the root here makes every component beneath it one this call made, so none can be a symlink.
+// It does not clean up after a failure, check home containment, or verify the digest.
 func Extract(ctx context.Context, r io.Reader, dest string, lim Limits) (*Result, error) {
 	lim = lim.WithDefaults()
 
@@ -80,9 +76,8 @@ func Extract(ctx context.Context, r io.Reader, dest string, lim Limits) (*Result
 	return &e.result, nil
 }
 
-// createDest makes dest through its parent's os.Root rather than os.Mkdir then
-// os.OpenRoot(dest): between those two calls another process could replace dest
-// with a symlink, and the root would then be confined to somewhere else.
+// createDest makes dest through its parent's os.Root, since between os.Mkdir and os.OpenRoot(dest)
+// another process could replace dest with a symlink.
 func createDest(dest string) (*os.Root, error) {
 	dest = filepath.Clean(dest)
 	parent, leaf := filepath.Split(dest)
@@ -253,9 +248,8 @@ func (e *extractor) acceptMember(hdr *tar.Header) (clean string, isDir bool, err
 	if _, dup := e.seen[clean]; dup {
 		return "", false, rejected(RejectDuplicate, hdr.Name)
 	}
-	// Case-folded collisions are refused on every platform: SKILL.md and Skill.md
-	// are one file on darwin and two on linux, so the same digest would install a
-	// different tree per platform. Folding is ASCII only; O_EXCL below backstops the rest.
+	// SKILL.md and Skill.md are one file on darwin and two on linux, so refuse everywhere.
+	// Folding is ASCII only; O_EXCL below backstops the rest.
 	fold := strings.ToLower(clean)
 	if prev, dup := e.seenFold[fold]; dup {
 		return "", false, &Error{
@@ -285,9 +279,8 @@ func (e *extractor) validatePath(name string) (clean string, isDir bool, err err
 	return clean, isDir, nil
 }
 
-// rejectPluginAdoption refuses a bundle that would change its own kind on disk:
-// the destination root is the skill directory, so a top-level subdirectory with
-// an adopting name makes Claude Code treat the tree as a plugin. Deeper is inert.
+// rejectPluginAdoption refuses a top-level subdirectory that would make Claude Code treat the skill
+// as a plugin. Deeper is inert.
 func (e *extractor) rejectPluginAdoption(clean string, isDir bool) Reason {
 	first, _, nested := strings.Cut(clean, "/")
 	// A plain file named `hooks` at the root does not trigger adoption.
@@ -300,10 +293,8 @@ func (e *extractor) rejectPluginAdoption(clean string, isDir bool) Reason {
 	return ""
 }
 
-// ensureDir creates clean and every component above it, refusing anything already
-// present that this extraction did not create. os.Mkdir cannot create a symlink
-// and fails when one is there, so every component is a real directory we made;
-// that is what defeats the directory, symlink-inside-it, write-through-it escape.
+// ensureDir creates clean and every component above it, refusing anything this extraction did not
+// create. That is what defeats the directory, symlink-inside-it, write-through-it escape.
 func (e *extractor) ensureDir(clean string) error {
 	if clean == "." || clean == "" {
 		return nil
@@ -326,9 +317,8 @@ func (e *extractor) ensureDir(clean string) error {
 	return nil
 }
 
-// writeFile streams one member to disk, checking every cap before the chunk that
-// would breach it is written. No size is taken from the archive: a declared size
-// is attacker-controlled.
+// writeFile streams one member to disk, checking every cap before each chunk is written. The
+// archive's declared size is attacker-controlled and never used.
 func (e *extractor) writeFile(clean string, mode fs.FileMode, r io.Reader) error {
 	if err := e.ensureDir(path.Dir(clean)); err != nil {
 		return err

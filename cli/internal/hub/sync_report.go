@@ -11,34 +11,27 @@ import (
 	"github.com/google/uuid"
 )
 
-// This file reports one completed sync at most once, never retried: the
-// hub's ReportSync handler INSERTs with no unique index and no idempotency
-// key, so retrying after an ambiguous failure risks a lying duplicate row.
-// Do not add a retry, even for 429 — that needs a contract change first.
+// A sync is reported at most once, never retried: the hub INSERTs with no idempotency key, so a retry
+// after an ambiguous failure risks a duplicate row. Adding a retry needs a contract change first.
 
 // ErrReportInput: refused locally rather than sent to 422 on a bug this client could catch itself.
 var ErrReportInput = errors.New("unusable sync report")
 
-// ErrAlreadyReported is loud, not a silent no-op: a second call is a caller
-// bug, and every failure here only routes to a warning anyway.
+// ErrAlreadyReported is loud because a second call is a caller bug.
 var ErrAlreadyReported = errors.New("this sync has already been reported to the hub")
 
-// Report is one completed sync, as POST /v1/sync's body needs it. Revision
-// must already be the resolved number the lockfile came back with, never the
-// `head` request that produced it.
+// Report is one completed sync. Revision must be the resolved number, never `head`.
 type Report struct {
 	// One report per profile: the body has a single `profile` field.
 	Profile string
 
 	Revision int
 
-	// Host is this machine's name, for the audit row.
 	Host string
 
-	// Required, non-empty.
 	Targets []string
 
-	// SkippedLocally is what THIS CLIENT skipped, not the lockfile's own array.
+	// SkippedLocally is what this client skipped, not the lockfile's own array.
 	SkippedLocally []string
 
 	// MachineID is this client's persisted random id; zero sends no inventory.
@@ -65,8 +58,7 @@ type ComponentSkip struct {
 	Entry, Target, Component, Reason string
 }
 
-// body builds the wire value, validating everything the hub would 422 on and
-// normalising the two lists so that one sync produces one deterministic body.
+// body validates everything the hub would 422 on and normalises the lists into a deterministic body.
 func (r Report) body() (SyncReport, error) {
 	profile := strings.TrimSpace(r.Profile)
 	host := strings.TrimSpace(r.Host)
@@ -87,9 +79,7 @@ func (r Report) body() (SyncReport, error) {
 	seen := make(map[string]struct{}, len(r.Targets))
 	for _, raw := range r.Targets {
 		t := SyncReportTargets(raw)
-		// Refused rather than dropped. A target value this build sends that the
-		// hub does not know is a client bug, and silently omitting it would
-		// report a sync of fewer targets than were written.
+		// Refused rather than dropped, which would report fewer targets than were written.
 		if !t.Valid() {
 			return SyncReport{}, fmt.Errorf("%w: profile %s reports target %q, which the contract does not define",
 				ErrReportInput, profile, raw)
@@ -188,7 +178,6 @@ func dedupeSorted(in []string) []string {
 	return out
 }
 
-// reportKey identifies one sync for the exactly-once latch.
 type reportKey struct {
 	profile  string
 	revision int
@@ -210,9 +199,8 @@ func NewReporter(h *Hub) (*Reporter, error) {
 	return &Reporter{hub: h, sent: map[reportKey]struct{}{}}, nil
 }
 
-// Report sends one sync report, at most once; see the file comment for why
-// there is no retry. The latch is claimed before the request, so a report
-// whose response never arrived is not retried by a second call either.
+// Report sends one sync report at most once. The latch is claimed before the request, so a report
+// whose response never arrived is not retried either.
 func (r *Reporter) Report(ctx context.Context, rep Report) error {
 	body, err := rep.body()
 	if err != nil {

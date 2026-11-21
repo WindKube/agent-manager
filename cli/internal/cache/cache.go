@@ -61,8 +61,7 @@ func New(dir string) *Cache {
 	return NewWithLimit(dir, MaxBundleBytes)
 }
 
-// NewWithLimit is New with an explicit per-entry cap; non-positive means the
-// default.
+// NewWithLimit is New with an explicit per-entry cap; non-positive means the default.
 func NewWithLimit(dir string, maxBytes int64) *Cache {
 	if maxBytes <= 0 {
 		maxBytes = MaxBundleBytes
@@ -164,11 +163,8 @@ func (c *Cache) Put(d Digest, b []byte) error {
 	return c.PutReader(d, bytes.NewReader(b))
 }
 
-// PutReader streams r into the cache under d: write to a temp file while
-// hashing, verify, fsync, then rename into place. That order means a killed
-// process leaves a stray temp file rather than a truncated final entry, and
-// two processes racing on the same digest each rename identical, verified
-// bytes onto the same name, so the loser is harmless.
+// PutReader streams r into a temp file while hashing, verifies, fsyncs, then renames into place, so a
+// killed process leaves a stray temp file and racing processes rename identical verified bytes.
 func (c *Cache) PutReader(d Digest, r io.Reader) error {
 	if d.IsZero() {
 		return errors.New("refusing to write the zero digest: it was never parsed or computed")
@@ -279,7 +275,6 @@ func (c *Cache) CollectTempsOlderThan(age time.Duration) (int, error) {
 	return removed, nil
 }
 
-// sliceWriter appends to a slice through a pointer.
 type sliceWriter struct{ buf *[]byte }
 
 func (w *sliceWriter) Write(p []byte) (int, error) {

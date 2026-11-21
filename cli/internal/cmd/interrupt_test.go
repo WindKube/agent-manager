@@ -1,84 +1,17 @@
-// This file is about the install tree after a sync KILLED mid-flight and
-// re-run. It changes no production code; every finding below is a statement
-// about the code as it stands.
+// This file checks the install tree after a sync is killed mid-flight and re-run.
 //
-// # WHAT "KILLED" MEANS HERE, AND WHY IT IS NOT A FAKE RETURNING AN ERROR
+// The killed run is a real child process (this test binary in helper mode)
+// that SIGKILLs itself, so no defer, rollback or lock release runs; an injected
+// error would leave a state a crash cannot produce. A watcher goroutine in the
+// child spins on lstat and kills the process when the tree reaches the target
+// state, needing no production hook.
 //
-// An injected error proves much less than it looks like it does: production's
-// `defer`s still run, Swap's step-3 rollback still runs, `Staged.Discard` still
-// runs, and `WithLock`'s release still runs, so the state left behind is the
-// state a crash CANNOT produce. So the killed run is a REAL child process,
-// re-executing this test binary in the helper mode below, doing a real sync
-// against the real fake hub over the parent's own HOME — and it dies of SIGKILL
-// (`os.Process.Kill` on itself), which no defer, no recover and no rollback
-// survives.
+// The three points are the swap's steps: killWhenStaged (staged tree complete,
+// dest untouched), killWhenAside (between steps 2 and 3, dest absent; ~21ns wide,
+// narrower than one watcher poll, so it is reached by one rename of the test's
+// own instead), and killWhenInstalled (after step 3, before the record write).
 //
-// That the defers really did not run is asserted, not assumed, and the lock is
-// the proof: `WithLock` releases with a defer, and every one of these tests finds
-// the dead child's lock file still on disk with the dead child's pid in it
-// (requireLockWasLeftByTheKilledChild). The staged tree left behind in case 1 is
-// the second proof — `Staged.Discard` is also a deferred cleanup that did not
-// happen.
-//
-// `os.Exit` was the cheaper option the brief allowed and is not what is used —
-// forbidigo also forbids it outside main.go — but it would have been the weaker
-// mechanism anyway: it is a Go-level exit, so it can only land at a point the
-// test's own code reaches, never between two syscalls production makes back to
-// back.
-//
-// The kill is triggered by a WATCHER goroutine in the child that spins on one
-// `lstat` and signals the moment the tree reaches the state under test. It needs
-// no hook in production code, so it cannot be disarmed by a change to production
-// code and it cannot silently drift away from what production does the way an
-// injected hook can. What it costs is determinism, and the cost is paid twice:
-// by the attempt loop in `killUntil` (every attempt asserts convergence from
-// whatever state it actually produced, and the test requires the state it is
-// named after to have been produced at least once), and — for the one window a
-// watcher provably cannot see — by reaching that state with one syscall of the
-// test's own. See TestTheWindowWhereTheDestinationIsAbsentConvergesByReclaimingTheAside.
-//
-// # THE THREE POINTS, WHICH ARE THE SWAP'S STEPS, AND WHICH A WATCHER CAN CATCH
-//
-//	killWhenStaged     the staged tree is complete (its marker, which Stage
-//	                   writes last, is there) and step 2 has not run: dest
-//	                   untouched, nothing recorded. CAUGHT on the first attempt,
-//	                   every time: the window is Stage's two remaining fsyncs
-//	                   wide.
-//	killWhenAside      between steps 2 and 3 — the ONE window in which dest is
-//	                   absent. NOT CATCHABLE, measured rather than assumed: the
-//	                   userspace distance between the two renames in swap.go is a
-//	                   single error check, 21ns mean and 42ns worst over 500
-//	                   rounds, while one iteration of the cheapest watcher this
-//	                   file can write (a dirfd-relative Root.Lstat of a
-//	                   single-component name) costs 355ns. The window is 17x
-//	                   narrower than one poll, and 24 real kills aimed at it — 12
-//	                   with the collector on and 12 with it off, in case a mark
-//	                   assist was the jitter — landed one syscall late, every
-//	                   single time, as has every run of
-//	                   TestARealKillAimedAtTheAsideWindowLandsOneSyscallLateAndStillConverges
-//	                   since. This state is permitted explicitly, so what
-//	                   matters is that a re-run converges from it, and that is
-//	                   asserted from the state itself rather than from an
-//	                   attempt to race for it.
-//	killWhenInstalled  after step 3, before the record write. The tree is new; the
-//	                   record still says old, or says nothing. CAUGHT on the first
-//	                   attempt: the window is record.Save's fsync wide.
-//
-// # WHAT THIS FILE DOES NOT COVER
-//   - Power loss. SIGKILL kills a process; it does not lose a write the kernel
-//     has already accepted. Crash consistency needs dm-log-writes or a VM
-//     force-reset loop.
-//   - A kill DURING a rename. Rename is atomic, so there is no such state to
-//     observeInterrupted; that is why the interruption points are the
-//     boundaries between the swap's steps and not points inside them.
-//   - Anything about swap.go's own step 2 (that it produces the aside state at
-//     all). That is internal/apply/swap_test.go's own gate, which drove the
-//     sequence directly and measured every rename in it.
-//   - The one-entry-at-a-time shape of these scenarios. Every case kills during
-//     the FIRST entry the plan writes, so no case here has a half-installed
-//     PROFILE with several entries done and several not. Nothing in apply is
-//     per-profile transactional, so that is a difference of degree; a case that
-//     killed the third of three entries would exercise the same three windows.
+// Not covered: power loss, which needs dm-log-writes or a VM reset loop.
 package cmd
 
 import (
@@ -106,14 +39,8 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/record"
 )
 
-// ---------------------------------------------------------------- the contract with the child
-
-// The child's parameters travel in the environment, EXCEPT the bearer token,
-// which travels in a 0600 file whose path is in the environment. A leaked
-// token is not about logs, reports and errors, but a child process's
-// environment is dumped by every debugger, every `ps -E` and every crash
-// reporter, and the leakscan gate reads this suite's whole output — so the
-// token is never a word in a command line or an environment value here.
+// The bearer token travels in a 0600 file, never in the environment: a child's
+// environment is dumped by debuggers, `ps -E` and crash reporters.
 const (
 	interruptModeEnv    = "AMCTL_T046_MODE"
 	interruptHubEnv     = "AMCTL_T046_HUB"
@@ -125,9 +52,8 @@ const (
 	interruptVerEnv     = "AMCTL_T046_VERSION"
 )
 
-// childSurvivedMarker is printed by the child when runSync RETURNED — i.e. the
-// watcher never fired. The parent treats that as a missed attempt rather than a
-// failure, and it must never be mistaken for a kill.
+// childSurvivedMarker is printed when runSync returned, i.e. the watcher never
+// fired; the parent treats it as a missed attempt, never a kill.
 const childSurvivedMarker = "AMCTL_T046_CHILD_SURVIVED"
 
 type interruptMode string
@@ -138,18 +64,12 @@ const (
 	killWhenInstalled interruptMode = "installed"
 )
 
-// interruptClock is the fixed clock both the parent and the child stamp the
-// record with, so a record written by one process and read by the other cannot
-// differ by a timestamp.
+// interruptClock is shared by parent and child so records cannot differ by a timestamp.
 var interruptClock = time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
 
-// ---------------------------------------------------------------- the fixtures, hand-derived
-
-// The two revisions of the baseline profile, read out of internal/hub/fake's
-// catalog.go (profiles(), slugBaseline) rather than out of a run: revision 6 is
-// one entry at 2.4.0, revision 7 (head) is three, with code-review moved to
-// 2.4.1. requireFixturesStillSay re-derives them from the served lockfile so a
-// fixture change cannot quietly make these tests assert nothing.
+// Hand-derived from internal/hub/fake's catalog; requireFixturesStillSay
+// re-derives them from the served lockfile so a fixture change can't make these
+// tests vacuous.
 var (
 	priorRevisionTree = map[string]string{"acme--code-review": "2.4.0"}
 	headRevisionTree  = map[string]string{
@@ -159,23 +79,14 @@ var (
 	}
 )
 
-// interruptedDir is the entry every case interrupts: the one entry that exists in
-// BOTH revisions, so it is the only one whose install can be an upgrade and
-// therefore the only one whose swap has an aside at all.
+// interruptedDir is the one entry in both revisions, so the only one whose swap has an aside.
 const (
 	interruptedDir = "acme--code-review"
 	interruptedID  = "acme/code-review"
 )
 
-// ---------------------------------------------------------------- the child
-
-// TestSyncInterruptHelperProcess is not a test. It is the killed run: a real
-// `amctl sync` in a process that kills itself the moment the tree reaches the
-// state its mode names.
-//
-// It takes no t.TempDir and registers no cleanup, because this process is
-// expected to die between two syscalls and anything it registered would not run
-// — which is the entire point of doing this in a child at all.
+// TestSyncInterruptHelperProcess is not a test: it is the killed run. It
+// registers no cleanup, since this process is expected to die between two syscalls.
 func TestSyncInterruptHelperProcess(t *testing.T) {
 	mode := os.Getenv(interruptModeEnv)
 	if mode == "" {
@@ -189,10 +100,8 @@ func TestSyncInterruptHelperProcess(t *testing.T) {
 	opts := &Options{
 		Hub:    os.Getenv(interruptHubEnv),
 		Output: string(output.FormatHuman),
-		// The fake is plaintext for the child's sake: its self-signed
-		// certificate cannot cross a process boundary, and an
-		// InsecureSkipVerify client in here would be a second, weaker TLS path
-		// that no test of TLS uses. That refusal is sync_test.go's.
+		// Plaintext: the fake's self-signed certificate cannot cross a process
+		// boundary, and an InsecureSkipVerify client would be a weaker TLS path.
 		AllowPlaintextHub: true,
 		Verbose:           true,
 		result:            io.Discard,
@@ -215,22 +124,15 @@ func TestSyncInterruptHelperProcess(t *testing.T) {
 		now:       func() time.Time { return interruptClock },
 	}
 
-	// The collector is off, and the honest reason is that it was a HYPOTHESIS
-	// that did not pan out: the watcher's spin loop allocates, so it can be
-	// recruited as a mark assist and parked at a STW for tens of microseconds,
-	// which was the first suspect for the missed aside window. Turning it off
-	// changed nothing — 3 more kills, same landing point — and the real
-	// explanation is the 21ns window in the file header. It stays off because it
-	// removes a source of jitter from every other window at no cost: this process
-	// syncs three tiny skills and then dies.
+	// GC off removes a source of jitter from every window at no cost; it did not
+	// make the aside window catchable.
 	debug.SetGCPercent(-1)
 	armKiller(interruptMode(mode), os.Getenv(interruptDestEnv), os.Getenv(interruptVerEnv))
 	err = runSync(context.Background(), opts, flags, deps)
 	fmt.Fprintf(os.Stderr, "%s err=%v\n", childSurvivedMarker, err)
 }
 
-// childLookupEnv hands the sync its credential without putting it in the
-// process environment; see the comment on interruptCredEnv.
+// childLookupEnv hands the sync its credential without putting it in the process environment.
 func childLookupEnv(token string) func(string) (string, bool) {
 	return func(name string) (string, bool) {
 		if name == credentials.TokenEnvVar {
@@ -240,17 +142,8 @@ func childLookupEnv(token string) func(string) (string, bool) {
 	}
 }
 
-// armKiller starts the watcher goroutines. Each spins on its own predicate — no
-// sleep, no shared state — and SIGKILLs this process the instant it fires.
-//
-// Two watchers for killWhenAside and one otherwise. Two does not make that
-// window catchable — the file header has the measurement that says nothing can —
-// but it halves the mean detection latency for the state that IS caught there
-// (after step 3, before step 5), and the second watcher costs one spinning
-// thread on a 4-CPU box for the 30ms the child lives. Each goroutine builds its
-// own predicate, so nothing is shared and no lock sits on the hot path, and each
-// is pinned with LockOSThread so the scheduler cannot park a watcher and a
-// syscall-heavy main goroutine on one CPU.
+// armKiller starts the watcher goroutines, each spinning on its own predicate
+// and pinned with LockOSThread, and SIGKILLs this process when one fires.
 func armKiller(mode interruptMode, dest, version string) {
 	watchers := 1
 	if mode == killWhenAside {
@@ -279,15 +172,11 @@ func armKiller(mode interruptMode, dest, version string) {
 	}
 }
 
-// newInterruptPredicate returns "the tree is now in the state this mode names".
-// Each call returns a fresh closure with its own file handles, so several
-// watchers never share one.
+// newInterruptPredicate returns a fresh closure with its own file handles, so watchers share nothing.
 func newInterruptPredicate(mode interruptMode, dest, version string) func() bool {
 	switch mode {
 	case killWhenStaged:
-		// The marker is what Stage writes LAST, so its presence means the staged
-		// tree is complete — "after staging is populated", not "during
-		// extraction".
+		// The marker is what Stage writes last, so its presence means the staged tree is complete.
 		stagingRoot := layout.StagingRoot(dest)
 		return func() bool {
 			entries, err := os.ReadDir(stagingRoot)
@@ -303,11 +192,8 @@ func newInterruptPredicate(mode interruptMode, dest, version string) func() bool
 		}
 
 	case killWhenAside:
-		// One dirfd-relative lstat and nothing else. The aside exists ONLY
-		// between step 2 and step 5, and dest is absent for the first rename of
-		// that span, so firing on the aside alone fires at the earliest possible
-		// instant; whether the window was actually caught is decided afterwards,
-		// by the parent, from the state on disk.
+		// The aside exists only between steps 2 and 5, so firing on it is the
+		// earliest possible instant; the parent decides from disk whether the window was hit.
 		parent, name := filepath.Dir(dest), filepath.Base(dest)
 		aside := name + record.AsideSuffix
 		var root *os.Root
@@ -324,10 +210,8 @@ func newInterruptPredicate(mode interruptMode, dest, version string) func() bool
 		}
 
 	case killWhenInstalled:
-		// The marker arrives at dest with the same single rename as the rest of
-		// the entry (step 3), so a marker naming the NEW version means the swap
-		// is done and only the record write is outstanding. Parsed rather than
-		// substring-matched: an unparseable marker must not read as a version.
+		// A marker naming the new version means only the record write is outstanding.
+		// Parsed, so an unparseable marker never reads as a version.
 		marker := filepath.Join(dest, layout.MarkerFileName)
 		return func() bool {
 			b, err := os.ReadFile(marker)
@@ -341,10 +225,7 @@ func newInterruptPredicate(mode interruptMode, dest, version string) func() bool
 	return func() bool { return false }
 }
 
-// ---------------------------------------------------------------- the parent's wiring
-
-// startInterruptFake starts the fake over http. See the child's
-// AllowPlaintextHub comment for why this file cannot use TLS.
+// startInterruptFake starts the fake over http, since the child cannot use TLS.
 func startInterruptFake(t *testing.T) fake.Target {
 	t.Helper()
 	h := fake.New(fake.Options{})
@@ -352,10 +233,7 @@ func startInterruptFake(t *testing.T) fake.Target {
 	return h.Target()
 }
 
-// runInterrupted is a sync run in THIS process — the prep run before a kill and
-// the re-run after one. Verbose, because the two things that prove the re-run
-// converged the way the swap says (the reclaimed aside, the marker adoption) are
-// Debugf lines.
+// runInterrupted is verbose because the reclaim and marker-adoption proofs are Debugf lines.
 func runInterrupted(t *testing.T, e *syncEnv, flags syncFlags) (code Code, result, diag *syncBuffer, err error) {
 	t.Helper()
 	opts, result, diag := testOptions(e.target.BaseURL, output.FormatHuman)
@@ -368,14 +246,12 @@ func runInterrupted(t *testing.T, e *syncEnv, flags syncFlags) (code Code, resul
 
 func writeChildCredFile(t *testing.T, token string) string {
 	t.Helper()
-	// Outside the HOME under test: nothing this file asserts about the tree may
-	// be looking at a file this file put there.
+	// Outside the HOME under test.
 	path := filepath.Join(t.TempDir(), "cred")
 	require.NoError(t, os.WriteFile(path, []byte(token), 0o600))
 	return path
 }
 
-// killedChild is what one child attempt produced.
 type killedChild struct {
 	pid      int
 	output   string
@@ -383,11 +259,8 @@ type killedChild struct {
 	exitCode int
 }
 
-// spawnKilledSync runs one real sync in a child that kills itself at mode, and
-// returns once the child is REAPED. Reaping matters: the lock's staleness
-// accelerator asks whether the recorded pid is alive, and on Unix a zombie
-// answers yes — so a parent that had not waited would see the re-run refuse with
-// ErrLocked and would blame the lock.
+// spawnKilledSync returns once the child is reaped: a zombie pid answers
+// "alive", so the re-run would refuse with ErrLocked.
 func spawnKilledSync(t *testing.T, e *syncEnv, mode interruptMode, flags syncFlags, version string) killedChild {
 	t.Helper()
 	dest := filepath.Join(e.skillsRoot(), interruptedDir)
@@ -431,10 +304,7 @@ func spawnKilledSync(t *testing.T, e *syncEnv, mode interruptMode, flags syncFla
 	return run
 }
 
-// ---------------------------------------------------------------- observing the wreckage
-
-// interruptState is the state of the tree and the record for the watched entry, after
-// a kill. It is what decides WHICH interruption point an attempt actually hit.
+// interruptState decides which interruption point an attempt actually hit.
 type interruptState struct {
 	destVersion     string // the marker at dest, "" when dest is absent
 	destPresent     bool
@@ -451,8 +321,6 @@ func (o interruptState) String() string {
 		o.destVersion, o.destPresent, o.asideVersion, o.asidePresent, o.staged, o.recordVersion, o.recordExists, o.recordTempFiles)
 }
 
-// inTheAsideWindow is the state killWhenAside is named after: the old version is
-// wholly in the aside and dest does not exist. This state is permitted.
 func (o interruptState) inTheAsideWindow() bool { return o.asidePresent && !o.destPresent }
 
 func observeInterrupted(t *testing.T, e *syncEnv) interruptState {
@@ -498,9 +366,7 @@ func canonicalHubURL(t *testing.T, raw string) string {
 	return h.URL
 }
 
-// installedVersionAt reads the interruption marker at dir. It is how this
-// file identifies WHICH version is at a path without trusting the record,
-// which is the whole question in the third case.
+// installedVersionAt reads the marker at dir, identifying the version without trusting the record.
 func installedVersionAt(t *testing.T, dir string) (string, bool) {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join(dir, layout.MarkerFileName))
@@ -515,18 +381,12 @@ func installedVersionAt(t *testing.T, dir string) (string, bool) {
 	return m.Version, true
 }
 
-// ---------------------------------------------------------------- "matches the lockfile exactly"
-
-// requireTreeMatchesLockfile is the four-part definition a converged tree is
-// asserted against: the right version at the right path, no aside anywhere,
-// no staging anywhere, and a record that agrees with the tree.
+// requireTreeMatchesLockfile asserts a converged tree: right version at the
+// right path, no aside, no staging, and a record that agrees.
 func requireTreeMatchesLockfile(t *testing.T, e *syncEnv, tg fake.Target, revision int64, want map[string]string) {
 	t.Helper()
 
-	// 1. The right version at the right path. The version is read from the
-	// installed bytes (SKILL.md, whose body the fake derives from id and
-	// version) as well as from the marker, so an install that wrote the marker
-	// and not the tree cannot pass.
+	// Read from SKILL.md as well as the marker, so a marker without the tree cannot pass.
 	require.ElementsMatch(t, interruptWantedDirs(want), skillDirs(t, e.skillsRoot()),
 		"the skills root must hold exactly the lockfile's entries")
 	for dir, version := range want {
@@ -540,10 +400,7 @@ func requireTreeMatchesLockfile(t *testing.T, e *syncEnv, tg fake.Target, revisi
 		require.Equal(t, version, got, "%s's marker names the wrong version", dir)
 	}
 
-	// 2 and 3. No .amctl-old and no .amctl-staging anywhere under the home.
-	// Walked, not stat-ed at the two paths this test knows about: a leftover
-	// beside an entry this test did not think of is exactly the kind of thing an
-	// interrupted run leaves.
+	// Walked, not stat-ed at known paths, so a leftover anywhere is caught.
 	var leftovers []string
 	require.NoError(t, filepath.WalkDir(e.home, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -556,11 +413,11 @@ func requireTreeMatchesLockfile(t *testing.T, e *syncEnv, tg fake.Target, revisi
 	}))
 	require.Empty(t, leftovers, "a converged run leaves no aside and no staging directory behind")
 
-	// 4. A record that agrees with the tree, in both directions.
+	// A record that agrees with the tree, in both directions.
 	rec := e.loadRecord(t)
 	prof, ok := rec.ProfileBySlug(tg.Fixtures.Profile)
 	require.True(t, ok, "the profile must be recorded")
-	require.Equal(t, int(revision), prof.Revision, "FR-013: the record names the resolved revision")
+	require.Equal(t, int(revision), prof.Revision, "the record names the resolved revision")
 	require.Len(t, prof.Entries, len(want))
 	for i := range prof.Entries {
 		entry := &prof.Entries[i]
@@ -596,9 +453,7 @@ func interruptWantedDirs(m map[string]string) []string {
 	return out
 }
 
-// requireLockWasLeftByTheKilledChild is the negative control for "the kill did
-// not wedge the machine": if the lock file were absent, a re-run that acquired
-// the lock would prove nothing at all.
+// Negative control: without the dead child's lock still present, a re-run acquiring it proves nothing.
 func requireLockWasLeftByTheKilledChild(t *testing.T, e *syncEnv, run killedChild) {
 	t.Helper()
 	home := Home{UserHome: e.home, Var: homeEnvVar(), Root: filepath.Join(e.home, DirName)}
@@ -609,9 +464,6 @@ func requireLockWasLeftByTheKilledChild(t *testing.T, e *syncEnv, run killedChil
 	require.Equal(t, run.pid, holder.PID, "the lock left behind must be the dead child's")
 }
 
-// ---------------------------------------------------------------- the attempt loop
-
-// interruptAttempt is one kill and the state it produced.
 type interruptAttempt struct {
 	env   *syncEnv
 	run   killedChild
@@ -621,18 +473,10 @@ type interruptAttempt struct {
 
 const interruptAttemptLimit = 12
 
-// killUntil runs prep-then-kill until `want` reports the state the caller is
-// after, and asserts the re-run on EVERY attempt via requireTheReRunConverges.
-// Every attempt is a full, independent world, so a "wasted" attempt is not
-// wasted: it is another interruption point, and its re-run is asserted just as
-// hard as the one the test is named after.
-//
-// between, when given, runs after the kill and before the re-run. It is how the
-// one window a watcher cannot land in is REACHED rather than raced for; see
-// TestTheWindowWhereTheDestinationIsAbsentConvergesByReclaimingTheAside.
-//
-// mustHit false means "try, report where it landed, and assert the re-run from
-// wherever that was" — for a state this machine cannot produce on demand.
+// killUntil runs prep-then-kill until want matches, asserting the re-run on
+// every attempt, so a missed window still proves something. between runs after
+// the kill to reach the window a watcher cannot land in; mustHit false accepts
+// wherever the kill landed.
 func killUntil(
 	t *testing.T,
 	tg fake.Target,
@@ -657,9 +501,7 @@ func killUntil(
 		}
 		run := spawnKilledSync(t, env, mode, flags, version)
 		if run.survived {
-			// The child's own diagnostics, because the interesting case is a
-			// survival caused by the sync failing for an unrelated reason rather
-			// than by a slow watcher, and the two look identical from here.
+			// A survival may be the sync failing for an unrelated reason, so show the child's output.
 			t.Logf("attempt %d: the watcher never fired and the sync completed; retrying. The child said:\n%s", i, run.output)
 			continue
 		}
@@ -668,18 +510,8 @@ func killUntil(
 		t.Logf("attempt %d: killed with %s (state under test: %t)", i, state, last.hit)
 
 		requireLockWasLeftByTheKilledChild(t, env, run)
-		// Only on a hit. `between` assembles the state under test out of the tree
-		// the killed child left, so it is meaningful only when that tree is the one
-		// the caller asked for. Running it on a MISS built a state nobody describes
-		// and then asserted against it: the aside-window caller renames dest aside,
-		// and on an attempt that overshot to "dest new, record new" that rename
-		// produces dest-absent with the record already naming the version the plan
-		// wants, so the re-run is a no-op, the reclaim path never runs, and
-		// requireTheReRunConverges failed on a diagnostic the sync had no reason to
-		// print. That is the ubuntu-CI flake: this window is reached by one syscall
-		// on top of a real kill (see the test's comment), the kill lands late more
-		// often on a slower runner, and a miss then corrupted the next assertion
-		// instead of being retried.
+		// Only on a hit: `between` on an overshot tree builds a state nobody
+		// describes (the re-run is a no-op), which was a CI flake.
 		if between != nil && last.hit {
 			between(t, last)
 		}
@@ -694,27 +526,19 @@ func killUntil(
 	return last
 }
 
-// requireTheReRunConverges is the answer to "what does a re-run do from here",
-// for every state a kill in this file can leave. It is one function and not a
-// per-test callback deliberately: the interruption point an attempt hits is
-// decided by a race, so the assertions have to be indexed by the state on disk
-// rather than by the test's intent, and writing them once means an attempt that
-// missed its window still proves something rather than being retried away.
+// requireTheReRunConverges asserts by the state on disk rather than by the
+// test's intent, since which point a kill hit is a race:
 //
-// The states, and they are exhaustive over what these three modes can produce:
-//
-//	dest absent, no aside            killed at or before staging     -> converges unforced
-//	dest absent, aside holds old     step 2 -> step 3 window         -> converges unforced, by RECLAIM
-//	dest new, record has no row      swap done, first record write   -> converges unforced, by MARKER
-//	dest new, record still says old  swap done, record write of an
-//	                                 UPGRADE                         -> REFUSES; see the comment there
-//	dest new, record says new        killed after the record write   -> converges unforced
+//	dest absent, no aside            killed at or before staging     -> converges
+//	dest absent, aside holds old     step 2 -> step 3 window         -> converges, by reclaim
+//	dest new, record has no row      swap done, first record write   -> converges, by marker
+//	dest new, record still says old  swap done, upgrade record write -> converges, by marker
+//	dest new, record says new        killed after the record write   -> converges
 func requireTheReRunConverges(t *testing.T, tg fake.Target, env *syncEnv) {
 	t.Helper()
 	unforced := syncFlags{profiles: []string{tg.Fixtures.Profile}}
 	newVersion, oldVersion := headRevisionTree[interruptedDir], priorRevisionTree[interruptedDir]
-	// Re-observed here rather than carried from the attempt, because `between` may
-	// have moved the tree on to the state under test since.
+	// Re-observed: `between` may have moved the tree since the attempt.
 	state := observeInterrupted(t, env)
 
 	switch {
@@ -725,10 +549,8 @@ func requireTheReRunConverges(t *testing.T, tg fake.Target, env *syncEnv) {
 		require.Equal(t, CodeChanged, code)
 		requireTheLockWasNotWaitedOut(t, started)
 
-		// The two diagnostics that separate "converged" from "converged for the
-		// wrong reason": the guard saw a destination the record claims and
-		// nothing on disk, and Swap step 1 moved the old version BACK before
-		// replacing it, rather than installing over an absent destination.
+		// These separate "converged" from "converged for the wrong reason": the guard
+		// saw the claimed destination missing, and the swap restored the aside first.
 		require.Contains(t, diag.String(), "but nothing is there; re-installing")
 		require.Contains(t, diag.String(), "reclaimed",
 			"R3 step 1 must reclaim the aside: it holds the only copy of the version the record claims")
@@ -744,9 +566,9 @@ func requireTheReRunConverges(t *testing.T, tg fake.Target, env *syncEnv) {
 		require.NoError(t, err, diag.String())
 		require.Equal(t, CodeChanged, code)
 		require.Contains(t, diag.String(), "interrupted between the install and the record write",
-			"the FR-022 marker is the only thing on disk that can say this directory is amctl's own leftover")
+			"the marker is the only thing on disk that can say this directory is amctl's own leftover")
 		require.NotContains(t, diag.String(), "should be removed",
-			"a tree the record does not claim is re-installed, never pruned (FR-028)")
+			"a tree the record does not claim is re-installed, never pruned")
 		requireTreeMatchesLockfile(t, env, tg, tg.Fixtures.HeadRevision, headRevisionTree)
 
 	default:
@@ -761,30 +583,10 @@ func requireTheReRunConverges(t *testing.T, tg fake.Target, env *syncEnv) {
 	}
 }
 
-// requireAnInterruptedUpgradeConvergesWithoutForce is the regression test for
-// the finding described below.
-//
-// The killed run finished the swap of an UPGRADE and died before the record
-// write, so the tree holds the new version and the record row still names the
-// old one. As first written, the re-run REFUSED that entry forever: the record
-// row makes it an upgrade, apply.verifyUnmodified demands a positive unmodified
-// verdict for the version the record names, the entry carries no install
-// fingerprint, and absence of evidence is deliberately not evidence of absence.
-// So `sync` exited non-zero on a machine whose tree was already correct, until a
-// human passed --force.
-//
-// It was never merely the missing fingerprinter. With one wired, the
-// recorded fingerprint would be the OLD version's and the tree the NEW
-// version's, so every file would read as modified and the refusal would
-// become ErrModified — a refusal saying "you modified these files" about
-// amctl's own finished install.
-//
-// The real gap was that apply.guard's `From != nil` path never consulted the
-// marker, while the `From == nil` path three lines above did exactly that. A
-// marker whose ID, Target AND Version all equal the change being installed is
-// proof of amctl's own completed install of that very version, and
-// consulting it there costs nothing anywhere else: the marker still
-// influences only an OVERWRITE, never a removal.
+// requireAnInterruptedUpgradeConvergesWithoutForce: the tree holds the new
+// version and the record the old. A marker matching the change's ID, Target and
+// Version proves amctl's own completed install, so the re-run must not demand
+// --force for it.
 func requireAnInterruptedUpgradeConvergesWithoutForce(t *testing.T, tg fake.Target, env *syncEnv) {
 	t.Helper()
 	unforced := syncFlags{profiles: []string{tg.Fixtures.Profile}}
@@ -793,34 +595,24 @@ func requireAnInterruptedUpgradeConvergesWithoutForce(t *testing.T, tg fake.Targ
 	require.NoError(t, err, diag.String())
 	require.Equal(t, CodeChanged, code)
 	require.Contains(t, diag.String(), "interrupted between the install and the record write",
-		"the FR-022 marker is the only thing on disk that can say the tree is amctl's own leftover")
+		"the marker is the only thing on disk that can say the tree is amctl's own leftover")
 	require.NotContains(t, diag.String(), "--force",
 		"a tree that is already correct must not send the operator to --force")
 	require.NotContains(t, diag.String(), "should be removed",
 		"whatever else it does, a record/tree disagreement must never be read as a removal")
 
-	// Both halves converge: the tree is the lockfile's, and so is the record.
 	requireTreeMatchesLockfile(t, env, tg, tg.Fixtures.HeadRevision, headRevisionTree)
 	require.Equal(t, headRevisionTree[interruptedDir], recordedVersion(t, env, tg, interruptedID),
 		"the record must catch up to the tree, which is the whole point of the fix")
 
-	// And it is idempotent: a second re-run has nothing left to do.
+	// Idempotent: a second re-run has nothing left to do.
 	code, _, diag, err = runInterrupted(t, env, unforced)
 	require.NoError(t, err, diag.String())
 	require.Equal(t, CodeNoChanges, code, "the first re-run converged, so the second changes nothing")
 }
 
-// requireTheLockWasNotWaitedOut is the second half of "the kill did not wedge
-// the machine". The first half is requireLockWasLeftByTheKilledChild: the dead
-// child's lock file is still there, so the re-run genuinely had to deal with it.
-//
-// The ANSWER to "how long did the re-run have to wait" is "it did not wait at
-// all, and it must not": Acquire never blocks — it refuses a live holder
-// rather than queueing — so the only two outcomes are an immediate reclaim under
-// the dead-pid rule and an immediate ErrLocked. require.NoError on the re-run is
-// therefore already the whole assertion; this bound exists so that a future
-// Acquire that DID wait out the staleness window would fail here instead of
-// making every one of these tests 90 seconds slower and still green.
+// requireTheLockWasNotWaitedOut fails if a future Acquire waits out the
+// staleness window instead of reclaiming a dead holder's lock at once.
 func requireTheLockWasNotWaitedOut(t *testing.T, started time.Time) {
 	t.Helper()
 	elapsed := time.Since(started)
@@ -843,19 +635,15 @@ func recordedVersion(t *testing.T, e *syncEnv, tg fake.Target, id string) string
 	return ""
 }
 
-// ---------------------------------------------------------------- case 1: killed at staging
-
-// A kill after the staged tree is complete and before the swap's step 2 leaves the
-// destination untouched, nothing recorded, and a staged tree behind. The re-run
-// converges and leaves no staging directory.
+// A kill after staging and before step 2 leaves dest untouched and a staged
+// tree behind; the re-run converges and cleans it up.
 func TestAKillWhileTheStagedTreeIsCompleteConvergesOnAReRun(t *testing.T) {
 	tg := startInterruptFake(t)
 	requireFixturesStillSay(t, tg, revisionHead, headRevisionTree)
 	flags := syncFlags{profiles: []string{tg.Fixtures.Profile}}
 
-	// The watched entry is the FIRST entry the plan writes (Writes() sorts by
-	// target then id), so the state this case is named after is: a staged tree
-	// present, nothing installed, and no record file at all.
+	// The watched entry is the first the plan writes, so the target state is a
+	// staged tree with nothing installed and no record.
 	a := killUntil(t, tg, killWhenStaged, nil, flags, headRevisionTree[interruptedDir], func(o interruptState) bool {
 		return len(o.staged) > 0 && !o.destPresent && !o.recordExists
 	}, true, nil)
@@ -863,36 +651,10 @@ func TestAKillWhileTheStagedTreeIsCompleteConvergesOnAReRun(t *testing.T) {
 	require.Len(t, a.state.staged, 1, "one entry was being staged, so exactly one digest-named tree is left")
 }
 
-// ---------------------------------------------------------------- case 2: the one window where dest is absent
-
-// The swap's step 2 -> step 3: the old version is wholly in the aside and the
-// destination does not exist. This state is permitted explicitly, so what is
-// asserted is that a re-run CONVERGES — and that it converges by RECLAIMING the
-// aside, which is the only path that does not destroy the version the record
-// still claims.
-//
-// THIS STATE IS REACHED, NOT RACED FOR, AND THE MEASUREMENT IS WHY.
-// The userspace distance between swap.go's step 2 and step 3 is one error check:
-// 21ns mean, 42ns worst, measured on this machine (go1.26.6, linux/arm64,
-// go run over 500 rounds). One iteration of the cheapest watcher this file can
-// write — a dirfd-relative Root.Lstat of a single-component name — costs 355ns.
-// The window is seventeen times narrower than one poll, so a watcher cannot see
-// it, and every real kill aimed at it landed one syscall later, between steps 3
-// and 5 — 24 of them, see the file header. That is not a state this file skips:
-// the late one is asserted too, by
-// TestARealKillAimedAtTheAsideWindowLandsOneSyscallLateAndStillConverges.
-//
-// So the state is assembled from a real killed sync plus ONE syscall: a real
-// child is SIGKILLed with its staged tree complete (the previous case's
-// mechanism), and then this test performs the swap's own step 2 —
-// os.Rename(dest, dest+AsideSuffix) — on the tree that dead process left behind.
-// Everything else is the killed process's: the staged new version, the record
-// still naming the old one, the lock file it could not release. Rename is atomic,
-// so this is not an approximation of the state between the two steps; it IS that
-// state, and there is no other state step 2 can leave.
-//
-// What it does not cover: that swap.go's own step 2 produces this state. That is
-// internal/apply/swap_test.go's own gate, which measured the sequence directly.
+// The step 2 -> 3 window is too narrow for a watcher, so it is assembled from
+// a real kill with the staged tree complete plus the swap's own step 2
+// (os.Rename(dest, dest+AsideSuffix)). Rename is atomic, so this is that state,
+// not an approximation. The re-run must converge by reclaiming the aside.
 func TestTheWindowWhereTheDestinationIsAbsentConvergesByReclaimingTheAside(t *testing.T) {
 	tg := startInterruptFake(t)
 	requireFixturesStillSay(t, tg, revisionHead, headRevisionTree)
@@ -900,8 +662,7 @@ func TestTheWindowWhereTheDestinationIsAbsentConvergesByReclaimingTheAside(t *te
 
 	a := killUntil(t, tg, killWhenStaged, installPriorRevisionFirst(tg), killedUpgradeFlags(tg), headRevisionTree[interruptedDir],
 		func(o interruptState) bool {
-			// Killed with the new version staged and the OLD version still at
-			// dest: precisely the instant before step 2.
+			// Killed with the new version staged and the old still at dest: just before step 2.
 			return len(o.staged) == 1 && o.destVersion == priorRevisionTree[interruptedDir] && !o.asidePresent
 		}, true,
 		func(t *testing.T, a interruptAttempt) {
@@ -915,16 +676,9 @@ func TestTheWindowWhereTheDestinationIsAbsentConvergesByReclaimingTheAside(t *te
 		"the record claims the old version, which is exactly why step 1 must reclaim the aside rather than discard it")
 }
 
-// TestARealKillAimedAtTheAsideWindowLandsOneSyscallLateAndStillConverges is the
-// measurement behind the test above, kept as a test rather than as a comment: a
-// watcher spinning on the aside's appearance does fire, the process does die of
-// SIGKILL, and where it dies is one syscall past the window every time — after
-// step 3, before step 5's RemoveAll, which is a real interruption point of its
-// own and one nothing else in this file aims at.
-//
-// It is not required to hit the window (mustHit false). If a future machine,
-// kernel or Go release does land it there, requireTheReRunConverges asserts the
-// reclaim path for it automatically and nothing here has to change.
+// A watcher aimed at the aside window fires one syscall late (after step 3,
+// before step 5), itself a real interruption point. mustHit is false: if a
+// future machine does land in the window, the reclaim path is asserted automatically.
 func TestARealKillAimedAtTheAsideWindowLandsOneSyscallLateAndStillConverges(t *testing.T) {
 	tg := startInterruptFake(t)
 	requireFixturesStillSay(t, tg, fmt.Sprint(tg.Fixtures.PriorRevision), priorRevisionTree)
@@ -944,14 +698,8 @@ func TestARealKillAimedAtTheAsideWindowLandsOneSyscallLateAndStillConverges(t *t
 	}
 }
 
-// ---------------------------------------------------------------- case 3a: killed between swap and record
-
-// The tree is new and the record does not mention the entry at all. This is
-// what the interruption marker exists for: apply.guard adopts a destination
-// carrying amctl's
-// own marker for the same id and target, warns, and re-installs. It does not read
-// "the record does not claim this, therefore somebody else's, therefore refuse",
-// and it does not read "drift, therefore remove".
+// The tree is new and the record does not mention the entry: apply.guard must
+// adopt a destination carrying amctl's own marker, not refuse or remove it.
 func TestAKillBetweenTheSwapAndTheRecordWriteIsAdoptedByItsMarker(t *testing.T) {
 	tg := startInterruptFake(t)
 	requireFixturesStillSay(t, tg, revisionHead, headRevisionTree)
@@ -963,11 +711,8 @@ func TestAKillBetweenTheSwapAndTheRecordWriteIsAdoptedByItsMarker(t *testing.T) 
 	require.False(t, a.state.asidePresent, "a fresh install has no old version to leave aside")
 }
 
-// ---------------------------------------------------------------- case 3b: the same kill, on an UPGRADE
-
-// The subtle one: the tree is NEW and the record still says OLD. The assertions
-// and the finding are in requireARecordThatLagsBehindTheTreeNeedsForce; this test
-// is what produces the state.
+// The tree is new and the record still says old; see
+// requireAnInterruptedUpgradeConvergesWithoutForce.
 func TestAKillBetweenTheSwapAndTheRecordWriteOfAnUpgradeConverges(t *testing.T) {
 	tg := startInterruptFake(t)
 	requireFixturesStillSay(t, tg, revisionHead, headRevisionTree)
@@ -979,21 +724,12 @@ func TestAKillBetweenTheSwapAndTheRecordWriteOfAnUpgradeConverges(t *testing.T) 
 		}, true, nil)
 }
 
-// ---------------------------------------------------------------- shared scenario pieces
-
-// killedUpgradeFlags is the KILLED run's flags for every upgrade case, and
-// --force is not decoration: this build wires no Fingerprinter (see
-// internal/cmd/sync.go), so apply.verifyUnmodified refuses EVERY upgrade of
-// an entry that was installed without one. An upgrade is the only change
-// whose swap has an aside at all, so without --force there is no way to
-// reach that step in this build. Every RE-RUN in this file is unforced,
-// which is the half that is being tested.
+// killedUpgradeFlags forces the killed run; every re-run is unforced, which is the half under test.
 func killedUpgradeFlags(tg fake.Target) syncFlags {
 	return syncFlags{profiles: []string{tg.Fixtures.Profile}, force: true}
 }
 
-// installPriorRevisionFirst syncs the older revision, so that the head sync that gets
-// killed is an UPGRADE of the watched entry rather than a fresh install.
+// installPriorRevisionFirst makes the killed head sync an upgrade, the only change whose swap has an aside.
 func installPriorRevisionFirst(tg fake.Target) func(*testing.T, *syncEnv) {
 	return func(t *testing.T, e *syncEnv) {
 		t.Helper()
@@ -1008,13 +744,8 @@ func installPriorRevisionFirst(tg fake.Target) func(*testing.T, *syncEnv) {
 	}
 }
 
-// ---------------------------------------------------------------- the fixtures are still what this file thinks
-
-// requireFixturesStillSay re-derives priorRevisionTree and headRevisionTree from the lockfile the
-// hub actually serves, through the hub client rather than through the install
-// path. Without it a fixture change would leave these tests asserting a tree that
-// matches a stale expectation, which is the failure mode of every hand-written
-// table.
+// requireFixturesStillSay re-derives the fixture trees from the lockfile the hub
+// serves, so a fixture change can't leave these tests asserting a stale table.
 func requireFixturesStillSay(t *testing.T, tg fake.Target, revision string, want map[string]string) {
 	t.Helper()
 	client, err := hub.New(hub.Config{

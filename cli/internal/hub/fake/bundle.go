@@ -13,9 +13,7 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
-// blob is one served object: the exact bytes, and the digest of those bytes in
-// both encodings the contract uses. Nothing here is hand-written — Hex and Header
-// are derived from Bytes at construction, so the two can only agree.
+// blob is one served object with its digest in both contract encodings, derived from Bytes.
 type blob struct {
 	Bytes  []byte
 	Hex    string // 64 lowercase hex, no scheme
@@ -34,28 +32,20 @@ func newBlob(b []byte) blob {
 // LockfileDigest is the `sha256:<64 hex>` form a lockfile entry carries.
 func (b blob) LockfileDigest() string { return "sha256:" + b.Hex }
 
-// HeaderDigest is the RFC 3230 form the Digest response header carries. Note the
-// hyphen in `sha-256` and that the value is STANDARD base64, not base64url — the
-// contract's pattern is ^sha-256=[A-Za-z0-9+/=]+$ and internal/cache refuses
-// base64url outright.
+// HeaderDigest is the RFC 3230 form, standard base64 (internal/cache refuses base64url).
 func (b blob) HeaderDigest() string { return "sha-256=" + b.Base64 }
 
-// ETag is quoted, as RFC 9110 requires. The hub uses the digest for it; so does
-// this, because a test that asserts they differ would be asserting an accident.
+// ETag is the quoted digest, as the hub's is.
 func (b blob) ETag() string { return `"` + b.Hex + `"` }
 
-// bundleFile is one member of a built bundle.
 type bundleFile struct {
 	Name string
 	Body string
 	Mode int64
 }
 
-// packBundle writes a tar+zstd bundle shaped like a real claude-code SKILL
-// directory: the root IS the skill directory, no wrapping directory. No
-// top-level name here is one of layout's plugin-adopting-subdir names
-// (`hooks`, `commands`, …), or internal/archive would refuse the bundle and
-// every install test would fail for an unrelated reason.
+// packBundle writes a tar+zstd bundle whose root is the skill directory. No top-level name may be a
+// plugin-adopting subdir, or internal/archive would refuse it.
 func packBundle(files []bundleFile) blob {
 	var tarBuf bytes.Buffer
 	tw := tar.NewWriter(&tarBuf)
@@ -114,8 +104,6 @@ func packBundle(files []bundleFile) blob {
 	return newBlob(out)
 }
 
-// skillFiles is the default member set: enough structure to prove a nested
-// directory round-trips, small enough that no cap is anywhere near.
 func skillFiles(id, version string) []bundleFile {
 	return []bundleFile{
 		{Name: "SKILL.md", Body: "---\nname: " + id + "\nversion: " + version + "\n---\n\n# " + id + "\n"},

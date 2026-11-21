@@ -19,9 +19,7 @@ import (
 	"github.com/WindKube/agent-manager/cli/archiveguard"
 )
 
-// Every hostile archive is built here rather than committed as a binary fixture,
-// which cannot be reviewed. Negative cases assert the specific Reason through
-// requireRefusal, and each cap case puts the other caps out of the way.
+// Hostile archives are built here rather than committed as unreviewable binary fixtures.
 
 type member struct {
 	name     string
@@ -106,7 +104,6 @@ func writeZeros(t *testing.T, w io.Writer, n int64) {
 	}
 }
 
-// newDest returns a path that does not exist inside a parent that does.
 func newDest(t *testing.T) string {
 	t.Helper()
 	return filepath.Join(t.TempDir(), "skill")
@@ -481,8 +478,7 @@ func TestExtractRefusesPluginAdoptingSubdir(t *testing.T) {
 	}
 }
 
-// A directory, then a symlink inside it pointing out, then a write through it
-// with a clean relative path. It must be refused at entry two, and that is asserted.
+// A directory, a symlink inside it pointing out, then a write through it: refused at entry two.
 func TestExtractSymlinkEscape(t *testing.T) {
 	t.Parallel()
 
@@ -575,9 +571,7 @@ func TestExtractDeepPath(t *testing.T) {
 	requireRefusal(t, err, ErrTooLarge, CapPathDepth)
 }
 
-// A real bomb against the real default caps: 64 MiB of zeros in a few kilobytes.
-// The second assertion is the one that matters: the refusal must arrive with
-// barely anything on disk.
+// The refusal must arrive with barely anything on disk.
 func TestExtractZstdBomb(t *testing.T) {
 	t.Parallel()
 
@@ -773,9 +767,7 @@ func rawTar(t *testing.T, ms ...member) []byte {
 	return buf.Bytes()
 }
 
-// Exercises the containment invariant with no hostile member: something is already
-// on disk where an extracted path has to go, and anything this extraction did not
-// create is refused rather than reused.
+// Anything already on disk that this extraction did not create is refused rather than reused.
 func TestOnlyComponentsWeCreated(t *testing.T) {
 	t.Parallel()
 

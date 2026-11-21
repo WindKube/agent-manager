@@ -17,7 +17,7 @@ import (
 	"github.com/WindKube/agent-manager/cli/internal/record"
 )
 
-// statusDeps is status's outside world. See loginDeps for why it is a struct.
+// statusDeps is status's outside world; see loginDeps.
 type statusDeps struct {
 	backends []keyring.BackendType
 }
@@ -40,12 +40,8 @@ func newStatusCmd(opts *Options) *cobra.Command {
 	}
 }
 
-// runStatus is `status` with its outside world as an argument.
-//
-// It goes through Prepare for the same reason logout does: Prepare validates
-// the home directory and canonicalises the hub URL, and neither dials the
-// network, so there is no ordering to protect here — status just needs the
-// same per-hub directory name login and sync wrote.
+// runStatus goes through Prepare (which dials nothing) so it reads the same
+// per-hub directory login and sync wrote.
 func runStatus(opts *Options, deps statusDeps) error {
 	s := opts.Streams()
 
@@ -53,9 +49,6 @@ func runStatus(opts *Options, deps statusDeps) error {
 		recordPath := record.Path(home.HubDir(target))
 		rec, err := record.Load(recordPath, target.URL)
 		if err != nil {
-			// Same four refusals record.Load documents for sync: corrupt,
-			// wrong schema version, another hub's record, a record amctl could
-			// not have written.
 			return Refuse(err)
 		}
 
@@ -84,13 +77,9 @@ func runStatus(opts *Options, deps statusDeps) error {
 	})
 }
 
-// identityFor reads the stored credential's identity, the same source login
-// wrote it from (internal/cmd/login.go: cred.Identity = the machine's own
-// hostname, since none of the hub's endpoints return a caller identity).
-//
-// A store that cannot be opened or a hub with no stored credential both
-// report "" rather than fail: status must still print the local record when
-// the hub is unreachable, --offline is set, or nobody has ever logged in here.
+// identityFor reads the stored credential's identity. An unopenable store or
+// missing credential reports "" rather than fail: status must still print the
+// local record when nobody has logged in here.
 func identityFor(home Home, target Hub, s *output.Streams, backends []keyring.BackendType) string {
 	store, err := openStore(home, s, backends)
 	if err != nil {
@@ -108,7 +97,6 @@ func identityFor(home Home, target Hub, s *output.Streams, backends []keyring.Ba
 	return cred.Identity
 }
 
-// statusOf turns one recorded profile into its report and its drift, if any.
 func statusOf(p *record.Profile) (output.ProfileStatus, []output.Drift) {
 	targets := make([]string, 0, len(p.Targets))
 	for _, t := range p.Targets {
@@ -135,17 +123,10 @@ func statusOf(p *record.Profile) (output.ProfileStatus, []output.Drift) {
 	return ps, drift
 }
 
-// driftReason answers whether e's destination still matches what was
-// installed, and says why when it does not. Empty means clean.
-//
-// The byte-for-byte comparison is internal/apply's own TreeFingerprinter —
-// the same Verifier a sync consults before overwriting a modified path
-// (FR-029) — reused rather than reimplemented so status and sync agree on
-// what "modified" means. Absence of evidence is not evidence of absence:
-// TreeFingerprinter.Modifications refuses an entry recorded without a
-// fingerprint, or with an algorithm this build does not verify, and that is
-// reported UNVERIFIABLE rather than assumed unmodified — the honest answer
-// for a record written by a build that predates T049's fingerprinter.
+// driftReason says why e's destination no longer matches what was installed,
+// or "" when clean. It reuses sync's TreeFingerprinter so both agree on what
+// "modified" means; an entry it cannot verify is reported unverifiable, never
+// assumed unmodified.
 func driftReason(e *record.Entry) string {
 	info, err := os.Lstat(e.Dest)
 	switch {

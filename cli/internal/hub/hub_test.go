@@ -14,14 +14,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// testToken is the credential every test uses. It is a single distinctive
-// string on purpose: the leak assertions are substring greps, and a token that
-// could occur by accident in a message would make them lie.
+// testToken is distinctive because the leak assertions are substring greps.
 const testToken = "hub-test-token-DO-NOT-LEAK-4a7f9c2e"
 
-// hit is one request as the server saw it. The header values are recorded
-// verbatim — this is the only place in the suite that is allowed to hold the
-// credential, and it is what gives the leak-detection greps a non-empty haystack.
+// hit is one request as the server saw it, headers verbatim.
 type hit struct {
 	Method      string
 	Path        string
@@ -60,8 +56,6 @@ func (s *spy) all() []hit {
 	return append([]hit(nil), s.hits...)
 }
 
-// newSpyServer starts a plaintext test server that records every request
-// before handling it.
 func newSpyServer(t *testing.T, h http.HandlerFunc) (*httptest.Server, *spy) {
 	t.Helper()
 	s := &spy{}
@@ -73,9 +67,6 @@ func newSpyServer(t *testing.T, h http.HandlerFunc) (*httptest.Server, *spy) {
 	return srv, s
 }
 
-// newHub builds a Hub against a plaintext test server. AllowPlaintext is set
-// because httptest speaks http; TestNewURLPolicy is what proves the flag is
-// actually required.
 func newHub(t *testing.T, serverURL, token string) *Hub {
 	t.Helper()
 	h, err := New(Config{URL: serverURL, Token: token, AllowPlaintext: true})
@@ -94,10 +85,6 @@ func writeProblem(w http.ResponseWriter, status int, title, detail string) {
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(Error{Status: int64(status), Title: title, Detail: &detail})
 }
-
-// ---------------------------------------------------------------------------
-// TLS required, plaintext only behind an explicit flag.
-// ---------------------------------------------------------------------------
 
 func TestNewURLPolicy(t *testing.T) {
 	t.Parallel()
@@ -129,9 +116,7 @@ func TestNewURLPolicy(t *testing.T) {
 		},
 		{name: "plaintext is accepted with the flag", url: "http://hub.example.com", allowPlaintext: true},
 		{
-			// A wrong scheme is not an insecurity, it is an unusable URL. If
-			// this collapsed into ErrInsecureHub the message would offer a flag
-			// that cannot help.
+			// ErrInsecureHub would offer a flag that cannot help.
 			name:         "another scheme is unusable rather than insecure",
 			url:          "ftp://hub.example.com",
 			wantErr:      ErrHubURL,
@@ -153,9 +138,7 @@ func TestNewURLPolicy(t *testing.T) {
 			wantContains: []string{"no scheme"},
 		},
 		{
-			// cmd.ParseHub is what turns `hub.example.com:8443` into an
-			// https URL. net/url reads it as scheme "hub.example.com", so this
-			// package refuses it rather than inventing a second opinion.
+			// cmd.ParseHub adds the scheme; net/url reads this as scheme "hub.example.com".
 			name:       "host:port without a scheme is refused",
 			url:        "hub.example.com:8443",
 			wantErr:    ErrHubURL,
@@ -165,8 +148,6 @@ func TestNewURLPolicy(t *testing.T) {
 		{name: "whitespace is refused", url: "   ", wantErr: ErrHubURL, wantNotErr: ErrInsecureHub},
 		{name: "no host is refused", url: "https:///v1", wantErr: ErrHubURL, wantNotErr: ErrInsecureHub},
 		{
-			// The same shape one layer down: the refusal must not echo the
-			// password back into whatever captured stderr.
 			name:         "userinfo is refused and the password is not echoed",
 			url:          "https://alice:s3cr3t-do-not-echo@hub.example.com",
 			wantErr:      ErrHubURL,
@@ -197,8 +178,6 @@ func TestNewURLPolicy(t *testing.T) {
 			for _, absent := range tc.wantAbsent {
 				require.NotContains(t, err.Error(), absent)
 			}
-			// A URL refusal happens before anything is dialled, so it is not
-			// one of the four network classes.
 			require.Equal(t, Class(0), ClassOf(err))
 		})
 	}
@@ -215,10 +194,6 @@ func TestInsecureIsReportedForAPlaintextHub(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, secure.Insecure())
 }
-
-// ---------------------------------------------------------------------------
-// The token IS sent to the hub.
-// ---------------------------------------------------------------------------
 
 func TestBearerTokenIsSentToTheHub(t *testing.T) {
 	t.Parallel()
@@ -262,8 +237,6 @@ func TestBearerTokenIsSentToTheHub(t *testing.T) {
 
 		hits := spy.all()
 		require.Len(t, hits, 1)
-		// Not "Bearer " with nothing after it: an empty credential offered as
-		// though it were one invites a 401 that means nothing.
 		require.Empty(t, hits[0].Auth)
 	})
 
@@ -279,19 +252,8 @@ func TestBearerTokenIsSentToTheHub(t *testing.T) {
 	})
 }
 
-// ---------------------------------------------------------------------------
-// The token NEVER reaches a redirect target.
-//
-// Every case here uses a SAME-HOST or SUBDOMAIN redirect. A cross-host
-// redirect is included only as a control, and it is marked as such, because
-// net/http strips Authorization across hosts by itself — a test built on one
-// passes with the defect fully present and proves nothing.
-// ---------------------------------------------------------------------------
-
 const bundlePath = "/v1/bundles/acme/code-review/1.4.0"
 
-// redirectHandler answers the bundle path with a 307 to location and serves
-// the object at objectPath.
 func redirectHandler(location, objectPath, payload string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -307,8 +269,7 @@ func redirectHandler(location, objectPath, payload string) http.HandlerFunc {
 	}
 }
 
-// mappedClient dials addr no matter which host is asked for, which is what
-// makes a genuine subdomain redirect testable against one httptest server.
+// mappedClient dials addr for any host, making a real subdomain redirect testable.
 func mappedClient(addr string) *http.Client {
 	return &http.Client{Transport: &http.Transport{
 		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
@@ -334,8 +295,7 @@ func TestTokenNeverReachesARedirectTarget(t *testing.T) {
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 
-		// Proving the redirect was actually followed matters: if it were not,
-		// the "no token on the second hop" assertion would hold vacuously.
+		// Otherwise "no token on the second hop" would hold vacuously.
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 		require.Equal(t, payload, string(body))
 
@@ -344,7 +304,7 @@ func TestTokenNeverReachesARedirectTarget(t *testing.T) {
 		require.Equal(t, bundlePath, hits[0].Path)
 		require.Equal(t, "Bearer "+testToken, hits[0].Auth, "the hub itself must still be authenticated")
 		require.Equal(t, "/objects/blob", hits[1].Path)
-		require.Empty(t, hits[1].Auth, "FR-016: the bearer token must not reach the redirect target")
+		require.Empty(t, hits[1].Auth, "the bearer token must not reach the redirect target")
 	})
 
 	t.Run("same host, absolute location", func(t *testing.T) {
@@ -394,7 +354,7 @@ func TestTokenNeverReachesARedirectTarget(t *testing.T) {
 		require.Equal(t, "hub.example.test", hits[0].Host)
 		require.Equal(t, "Bearer "+testToken, hits[0].Auth)
 		require.Equal(t, "s3.hub.example.test", hits[1].Host)
-		require.Empty(t, hits[1].Auth, "FR-016 has no subdomain exception; net/http's default does")
+		require.Empty(t, hits[1].Auth, "no subdomain exception; net/http's default has one")
 	})
 
 	t.Run("same host, different port", func(t *testing.T) {
@@ -440,14 +400,8 @@ func TestTokenNeverReachesARedirectTarget(t *testing.T) {
 	})
 }
 
-// TestStandardLibraryLeaksOnSameHostAndSubdomainRedirects is the negative
-// control for the test above, and the justification for bearerTransport
-// existing at all.
-//
-// It asserts what net/http does with NO help from this package: it copies
-// Authorization onto a same-host redirect target, and onto a subdomain one.
-// If a future Go release fixes that, this test fails — which is the signal to
-// revisit bearerTransport's comment, not to delete the defence.
+// TestStandardLibraryLeaksOnSameHostAndSubdomainRedirects is why bearerTransport exists. If a Go release
+// fixes the leak this fails: revisit bearerTransport's comment, don't delete the defence.
 func TestStandardLibraryLeaksOnSameHostAndSubdomainRedirects(t *testing.T) {
 	t.Parallel()
 
@@ -485,17 +439,11 @@ func TestStandardLibraryLeaksOnSameHostAndSubdomainRedirects(t *testing.T) {
 		require.Len(t, hits, 2)
 		require.Equal(t, "s3.hub.example.test", hits[1].Host)
 		require.Equal(t, "Bearer "+testToken, hits[1].Auth,
-			"shouldCopyHeaderOnRedirect deliberately permits subdomains; FR-016 does not")
+			"shouldCopyHeaderOnRedirect deliberately permits subdomains")
 	})
 
-	// MEASURED, and not what the plan's reading of client.go predicted:
-	// shouldCopyHeaderOnRedirect compares idnaASCIIFromURL(u), which is
-	// u.Hostname() — the PORT IS NOT PART OF THE COMPARISON. The outer guard
-	// `reqs[0].URL.Host != req.URL.Host` does include the port, so a
-	// port-only change reaches shouldCopyHeaderOnRedirect and is then
-	// permitted as an "exact match". A hub on :8443 redirecting to an object
-	// store on :9000 of the same host therefore leaks the token by default,
-	// which is the commonest self-hosted layout there is.
+	// shouldCopyHeaderOnRedirect ignores the port, so a hub on :8443 redirecting to an object store on
+	// :9000 of the same host leaks the token by default.
 	t.Run("same host, different port", func(t *testing.T) {
 		t.Parallel()
 		object, objectSpy := newSpyServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -521,7 +469,6 @@ func TestStandardLibraryLeaksOnSameHostAndSubdomainRedirects(t *testing.T) {
 	})
 }
 
-// stubRoundTripper records the request it was handed and answers 204.
 type stubRoundTripper struct {
 	mu   sync.Mutex
 	last *http.Request
@@ -539,10 +486,7 @@ func (s *stubRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 	}, nil
 }
 
-// TestEachRedirectDefenceWorksAlone exercises bearerTransport and
-// stripAuthorizationOnRedirect separately. Together they are belt and braces;
-// tested only together, either one could be dead and the suite would stay
-// green.
+// Tested only together, either defence could be dead and the suite would stay green.
 func TestEachRedirectDefenceWorksAlone(t *testing.T) {
 	t.Parallel()
 
@@ -585,8 +529,7 @@ func TestEachRedirectDefenceWorksAlone(t *testing.T) {
 				req.Header.Set("Authorization", tc.preset)
 			}
 			if tc.isRedirect {
-				// Exactly what net/http does: Request.Response is set on every
-				// request a redirect created.
+				// net/http sets Request.Response on every request a redirect created.
 				req.Response = &http.Response{StatusCode: http.StatusTemporaryRedirect}
 			}
 
@@ -610,8 +553,6 @@ func TestEachRedirectDefenceWorksAlone(t *testing.T) {
 		require.NoError(t, check(req, nil))
 		require.Empty(t, req.Header.Get("Authorization"))
 
-		// Replacing CheckRedirect removes net/http's own limit, so the limit
-		// has to come back or a redirect loop never ends.
 		via := make([]*http.Request, maxRedirects)
 		err = check(req, via)
 		require.Error(t, err)
@@ -645,14 +586,7 @@ func TestNewDoesNotMutateTheCallersHTTPClient(t *testing.T) {
 	require.Nil(t, caller.CheckRedirect)
 }
 
-// ---------------------------------------------------------------------------
-// unreachable / unauthorised / forbidden / not-found, and the answers
-// that are none of the four.
-// ---------------------------------------------------------------------------
-
-// wantSentinel is the expected Class -> sentinel mapping, written out by hand.
-// It deliberately does NOT read classSentinel: comparing that map to itself
-// would prove only that a map equals itself.
+// wantSentinel is written out by hand rather than read from classSentinel.
 func wantSentinel(t *testing.T, c Class) error {
 	t.Helper()
 	switch c {
@@ -686,8 +620,7 @@ func wantSentinel(t *testing.T, c Class) error {
 	}
 }
 
-// requireClass asserts the class, and asserts that NO other class matches.
-// "Distinguishable" is a claim about every pair, not about one lucky hit.
+// requireClass asserts the class and that no other class matches.
 func requireClass(t *testing.T, err error, want Class) {
 	t.Helper()
 	require.Error(t, err)
@@ -745,10 +678,6 @@ func TestStatusClassification(t *testing.T) {
 			wantContains: []string{"retry after 30s"},
 		},
 		{
-			// The hub answers 501 for an operation it does not implement, and
-			// internal/api/api_test.go asserts that as intended. Calling it
-			// unreachable would tell the user to check their network while the
-			// hub is answering perfectly.
 			name: "501 is unimplemented and not unreachable", status: http.StatusNotImplemented,
 			body:      Error{Status: 501, Title: "Not Implemented", Detail: ptr("device flow is not enabled on this hub")},
 			wantClass: ClassUnimplemented, wantContains: []string{"501", "device flow is not enabled"},
@@ -767,8 +696,7 @@ func TestStatusClassification(t *testing.T) {
 			body: Error{Status: 502, Title: "Bad Gateway"}, wantClass: ClassServer,
 		},
 		{
-			// An undeclared 2xx. Treating it as success would hand the caller a
-			// zero-valued lockfile.
+			// Treating an undeclared 2xx as success would hand the caller a zero-valued lockfile.
 			name: "an undeclared success status is not a hub", status: http.StatusNoContent,
 			wantClass: ClassProtocol,
 		},
@@ -830,7 +758,7 @@ func TestTransportFailuresAreDistinguishable(t *testing.T) {
 		}))
 		t.Cleanup(srv.Close)
 
-		// Deliberately NOT srv.Client(): the point is an unverifiable chain.
+		// Not srv.Client(): the point is an unverifiable chain.
 		h, err := New(Config{URL: srv.URL, Token: testToken})
 		require.NoError(t, err)
 		_, err = h.ListProfiles(t.Context())
@@ -876,12 +804,8 @@ func TestTransportFailuresAreDistinguishable(t *testing.T) {
 	})
 }
 
-// TestGarbageIsNotAHubRatherThanUnreachable is the regression this package is
-// shaped around: the generated ParseXxx helpers return a plain error when
-// json.Unmarshal fails, indistinguishable at the call site from the error they
-// return when nothing answered. Routed through them, an HTML error page from a
-// load balancer would be reported as "unreachable" and send the user hunting a
-// network fault that does not exist.
+// The generated ParseXxx helpers can't tell bad JSON from no answer, so a load balancer's HTML error
+// page would read as "unreachable".
 func TestGarbageIsNotAHubRatherThanUnreachable(t *testing.T) {
 	t.Parallel()
 
@@ -910,8 +834,7 @@ func TestGarbageIsNotAHubRatherThanUnreachable(t *testing.T) {
 
 			_, err := h.ListProfiles(t.Context())
 			if tc.name == "no content type at all" {
-				// A well-formed body with no content type IS the documented
-				// one; the generated parser would have discarded it.
+				// A well-formed body with no content type is still the documented one.
 				require.NoError(t, err)
 				return
 			}
@@ -943,9 +866,6 @@ func (zeroReader) Read(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// TestHealthIsTheAuthFreeDiscriminator is the classification's whole point: /v1/health
-// needs no credential, so "the hub is unreachable" and "your token is no good"
-// are separable facts rather than one shrug.
 func TestHealthIsTheAuthFreeDiscriminator(t *testing.T) {
 	t.Parallel()
 
@@ -1010,13 +930,7 @@ func TestHealthIsTheAuthFreeDiscriminator(t *testing.T) {
 
 func ptr[T any](v T) *T { return &v }
 
-// ---------------------------------------------------------------------------
-// No token in any output, including error messages.
-// ---------------------------------------------------------------------------
-
-// errorProducer names a way to make this package emit an error, so the leak
-// grep runs over every error value the wrapper can produce rather than over
-// one convenient example.
+// errorProducer lets the leak grep run over every error the wrapper can produce.
 type errorProducer struct {
 	name string
 	make func(t *testing.T) error
@@ -1049,10 +963,7 @@ func errorProducers() []errorProducer {
 		{"unavailable", authFail(http.StatusServiceUnavailable, Error{Status: 503, Title: "Service Unavailable"})},
 		{"server error", authFail(http.StatusInternalServerError, Error{Status: 500, Title: "Internal Server Error"})},
 		{
-			// The realistic self-inflicted echo: problem+json's per-field
-			// detail carries the offending VALUE, and a hub that validated the
-			// Authorization header would put the token there. joinDetails
-			// drops Value for exactly this reason.
+			// A hub validating the Authorization header would echo the token in a detail's Value.
 			name: "a 422 whose per-field detail echoes the credential back",
 			make: func(t *testing.T) error {
 				t.Helper()
@@ -1155,9 +1066,7 @@ func errorProducers() []errorProducer {
 func TestNoCredentialInAnyErrorValue(t *testing.T) {
 	t.Parallel()
 
-	// The verbs a careless caller actually reaches for. %+v is the one that
-	// matters: it is what a structured logger uses, and it is what would print
-	// a wrapped *http.Request's headers.
+	// %+v matters most: structured loggers use it, and it would print a wrapped request's headers.
 	verbs := []string{"%v", "%+v", "%#v", "%s", "%q"}
 
 	for _, p := range errorProducers() {
@@ -1167,15 +1076,13 @@ func TestNoCredentialInAnyErrorValue(t *testing.T) {
 			for _, verb := range verbs {
 				rendered := fmt.Sprintf(verb, err)
 				require.NotContains(t, rendered, testToken,
-					"FR-007: the credential appeared under %s", verb)
+					"the credential appeared under %s", verb)
 				require.NotContains(t, rendered, "Bearer ",
-					"FR-007: an Authorization header value appeared under %s", verb)
+					"an Authorization header value appeared under %s", verb)
 			}
 		})
 	}
 
-	// The negative control. Without this the greps above could be running over
-	// an empty haystack and nobody would know.
 	t.Run("the grep would catch a real leak", func(t *testing.T) {
 		t.Parallel()
 		leak := fmt.Errorf("listProfiles: request failed with header %q", "Bearer "+testToken)
@@ -1183,15 +1090,8 @@ func TestNoCredentialInAnyErrorValue(t *testing.T) {
 	})
 }
 
-// TestNoCredentialInAFormattedHub is the measurement the token-as-a-closure
-// comment in New rests on.
-//
-// The control case is the whole point: fmt CANNOT call String() on an
-// unexported struct field — reflect.Value.CanInterface() is false for a field
-// reached through reflection, so fmt prints the underlying value and the usual
-// "wrap the secret in a redacting Stringer" defence silently does nothing. A
-// func field prints as an address, which is why the token is held in a
-// closure.
+// fmt cannot call String() on an unexported field, so a redacting Stringer does nothing there; a func
+// field prints as an address, which is why the token is a closure.
 func TestNoCredentialInAFormattedHub(t *testing.T) {
 	t.Parallel()
 
@@ -1200,8 +1100,7 @@ func TestNoCredentialInAFormattedHub(t *testing.T) {
 
 	for _, verb := range []string{"%v", "%+v", "%#v"} {
 		require.NotContains(t, fmt.Sprintf(verb, h), testToken)
-		// The transport is where the credential actually lives, so format it
-		// directly rather than relying on fmt not following the pointer.
+		// The transport holds the credential, so format it directly.
 		require.NotContains(t, fmt.Sprintf(verb, h.httpc.Transport), testToken)
 		require.NotContains(t, fmt.Sprintf(verb, *h.httpc.Transport.(*bearerTransport)), testToken)
 	}
@@ -1224,9 +1123,7 @@ type redactingSecret string
 func (redactingSecret) String() string   { return "[redacted]" }
 func (redactingSecret) GoString() string { return `"[redacted]"` }
 
-// TestPresignedQueryIsNotInAnError covers the credential one layer below the
-// bearer token: getBundle's 307 points at an object-store URL whose signature
-// IS the query string.
+// getBundle's 307 points at an object-store URL whose signature is the query string.
 func TestPresignedQueryIsNotInAnError(t *testing.T) {
 	t.Parallel()
 
@@ -1259,13 +1156,9 @@ func TestPresignedQueryIsNotInAnError(t *testing.T) {
 
 	hits := spy.all()
 	require.Len(t, hits, 2)
-	require.Empty(t, hits[1].Auth, "FR-016 again, on the path T038 will actually take")
+	require.Empty(t, hits[1].Auth, "the token reached the redirect target on the path sync takes")
 	require.Contains(t, hits[1].RawQuery, signature, "the signature really was on the wire")
 }
-
-// ---------------------------------------------------------------------------
-// The class table itself, the local argument checks, and the remaining verbs.
-// ---------------------------------------------------------------------------
 
 func TestClassTableIsComplete(t *testing.T) {
 	t.Parallel()
@@ -1286,8 +1179,6 @@ func TestClassTableIsComplete(t *testing.T) {
 		}
 		seenSentinel[sentinel] = c
 
-		// The production mapping is compared to the hand-written expectation,
-		// not to itself.
 		require.ErrorIs(t, &OpError{Class: c}, sentinel)
 	}
 	require.Len(t, seenSlug, 12, "a new class needs a slug, a sentinel and a Retryable answer")
@@ -1296,7 +1187,6 @@ func TestClassTableIsComplete(t *testing.T) {
 	require.Equal(t, Class(0), ClassOf(fmt.Errorf("something else entirely")))
 	require.Equal(t, "unclassified", Class(0).String())
 
-	// Retryable, hand-written rather than derived.
 	wantRetryable := map[Class]bool{
 		ClassUnreachable: true, ClassRateLimited: true, ClassUnavailable: true, ClassServer: true,
 		// A pre-signed URL is short-lived, so the commonest offload refusal is
@@ -1345,9 +1235,6 @@ func TestGetRevisionChecksItsArgumentsBeforeDialling(t *testing.T) {
 		{name: "a negative number is refused", slug: "platform-baseline", revision: "-1"},
 		{name: "a decimal is refused", slug: "platform-baseline", revision: "1.0"},
 		{
-			// The CLI does not resolve. "latest" is not a revision the
-			// contract knows, and silently mapping it to head would be this
-			// package deciding something.
 			name: "latest is refused rather than mapped to head",
 			slug: "platform-baseline", revision: "latest",
 		},
@@ -1370,7 +1257,6 @@ func TestGetRevisionChecksItsArgumentsBeforeDialling(t *testing.T) {
 			}
 			require.Error(t, err)
 			require.Empty(t, spy.all(), "a local refusal must not reach the network")
-			// Not a hub failure: nothing was asked of the hub.
 			require.Equal(t, Class(0), ClassOf(err))
 		})
 	}
@@ -1379,8 +1265,7 @@ func TestGetRevisionChecksItsArgumentsBeforeDialling(t *testing.T) {
 func TestGetRevisionReturnsTheLockfileVerbatim(t *testing.T) {
 	t.Parallel()
 
-	// An unrecognised skip reason must survive to the caller: it must be
-	// reported verbatim, and this client ships separately from the hub.
+	// An unrecognised skip reason must survive verbatim; the client ships separately from the hub.
 	const body = `{
 	  "schemaVersion": "1.0.0",
 	  "profile": {"slug": "platform-baseline", "name": "Platform baseline"},
@@ -1403,7 +1288,7 @@ func TestGetRevisionReturnsTheLockfileVerbatim(t *testing.T) {
 	require.Len(t, lock.Skipped, 1)
 	require.Equal(t, LockfileSkipReason("a-reason-from-a-newer-hub"), lock.Skipped[0].Reason)
 	require.False(t, lock.Skipped[0].Reason.Valid(),
-		"an unknown reason is FR-011's report-verbatim case, not a parse failure")
+		"an unknown reason is reported verbatim, not a parse failure")
 }
 
 func TestReportSyncExpectsNoContent(t *testing.T) {
@@ -1435,12 +1320,11 @@ func TestReportSyncExpectsNoContent(t *testing.T) {
 		})
 		h := newHub(t, srv.URL, testToken)
 
-		// The contract declares 204 and nothing else for success. Accepting any
-		// 2xx would silently pass whatever a proxy substituted.
+		// Accepting any 2xx would silently pass whatever a proxy substituted.
 		requireClass(t, h.ReportSync(t.Context(), report), ClassProtocol)
 	})
 
-	t.Run("401 is unauthorised, and FR-033 leaves it to the caller to warn", func(t *testing.T) {
+	t.Run("401 is unauthorised, and the caller decides whether to warn", func(t *testing.T) {
 		t.Parallel()
 		srv, _ := newSpyServer(t, func(w http.ResponseWriter, r *http.Request) {
 			writeProblem(w, http.StatusUnauthorized, "Unauthorized", "token has expired")
@@ -1489,8 +1373,7 @@ func TestDeviceFlow(t *testing.T) {
 		require.Contains(t, hits[0].Body, "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code")
 	})
 
-	// The polling codes are the protocol working, not failing. Classified as
-	// ClassRequest they would abort a login on its first tick.
+	// Classified as ClassRequest, the polling codes would abort a login on its first tick.
 	t.Run("a 400 is the polling protocol and not an error class", func(t *testing.T) {
 		t.Parallel()
 		for _, code := range []DeviceTokenErrorError{AuthorizationPending, SlowDown, AccessDenied, ExpiredToken, InvalidGrant} {
@@ -1507,7 +1390,7 @@ func TestDeviceFlow(t *testing.T) {
 				var flow *DeviceFlowError
 				require.ErrorAs(t, err, &flow)
 				require.Equal(t, code, flow.Code)
-				require.Equal(t, Class(0), ClassOf(err), "a poll refusal is not one of FR-040's classes")
+				require.Equal(t, Class(0), ClassOf(err), "a poll refusal is not an error class")
 				require.NotErrorIs(t, err, ErrRequest)
 			})
 		}

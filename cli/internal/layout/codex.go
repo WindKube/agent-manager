@@ -5,10 +5,8 @@ import (
 	"path/filepath"
 )
 
-// Target `codex`: skills under $HOME/.agents/skills/<name>/SKILL.md (the
-// documented root; ~/.codex/skills is deprecated), confirmed against codex
-// 0.170 listing a skill planted there. Everything else Codex reads lives
-// under $CODEX_HOME (default ~/.codex): config.toml and agents/*.toml.
+// Target `codex`: skills under ~/.agents/skills (~/.codex/skills is deprecated); everything else
+// Codex reads lives under $CODEX_HOME (default ~/.codex).
 const (
 	CodexHomeEnv       = "CODEX_HOME" // relocates Codex's config dir, not the skills root
 	CodexHomeDirName   = ".codex"

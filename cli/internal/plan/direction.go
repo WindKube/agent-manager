@@ -5,11 +5,9 @@ import (
 	"strings"
 )
 
-// This file is the only place in the CLI where an ordering on version
-// strings may exist: it reports which way a hub-chosen replacement moved,
-// never chooses which version to install (that's the hub's job — a second
-// implementation here could disagree with its audit trail). compute.go, on
-// the other side of that line, only ever asks whether two strings are equal.
+// This is the only version ordering in the CLI and it only labels a hub-chosen
+// replacement; choosing versions is the hub's job, and a second implementation
+// here could disagree with its audit trail.
 
 // Direction is which way a replacement moved, as a label.
 type Direction string
@@ -31,9 +29,8 @@ const (
 	DirectionUnknown Direction = "unknown" // the comparer declined; reported, not guessed
 )
 
-// Comparer orders two version strings, returning ok=false rather than a
-// coin flip when it can't; it's a seam so Masterminds/semver can be dropped
-// in at one call site once cli/go.mod carries it.
+// Comparer orders two version strings, returning ok=false rather than
+// guessing when it can't.
 type Comparer func(a, b string) (int, bool)
 
 // DirectionOf labels a replacement; a nil comparer uses [CompareVersions].
@@ -57,13 +54,9 @@ func DirectionOf(cmp Comparer, from, to string) Direction {
 	}
 }
 
-// CompareVersions is the default comparer: SemVer 2.0.0 precedence (§11),
-// hand-written since cli/go.mod carries no semver library. It compares
-// numeric segments numerically (never "1.10.0" < "1.9.0" as strings), and
-// returns ok=false rather than 0 for equal-precedence-but-different strings
-// (build metadata, segment padding) since 0 would read as "identical". It
-// does not validate semver, so non-semver strings still get an ordering —
-// swap in [Comparer] where exactness matters more than a zero-dependency default.
+// CompareVersions is the default comparer, a hand-written SemVer 2.0.0
+// precedence (§11). It returns ok=false rather than 0 for strings of equal
+// precedence that differ (build metadata, padding), since 0 reads as identical.
 func CompareVersions(a, b string) (int, bool) {
 	if a == "" || b == "" {
 		return 0, false

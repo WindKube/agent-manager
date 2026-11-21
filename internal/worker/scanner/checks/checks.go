@@ -1,7 +1,6 @@
 // Package checks is the scanner's check registry and the engine that applies
-// rule data to a bundle. Nothing here holds a rule: each check declares an
-// id, label and which rules it consumes, and every pattern, command name,
-// severity and prose string lives in the pack.
+// rule data to a bundle. Every pattern, severity and prose string lives in the
+// rule pack, not here.
 package checks
 
 import (
@@ -25,8 +24,7 @@ const (
 // Result is what one check reports for the matrix.
 type Result struct {
 	Outcome Outcome
-	// WarnCount counts sub-high findings plus any file the check could not
-	// analyse — a blind spot is a warning, never a pass.
+	// WarnCount counts sub-high findings plus blind spots; a blind spot is never a pass.
 	WarnCount int
 }
 
@@ -35,28 +33,25 @@ type Evidence struct {
 	Path string
 	// Line is 1-based; zero means the finding names a file without a line.
 	Line int
-	// Quote is bundle content quoted verbatim, attacker-controlled and
-	// always rendered escaped.
+	// Quote is attacker-controlled bundle content and must always be rendered escaped.
 	Quote string
-	// Supporting marks a location that shows a consequence rather than the
-	// cause; exactly one location per finding is primary, the first.
+	// Supporting marks a consequence rather than the cause; only the first
+	// location is primary.
 	Supporting bool
 }
 
 // Finding is one problem a check raised.
 type Finding struct {
 	RuleID string
-	// Engine names the analyser that raised it. Two engines may use the same
-	// rule id, so this is what disambiguates them.
+	// Engine disambiguates rule ids shared by two engines.
 	Engine   string
 	Severity rules.Severity
 	Title    string
 	Detail   string
-	// Evidence is ordered: the first entry is primary.
 	Evidence []Evidence
 }
 
-// Primary is the location a finding's own evidence triple copies.
+// Primary returns the first evidence location, or the zero value.
 func (f Finding) Primary() Evidence {
 	if len(f.Evidence) == 0 {
 		return Evidence{}
@@ -64,41 +59,31 @@ func (f Finding) Primary() Evidence {
 	return f.Evidence[0]
 }
 
-// Check is one analysis in the registry. It receives an already-extracted,
-// already-capped Bundle and never touches the network, the filesystem
-// outside the bundle, or a subprocess.
+// Check is one analysis in the registry. It never touches the network, the
+// filesystem outside the bundle, or a subprocess.
 type Check interface {
 	// ID is stable and is stored on `scan_check.check_id`.
 	ID() string
-	// Label is what the checks-run matrix renders.
 	Label() string
-	// Explain is what this check looks for, in general — not this scan's
-	// result, which is Result and Finding.Detail below, but the standing
-	// question a reader has no other way to answer: what does a warn or a
-	// fail on this row actually mean. Required, like ID and Label: a check
-	// with nothing here is exactly the gap this feature closes.
+	// Explain says in general what a warn or fail on this row means. Required.
 	Explain() string
-	// Run applies the rules addressed to this check.
 	Run(ctx context.Context, b *Bundle, rs []rules.Rule) (Result, []Finding, error)
 }
 
 // CheckRun is one row of the checks-run matrix.
 type CheckRun struct {
 	CheckID string
-	// Engine names the analyser the row belongs to.
 	Engine  string
 	Label   string
 	Explain string
 	Result  Result
 }
 
-// Registry is the one list of checks.
 type Registry struct {
 	checks []Check
 }
 
-// NewRegistry builds a registry over the given checks, refusing a duplicate
-// id: two checks sharing one would silently drop one result.
+// NewRegistry refuses a duplicate id, which would silently drop one result.
 func NewRegistry(checks ...Check) (*Registry, error) {
 	seen := make(map[string]struct{}, len(checks))
 	for _, check := range checks {
@@ -116,8 +101,8 @@ func NewRegistry(checks ...Check) (*Registry, error) {
 	return &Registry{checks: checks}, nil
 }
 
-// Default is the registry the scanner runs, in the order the matrix lists
-// them. The seven ids are the `check` enum of the rule-pack contract.
+// Default is the registry the scanner runs, in matrix order. The ids are the
+// rule-pack contract's `check` enum.
 func Default() (*Registry, error) {
 	return NewRegistry(
 		ManifestSchema(),
@@ -142,8 +127,8 @@ func (r *Registry) IDs() []string {
 // Checks returns the registered checks in registration order.
 func (r *Registry) Checks() []Check { return append([]Check(nil), r.checks...) }
 
-// Run applies every registered check to one bundle. Every check produces a
-// row, including passes and ones the pack addresses no rule to.
+// Run applies every check to one bundle. Every check produces a row, even with
+// no rules addressed to it.
 func (r *Registry) Run(ctx context.Context, b *Bundle, pack *rules.Pack) ([]CheckRun, []Finding, error) {
 	if b == nil {
 		return nil, nil, fmt.Errorf("check run: no bundle")
@@ -198,9 +183,8 @@ func severityRank(s rules.Severity) int {
 	}
 }
 
-// Grade turns a check's findings into its matrix result: a high-severity
-// finding fails the check, anything else warns with a count. It is exported so
-// a check outside this package grades on the same rule.
+// Grade fails a check on any high-severity finding and otherwise warns with a
+// count. Exported so analysers outside this package grade the same way.
 func Grade(findings []Finding, blindSpots int) Result {
 	result := Result{Outcome: OutcomePass, WarnCount: blindSpots}
 	for _, finding := range findings {
@@ -216,12 +200,10 @@ func Grade(findings []Finding, blindSpots int) Result {
 	return result
 }
 
-// maxQuoteBytes bounds a quote taken from bundle content: attacker-controlled,
-// so neither its size nor its control characters may be trusted.
 const maxQuoteBytes = 240
 
-// Clip is the one way bundle content becomes a stored quote. Exported so an
-// analyser outside this package cannot grow a second, laxer copy.
+// Clip is the one way bundle content becomes a stored quote: control characters
+// stripped and length capped. Exported so no laxer copy appears elsewhere.
 func Clip(text string) string {
 	text = strings.Map(func(r rune) rune {
 		switch {
@@ -238,7 +220,6 @@ func Clip(text string) string {
 		return text
 	}
 
-	// Cut on a rune boundary so the stored quote stays valid UTF-8.
 	cut := maxQuoteBytes
 	for cut > 0 && !isRuneStart(text[cut]) {
 		cut--

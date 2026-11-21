@@ -13,37 +13,28 @@ import (
 	"agent-manager/internal/domain/pkgspec"
 )
 
-// Bundle is one version's bytes as the checks see them: the file tree, the
-// shell syntax the parser recovered from it, the URLs its instruction files
-// name, and the capability set its publisher declared. Nothing here
-// executes, sources, imports or evaluates any of it.
+// Bundle is one version's bytes as the checks see them. Nothing here executes,
+// sources or evaluates any of it.
 type Bundle struct {
 	Kind pkgspec.Kind
 
-	// Manifest is the root manifest rendered as json, the same shape
-	// `version.manifest` holds.
+	// Manifest has the same shape as `version.manifest`.
 	Manifest       json.RawMessage
 	ManifestObject string
 
-	// ManifestProblems is why the manifest failed its published schema, read
-	// out of the BUNDLE rather than the catalog row.
+	// ManifestProblems is read from the bundle, not the catalog row.
 	ManifestProblems []pkgspec.Problem
 
-	// Expected is the capability set the publisher recorded. Nil means none
-	// was recorded.
+	// Expected is the declared capability set; nil means none was declared.
 	Expected []capability.Capability
 
-	// Artefacts is what internal/domain/capability infers from.
 	Artefacts capability.Artefacts
 
-	// Commands is Artefacts.Commands with the source text each one came from.
 	Commands []Command
 
-	// Unparsed names the scripts the shell parser could not read — reported
-	// as a warning by the shell audit, never a pass.
+	// Unparsed scripts are reported as a warning by the shell audit, never a pass.
 	Unparsed []string
 
-	// Surfaces are the hooks, MCP servers and tool grants the tree declares.
 	Surfaces *pkgspec.Surfaces
 
 	files map[string]bundle.File
@@ -51,10 +42,8 @@ type Bundle struct {
 	lines map[string][]string
 }
 
-// Inspect derives everything the checks read from an unpacked bundle. It
-// never fails on hostile content: an unreadable tree becomes a recorded
-// problem or blind spot rather than an error, since a scan that errors
-// leaves the version with no verdict at all.
+// Inspect never fails on hostile content: an unreadable tree becomes a recorded
+// problem or blind spot, since an erroring scan leaves no verdict at all.
 func Inspect(tree *bundle.Bundle) (*Bundle, error) {
 	if tree == nil {
 		return nil, errors.New("inspect: no tree")
@@ -62,8 +51,7 @@ func Inspect(tree *bundle.Bundle) (*Bundle, error) {
 
 	out := &Bundle{lines: make(map[string][]string)}
 
-	// pkgspec is the same layout filter, manifest validator and kind
-	// derivation the ingestion path ran, so checks scan the filtered tree.
+	// Same layout filter the ingestion path ran, so checks scan the filtered tree.
 	scanned := tree
 	pkg, manifestErr := pkgspec.Inspect(tree, "")
 	if pkg != nil && pkg.Files != nil {
@@ -91,9 +79,7 @@ func Inspect(tree *bundle.Bundle) (*Bundle, error) {
 	if len(out.Manifest) > 0 {
 		expected, err := capability.Expected(out.Manifest)
 		if err != nil {
-			// A malformed expectation is a manifest problem, not an empty
-			// expected set — an empty set would suppress nothing that
-			// resembles a declaration.
+			// A malformed expectation is a manifest problem, not an empty set.
 			out.ManifestProblems = append(out.ManifestProblems, pkgspec.Problem{
 				SchemaPath:   "/properties/extensions",
 				InstancePath: "/extensions/" + pkgspec.ExtensionNamespace,
@@ -109,7 +95,7 @@ func Inspect(tree *bundle.Bundle) (*Bundle, error) {
 	return out, nil
 }
 
-// Paths are the bundle's file paths in sorted order.
+// Paths returns the bundle's file paths in sorted order.
 func (b *Bundle) Paths() []string { return append([]string(nil), b.paths...) }
 
 // File returns one file of the tree.
@@ -118,8 +104,7 @@ func (b *Bundle) File(filePath string) (bundle.File, bool) {
 	return file, ok
 }
 
-// Lines returns a file split into lines, cached because several rules read the
-// same instruction file.
+// Lines returns a file split into lines, cached because several rules read it.
 func (b *Bundle) Lines(filePath string) []string {
 	if cached, ok := b.lines[filePath]; ok {
 		return cached
@@ -142,8 +127,8 @@ func (b *Bundle) Line(filePath string, line int) string {
 	return all[line-1]
 }
 
-// ExpectedDetail is the declared target list for one capability name, and
-// whether a declaration exists at all.
+// ExpectedDetail returns the declared targets for one capability and whether it
+// was declared at all.
 func (b *Bundle) ExpectedDetail(name string) (targets []string, declared bool) {
 	for _, row := range b.Expected {
 		if row.Name == name {
@@ -153,8 +138,6 @@ func (b *Bundle) ExpectedDetail(name string) (targets []string, declared bool) {
 	return nil, false
 }
 
-// classify walks the tree once and fills Artefacts: which file is what, which
-// commands the scripts hold, which URLs the instruction files name.
 func (b *Bundle) classify() {
 	for _, filePath := range b.paths {
 		file := b.files[filePath]
@@ -179,9 +162,8 @@ func (b *Bundle) classify() {
 	}
 }
 
-// classifySurfaces feeds every hook command and stdio MCP command line to
-// the shell parser as a script of its own, at a `file#/pointer` path, so the
-// shell rules read what a client runs and not only what a bundle ships.
+// classifySurfaces parses hook commands and stdio MCP command lines as scripts
+// at `file#/pointer` paths, so shell rules see what a client actually runs.
 func (b *Bundle) classifySurfaces() {
 	b.Unparsed = append(b.Unparsed, b.Surfaces.Unreadable...)
 	for _, hook := range b.Surfaces.Hooks {
@@ -211,21 +193,16 @@ func (b *Bundle) addSynthetic(location, line string) {
 	}
 }
 
-// scriptExtensions are the files read as shell.
 var scriptExtensions = map[string]struct{}{
 	".sh": {}, ".bash": {}, ".zsh": {}, ".ksh": {},
 }
 
-// instructionExtensions are the files an agent reads as prose.
 var instructionExtensions = map[string]struct{}{
 	".md": {}, ".txt": {}, ".rst": {},
 }
 
-// classOf decides what a file is from its path, its extension and — only for
-// a shebang — its first line; never from sniffing content otherwise.
-//
-// SKILL.md is classified as an INSTRUCTION even though its frontmatter is the
-// manifest, so a prompt-injection rule still sees its body.
+// classOf uses the path, extension and shebang only, never content sniffing.
+// SKILL.md is an instruction, not a manifest, so prompt-injection rules see its body.
 func classOf(filePath string, data []byte) capability.Class {
 	base := path.Base(filePath)
 	ext := strings.ToLower(path.Ext(base))
@@ -256,8 +233,7 @@ func hasShellShebang(data []byte) bool {
 	return shellShebang.Match(line)
 }
 
-// urlPattern finds absolute http(s) URLs in prose, excluding trailing
-// punctuation that ends a sentence or closes a markdown link.
+// urlPattern excludes trailing punctuation that closes a markdown link.
 var urlPattern = regexp.MustCompile(`https?://[^\s"'<>)\]}]+`)
 
 func urlsIn(filePath string, lines []string) []capability.URL {

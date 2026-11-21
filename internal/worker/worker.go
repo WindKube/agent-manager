@@ -1,8 +1,6 @@
-// Package worker is the background-role framework: a background role is a
-// value, not a subclass. It declares what it needs, and the bootstrap hands
-// it exactly that and nothing else. Adding a worker means writing one
-// Definition and appending it to the list in registry.go — not touching the
-// cobra tree, this bootstrap, or the Dockerfile.
+// Package worker is the background-role framework: a role is a Definition
+// declaring what it needs, and the bootstrap hands it exactly that. Adding a
+// worker means writing one Definition and appending it to registry.go.
 package worker
 
 import (
@@ -23,14 +21,12 @@ type Definition struct {
 	Queues   map[string]int // queue name -> max concurrent
 	Needs    Needs          // what the bootstrap is permitted to construct
 	Register func(Deps, *river.Workers) error
-	// Periodic builds the jobs this role schedules, from the role's config.
 	Periodic func(Config) ([]PeriodicJob, error)
 }
 
-// PeriodicJob is a job a role inserts every Interval. The role schedules it
-// itself rather than through River's PeriodicJobs, which only the one client
-// elected leader of the whole queue database runs: with several roles sharing
-// it, every other role's schedule silently never fired.
+// PeriodicJob is a job a role inserts every Interval. Roles schedule their own
+// because River's PeriodicJobs run only on the queue database's single elected
+// leader, so other roles' schedules would never fire.
 type PeriodicJob struct {
 	Interval   time.Duration
 	Args       river.JobArgs
@@ -59,23 +55,16 @@ func (a Access) String() string {
 	}
 }
 
-// Needs is machine-checkable: a role that does not declare BlobWrite is never
-// handed a writer, so it cannot acquire one by accident three refactors from
-// now.
+// Needs is what a role may be handed; anything undeclared is never constructed.
 type Needs struct {
 	DB       Access // AccessNone | AccessRead | AccessReadWrite
 	Blob     Access
 	Outbound bool // may construct the SSRF-hardened client
 }
 
-// Deps is what a worker receives. Every field is an interface, and any field
-// the role did not declare is nil — a startup failure in tests rather than a
-// silent privilege escalation in production.
-//
-// Needs.DB selects which DSN the bootstrap uses, not how much the handle can
-// write: bun.IDB exposes NewUpdate() unconditionally, so read-only access
-// through the ORM is not expressible in Go, and the database's own grants are
-// what actually stop the write.
+// Deps is what a worker receives; any field the role did not declare is nil.
+// Needs.DB only selects the DSN: bun.IDB can always write, so the database's
+// own grants are what enforce read-only access.
 type Deps struct {
 	DB        bun.IDB
 	BlobRead  blob.Reader

@@ -1,7 +1,6 @@
 // Package notifier is the `worker notifier` role: it turns audit rows into
-// signed webhook deliveries. It holds a database credential narrowed to the
-// webhook tables, the audit log and the waiver columns, and the SSRF-guarded
-// outbound client; it holds no object-store credential at all.
+// signed webhook deliveries. It holds a narrowed database credential and the
+// SSRF-guarded client, and no object-store credential.
 package notifier
 
 import (
@@ -22,7 +21,7 @@ const RoleName = "notifier"
 // Concurrency is how many deliveries run at once.
 const Concurrency = 8
 
-// Definition is the whole description of the role.
+// Definition describes the role.
 func Definition() worker.Definition {
 	return worker.Definition{
 		Name:   RoleName,

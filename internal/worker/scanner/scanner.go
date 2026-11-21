@@ -1,9 +1,8 @@
 // Package scanner is the `worker scanner` role: it reads stored bundle bytes
 // and writes verdicts, check results and findings.
 //
-// It never writes bundle bytes — Needs declares Blob: AccessRead, and New
-// refuses to start if a writer arrives anyway — and it never executes,
-// sources, imports or evaluates anything from a bundle.
+// It never writes bundle bytes (Needs declares Blob: AccessRead and New refuses
+// a writer) and never executes, sources or evaluates anything from a bundle.
 package scanner
 
 import (
@@ -34,12 +33,10 @@ const Concurrency = 4
 // budget expires first and records `timed_out`.
 const jobTimeout = 10 * time.Minute
 
-// sweepTimeout bounds one rescan sweep.
 const sweepTimeout = 30 * time.Minute
 
-// Definition is the whole description of the role. Blob: AccessRead is the
-// mechanism behind "the scanner never writes bundle bytes" — worker.Build
-// hands out a blob.Writer only for AccessReadWrite.
+// Definition describes the scanner role. Blob: AccessRead is what keeps it from
+// writing bundle bytes, since worker.Build hands out a writer only for AccessReadWrite.
 func Definition() worker.Definition {
 	return worker.Definition{
 		Name:   RoleName,
@@ -53,7 +50,6 @@ func Definition() worker.Definition {
 	}
 }
 
-// register builds the handlers and loads the role's own config.
 func register(deps worker.Deps, workers *river.Workers) error {
 	cfg, err := config.Load[config.Scanner]()
 	if err != nil {
@@ -82,8 +78,7 @@ func register(deps worker.Deps, workers *river.Workers) error {
 
 // Options are the role's own settings.
 type Options struct {
-	// RulepackDir is AGENT_MANAGER_RULEPACK_DIR. Empty runs the pack embedded in
-	// this build.
+	// RulepackDir is AGENT_MANAGER_RULEPACK_DIR. Empty uses the embedded pack.
 	RulepackDir string
 	// Budget bounds one scan. Zero takes the config default.
 	Budget time.Duration
@@ -105,7 +100,7 @@ type Worker struct {
 	budget    time.Duration
 }
 
-// New assembles the handler from what the bootstrap handed the role.
+// New builds the scan handler, refusing any credential the scanner must not hold.
 func New(deps worker.Deps, opts Options) (*Worker, error) {
 	switch {
 	case deps.DB == nil:
@@ -167,9 +162,7 @@ func New(deps worker.Deps, opts Options) (*Worker, error) {
 // without one.
 const defaultBudget = 120 * time.Second
 
-// Fingerprint is the value this worker records in `scan.pack_version`. It names
-// every analyzer that will run, so upgrading either one makes the next scan of
-// an already-scanned version run instead of being suppressed by its own guard.
+// Fingerprint is the value recorded in `scan.pack_version`; see fingerprint.
 func (w *Worker) Fingerprint(ctx context.Context) string {
 	return fingerprint(ctx, w.analyzers)
 }

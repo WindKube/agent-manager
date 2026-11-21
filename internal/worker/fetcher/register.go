@@ -20,16 +20,12 @@ import (
 
 var (
 	ErrRegistration = errors.New("registration refused")
-	// ErrImmutable is FR-007's refusal. Which state blocked it is
-	// conflictMessage's job: the row can be held by a version still being
-	// fetched, or one whose fetch failed, and "published" would be a lie in
-	// both.
+	// ErrImmutable refuses re-registering an existing version; conflictMessage
+	// names the state that blocked it.
 	ErrImmutable = errors.New("this publisher/name@version cannot be registered again")
 )
 
-// uniqueVersionConstraint is named here because Postgres reports the
-// constraint, not the requirement: translating 23505-on-this-index into
-// ErrImmutable is what tells a publisher why the hub refused.
+// uniqueVersionConstraint is the index whose 23505 is translated into ErrImmutable.
 const uniqueVersionConstraint = "version_package_semver"
 
 // Registrar is who a registration is attributed to in the audit log: a
@@ -50,10 +46,9 @@ type NewVersion struct {
 	Source JobSource
 }
 
-// Register is the transactional half of a registration, shared by the api's
-// registerPackage and the upstream check so neither can drift from the
-// other: it moves the package's recorded source, inserts the invisible
-// version row, enqueues its fetch and writes the audit rows, all on tx.
+// Register is the transactional half of a registration, shared by the api and
+// the upstream check: it records the source, inserts the invisible version row,
+// enqueues its fetch and writes the audit rows, all on tx.
 func Register(ctx context.Context, tx bun.IDB, by Registrar, pkg *models.Package, nv NewVersion) (uuid.UUID, error) {
 	source := fetch.ProvenanceOf(fetch.SourceRef{
 		Kind: nv.Source.Kind, URL: nv.Source.URL, Ref: nv.Source.Ref, Subdirectory: nv.Source.Subdirectory,
@@ -71,8 +66,8 @@ func Register(ctx context.Context, tx bun.IDB, by Registrar, pkg *models.Package
 		return uuid.Nil, fmt.Errorf("%w: %w", ErrRegistration, err)
 	}
 
-	// Only so the refusal can name the state. The unique index below is
-	// what enforces FR-007, and it catches the race this SELECT loses.
+	// Only so the refusal can name the state; the unique index enforces it and
+	// catches the race this SELECT loses.
 	existing := new(models.Version)
 	switch selErr := tx.NewSelect().Model(existing).
 		Where("package_id = ? and semver = ?", pkg.ID, nv.Semver).
@@ -89,9 +84,7 @@ func Register(ctx context.Context, tx bun.IDB, by Registrar, pkg *models.Package
 		Semver:     nv.Semver,
 		SemverSort: sortKey,
 		ObjectKey:  ref.BundleKey(),
-		// manifest starts empty (NOT NULL) since the authoritative one isn't
-		// fetched yet; digest stays null, which the schema's scanning-check
-		// permits.
+		// NOT NULL, and the real manifest is not fetched yet.
 		Manifest: json.RawMessage(`{}`),
 		Tags:     nv.Tags,
 		DistTag:  models.DistTagNone,
@@ -106,11 +99,8 @@ func Register(ctx context.Context, tx bun.IDB, by Registrar, pkg *models.Package
 	}
 	if _, insertErr := tx.NewInsert().Model(version).Returning("NULL").Exec(ctx); insertErr != nil {
 		if isUniqueViolation(insertErr, uniqueVersionConstraint) {
-			// The SELECT above lost the race, and this transaction is already
-			// aborted, so the winning row cannot be re-read for a
-			// state-specific message. The rollback leaves what it stored
-			// untouched: no object key rewritten, no digest cleared, no
-			// fetch job enqueued over its bytes.
+			// Lost the race; the transaction is aborted, so the winning row cannot
+			// be re-read for a state-specific message.
 			return uuid.Nil, fmt.Errorf("%w: %s", ErrImmutable, conflictMessage(ref, nil))
 		}
 		return uuid.Nil, fmt.Errorf("create version %s: %w", ref, insertErr)
@@ -145,10 +135,8 @@ func Register(ctx context.Context, tx bun.IDB, by Registrar, pkg *models.Package
 }
 
 // recordSource moves the package's recorded source to this registration's.
-// A new ref from the same place is the normal course of releases and is
-// carried by the registration's own audit row; a different kind, URL or
-// subdirectory is a change of where the package comes from and is audited.
-// Moving off git ends upstream tracking, which only a git source can do.
+// Only a change of kind, URL or subdirectory is audited; moving off git ends
+// upstream tracking.
 func recordSource(ctx context.Context, tx bun.IDB, by Registrar, pkg *models.Package, source fetch.Provenance) error {
 	kind := models.FetchSourceKind(source.Kind)
 	moved := pkg.SourceKind != kind || pkg.SourceURL != source.URL || pkg.SourceSubdirectory != source.Subdirectory
@@ -223,10 +211,8 @@ func describeProvenance(source fetch.Provenance) string {
 	return described
 }
 
-// conflictMessage names the state that blocks a re-registration, since FR-007
-// is only actionable if it says what happened instead of asserting
-// "published" for a version that never got that far. existing is nil for the
-// race the insert-time catch lost, where the winning row cannot be re-read.
+// conflictMessage names the state that blocks a re-registration. existing is
+// nil when the insert lost a race and the winning row cannot be re-read.
 func conflictMessage(ref blob.VersionRef, existing *models.Version) string {
 	subject := ref.String()
 	switch {
@@ -245,8 +231,7 @@ func conflictMessage(ref blob.VersionRef, existing *models.Version) string {
 }
 
 // isUniqueViolation reports whether err is Postgres 23505 on the named
-// constraint, checked by sqlstate rather than message since messages are
-// localised and reworded between releases.
+// constraint, by sqlstate since messages are localised.
 func isUniqueViolation(err error, constraint string) bool {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) {

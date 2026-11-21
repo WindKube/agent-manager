@@ -5,10 +5,8 @@ import (
 	"agent-manager/internal/worker/scanner/rules"
 )
 
-// matchRegex is the `regex` matcher: an RE2 pattern applied line by line. RE2
-// rather than a backtracking engine, since the pattern is operator-edited
-// and the input is attacker-controlled. Scope defaults to instruction files;
-// a rule reading scripts or a manifest as text says so with `paths`.
+// matchRegex applies an RE2 pattern line by line; RE2 because the input is
+// attacker-controlled. Scope defaults to instruction files unless `paths` is set.
 func matchRegex(b *Bundle, rule rules.Rule) []hit {
 	pattern := rule.Match.Regexp()
 	if pattern == nil {
@@ -53,8 +51,6 @@ func valueOfMatch(match string, extract rules.Extract) string {
 	case rules.ExtractURLArgument:
 		return capability.HostOf(match)
 	default:
-		// path-argument and matched-text both judge the matched text itself;
-		// the difference is which condition the rule then names.
 		return match
 	}
 }

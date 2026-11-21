@@ -21,9 +21,7 @@ import (
 // and then waits for jobs in flight.
 const stopTimeout = 30 * time.Second
 
-// Run is the whole bootstrap for `agent-manager worker run <name>`. Nothing
-// here knows which role it is running: this function is what a new
-// Definition must not have to touch.
+// Run is the role-agnostic bootstrap for `agent-manager worker run <name>`.
 func Run(ctx context.Context, def Definition, cfg Config) error {
 	log := logging.New("worker/"+def.Name, cfg.LogLevel, cfg.LogFormat)
 	ctx = logging.Into(ctx, log)

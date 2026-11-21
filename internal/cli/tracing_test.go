@@ -20,9 +20,7 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The web role's hub client and the api role's router, wired exactly as the
-// bootstraps wire them: a span open in web must be the parent of the api's
-// server span, through real HTTP and the W3C headers.
+// Wired as the bootstraps wire them, over real HTTP and W3C headers.
 func TestTheTraceContinuesFromTheWebClientIntoTheAPIHandler(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
 	t.Setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "")

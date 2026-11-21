@@ -15,10 +15,8 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// Lookback is how far back the dispatcher looks for audit rows it has not
-// fanned out yet. It bounds both how long a transaction may stay open before
-// its audit row commits and how long the notifier may be down without losing
-// events; webhook_dispatch rows are kept for twice as long.
+// Lookback is how far back the dispatcher looks for undispatched audit rows,
+// which bounds how long the notifier may be down without losing events.
 const Lookback = 24 * time.Hour
 
 const dispatchBatch = 500
@@ -60,14 +58,10 @@ type pendingEvent struct {
 }
 
 // DispatchEvents enqueues one notify job per (subscription, event) for every
-// audit row not yet dispatched, and returns how many it enqueued.
-//
-// Exactly once: an audit row is claimed by inserting its webhook_dispatch
-// row, and its jobs are written to the outbox in the same transaction. A
-// concurrent dispatcher's insert of the same key waits for this one to
-// commit and then claims nothing, and a rollback releases the claim and the
-// jobs together. Scanning a time window rather than following an id cursor
-// is what catches a row whose transaction commits after a later one's.
+// undispatched audit row and returns how many it enqueued. Each row is claimed
+// via its webhook_dispatch insert in the same transaction as its jobs, so
+// dispatch is exactly once. A time window rather than an id cursor catches rows
+// whose transactions commit out of order.
 func DispatchEvents(ctx context.Context, db bun.IDB, enqueue outbox.Enqueuer) (int, error) {
 	total := 0
 	for {

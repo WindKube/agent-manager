@@ -16,20 +16,10 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The bytes half of the seed.
-//
-// Every seeded version is a real tree: a manifest built by MARSHALLING the domain
-// types (so a field the published schemas do not define cannot be written at
-// all), the files a scanner would read, then pkgspec.Inspect over the whole thing
-// — the same validation, the same layout filter and the same component derivation
-// the fetcher runs. A manifest that stopped conforming would fail the seed rather
-// than reach a screen, which is the point: 001's research R1 found that the
-// design's own manifests are rejected by the published schemas, and a fixture
-// nobody validates is how that gets discovered by a user instead.
-//
-// bundle.Pack is deterministic — path order, epoch mtimes, two modes — so the
-// same dataset produces the same digest on every run, and the digest a seeded row
-// carries is the digest of the bytes actually in the bucket.
+// Every seeded version is a real tree built from the domain types and run
+// through pkgspec.Inspect like the fetcher does, so a nonconforming manifest
+// fails the seed instead of reaching a screen. bundle.Pack is deterministic, so
+// digests are stable across runs.
 
 // builtVersion is one version, ready for both halves of the write.
 type builtVersion struct {
@@ -45,7 +35,7 @@ type builtVersion struct {
 
 func (b *builtVersion) id() string { return b.pkg.id() }
 
-// build turns the dataset into bytes. It touches nothing outside this process.
+// build turns the dataset into bytes without touching anything external.
 func build() ([]*builtVersion, error) {
 	out := make([]*builtVersion, 0, 16)
 	for i := range designPackages {
@@ -83,9 +73,7 @@ func buildVersion(spec *packageSpec, version versionSpec) (*builtVersion, error)
 	if inspected.Name != spec.name {
 		return nil, fmt.Errorf("%s: the manifest names %q", ref, inspected.Name)
 	}
-	// Only a plugin manifest carries a version. Agent Skills frontmatter has no
-	// such field, so a skill's semver comes from the registration and there is
-	// nothing here to disagree with.
+	// Skill frontmatter has no version field, so only plugins can disagree.
 	if spec.kind == models.PackageKindPlugin && inspected.Semver != version.semver {
 		return nil, fmt.Errorf("%s: the manifest names version %q", ref, inspected.Semver)
 	}
@@ -93,8 +81,7 @@ func buildVersion(spec *packageSpec, version versionSpec) (*builtVersion, error)
 		return nil, fmt.Errorf("%s: the tree is a %s", ref, inspected.Kind)
 	}
 
-	// The FILTERED tree is what gets packed: a seeded bundle must be what the
-	// fetcher would have stored, not what the dataset happened to describe.
+	// Pack the filtered tree, matching what the fetcher would store.
 	packed, digest, size, err := bundle.Pack(inspected.Files)
 	if err != nil {
 		return nil, fmt.Errorf("pack %s: %w", ref, err)
@@ -185,10 +172,8 @@ func buildTree(spec *packageSpec, semver string) (*bundle.Bundle, error) {
 	return tree, nil
 }
 
-// pluginManifest marshals the domain's own Plugin type, which is why the result
-// cannot carry `agentPluginsVersion`, `components`, `network`, `filesystem` or
-// `signature`: the type has no field for any of them, and the schema this is then
-// validated against refuses unknown keys outright.
+// pluginManifest marshals the domain Plugin type, so it cannot emit keys the
+// schema would refuse.
 func pluginManifest(spec *packageSpec, semver string) ([]byte, error) {
 	manifest := pkgspec.Plugin{
 		Schema:      pkgspec.PluginSchema100,
@@ -208,10 +193,8 @@ func pluginManifest(spec *packageSpec, semver string) ([]byte, error) {
 	return json.MarshalIndent(manifest, "", "  ")
 }
 
-// skillManifest renders SKILL.md: the frontmatter fence, then the prose an agent
-// reads. The expected capability set goes under `metadata` rather than
-// `extensions`, because Agent Skills frontmatter has no `extensions` key and its
-// schema refuses one (FR-018a).
+// skillManifest renders SKILL.md. Expected capabilities go under `metadata`
+// because the Agent Skills schema refuses an `extensions` key.
 func skillManifest(name, description string, tools []string, expected []capabilitySpec) (string, error) {
 	front := pkgspec.Skill{
 		Name:         name,
@@ -267,9 +250,8 @@ func mcpConfig(servers []serverSpec) ([]byte, error) {
 	return json.MarshalIndent(config, "", "  ")
 }
 
-// asMap re-encodes a typed value as the generic form yaml.Marshal can emit. The
-// alternative is a second literal of the same structure, which is how a manifest
-// and the panel beside it start disagreeing.
+// asMap re-encodes a typed value as a generic map for yaml.Marshal, avoiding a
+// second literal that could drift from the typed one.
 func asMap(value any) (map[string]any, error) {
 	encoded, err := json.Marshal(value)
 	if err != nil {
@@ -282,13 +264,8 @@ func asMap(value any) (map[string]any, error) {
 	return out, nil
 }
 
-// commitBytes writes every seeded version's objects.
-//
-// blob.Committer is used rather than a bare writer because it is the only thing
-// that writes index.json last, and a seeded package whose index does not name its
-// versions is invisible to blob.Catalog — the same half-published state FR-008
-// exists to prevent. It also carries the idempotence for this half: a version the
-// index already names short-circuits, so a re-run writes no object at all.
+// commitBytes writes every seeded version's objects through blob.Committer,
+// which writes index.json last and skips versions the index already names.
 func commitBytes(ctx context.Context, deps Deps, built []*builtVersion) (int, error) {
 	committer := blob.NewCommitter(deps.BlobRead, deps.BlobWrite)
 

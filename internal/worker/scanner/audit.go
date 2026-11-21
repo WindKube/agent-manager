@@ -13,16 +13,13 @@ import (
 	"agent-manager/internal/worker/scanner/checks"
 )
 
-// auditActor and auditSource are what a background role writes into the
-// audit log: actor_kind `system` separates a role's action from a person's.
 const (
 	auditActor  = RoleName
 	auditSource = "system"
 )
 
-// writeScanAudit inserts the one audit row a verdict is accountable for. It
-// takes the transaction rather than a pool, so the record cannot survive a
-// rolled back scan or go missing after a committed one.
+// writeScanAudit takes the transaction rather than a pool so the audit row
+// commits or rolls back together with the verdict.
 func writeScanAudit(ctx context.Context, tx bun.IDB, job Job, stamp string, result analysis, verdict models.Verdict) error {
 	event, err := audit.New(audit.Entry{
 		Kind:      models.AuditKindScan,
@@ -50,8 +47,6 @@ func writeScanAudit(ctx context.Context, tx bun.IDB, job Job, stamp string, resu
 	return nil
 }
 
-// scanText is the audit line: what was scanned, under which rules, and what
-// came of it.
 func scanText(job Job, stamp string, result analysis, verdict models.Verdict) string {
 	switch {
 	case result.timedOut:

@@ -14,10 +14,9 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// verifySignatures checks every bundle the source found against the archive
-// as downloaded and keeps the first that verifies, else the first that did
-// not. An unverifiable bundle is a recorded verdict, never a failed fetch;
-// only an unreachable trust root is, and that one is retried.
+// verifySignatures keeps the first bundle that verifies, else the first that
+// did not. An unverifiable bundle is a recorded verdict, not a failed fetch;
+// only an unreachable trust root fails, and is retried.
 func (w *Worker) verifySignatures(ctx context.Context, versionID uuid.UUID, tree fetch.Tree) (models.Signature, signing.Result, error) {
 	row := models.Signature{VersionID: versionID, Kind: models.SignatureKindNone}
 	if len(tree.Signatures) == 0 {

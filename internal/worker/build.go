@@ -18,13 +18,9 @@ import (
 	"agent-manager/internal/store"
 )
 
-// Config is the credential set the worker bootstrap may draw on. Nothing here
-// is `required`: which credentials a role must have is stated by its Needs,
-// and Build fails fast when a declared need has no credential behind it.
-// Marking them required in the env struct instead would force every role to
-// carry every credential it does not use. Per-role knobs (the rule-pack
-// directory, the scan budget) stay in the role's own struct in
-// internal/config, read by its Definition, not here.
+// Config is the credential set the worker bootstrap may draw on. Nothing is
+// `required` here: a role's Needs say which credentials it must have, and
+// Build fails fast when one is missing.
 type Config struct {
 	config.Observability
 
@@ -48,9 +44,7 @@ type Built struct {
 	bucket *blob.Bucket
 }
 
-// Queue is the pool River works against. It is opened alongside the
-// application handle, so it is nil for a role that declares no database
-// access.
+// Queue is the pool River works against; nil for a role with no database access.
 func (b *Built) Queue() *pgxpool.Pool {
 	if b.store == nil {
 		return nil
@@ -73,11 +67,9 @@ func (b *Built) Close() error {
 	return errors.Join(errs...)
 }
 
-// Build constructs exactly what def.Needs declares, and nothing else. An
-// undeclared capability comes back nil: a role that did not declare Blob:
-// AccessReadWrite gets a nil BlobWrite, which panics on first use in a test
-// rather than quietly widening the role's reach in production. A declared
-// capability with no credential behind it is a startup error, not a nil.
+// Build constructs exactly what def.Needs declares. An undeclared capability
+// comes back nil rather than widening the role's reach; a declared one with no
+// credential behind it is a startup error.
 func Build(ctx context.Context, def Definition, cfg Config, log zerolog.Logger) (*Built, error) {
 	if def.Name == "" {
 		return nil, errors.New("worker definition has no name")
@@ -121,8 +113,7 @@ func Build(ctx context.Context, def Definition, cfg Config, log zerolog.Logger) 
 		built.bucket = bucket
 		built.Deps.BlobRead = bucket.Reader()
 
-		// The write half only for AccessReadWrite: this branch is the whole
-		// of "the fetcher is the only role with object-store write access".
+		// This branch is what keeps the fetcher the only role with object-store write access.
 		if def.Needs.Blob == AccessReadWrite {
 			built.Deps.BlobWrite = bucket.Writer()
 		}

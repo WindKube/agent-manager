@@ -8,16 +8,13 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// The dataset, transcribed from the design. Where the design contradicts
-// the published package specifications, the specifications win, and the
-// difference is noted at the point it occurs; where the design
-// contradicts itself, the reading that keeps stored rows coherent wins.
+// The dataset, transcribed from the design. Where it contradicts the published
+// package specifications, the specifications win.
 
 type publisherSpec struct {
 	slug    string
 	display string
-	// verified is the trust flag, set here and never inferred from the
-	// slug: `example` is a namespace, not a badge.
+	// verified is set explicitly, never inferred from the slug.
 	verified bool
 }
 
@@ -32,15 +29,14 @@ var publishers = []publisherSpec{
 	{"community/finops", "FinOps", false},
 }
 
-// categories is the vocabulary in the design's order: the table has no
-// position column, so the facet recovers curated order from row ids.
+// categories is in the design's order; the table has no position column, so
+// order is recovered from row ids.
 var categories = []string{
 	"Infrastructure", "Security & compliance", "Data", "Developer workflow", "Documentation",
 }
 
-// policy is the singleton org_policy row. requireSignedBundles is seeded
-// off, unlike the design: nothing here can produce a signature yet, so
-// seeding it on would make every profile screen render empty.
+// policy is the singleton org_policy row. requireSignedBundles is off because
+// nothing seeded is signed, and on it would empty every profile screen.
 var policy = models.OrgPolicy{
 	ID:                    models.OrgPolicySingletonID,
 	ScanGate:              models.ScanGateWarnWithOverride,
@@ -51,19 +47,15 @@ var policy = models.OrgPolicy{
 	AllowPersonalProfiles: true,
 }
 
-// fileSpec is one file of a seeded tree, relative to whatever contains
-// it: the package root, a skill's directory, or an extension namespace.
+// fileSpec is one file of a seeded tree, relative to its container.
 type fileSpec struct {
 	path string
 	body string
 	exec bool
 }
 
-// capabilitySpec is one row of the design's capability panel. `expected`
-// rows are read back out of the manifest by capability.Expected, so the
-// panel can't show a declaration the manifest doesn't contain — these
-// entries are what the manifest is built from. `inferred` stands in for
-// the scanner's output until that worker is registered.
+// capabilitySpec is one row of the capability panel. `expected` rows are what
+// the manifest is built from; `inferred` stands in for scanner output.
 type capabilitySpec struct {
 	name       string
 	level      string
@@ -84,8 +76,7 @@ type extSpec struct {
 	files []fileSpec
 }
 
-// skillSpec is a skill distributed inside a plugin, validated on the
-// same terms as a standalone skill.
+// skillSpec is a skill distributed inside a plugin.
 type skillSpec struct {
 	name        string
 	description string
@@ -93,11 +84,9 @@ type skillSpec struct {
 	files       []fileSpec
 }
 
-// flawSpec is the line a finding quotes, read back off the built tree
-// rather than typed a second time: the seed refuses to start if the line
-// isn't actually there.
+// flawSpec is the line a finding quotes; the seed fails if the built tree
+// does not contain it.
 type flawSpec struct {
-	// semvers are the versions whose tree carries the line.
 	semvers []string
 	path    string
 	line    string
@@ -119,11 +108,9 @@ type versionSpec struct {
 	semver  string
 	verdict models.Verdict
 	distTag models.DistTag
-	// age is the version's age at seed time, stored as an offset so every
-	// one is distinct — `order by updated` needs a total order.
+	// age must be distinct per version so `order by updated` is a total order.
 	age time.Duration
-	// scanned is false for a version whose scan is still in flight (the
-	// design's "Scan pending" badge).
+	// scanned is false for a version whose scan is still pending.
 	scanned bool
 }
 
@@ -134,10 +121,8 @@ type packageSpec struct {
 	category    string
 	description string
 	keywords    []string
-	// tools is a skill's `allowed-tools`, experimental and non-restrictive:
-	// recorded and shown, nothing reads it as a boundary.
-	tools []string
-	// parent is the plugin that distributes this skill, as namespace/name.
+	// tools is a skill's `allowed-tools`; shown only, never enforced.
+	tools      []string
 	parent     string
 	expected   []capabilitySpec
 	inferred   []capabilitySpec
@@ -148,8 +133,7 @@ type packageSpec struct {
 	files      []fileSpec
 	flaw       *flawSpec
 	versions   []versionSpec
-	// signer is the expected Sigstore identity pattern, issued by GitHub
-	// Actions. Nothing here is signed, so it only shows the control set.
+	// signer is the expected Sigstore identity; display only, nothing is signed.
 	signer string
 }
 
@@ -280,8 +264,7 @@ git log --oneline "${1:?since}"..HEAD
 		servers: []serverSpec{
 			{name: "github", transport: "streamable-http", url: "https://api.github.com/mcp"},
 		},
-		// The quoted path is dropped by the spec-layout filter, so the
-		// unpinned install moves to the contained skill's scripts directory.
+		// Moved under the skill's scripts directory since the layout filter drops the design's path.
 		flaw: &flawSpec{
 			semvers: []string{"1.2.6", "1.2.7"},
 			path:    "skills/release-notes/scripts/publish.sh",
@@ -452,9 +435,7 @@ set -euo pipefail
 aws ce get-cost-and-usage --time-period "Start=$1,End=$2" --granularity DAILY >"$TMPDIR/ce.json"
 `},
 		},
-		// No such manifest field exists, so the over-broad write is
-		// expressed where the scanner would actually find it: a script
-		// whose output path defaults to the working directory.
+		// No manifest field expresses this, so it lives in a script the scanner would read.
 		flaw: &flawSpec{
 			semvers: []string{"2.0.0"},
 			path:    "scripts/explain-costs.sh",
@@ -473,8 +454,7 @@ aws ce get-cost-and-usage --time-period "Start=$1,End=$2" --granularity DAILY >"
 		keywords:    []string{"pii", "security"},
 		tools:       []string{"Read", "Write"},
 		parent:      "example/security-review-kit",
-		// Declared but never observed: the seeded manifest carries an
-		// expectation the inferred set does not answer.
+		// Declared but never observed.
 		expected: []capabilitySpec{
 			{name: "shell", level: "review"},
 		},
@@ -491,7 +471,6 @@ aws ce get-cost-and-usage --time-period "Start=$1,End=$2" --granularity DAILY >"
 	},
 }
 
-// checkDef is one entry of the rule pack's check list, in the design's order.
 type checkDef struct {
 	id    string
 	label string
@@ -507,8 +486,7 @@ var standardChecks = []checkDef{
 	{"dependency-pinning", "Dependency pinning"},
 }
 
-// packVersion is the rule-pack version the seeded scans claim, distinct
-// from the real scanner's so a later real scan does not collide with it.
+// packVersion differs from the real scanner's so a later real scan does not collide.
 const packVersion = "0.0.0-seed"
 
 type checkSpec struct {
@@ -531,8 +509,7 @@ type findingSpec struct {
 	pkg      string
 	semver   string
 	state    models.FindingState
-	// checks are the deviations from an all-pass matrix: every other
-	// check in standardChecks is recorded as a pass.
+	// checks are the deviations; every other standard check passes.
 	checks   []checkSpec
 	override *overrideSpec
 }
@@ -574,9 +551,7 @@ var designFindings = []findingSpec{
 		title:    "Unpinned dependency installed by a packaged script",
 		detail: "A packaged script installs a dependency with no version constraint, so the same " +
 			"profile revision can resolve differently on two machines.",
-		// Against the release before the latest, since a version still
-		// scanning cannot carry a finding — this keeps both the pending
-		// badge and the open finding.
+		// Against the previous release, since the latest is still scanning.
 		pkg:    "community/release-toolkit",
 		semver: "1.2.6",
 		state:  models.FindingStateOpen,
@@ -593,8 +568,7 @@ var designFindings = []findingSpec{
 			"reports/ only. Allowed with an override recorded by the reviewer.",
 		pkg:    "community/aws-cost-explainer",
 		semver: "2.0.0",
-		// Approved with an override; the check matrix has only a warn, so
-		// the verdict is clean while still carrying a finding a human reviewed.
+		// A clean verdict that still carries a human-reviewed finding.
 		state: models.FindingStateApproved,
 		checks: []checkSpec{
 			{id: "filesystem-scope", result: models.CheckResultWarn, warns: 1},
@@ -614,11 +588,8 @@ type identitySpec struct {
 	groups  []string
 }
 
-// identities are the colleagues the seeded history happened to. None of
-// them can sign in: all four are fictional and absent from
-// deploy/local/glauth/glauth.cfg (see DirectoryUsers in groups.go). The
-// subject is synthetic and prefixed to say so; a membership naming any of
-// them still resolves via auth.Principal.Refs()'s email fallback.
+// identities are fictional colleagues in the seeded history; none can sign in,
+// since they are absent from glauth.cfg.
 var identities = []identitySpec{
 	{"seed:pkaczmarek@example.com", "pkaczmarek@example.com", "Pawel Kaczmarek", []string{GroupEngPlatform, GroupEngAll}},
 	{"seed:ewojcik@example.com", "ewojcik@example.com", "Ewa Wojcik", []string{GroupEngSecurity, GroupEngAll}},
@@ -635,8 +606,7 @@ type memberSpec struct {
 type entrySpec struct {
 	pkg  string
 	mode models.EntryMode
-	// version is the pinned semver, or range expression, or empty for
-	// floating.
+	// version is a semver, a range, or empty for floating.
 	version string
 }
 
@@ -647,12 +617,9 @@ type profileSpec struct {
 	visibility    models.ProfileVisibility
 	ownerTeam     string
 	defaultPolicy models.VersionPolicy
-	// revisions is the head revision number: seeded gapless from r1 up,
-	// each resolving the entries that existed by then.
+	// revisions is the head revision number; history is seeded gapless from r1.
 	revisions int
-	// gate is the org gate recorded in this profile's lockfiles: the gate
-	// in force when published, not today's policy. One seeded profile
-	// deliberately disagrees with the current org_policy row.
+	// gate is the gate in force when published, which may differ from today's policy.
 	gate     models.ScanGate
 	headNote string
 	targets  []models.SyncTargetKind
@@ -685,8 +652,7 @@ var designProfiles = []profileSpec{
 			{pkg: "community/aws-cost-explainer", mode: models.EntryModeLatest},
 			{pkg: "example/pii-redactor", mode: models.EntryModeLatest},
 			{pkg: "example/k8s-incident-triage", mode: models.EntryModeLatest},
-			// Flagged; under warn-with-override it resolves with a warning
-			// rather than being dropped.
+			// Flagged, so it resolves with a warning rather than being dropped.
 			{pkg: "community/postgres-migration-guard", mode: models.EntryModeLatest},
 		},
 	},
@@ -719,8 +685,7 @@ var designProfiles = []profileSpec{
 		ownerTeam:     "example/platform",
 		revisions:     2,
 		defaultPolicy: models.VersionPolicyFloatingLatest,
-		// Published while the gate was `approval`: disagrees with the
-		// current org policy on purpose.
+		// Deliberately disagrees with the current org policy.
 		gate:     models.ScanGateApproval,
 		headNote: "guard skill still awaiting approval",
 		targets:  []models.SyncTargetKind{models.SyncTargetKindClaudeCode},
@@ -728,8 +693,7 @@ var designProfiles = []profileSpec{
 			{models.SubjectKindUser, "pkaczmarek@example.com", models.MembershipRoleOwner},
 			{models.SubjectKindGroup, GroupEngSecurity, models.MembershipRoleReviewer},
 		},
-		// Not stated here: under the `approval` gate above, the resolver
-		// excludes this entry as `flagged-awaiting-approval` on its own.
+		// The resolver excludes the flagged entry under the `approval` gate on its own.
 		entries: []entrySpec{
 			{pkg: "community/postgres-migration-guard", mode: models.EntryModeLatest},
 		},
@@ -768,10 +732,8 @@ type auditSpec struct {
 	subject   audit.Subject
 }
 
-// auditRows departs from the design mock in two ways, both because an
-// audit row records something that happened here: the actor is the email
-// writeAudit takes, not a display form, and the rescan row counts the
-// versions this seed actually wrote.
+// auditRows differs from the design: the actor is an email, and the rescan row
+// counts the versions this seed actually wrote.
 func auditRows(versions int) []*auditSpec {
 	return []*auditSpec{
 		{"jkowalski@example.com", models.ActorKindIdentity, models.AuditKindSync,

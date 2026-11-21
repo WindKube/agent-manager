@@ -123,9 +123,7 @@ func (w *Worker) run(ctx context.Context, job Job) (Result, error) {
 		return Result{}, classify(job.String(), err)
 	}
 
-	// A manifest that names its own version must agree with the version
-	// being registered, or the digest would be a lie about which release it
-	// is.
+	// A manifest's own version must match the one being registered.
 	if pkg.Semver != "" && pkg.Semver != job.Semver {
 		return Result{}, classify(job.String(),
 			fmt.Errorf("%w: manifest says %s, registration says %s", errVersionMismatch, pkg.Semver, job.Semver))
@@ -135,15 +133,13 @@ func (w *Worker) run(ctx context.Context, job Job) (Result, error) {
 			fmt.Errorf("%w: manifest name is %q, registration is for %q", pkgspec.ErrManifestInvalid, pkg.Name, job.Name))
 	}
 
-	// Pack is deterministic, which makes the digest a function of the tree
-	// alone.
+	// Pack is deterministic, so the digest depends only on the tree.
 	packed, digest, size, err := bundle.Pack(pkg.Files)
 	if err != nil {
 		return Result{}, classify(job.String(), err)
 	}
 
-	// Latest is false here and moved afterwards: which version is latest is
-	// decided under a row lock in the publish transaction below.
+	// Latest is decided later, under a row lock in the publish transaction.
 	commit, err := w.committer.Commit(ctx, job.VersionRef(), blob.VersionParts{
 		Bundle:             packed,
 		ManifestObjectName: pkg.ManifestObject,
@@ -169,8 +165,7 @@ func (w *Worker) run(ctx context.Context, job Job) (Result, error) {
 		return Result{}, classify(job.String(), err)
 	}
 	if !published {
-		// The transaction found the version already published, losing a race
-		// with the pre-flight check.
+		// Lost a race with the pre-flight check.
 		return Result{AlreadyStored: true, Package: pkg, Origin: tree.Origin}, nil
 	}
 
@@ -182,9 +177,8 @@ func (w *Worker) run(ctx context.Context, job Job) (Result, error) {
 	return Result{Commit: commit, Package: pkg, Origin: tree.Origin, Latest: latest}, nil
 }
 
-// refuseMovedTag compares a resolved tag against every commit a version from
-// the same repository recorded for it: a tag names one commit per
-// repository, whichever package recorded it.
+// refuseMovedTag refuses a tag that resolves to a different commit than any
+// version from the same repository recorded for it.
 func (w *Worker) refuseMovedTag(ctx context.Context, job Job, pin fetch.Pin) error {
 	if !pin.Tag {
 		return nil

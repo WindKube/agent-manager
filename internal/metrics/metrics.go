@@ -1,8 +1,5 @@
-// Package metrics is the process's Prometheus instrumentation: the metric
-// families every role may record into, the HTTP middleware for the two serving
-// roles, and the listener that exposes them. It holds no datastore handle;
-// samplers that need one live beside the role that owns the credential and only
-// set gauges declared here.
+// Package metrics is the process's Prometheus instrumentation. It holds no
+// datastore handle; samplers live beside the role that owns the credential.
 package metrics
 
 import (
@@ -90,9 +87,8 @@ func StatusClass(status int) string {
 	}
 }
 
-// Poll calls sample now and then every interval until ctx ends. Samplers that
-// query a database run here rather than on scrape, so a slow scrape never
-// stacks queries.
+// Poll calls sample now and then every interval until ctx ends, so database
+// samplers never stack queries on slow scrapes.
 func Poll(ctx context.Context, interval time.Duration, sample func(context.Context)) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()

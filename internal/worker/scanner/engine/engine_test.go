@@ -14,10 +14,8 @@ import (
 	"agent-manager/internal/worker/scanner/rules"
 )
 
-// The two golden reports are real responses from the pinned engine, captured
-// against `POST /scan-upload`. They are the contract this package is written
-// to: the finding object's own fields are not documented, so a change to them
-// has to show up as a failure here rather than as a quietly emptier scan.
+// The golden reports are real `POST /scan-upload` responses from the pinned
+// engine. Its finding fields are undocumented, so a change must fail here.
 
 func loadReport(t *testing.T, name string) report {
 	t.Helper()
@@ -37,9 +35,7 @@ func TestTranslateAHostileReport(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("the two skill-quality complaints are counted, not stored", func(t *testing.T) {
-		// SOCIAL_ENG_VAGUE_DESCRIPTION (low) and MANIFEST_MISSING_LICENSE (info)
-		// say nothing about whether the package is hostile. Storing them would
-		// flag a version for having a short description.
+		// SOCIAL_ENG_VAGUE_DESCRIPTION (low) and MANIFEST_MISSING_LICENSE (info).
 		require.Len(t, result.Findings, 6)
 		for _, finding := range result.Findings {
 			require.NotEqual(t, rules.SeverityLow, finding.Severity)
@@ -47,8 +43,7 @@ func TestTranslateAHostileReport(t *testing.T) {
 	})
 
 	t.Run("the obfuscated execution flow is stored at high", func(t *testing.T) {
-		// This is the finding the whole feature is for: a base64 payload piped
-		// into a shell, which the rule pack's matchers read as an opaque string.
+		// A base64 payload piped into a shell, opaque to the rule pack's matchers.
 		found := false
 		for _, finding := range result.Findings {
 			if finding.RuleID != "CORRELATED_OBFUSCATION_EXECUTION_FLOW" {
@@ -86,7 +81,6 @@ func TestTranslateAHostileReport(t *testing.T) {
 		correlation := result.Checks[byID[ID+"/correlation"]]
 		require.Equal(t, "fail", string(correlation.Result.Outcome))
 
-		// Nothing was reported by these, and nothing is what they report.
 		for _, name := range []string{"bytecode", "pipeline", "behavioral"} {
 			require.Equal(t, "pass", string(result.Checks[byID[ID+"/"+name]].Result.Outcome), name)
 		}
@@ -108,9 +102,7 @@ func TestTranslateABenignReport(t *testing.T) {
 }
 
 func TestAResponseThisBuildCannotReadIsNotACleanScan(t *testing.T) {
-	// The failure this guards is the engine renaming a field. Every finding
-	// then parses to nothing, and without the cross-check the version would be
-	// recorded clean on the strength of a response nobody read.
+	// Guards against the engine renaming a field so every finding parses to nothing.
 	t.Run("a counted finding that did not parse", func(t *testing.T) {
 		_, err := translate(report{
 			IsSafe:        false,
@@ -127,9 +119,6 @@ func TestAResponseThisBuildCannotReadIsNotACleanScan(t *testing.T) {
 	})
 
 	t.Run("but thresholding is not a mismatch", func(t *testing.T) {
-		// Everything parsed and everything fell below the threshold. That is a
-		// report this build read correctly, and calling it a shape mismatch
-		// would degrade a scan for working exactly as specified.
 		result, err := translate(report{
 			IsSafe:        false,
 			MaxSeverity:   "LOW",
@@ -152,8 +141,7 @@ func TestSeverityMapping(t *testing.T) {
 		"LOW":      rules.SeverityLow,
 		"INFO":     rules.SeverityLow,
 		"critical": rules.SeverityHigh,
-		// The engine version is pinned, so a severity this build has not seen
-		// means the response changed under it. Loud beats quiet.
+		// An unseen severity means the pinned engine's response changed.
 		"CATASTROPHIC": rules.SeverityHigh,
 		"":             rules.SeverityHigh,
 	} {
@@ -161,17 +149,8 @@ func TestSeverityMapping(t *testing.T) {
 	}
 }
 
-// TestEveryEnabledAnalyzerHasALabelAndAnExplanation is what makes an
-// analyzer added to Analyzers with no label or explanation impossible to
-// ship silently: Label and Explain both fall back to a generic string for
-// a name they don't recognise, so this walks Analyzers itself rather than
-// the maps, to catch exactly the case the fallback would otherwise hide.
-//
-// This covers the analyzer NAMES this project's own code enumerates. The
-// individual rule ids the pinned engine raises under them (e.g.
-// YARA_prompt_injection_generic) are the third-party engine's own and are
-// not enumerable here — that per-rule prose comes from the engine's live
-// response instead (see translateFinding), not from this package.
+// Walks Analyzers rather than the maps, because Label and Explain fall back to
+// a generic string that would hide a missing entry.
 func TestEveryEnabledAnalyzerHasALabelAndAnExplanation(t *testing.T) {
 	for _, name := range Analyzers {
 		label, ok := labels[name]
@@ -204,16 +183,13 @@ func TestNoRequestCanReachANetworkAnalyzer(t *testing.T) {
 	form, err := reader.ReadForm(1 << 20)
 	require.NoError(t, err)
 
-	// Every analyzer that would reach a network or want an API key is sent
-	// false, and none of them is reachable from Options.
 	for _, name := range []string{"use_llm", "use_virustotal", "use_aidefense", "use_trigger", "use_osv", "enable_meta"} {
 		require.Equal(t, []string{"false"}, form.Value[name], name)
 	}
 	require.Equal(t, []string{"true"}, form.Value["use_behavioral"])
 	require.Equal(t, []string{PolicyBalanced}, form.Value["policy"])
 
-	// The engine takes its API keys as request headers. Sending none is the
-	// second reason a cloud analyzer cannot run even if a toggle were flipped.
+	// API keys travel as headers; none is sent, so no cloud analyzer can run.
 	require.Empty(t, form.Value["vt_api_key"])
 	require.Empty(t, form.Value["aidefense_api_url"])
 

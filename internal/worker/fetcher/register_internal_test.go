@@ -9,9 +9,6 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// conflictMessage is a pure function of the row's own columns: a version never
-// fetched, one the scanner flagged or rejected, and one simply published all
-// have to read differently, and this is the one place that distinction is made.
 func TestConflictMessageNamesTheStateBlockingRegistration(t *testing.T) {
 	ref := blob.VersionRef{Namespace: "acme", Name: "widget", Semver: "1.2.3"}
 

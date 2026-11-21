@@ -1,6 +1,5 @@
 // Package tracing installs OpenTelemetry tracing from the standard OTEL_*
-// environment. With no OTLP endpoint configured it installs nothing and the
-// global provider stays the no-op one, so instrumentation costs next to nothing.
+// environment; with no OTLP endpoint it leaves the no-op provider in place.
 package tracing
 
 import (
@@ -71,24 +70,21 @@ func Setup(ctx context.Context, role, version string) (shutdown func(context.Con
 	return provider.Shutdown, nil
 }
 
-// Gin opens a server span per request, named by route pattern and continuing
-// any W3C trace context the caller sent. Requests to the routes in quiet, the
-// health probes, are not traced.
+// Gin opens a server span per request, named by route pattern. Routes in quiet
+// are not traced.
 func Gin(service string, quiet ...string) gin.HandlerFunc {
 	return otelgin.Middleware(service, otelgin.WithGinFilter(func(c *gin.Context) bool {
 		return !slices.Contains(quiet, c.FullPath())
 	}))
 }
 
-// Transport traces outbound requests and propagates the trace context, for
-// calls between this system's own roles.
+// Transport traces and propagates trace context, for calls between this system's roles.
 func Transport(base http.RoundTripper) http.RoundTripper {
 	return otelhttp.NewTransport(base)
 }
 
-// OpaqueTransport traces outbound requests but sends no trace headers, for
-// calls to hosts outside this system: a webhook receiver or a forge has no
-// business learning internal trace ids.
+// OpaqueTransport traces outbound requests but sends no trace headers, so
+// external hosts never learn internal trace ids.
 func OpaqueTransport(base http.RoundTripper) http.RoundTripper {
 	return otelhttp.NewTransport(base, otelhttp.WithPropagators(propagation.NewCompositeTextMapPropagator()))
 }

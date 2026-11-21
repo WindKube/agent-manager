@@ -12,23 +12,10 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// Profiles, their revisions and the lockfiles those revisions hold.
-//
-// A revision is immutable and its lockfile is the resolution as it stood when it
-// was published — including the gate that was in force, which is why one seeded
-// profile's head disagrees with the current org_policy row.
-//
-// The gate is applied by internal/domain/resolve and nowhere else (003 T078). The
-// seed used to state each exclusion as data instead, which meant the dataset
-// asserted an outcome nothing computed: a dataset can claim a package is awaiting
-// approval while the versions and findings beside it say otherwise, and nothing
-// would notice. Feeding the seeded versions, findings and overrides through the
-// same resolver the screen and the CLI use makes the seeded history a consequence
-// of the seeded catalog rather than a second opinion about it.
+// Seeded lockfiles are computed by internal/domain/resolve, the same resolver
+// the product uses, so they cannot disagree with the seeded catalog.
 
-// buildRevisions is pure, and it runs before anything is written because both
-// halves of the seed need its output: the row carries the lockfile, and the
-// object store carries the same lockfile at the key the row names.
+// buildRevisions is pure; both the rows and the object store need its lockfiles.
 func buildRevisions(idx index, now time.Time) ([]models.Revision, error) {
 	out := make([]models.Revision, 0, 32)
 	for i := range designProfiles {
@@ -116,20 +103,13 @@ func writeProfiles(
 	return insert("sync events", &events)
 }
 
-// revisions builds a profile's whole published history.
-//
-// The lockfile contract documents the sequence as gapless, so the history starts
-// at r1 rather than at the head — and it is a history rather than N copies of the
-// present: revision k resolves the first k entries, which is a profile that grew.
-// Only the head carries the design's note.
+// revisions builds a profile's gapless history from r1: revision k resolves the
+// first k entries.
 func revisions(spec *profileSpec, idx index, now time.Time) ([]models.Revision, error) {
 	owner := ownerOf(spec)
 	rows := make([]models.Revision, 0, spec.revisions)
 
-	// Built once for the whole history: the candidate set is a property of the
-	// catalog, not of the revision, and `now` here is seed time — the instant the
-	// findings and their acceptances are dated from — which is not the instant a
-	// revision was published.
+	// Built once: candidates depend on the catalog, not the revision. `now` is seed time.
 	all, err := resolverEntries(spec, idx, now)
 	if err != nil {
 		return nil, err
@@ -144,9 +124,7 @@ func revisions(spec *profileSpec, idx index, now time.Time) ([]models.Revision, 
 		if seq == spec.revisions {
 			note = spec.headNote
 		}
-		// The head lands where the design's audit row publishes it and each earlier
-		// revision three days before the next, so the profile screen's "published"
-		// column reads as a cadence rather than as a single instant.
+		// Earlier revisions are spaced three days apart.
 		publishedAt := now.Add(-4 * time.Hour).Add(-time.Duration(spec.revisions-seq) * 72 * time.Hour)
 
 		lockfile, err := lockfileFor(spec, seq, note, entries, publishedAt)
@@ -183,9 +161,7 @@ func lockfileFor(
 	entries []resolve.Entry,
 	at time.Time,
 ) (contract.Lockfile, error) {
-	// `at` rather than seed time: a revision records the resolution as it stood
-	// when it was published, and whether an acceptance had lapsed by then is part
-	// of that.
+	// Resolve at publish time, since whether an acceptance had lapsed depends on it.
 	result, err := resolve.Resolve(resolve.Input{
 		Gate:    resolve.Gate(spec.gate),
 		At:      at,
@@ -200,11 +176,7 @@ func lockfileFor(
 		targets = append(targets, string(target))
 	}
 
-	// The same assembly the publish command runs (contract.LockfileFrom). Two
-	// field-by-field copies of it is how the seeded history and a lockfile
-	// published through the product come to disagree about a field somebody added
-	// to only one of them — and these seeded lockfiles are the design canon the
-	// screens are checked against.
+	// Same assembly as the publish command, so seeded and real lockfiles cannot drift.
 	return contract.LockfileFrom(
 		contract.LockfileProfile{
 			Slug: spec.slug, Name: spec.name, Visibility: string(spec.visibility),
@@ -213,15 +185,9 @@ func lockfileFor(
 	), nil
 }
 
-// resolverEntries is the dataset in the shape the resolver takes: one entry per
-// package the profile holds, each carrying every seeded version of it with the
-// verdict, the finding and the acceptance that decide what the gate does.
-//
-// A pin that names an unseeded version fails the seed here rather than becoming a
-// `pin-target-missing` skip in the lockfile. The skip reason is for a hub whose
-// catalog has moved under a profile; a dataset that pins a version it does not
-// seed is a typo, and a typo that publishes itself as a documented exclusion is a
-// typo nobody finds.
+// resolverEntries is the profile's packages in resolver form. A pin naming an
+// unseeded version fails the seed rather than becoming a `pin-target-missing` skip,
+// since in a dataset it is a typo.
 func resolverEntries(spec *profileSpec, idx index, now time.Time) ([]resolve.Entry, error) {
 	out := make([]resolve.Entry, 0, len(spec.entries))
 	for _, entry := range spec.entries {
@@ -257,17 +223,14 @@ func resolverEntries(spec *profileSpec, idx index, now time.Time) ([]resolve.Ent
 	return out, nil
 }
 
-// candidateFor reads the finding and the acceptance the scan writers will record
-// against this version out of the same dataset rows they read, so a seeded
-// lockfile cannot disagree with the seeded scan history it is a consequence of.
+// candidateFor reads the finding and acceptance from the same dataset rows the
+// scan writers use, so lockfiles match the scan history.
 func candidateFor(version *builtVersion, now time.Time) (resolve.Candidate, error) {
 	digest := version.digest
 	candidate := resolve.Candidate{
-		ID:      version.ref.String(),
-		Semver:  version.ref.Semver,
-		Verdict: resolve.Verdict(version.spec.verdict),
-		// An archived version stays out of a floating resolution and stays valid as
-		// an explicit pin, which is resolve.Candidate.Visible exactly.
+		ID:        version.ref.String(),
+		Semver:    version.ref.Semver,
+		Verdict:   resolve.Verdict(version.spec.verdict),
 		Visible:   version.spec.distTag != models.DistTagArchived,
 		Digest:    "sha256:" + hex.EncodeToString(digest[:]),
 		ObjectKey: version.ref.BundleKey(),
@@ -277,8 +240,7 @@ func candidateFor(version *builtVersion, now time.Time) (resolve.Candidate, erro
 	if finding == nil {
 		return candidate, nil
 	}
-	// The path comes off the packed bytes, the same way the finding row's evidence
-	// does, so the policy note cannot name a file the bundle does not hold.
+	// Taken from the packed bytes so the note cannot name a file the bundle lacks.
 	path, _, _, err := version.locate(finding.rule)
 	if err != nil {
 		return resolve.Candidate{}, err
@@ -305,10 +267,7 @@ func ownerOf(spec *profileSpec) string {
 	return "seed"
 }
 
-// syncEvents is the design's one recorded sync (its audit row names the host and
-// the revision). It is what the catalog's use counts and the storage screen's
-// CLI-read figure are computed from, so an unseeded table would read as a hub
-// nobody has ever synced.
+// syncEvents is the design's one recorded sync, which use counts are computed from.
 func syncEvents(now time.Time) []models.SyncEvent {
 	profile := &designProfiles[0]
 	identity, ok := identityBy("jkowalski@example.com")

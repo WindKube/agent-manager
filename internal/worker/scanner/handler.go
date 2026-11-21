@@ -49,9 +49,8 @@ func (w *Worker) scan(ctx context.Context, job Job, lastAttempt bool) (Outcome, 
 		return Outcome{}, river.JobCancel(err)
 	}
 
-	// Resolved before the idempotency check rather than after: the key includes
-	// every analyzer's own version, so a scan cannot be suppressed by a guard
-	// written under a different set of them.
+	// Resolved before the idempotency check: the key includes every analyzer's
+	// version, so a guard written under a different set cannot suppress the scan.
 	stamp := w.Fingerprint(ctx)
 
 	log := w.deps.Log.With().
@@ -124,7 +123,6 @@ func (w *Worker) scan(ctx context.Context, job Job, lastAttempt bool) (Outcome, 
 	return outcome, nil
 }
 
-// analysis is what the check registry produced for one bundle.
 type analysis struct {
 	checks   []checks.CheckRun
 	findings []checks.Finding
@@ -158,8 +156,8 @@ func (w *Worker) analyse(ctx context.Context, key string) (analysis, error) {
 	return result, nil
 }
 
-// tag stamps the analyzer that produced each row, which is what makes a
-// reviewer able to read "the rule pack passed, the second engine failed".
+// tag stamps the analyzer that produced each row so a reviewer can tell which
+// engine passed or failed.
 func tag(runs []checks.CheckRun, id string) []checks.CheckRun {
 	for i := range runs {
 		runs[i].Engine = id
@@ -183,9 +181,8 @@ func (w *Worker) classifyClock(ctx context.Context, err error) error {
 	return err
 }
 
-// read pulls the stored bundle and unpacks it. bundle.Unpack re-applies the
-// extraction caps: a bundle read out of object storage is still bytes off a
-// network.
+// read pulls and unpacks the stored bundle. Unpack re-applies the extraction
+// caps because object-storage bytes are still untrusted network input.
 func (w *Worker) read(ctx context.Context, key string) (*bundle.Bundle, error) {
 	reader, err := w.deps.BlobRead.NewReader(ctx, key)
 	if err != nil {
@@ -232,10 +229,8 @@ func (w *Worker) objectKey(ctx context.Context, job Job) (string, error) {
 // raises; it is not a rule-pack id.
 const communityReviewRuleID = "ORG-COMMUNITY-REVIEW"
 
-// applyCommunityReview flags a version from a non-verified publisher when
-// the organisation's policy requires it, by raising a flagged finding a
-// scanner-reviewer must approve. A missing policy row is treated as the
-// policy being off.
+// applyCommunityReview raises a finding for a non-verified publisher when org
+// policy requires community review. A missing policy row means the policy is off.
 func (w *Worker) applyCommunityReview(ctx context.Context, job Job, result analysis) (analysis, error) {
 	var needsReview bool
 	err := w.deps.DB.QueryRowContext(ctx,

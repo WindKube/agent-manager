@@ -12,10 +12,8 @@ import (
 	"agent-manager/internal/worker/scanner/rules"
 )
 
-// Verify applies every rule in a pack to the two fixtures it ships: the one
-// that must trip it and the one that must not. It lives in the production
-// build so a pack mounted at AGENT_MANAGER_RULEPACK_DIR is checked by the
-// same code that will run it.
+// Verify runs every rule against its `trips` and `clean` fixtures. It lives in
+// the production build so a mounted pack is checked by the code that will run it.
 func Verify(ctx context.Context, pack *rules.Pack) error {
 	if pack == nil {
 		return errors.New("verify: no rule pack")
@@ -72,8 +70,7 @@ func fixtureFindings(ctx context.Context, pack *rules.Pack, rule rules.Rule, fix
 	return apply(inspected, rule)
 }
 
-// Tree reads a package tree out of any filesystem into the same in-memory
-// bundle a stored version unpacks to.
+// Tree reads a package tree from any filesystem into an in-memory bundle.
 func Tree(fsys fs.FS) (*bundle.Bundle, error) {
 	tree := bundle.New()
 	err := fs.WalkDir(fsys, ".", func(entry string, dir fs.DirEntry, err error) error {

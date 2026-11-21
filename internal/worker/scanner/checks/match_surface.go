@@ -8,9 +8,8 @@ import (
 	"agent-manager/internal/worker/scanner/rules"
 )
 
-// matchSurface is the `plugin-surface` matcher: it judges the hooks, MCP
-// servers and tool grants pkgspec parsed, each located at the `file#/pointer`
-// or file it was declared in.
+// matchSurface is the `plugin-surface` matcher over hooks, MCP servers and tool
+// grants, each located at its `file#/pointer`.
 func matchSurface(b *Bundle, rule rules.Rule) []hit {
 	if b.Surfaces == nil {
 		return nil
@@ -55,8 +54,7 @@ func matchSurface(b *Bundle, rule rules.Rule) []hit {
 	return hits
 }
 
-// declaredHosts are the manifest's homepage and repository hosts, each
-// covering its subdomains too.
+// declaredHosts returns the manifest's homepage and repository hosts, including subdomains.
 func (b *Bundle) declaredHosts() []string {
 	if len(b.Manifest) == 0 {
 		return nil

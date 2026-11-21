@@ -44,11 +44,9 @@ type waiver struct {
 	Semver    string    `bun:"semver"`
 }
 
-// CheckWaivers writes one waiver-expiring audit row for each accepted finding
-// whose override lapses within notice, and one waiver-expired row for each
-// that has lapsed, marking each override in the same transaction so neither
-// notice is raised twice for one expiry. An expired override already stops
-// counting in the gate; this only says so. It returns how many rows it wrote.
+// CheckWaivers writes waiver-expiring and waiver-expired audit rows, marking
+// each override in the same transaction so no notice is raised twice. It
+// returns how many rows it wrote.
 func CheckWaivers(ctx context.Context, db bun.IDB, notice time.Duration) (int, error) {
 	written := 0
 	err := db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {

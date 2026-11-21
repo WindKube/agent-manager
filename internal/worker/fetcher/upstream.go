@@ -22,27 +22,21 @@ import (
 	"agent-manager/internal/worker"
 )
 
-// MaxNewVersionsPerCheck caps what one check registers for one package, so
-// a repository with years of untracked tags catches up over several checks
-// instead of flooding the fetch queue at once.
+// MaxNewVersionsPerCheck caps registrations per package per check, so a large
+// backlog catches up gradually instead of flooding the fetch queue.
 const MaxNewVersionsPerCheck = 5
 
-// upstreamTimeout bounds one whole check of every tracked package, each of
-// which is a few forge requests under the outbound client's own timeout.
+// upstreamTimeout bounds one whole check of every tracked package.
 const upstreamTimeout = 30 * time.Minute
 
-// upstreamTrigger is how an upstream registration names itself in the audit
-// log.
 const upstreamTrigger = "new upstream tag"
 
-// UpstreamCheck is the periodic `upstream-check` job's payload: it carries
-// nothing, since every run checks every tracked package.
+// UpstreamCheck is the periodic `upstream-check` job; every run checks every tracked package.
 type UpstreamCheck struct{}
 
 func (UpstreamCheck) Kind() string { return "upstream-check" }
 
-// InsertOpts puts the check on the fetch queue: it is this role's work, and
-// the role works no other queue.
+// InsertOpts puts the check on the fetch queue, the only one this role works.
 func (UpstreamCheck) InsertOpts() river.InsertOpts { return river.InsertOpts{Queue: outbox.QueueFetch} }
 
 func periodic(cfg worker.Config) ([]worker.PeriodicJob, error) {
@@ -81,9 +75,8 @@ func (u *Upstream) Work(ctx context.Context, _ *river.Job[UpstreamCheck]) error 
 	return u.CheckAll(ctx)
 }
 
-// CheckAll checks every tracked package. One package's forge failing is
-// recorded on that package and does not stop the others; only the hub's own
-// database failing fails the job.
+// CheckAll checks every tracked package. A forge failure is recorded on that
+// package; only a database failure fails the job.
 func (u *Upstream) CheckAll(ctx context.Context) error {
 	var ids []uuid.UUID
 	if err := u.deps.DB.NewSelect().Model((*models.Package)(nil)).Column("id").
@@ -99,9 +92,8 @@ func (u *Upstream) CheckAll(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// check lists one package's tags outside any transaction, then registers
-// what is new and records the outcome in one transaction holding the
-// package row, so two overlapping checks cannot both register a tag.
+// check lists tags outside any transaction, then registers new ones while
+// holding the package row lock, so overlapping checks cannot both register a tag.
 func (u *Upstream) check(ctx context.Context, packageID uuid.UUID) error {
 	pkg := new(models.Package)
 	if err := u.deps.DB.NewSelect().Model(pkg).Where("id = ?", packageID).Scan(ctx); err != nil {
@@ -160,8 +152,8 @@ func (u *Upstream) check(ctx context.Context, packageID uuid.UUID) error {
 	return nil
 }
 
-// candidates reads what the package already has under the row lock, so the
-// selection cannot race another registration.
+// candidates reads known versions under the row lock, so selection cannot race
+// another registration.
 func (u *Upstream) candidates(ctx context.Context, tx bun.IDB, pkg *models.Package, tags []fetch.Tag) ([]Candidate, error) {
 	var known []string
 	if err := tx.NewSelect().Model((*models.Version)(nil)).Column("semver").
@@ -175,9 +167,7 @@ func (u *Upstream) candidates(ctx context.Context, tx bun.IDB, pkg *models.Packa
 	return SelectTags(names, pkg.TagPattern, known, MaxNewVersionsPerCheck), nil
 }
 
-// recordCheck stamps the check. The error column changing — a check
-// starting to fail, or recovering — is audited; a routine success is not,
-// or every package would add a row per interval.
+// recordCheck stamps the check. Only a change in the error column is audited.
 func recordCheck(ctx context.Context, tx bun.IDB, pkg *models.Package, checkErr string) error {
 	previous := pkg.LastCheckError
 	if _, err := tx.NewUpdate().Model((*models.Package)(nil)).
@@ -205,13 +195,10 @@ type Candidate struct {
 	Semver string
 }
 
-// SelectTags picks the tags to register: each matches pattern (path.Match),
-// parses as strict semver once one leading `v` is stripped, carries no build
-// metadata, and is greater than every known version — registered, fetched or
-// failed alike. A prerelease is kept only when the pattern itself contains a
-// `-`, since `v*` matching `v2.0.0-rc.1` is a glob accident rather than a
-// request for release candidates. The result is ascending and at most limit
-// long, so a backlog is registered oldest first across successive checks.
+// SelectTags picks tags matching pattern that parse as strict semver (one
+// leading `v` allowed), have no build metadata and exceed every known version.
+// Prereleases are kept only when pattern contains a `-`. The result is
+// ascending and at most limit long, so a backlog registers oldest first.
 func SelectTags(tags []string, pattern string, known []string, limit int) []Candidate {
 	var newest *semver.Version
 	for _, raw := range known {

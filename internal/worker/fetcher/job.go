@@ -12,11 +12,9 @@ import (
 	"agent-manager/internal/outbox"
 )
 
-// Job is the `fetch` outbox payload: the wire contract between the api
-// role's registration command and this worker.
+// Job is the `fetch` outbox payload sent by the api's registration command.
 type Job struct {
-	// VersionID names the row this fetch fills in; it already exists,
-	// invisible with digest null.
+	// VersionID is the existing, still invisible row this fetch fills in.
 	VersionID uuid.UUID `json:"versionId"`
 	PackageID uuid.UUID `json:"packageId"`
 
@@ -27,8 +25,7 @@ type Job struct {
 	Source JobSource `json:"source"`
 }
 
-// JobSource is the registration's source reference as it travels through the
-// queue.
+// JobSource is the registration's source reference.
 type JobSource struct {
 	Kind         fetch.SourceKind `json:"kind"`
 	URL          string           `json:"url,omitempty"`
@@ -37,22 +34,17 @@ type JobSource struct {
 
 	ArchiveName string `json:"archiveName,omitempty"`
 
-	// Archive carries an uploaded archive's bytes, base64 in the payload's
-	// jsonb: the only transactional door available, since the api role
-	// holds no blob.Writer.
+	// Archive carries uploaded bytes in the payload, since the api holds no blob.Writer.
 	Archive []byte `json:"archive,omitempty"`
 
 	// SigstoreBundle is a bundle uploaded beside the archive.
 	SigstoreBundle []byte `json:"sigstoreBundle,omitempty"`
 }
 
-// Kind is the River job kind, which is the same string as the outbox
-// `job_kind`.
+// Kind is the River job kind, the same string as the outbox `job_kind`.
 func (Job) Kind() string { return string(outbox.KindFetch) }
 
-// Validate rejects a payload this worker could not act on. It runs both at
-// enqueue time and at work time, since a payload read out of the queue is
-// input like any other.
+// Validate rejects a payload this worker could not act on, at both enqueue and work time.
 func (j Job) Validate() error {
 	switch {
 	case j.VersionID == uuid.Nil:

@@ -10,15 +10,10 @@ import (
 	"agent-manager/internal/fetch"
 )
 
-// The fetch-error taxonomy. A fetch failure is reported as a fetch failure
-// and never as a scan finding: every reason below happened before any bytes
-// were read, or because they could not be read at all.
-
 // ErrFetch is the sentinel behind every failure of this pipeline.
 var ErrFetch = errors.New("fetch failed")
 
-// Reason is the closed set of fetch-failure reasons. Each is a distinct operator
-// action, which is the only justification for telling two failures apart.
+// Reason is the closed set of fetch-failure reasons, one per distinct operator action.
 type Reason string
 
 const (
@@ -66,9 +61,8 @@ const (
 	// earlier version recorded for it.
 	ReasonTagMoved Reason = "tag-moved"
 
-	// ReasonStore is object storage or the database refusing the write. It is the
-	// one reason here that is the hub's fault rather than the source's, which is
-	// why it is worth its own value.
+	// ReasonStore is object storage or the database refusing the write: the
+	// hub's fault rather than the source's.
 	ReasonStore Reason = "store-write-failed"
 )
 
@@ -85,9 +79,7 @@ func (e *Error) Error() string {
 
 func (e *Error) Unwrap() []error { return []error{ErrFetch, e.cause} }
 
-// Retryable reports whether re-running the job could produce a different
-// answer: a non-conformant manifest will still be non-conformant on the
-// fourth attempt.
+// Retryable reports whether re-running the job could produce a different answer.
 func (e *Error) Retryable() bool {
 	switch e.Reason {
 	case ReasonRemote, ReasonStore, ReasonArchiveTimeout:
@@ -103,8 +95,7 @@ func classify(subject string, err error) error {
 		return nil
 	}
 
-	// A cancelled or timed-out caller is a shutdown or a deadline, not a
-	// defect in what was being fetched.
+	// A shutdown or deadline, not a defect in the source.
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return err
 	}
@@ -143,16 +134,12 @@ func classify(subject string, err error) error {
 	return &Error{Reason: reason, Subject: subject, cause: err}
 }
 
-// errVersionMismatch is raised when the manifest's own `version` names a
-// different release from the one being registered.
 var errVersionMismatch = errors.New("the manifest names a different version")
 
 var errTagMoved = errors.New("the tag moved")
 
-// TagMovedError is a git tag that names a different commit from the one a
-// version already recorded for it. Versions are immutable, so the fetch is
-// refused rather than storing the new commit's bytes under a tag that once
-// meant something else.
+// TagMovedError is a git tag now naming a different commit than a version
+// recorded for it; versions are immutable, so the fetch is refused.
 type TagMovedError struct {
 	Repo, Tag, Version string
 	From, To           string

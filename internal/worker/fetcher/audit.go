@@ -16,17 +16,14 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// auditActor and auditSource are what a background role writes into the
-// audit log: actor_kind `system` separates a role's action from a person's.
+// auditActor and auditSource mark a background role's audit rows as `system`.
 const (
 	auditActor  = RoleName
 	auditSource = "system"
 )
 
-// writeFetchAudit inserts the one audit row a fetch is accountable for. It
-// takes a transaction rather than a pool: on the success path that is the
-// publish transaction, so the record cannot survive a rolled back publish or
-// go missing after a committed one.
+// writeFetchAudit inserts a fetch's audit row. On success tx is the publish
+// transaction, so the record commits or rolls back with it.
 func writeFetchAudit(ctx context.Context, tx bun.IDB, job Job, action, text string, data map[string]any) error {
 	event, err := audit.New(audit.Entry{
 		Kind:      models.AuditKindFetch,
@@ -41,17 +38,14 @@ func writeFetchAudit(ctx context.Context, tx bun.IDB, job Job, action, text stri
 	if err != nil {
 		return err
 	}
-	// am_fetcher holds INSERT-only on audit_event — no SELECT — and bun appends
-	// RETURNING for OccurredAt's `default:` tag unless told not to.
+	// am_fetcher holds INSERT-only on audit_event, and bun would otherwise add RETURNING.
 	if _, err := tx.NewInsert().Model(event).Returning("NULL").Exec(ctx); err != nil {
 		return fmt.Errorf("write the fetch audit row: %w", err)
 	}
 	return nil
 }
 
-// auditFailure records a fetch that produced no bytes. It runs on its own
-// statement rather than inside a transaction, since the transaction it would
-// have belonged to is the one that did not happen.
+// auditFailure records a fetch that produced no bytes, outside any transaction.
 func (w *Worker) auditFailure(ctx context.Context, job Job, reason Reason, cause error) error {
 	text := fmt.Sprintf("failed to fetch %s from %s: %s", job, describeSource(job.Source), reason)
 	detail := ""
@@ -109,8 +103,7 @@ func outcomeOf(reason Reason) (models.FetchOutcome, bool) {
 	return "", false
 }
 
-// storedText is the audit line: what was stored, from where, and what it
-// turned out to contain.
+// storedText is the audit line for a stored version.
 func storedText(job Job, pkg *pkgspec.Package, commit blob.Commit, sig signing.Result) string {
 	text := fmt.Sprintf("stored %s (%s) from %s, digest sha256:%s, %d bytes",
 		job, pkg.Kind, describeSource(job.Source),
@@ -172,8 +165,8 @@ func describeSource(source JobSource) string {
 	}
 }
 
-// redactCredentials strips userinfo from a URL. It is a string operation
-// rather than a parse: a URL that will not parse must still be redacted.
+// redactCredentials strips userinfo from a URL without parsing it, so an
+// unparseable URL is still redacted.
 func redactCredentials(raw string) string {
 	scheme := ""
 	if i := strings.Index(raw, "://"); i >= 0 {

@@ -1,14 +1,8 @@
-// Package seed loads the design's representative dataset, so a fresh
-// stack has something to browse, triage and resolve from the start.
+// Package seed loads the design's representative dataset so a fresh stack has
+// something to browse from the start.
 //
-// The seed writes both halves of a version — bytes and rows — which is
-// why it holds the writer key every other non-fetcher role doesn't get.
-// It is a one-shot that may run again: `docker compose up` starts it
-// every time, so idempotence comes from derived ids plus `on conflict do
-// nothing` (rows.go) and a byte-side "already committed" short-circuit.
-//
-// Timestamps are relative to seed time, so "2 days ago" stays true on a
-// stack started next month.
+// It runs on every `docker compose up`, so it must be idempotent: derived ids
+// with `on conflict do nothing` for rows, and an "already committed" check for bytes.
 package seed
 
 import (
@@ -24,17 +18,15 @@ import (
 	"agent-manager/internal/store/models"
 )
 
-// Deps is what the seed is handed. The shape mirrors the worker roles': the
-// caller opens the connections, this package opens nothing.
+// Deps is what the seed is handed; this package opens no connections itself.
 type Deps struct {
 	DB        bun.IDB
 	BlobRead  blob.Reader
 	BlobWrite blob.Writer
 }
 
-// Report is what the run did. Bundles and Lockfiles count what this run
-// wrote to the bucket, so both are zero on a re-run; the rest count what
-// the dataset holds, whoever wrote it.
+// Report is what the run did. Bundles and Lockfiles count this run's bucket
+// writes (zero on a re-run); the rest count what the dataset holds.
 type Report struct {
 	Bundles   int
 	Lockfiles int
@@ -45,8 +37,7 @@ type Report struct {
 	Findings  int
 }
 
-// Run loads the dataset. It is safe to call against a database that already
-// holds it.
+// Run loads the dataset. It is safe to call again.
 func Run(ctx context.Context, deps Deps) (Report, error) {
 	if deps.DB == nil || deps.BlobRead == nil || deps.BlobWrite == nil {
 		return Report{}, fmt.Errorf("seed: a database handle and both halves of the bucket are required")
@@ -66,8 +57,7 @@ func Run(ctx context.Context, deps Deps) (Report, error) {
 		return Report{}, err
 	}
 
-	// Bytes first, rows second: a row naming bytes not yet written is the
-	// failure commit-last ordering exists to prevent.
+	// Bytes before rows, so no row ever names bytes that are not written yet.
 	bundles, err := commitBytes(ctx, deps, built)
 	if err != nil {
 		return Report{}, err
@@ -91,9 +81,8 @@ func Run(ctx context.Context, deps Deps) (Report, error) {
 	}, nil
 }
 
-// writeRevisionObjects writes each revision's lockfile at the key its row
-// names. An existing object is left alone: a revision is immutable, so a
-// re-run must not replace bytes whose row still holds the original document.
+// writeRevisionObjects writes each revision's lockfile, leaving existing objects
+// alone because revisions are immutable.
 func writeRevisionObjects(ctx context.Context, deps Deps, revisions []models.Revision) (int, error) {
 	written := 0
 	for i := range revisions {
@@ -114,7 +103,6 @@ func writeRevisionObjects(ctx context.Context, deps Deps, revisions []models.Rev
 	return written, nil
 }
 
-// namespaceOf is the first segment of a publisher slug.
 func namespaceOf(publisher string) string {
 	namespace, _, _ := strings.Cut(publisher, "/")
 	return namespace

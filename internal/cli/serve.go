@@ -53,15 +53,12 @@ func newServeWebCmd() *cobra.Command {
 	}
 }
 
-// healthProbeKey is the object the blob probe looks for. It is never written: a
-// bucket that answers "no such key" has proved everything the probe needs —
-// reachable, authenticated, and the bucket exists.
+// healthProbeKey is never written: "no such key" already proves the bucket is
+// reachable, authenticated and exists.
 const healthProbeKey = "_health/probe"
 
-// runAPI is the api role's bootstrap. It opens exactly what config.API names —
-// the application database, the queue database and the bucket — and nothing
-// else. Which credentials this function can possibly use is the credential
-// boundary made visible (constitution principle II, SC-006).
+// runAPI is the api role's bootstrap. It opens exactly what config.API names:
+// the application database, the queue database and the bucket.
 func runAPI(ctx context.Context) error {
 	cfg, err := config.Load[config.API]()
 	if err != nil {
@@ -94,9 +91,7 @@ func runAPI(ctx context.Context) error {
 		}
 	}()
 
-	// Before anything serves. A deployment that names an admin group and cannot
-	// write it is broken in a way that only shows up later, as a hub nobody can
-	// administer, so this is fatal rather than a warning.
+	// Fatal: otherwise the failure shows up later as a hub nobody can administer.
 	if changed, ensureErr := commands.EnsureAdminGroup(ctx, handle.DB(), cfg.BootstrapAdminGroup); ensureErr != nil {
 		return fmt.Errorf("reconcile the bootstrap admin group: %w", ensureErr)
 	} else if changed {
@@ -114,8 +109,7 @@ func runAPI(ctx context.Context) error {
 		}
 	}()
 
-	// The relay lives in the api role, beside the transactions that write the
-	// outbox rows it drains (R5, constitution principle IX).
+	// The relay lives beside the transactions that write the outbox rows it drains.
 	relay, err := startRelay(ctx, handle, cfg, log)
 	if err != nil {
 		return err
@@ -124,31 +118,22 @@ func runAPI(ctx context.Context) error {
 
 	server := api.New(api.Deps{
 		DB: handle.DB(),
-		// A reader, not a bucket: only `worker fetcher` may write bundle bytes, and
-		// the api holds no value that could.
+		// A reader only: `worker fetcher` is the sole writer of bundle bytes.
 		Bundles: bucket.Reader(),
 		Sessions: auth.Chain{
 			Sessions:      auth.NewSessions(handle.DB()),
 			ServiceTokens: auth.NewServiceTokens(handle.DB()),
 		},
-		// Verification of a signed-in person's ID token happens HERE, in the role
-		// that owns identity, rather than in the web role that received the callback
-		// (contracts/auth.md's preferred refinement). The verifier discovers on first
-		// use: discovery reaches the provider, and a provider that is slow to start
-		// must not take this role's reads, health probe and device flow with it.
+		// ID tokens are verified here, in the role that owns identity, not in web.
+		// Discovery is lazy so a slow provider cannot take this role down with it.
 		IDTokens: api.NewLazyVerifier(auth.VerifierConfig{
 			Issuer:       cfg.Issuer,
 			DiscoveryURL: cfg.DiscoveryURL,
 			ClientID:     cfg.ClientID,
 		}),
-		// Empty here means the session mint is refused outright — no default and no
-		// development bypass. Nothing above this line enforces that, which is why
-		// commands.SessionMint does.
+		// Empty refuses every session mint; commands.SessionMint enforces it.
 		SessionMintSecret: cfg.SessionMintSecret,
-		// The Organization screen's provider panel. ClientSecret is deliberately
-		// absent from this value — commands.IdentityConfig has no field for it —
-		// which is what makes "getOrganization never returns the secret" true by
-		// construction rather than by care taken in a handler.
+		// IdentityConfig has no ClientSecret field, so getOrganization cannot leak it.
 		Identity: commands.IdentityConfig{
 			Issuer:       cfg.Issuer,
 			DiscoveryURL: cfg.DiscoveryURL,
@@ -164,11 +149,8 @@ func runAPI(ctx context.Context) error {
 		},
 		Log:     log,
 		Storage: bucket.Inspector(),
-		// The Runtime screen's read into River's own database. handle already
-		// opened it alongside the application pool (constitution principle
-		// IX), so this is the same pool the outbox relay inserts through —
-		// read-only from this side, since queries.RuntimeQueue declares no
-		// write method.
+		// Same pool the outbox relay inserts through; read-only here since
+		// queries.RuntimeQueue declares no write method.
 		Queue: handle.Queue(),
 	}, api.Options{
 		Addr:                  cfg.Addr,
@@ -183,10 +165,8 @@ func runAPI(ctx context.Context) error {
 	return server.Run(ctx)
 }
 
-// startRelay launches the outbox relay and returns its stopper. A relay that
-// cannot start is fatal: without it a published package never gets fetched or
-// scanned, and the failure would otherwise show up as jobs that silently never
-// run.
+// startRelay launches the outbox relay and returns its stopper. Failure is
+// fatal, since without it published packages are silently never fetched.
 func startRelay(ctx context.Context, handle *store.Handle, cfg config.API, log zerolog.Logger) (func(), error) {
 	client, err := outbox.NewInsertClient(handle.Queue(), nil)
 	if err != nil {

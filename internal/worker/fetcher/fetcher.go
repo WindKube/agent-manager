@@ -1,8 +1,6 @@
-// Package fetcher is the `worker fetcher` role: the only role in this system
-// that may write bundle bytes. `visible` flips in the same transaction as
-// the digest and the scan hand-off, so a readable version is always
-// complete; a crash before that leaves orphaned bytes rather than a
-// half-published one.
+// Package fetcher is the `worker fetcher` role, the only role that may write
+// bundle bytes. `visible` flips in the same transaction as the digest and scan
+// hand-off, so a crash leaves orphaned bytes rather than a half-published version.
 package fetcher
 
 import (
@@ -33,9 +31,8 @@ const Concurrency = 4
 // cap since a slow remote is the usual reason a fetch is slow.
 const jobTimeout = 10 * time.Minute
 
-// Definition is the whole description of the role. Blob: AccessReadWrite is
-// the entire mechanism behind "only the fetcher may write bundle bytes" —
-// the bootstrap hands out a blob.Writer for that value and no other.
+// Definition describes the role. Blob: AccessReadWrite is what makes the
+// fetcher the only role handed a blob.Writer.
 func Definition() worker.Definition {
 	return worker.Definition{
 		Name:   RoleName,
@@ -79,8 +76,8 @@ type Worker struct {
 	verifier  *signing.Verifier
 }
 
-// New assembles the handler from what the bootstrap handed the role. A nil
-// dependency here means the Definition and the bootstrap disagree.
+// New assembles the handler. A nil dependency means the Definition and the
+// bootstrap disagree.
 func New(deps worker.Deps) (*Worker, error) {
 	switch {
 	case deps.DB == nil:

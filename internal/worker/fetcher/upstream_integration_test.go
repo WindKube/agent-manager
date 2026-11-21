@@ -86,7 +86,7 @@ func newUpstream(t *testing.T, base string) *fetcher.Upstream {
 	t.Helper()
 	client, err := fetch.New(fetch.Options{Timeout: 20 * time.Second, Allowlist: []string{loopbackOf(t, base)}})
 	require.NoError(t, err)
-	// As am_fetcher: the check must run on the grants the role actually holds.
+	// As am_fetcher, to run on the role's real grants.
 	upstream, err := fetcher.NewUpstream(worker.Deps{DB: workerDB, Fetch: client, Log: zerolog.New(io.Discard)})
 	require.NoError(t, err)
 	return upstream

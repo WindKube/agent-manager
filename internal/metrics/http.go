@@ -74,9 +74,8 @@ func Handler() http.Handler {
 	return mux
 }
 
-// Serve binds addr before returning, so a port clash fails the role at start,
-// then serves Handler until ctx ends. An empty addr disables the listener and
-// returns a no-op stop.
+// Serve binds addr before returning, so a port clash fails at start, then serves
+// Handler until ctx ends. An empty addr returns a no-op stop.
 func Serve(ctx context.Context, addr string, log zerolog.Logger) (stop func(), err error) {
 	if addr == "" {
 		return func() {}, nil

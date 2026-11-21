@@ -17,9 +17,8 @@ import (
 // are the bundle's, not ours to size.
 const maxDetailBytes = 4000
 
-// record is the one transaction the scan hangs on: the `scan` row, every
-// `scan_check`, `finding` and `finding_evidence` row, the version's verdict
-// and the audit row land together or not at all.
+// record writes the scan, its checks, findings, evidence, the version verdict
+// and the audit row in one transaction.
 func (w *Worker) record(ctx context.Context, job Job, result analysis, started time.Time, stamp string) (Outcome, error) {
 	verdict := verdictOf(result)
 	outcome := Outcome{
@@ -75,10 +74,8 @@ func (w *Worker) record(ctx context.Context, job Job, result analysis, started t
 	return outcome, nil
 }
 
-// setVerdict moves the version's verdict — the only column `grant update
-// ("verdict")` lets this role touch, so it cannot forge a digest or object
-// key. A `rejected` version is left alone, and a timed-out scan writes no
-// verdict at all.
+// setVerdict updates the only version column the role's grant allows. A
+// `rejected` version is left alone and a timed-out scan writes no verdict.
 func (w *Worker) setVerdict(ctx context.Context, tx bun.IDB, job Job, verdict models.Verdict) error {
 	if verdict == models.VerdictScanning {
 		return nil
@@ -92,7 +89,6 @@ func (w *Worker) setVerdict(ctx context.Context, tx bun.IDB, job Job, verdict mo
 	return nil
 }
 
-// insertChecks writes one row per registered check, including passes.
 func insertChecks(ctx context.Context, tx bun.IDB, scanID uuid.UUID, runs []checks.CheckRun) error {
 	if len(runs) == 0 {
 		return nil
@@ -120,8 +116,7 @@ func insertChecks(ctx context.Context, tx bun.IDB, scanID uuid.UUID, runs []chec
 	return nil
 }
 
-// insertFindings writes the findings and their evidence. Every finding starts
-// `open`, even on a rescan of an approved version.
+// insertFindings starts every finding `open`, even on a rescan of an approved version.
 func insertFindings(ctx context.Context, tx bun.IDB, scanID, versionID uuid.UUID, findings []checks.Finding) error {
 	if len(findings) == 0 {
 		return nil
@@ -188,8 +183,7 @@ func insertFindings(ctx context.Context, tx bun.IDB, scanID, versionID uuid.UUID
 	return nil
 }
 
-// countAsInt32 fits a bundle-derived count into the column's width, saturating
-// rather than wrapping negative on attacker-supplied input.
+// countAsInt32 saturates rather than wrapping on attacker-supplied counts.
 func countAsInt32(n int) int32 {
 	switch {
 	case n < 0:

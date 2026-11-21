@@ -5,9 +5,7 @@ import (
 	"strings"
 )
 
-// launcherValueFlags are the flags whose next word is a value, not the
-// package, per launcher. A flag naming the package itself is in
-// launcherPackageFlags.
+// launcherValueFlags take a non-package value; launcherPackageFlags name the package.
 var (
 	launcherValueFlags = map[string][]string{
 		"npx":  {"-c", "--call", "--cache", "--registry", "--userconfig"},
@@ -25,8 +23,8 @@ var (
 	}
 )
 
-// launchedPackage is the package spec a launcher command fetches and runs,
-// or "" when the command is not a launch: `pnpm install` or `docker ps`.
+// launchedPackage returns the spec a launcher runs, or "" for a non-launch such
+// as `pnpm install` or `docker ps`.
 func launchedPackage(name string, args []string) string {
 	family := name
 	switch name {
@@ -84,9 +82,8 @@ func launchedPackage(name string, args []string) string {
 	return ""
 }
 
-// launcherUnpinned judges a `launcher spec` value: npm-style launchers need
-// name@x.y.z, Python ones name==x.y.z, and an image a non-latest tag or a
-// digest. A spec built from an expansion cannot be judged and is unpinned.
+// launcherUnpinned requires name@x.y.z for npm-style launchers, name==x.y.z for
+// Python ones, and a non-latest tag or digest for images. Expansions are unpinned.
 func launcherUnpinned(value string) bool {
 	launcher, spec, _ := strings.Cut(value, " ")
 	spec = strings.TrimSpace(spec)

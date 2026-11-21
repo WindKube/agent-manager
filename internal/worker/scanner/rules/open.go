@@ -9,23 +9,14 @@ import (
 	"agent-manager/internal/worker/scanner/rulepack"
 )
 
-// BuiltinOrigin is what Pack.Origin reports for the embedded pack.
 const BuiltinOrigin = "built-in"
 
 // Builtin loads the pack embedded in this binary.
 func Builtin() (*Pack, error) { return Load(rulepack.FS(), BuiltinOrigin) }
 
-// Open resolves the pack the scanner will run: the directory named by
-// AGENT_MANAGER_RULEPACK_DIR when one is mounted there, the embedded pack
-// otherwise.
-//
-// A configured directory that is absent is a WARNING and not an error: refusing
-// to start would take the scanner down over a missing volume and leave every
-// imported version at `scanning` for ever, so loading the embedded pack keeps
-// the queue moving, with Pack.Origin and the returned note making the
-// substitution visible. A directory that EXISTS but does not load is an error:
-// someone is editing rules there, and silently running different ones is the
-// failure that costs a real finding.
+// Open loads the pack at dir, falling back to the embedded pack. A missing
+// directory only yields a note, so a lost volume does not stall every scan; a
+// directory that exists but fails to load is an error, since someone is editing it.
 func Open(dir string) (pack *Pack, note string, err error) {
 	if dir == "" {
 		pack, err = Builtin()
@@ -48,8 +39,7 @@ func Open(dir string) (pack *Pack, note string, err error) {
 	return pack, "", nil
 }
 
-// FixtureFS returns the bundle tree one of a rule's fixtures names, read out of
-// the pack that declared it.
+// FixtureFS returns a rule's fixture tree from the pack that declared it.
 func (p *Pack) FixtureFS(rulePath string) (fs.FS, error) {
 	if rulePath == "" {
 		return nil, fmt.Errorf("%w: fixture path is empty", ErrPack)

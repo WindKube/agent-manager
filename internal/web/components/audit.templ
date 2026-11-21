@@ -6,17 +6,9 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// AuditScreen is 001 FR-050 through FR-052 as a screen: one row per
-// state-changing action, naming actor, kind, text and source, append-only, with
-// the full export beside it.
-//
-// The rows carry package, profile and host names a publisher or an operator chose,
-// so every cell is interpolated and therefore escaped (001 FR-055, FR-127).
-//
-// Nothing here dedupes. A version scanned three times under three rule packs has
-// three `scan` rows, and that history is the reason the pack version is recorded
-// at all — collapsing rows by subject would hide exactly the sequence somebody
-// opens this screen to reconstruct.
+// AuditScreen is the append-only audit log with its full export. Cells are
+// interpolated and escaped. Nothing dedupes: repeated scan rows are the history
+// somebody opens this screen to reconstruct.
 templ AuditScreen(a view.Audit) {
 	<div class="am-header">
 		<div class="am-header-text">
@@ -28,9 +20,7 @@ templ AuditScreen(a view.Audit) {
 		</div>
 		if a.ExportAvailable {
 			<div class="am-actions">
-				// The export is the full current scope and not this page (001 FR-051), which
-				// is why the link carries no page number. It streams, so a large log arrives
-				// as it is read rather than after the api has assembled all of it.
+				// The export is the full current scope, not this page, and it streams.
 				<a class="am-btn" href={ a.Query.ExportHref() } download="audit-log.ndjson">
 					if a.Query.Filter.Active() {
 						Export these events
@@ -77,8 +67,6 @@ templ AuditScreen(a view.Audit) {
 				<div>Source</div>
 			</div>
 			for _, row := range a.Rows {
-				// An anchor, not a click handler on a div: focusable, and named by
-				// its own text.
 				if a.Query.Selected == row.ID {
 					<a class="am-audit-row am-audit-row-on" href={ a.Query.EntryHref(row.ID) } aria-current="true">
 						@auditRowCells(row)
@@ -90,8 +78,7 @@ templ AuditScreen(a view.Audit) {
 				}
 			}
 			if a.Empty() {
-				// FR-122: what would be here, and how it gets here. An audit row is written
-				// by an action, never by a person visiting this screen.
+				// An audit row is written by an action, never by visiting this screen.
 				<div class="am-empty" id="audit-empty">
 					No events recorded. A row is appended here by every state-changing action —
 					signing in, registering a package, a scan reaching a verdict, a reviewer
@@ -126,9 +113,8 @@ templ auditRowCells(row view.AuditRow) {
 	<div class="am-audit-actor">
 		<span>{ row.Actor }</span>
 		if row.ActorNote() != "" {
-			// A system actor is labelled as one. 001 FR-050 names `fetcher` and
-			// `scanner` as actors, and a screen that let them read as usernames
-			// would attribute a machine's action to a person with that name.
+			// System actors are labelled so a machine's action is not attributed to
+			// a person with that username.
 			<span class="am-audit-actor-kind">{ row.ActorNote() }</span>
 		}
 	</div>
@@ -139,9 +125,8 @@ templ auditRowCells(row view.AuditRow) {
 	<div class="am-mono am-audit-source">{ row.SourceLabel() }</div>
 }
 
-// auditPanel shows the row in full, including the entry id the table never
-// renders. No aria-modal: a server round trip moves no focus and traps none,
-// so claiming it would promise what this markup does not do.
+// auditPanel shows the full row, including the entry id. No aria-modal: a server
+// round trip moves and traps no focus.
 templ auditPanel(a view.Audit) {
 	<div class="am-audit-panel-backdrop" style="background:rgba(15,18,22,0.42)" aria-hidden="true"></div>
 	<aside class="am-audit-panel" role="dialog" aria-label="Audit entry detail">

@@ -7,11 +7,9 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// RuntimeScreen answers "is the pipeline working, and if not, why": job
-// counts by River's own state for each queue, the runners' own errors, and
-// a run-history chart. Kind, queue and error text can carry a redacted
-// fragment of a publisher-supplied reference, so they are rendered escaped
-// like every other operator-facing field on this screen.
+// RuntimeScreen shows job counts per River state and queue, runner errors and a
+// run-history chart. Kind, queue and error text may carry publisher-supplied
+// fragments, so they are rendered escaped.
 templ RuntimeScreen(s view.Runtime) {
 	<div class="am-header">
 		<div class="am-header-text">

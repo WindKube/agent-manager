@@ -15,15 +15,8 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The two profile screens.
-//
-// Plain server renders and plain form posts, like the scanner screen: curating
-// a profile changes stored state, so post-redirect-get is what makes a reload
-// safe. The one exception is a refusal the api understood — the slug is taken,
-// the visibility is not a value it knows — which is rendered inline on the
-// same request rather than carried through a redirect, so the sentence a
-// person reads is one this exact request received rather than one a forwarded
-// link could have put in the hub's mouth.
+// Profile writes use post-redirect-get, except a refusal the api understood, which
+// renders inline so its text cannot be forged through a redirect link.
 
 func (s *Server) profiles(c *gin.Context) {
 	viewer := viewerFor(c)
@@ -69,9 +62,7 @@ func (s *Server) createProfile(c *gin.Context) {
 	}
 }
 
-// renderCreateProfileFailure re-reads the list so the refusal appears above a
-// real page rather than a blank one, and renders the api's own sentence
-// (hub.ProfileRefusedError) or a generic one for anything else.
+// renderCreateProfileFailure re-reads the list so the refusal sits above a real page.
 func (s *Server) renderCreateProfileFailure(c *gin.Context, err error) {
 	viewer := viewerFor(c)
 	screen := view.Profiles{CanCreate: viewer != nil && viewer.HasRole}
@@ -96,8 +87,7 @@ func (s *Server) profileDetail(c *gin.Context) {
 
 	detail, err := s.deps.Hub.Profile(session(c), slug)
 	if errors.Is(err, view.ErrNotFound) {
-		// An unreadable profile answers exactly as a missing one, so this is the
-		// screen and not one of the three GovernanceState reasons.
+		// Unreadable answers exactly as missing.
 		screen.Missing = true
 		s.renderProfile(c, http.StatusNotFound, screen)
 		return
@@ -118,16 +108,10 @@ func (s *Server) profileDetail(c *gin.Context) {
 	s.renderProfile(c, http.StatusOK, screen)
 }
 
-// revisionDiff is "Show diff"'s read: revision N's lockfile and its
-// predecessor's, fetched and handed to the pure view.DiffRevisions. The
-// comparison itself lives in view, where it is unit tested without a
-// server — this is deliberately thin, just the fetch orchestration and the
-// three ways it can come up short.
+// revisionDiff fetches revision N and its predecessor for view.DiffRevisions.
 func (s *Server) revisionDiff(ctx context.Context, slug, raw string) *view.RevisionDiffPanel {
 	revision, err := strconv.Atoi(raw)
 	if err != nil || revision < 1 {
-		// A revision number the URL cannot even name is the same answer as
-		// one that names nothing this identity may read.
 		return &view.RevisionDiffPanel{Missing: true}
 	}
 
@@ -142,23 +126,17 @@ func (s *Server) revisionDiff(ctx context.Context, slug, raw string) *view.Revis
 
 	older, err := s.deps.Hub.Revision(ctx, slug, revision-1)
 	if err != nil {
-		// Revision itself read fine; its predecessor did not. Never render
-		// that as an empty diff.
+		// Never render a missing predecessor as an empty diff.
 		return &view.RevisionDiffPanel{Revision: revision, PredecessorUnavailable: true}
 	}
 	return &view.RevisionDiffPanel{Revision: revision, Diff: view.DiffRevisions(newer, &older)}
 }
 
-// maxAddOptionPages bounds how much of the catalog is walked to build the "Add
-// package" list. The catalog this hub curates is a short, admin-reviewed
-// vocabulary (FR-049), not an open registry, so this is generous rather than
-// tight.
+// maxAddOptionPages is generous because the catalog is a short admin-reviewed list, not an open registry.
 const maxAddOptionPages = 50
 
-// availablePackages lists every catalog package this profile does not already
-// hold. A catalog read failure yields no options rather than an error: the
-// screen has already rendered on the profile read succeeding, and the Add
-// control degrading to absent is better than the whole page failing on it.
+// availablePackages lists catalog packages the profile lacks. A catalog failure
+// yields no options so the Add control degrades instead of failing the page.
 func (s *Server) availablePackages(ctx context.Context, held []view.ProfileEntryRow) []view.ProfileAddOption {
 	holding := make(map[string]struct{}, len(held))
 	for i := range held {
@@ -190,28 +168,16 @@ func (s *Server) renderProfile(c *gin.Context, status int, screen view.Profile) 
 	s.render(c, status, "Profile", "profiles", components.ProfileScreen(screen))
 }
 
-// profileSlug reads the catch-all param the detail route captures, which gin
-// includes with its leading "/".
 func profileSlug(c *gin.Context) string {
 	return strings.TrimPrefix(c.Param("slug"), "/")
 }
 
-// profileSlugForm is the slug a write route reads from its form body, because
-// none of those routes carries one as a path segment (see web.go's routing
-// comment).
 func profileSlugForm(c *gin.Context) string {
 	return strings.TrimSpace(c.PostForm("slug"))
 }
 
-// ---- the writes -----------------------------------------------------------
-
-// addEntry adds a package the profile does not yet hold, at the mode and
-// version the add form chose — latest by default, so the package detail
-// screen's plain "Add" form (which sends neither field) keeps floating an
-// entry to latest exactly as before. An id already held is not an error —
-// the select only ever offers ids the profile lacks, so this is a race
-// rather than a mistake — and it takes the same path as changing an
-// existing entry's mode.
+// addEntry defaults to latest because the package screen's plain Add form sends
+// no mode. An id already held is a race, treated as a mode change.
 func (s *Server) addEntry(c *gin.Context) {
 	slug := profileSlugForm(c)
 	id := strings.TrimSpace(c.PostForm("id"))
@@ -246,8 +212,6 @@ func (s *Server) addEntry(c *gin.Context) {
 	if !found {
 		settings = append(settings, hub.EntrySetting{ID: id, Mode: mode, Version: version})
 	} else {
-		// Already held: nothing new to add, so this is the same outcome
-		// changing an existing entry's mode already reports.
 		outcome = profileEntryUpdated
 	}
 
@@ -258,9 +222,7 @@ func (s *Server) addEntry(c *gin.Context) {
 	s.backToProfile(c, slug, outcome)
 }
 
-// removeEntry takes one package out of a profile, through the dedicated
-// removal command rather than SetProfileEntries's whole-set contract, which
-// refuses a body that omits an entry the profile holds.
+// removeEntry uses the dedicated command: SetProfileEntries refuses a set that omits a held entry.
 func (s *Server) removeEntry(c *gin.Context) {
 	slug := profileSlugForm(c)
 	id := strings.TrimSpace(c.PostForm("id"))
@@ -281,9 +243,7 @@ func (s *Server) pinEntry(c *gin.Context) { s.setEntryMode(c, "pinned") }
 
 func (s *Server) floatEntry(c *gin.Context) { s.setEntryMode(c, "latest") }
 
-// setEntryMode floats or pins one package, leaving every other entry's setting
-// exactly as it stood (SetProfileEntries takes the whole ordered set, so the
-// other rows are read back before being resent).
+// setEntryMode resends every other entry unchanged, since SetProfileEntries takes the whole set.
 func (s *Server) setEntryMode(c *gin.Context, mode string) {
 	slug := profileSlugForm(c)
 	id := c.PostForm("id")
@@ -369,9 +329,6 @@ func (s *Server) publishRevision(c *gin.Context) {
 	s.backToProfile(c, slug, profilePublished)
 }
 
-// deleteProfile removes a profile outright. Unlike every other write here it
-// redirects to the profile LIST on success, not back to the profile's own
-// page — there is no such page any more.
 func (s *Server) deleteProfile(c *gin.Context) {
 	slug := profileSlugForm(c)
 	if err := s.deps.Hub.DeleteProfile(session(c), slug); err != nil {
@@ -411,8 +368,6 @@ func (s *Server) renderProfileRefusal(c *gin.Context, slug, detail string) {
 	}
 	s.renderProfile(c, http.StatusUnprocessableEntity, screen)
 }
-
-// ---- redirects and notices -------------------------------------------------
 
 type profileOutcome string
 
@@ -479,7 +434,6 @@ func (s *Server) backToProfile(c *gin.Context, slug string, outcome profileOutco
 	s.redirectProfiles(c, "/profiles/"+slug, outcome)
 }
 
-// redirectProfiles is the profile screens' half of post-redirect-get.
 func (s *Server) redirectProfiles(c *gin.Context, target string, outcome profileOutcome) {
 	parsed, err := url.Parse(target)
 	if err != nil {

@@ -11,8 +11,6 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The fleet inventory: which machines reported a sync and what each holds.
-
 func (s *Server) machines(c *gin.Context) {
 	page, _ := strconv.Atoi(c.Query("page"))
 	screen := view.Machines{
@@ -94,8 +92,7 @@ func machinesNotice(outcome string) *view.Notice {
 	}
 }
 
-// affectedMachines is the Affected machines panel's read. A package the
-// viewer cannot filter by gets no panel; any other failure says so.
+// affectedMachines returns no panel for a package the viewer cannot filter by.
 func (s *Server) affectedMachines(c *gin.Context, pkg, version string) *view.AffectedMachines {
 	affected, err := s.deps.Hub.AffectedMachines(session(c), pkg, version)
 	switch {

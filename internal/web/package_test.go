@@ -11,11 +11,8 @@ import (
 	"agent-manager/internal/apiclient"
 )
 
-// TestPackageDeleteControlsAreDisabledWithoutTheCatalogAdminRoleAndNeverHidden
-// is FR-126's own rule, applied to catalog delete: a viewer who may not
-// delete anything sees both buttons, disabled, with the reason on them —
-// never a page with the controls missing, which would look like a hub with
-// no delete feature at all rather than one this identity may not use.
+// TestPackageDeleteControlsAreDisabledWithoutTheCatalogAdminRoleAndNeverHidden:
+// missing controls would read as a hub with no delete feature at all.
 func TestPackageDeleteControlsAreDisabledWithoutTheCatalogAdminRoleAndNeverHidden(t *testing.T) {
 	api, h := newServer(t)
 	api.Data.As(apiclient.ViewerRoleReadOnly)
@@ -28,8 +25,6 @@ func TestPackageDeleteControlsAreDisabledWithoutTheCatalogAdminRoleAndNeverHidde
 	require.Contains(t, body, `aria-disabled="true"`)
 }
 
-// TestPackageDeleteControlsAreEnabledForTheCatalogAdminRole is the other
-// half: the same viewer.HasRole && role check, the other way.
 func TestPackageDeleteControlsAreEnabledForTheCatalogAdminRole(t *testing.T) {
 	_, h := newServer(t)
 	body := get(t, h, "/packages/example/platform-toolkit").Body.String()
@@ -38,12 +33,9 @@ func TestPackageDeleteControlsAreEnabledForTheCatalogAdminRole(t *testing.T) {
 	require.NotContains(t, html.UnescapeString(body), "may not delete a package or a version")
 }
 
-// TestADeleteFromAnIdentityWithoutTheRoleReachesNoApi proves the web role's
-// own guard, mirroring TestAnOrganizationChangeFromAnIdentityWithoutTheRoleReachesNoApi:
-// a post that arrives anyway, from a stale page or a crafted request, must
-// never reach the api. The api's OWN refusal of the same identity is
-// proven independently by internal/api's integration test — this is the
-// screen's half of the same guarantee, not a substitute for it.
+// TestADeleteFromAnIdentityWithoutTheRoleReachesNoApi: a post from a stale page or
+// crafted request must not reach the api. The api's own refusal is tested in
+// internal/api; this is the screen's half.
 func TestADeleteFromAnIdentityWithoutTheRoleReachesNoApi(t *testing.T) {
 	api, h := newServer(t)
 	api.Data.As(apiclient.ViewerRoleReadOnly)
@@ -59,10 +51,6 @@ func TestADeleteFromAnIdentityWithoutTheRoleReachesNoApi(t *testing.T) {
 	require.Empty(t, api.Calls("deletePackage"))
 }
 
-// TestDeletingAVersionReachesTheApiAndRedirectsWithAnAcknowledgement proves
-// the happy path: an admin's post reaches the api with the exact
-// namespace/name/version the URL named, and the redirect carries a notice a
-// reader cannot mistake for the delete having done nothing.
 func TestDeletingAVersionReachesTheApiAndRedirectsWithAnAcknowledgement(t *testing.T) {
 	api, h := newServer(t)
 
@@ -83,10 +71,8 @@ func TestDeletingAVersionReachesTheApiAndRedirectsWithAnAcknowledgement(t *testi
 	require.Contains(t, body, "still resolves it")
 }
 
-// TestDeletingAPackageReachesTheApiAndRedirectsToTheCatalog proves a package
-// delete lands on the catalog rather than the package's own page: that page
-// 404s the instant its latest_version_id clears, so the acknowledgement has
-// to live somewhere else.
+// TestDeletingAPackageReachesTheApiAndRedirectsToTheCatalog: the package page
+// 404s once its latest_version_id clears, so the acknowledgement lives on the catalog.
 func TestDeletingAPackageReachesTheApiAndRedirectsToTheCatalog(t *testing.T) {
 	api, h := newServer(t)
 
@@ -106,9 +92,6 @@ func TestDeletingAPackageReachesTheApiAndRedirectsToTheCatalog(t *testing.T) {
 	require.Contains(t, body, "deleted from the catalog")
 }
 
-// TestAPackageDeleteConflictFromTheApiIsShownAsARefusalNotASilentSuccess
-// proves the api's own refusal (already withdrawn, say) reaches the screen
-// as its own reason rather than a redirect that reads like success.
 func TestAPackageDeleteConflictFromTheApiIsShownAsARefusalNotASilentSuccess(t *testing.T) {
 	api, h := newServer(t)
 	api.Fail("deleteVersion", http.StatusConflict, "version 1.0.0 is already withdrawn")
@@ -122,9 +105,6 @@ func TestAPackageDeleteConflictFromTheApiIsShownAsARefusalNotASilentSuccess(t *t
 	require.Contains(t, body, "already withdrawn")
 }
 
-// TestAForbiddenDeleteFromTheApiIsShownAsARefusal proves the same mapping
-// governance_test.go's own screens use: the api's 403 becomes the screen's
-// refusal notice, not a 500 or a silent no-op.
 func TestAForbiddenDeleteFromTheApiIsShownAsARefusal(t *testing.T) {
 	api, h := newServer(t)
 	api.Fail("deletePackage", http.StatusForbidden)
@@ -134,9 +114,6 @@ func TestAForbiddenDeleteFromTheApiIsShownAsARefusal(t *testing.T) {
 	require.Contains(t, rec.Header().Get("Location"), "notice=refused")
 }
 
-// TestThePackagePageStatesWhereThePackageComesFrom is the provenance line:
-// repository, ref, the shown version's commit linked on its forge, and the
-// subdirectory.
 func TestThePackagePageStatesWhereThePackageComesFrom(t *testing.T) {
 	api, h := newServer(t)
 	detail := api.Data.Details["example/adr-writer"]
@@ -154,9 +131,6 @@ func TestThePackagePageStatesWhereThePackageComesFrom(t *testing.T) {
 	require.NotContains(t, body, "/commit/")
 }
 
-// TestTheTrackUpstreamControlIsOfferedForAGitPackageOnly: a git package shows
-// the control and when the check last ran; an archive package has no
-// upstream tags and no control.
 func TestTheTrackUpstreamControlIsOfferedForAGitPackageOnly(t *testing.T) {
 	_, h := newServer(t)
 	body := html.UnescapeString(get(t, h, "/packages/example/platform-toolkit").Body.String())

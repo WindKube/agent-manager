@@ -39,11 +39,8 @@ func riverHandler(t *testing.T, upstream string, viewer func(*fakeapi.Data)) htt
 
 func readOnly(d *fakeapi.Data) { d.As(apiclient.ViewerRoleReadOnly) }
 
-// riverUpstream stands in for the dashboard, recording what reached it.
-//
-// Guarded, because the recording happens on the server's goroutine and the
-// assertions on the test's: -race calls that a data race whether or not the
-// values happen to arrive.
+// riverUpstream stands in for the dashboard, recording what reached it. Guarded
+// because recording happens on the server goroutine.
 type riverUpstream struct {
 	*httptest.Server
 	mu      sync.Mutex
@@ -72,8 +69,6 @@ func newRiverUpstream(t *testing.T) *riverUpstream {
 		up.paths = append(up.paths, r.URL.Path)
 		up.cookies = append(up.cookies, r.Header.Get("Cookie"))
 		up.mu.Unlock()
-		// A dashboard that sets a cookie, so the response side is exercised by
-		// something rather than asserted against nothing.
 		http.SetCookie(w, &http.Cookie{Name: "river_pref", Value: "table"})
 		_, _ = w.Write([]byte(`{"available":0}`))
 	}))
@@ -81,8 +76,6 @@ func newRiverUpstream(t *testing.T) *riverUpstream {
 	return up
 }
 
-// The frame's own src has to be the path this role proxies, or the screen
-// renders a box that loads nothing.
 func TestRiverScreenEmbedsTheDashboardOnThisHubsOwnOrigin(t *testing.T) {
 	up := newRiverUpstream(t)
 	body := get(t, riverHandler(t, up.URL, nil), "/river").Body.String()
@@ -93,18 +86,15 @@ func TestRiverScreenEmbedsTheDashboardOnThisHubsOwnOrigin(t *testing.T) {
 		"the upstream address is this role's configuration, not something to publish to a browser")
 }
 
-// The owner's rule for anything a viewer cannot use: show it, disable it, say
-// why on hover. Both ways of being unavailable are that, and each says its own
-// thing — "no dashboard is deployed" and "your role may not read it" are
-// different facts and a reader can act on only one of them.
+// Both ways of being unavailable keep the entry, disabled, with their own reason:
+// "no dashboard deployed" and "your role may not read it" are different facts.
 func TestRiverNavEntryIsShownDisabledWithItsReasonRatherThanDropped(t *testing.T) {
 	t.Run("no dashboard configured", func(t *testing.T) {
 		body := get(t, riverHandler(t, "", nil), "/catalog").Body.String()
 
 		require.Contains(t, body, "River Dashboard", "the entry stays in the sidebar")
 		require.Contains(t, body, "am-nav-item-gated")
-		// A fragment, not the whole sentence: templ escapes the apostrophe in
-		// "queue's", so the constant does not appear in the markup verbatim.
+		// A fragment: templ escapes the apostrophe in "queue's".
 		require.Contains(t, body, "This hub runs no River dashboard")
 		require.NotContains(t, body, `href="/river"`, "a disabled entry is not a link")
 	})
@@ -129,14 +119,9 @@ func TestRiverNavEntryIsShownDisabledWithItsReasonRatherThanDropped(t *testing.T
 	})
 }
 
-// hubServer runs the web role on a real listener.
-//
-// The proxy tests need one: httputil.ReverseProxy asks the ResponseWriter for
-// a CloseNotifier when the request context has no Done channel, gin's writer
-// says it is one, and the recorder underneath is not — so a proxy driven
-// through httptest.NewRequest panics inside gin rather than proxying anything.
-// A real server has a real context and a real writer, which is also the only
-// arrangement that proves the bytes come back at all.
+// hubServer runs the web role on a real listener. Driven through
+// httptest.NewRequest, httputil.ReverseProxy asks gin's writer for a
+// CloseNotifier the recorder underneath does not implement, and panics.
 func hubServer(t *testing.T, upstream string, viewer func(*fakeapi.Data)) string {
 	t.Helper()
 
@@ -145,16 +130,13 @@ func hubServer(t *testing.T, upstream string, viewer func(*fakeapi.Data)) string
 	return srv.URL
 }
 
-// hubResponse is a finished answer: read and closed here, so no test has to
-// remember to, and none of them holds an open body while asserting.
 type hubResponse struct {
 	Status int
 	Header http.Header
 	Body   string
 }
 
-// hubRequest is one signed-in request to the running web role, following no
-// redirect: a redirect is an answer these tests want to see, not follow.
+// hubRequest sends one signed-in request without following redirects.
 func hubRequest(t *testing.T, method, target string, body io.Reader) hubResponse {
 	t.Helper()
 
@@ -174,8 +156,6 @@ func hubRequest(t *testing.T, method, target string, body io.Reader) hubResponse
 	return hubResponse{Status: res.StatusCode, Header: res.Header, Body: string(read)}
 }
 
-// The whole point of proxying rather than linking: the browser talks to this
-// role, and the dashboard's own address never has to be reachable from it.
 func TestRiverEmbedProxiesTheRequestThroughWithItsPathIntact(t *testing.T) {
 	up := newRiverUpstream(t)
 	hub := hubServer(t, up.URL, nil)
@@ -189,8 +169,7 @@ func TestRiverEmbedProxiesTheRequestThroughWithItsPathIntact(t *testing.T) {
 			"so nothing here rewrites it")
 }
 
-// The session cookie is this role's own secret. The dashboard has no use for
-// it and is a third-party process, so it must not see one.
+// The session cookie must never reach the third-party dashboard process.
 func TestRiverEmbedForwardsNoSessionCookieUpstream(t *testing.T) {
 	up := newRiverUpstream(t)
 	hub := hubServer(t, up.URL, nil)
@@ -201,8 +180,7 @@ func TestRiverEmbedForwardsNoSessionCookieUpstream(t *testing.T) {
 		"the request carried am_session and it must be stripped before it leaves")
 }
 
-// A cookie from upstream would land on this origin, which is where the session
-// cookie lives.
+// An upstream cookie would land on this origin, where the session cookie lives.
 func TestRiverEmbedDropsUpstreamSetCookie(t *testing.T) {
 	up := newRiverUpstream(t)
 	hub := hubServer(t, up.URL, nil)
@@ -213,10 +191,8 @@ func TestRiverEmbedDropsUpstreamSetCookie(t *testing.T) {
 		"the upstream set river_pref and it must not reach this origin")
 }
 
-// River's own api can cancel, retry and delete jobs and pause queues. None of
-// that writes this hub's audit row, and constitution principle IV calls a
-// state change with no audit row incomplete — so the proxy reads and does not
-// write, and the refusal happens here rather than upstream.
+// River's api can cancel, retry and delete jobs, none of which writes this hub's
+// audit row, so the proxy is read-only and the refusal happens here.
 func TestRiverEmbedRefusesEveryVerbThatCouldChangeTheQueue(t *testing.T) {
 	up := newRiverUpstream(t)
 	hub := hubServer(t, up.URL, nil)
@@ -232,7 +208,7 @@ func TestRiverEmbedRefusesEveryVerbThatCouldChangeTheQueue(t *testing.T) {
 	}
 }
 
-// The api is not in the proxy's path, so this check is the only one there is.
+// The api is not in the proxy's path, so this is the only role check.
 func TestRiverEmbedRefusesARoleThatMayNotReadTheQueue(t *testing.T) {
 	up := newRiverUpstream(t)
 	hub := hubServer(t, up.URL, readOnly)
@@ -243,8 +219,6 @@ func TestRiverEmbedRefusesARoleThatMayNotReadTheQueue(t *testing.T) {
 	require.Empty(t, up.seenPaths(), "a refused viewer's request never reaches the dashboard")
 }
 
-// A hub with no dashboard has no such path, rather than a path that answers
-// with an error naming a service the operator never deployed.
 func TestRiverEmbedIsNotFoundWhenNoDashboardIsConfigured(t *testing.T) {
 	hub := hubServer(t, "", nil)
 
@@ -253,8 +227,7 @@ func TestRiverEmbedIsNotFoundWhenNoDashboardIsConfigured(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, res.Status)
 }
 
-// An unreachable dashboard is a 502, not a blank frame: the screen around it
-// rendered fine, so silence inside would read as an empty queue.
+// An unreachable dashboard is a 502: a blank frame would read as an empty queue.
 func TestRiverEmbedAnswersBadGatewayWhenTheDashboardIsUnreachable(t *testing.T) {
 	up := newRiverUpstream(t)
 	upstream := up.URL
@@ -266,9 +239,7 @@ func TestRiverEmbedAnswersBadGatewayWhenTheDashboardIsUnreachable(t *testing.T) 
 	require.Equal(t, http.StatusBadGateway, res.Status)
 }
 
-// The screen itself renders for a refused viewer — with the reason, not a
-// frame and not a 403 page. The sidebar entry led here, and a dead end that
-// explains itself is the point of showing the entry at all.
+// A refused viewer gets the screen with the reason, not a frame or a 403 page.
 func TestRiverScreenExplainsItselfInsteadOfRenderingAnEmptyFrame(t *testing.T) {
 	up := newRiverUpstream(t)
 
@@ -289,8 +260,6 @@ func TestRiverScreenExplainsItselfInsteadOfRenderingAnEmptyFrame(t *testing.T) {
 	})
 }
 
-// Signed out is the guard's business, not this screen's: no session means the
-// sign-in screen, and the dashboard's bytes are never reached at all.
 func TestRiverIsBehindTheSameGuardAsEveryOtherScreen(t *testing.T) {
 	up := newRiverUpstream(t)
 	hub := hubServer(t, up.URL, (*fakeapi.Data).SignedOut)

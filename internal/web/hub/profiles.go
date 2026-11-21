@@ -12,31 +12,21 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The profile screen's door to the api, through the generated client and
-// nothing else.
-//
-// Three refusals, three screens: 401 is signed out, 403 is a role that may
-// not do this, 404 is a profile that does not exist or is not readable
-// (answered identically on purpose, and never told apart here). A 409 or 422
-// means the caller is permitted and the api understood but refuses, so it
-// arrives as ProfileRefusedError carrying that sentence. Everything else is
-// the api unreachable or broken, rendered as a bad gateway.
+// Profile refusals map to screens: 401 signed out, 403 role, 404 missing or
+// unreadable (deliberately indistinguishable), 409/422 ProfileRefusedError with
+// the api's sentence, anything else a bad gateway.
 
-// ProfileRefusedError is the api refusing a curation request it understood
-// from a caller it permitted: the slug is taken, the body leaves out a
-// package the profile holds, the change would leave the profile with no
-// owner. It carries the api's own sentence because the sentence IS the answer.
+// ProfileRefusedError is the api refusing a curation request it understood from a
+// permitted caller; the api's sentence is the answer.
 type ProfileRefusedError struct {
-	// Detail is the api's RFC 9457 problem detail, quoting what the caller
-	// sent: render it escaped.
+	// Detail quotes what the caller sent, so render it escaped.
 	Detail string
 }
 
 func (e *ProfileRefusedError) Error() string { return e.Detail }
 
-// ProfileCreation is the create form. Every optional field is omitted from
-// the request when empty, which is what makes the api's defaults apply — an
-// empty string would sit outside every enum and be refused.
+// ProfileCreation is the create form. Empty optional fields are omitted so the
+// api's defaults apply; an empty string would fall outside every enum.
 type ProfileCreation struct {
 	Slug string
 	Name string
@@ -45,27 +35,24 @@ type ProfileCreation struct {
 	Visibility    string
 	OwnerTeam     string
 	DefaultPolicy string
-	// ForkOf copies the named profile's entries as they stand now, and
-	// records lineage only.
+	// ForkOf copies the named profile's current entries and records lineage only.
 	ForkOf string
 }
 
-// EntrySetting is one package's version policy. Version carries the pin or
-// range depending on Mode and is unused for latest.
+// EntrySetting is one package's version policy; Version is unused for latest.
 type EntrySetting struct {
 	ID      string
 	Mode    string
 	Version string
 }
 
-// Share is one subject and the role they are to hold.
 type Share struct {
 	Kind string
 	Ref  string
 	Role string
 }
 
-// Profiles reads GET /v1/profiles: exactly the profiles this identity may read.
+// Profiles lists exactly the profiles this identity may read.
 func (c *Client) Profiles(ctx context.Context) ([]view.ProfileRow, error) {
 	resp, err := c.api.ListProfilesWithResponse(ctx)
 	if err != nil {
@@ -82,7 +69,6 @@ func (c *Client) Profiles(ctx context.Context) ([]view.ProfileRow, error) {
 	return out, nil
 }
 
-// Profile reads GET /v1/profiles/{slug}.
 func (c *Client) Profile(ctx context.Context, slug string) (view.Profile, error) {
 	if err := checkSlug(slug); err != nil {
 		return view.Profile{}, err
@@ -98,7 +84,6 @@ func (c *Client) Profile(ctx context.Context, slug string) (view.Profile, error)
 	return profileScreen(resp.JSON200), nil
 }
 
-// CreateProfile posts POST /v1/profiles.
 func (c *Client) CreateProfile(ctx context.Context, creation ProfileCreation) (view.ProfileRow, error) {
 	body := apiclient.CreateProfileJSONRequestBody{Slug: creation.Slug, Name: creation.Name}
 	if creation.Description != "" {
@@ -143,18 +128,15 @@ func profileRow(from *apiclient.Profile) view.ProfileRow {
 	return row
 }
 
-// SetProfileEntries puts PUT /v1/profiles/{slug}/entries — the WHOLE ordered
-// set, since position is what an ordered set means and a patch cannot
-// express a reorder. An empty slice is refused by the api naming every
-// package left out, to catch a client acting on stale state — RemoveProfileEntry
-// below is the addressed way to take one out instead.
+// SetProfileEntries replaces the whole ordered set, since a patch cannot express
+// a reorder. The api refuses a set that drops held packages, to catch stale
+// clients; RemoveProfileEntry is the addressed removal.
 func (c *Client) SetProfileEntries(ctx context.Context, slug string, entries []EntrySetting) (view.Profile, error) {
 	if err := checkSlug(slug); err != nil {
 		return view.Profile{}, err
 	}
 
-	// Built with a length rather than left nil so an empty set is sent as
-	// `[]`, not the `null` a nil slice marshals to.
+	// Non-nil so an empty set marshals as `[]`, not `null`.
 	body := apiclient.SetProfileEntriesJSONRequestBody{
 		Entries: make([]apiclient.ProfileEntrySetting, 0, len(entries)),
 	}
@@ -180,8 +162,7 @@ func (c *Client) SetProfileEntries(ctx context.Context, slug string, entries []E
 	return profileScreen(resp.JSON200), nil
 }
 
-// RemoveProfileEntry posts POST /v1/profiles/{slug}/entries/remove: the
-// targeted removal SetProfileEntries's whole-set contract does not offer.
+// RemoveProfileEntry removes one entry, which SetProfileEntries cannot do.
 func (c *Client) RemoveProfileEntry(ctx context.Context, slug, id string) (view.Profile, error) {
 	if err := checkSlug(slug); err != nil {
 		return view.Profile{}, err
@@ -198,10 +179,8 @@ func (c *Client) RemoveProfileEntry(ctx context.Context, slug, id string) (view.
 	return profileScreen(resp.JSON200), nil
 }
 
-// DeleteProfile deletes DELETE /v1/profiles/{slug}. Refuses with a 409,
-// carried as ProfileRefusedError, when the profile holds a published
-// revision (FR-034): deleting a revision is not something this hub does,
-// and a client may already have synced one.
+// DeleteProfile refuses with a 409 (as ProfileRefusedError) when the profile holds
+// a published revision, since a client may already have synced it.
 func (c *Client) DeleteProfile(ctx context.Context, slug string) error {
 	if err := checkSlug(slug); err != nil {
 		return err
@@ -217,9 +196,8 @@ func (c *Client) DeleteProfile(ctx context.Context, slug string) error {
 	return profileFailure("delete profile "+slug, resp.HTTPResponse, resp.Body)
 }
 
-// SetProfileSharing puts PUT /v1/profiles/{slug}/sharing: an UPSERT of
-// roles, not a replacement — a subject the body does not name keeps its
-// role. There is no way to remove one.
+// SetProfileSharing upserts roles; a subject the body omits keeps its role, and
+// there is no way to remove one.
 func (c *Client) SetProfileSharing(ctx context.Context, slug string, members []Share) (view.Profile, error) {
 	if err := checkSlug(slug); err != nil {
 		return view.Profile{}, err
@@ -247,9 +225,7 @@ func (c *Client) SetProfileSharing(ctx context.Context, slug string, members []S
 	return profileScreen(resp.JSON200), nil
 }
 
-// SetProfileTargets puts PUT /v1/profiles/{slug}/targets — the enabled set
-// in full. An omitted target is disabled; an empty list means the profile
-// writes nothing until somebody chooses.
+// SetProfileTargets replaces the enabled set; an empty list writes nothing.
 func (c *Client) SetProfileTargets(ctx context.Context, slug string, targets []string) (view.Profile, error) {
 	if err := checkSlug(slug); err != nil {
 		return view.Profile{}, err
@@ -273,8 +249,7 @@ func (c *Client) SetProfileTargets(ctx context.Context, slug string, targets []s
 	return profileScreen(resp.JSON200), nil
 }
 
-// PublishRevision posts POST /v1/profiles/{slug}/revisions. A 201 is the
-// whole answer: no screen reads the lockfile it returns.
+// PublishRevision publishes a revision; the returned lockfile is not read.
 func (c *Client) PublishRevision(ctx context.Context, slug, note string) error {
 	if err := checkSlug(slug); err != nil {
 		return err
@@ -296,10 +271,8 @@ func (c *Client) PublishRevision(ctx context.Context, slug, note string) error {
 	return nil
 }
 
-// Revision reads GET /v1/profiles/{slug}/revisions/{revision}: one published
-// revision, exactly as it was frozen. The diff panel is the only caller —
-// it compares two of these rather than trusting a stored delta, since the
-// lockfile is the durable record and a diff must never drift from it.
+// Revision reads one published revision as frozen. The diff panel compares two of
+// these rather than a stored delta, so it can never drift from the lockfiles.
 func (c *Client) Revision(ctx context.Context, slug string, revision int) (view.LockfileSnapshot, error) {
 	if err := checkSlug(slug); err != nil {
 		return view.LockfileSnapshot{}, err
@@ -345,10 +318,8 @@ func lockfileSnapshot(from *apiclient.Lockfile) view.LockfileSnapshot {
 	return out
 }
 
-// checkSlug refuses an empty slug before it becomes a request: GET
-// /v1/profiles/ carries none at all and gin answers with a 301 to
-// /v1/profiles, which net/http follows and decodes as a blank ProfileDetail
-// with no error at all.
+// checkSlug refuses an empty slug: GET /v1/profiles/ gets a 301 that net/http
+// follows and decodes as a blank ProfileDetail without error.
 func checkSlug(slug string) error {
 	if slug == "" {
 		return view.ErrNotFound
@@ -438,8 +409,7 @@ func profileEntry(from *apiclient.ProfileEntry) view.ProfileEntryRow {
 	return entry
 }
 
-// lockfileOverride turns the schema's zero-instant "no expiry" back into
-// absence, so no screen says an override that never lapses expired in year 1.
+// lockfileOverride turns the schema's zero-instant "no expiry" back into absence.
 func lockfileOverride(from *apiclient.LockfileOverride) *view.ProfileOverride {
 	if from == nil {
 		return nil
@@ -451,8 +421,7 @@ func lockfileOverride(from *apiclient.LockfileOverride) *view.ProfileOverride {
 	return out
 }
 
-// profileFailure names the operation that failed, EXCEPT the not-found
-// state, which travels bare: it is a screen rather than a failure.
+// profileFailure wraps the operation name, except not-found, which is a screen.
 func profileFailure(what string, resp *http.Response, body []byte) error {
 	err := profileError(resp, body)
 	if errors.Is(err, view.ErrNotFound) {
@@ -461,10 +430,8 @@ func profileFailure(what string, resp *http.Response, body []byte) error {
 	return fmt.Errorf("%s: %w", what, err)
 }
 
-// profileError adds the two answers a curation screen has to READ to
-// governanceError's 401 and 403. A 404 is view.ErrNotFound and never a
-// message about permission: guessing which it was would leak the existence
-// of private profiles.
+// profileError extends governanceError with 404 and 409/422. A 404 never becomes a
+// permission message: guessing would leak private profiles' existence.
 func profileError(resp *http.Response, body []byte) error {
 	if resp != nil {
 		switch resp.StatusCode {
@@ -477,9 +444,8 @@ func profileError(resp *http.Response, body []byte) error {
 	return governanceError(resp, body)
 }
 
-// refusalDetail reads the api's RFC 9457 problem detail and falls back to a
-// sentence of its own rather than the raw body: an undecodable body would
-// put an unbounded upstream string in front of a browser.
+// refusalDetail falls back to its own sentence rather than the raw body, which
+// could put an unbounded upstream string in front of a browser.
 func refusalDetail(body []byte, resp *http.Response) string {
 	var problem apiclient.Error
 	if err := json.Unmarshal(body, &problem); err == nil && problem.Detail != nil && *problem.Detail != "" {

@@ -15,9 +15,8 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The governance methods, with the api stubbed and the assertions on the WIRE.
-// Same reasoning as the catalog's tests: asserting against apiclient's structs
-// would let a mapping bug here cancel out against the same bug in the test.
+// Assertions are on the wire: asserting against apiclient's structs would let a
+// mapping bug cancel out against the same bug in the test.
 
 func TestTheScannerSummaryReadsItsInstantsAgainstTheClientsClock(t *testing.T) {
 	var got string
@@ -43,9 +42,8 @@ func TestTheScannerSummaryReadsItsInstantsAgainstTheClientsClock(t *testing.T) {
 	require.Equal(t, "19s", summary.MedianScan)
 }
 
-// An absent figure must stay absent. "No scan finished in the window" and "the
-// median is zero" are different cards, and a zero-valued duration would render as
-// "0s" — a claim about a scan that never happened.
+// An absent median must stay absent: a zero duration would render "0s", a claim
+// about a scan that never happened.
 func TestAnAbsentSummaryFigureStaysAbsentRatherThanBecomingZero(t *testing.T) {
 	client := clientAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
 		writeCatalog(w, `{"periodDays":30,"versionsScanned":0,"quarantined":0,"overridesActive":0}`)
@@ -57,8 +55,7 @@ func TestAnAbsentSummaryFigureStaysAbsentRatherThanBecomingZero(t *testing.T) {
 	require.Empty(t, summary.NearestExpiry)
 }
 
-// days of 0 sends no parameter at all, so the api's own default applies. A client
-// that filled in 30 here would be a second place that knows the window.
+// days of 0 sends no parameter, so only the api knows the default window.
 func TestAnUnaskedForWindowIsNotInventedByThisRole(t *testing.T) {
 	var got string
 	client := clientAgainst(t, func(w http.ResponseWriter, r *http.Request) {
@@ -101,13 +98,10 @@ func TestAFindingRowCarriesTheSubjectAndTheVersionsOwnVerdict(t *testing.T) {
 	require.NotNil(t, page.Rows[0].Primary)
 	require.Equal(t, "scripts/digest.sh:41", page.Rows[0].Primary.Location())
 
-	// A finding with no recorded location carries none, rather than an empty one.
 	require.Nil(t, page.Rows[1].Primary)
 
-	// `rejected` survives as itself. The catalog collapses it onto the Flagged pill
-	// — "do not adopt this without reading the finding" — and on this screen the
-	// difference between awaiting a decision and having had one is the subject of
-	// the page.
+	// `rejected` survives as itself here: on this screen, awaiting a decision versus
+	// having had one is the subject of the page.
 	require.Equal(t, view.VerdictRejected, page.Rows[1].Verdict)
 	require.Equal(t, view.FindingRejected, page.Rows[1].State)
 }
@@ -125,8 +119,7 @@ func TestAnEmptyFilterSendsNoParameterRatherThanTheWordAll(t *testing.T) {
 	require.NotContains(t, got, "severity=")
 }
 
-// The whole matrix reaches the screen, passes included, and the primary evidence
-// location is picked off the row whose role says so rather than by position.
+// The primary evidence is picked by role, not position.
 func TestTheFindingDetailKeepsEveryCheckAndFindsThePrimaryLocationByItsRole(t *testing.T) {
 	client := clientAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
 		writeCatalog(w, `{
@@ -157,8 +150,7 @@ func TestTheFindingDetailKeepsEveryCheckAndFindsThePrimaryLocationByItsRole(t *t
 	require.Equal(t, view.CheckPass, detail.Checks[0].Result)
 	require.Equal(t, 2, detail.Checks[2].WarnCount)
 
-	// The primary row is second in the answer, so a mapping that took evidence[0]
-	// would name the consequence as the cause.
+	// The primary row is second, so taking evidence[0] would be wrong.
 	require.NotNil(t, detail.Primary)
 	require.Equal(t, "scripts/digest.sh", detail.Primary.Path)
 	require.Equal(t, 41, detail.Primary.Line)
@@ -172,8 +164,7 @@ func TestTheFindingDetailKeepsEveryCheckAndFindsThePrimaryLocationByItsRole(t *t
 	require.Contains(t, detail.Explanation, "undeclared host")
 }
 
-// An id out of a URL a person can edit is answered as "no such finding" here,
-// without a round trip to be told the same thing.
+// A malformed id from an editable URL is "no such finding" without a round trip.
 func TestAnIdThatIsNotAUuidIsNotFoundWithoutReachingTheApi(t *testing.T) {
 	reached := false
 	client := clientAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
@@ -186,9 +177,8 @@ func TestAnIdThatIsNotAUuidIsNotFoundWithoutReachingTheApi(t *testing.T) {
 	require.False(t, reached, "the api was called with an id that cannot name a finding")
 }
 
-// FR-126: a role refusal is a screen state with a reason, not a bad gateway. It
-// must also not be confused with the signed-out state — signing in again does not
-// acquire a role, so a person sent round that loop cannot get out of it.
+// A role refusal is a screen state, not a bad gateway, and must not be the
+// signed-out state: signing in again does not acquire a role.
 func TestARoleRefusalIsItsOwnStateAndNotTheSignedOutOne(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -237,8 +227,7 @@ func TestAcceptSendsTheNoteAndTheLifetimeAndRejectSendsNoLifetimeAtAll(t *testin
 		"a rejection is terminal, so there is no lifetime to send and no field to suggest one")
 }
 
-// A lifetime nobody chose is left to the api. The default is policy and it lives
-// on the side that owns the row.
+// An unchosen override lifetime is left to the api's policy default.
 func TestAnUnstatedOverrideLifetimeIsNotInventedHere(t *testing.T) {
 	var body string
 	client := clientAgainst(t, func(w http.ResponseWriter, r *http.Request) {
@@ -279,8 +268,7 @@ func TestTheAuditPageIsMappedRowForRow(t *testing.T) {
 	require.Empty(t, page.Rows[1].Source)
 }
 
-// The filter travels as the api's query params, and a row about a version is
-// mapped to its package so the screen can link it.
+// A version row is mapped to its package so the screen can link it.
 func TestTheAuditFilterIsForwardedAndSubjectsAreMapped(t *testing.T) {
 	var query url.Values
 	client := clientAgainst(t, func(w http.ResponseWriter, r *http.Request) {
@@ -313,8 +301,7 @@ func TestTheAuditFilterIsForwardedAndSubjectsAreMapped(t *testing.T) {
 	require.Empty(t, page.Rows[1].PackageHref())
 }
 
-// The export is handed back as a live stream. A method that decoded it would
-// undo, one layer later, the whole reason the api streams it.
+// The export is a live stream; decoding it would undo why the api streams it.
 func TestTheAuditExportIsHandedBackAsAStreamAndNotAsBytes(t *testing.T) {
 	lines := "{\"id\":\"a\"}\n{\"id\":\"b\"}\n{\"complete\":true,\"rows\":2}\n"
 	client := clientAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
@@ -333,9 +320,8 @@ func TestTheAuditExportIsHandedBackAsAStreamAndNotAsBytes(t *testing.T) {
 	require.Equal(t, 3, strings.Count(string(read), "\n"))
 }
 
-// A refused export must not be handed back as if it were one: its body is a
-// problem document, and a caller copying it to the browser would write that into
-// the operator's file.
+// A refused export's body is a problem document and must not be handed back, or it
+// would be written into the operator's file.
 func TestARefusedExportYieldsNoReader(t *testing.T) {
 	client := clientAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")

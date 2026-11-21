@@ -1,22 +1,7 @@
 package view_test
 
-// The web role mirrors two of the api's bounds so a reviewer is told the rule
-// before they break it rather than after. A mirror that drifts is worse than no
-// mirror: the screen then states a rule the api does not apply, and the reviewer
-// believes the screen.
-//
-// That is not hypothetical here. This file exists because the screen told
-// reviewers "leave the expiry blank and the override does not lapse" while
-// commands.normalise() turned a blank into 30 days and the published contract said
-// "never unlimited" — six places on this side, none of them wrong about anything a
-// test was checking, because the only test in the area asserted the TRANSPORT (the
-// field is omitted) rather than the OUTCOME. Omitting the field is exactly what
-// makes the api apply its default.
-//
-// internal/web may not import internal/api — internal/archcheck refuses it, and
-// for good reason. A TEST may: archcheck loads the non-test packages, and what is
-// forbidden is the web role LINKING the api's code, not a test comparing two
-// numbers that have to agree.
+// The web role mirrors some of the api's bounds; a drifted mirror makes the screen state a rule the api does
+// not apply. Tests may import internal/api even though the web role may not: archcheck only checks non-test code.
 
 import (
 	"testing"

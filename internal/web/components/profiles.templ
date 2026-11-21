@@ -7,14 +7,8 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// Profiles screens.
-//
-// Both are plain server renders with plain form posts, like the scanner screen:
-// curating a profile changes stored state, so post-redirect-get is what makes a
-// browser's reload button safe. Every string this hub did not write itself — a
-// package name, a member's display name, a revision note — is interpolated and
-// therefore escaped; internal/archcheck fails the build if anything under
-// internal/web calls templ.Raw at all.
+// The profile screens are plain server renders with post-redirect-get, so reload is
+// safe. Strings this hub did not write are interpolated and escaped.
 templ ProfilesScreen(p view.Profiles) {
 	<div class="am-header">
 		<div class="am-header-text">
@@ -143,8 +137,7 @@ templ profilesList(p view.Profiles) {
 	</div>
 }
 
-// ProfileScreen is the detail screen: what a profile holds, what the gate did
-// to each entry, who it is shared with, its sync targets and its history.
+// ProfileScreen is the profile detail screen.
 templ ProfileScreen(p view.Profile) {
 	<div class="am-detail-head">
 		<a class="am-back" href="/profiles">← Profiles</a>
@@ -213,12 +206,9 @@ templ profileBody(p view.Profile) {
 	@deleteProfilePanel(p)
 }
 
-// deleteProfilePanel gives the profile's owner a way to delete it outright.
-// Deletion is refused, never hidden, for two different reasons a viewer needs
-// to see: not being the owner (a role gate) and the profile still holding a
-// published revision (a data gate) — DeleteDisabledReason tells them apart.
-// The control itself is a two-step confirmation, not a single click: the
-// button only opens a dialog, and the dialog's own submit is the one write.
+// deleteProfilePanel is refused, never hidden, for two reasons a viewer must tell
+// apart: not the owner, or a published revision exists. Deletion is a two-step
+// confirmation.
 templ deleteProfilePanel(p view.Profile) {
 	<section class="am-gov-card" id="profile-delete" data-signals="{_deleteProfileOpen: false}">
 		<div class="am-section-head">
@@ -278,11 +268,8 @@ templ entriesPanel(p view.Profile) {
 	</section>
 }
 
-// addEntryControls replaces the single "Add package" toggle with one button
-// per kind, each opening its own popup form offering only that kind's
-// packages — the owner's request in full. Neither button is ever hidden: a
-// viewer who may not curate sees both greyed out with the reason, the same
-// precedent the entry row's Float and Pin controls follow.
+// addEntryControls is one button per kind, each opening a popup offering only that
+// kind's packages. Neither is ever hidden: non-curators see them disabled with the reason.
 templ addEntryControls(p view.Profile) {
 	<div class="am-panel-toggle-row">
 		if p.Permissions.Curate {
@@ -298,12 +285,9 @@ templ addEntryControls(p view.Profile) {
 	}
 }
 
-// addEntryModal is one kind's popup form: the registration modal's pattern
-// (import.templ) reused rather than reinvented, including its "hidden until
-// datastar says otherwise" backdrop, since a visible full-viewport overlay
-// would swallow every click before the script attaches. The version choice —
-// latest or a specific version, never a post-hoc "pin to X" button — is
-// asked here, at the moment of adding.
+// addEntryModal reuses the registration modal's hidden-until-datastar backdrop, so
+// a visible overlay cannot swallow clicks before the script attaches. The version
+// choice is made here, at the moment of adding.
 templ addEntryModal(p view.Profile, kind view.Kind, label, openSignal, modeSignal string, options []view.ProfileAddOption) {
 	if p.Permissions.Curate {
 		<div
@@ -367,10 +351,7 @@ templ addEntryModal(p view.Profile, kind view.Kind, label, openSignal, modeSigna
 	}
 }
 
-// entryKindSection is one of the two groups US5 splits "Packages" into. A
-// group with nothing in it still renders its own empty state rather than
-// disappearing: "this profile holds no plugins" is a fact worth reading, not
-// a reason to hide the section.
+// entryKindSection renders its own empty state rather than disappearing.
 templ entryKindSection(heading string, entries []view.ProfileEntryRow, p view.Profile, emptyID, emptyText string) {
 	<div class="am-entry-kind-section">
 		<div class="am-entry-kind-head">{ heading }</div>
@@ -496,11 +477,8 @@ templ sharingPanel(p view.Profile) {
 	</section>
 }
 
-// shareFields is the sharing form's three inputs and its submit button,
-// shared between the enabled and the disabled fieldset so the markup is
-// written once. The disabled fieldset is what stops an Enter keypress in the
-// text field from submitting anyway — a viewer's role, not the button alone,
-// is what must gate this.
+// shareFields is shared by the enabled and disabled fieldsets; the disabled
+// fieldset is what stops an Enter keypress from submitting anyway.
 templ shareFields() {
 	<div class="am-field am-field-kind">
 		<label class="am-field-label" for="share-kind">Kind</label>
@@ -610,9 +588,7 @@ templ revisionsPanel(p view.Profile) {
 	}
 }
 
-// revisionDiffPanel is "Show diff": a plain server round trip on a query
-// parameter, exactly the idiom the audit log's own detail panel uses, closed
-// by a link back rather than any client-side interaction.
+// revisionDiffPanel is a plain server round trip on a query parameter.
 templ revisionDiffPanel(p view.Profile) {
 	<div class="am-rev-diff-backdrop" style="background:rgba(15,18,22,0.42)" aria-hidden="true"></div>
 	<aside class="am-rev-diff-panel" id="profile-diff-panel" role="dialog" aria-label="Revision diff">

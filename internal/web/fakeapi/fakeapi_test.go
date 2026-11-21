@@ -114,7 +114,7 @@ func TestCatalogFiltering(t *testing.T) {
 			},
 		},
 		{
-			name:  "two selected tags narrow conjunctively (FR-013)",
+			name:  "two selected tags narrow conjunctively",
 			query: view.CatalogQuery{Tags: []string{"terraform", "guardrails"}},
 			wantIDs: []string{
 				"example/platform-toolkit", "example/terraform-module-review",
@@ -126,14 +126,14 @@ func TestCatalogFiltering(t *testing.T) {
 			wantIDs: []string{},
 		},
 		{
-			name:  "two selected categories widen disjunctively (FR-013)",
+			name:  "two selected categories widen disjunctively",
 			query: view.CatalogQuery{Categories: []string{"Data", "Documentation"}},
 			wantIDs: []string{
 				"example/adr-writer", "community/postgres-migration-guard",
 			},
 		},
 		{
-			name:  "the kind filter selects plugins only (FR-011)",
+			name:  "the kind filter selects plugins only",
 			query: view.CatalogQuery{Kind: view.KindFilterPlugins},
 			wantIDs: []string{
 				"example/platform-toolkit", "example/security-review-kit",
@@ -156,7 +156,7 @@ func TestCatalogFiltering(t *testing.T) {
 			},
 		},
 		{
-			name:  "free text matches a publisher (FR-010)",
+			name:  "free text matches a publisher",
 			query: view.CatalogQuery{Text: "octoflow"},
 			wantIDs: []string{
 				"community/release-toolkit",
@@ -172,11 +172,11 @@ func TestCatalogFiltering(t *testing.T) {
 		{
 			name:  "free text is a substring match, not a subsequence one",
 			query: view.CatalogQuery{Text: "tfm"},
-			// The facet menus fuzzy-match; the search box does not (FR-010).
+			// The facet menus fuzzy-match; the search box does not.
 			wantIDs: []string{},
 		},
 		{
-			name:  "sorting by name ascending orders alphabetically (FR-014)",
+			name:  "sorting by name ascending orders alphabetically",
 			query: view.CatalogQuery{Sort: view.SortName, Dir: view.DirAsc, Categories: []string{"Documentation", "Data"}},
 			wantIDs: []string{
 				"example/adr-writer", "community/postgres-migration-guard",

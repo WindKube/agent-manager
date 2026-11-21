@@ -14,20 +14,10 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// MarkdownBody renders a parsed markdown file (view.ParseMarkdown's result)
-// node by node. Every run of text reaches the page through templ's own
-// `{ expr }` escaping and every link's href through templ's automatic
-// scheme check (a plain string handed to href is sanitised via templ.URL,
-// which rejects anything but http/https/mailto/tel/ftp/ftps) — there is
-// never a pre-built HTML string here for a sanitiser to have missed
-// something in, which is also why this file has no need of the templ.Raw
-// archcheck bans under internal/web (TestWebNeverBypassesTemplEscaping).
-//
-// A raw HTML block or inline span in the source — the exact place a
-// `<script>`, an `<img onerror=...>` or an `<iframe>` would land — is never
-// walked into markup at all: markdownNode's switch has no case that reads
-// gmast.RawHTML or gmast.HTMLBlock content, so @markdownOmitted is the only
-// thing such a node can ever produce.
+// MarkdownBody renders a parsed markdown file node by node. Text goes through
+// templ's `{ expr }` escaping and hrefs through templ's URL scheme check; no HTML
+// string is ever built. Raw HTML nodes are never walked: markdownNode has no case
+// reading their content, so they only produce @markdownOmitted.
 func MarkdownBody(doc view.MarkdownDoc) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -71,12 +61,8 @@ func MarkdownBody(doc view.MarkdownDoc) templ.Component {
 	})
 }
 
-// markdownFrontmatter shows a file's leading YAML block as the structured,
-// non-prose metadata it is, rather than the run-together paragraph
-// CommonMark would make of it. It is never parsed (view.splitFrontmatter
-// only pulls its lines out), so the text below reaches the page through the
-// same `{ expr }` escaping as every other node this file renders — there is
-// nothing here for a hostile key or value to break out of.
+// markdownFrontmatter shows leading YAML as a structured block rather than the
+// paragraph CommonMark would make of it. It is never parsed, only escaped.
 func markdownFrontmatter(fm string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -105,7 +91,7 @@ func markdownFrontmatter(fm string) templ.Component {
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(fm)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/markdown.templ`, Line: 41, Col: 42}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/markdown.templ`, Line: 27, Col: 42}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
@@ -234,7 +220,7 @@ func markdownNode(n gmast.Node, source []byte) templ.Component {
 			var templ_7745c5c3_Var6 string
 			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(view.BlockText(n, source))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/markdown.templ`, Line: 72, Col: 60}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/markdown.templ`, Line: 58, Col: 60}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 			if templ_7745c5c3_Err != nil {
@@ -252,7 +238,7 @@ func markdownNode(n gmast.Node, source []byte) templ.Component {
 			var templ_7745c5c3_Var7 string
 			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(view.BlockText(n, source))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/markdown.templ`, Line: 74, Col: 60}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/markdown.templ`, Line: 60, Col: 60}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
@@ -271,7 +257,7 @@ func markdownNode(n gmast.Node, source []byte) templ.Component {
 			var templ_7745c5c3_Var8 string
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(string(n.(*gmast.String).Value))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/markdown.templ`, Line: 78, Col: 36}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/markdown.templ`, Line: 64, Col: 36}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 			if templ_7745c5c3_Err != nil {
@@ -285,7 +271,7 @@ func markdownNode(n gmast.Node, source []byte) templ.Component {
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(string(n.Text(source)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/markdown.templ`, Line: 80, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/markdown.templ`, Line: 66, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
@@ -316,7 +302,7 @@ func markdownNode(n gmast.Node, source []byte) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		case gmast.KindRawHTML, gmast.KindHTMLBlock:
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "     ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "  ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -543,11 +529,8 @@ func markdownEmphasis(e *gmast.Emphasis, source []byte) templ.Component {
 	})
 }
 
-// markdownLink renders an `[text](destination)`. Destination is a plain Go
-// string handed to href, so templ's own JoinURLErrs/URL sanitiser runs on
-// it — a `javascript:` destination is replaced with an inert placeholder
-// URL before it ever reaches the response, with no sanitiser of this
-// file's own required to catch it.
+// markdownLink hands the destination to href as a plain string, so templ's URL
+// sanitiser replaces a `javascript:` destination with an inert placeholder.
 func markdownLink(l *gmast.Link, source []byte) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -576,7 +559,7 @@ func markdownLink(l *gmast.Link, source []byte) templ.Component {
 		var templ_7745c5c3_Var14 templ.SafeURL
 		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinURLErrs(string(l.Destination))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/markdown.templ`, Line: 160, Col: 51}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/markdown.templ`, Line: 140, Col: 51}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 		if templ_7745c5c3_Err != nil {
@@ -626,7 +609,7 @@ func markdownAutoLink(a *gmast.AutoLink, source []byte) templ.Component {
 		var templ_7745c5c3_Var16 templ.SafeURL
 		templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinURLErrs(string(a.URL(source)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/markdown.templ`, Line: 166, Col: 51}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/markdown.templ`, Line: 146, Col: 51}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 		if templ_7745c5c3_Err != nil {
@@ -639,7 +622,7 @@ func markdownAutoLink(a *gmast.AutoLink, source []byte) templ.Component {
 		var templ_7745c5c3_Var17 string
 		templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(string(a.URL(source)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/markdown.templ`, Line: 166, Col: 119}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/markdown.templ`, Line: 146, Col: 119}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 		if templ_7745c5c3_Err != nil {
@@ -653,10 +636,8 @@ func markdownAutoLink(a *gmast.AutoLink, source []byte) templ.Component {
 	})
 }
 
-// markdownImage renders as a link rather than an <img>: the alt text and
-// destination go through the exact same escaping and href sanitisation as
-// any other link, and this hub does not fetch or proxy image bytes on a
-// package's behalf.
+// markdownImage renders as a link: this hub does not fetch or proxy image bytes
+// on a package's behalf.
 func markdownImage(img *gmast.Image, source []byte) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -685,7 +666,7 @@ func markdownImage(img *gmast.Image, source []byte) templ.Component {
 		var templ_7745c5c3_Var19 templ.SafeURL
 		templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinURLErrs(string(img.Destination))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/markdown.templ`, Line: 174, Col: 65}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/markdown.templ`, Line: 152, Col: 65}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 		if templ_7745c5c3_Err != nil {
@@ -698,7 +679,7 @@ func markdownImage(img *gmast.Image, source []byte) templ.Component {
 		var templ_7745c5c3_Var20 string
 		templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(string(img.Text(source)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/markdown.templ`, Line: 175, Col: 35}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/markdown.templ`, Line: 153, Col: 35}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 		if templ_7745c5c3_Err != nil {
@@ -736,7 +717,7 @@ func markdownText(t *gmast.Text, source []byte) templ.Component {
 		var templ_7745c5c3_Var22 string
 		templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(string(t.Segment.Value(source)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/markdown.templ`, Line: 180, Col: 34}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/markdown.templ`, Line: 158, Col: 34}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 		if templ_7745c5c3_Err != nil {
@@ -750,7 +731,7 @@ func markdownText(t *gmast.Text, source []byte) templ.Component {
 			var templ_7745c5c3_Var23 string
 			templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(" ")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/markdown.templ`, Line: 182, Col: 7}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/markdown.templ`, Line: 160, Col: 7}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 			if templ_7745c5c3_Err != nil {

@@ -10,21 +10,15 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The package files panel's door to the api (US3/US5: read a skill's files
-// before using it), through the generated client and nothing else.
-
-// ErrFileTooLarge is getPackageFile's 413: the file exists but is over the
-// size this hub renders, refused rather than truncated.
+// ErrFileTooLarge is the api's 413: the file is over the rendered size limit and
+// is refused rather than truncated.
 var ErrFileTooLarge = errors.New("this file is larger than this hub renders")
 
-// ErrFileNotRenderable is getPackageFile's 415: a binary member, listed by
-// PackageFiles but never rendered.
+// ErrFileNotRenderable is the api's 415: a binary member, listed but never rendered.
 var ErrFileNotRenderable = errors.New("this file is binary and is not rendered")
 
-// PackageFiles calls
-// GET /v1/packages/{namespace}/{name}/files. A 403 is ErrForbidden: the
-// version exists but FR-029 refuses to serve it, which the panel must say
-// plainly rather than as an empty file list.
+// PackageFiles lists a version's files. A 403 is ErrForbidden: the version exists
+// but may not be served, which the panel must say rather than show an empty list.
 func (c *Client) PackageFiles(ctx context.Context, namespace, name string) (view.FileList, error) {
 	resp, err := c.api.ListPackageFilesWithResponse(ctx, namespace, name)
 	if err != nil {
@@ -45,10 +39,8 @@ func (c *Client) PackageFiles(ctx context.Context, namespace, name string) (view
 	return out, nil
 }
 
-// PackageFile calls
-// GET /v1/packages/{namespace}/{name}/files/content. path is forwarded
-// as-is: the api resolves it against the archive's own member list, and
-// this hop builds no path from it either.
+// PackageFile reads one file's content. path is forwarded as-is; the api resolves
+// it against the archive's own member list.
 func (c *Client) PackageFile(ctx context.Context, namespace, name, path string) (view.FileDetail, error) {
 	resp, err := c.api.GetPackageFileWithResponse(ctx, namespace, name,
 		&apiclient.GetPackageFileParams{Path: path})
@@ -68,8 +60,7 @@ func (c *Client) PackageFile(ctx context.Context, namespace, name, path string) 
 	return detail, nil
 }
 
-// filesError adds the files panel's own two refusals to governanceError's
-// 401/403 split.
+// filesError adds the files panel's 413 and 415 to governanceError.
 func filesError(resp *http.Response, body []byte) error {
 	if resp != nil {
 		switch resp.StatusCode {

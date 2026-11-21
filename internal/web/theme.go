@@ -11,9 +11,7 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The theme is persisted per viewer and read server-side, so the first byte
-// of HTML already carries data-sm-theme and there is no flash of the wrong
-// theme. A cookie is the whole mechanism.
+// themeCookie is read server-side so the first byte of HTML carries the theme, with no flash.
 const themeCookie = "am_theme"
 
 const (
@@ -21,8 +19,7 @@ const (
 	themeDark  = "dark"
 )
 
-// themeFor resolves the theme for one request: an explicit ?theme= wins but
-// is NOT persisted, then the cookie, then light.
+// themeFor prefers ?theme= (not persisted), then the cookie, then light.
 func themeFor(c *gin.Context) string {
 	if t := normaliseTheme(c.Query("theme")); t != "" {
 		return t
@@ -53,7 +50,6 @@ func otherTheme(theme string) string {
 	return themeDark
 }
 
-// setTheme persists the choice and returns the viewer to where they were.
 func (s *Server) setTheme(c *gin.Context) {
 	theme := normaliseTheme(c.PostForm("theme"))
 	if theme == "" {
@@ -64,11 +60,9 @@ func (s *Server) setTheme(c *gin.Context) {
 		Name:     themeCookie,
 		Value:    theme,
 		Path:     "/",
-		MaxAge:   365 * 24 * 60 * 60, // a viewer's theme is not a session
+		MaxAge:   365 * 24 * 60 * 60,
 		HttpOnly: true,
-		// Follows the request rather than hardcoded true: over http://localhost
-		// a Secure cookie would never come back and the theme would silently
-		// not persist.
+		// Not hardcoded: over http://localhost a Secure cookie would never come back.
 		Secure:   c.Request.TLS != nil,
 		SameSite: http.SameSiteLaxMode,
 	})
@@ -76,9 +70,8 @@ func (s *Server) setTheme(c *gin.Context) {
 	c.Redirect(http.StatusSeeOther, localPath(c.PostForm("return")))
 }
 
-// localPath refuses anything that is not a path on this origin: a redirect
-// target from a form field is an open-redirect vector, and "//evil.example"
-// is a protocol-relative URL a naive "starts with /" check lets through.
+// localPath refuses anything but a path on this origin; "//evil.example" is
+// protocol-relative and slips past a naive prefix check.
 func localPath(raw string) string {
 	if raw == "" || raw[0] != '/' || strings.HasPrefix(raw, "//") || strings.HasPrefix(raw, "/\\") {
 		return "/catalog"
@@ -89,13 +82,11 @@ func localPath(raw string) string {
 	return raw
 }
 
-// shell assembles the layout props for one request.
 func (s *Server) shell(c *gin.Context, title, active string) components.Shell {
 	theme := themeFor(c)
 	return components.Shell{
 		Title: title,
-		// The ONLY source of an identity on any screen. The zero value is the
-		// signed-out state and renders no chip; there is no default.
+		// The only source of identity on any screen; nil renders signed out.
 		Viewer:   viewerFor(c),
 		Badges:   s.badges(c),
 		Theme:    theme,
@@ -109,11 +100,7 @@ func (s *Server) shell(c *gin.Context, title, active string) components.Shell {
 	}
 }
 
-// navGate is why each sidebar entry a viewer cannot follow cannot be followed.
-//
-// It answers for the River Dashboard only, which has two ways to be
-// unavailable — no dashboard deployed, or a role that may not read the queue —
-// and both are sentences worth reading rather than a missing entry.
+// navGate gives the reason a sidebar entry is disabled; only the River Dashboard has one.
 func (s *Server) navGate(c *gin.Context) map[string]string {
 	river := view.RiverFor(viewerFor(c), s.riverUI != nil)
 	if river.Gate == "" {
@@ -122,16 +109,11 @@ func (s *Server) navGate(c *gin.Context) map[string]string {
 	return map[string]string{"river": river.Gate}
 }
 
-// badges reads the sidebar's three counts for one page render — once per
-// FULL page, never on a datastar fragment update. A failure is not an error
-// to render: it returns nil, the sidebar shows no counts, and the screen the
-// reader asked for still arrives. Three zeroes would be the same class of lie
-// as the compiled-in counts these replaced.
+// badges is read once per full page render. A failure returns nil so the
+// sidebar shows no counts rather than misleading zeroes.
 func (s *Server) badges(c *gin.Context) *view.Badges {
 	viewer := viewerFor(c)
 	if viewer == nil || !viewer.HasRole {
-		// A viewer with no role may see nothing, so this is not a courtesy:
-		// the counts are scoped to what the caller may see.
 		return nil
 	}
 
@@ -143,15 +125,13 @@ func (s *Server) badges(c *gin.Context) *view.Badges {
 	return &counts
 }
 
-// render writes one full page: the shell with a screen inside it.
 func (s *Server) render(c *gin.Context, status int, title, active string, body templ.Component) {
 	c.Status(status)
 	c.Header("Content-Type", "text/html; charset=utf-8")
 
 	ctx := templ.WithChildren(c.Request.Context(), body)
 	if err := components.Layout(s.shell(c, title, active)).Render(ctx, c.Writer); err != nil {
-		// The response is already partially written, so the only useful thing left
-		// is a log line: the status cannot be changed now.
+		// Already partially written, so the status cannot change.
 		logFrom(c).Error().Err(err).Str("screen", title).Msg("render page")
 	}
 }

@@ -46,9 +46,8 @@ templ CLIScreen(s view.CLI) {
 	}
 }
 
-// cliRejected is the three states where the code itself is no good. They are
-// cards rather than am-empty rows, because am-empty is a full-bleed divider
-// under the header and this screen's content sits inside the page gutter.
+// cliRejected uses cards rather than am-empty, which is full-bleed and this
+// screen's content sits inside the page gutter.
 templ cliRejected(id, text string) {
 	<div class="am-gov-card" id={ id }>
 		<div class="am-gov-body">
@@ -79,8 +78,6 @@ templ cliCodeForm(s view.CLI) {
 	</form>
 }
 
-// cliPending is the confirm step: the host and the countdown the viewer must
-// see before they decide.
 templ cliPending(s view.CLI) {
 	<div class="am-gov-card" id="cli-pending">
 		<div class="am-gov-body am-gov-body-stack">

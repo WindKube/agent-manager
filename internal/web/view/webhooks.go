@@ -23,7 +23,6 @@ type Webhook struct {
 	LastDeliveryError  string
 }
 
-// EventList is the subscribed event types joined for a table cell.
 func (w Webhook) EventList() string {
 	if slices.Equal(w.EventTypes, []string{"*"}) {
 		return "every event"
@@ -31,7 +30,6 @@ func (w Webhook) EventList() string {
 	return strings.Join(w.EventTypes, ", ")
 }
 
-// NamespaceList is the namespace filter, or what its absence means.
 func (w Webhook) NamespaceList() string {
 	if len(w.Namespaces) == 0 {
 		return "every namespace"
@@ -39,7 +37,7 @@ func (w Webhook) NamespaceList() string {
 	return strings.Join(w.Namespaces, ", ")
 }
 
-// State is enabled, or disabled with the reason when the hub did it.
+// State includes the reason when the hub disabled the webhook itself.
 func (w Webhook) State() string {
 	switch {
 	case w.Enabled:
@@ -51,7 +49,6 @@ func (w Webhook) State() string {
 	}
 }
 
-// LastDelivery is the last attempt's outcome, or "never".
 func (w Webhook) LastDelivery() string {
 	if w.LastDeliveryAt == nil {
 		return "never delivered"
@@ -59,10 +56,8 @@ func (w Webhook) LastDelivery() string {
 	return "last " + deliveryOutcome(w.LastDeliveryStatus, w.LastDeliveryError) + " at " + Timestamp(*w.LastDeliveryAt)
 }
 
-// Href is a path under this webhook's own routes.
 func (w Webhook) Href(action string) string { return "/webhooks/" + w.ID + "/" + action }
 
-// DeliveriesHref opens this webhook's recent deliveries.
 func (w Webhook) DeliveriesHref() string { return "/webhooks?webhook=" + w.ID + "#webhook-deliveries" }
 
 // WebhookDelivery is one attempt to deliver one event.
@@ -77,15 +72,12 @@ type WebhookDelivery struct {
 	OccurredAt   time.Time
 }
 
-// Outcome is the status code, or the error when nothing answered.
 func (d WebhookDelivery) Outcome() string { return deliveryOutcome(d.StatusCode, d.Error) }
 
-// Delivered reports a 2xx answer.
 func (d WebhookDelivery) Delivered() bool {
 	return d.StatusCode != nil && *d.StatusCode >= 200 && *d.StatusCode < 300
 }
 
-// Duration is how long the attempt took.
 func (d WebhookDelivery) Duration() string { return strconv.FormatInt(d.DurationMs, 10) + " ms" }
 
 func deliveryOutcome(status *int64, err string) string {
@@ -99,8 +91,7 @@ func deliveryOutcome(status *int64, err string) string {
 	}
 }
 
-// WebhookSecret is the only response that carries a signing secret; the
-// screen shows it once and never again.
+// WebhookSecret is the only response that carries a signing secret; it is shown once.
 type WebhookSecret struct {
 	Name   string
 	Secret string
@@ -114,15 +105,12 @@ type WebhookForm struct {
 	Namespaces string
 }
 
-// Selected reports whether an event type was ticked.
 func (f WebhookForm) Selected(eventType string) bool { return slices.Contains(f.EventTypes, eventType) }
 
-// NamespaceList splits the namespaces field on commas and whitespace.
 func (f WebhookForm) NamespaceList() []string {
 	return strings.FieldsFunc(f.Namespaces, func(r rune) bool { return r == ',' || r == ' ' || r == '\n' || r == '\t' })
 }
 
-// Webhooks is the Webhooks screen.
 type Webhooks struct {
 	Webhooks []Webhook
 	// EventTypes is the api's vocabulary, "*" first.
@@ -130,7 +118,6 @@ type Webhooks struct {
 	Form       WebhookForm
 	Secret     *WebhookSecret
 
-	// Open is the webhook whose deliveries are shown, if any.
 	Open                  *Webhook
 	Deliveries            []WebhookDelivery
 	DeliveriesUnavailable bool

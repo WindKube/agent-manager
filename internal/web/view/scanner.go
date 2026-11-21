@@ -7,18 +7,11 @@ import (
 	"time"
 )
 
-// The Scanner screen's view models. Everything the api returns as data
-// becomes a sentence here and nowhere else, against the reader's clock.
-//
-// Two vocabularies on this screen are NOT the same and are never collapsed:
-// a finding's State — has a reviewer decided this — and the subject
-// version's Verdict — what the scan concluded. An accept records an
-// exception and leaves the version flagged.
+// A finding's State (has a reviewer decided) and its version's Verdict (what the scan concluded) are never
+// collapsed: accepting a finding records an exception and leaves the version flagged.
 
-// Severity is a finding's severity as the rule pack states it. The three
-// constants are not an exhaustive enumeration and must not become one: a
-// future pack can add a value, and an unknown one renders as itself under
-// the neutral tone rather than vanishing.
+// Severity is a finding's severity as the rule pack states it. The constants are not exhaustive: a pack can
+// add a value, which renders as itself rather than vanishing.
 type Severity string
 
 const (
@@ -27,8 +20,6 @@ const (
 	SeverityLow    Severity = "low"
 )
 
-// Label is the pill's text. An unrecognised severity shows under its own
-// name rather than as a blank pill.
 func (s Severity) Label() string {
 	switch s {
 	case SeverityHigh:
@@ -55,8 +46,7 @@ func (s Severity) Tone() string {
 	}
 }
 
-// FindingState is whether a reviewer has decided this finding. The scanner only
-// ever writes `open`; the other two are written by the accept and reject paths.
+// FindingState is whether a reviewer has decided this finding.
 type FindingState string
 
 const (
@@ -80,8 +70,7 @@ func (s FindingState) Label() string {
 	}
 }
 
-// Tone deliberately does not paint an approved finding green: an override is
-// a recorded exception, not a clean bill of health.
+// Tone does not paint an approved finding green: an override is a recorded exception, not a clean bill of health.
 func (s FindingState) Tone() string {
 	switch s {
 	case FindingOpen:
@@ -93,9 +82,7 @@ func (s FindingState) Tone() string {
 	}
 }
 
-// Verdict is the SUBJECT VERSION's verdict, carried whole rather than
-// collapsed onto Scan's three pills: on this screen, awaiting a decision vs.
-// having had a terminal one is the entire subject of the page.
+// Verdict is the subject version's verdict, carried whole rather than collapsed onto Scan's pills.
 type Verdict string
 
 const (
@@ -155,8 +142,7 @@ func (r CheckResult) Label() string {
 	}
 }
 
-// Mark is the glyph in the matrix's first column. It carries the result on its
-// own, so the matrix is readable without relying on colour.
+// Mark carries the result on its own, so the matrix is readable without colour.
 func (r CheckResult) Mark() string {
 	switch r {
 	case CheckPass:
@@ -183,28 +169,20 @@ func (r CheckResult) Tone() string {
 	}
 }
 
-// Check is one check the scan ran, pass or fail. Every check that ran is
-// recorded so the absence of a finding is distinguishable from the absence
-// of a check: a screen must render the whole slice, never just the failures.
+// Check is one check the scan ran, pass or fail. Render the whole slice, never just failures, so a missing
+// finding is distinguishable from a missing check.
 type Check struct {
-	ID string
-	// Engine names the analyser this row belongs to, so the matrix reads as one
-	// block per analyser rather than as one undifferentiated list.
-	Engine string
-	Label  string
-	// Explain is what this check looks for, in general — not this scan's
-	// result, which is Result and WarnCount below.
+	ID      string
+	Engine  string
+	Label   string
 	Explain string
 	Result  CheckResult
-	// WarnCount is not a finding counter: the number alone reads as "2
-	// problems" when it can mean the opposite.
+	// WarnCount is not a finding counter; see Note.
 	WarnCount int
 }
 
-// Note says what a non-zero WarnCount means in words. The rule pack's is a
-// blind-spot counter — scripts its parser could not read. The second engine's
-// mixes findings held below the reporting threshold with analyses that did not
-// run, so it is reported without a cause it cannot substantiate.
+// Note explains a non-zero WarnCount. The rule pack's counts files it could not read; other engines mix
+// sub-threshold findings with skipped analyses, so no cause is claimed.
 func (c Check) Note() string {
 	if c.WarnCount == 0 {
 		return ""
@@ -215,11 +193,9 @@ func (c Check) Note() string {
 	return plural(c.WarnCount, "file") + " this check could not read"
 }
 
-// RulepackEngine is the analyser id the project's own rule pack records, and
-// the value every row written before there was a second engine carries.
+// RulepackEngine is the rule pack's analyser id.
 const RulepackEngine = "rulepack"
 
-// EngineLabel names an analyser for a reader.
 func EngineLabel(engine string) string {
 	switch engine {
 	case "", RulepackEngine:
@@ -231,18 +207,15 @@ func EngineLabel(engine string) string {
 	}
 }
 
-// Evidence is one location a finding points at. Path and Quote are bytes out
-// of a package somebody else wrote, escaped by templ on render.
+// Evidence is one location a finding points at. Path and Quote are untrusted package bytes.
 type Evidence struct {
 	Path string
-	// Line is 0 when the evidence names no line — a manifest-pointer hit.
-	// Line numbers are 1-based, so 0 is unambiguous and saves a pointer.
+	// Line is 0 when the evidence names no line; lines are 1-based.
 	Line  int
 	Quote string
 }
 
-// Location is the design's `scripts/digest.sh:41`, without the colon when there
-// is no line to put after it.
+// Location is "path:line", or just the path when there is no line.
 func (e Evidence) Location() string {
 	if e.Line <= 0 {
 		return e.Path
@@ -254,25 +227,18 @@ func (e Evidence) Location() string {
 type FindingRow struct {
 	ID     string
 	RuleID string
-	// Engine names the analyser that raised it. Two engines may use the same
-	// rule id, so the pair is what identifies a finding to a reader.
-	Engine   string
-	Title    string
-	Subject  string
-	Severity Severity
-	State    FindingState
-	Verdict  Verdict
-	// Raised is the relative phrase, rendered against the reader's clock.
-	Raised string
-	// Explanation is the rule's own prose, escaped like everything else, so
-	// a reader can learn what the rule id means on hover before selecting
-	// this row.
+	// Engine plus RuleID identifies a finding, since two engines may share a rule id.
+	Engine      string
+	Title       string
+	Subject     string
+	Severity    Severity
+	State       FindingState
+	Verdict     Verdict
+	Raised      string
 	Explanation string
-	// PackageID links the subject back to the catalog.
-	PackageID string
-	Version   string
-	// Primary is the finding's own denormalised location, the headline. Nil
-	// when the scan recorded none, a state the pane says out loud.
+	PackageID   string
+	Version     string
+	// Primary is nil when the scan recorded no location.
 	Primary *Evidence
 }
 
@@ -286,14 +252,12 @@ type FindingsPage struct {
 
 // ScanMeta is the scan that raised the finding.
 type ScanMeta struct {
-	// PackVersion is `<declared>+<12 hex>` and is opaque: any rule edit moves
-	// the suffix. Nothing splits or parses it.
+	// PackVersion is opaque; nothing splits or parses it.
 	PackVersion string
 	Started     string
 	Finished    string
 	Verdict     Verdict
-	// TimedOut: a scan that ran out of budget reached no judgement, and its
-	// verdict must never be presented as a clean bill of health.
+	// TimedOut means the scan reached no judgement; never present it as clean.
 	TimedOut bool
 }
 
@@ -302,10 +266,7 @@ type Override struct {
 	Reviewer string
 	Note     string
 	Decided  string
-	// Expires is when the acceptance lapses. Every override this product can
-	// write has one — the api defaults an unstated lifetime rather than
-	// leaving it open — so "" here is a row from somewhere this hub did not
-	// write, not "never expires".
+	// Expires is always set by this hub; "" means a row this hub did not write, not "never expires".
 	Expires string
 	// Lapse is "expired", "soon" within WaiverNoticeDays of the expiry, or "".
 	Lapse string
@@ -328,11 +289,8 @@ func Lapse(at, now time.Time) string {
 
 // FindingDetail is the detail pane.
 type FindingDetail struct {
-	// Explanation is promoted from here: the rule pack's prose, bundle-adjacent,
-	// escaped like everything else, and the same field the list row hovers.
 	FindingRow
-	// Supporting are the remaining locations. The primary is deliberately
-	// not among them, to avoid showing the first location twice.
+	// Supporting excludes the primary location so it is not shown twice.
 	Supporting []Evidence
 	Checks     []Check
 	Scan       ScanMeta
@@ -341,12 +299,9 @@ type FindingDetail struct {
 	Affected *AffectedMachines
 }
 
-// CanAccept is read against the finding rather than the viewer: a rejected
-// finding is terminal, the api answers 409, and no audit row is written.
+// CanAccept is read against the finding rather than the viewer: a rejected finding is terminal.
 func (d FindingDetail) CanAccept() bool { return d.State != FindingRejected }
 
-// CanReject reports whether rejecting would change anything. A finding already
-// rejected is not rejected twice.
 func (d FindingDetail) CanReject() bool { return d.State != FindingRejected }
 
 // TerminalNote is why neither control is offered, when neither is.
@@ -358,23 +313,18 @@ func (d FindingDetail) TerminalNote() string {
 		"profile can resolve it, so there is nothing left to decide."
 }
 
-// Review is what this viewer may do on this screen, and why not when they
-// may not, carried as text rather than a boolean the component would invent
-// copy for. Allowed is decided from the viewer's own resolved role and NOT
-// from a previous refusal.
+// Review is what this viewer may do on this screen, and why not. Allowed is decided from the viewer's
+// resolved role, not from a previous refusal.
 type Review struct {
 	Allowed bool
 	Reason  string
 }
 
-// ScannerDecisionRoles MIRRORS internal/api/authz.go's scannerDecisionRoles,
-// since the web role may not import the api. The api stays authoritative, so
-// the worst a drift here can do is disable a control that would have
-// worked, never offer one that would not.
+// ScannerDecisionRoles mirrors internal/api's scannerDecisionRoles, which web may not import. The api stays
+// authoritative, so drift can only disable a control that would have worked.
 var ScannerDecisionRoles = []string{"scanner-reviewer", "catalog-admin"}
 
-// ReviewFor decides what the viewer may do. There is no default viewer:
-// nobody resolved means nobody may decide.
+// ReviewFor decides what the viewer may do; an unresolved viewer may decide nothing.
 func ReviewFor(viewer *Viewer) Review {
 	if viewer == nil || !viewer.SignedIn {
 		return Review{Reason: "Sign in to review findings."}
@@ -397,27 +347,22 @@ type StatCard struct {
 	Label string
 	Value string
 	Note  string
-	// Tone colours the figure: "" for the ordinary ramp, or ok/warn/dan.
+	// Tone is "" for the ordinary ramp, or ok/warn/dan.
 	Tone string
 }
 
-// ScannerSummary is the headline card row, with its two nullable figures
-// already rendered by the caller against the reader's clock.
+// ScannerSummary is the headline card row, with its nullable figures already rendered by the caller.
 type ScannerSummary struct {
-	// PeriodDays comes from the api and is rendered rather than captioned:
-	// "last 30 days" written into the product would be a hardcoded figure.
 	PeriodDays      int
 	VersionsScanned int
 	Quarantined     int
 	OverridesActive int
-	// NearestExpiry is when the first active override lapses, "" when none does.
+	// NearestExpiry is "" when no active override lapses.
 	NearestExpiry string
-	// MedianScan is "" when nothing finished in the window, NOT a median of
-	// zero, and must never render as one.
+	// MedianScan is "" when nothing finished in the window, which must never render as zero.
 	MedianScan string
 }
 
-// Cards is the four figures the design's header row shows.
 func (s ScannerSummary) Cards() []StatCard {
 	window := "no window reported"
 	if s.PeriodDays > 0 {
@@ -461,8 +406,7 @@ func (s ScannerSummary) Cards() []StatCard {
 	return []StatCard{scanned, quarantined, overrides, median}
 }
 
-// Finding state filters: the api's own vocabulary and closed, unlike
-// severity, whose values come from a rule pack that can add one.
+// Finding state filters are a closed set, unlike severity, which a rule pack can extend.
 const (
 	FindingFilterAll      = "all"
 	FindingFilterOpen     = "open"
@@ -470,12 +414,10 @@ const (
 	FindingFilterRejected = "rejected"
 )
 
-// FindingFilters is the chip row, in the order the design reads.
 var FindingFilters = []string{
 	FindingFilterAll, FindingFilterOpen, FindingFilterApproved, FindingFilterRejected,
 }
 
-// FindingFilterLabel is a filter as a person reads it.
 func FindingFilterLabel(state string) string {
 	switch state {
 	case FindingFilterOpen:
@@ -489,13 +431,11 @@ func FindingFilterLabel(state string) string {
 	}
 }
 
-// ScannerQuery is one request for the screen: which findings, which page,
-// and which of them is open in the detail pane.
+// ScannerQuery is one request for the screen: filter, page, and the finding open in the detail pane.
 type ScannerQuery struct {
 	State string
 	Page  int
-	// Selected is the finding id from the URL: untrusted text, never used to
-	// build a path, only a query value, so escaped rather than validated here.
+	// Selected is untrusted URL text, only ever used as a query value, so it is escaped rather than validated.
 	Selected string
 }
 
@@ -513,11 +453,9 @@ func (q ScannerQuery) Normalise() ScannerQuery {
 	return q
 }
 
-// maxFindingIDLength bounds what is echoed back into a link: an unbounded
-// string from a URL carried into every anchor is how a query string becomes a payload.
+// maxFindingIDLength bounds what is echoed back into every link on the page.
 const maxFindingIDLength = 64
 
-// APIState is the filter in the api's vocabulary, where "" means no filter.
 func (q ScannerQuery) APIState() string {
 	if q.State == FindingFilterAll {
 		return ""
@@ -525,8 +463,6 @@ func (q ScannerQuery) APIState() string {
 	return q.State
 }
 
-// Href is this screen at some other state, page or selection, built from the
-// current query so filtering does not drop the open finding.
 func (q ScannerQuery) Href(state string, page int, selected string) string {
 	values := url.Values{}
 	if state != FindingFilterAll && state != "" {
@@ -544,19 +480,14 @@ func (q ScannerQuery) Href(state string, page int, selected string) string {
 	return "/scanner?" + values.Encode()
 }
 
-// FilterHref is a chip's target: the filter changes, the page resets, and
-// the selection drops since a finding excluded by the new filter is not listed.
+// FilterHref resets the page and drops the selection, which the new filter may exclude.
 func (q ScannerQuery) FilterHref(state string) string { return q.Href(state, 1, "") }
 
-// SelectHref opens one finding without disturbing the list around it.
 func (q ScannerQuery) SelectHref(id string) string { return q.Href(q.State, q.Page, id) }
 
-// PageHref moves the list. The selection is kept, addressed by id not
-// position, so it survives a page turn.
+// PageHref keeps the selection, which is addressed by id and so survives a page turn.
 func (q ScannerQuery) PageHref(page int) string { return q.Href(q.State, page, q.Selected) }
 
-// DecideHref is the form target for a decision on one finding, and the path it
-// returns to afterwards.
 func (q ScannerQuery) DecideHref(id, action string) string {
 	if id == "" {
 		return "/scanner"
@@ -564,17 +495,14 @@ func (q ScannerQuery) DecideHref(id, action string) string {
 	return "/scanner/findings/" + url.PathEscape(id) + "/" + action
 }
 
-// Notice is the outcome of a decision, or a refusal, said once at the top of the
-// screen. Tone is "ok", "warn" or "dan".
+// Notice is a write's outcome shown at the top of a screen. Tone is "ok", "warn" or "dan".
 type Notice struct {
 	Tone string
 	Text string
 }
 
-// Scanner is the whole screen. There is no severity filter on it, and its
-// absence is deliberate: severity values come from the rule pack, so a chip
-// row derived from what's on the page would appear and disappear as a
-// reader paged. Severity is shown on every row and in the pane instead.
+// Scanner is the whole screen. There is deliberately no severity filter: severities come from the rule pack,
+// so chips derived from the page would change as a reader paged.
 type Scanner struct {
 	Query    ScannerQuery
 	Summary  ScannerSummary
@@ -588,34 +516,25 @@ type Scanner struct {
 
 	GovernanceState
 
-	// Missing is a finding id in the URL that names nothing readable. It
-	// belongs to the PANE, not the screen: the list beside it read fine.
+	// Missing is a selected finding id that names nothing readable; it affects the pane only.
 	Missing bool
 }
 
-// GovernanceState is the three ways a governance screen ends up with no
-// rows, embedded in both so neither grows a fourth spelling of one. Three
-// booleans, not one enum: an empty list, an authorisation refusal and an
-// unreachable api ask their reader for completely different things, and
-// only one is fixed by signing in again.
+// GovernanceState is the ways a governance screen ends up with no rows; each asks the reader for something
+// different, and only SignedOut is fixed by signing in again.
 type GovernanceState struct {
-	// SignedOut is no usable session: a screen rather than a failure.
 	SignedOut bool
-	// Refused is the api declining to show THIS identity these rows. Must
-	// never collapse onto SignedOut: signing in again does not acquire a role.
-	Refused bool
-	// Unavailable is the api not answering, not an empty hub.
+	// Refused must never collapse onto SignedOut: signing in again does not acquire a role.
+	Refused     bool
 	Unavailable bool
 }
 
-// Readable reports whether anything could be read at all — what separates a
-// count worth printing from a claim about the hub.
+// Readable reports whether anything could be read at all.
 func (g GovernanceState) Readable() bool {
 	return !g.SignedOut && !g.Refused && !g.Unavailable
 }
 
-// DefaultFindingsPageSize mirrors the api's own default, used only to keep the
-// pager honest before the first answer arrives.
+// DefaultFindingsPageSize mirrors the api's default.
 const DefaultFindingsPageSize = 20
 
 func (s Scanner) Pages() int {
@@ -629,7 +548,6 @@ func (s Scanner) Pages() int {
 	return (s.Total + size - 1) / size
 }
 
-// CurrentPage is the page the api reported, defaulting to the first.
 func (s Scanner) CurrentPage() int {
 	if s.Page < 1 {
 		return 1
@@ -637,8 +555,7 @@ func (s Scanner) CurrentPage() int {
 	return s.Page
 }
 
-// Count is the list header's figure. Signed out it counts nothing rather
-// than "0 findings", a claim about the hub.
+// Count is empty when nothing was readable, rather than claiming "0 findings".
 func (s Scanner) Count() string {
 	switch {
 	case !s.Readable():
@@ -653,11 +570,9 @@ func (s Scanner) Count() string {
 // Filtered separates "this hub has no findings" from "this filter has none".
 func (s Scanner) Filtered() bool { return s.Query.State != FindingFilterAll }
 
-// Empty is the list having nothing in it, whatever the reason.
 func (s Scanner) Empty() bool { return len(s.Findings) == 0 }
 
-// Duration renders a scan time. The wire carries fractional seconds, and
-// this is the only place that decides how many a person sees.
+// Duration renders a scan time.
 func Duration(d time.Duration) string {
 	switch {
 	case d <= 0:
@@ -680,8 +595,7 @@ func Duration(d time.Duration) string {
 	}
 }
 
-// Until is Relative's other direction: how long until an instant, for an
-// expiry. A lapsed expiry reads as "expired", not a negative age.
+// Until is Relative's other direction; a lapsed instant reads as "expired".
 func Until(at, now time.Time) string {
 	if !at.After(now) {
 		return "expired"
@@ -700,9 +614,7 @@ func Until(at, now time.Time) string {
 	}
 }
 
-// Timestamp is an absolute instant as the audit log and the scan panel show
-// one: reconstructing what happened needs a fixed point, not "2 days ago".
-// The catalog's Updated column is the opposite case and uses Relative.
+// Timestamp is an absolute instant, for screens where reconstructing what happened needs a fixed point.
 func Timestamp(at time.Time) string {
 	if at.IsZero() {
 		return ""
@@ -710,19 +622,13 @@ func Timestamp(at time.Time) string {
 	return at.UTC().Format("2006-01-02 15:04 UTC")
 }
 
-// DefaultOverrideDays mirrors commands.DefaultOverrideDays, for the one
-// sentence stating what a blank field means. A mirror, not the authority.
+// DefaultOverrideDays mirrors commands.DefaultOverrideDays; the api is the authority.
 const DefaultOverrideDays = 30
 
-// MaxOverrideDays mirrors commands.MaxOverrideDays, bounding the field so a
-// reviewer is not told to retype a number after choosing it.
+// MaxOverrideDays mirrors commands.MaxOverrideDays.
 const MaxOverrideDays = 365
 
-// DefaultOverrideDaysText is the same number for the sentence that prints
-// it. A function, not a second constant, so the two cannot drift apart.
 func DefaultOverrideDaysText() string { return strconv.Itoa(DefaultOverrideDays) }
 
-// MaxReviewNote mirrors the api's own cap. The screen enforces it too so a
-// reviewer is not told to rewrite a note after writing it, but the api
-// remains the thing that decides.
+// MaxReviewNote mirrors the api's cap; the api remains the authority.
 const MaxReviewNote = 2000

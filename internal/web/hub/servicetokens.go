@@ -14,14 +14,11 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The Service tokens screen's door to the api.
-
 // ErrServiceTokenNotFound is a token that does not exist or that this viewer
 // may not manage; the api answers both alike.
 var ErrServiceTokenNotFound = errors.New("no such service token")
 
-// ServiceTokenRefusedError is a 422 or 403 whose problem detail the screen
-// shows as-is.
+// ServiceTokenRefusedError is a 422 or 403 whose detail the screen shows as-is.
 type ServiceTokenRefusedError struct{ Detail string }
 
 func (e *ServiceTokenRefusedError) Error() string { return e.Detail }
@@ -42,8 +39,7 @@ func (c *Client) ServiceTokens(ctx context.Context) ([]view.ServiceToken, error)
 	return out, nil
 }
 
-// CreateServiceToken posts POST /v1/service-tokens and returns the secret,
-// which nothing on this side stores.
+// CreateServiceToken returns the secret, which nothing on this side stores.
 func (c *Client) CreateServiceToken(ctx context.Context, name string, scopes []string, expiresAt time.Time) (view.CreatedServiceToken, error) {
 	resp, err := c.api.CreateServiceTokenWithResponse(ctx, apiclient.CreateServiceTokenRequest{
 		Name: name, Scopes: scopes, ExpiresAt: expiresAt,

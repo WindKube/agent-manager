@@ -12,8 +12,7 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The Webhooks screen. Creating one or rotating its secret answers the POST
-// with the page itself, like Service tokens: the secret never goes in a URL.
+// Creating or rotating a webhook answers the POST with the page, so the secret never goes in a URL.
 
 func (s *Server) webhooks(c *gin.Context) {
 	screen := s.webhookScreen(c, view.WebhookForm{})
@@ -134,8 +133,6 @@ func (s *Server) deleteWebhook(c *gin.Context) {
 	s.webhookOutcome(c, s.deps.Hub.DeleteWebhook(session(c), c.Param("id")), "delete webhook", "deleted")
 }
 
-// webhookOutcome is post-redirect-get's redirect half; the copy is looked
-// up from the token on the next request, never carried.
 func (s *Server) webhookOutcome(c *gin.Context, err error, what, outcome string) {
 	switch {
 	case err == nil:

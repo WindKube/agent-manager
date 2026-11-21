@@ -10,13 +10,11 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The package detail screen's security section: the latest visible version's
-// scan, its findings and any reviewer decision, mapped through the Scanner
-// screen's own helpers so the two cannot render one finding two ways.
+// The package security section maps through the Scanner screen's helpers so one
+// finding cannot render two ways.
 
-// PackageScan reads GET /v1/packages/{namespace}/{name}/scan. A 404 becomes
-// view.ErrNotFound, the same answer Package gives for a package this
-// identity may not read; a 403 is a rejected version, not a read failure.
+// PackageScan reads the latest visible version's scan. A 404 is view.ErrNotFound,
+// as for an unreadable package; a 403 is a rejected version, not a read failure.
 func (c *Client) PackageScan(ctx context.Context, namespace, name string) (view.PackageScan, error) {
 	resp, err := c.api.GetPackageScanWithResponse(ctx, namespace, name)
 	if err != nil {

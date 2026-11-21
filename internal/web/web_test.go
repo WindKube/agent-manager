@@ -23,8 +23,7 @@ import (
 )
 
 // newServer is the web role in front of a fresh fakeapi, signed in as the
-// seed's catalog admin. A test reshapes what the api answers through api.Data,
-// api.Fail and api.Handle.
+// seed's catalog admin.
 func newServer(t *testing.T) (*fakeapi.API, http.Handler) {
 	t.Helper()
 	return newServerWith(t, web.Options{})
@@ -38,12 +37,8 @@ func newServerWith(t *testing.T, opts web.Options) (*fakeapi.API, http.Handler) 
 	return api, web.New(web.Deps{Hub: client, Log: zerolog.Nop()}, opts).Handler()
 }
 
-// get is an ordinary request from somebody who is signed in.
-//
-// It carries a session cookie because the guard reads one BEFORE it asks the
-// viewer source who this is — no cookie is not "a viewer to resolve", it is a
-// visitor with nothing to resolve, and the guard redirects without calling the
-// api. The value is opaque here: the fake api accepts any bearer token.
+// get is a signed-in request. Without a session cookie the guard redirects
+// before asking the api; the fake api accepts any value.
 func get(t *testing.T, h http.Handler, target string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, target, http.NoBody)
@@ -53,8 +48,6 @@ func get(t *testing.T, h http.Handler, target string) *httptest.ResponseRecorder
 	return rec
 }
 
-// getSignedOut is the same request from somebody with no session at all, for the
-// tests that are about that state rather than about a screen.
 func getSignedOut(t *testing.T, h http.Handler, target string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
@@ -86,21 +79,8 @@ func TestShell(t *testing.T) {
 		}
 	})
 
-	// This subtest used to assert "Krzysztof W." and "Platform · Admin" were on the
-	// page. They were compiled into shell.templ, so it asserted that the shell
-	// claimed an identity no request had resolved — the defect this feature exists
-	// to remove (FR-116, SC-106).
-	//
-	// The component-level form of that property is asserted exhaustively next door
-	// in identity_test.go: every screen, in both viewer states, plus a scan of the
-	// source for the literal that is only rendered in a state no test enters. What
-	// is left for a ROUTER test is the half none of those can see — that the
-	// identity on a routed page came from the viewer source this router was handed.
-	//
-	// So two routers are built over two different viewers and each page must carry
-	// its own and not the other's. An identity compiled into the router could not
-	// vary that way, and neither could one the router substituted when a source
-	// answered something it did not like.
+	// identity_test.go covers components; this checks that a routed page's identity
+	// came from the viewer source, by building two routers over two viewers.
 	t.Run("the chip on a routed page is the viewer that request resolved", func(t *testing.T) {
 		ada, bo := signedInViewer(), unmappedViewer()
 
@@ -110,8 +90,7 @@ func TestShell(t *testing.T) {
 			theirs   *view.Viewer
 		}{
 			{false, ada, bo},
-			// Signed in holding no role still resolves an identity, and the FR-117
-			// screen the guard renders instead of the catalog carries the same chip.
+			// The no-role screen carries the same chip.
 			{true, bo, ada},
 		} {
 			api, own := newServer(t)
@@ -128,9 +107,6 @@ func TestShell(t *testing.T) {
 		}
 	})
 
-	// And the other side of it: with nobody resolved there is no chip, because no
-	// screen is reached at all. A chip with empty fields would be the compiled-in
-	// chip with its literals deleted.
 	t.Run("a request that resolved nobody reaches no shell at all", func(t *testing.T) {
 		api, signedOut := newServer(t)
 		api.Data.SignedOut()
@@ -142,8 +118,7 @@ func TestShell(t *testing.T) {
 	})
 
 	t.Run("no page references an external host", func(t *testing.T) {
-		// The image is distroless and the quickstart must work offline: a CDN
-		// reference would work on the author's machine and nowhere else.
+		// The quickstart must work offline.
 		for _, path := range []string{"/catalog", "/scanner", "/profiles", "/storage", "/audit", "/cli", "/org", "/webhooks"} {
 			body := get(t, h, path).Body.String()
 			for _, forbidden := range []string{"//fonts.googleapis.com", "//fonts.gstatic.com", "//cdn.", "//unpkg.com", "//esm.sh", "//jsdelivr"} {
@@ -226,8 +201,6 @@ func postTheme(t *testing.T, h http.Handler, form url.Values) *httptest.Response
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/theme", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	// The toggle lives in the shell, so the only person who can submit this form is
-	// one the guard already resolved.
 	req.AddCookie(&http.Cookie{Name: "am_session", Value: "screen-test-session"})
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -235,8 +208,7 @@ func postTheme(t *testing.T, h http.Handler, form url.Values) *httptest.Response
 }
 
 // hostileCatalog makes the api answer one package whose manifest was written
-// by an attacker. FR-055 is absolute: nothing from a manifest may reach the
-// page as markup.
+// by an attacker; nothing from a manifest may reach the page as markup.
 func hostileCatalog(api *fakeapi.API) {
 	category := `<img src=x onerror=alert('cat')>`
 	api.Data.Categories = []string{category}
@@ -266,10 +238,8 @@ func TestPackageDerivedContentIsEscaped(t *testing.T) {
 		"deep-linked row": get(t, h, "/catalog?q=%3Cscript%3E").Body.String(),
 	}
 
-	// The payloads below are the hostile values verbatim. Asserting on the raw
-	// form is the whole test: an escaped copy of the same bytes is inert, so a
-	// looser assertion ("does not contain onerror=") would fail on correct output
-	// and teach nothing.
+	// Asserted on the raw form: an escaped copy is inert, so a looser assertion
+	// like "does not contain onerror=" would fail on correct output.
 	raw := []string{
 		`<script>alert('name')</script>`,
 		`<script>alert('id')</script>`,
@@ -293,12 +263,8 @@ func TestPackageDerivedContentIsEscaped(t *testing.T) {
 		require.Contains(t, bodies["facet payload"], "&lt;script&gt;alert(&#39;tag&#39;)&lt;/script&gt;")
 	})
 
-	// A package id is `namespace/name`, so the link has to keep that slash as a
-	// separator — which rules out escaping the id whole, and escaping the halves
-	// separately leaves `..` intact because `.` is a legal path character that
-	// url.PathEscape does not touch. So each half is VALIDATED against the same
-	// segment pattern internal/blob holds an object key to, and a row whose id
-	// fails it is not linked to a package at all.
+	// Escaping cannot neutralise `..` (url.PathEscape leaves `.` alone), so each id
+	// segment is validated and an invalid id is not linked at all.
 	t.Run("a package id that is not two valid segments is not linked to a package", func(t *testing.T) {
 		require.NotContains(t, bodies["catalog screen"], "javascript:")
 		require.NotContains(t, bodies["catalog screen"], `href="/packages/../`)
@@ -376,19 +342,15 @@ func TestStatic(t *testing.T) {
 	})
 }
 
-// TestR7Budget is the cheap, container-free half of the R7 gate. The expensive
-// half is a real browser session (see the layer's report): 0 requests while
-// typing at 61 options, and a p50 of 167 ms from click to table update at 10 000
-// rows. What can regress silently is the markup those numbers depend on, and that
-// is what this asserts.
+// TestR7Budget asserts the markup the measured browser performance depends on,
+// since that is what can regress silently.
 func TestR7Budget(t *testing.T) {
 	_, h := newServer(t)
 	body := get(t, h, "/catalog").Body.String()
 
 	t.Run("both facet filter boxes bind to a signal datastar never sends", func(t *testing.T) {
-		// datastar excludes signals whose name begins with an underscore from every
-		// request. Drop the underscore and typing starts costing a round trip per
-		// keystroke, with nothing else looking different.
+		// datastar never sends underscore-prefixed signals; without it every
+		// keystroke costs a round trip.
 		require.Contains(t, body, `data-bind="_catQuery"`)
 		require.Contains(t, body, `data-bind="_tagQuery"`)
 		require.NotContains(t, body, `data-bind="catQuery"`)
@@ -396,9 +358,8 @@ func TestR7Budget(t *testing.T) {
 	})
 
 	t.Run("options are filtered client-side against the element's own label", func(t *testing.T) {
-		// The label is read from the DOM rather than interpolated into the
-		// expression: a manifest keyword can be escaped into an attribute, but not
-		// into a JavaScript string literal.
+		// Read from the DOM: a manifest keyword can be escaped into an attribute,
+		// but not into a JavaScript string literal.
 		payload := get(t, h, "/catalog/facet/tag").Body.String()
 		require.Contains(t, payload, `data-show="amFuzzy($_tagQuery, el.dataset.label)"`)
 		require.Contains(t, payload, `data-on:click="$tags = amToggle($tags, el.dataset.label); $page = 1"`)
@@ -417,9 +378,7 @@ func TestR7Budget(t *testing.T) {
 	})
 
 	t.Run("nothing else on the page fetches on its own", func(t *testing.T) {
-		// Two fetch sites, both deliberate and both auditable by reading the page:
-		// the debounced listener above, which fires on a signal patch, and the
-		// header's refresh button, which fires on a click and nothing else.
+		// The debounced listener and the header's refresh button.
 		require.Equal(t, 2, strings.Count(body, "/catalog/results"))
 	})
 
@@ -431,8 +390,7 @@ func TestR7Budget(t *testing.T) {
 }
 
 func TestFuzzyIsWhatTheMenuUses(t *testing.T) {
-	// The Go matcher and the browser's must agree; app.js is the other half and is
-	// asserted in the R7 browser measurement. This case only fixes the contract.
+	// The Go matcher and app.js must agree.
 	require.True(t, web.Fuzzy("sec com", "Security & compliance"))
 	require.False(t, web.Fuzzy("zzz", "Security & compliance"))
 }
@@ -444,9 +402,8 @@ func TestReadBodyDoesNotLeak(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// hostileDetail makes the api answer evil/thing with a manifest, components
-// and dependent profiles all written by an attacker: the strings the detail
-// screen renders and the catalog row never carries.
+// hostileDetail makes the api answer evil/thing with attacker-written detail
+// fields that the catalog row never carries.
 func hostileDetail(api *fakeapi.API) {
 	category := `<img src=x onerror=alert('cat')>`
 	description := `<script>alert('desc')</script>`
@@ -505,13 +462,8 @@ func TestDetailDerivedContentIsEscaped(t *testing.T) {
 	hostileDetail(api)
 	body := get(t, h, "/packages/evil/thing").Body.String()
 
-	// Each payload is asserted BOTH ways: the raw bytes are absent AND the escaped
-	// bytes are present. The second half is not decoration. A NotContains alone
-	// passes when the field is never rendered at all, and one of these fields
-	// genuinely is not — Component.Path, which the tree builds from names, so it
-	// carries no payload here and is not in this table. Without the positive half
-	// there would be no way to tell that case from a field that is escaped, and a
-	// panel quietly dropped in a later edit would take its assertion with it.
+	// Asserted both ways: NotContains alone passes vacuously when a field is not
+	// rendered at all, e.g. after a panel is dropped.
 	for _, tc := range []struct{ raw, escaped string }{
 		{`<script>alert('detailname')</script>`, `&lt;script&gt;alert(&#39;detailname&#39;)&lt;/script&gt;`},
 		{`<script>alert('desc')</script>`, `&lt;script&gt;alert(&#39;desc&#39;)&lt;/script&gt;`},
@@ -534,15 +486,10 @@ func TestDetailDerivedContentIsEscaped(t *testing.T) {
 			"%q is neither escaped nor rendered — the assertion above is passing vacuously", tc.raw)
 	}
 
-	// A dependent profile's slug reaches the page as data too, and `..` inside one
-	// would climb out of /profiles/.
 	require.NotContains(t, body, `href="/profiles/../`)
 }
 
-// T062, the rendering half. Driven off the seed's own package list rather than
-// a list written here, so a package added to the seed cannot skip this by
-// omission — and it asserts the STRUCTURAL difference between the variants,
-// which is the one thing a per-package screenshot would not catch.
+// Driven off the seed's package list so a new package cannot skip it by omission.
 func TestBothVariantsRenderForEverySeededPackage(t *testing.T) {
 	api, h := newServer(t)
 	client, err := hub.New(api.URL)
@@ -566,10 +513,7 @@ func TestBothVariantsRenderForEverySeededPackage(t *testing.T) {
 			require.Contains(t, body, "am-detail")
 			require.Contains(t, body, detail.ManifestPanelTitle())
 
-			// The variant split is STRUCTURAL: a standalone skill has no
-			// package-contents section at all, rather than an empty one. An empty
-			// section would say the tree was inspected and found nothing, which is
-			// a different claim from "this kind of package has no tree".
+			// A standalone skill has no contents section at all, not an empty one.
 			if detail.Kind == view.KindPlugin {
 				plugins++
 				require.Contains(t, body, "Package contents")
@@ -579,10 +523,6 @@ func TestBothVariantsRenderForEverySeededPackage(t *testing.T) {
 				require.NotContains(t, body, "Package contents")
 			}
 
-			// Whichever branch the capability panel took, exactly one of the three
-			// is present — the unscanned notice, the scanned-and-empty notice, or
-			// the comparison table. Two of them would mean the panel is showing a
-			// version's state and its absence at once.
 			states := 0
 			for _, marker := range []string{
 				`id="capability-unscanned"`, `id="capability-none"`, `class="am-cap-head"`,
@@ -599,12 +539,8 @@ func TestBothVariantsRenderForEverySeededPackage(t *testing.T) {
 	require.Positive(t, skills, "and a standalone skill, or this test proves one variant")
 }
 
-// ---- add to profile (US5) -----------------------------------------------------
-
-// A profile that already holds the package is told so, not offered as new —
-// and the seed's platform-toolkit is exactly that for platform-engineer
-// (its dependents), while sre-oncall does not hold it and may not curate it
-// either (its CanCurate).
+// In the seed, platform-engineer already holds platform-toolkit and sre-oncall
+// may not curate it.
 func TestAddToProfileTellsAHeldProfileApartFromACuratableOne(t *testing.T) {
 	_, h := newServer(t)
 	body := get(t, h, "/packages/example/platform-toolkit").Body.String()
@@ -612,29 +548,21 @@ func TestAddToProfileTellsAHeldProfileApartFromACuratableOne(t *testing.T) {
 	require.Contains(t, body, `id="add-to-profile"`)
 	require.Contains(t, body, "Add to profile")
 
-	// Grouped and labelled, not a flat list of names (organisation here, shared
-	// for sre-oncall below) — the owner's own requirement.
 	require.Contains(t, body, `<div class="am-add-group-label">Organisation</div>`)
 	require.Contains(t, body, `<div class="am-add-group-label">Shared</div>`)
 
-	// Held: no button offering to add what is already there, and no curate-role
-	// reason attached to it either — those are two different kinds of "no".
 	require.Contains(t, body,
 		`<a class="am-dep-name" href="/profiles/platform-engineer">Platform Engineer</a> `+
 			`<span class="am-dep-pin">Already in this profile</span>`)
 
-	// Not held, and this role may not curate it: shown, disabled, a tooltip AND a
-	// visible sentence — never hidden (the owner's general instruction).
+	// Not curatable: shown disabled with a visible reason, never hidden.
 	require.Contains(t, body,
 		`<button type="button" class="am-btn" disabled aria-disabled="true" `+
 			`title="`+view.CurateDisabledReason+`">Add</button>`)
 	require.Contains(t, body, `<span class="am-toggle-note">`+view.CurateDisabledReason+`</span>`)
-	// The reason is never left to the tooltip alone.
 	require.Contains(t, body, view.CurateDisabledReason)
 }
 
-// The same package, held by nobody: the curatable profile gets a real
-// plain-post form, signal-free, naming the exact package it would add.
 func TestAddToProfileOffersAPlainFormToACuratableProfile(t *testing.T) {
 	_, h := newServer(t)
 	body := get(t, h, "/packages/community/postgres-migration-guard").Body.String()
@@ -654,9 +582,6 @@ func TestPackageContentsGroupComponentsByKind(t *testing.T) {
 	require.Less(t, strings.Index(body, ">Skills<"), strings.Index(body, ">Hooks<"))
 }
 
-// A working profiles read that answers none and one that fails must render
-// different sentences, or a person cannot tell "you have nothing to add to"
-// from "this could not be checked".
 func TestAddToProfileWithNoProfilesPointsAtProfiles(t *testing.T) {
 	api, h := newServer(t)
 	api.Data.Profiles = nil
@@ -676,12 +601,6 @@ func TestAddToProfileWhenTheReadFailsSaysSoRatherThanClaimingThereAreNone(t *tes
 	require.NotContains(t, body, "You have no profiles yet")
 }
 
-// ---- package files (US3/US5: read a skill's files before using it) -----------
-
-// The seed opens example/adr-writer on SKILL.md by default,
-// the same file listPackageFiles names as the default when a bundle has one at
-// its root — but the panel itself must stay CLOSED until a reader picks one:
-// listing files is not the same as opening one.
 func TestFilesPanelListsFilesButStaysClosedUntilOneIsChosen(t *testing.T) {
 	_, h := newServer(t)
 	body := get(t, h, "/packages/example/adr-writer").Body.String()
@@ -696,27 +615,19 @@ func TestFilesPanelListsFilesButStaysClosedUntilOneIsChosen(t *testing.T) {
 		"no file's content should render before one is selected")
 }
 
-// Selecting a file — the same click a reader makes on any row — opens the
-// panel on it, the audit screen's own ?entry= idiom, reused for ?file=. Its
-// heading arrives as real markup, not escaped text, which is what proves the
-// markdown pipeline ran rather than the file being dumped as-is.
+// The heading arriving as real markup proves the markdown pipeline ran.
 func TestFilesPanelSelectsTheFileTheQueryNames(t *testing.T) {
 	_, h := newServer(t)
 	body := get(t, h, "/packages/example/adr-writer?file=references%2Ftemplate.md").Body.String()
 
 	require.Contains(t, body, "<h1 class=\"am-md-h\">Template")
-	// "/adr new" is SKILL.md's own content and nowhere else on the page (the
-	// package's Description field happens to share SKILL.md's opening
-	// sentence, which is why this checks a line unique to the file body).
+	// "/adr new" is unique to SKILL.md's body; its opening sentence is also the
+	// package description.
 	require.NotContains(t, body, "/adr new",
 		"only the selected file's content is shown, not every file at once")
 }
 
-// The defect this replaces: the close button linked to the clean URL, but the
-// clean URL still picked a default file to show, so closing looked like it did
-// nothing. Reopening the SAME file the panel was just closed on is the sharpest
-// version of that bug — a stale default reasserting itself is invisible if the
-// test only ever asks for a file the panel was never open on.
+// The clean URL must not pick a default file, or closing looks like it did nothing.
 func TestFilesPanelCloseLinkActuallyClosesRatherThanReopeningTheDefault(t *testing.T) {
 	_, h := newServer(t)
 
@@ -736,9 +647,6 @@ func TestFilesPanelNamesAStalePathAsMissingRatherThanAsAnEmptyPanel(t *testing.T
 	require.Contains(t, body, `id="file-missing"`)
 }
 
-// A package the api lists no files for still renders the panel, honestly
-// empty — never silently absent, which would read as "this screen forgot files
-// exist" rather than "this bundle has none".
 func TestFilesPanelIsHonestlyEmptyForAPackageWithNoFiles(t *testing.T) {
 	api, h := newServer(t)
 	api.Data.Files["community/release-toolkit"] = apiclient.PackageFileList{Files: []apiclient.PackageFile{}}
@@ -747,12 +655,9 @@ func TestFilesPanelIsHonestlyEmptyForAPackageWithNoFiles(t *testing.T) {
 	require.Contains(t, body, `id="files-empty"`)
 }
 
-// ---- the viewer, sign-in and the no-role state (US2) -------------------------
-
-// These render the components directly rather than through the router. The shell's
-// viewer is a prop with no default (FR-116), so a signed-in page is a page a
-// caller supplied a viewer to, and driving it through the router would test how
-// this layer's handler resolves one instead of what the shell does with it.
+// The viewer tests below render components directly: going through the router
+// would test how the handler resolves a viewer rather than what the shell does
+// with it.
 
 func shellBody(t *testing.T, viewer *view.Viewer, body templ.Component) string {
 	t.Helper()
@@ -794,7 +699,6 @@ func TestTheShellRendersTheResolvedViewerAndNothingWhenThereIsNone(t *testing.T)
 			require.NotContainsf(t, body, forbidden, "the signed-out shell rendered %q", forbidden)
 		}
 		require.NotContains(t, body, "Guest")
-		// The theme toggle is not part of the viewer's identity and must survive.
 		require.Contains(t, body, "am-theme-toggle")
 	})
 
@@ -834,16 +738,12 @@ func TestTheSignInScreenOffersOneActionAndNoAccountOfItsOwn(t *testing.T) {
 			"one action, so there is no second path a person can be led down")
 	})
 
-	// FR-109. A password field on this screen would be a password this hub holds,
-	// and a registration form would be an account this hub owns; there is neither,
-	// and both are the kind of thing a copy edit adds back without noticing.
+	// The hub holds no passwords and owns no accounts.
 	t.Run("it holds no password field and no way to create an account", func(t *testing.T) {
 		require.NotContains(t, body, `type="password"`)
 		require.NotContains(t, body, `name="password"`)
 
-		// Asserted by counting rather than by absence: this page has exactly one form
-		// and it is the theme toggle, so a second one is a field somebody added for a
-		// credential this hub is not allowed to hold.
+		// The only form is the theme toggle.
 		require.Equal(t, 1, strings.Count(body, "<form"))
 		require.Contains(t, body, `<form method="post" action="/theme">`)
 
@@ -870,9 +770,8 @@ func TestTheSignInScreenOffersOneActionAndNoAccountOfItsOwn(t *testing.T) {
 	})
 }
 
-// FR-119: the hint is switched on explicitly or it is not switched on. The
-// negative case is the whole requirement — a hint that appears because a list
-// happened to be populated is a hint that appears in production.
+// A hint that appears because a list happened to be populated would appear in
+// production; only the explicit flag may switch it on.
 func TestLocalCredentialsAppearOnlyBehindTheExplicitFlag(t *testing.T) {
 	credentials := []view.Credential{
 		{Username: "someone@local.invalid", Password: "a-local-only-password", Role: "catalog-admin"},
@@ -898,9 +797,6 @@ func TestLocalCredentialsAppearOnlyBehindTheExplicitFlag(t *testing.T) {
 	})
 }
 
-// FR-117. The assertion that matters is the last one: this screen must not be
-// mistakable for a hub with nothing in it, because the two ask their reader for
-// completely different things.
 func TestTheNoRoleStateSaysSoRatherThanRenderingAnEmptyHub(t *testing.T) {
 	viewer := unmappedViewer()
 	body := shellBody(t, viewer, components.NoRoleScreen(view.NoRole{Viewer: *viewer, Groups: viewer.Groups}))
@@ -910,8 +806,7 @@ func TestTheNoRoleStateSaysSoRatherThanRenderingAnEmptyHub(t *testing.T) {
 	require.Contains(t, body, "contractors-eu", "the groups are what they have to ask about")
 	require.Contains(t, body, "This is not an empty hub")
 
-	// The signed-out empty state and this one are different markup as well as
-	// different copy, so neither a reader nor a test can take one for the other.
+	// Must not be mistakable for an empty hub.
 	require.NotContains(t, body, `id="catalog-signed-out"`)
 	require.NotContains(t, body, "am-empty")
 

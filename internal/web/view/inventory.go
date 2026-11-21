@@ -19,7 +19,6 @@ type MachineRow struct {
 	AmctlVersion string
 	FirstSeenAt  time.Time
 	LastSeenAt   time.Time
-	// LastSeen is LastSeenAt as a phrase, rendered against the reader's clock.
 	LastSeen     string
 	Stale        bool
 	LastProfile  string
@@ -28,7 +27,6 @@ type MachineRow struct {
 	ServiceToken string
 }
 
-// Href links the machine's detail.
 func (m MachineRow) Href() string { return MachineHref(m.ID) }
 
 // Platform is os/arch and the amctl version, whichever were reported.
@@ -43,7 +41,6 @@ func (m MachineRow) Platform() string {
 	return strings.Join(parts, " · ")
 }
 
-// Revision is the last synced profile at its revision.
 func (m MachineRow) Revision() string {
 	return m.LastProfile + " r" + strconv.Itoa(m.LastRevision)
 }
@@ -64,13 +61,11 @@ func MachineHref(id string) string {
 	return "/machines/" + id
 }
 
-// MachinesHref links the inventory filtered to one package, and version
-// when given.
+// MachinesHref links the inventory filtered to one package, and version when given.
 func MachinesHref(pkg, version string) string {
 	return MachineQuery{Package: pkg, Version: version}.Href(1)
 }
 
-// MachineQuery is the inventory's filters, carried in the URL.
 type MachineQuery struct {
 	Package string
 	Version string
@@ -94,7 +89,6 @@ func (q MachineQuery) Normalise() MachineQuery {
 	return q
 }
 
-// Href is the inventory at page with these filters.
 func (q MachineQuery) Href(page int) string {
 	values := url.Values{}
 	for key, v := range map[string]string{"package": q.Package, "version": q.Version, "profile": q.Profile, "stale": q.Stale} {
@@ -111,12 +105,10 @@ func (q MachineQuery) Href(page int) string {
 	return "/machines?" + values.Encode()
 }
 
-// Filtered reports whether any filter narrows the list.
 func (q MachineQuery) Filtered() bool {
 	return q.Package != "" || q.Profile != "" || q.Stale != ""
 }
 
-// Machines is the inventory screen.
 type Machines struct {
 	Query          MachineQuery
 	Rows           []MachineRow
@@ -131,7 +123,6 @@ type Machines struct {
 	GovernanceState
 }
 
-// Pages is how many pages the list spans, at least one.
 func (m Machines) Pages() int {
 	if m.PageSize < 1 || m.Total == 0 {
 		return 1
@@ -139,7 +130,6 @@ func (m Machines) Pages() int {
 	return (m.Total + m.PageSize - 1) / m.PageSize
 }
 
-// MachineInstall is one installed package on the machine detail.
 type MachineInstall struct {
 	Package string
 	Version string
@@ -147,7 +137,6 @@ type MachineInstall struct {
 	Profile string
 }
 
-// MachineSkip is one thing a machine did not install.
 type MachineSkip struct {
 	Profile   string
 	Entry     string
@@ -156,7 +145,6 @@ type MachineSkip struct {
 	Reason    string
 }
 
-// What names the skipped thing: the entry, or its component and target.
 func (s MachineSkip) What() string {
 	if s.Component == "" {
 		return s.Entry + " (whole entry)"
@@ -164,13 +152,11 @@ func (s MachineSkip) What() string {
 	return s.Entry + " · " + s.Component + " for " + s.Target
 }
 
-// InstallGroup is one target's installs.
 type InstallGroup struct {
 	Target   string
 	Installs []MachineInstall
 }
 
-// MachineDetail is the machine screen.
 type MachineDetail struct {
 	Machine        MachineRow
 	StaleAfterDays int
@@ -181,7 +167,7 @@ type MachineDetail struct {
 	GovernanceState
 }
 
-// ByTarget groups installs by target, in the order the api listed them.
+// ByTarget groups consecutive installs by target, in the order the api listed them.
 func (d MachineDetail) ByTarget() []InstallGroup {
 	var out []InstallGroup
 	for _, inst := range d.Installs {
@@ -193,10 +179,8 @@ func (d MachineDetail) ByTarget() []InstallGroup {
 	return out
 }
 
-// ForgetHref is the forget form's action.
 func (d MachineDetail) ForgetHref() string { return MachineHref(d.Machine.ID) + "/forget" }
 
-// VersionMachines is how many machines hold one version.
 type VersionMachines struct {
 	Version  string
 	Machines int
@@ -213,16 +197,12 @@ type AffectedMachines struct {
 	Unavailable bool
 }
 
-// Href links the inventory filtered to what this panel counts.
 func (a AffectedMachines) Href() string { return MachinesHref(a.Package, a.Version) }
 
-// VersionHref links the inventory filtered to one version.
 func (a AffectedMachines) VersionHref(version string) string { return MachinesHref(a.Package, version) }
 
-// Count is "N machine(s)".
 func (a AffectedMachines) Count() string { return MachineCount(a.Total) }
 
-// MachineCount is "N machine(s)".
 func MachineCount(n int) string {
 	if n == 1 {
 		return "1 machine"

@@ -6,14 +6,8 @@ import (
 	"strconv"
 )
 
-// The Organization screen's view models.
-//
-// Almost nothing here is a rendering decision: a scan gate, a role and a policy
-// toggle are canonical vocabulary on the wire and stay that way on the screen.
-// What this file adds is access control (OrgAccessFor) and the labels a select
-// element needs, mirrored from internal/api's vocabulary the same way ReviewFor
-// mirrors it: this role may not import that package, so the vocabulary is
-// restated here and the api stays authoritative over a refusal.
+// The vocabulary here is mirrored from internal/api, which the web role may not import; the api stays
+// authoritative over a refusal.
 
 // OrganizationProvider is the identity provider settings panel.
 type OrganizationProvider struct {
@@ -23,7 +17,6 @@ type OrganizationProvider struct {
 	DeviceAuthorizationEndpoint string
 }
 
-// OrganizationPolicy is the policy form's fields.
 type OrganizationPolicy struct {
 	ScanGate              string
 	RequireSignedBundles  bool
@@ -34,7 +27,7 @@ type OrganizationPolicy struct {
 	PackagesWithoutExpectedSigner int
 }
 
-// UnsignableNote counts what the signature requirement excludes outright.
+// UnsignableNote counts the packages the signature requirement excludes outright.
 func (p OrganizationPolicy) UnsignableNote() string {
 	switch p.PackagesWithoutExpectedSigner {
 	case 0:
@@ -47,13 +40,11 @@ func (p OrganizationPolicy) UnsignableNote() string {
 	}
 }
 
-// GroupRoleMapping is one row of the mapping table.
 type GroupRoleMapping struct {
 	GroupName string
 	Role      string
 }
 
-// OrganizationCategory is one row of the category table.
 type OrganizationCategory struct {
 	ID    string
 	Name  string
@@ -61,7 +52,6 @@ type OrganizationCategory struct {
 	Count int
 }
 
-// Organization is the whole screen's data.
 type Organization struct {
 	Provider   OrganizationProvider
 	Policy     OrganizationPolicy
@@ -69,17 +59,14 @@ type Organization struct {
 	Categories []OrganizationCategory
 }
 
-// IdentityConnectionTest is the outcome of the provider panel's "Test
-// connection" action.
+// IdentityConnectionTest is the outcome of the provider panel's "Test connection" action.
 type IdentityConnectionTest struct {
 	OK     bool
 	Detail string
 }
 
-// ScanGates is the gate select's options, in the order the design reads them.
 var ScanGates = []string{"block", "approval", "warn-with-override"}
 
-// ScanGateLabel is a gate as a person reads it.
 func ScanGateLabel(gate string) string {
 	switch gate {
 	case "block":
@@ -93,11 +80,9 @@ func ScanGateLabel(gate string) string {
 	}
 }
 
-// OrgRoles is the role select's options, most privileged first — the same
-// precedence auth.HighestRole applies when an identity holds several.
+// OrgRoles is ordered most privileged first, the precedence auth.HighestRole applies.
 var OrgRoles = []string{"catalog-admin", "scanner-reviewer", "profile-consumer", "read-only"}
 
-// OrgRoleLabel is a role as a person reads it.
 func OrgRoleLabel(role string) string {
 	switch role {
 	case "catalog-admin":
@@ -116,15 +101,13 @@ func OrgRoleLabel(role string) string {
 // OrgAdminRoles mirrors internal/api/org.go's orgAdminRoles.
 var OrgAdminRoles = []string{"catalog-admin"}
 
-// OrgAccess is what this viewer may do on this screen, and why not when they
-// may not — the same shape Review is on the Scanner screen.
+// OrgAccess is what this viewer may do on this screen, and why not.
 type OrgAccess struct {
 	Allowed bool
 	Reason  string
 }
 
-// OrgAccessFor decides what the viewer may do. There is no default viewer:
-// nobody resolved means nobody may administer the organisation.
+// OrgAccessFor decides what the viewer may do; an unresolved viewer may do nothing.
 func OrgAccessFor(viewer *Viewer) OrgAccess {
 	if viewer == nil || !viewer.SignedIn {
 		return OrgAccess{Reason: "Sign in to administer the organisation."}
@@ -142,11 +125,7 @@ func OrgAccessFor(viewer *Viewer) OrgAccess {
 		"organisation. This screen needs the catalog admin role."}
 }
 
-// PackageDeleteAccessFor is the role gate on withdrawing a version or a
-// whole package from the catalog — the same role /v1/runtime, /v1/storage
-// and /v1/organization/* already demand. It reads the viewer the api
-// resolved, the same source OrgAccessFor and RiverAccessFor read, never a
-// role string this screen guessed at.
+// PackageDeleteAccessFor is the role gate on deleting a version or package from the catalog.
 func PackageDeleteAccessFor(viewer *Viewer) OrgAccess {
 	switch {
 	case viewer == nil || !viewer.SignedIn:
@@ -161,16 +140,12 @@ func PackageDeleteAccessFor(viewer *Viewer) OrgAccess {
 	return OrgAccess{Allowed: true}
 }
 
-// SecretRotationReason is why the provider panel's rotate action is always
-// disabled. It is stated up front rather than discovered by submitting.
+// SecretRotationReason is why the provider panel's rotate action is always disabled.
 const SecretRotationReason = "The identity provider's client secret is this role's own " +
 	"environment configuration. This hub holds no provider-side registration for a rotation " +
 	"to act on, so nothing here can generate a new one."
 
-// OrgNotice is the outcome of a save, said once at the top of the screen —
-// the same pattern scanner.go's decisionNotice follows, and for the same
-// reason: a token in a redirect's query string, looked up here rather than
-// carried, so it cannot be edited into a sentence this hub did not write.
+// OrgNotice is a save's outcome, carried through the redirect as a token so a link cannot inject prose.
 type OrgNotice string
 
 const (
@@ -186,9 +161,8 @@ const (
 	OrgNoticeFailed          OrgNotice = "failed"
 )
 
-// OrgNoticeFrom maps a save outcome onto the notice banner. detail is the api's
-// own explanation for the invalid and conflict cases, already escaped by templ
-// on render.
+// OrgNoticeFrom maps a save outcome onto the notice banner; detail is the api's explanation for invalid and
+// conflict cases.
 func OrgNoticeFrom(raw, detail string) *Notice {
 	switch OrgNotice(raw) {
 	case OrgNoticePolicySaved:
@@ -229,13 +203,10 @@ func OrgNoticeFrom(raw, detail string) *Notice {
 	}
 }
 
-// MappingDeleteHref links a mapping row's remove form, url.PathEscape'd the way
-// PackageHref escapes a package id.
 func MappingDeleteHref(groupName string) string {
 	return "/org/mappings/" + url.PathEscape(groupName) + "/delete"
 }
 
-// CategoryRenameHref and CategoryDeleteHref link a category row's two forms.
 func CategoryRenameHref(id string) string { return "/org/categories/" + url.PathEscape(id) }
 
 func CategoryDeleteHref(id string) string { return "/org/categories/" + url.PathEscape(id) + "/delete" }

@@ -15,14 +15,11 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The audit log screen and its export.
-
 func (s *Server) audit(c *gin.Context) {
 	query := auditQueryFromURL(c)
 	screen := view.Audit{Query: query, Page: query.Page, ExportAvailable: true}
 	entries, err := s.deps.Hub.Audit(session(c), query.Page, query.Filter)
 	if status, ok := s.governanceFailure(c, err, &screen.GovernanceState, "audit log"); !ok {
-		// The export is offered only beside rows that could be read.
 		screen.ExportAvailable = false
 		s.renderAudit(c, status, screen)
 		return
@@ -67,21 +64,14 @@ func (s *Server) renderAudit(c *gin.Context, status int, screen view.Audit) {
 	s.render(c, status, "Audit log", "audit", components.AuditScreen(screen))
 }
 
-// ---- the export -----------------------------------------------------------
-
-// exportMediaType is what this role sends, a constant rather than the
-// upstream's header echoed back: a response header from another service
-// should not decide how a browser treats a download.
+// exportMediaType is fixed rather than echoed: another service's header should
+// not decide how a browser treats a download.
 const exportMediaType = "application/x-ndjson"
 
-// exportFilename matches the api's own Content-Disposition, so a file saved
-// through this hop and one saved from the api directly are the same file.
+// exportFilename matches the api's own Content-Disposition.
 const exportFilename = "audit-log.ndjson"
 
-// auditExport streams the current scope — the whole log, or the screen's
-// filter — to the browser. It does NOT
-// read the body into memory first: the audit table is the one designed to
-// grow without bound, and an io.ReadAll here would undo the api's own streaming.
+// auditExport streams rather than buffering: the audit log grows without bound.
 func (s *Server) auditExport(c *gin.Context) {
 	query := view.AuditQuery{Filter: auditFilterFromURL(c)}.Normalise()
 	body, mediaType, err := s.deps.Hub.AuditExport(session(c), query.Filter)
@@ -98,7 +88,6 @@ func (s *Server) auditExport(c *gin.Context) {
 		c.Status(http.StatusBadGateway)
 		return
 	}
-	// A stream left open is a connection held for the life of the process.
 	defer func() { _ = body.Close() }()
 
 	if mediaType != "" && mediaType != exportMediaType {
@@ -115,8 +104,7 @@ func (s *Server) auditExport(c *gin.Context) {
 	complete, err := streamExport(c.Writer, body)
 	switch {
 	case err != nil:
-		// The status is already sent and cannot be taken back: the reader has
-		// a truncated file and a 200.
+		// The 200 is already sent; the reader has a truncated file.
 		logFrom(c).Error().Err(err).Msg("the audit export was cut short mid-stream")
 	case !complete:
 		// The sentinel's absence is the only signal that a 200 was truncated.
@@ -124,14 +112,11 @@ func (s *Server) auditExport(c *gin.Context) {
 	}
 }
 
-// exportTailBytes bounds how much of the stream's end is kept to read the
-// sentinel back, so completeness-checking never becomes the buffering this
-// path avoids.
+// exportTailBytes bounds the tail kept to find the completeness sentinel.
 const exportTailBytes = 512
 
-// streamExport copies the export to the browser and reports whether it ended
-// with the api's completeness sentinel. It flushes as it goes, so a long
-// export arrives while being read rather than after the api finishes producing it.
+// streamExport flushes as it copies and reports whether the stream ended with
+// the api's completeness sentinel.
 func streamExport(w io.Writer, body io.Reader) (bool, error) {
 	flusher, _ := w.(http.Flusher)
 	tail := make([]byte, 0, exportTailBytes)
@@ -166,9 +151,8 @@ func keepTail(tail, chunk []byte) []byte {
 	return tail
 }
 
-// sentinelSeen decodes the stream's last line rather than matching text on
-// it: a substring match on `"complete":true` could be satisfied by an audit
-// row that happened to quote those bytes in its own text.
+// sentinelSeen decodes the last line: a substring match could be satisfied by
+// an audit row quoting `"complete":true`.
 func sentinelSeen(tail []byte) bool {
 	lines := bytes.Split(tail, []byte("\n"))
 	for i := len(lines) - 1; i >= 0; i-- {

@@ -13,9 +13,8 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The Service tokens screen. Creating one answers the POST with the page
-// itself rather than a redirect, because the secret must never travel in a
-// URL; the page is no-store for the same reason.
+// Creating a token answers the POST with the page rather than a redirect, so
+// the secret never travels in a URL.
 
 func (s *Server) tokens(c *gin.Context) {
 	screen := s.tokenScreen(c, view.ServiceTokenForm{

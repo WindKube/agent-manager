@@ -1,9 +1,8 @@
 // Package web is the `serve web` role: a gin router rendering templ components,
 // made interactive by datastar.
 //
-// This role holds no datastore credential: config.Web has no DatabaseURL or
-// BlobURL field, and internal/archcheck fails the build if internal/web imports
-// a store, blob client or database driver. Data arrives through the hub client.
+// This role holds no datastore credential; internal/archcheck fails the build if
+// it imports a store, blob client or database driver. Data arrives through the hub client.
 package web
 
 import (
@@ -28,20 +27,18 @@ import (
 )
 
 func init() {
-	// A package global, set once here rather than from New to avoid a race.
+	// Set once here rather than from New: it is a package global.
 	gin.SetMode(gin.ReleaseMode)
 }
 
-// CorrelationHeader carries the id that ties a browser's request to the
-// server's log lines. The api role echoes the same header.
+// CorrelationHeader ties a browser request to server log lines; the api echoes it.
 const CorrelationHeader = "X-Correlation-ID"
 
-// correlationIDPattern is what an inbound id may contain: unbounded, it is a
-// log-injection and header-splitting vector, so a non-match is replaced
-// rather than sanitised.
+// correlationIDPattern bounds inbound ids against log injection and header
+// splitting; a non-match is replaced, not sanitised.
 var correlationIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 
-// Deps is what the role is handed. Hub is required. Auth is nil when the
+// Deps is what the role is handed. Hub is required; Auth is nil when the
 // identity provider failed to configure at boot.
 type Deps struct {
 	Hub  *hub.Client
@@ -51,29 +48,21 @@ type Deps struct {
 
 // Options is the run-time configuration of the surface itself.
 type Options struct {
-	// Addr is the listen address, e.g. ":8080".
 	Addr string
-	// PublicBaseURL is read for exactly one decision: see secureCookie.
+	// PublicBaseURL only decides secureCookie.
 	PublicBaseURL string
-	// ProviderName is what the operator calls the identity provider. Empty
-	// renders neutral wording; never derived from the issuer URL.
+	// ProviderName is the operator's name for the identity provider; never derived from the issuer URL.
 	ProviderName string
 	// DevCredentialHint puts the local stack's seeded logins on the sign-in screen.
 	DevCredentialHint bool
-	// DevCredentials is what the hint above prints. Ignored unless the flag is set.
-	DevCredentials []view.Credential
-	// OIDCCookieKey signs the round-trip cookie. Empty draws one at boot — a
-	// deployment with more than one web replica MUST set the same value on each.
+	DevCredentials    []view.Credential
+	// OIDCCookieKey signs the round-trip cookie. Empty draws one at boot, so
+	// multiple web replicas must share the same value.
 	OIDCCookieKey []byte
 	// HubURL is the address `amctl login --hub` should name.
 	HubURL string
-	// RiverUI is the base address of River's queue dashboard, or nil when this
-	// deployment runs none — in which case the River Dashboard entry renders
-	// disabled with the reason on it, rather than disappearing.
-	//
-	// Scheme and host only. It is not a credential: the dashboard holds the
-	// queue's, this role holds none, and nothing a request carries can steer
-	// where the proxy points.
+	// RiverUI is the scheme and host of River's queue dashboard, or nil when none
+	// runs. Nothing a request carries can steer where the proxy points.
 	RiverUI *url.URL
 	// Middleware runs ahead of everything else, instrumentation included.
 	Middleware []gin.HandlerFunc
@@ -81,14 +70,12 @@ type Options struct {
 
 // Server is the assembled router. It owns no connections.
 type Server struct {
-	deps   Deps
-	opts   Options
-	engine *gin.Engine
-	// secureCookie and oidcKey are decided once, at construction, not per-request.
+	deps         Deps
+	opts         Options
+	engine       *gin.Engine
 	secureCookie bool
 	oidcKey      []byte
-	// riverUI is the reverse proxy onto the queue dashboard, built once, and nil
-	// when no dashboard is configured.
+	// riverUI is nil when no dashboard is configured.
 	riverUI *httputil.ReverseProxy
 }
 
@@ -112,15 +99,15 @@ func New(deps Deps, opts Options) *Server {
 		oidcKey:      oidcSigningKey(opts.OIDCCookieKey),
 		riverUI:      riverProxy(opts.RiverUI, deps.Log),
 	}
-	// The guard is global, so a new route is protected by default. It runs
-	// after correlation so its own log lines and redirect carry the request's id.
+	// The guard is global so a new route is protected by default, and runs after
+	// correlation so its log lines and redirects carry the request id.
 	engine.Use(opts.Middleware...)
 	engine.Use(correlation(deps.Log), recovery(), srv.guard(), sameOrigin())
 	srv.register()
 	return srv
 }
 
-// Handler is the http.Handler the role serves, and what tests drive.
+// Handler is the http.Handler the role serves.
 func (s *Server) Handler() http.Handler { return s.engine }
 
 func (s *Server) register() {
@@ -133,29 +120,23 @@ func (s *Server) register() {
 	s.engine.POST("/catalog/import/preview", s.importPreview)
 	s.engine.POST("/catalog/import", s.importRegister)
 
-	// A package id IS two segments: `example/platform-toolkit`. gin routes on
-	// the decoded path, so this splits correctly even if the id arrives encoded.
+	// A package id is two segments; gin routes on the decoded path, so an encoded id still splits.
 	s.engine.GET("/packages/:namespace/:name", s.packageDetail)
-	// POST forms that redirect, like the profile screens' writes, so a reload
-	// cannot resubmit any of them. The two deletes are additionally gated on
-	// the role the api demands and sit behind a typed confirmation.
+	// Writes are POST forms that redirect, so a reload cannot resubmit them.
 	s.engine.POST("/packages/visibility", s.setPackageVisibility)
 	s.engine.POST("/packages/tracking", s.setPackageTracking)
 	s.engine.POST("/packages/signer", s.setPackageSigner)
 	s.engine.POST("/packages/:namespace/:name/delete", s.deletePackage)
 	s.engine.POST("/packages/:namespace/:name/versions/:version/delete", s.deleteVersion)
 
-	// Both governance decisions are POST forms that redirect, so a reload
-	// cannot re-approve anything.
 	s.engine.GET("/scanner", s.scanner)
 	s.engine.POST("/scanner/findings/:id/accept", s.acceptFinding)
 	s.engine.POST("/scanner/findings/:id/reject", s.rejectFinding)
 	s.engine.GET("/audit", s.audit)
 	s.engine.GET("/audit/export", s.auditExport)
 
-	// A slug is one segment or several, so the read route is a catch-all. gin
-	// won't register a catch-all beside a fixed-depth sibling, so every write
-	// route below carries its slug as a form field instead of a path segment.
+	// A slug may span segments, so the read route is a catch-all. gin won't register
+	// a catch-all beside a fixed-depth sibling, so writes carry the slug as a form field.
 	s.engine.GET("/profiles", s.profiles)
 	s.engine.POST("/profiles", s.createProfile)
 	s.engine.GET("/profiles/*slug", s.profileDetail)
@@ -167,8 +148,7 @@ func (s *Server) register() {
 	s.engine.POST("/profiles/targets", s.setTargets)
 	s.engine.POST("/profiles/revisions", s.publishRevision)
 	s.engine.POST("/profiles/delete", s.deleteProfile)
-	// The confirm action never carries the user code in its own path: it is
-	// bearer-equivalent for the length of its validity.
+	// The user code never goes in the path: it is bearer-equivalent while valid.
 	s.engine.GET("/cli", s.cli)
 	s.engine.POST("/cli/confirm", s.confirmDeviceCode)
 	s.engine.GET("/tokens", s.tokens)
@@ -179,7 +159,6 @@ func (s *Server) register() {
 	s.engine.GET("/machines/:id", s.machineDetail)
 	s.engine.POST("/machines/:id/forget", s.forgetMachine)
 
-	// Every Organization write is a POST form that redirects, same as Scanner.
 	s.engine.GET("/org", s.org)
 	s.engine.POST("/org/identity/test", s.testConnection)
 	s.engine.POST("/org/identity/secret", s.rotateSecret)
@@ -198,18 +177,14 @@ func (s *Server) register() {
 
 	s.engine.GET("/runtime", s.runtime)
 
-	// The screen and the dashboard it embeds are separate paths on purpose: the
-	// embed is a byte passthrough with no layout, no shell and no session cookie
-	// on the way out, and a wildcard sharing a segment with a rendered screen is
-	// how one of them starts answering for the other.
+	// The embed is a byte passthrough with no shell or session cookie, so it gets
+	// its own prefix rather than a wildcard beside the rendered screen.
 	s.engine.GET("/river", s.riverScreen)
 	s.engine.Any(view.RiverEmbedPrefix+"/*path", s.riverEmbed)
 
 	s.engine.POST("/theme", s.setTheme)
 
-	// These four routes, plus /healthz and /static, are exempt from the guard.
-	// /auth/logout is a POST because a GET sign-out fires from any image tag on
-	// any page, on any origin.
+	// These, plus /healthz and /static, are exempt from the guard.
 	s.engine.GET("/auth/signin", s.signin)
 	s.engine.GET("/auth/login", s.login)
 	s.engine.GET("/auth/callback", s.callback)
@@ -225,7 +200,6 @@ func (s *Server) notFound(c *gin.Context) {
 		components.Placeholder("Not found", "There is no screen at this address."))
 }
 
-// health has no dependency to probe: if the process is up, it can serve.
 func (s *Server) health(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "role": "web"})
 }
@@ -269,7 +243,6 @@ func (s *Server) Run(ctx context.Context) error {
 	return <-errs
 }
 
-// logFrom is the request's logger, already carrying the correlation id.
 func logFrom(c *gin.Context) *zerolog.Logger {
 	log := logging.From(c.Request.Context())
 	return &log
@@ -308,11 +281,8 @@ func recovery() gin.HandlerFunc {
 	})
 }
 
-// sameOrigin is a second line of defence behind SameSite=Lax, which a browser
-// with third-party cookies re-enabled (or a bug in one) does not enforce. A
-// modern browser sends Sec-Fetch-Site on every request; where it is absent,
-// Origin is the fallback every browser old enough to lack it still sends on a
-// state-changing request.
+// sameOrigin backs up SameSite=Lax, which not every browser enforces. It checks
+// Sec-Fetch-Site, falling back to Origin for browsers too old to send it.
 func sameOrigin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		switch c.Request.Method {

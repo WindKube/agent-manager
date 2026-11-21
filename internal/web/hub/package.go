@@ -14,19 +14,12 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The package detail screen's door to the api (US3), through the generated
-// client and nothing else.
-
-// PackageRefusedError is the api refusing a visibility change it
-// understood — wrong owner, no catalog admin, or an owner-less package
-// narrowed past organisation — carrying the sentence the caller already
-// earned by reaching a screen that answered 200 on the GET.
+// PackageRefusedError is the api refusing a visibility change it understood:
+// wrong owner, no catalog admin, or an owner-less package narrowed past organisation.
 type PackageRefusedError struct{ Detail string }
 
 func (e *PackageRefusedError) Error() string { return e.Detail }
 
-// SetVisibility calls
-// PUT /v1/packages/{namespace}/{name}/visibility.
 func (c *Client) SetVisibility(ctx context.Context, namespace, name, visibility string) (view.Package, error) {
 	resp, err := c.api.SetPackageVisibilityWithResponse(ctx, namespace, name,
 		apiclient.PackageVisibilityUpdate{Visibility: apiclient.PackageVisibilityUpdateVisibility(visibility)})
@@ -40,7 +33,6 @@ func (c *Client) SetVisibility(ctx context.Context, namespace, name, visibility 
 	return packageDetail(resp.JSON200, c.now()), nil
 }
 
-// SetTracking calls PUT /v1/packages/{namespace}/{name}/tracking.
 func (c *Client) SetTracking(ctx context.Context, namespace, name string, track bool, pattern string) (view.Package, error) {
 	body := apiclient.PackageTrackingUpdate{TrackUpstream: track}
 	if pattern != "" {
@@ -57,8 +49,7 @@ func (c *Client) SetTracking(ctx context.Context, namespace, name string, track 
 	return packageDetail(resp.JSON200, c.now()), nil
 }
 
-// SetSigner calls PUT /v1/packages/{namespace}/{name}/signer. Both empty
-// clears the expected signer.
+// SetSigner sets the expected signer; both empty clears it.
 func (c *Client) SetSigner(ctx context.Context, namespace, name, issuer, identity string) (view.Package, error) {
 	var body apiclient.PackageSignerUpdate
 	if issuer != "" {
@@ -78,10 +69,8 @@ func (c *Client) SetSigner(ctx context.Context, namespace, name, issuer, identit
 	return packageDetail(resp.JSON200, c.now()), nil
 }
 
-// packageFailure mirrors hub/profiles.go's profileFailure: a 404 stays
-// view.ErrNotFound so an unreadable package answers the same as a missing
-// one, and a 403/422 the api understood becomes PackageRefusedError,
-// carrying the problem detail rather than a generic message.
+// packageFailure keeps a 404 as view.ErrNotFound, so unreadable and missing answer
+// alike, and turns a 403/422 into PackageRefusedError with the problem detail.
 func packageFailure(what string, resp *http.Response, body []byte) error {
 	if resp != nil {
 		switch resp.StatusCode {
@@ -94,9 +83,8 @@ func packageFailure(what string, resp *http.Response, body []byte) error {
 	return fmt.Errorf("%s: %w", what, statusError(resp, body))
 }
 
-// Package calls GET /v1/packages/{namespace}/{name}.
-// A 404 becomes view.ErrNotFound rather than an error to log: a missing
-// package and an unreadable one are the same answer by design.
+// Package reads one package. A missing and an unreadable package are the same
+// view.ErrNotFound answer by design.
 func (c *Client) Package(ctx context.Context, namespace, name string) (view.Package, error) {
 	resp, err := c.api.GetPackageWithResponse(ctx, namespace, name)
 	if err != nil {
@@ -112,8 +100,6 @@ func (c *Client) Package(ctx context.Context, namespace, name string) (view.Pack
 	return packageDetail(resp.JSON200, c.now()), nil
 }
 
-// DeleteVersion calls
-// DELETE /v1/packages/{namespace}/{name}/versions/{version}.
 func (c *Client) DeleteVersion(ctx context.Context, namespace, name, version string) (view.VersionDeleted, error) {
 	resp, err := c.api.DeleteVersionWithResponse(ctx, namespace, name, version)
 	if err != nil {
@@ -125,8 +111,6 @@ func (c *Client) DeleteVersion(ctx context.Context, namespace, name, version str
 	return view.VersionDeleted{PinnedByProfiles: int(resp.JSON200.PinnedByProfiles)}, nil
 }
 
-// DeletePackage calls
-// DELETE /v1/packages/{namespace}/{name}.
 func (c *Client) DeletePackage(ctx context.Context, namespace, name string) (view.PackageDeleted, error) {
 	resp, err := c.api.DeletePackageWithResponse(ctx, namespace, name)
 	if err != nil {
@@ -138,9 +122,8 @@ func (c *Client) DeletePackage(ctx context.Context, namespace, name string) (vie
 	return view.PackageDeleted{VersionsArchived: int(resp.JSON200.VersionsArchived)}, nil
 }
 
-// packageDeleteError adds this pair's own not-found and already-withdrawn
-// cases to governanceError, carrying the api's own detail text for the
-// latter the way orgError does for a save.
+// packageDeleteError adds not-found and already-withdrawn to governanceError,
+// carrying the api's detail for the latter.
 func packageDeleteError(resp *http.Response, body []byte) error {
 	if resp != nil {
 		switch resp.StatusCode {
@@ -216,8 +199,7 @@ func packageDetail(body *apiclient.PackageDetail, now time.Time) view.Package {
 				detail.Tracking.LastChecked = view.Relative(*body.Tracking.LastCheckedAt, now)
 			}
 		}
-		// The commit is the shown version's, and only when it came from the
-		// repository the package names now.
+		// Only when it came from the repository the package names now.
 		for i := range detail.Versions {
 			version := &detail.Versions[i]
 			if version.Version == detail.Version && version.SourceURL == detail.Source.URL {
@@ -259,9 +241,8 @@ func packageVersion(v *apiclient.PackageVersion, now time.Time) view.PackageVers
 	}
 }
 
-// capabilities merges the two lists into one row per capability name, which
-// makes the panel a comparison rather than two lists to align by eye. A name
-// present on one side only still gets a row.
+// capabilities merges both lists into one row per capability name; a name on one
+// side only still gets a row.
 func capabilities(from apiclient.PackageCapabilities) view.Capabilities {
 	rows := map[string]*view.CapabilityRow{}
 	names := make([]string, 0, len(from.Inferred)+len(from.Expected))
@@ -283,8 +264,6 @@ func capabilities(from apiclient.PackageCapabilities) view.Capabilities {
 		row(string(expected.Name)).Expected = facet(expected)
 	}
 
-	// Merging two ordered lists cannot preserve order on its own, so it is
-	// restated here rather than left to map iteration.
 	sort.SliceStable(names, func(i, j int) bool {
 		return capabilityRank(names[i]) < capabilityRank(names[j])
 	})
@@ -296,8 +275,7 @@ func capabilities(from apiclient.PackageCapabilities) view.Capabilities {
 	return out
 }
 
-// capabilityOrder is spelled out rather than sorted alphabetically so
-// `network` leads and `shell` — never below Review — is last.
+// capabilityOrder is explicit so `network` leads and `shell`, never below Review, is last.
 var capabilityOrder = []string{"network", "filesystem.read", "filesystem.write", "shell"}
 
 func capabilityRank(name string) int {
@@ -322,8 +300,7 @@ func facet(from apiclient.PackageCapability) view.CapabilityFacet {
 	return out
 }
 
-// humanSize renders a byte count. A version with no size yet renders as
-// nothing rather than "0 B", which would claim an empty bundle.
+// humanSize renders nothing for an unknown size; "0 B" would claim an empty bundle.
 func humanSize(bytes int64) string {
 	switch {
 	case bytes <= 0:

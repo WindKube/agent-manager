@@ -2,13 +2,8 @@ package components
 
 import "agent-manager/internal/web/view"
 
-// RiverScreen embeds River's own queue dashboard in this hub, on this hub's
-// origin, so reading it does not mean opening a second port and signing in to
-// nothing.
-//
-// The frame is same-origin: every byte in it came through this role's proxy,
-// which forwards no session cookie upstream and refuses every verb but GET and
-// HEAD. What the reader gets is the dashboard, read-only.
+// RiverScreen embeds River's dashboard same-origin through this role's proxy, which
+// forwards no session cookie and allows only GET and HEAD.
 templ RiverScreen(r view.River) {
 	<div class="am-header">
 		<div class="am-header-text">

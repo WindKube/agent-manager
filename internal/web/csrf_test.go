@@ -8,9 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCrossSitePostsAreRefused is the second line of defence behind
-// SameSite=Lax: a state-changing request whose Sec-Fetch-Site or Origin names
-// another site is refused before it reaches a handler.
+// TestCrossSitePostsAreRefused is the second line of defence behind SameSite=Lax.
 func TestCrossSitePostsAreRefused(t *testing.T) {
 	_, h := newServer(t)
 

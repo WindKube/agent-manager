@@ -7,11 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The header's refresh control (owner request: "this rotating circle") must
-// reuse the catalog's own filter round trip rather than a second fetch path,
-// must be a real named button rather than an icon-only div, and must show it
-// is working through datastar's own indicator signal rather than a hand-rolled
-// fetch tracker.
+// The header refresh control reuses the catalog's filter round trip, is a real
+// named button, and shows progress through datastar's indicator signal.
 
 func TestCatalogRefreshButtonFiresTheSameRoundTripAsTheFilters(t *testing.T) {
 	_, h := newServer(t)
@@ -50,20 +47,14 @@ func TestCatalogRefreshButtonShowsItIsWorkingViaDatastarsOwnIndicator(t *testing
 	_, h := newServer(t)
 	body := get(t, h, "/catalog").Body.String()
 
-	// data-indicator is the plugin datastar ships for exactly this: it flips a
-	// signal true for the duration of a request the same element fires. Anything
-	// else here would be a second, hand-rolled way to track an in-flight fetch.
 	const attr = `data-indicator="`
 	at := strings.Index(body, attr)
 	require.GreaterOrEqual(t, at, 0, "the refresh button has no data-indicator")
 	rest := body[at+len(attr):]
 	signal := rest[:strings.IndexByte(rest, '"')]
 
-	// The underscore is load-bearing, not a style preference (see the _import*
-	// signals in props.go): datastar excludes underscore-prefixed signals from
-	// every request it sends. Without it, this signal would ride along on every
-	// /catalog/results and facet request, widening the wire contract of handlers
-	// that have no use for it.
+	// datastar never sends underscore-prefixed signals, so this one stays off
+	// every /catalog/results and facet request.
 	require.Truef(t, strings.HasPrefix(signal, "_"),
 		"the indicator signal %q must be underscore-prefixed so datastar never sends it to the server", signal)
 

@@ -10,13 +10,8 @@ import templruntime "github.com/a-h/templ/runtime"
 
 import "agent-manager/internal/web/view"
 
-// RiverScreen embeds River's own queue dashboard in this hub, on this hub's
-// origin, so reading it does not mean opening a second port and signing in to
-// nothing.
-//
-// The frame is same-origin: every byte in it came through this role's proxy,
-// which forwards no session cookie upstream and refuses every verb but GET and
-// HEAD. What the reader gets is the dashboard, read-only.
+// RiverScreen embeds River's dashboard same-origin through this role's proxy, which
+// forwards no session cookie and allows only GET and HEAD.
 func RiverScreen(r view.River) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -50,7 +45,7 @@ func RiverScreen(r view.River) templ.Component {
 			var templ_7745c5c3_Var2 string
 			templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(r.Gate)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/river.templ`, Line: 26, Col: 63}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/river.templ`, Line: 21, Col: 63}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 			if templ_7745c5c3_Err != nil {
@@ -68,7 +63,7 @@ func RiverScreen(r view.River) templ.Component {
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(r.EmbedPath)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/river.templ`, Line: 31, Col: 21}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/components/river.templ`, Line: 26, Col: 21}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 			if templ_7745c5c3_Err != nil {

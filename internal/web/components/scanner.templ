@@ -6,18 +6,9 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// ScannerScreen is US4's triage screen: what the scanner concluded, what it
-// looked at, and the one decision a reviewer can take about it.
-//
-// It is a plain server render with no signals. Nothing on it filters as you type
-// and nothing polls; the filter chips, the pager and the two decisions are all
-// ordinary links and forms, so the screen works with a round trip per action and
-// there is no datastar state to keep in step with the pane.
-//
-// Every string that came out of a package — the finding's title, the rule's prose,
-// an evidence path, an evidence quote — is interpolated and therefore escaped.
-// That is not a convention here: internal/archcheck fails the build if anything
-// under internal/web calls templ.Raw at all (001 FR-055, FR-127).
+// ScannerScreen is the triage screen. It is a plain server render with no signals:
+// chips, pager and decisions are ordinary links and forms. Package-derived strings
+// are interpolated and so escaped; archcheck forbids templ.Raw.
 templ ScannerScreen(s view.Scanner) {
 	<div class="am-header">
 		<div class="am-header-text">
@@ -32,8 +23,7 @@ templ ScannerScreen(s view.Scanner) {
 		<div class={ NoticeClass(*s.Notice) } id="scanner-notice">{ s.Notice.Text }</div>
 	}
 	if s.SignedOut {
-		// FR-122's three states, and the whole risk is a reader — or a test — reading
-		// one as another. Distinct copy AND a distinct id for each.
+		// Three states a reader or test must never confuse: distinct copy and id each.
 		<div class="am-empty am-empty-auth" id="scanner-signed-out">
 			Sign in to review scanner findings. The hub has no anonymous view.
 		</div>
@@ -60,9 +50,8 @@ templ ScannerScreen(s view.Scanner) {
 	}
 }
 
-// scannerSummary is the four headline figures. Each is computed from stored data
-// by the api and formatted here; none of them is a constant in the product
-// (FR-121), including the window the first two are measured over.
+// scannerSummary is the four headline figures, all computed by the api; none is a
+// product constant, including the window.
 templ scannerSummary(summary view.ScannerSummary) {
 	<div class="am-stats" id="scanner-summary">
 		for _, card := range summary.Cards() {
@@ -112,7 +101,7 @@ templ findingsList(s view.Scanner) {
 					this hub has raised, whatever a reviewer has decided about it.
 				</div>
 			} else {
-				// FR-122: name what would appear here, and how to bring it about.
+				// Name what would appear here, and how to bring it about.
 				<div class="am-empty" id="scanner-empty">
 					No findings. A finding appears here when the scanner reads a version and a rule
 					trips: register a package from the catalog, or publish a new version of one, and
@@ -138,12 +127,8 @@ templ findingsList(s view.Scanner) {
 	</section>
 }
 
-// explainable pairs a short label — a check name, a rule id — with what it
-// means, reachable two ways at once rather than by mouse alone: title is a
-// native tooltip for a pointer, and aria-describedby names text a screen
-// reader announces on its own regardless of hover, which is the WHY behind
-// the second span existing at all rather than relying on title alone. Native
-// attributes only, so nothing here costs a datastar round trip (R7).
+// explainable pairs a short label with its meaning via title for pointers and
+// aria-describedby for screen readers. Native attributes only, so no round trip.
 templ explainable(domID, text, explain, class string) {
 	if explain != "" {
 		<span
@@ -170,8 +155,7 @@ templ findingRow(row view.FindingRow) {
 	<div class="am-find-meta">
 		<span class={ FindingStateClass(row.State) }>{ row.State.Label() }</span>
 		@explainable("explain-rule-"+row.ID, row.RuleID, row.Explanation, "am-mono am-find-rule")
-		// Which analyser made the claim. Two engines may use the same rule id, and
-		// a reviewer calibrates differently for each.
+		// Two engines may share a rule id, and a reviewer calibrates differently for each.
 		<span class="am-find-engine">{ view.EngineLabel(row.Engine) }</span>
 		<span class="am-find-raised">{ row.Raised }</span>
 	</div>
@@ -205,9 +189,8 @@ templ findingDetail(s view.Scanner, detail view.FindingDetail) {
 		<div class="am-pane-title">{ detail.Title }</div>
 		<div class="am-pane-subject">
 			<a class="am-mono am-pane-link" href={ view.PackageHref(detail.PackageID) }>{ detail.Subject }</a>
-			// The version's verdict, beside the finding's state and never merged with it.
-			// An accept records an exception and leaves the version flagged; one pill for
-			// both would tell a reader the package had become clean.
+			// The version's verdict stays separate from the finding's state: an accept
+			// leaves the version flagged, and one pill would read as clean.
 			<span class={ VerdictClass(detail.Verdict) }>{ detail.Verdict.Label() }</span>
 		</div>
 		<div class="am-pane-raised">Raised { detail.Raised }</div>
@@ -231,9 +214,8 @@ templ findingDetail(s view.Scanner, detail view.FindingDetail) {
 	@reviewFooter(s, detail)
 }
 
-// evidencePanel quotes bytes out of somebody else's package. Every path, line and
-// quote here is interpolated, so templ escapes it; a <pre> is a text context, not
-// a safe one, and markup in a quote would otherwise render as markup.
+// evidencePanel quotes bytes from somebody else's package. A <pre> is a text
+// context, not a safe one, so every value is interpolated and escaped.
 templ evidencePanel(detail view.FindingDetail) {
 	<div class="am-pane-block">
 		<div class="am-label">Evidence</div>
@@ -253,9 +235,8 @@ templ evidencePanel(detail view.FindingDetail) {
 				</div>
 			}
 		} else {
-			// A real and reachable state, not a rendering fault: a finding carries its
-			// locations only when the scan that raised it recorded them, and the seeded
-			// findings have none. Saying so beats an empty panel that reads as a bug.
+			// A finding carries locations only when its scan recorded them; say so
+			// rather than show an empty panel that reads as a bug.
 			<div class="am-empty" id="finding-no-evidence">
 				This finding records no file location. The rule matched the version as a whole, or
 				the scan that raised it predates location capture. The detail above is what the
@@ -265,12 +246,8 @@ templ evidencePanel(detail view.FindingDetail) {
 	</div>
 }
 
-// checkMatrix is 001 FR-025, and it renders the WHOLE matrix.
-//
-// Every check the scanner runs writes a row on every scan, passes included, so
-// this list has no holes. Filtering it to the failures would produce a pane that
-// cannot be told apart from one where nothing else ran, which is the distinction
-// the requirement exists for.
+// checkMatrix renders the whole matrix, passes included: filtering to failures
+// would be indistinguishable from a scan where nothing else ran.
 templ checkMatrix(detail view.FindingDetail) {
 	<div class="am-pane-block">
 		<div class="am-label">Checks run</div>
@@ -281,8 +258,7 @@ templ checkMatrix(detail view.FindingDetail) {
 			</p>
 			<div id="finding-checks">
 				for i, check := range detail.Checks {
-					// One heading per analyser. Without it the two engines' rows read as
-					// one list, and "this passed" stops saying which analysis passed.
+					// One heading per analyser, so "passed" says which analysis passed.
 					if i == 0 || detail.Checks[i-1].Engine != check.Engine {
 						<div class="am-chk-engine">{ view.EngineLabel(check.Engine) }</div>
 					}
@@ -291,8 +267,7 @@ templ checkMatrix(detail view.FindingDetail) {
 						<span class="am-chk-label">
 							@explainable("explain-check-"+strconv.Itoa(i), check.Label, check.Explain, "")
 							if check.Note() != "" {
-								// Not a number of issues. Rendering it as "2" beside a warning
-								// would read as two problems, which is its opposite.
+								// Not a count of issues; "2" beside a warning would read as two problems.
 								<span class="am-chk-note">{ check.Note() }</span>
 							}
 						</span>
@@ -313,8 +288,8 @@ templ scanPanel(scan view.ScanMeta) {
 	<div class="am-pane-block">
 		<div class="am-label">Scan</div>
 		if scan.TimedOut {
-			// 001 FR-031. A scan that ran out of budget reached no judgement, and the
-			// absence of further findings from it is not evidence of their absence.
+			// A scan that ran out of budget reached no judgement, and missing findings
+			// from it are not evidence of absence.
 			<div class="am-notice am-notice-dan" id="finding-scan-timed-out">
 				<p class="am-note">
 					This scan exceeded its time budget and was cut short, so it reached no verdict.
@@ -374,9 +349,8 @@ templ overridePanel(override view.Override) {
 					}
 				</div>
 			} else {
-				// Not "never". Every override this hub writes carries an expiry, so a
-				// row without one came from somewhere else, and saying "never" about it
-				// would be this screen inventing a guarantee out of a missing value.
+				// Not "never": every override this hub writes has an expiry, so "never"
+				// would invent a guarantee from a missing value.
 				<div class="am-kv-val am-kv-none">not recorded</div>
 			}
 		</div>
@@ -389,15 +363,9 @@ templ overridePanel(override view.Override) {
 	</div>
 }
 
-// reviewFooter is T072 and FR-126: the two decisions, or the reason they are not
-// on offer.
-//
-// A viewer whose role cannot decide gets the controls DISABLED with the reason
-// beside them rather than absent, because a reviewer looking for the approve
-// button needs to learn that it exists and that their role is what is in the way —
-// an absent control reads as a screen that has not been built. A finding that is
-// already rejected gets no controls at all, because there is nothing left to
-// decide and the api answers 409 rather than doing anything.
+// reviewFooter is the two decisions, or the reason they are not on offer. A role
+// that cannot decide gets them disabled with the reason, not absent. A rejected
+// finding gets none: nothing is left to decide and the api answers 409.
 templ reviewFooter(s view.Scanner, detail view.FindingDetail) {
 	<div class="am-gate">
 		if detail.TerminalNote() != "" {
@@ -445,9 +413,8 @@ templ reviewFooter(s view.Scanner, detail view.FindingDetail) {
 					</span>
 				</div>
 				<div class="am-gate-actions">
-					// formnovalidate is what lets one note field serve both decisions: the api
-					// requires a note to approve and does not to reject, and the browser's own
-					// required-field check would otherwise impose the stricter rule on both.
+					// formnovalidate lets one note field serve both decisions: approve
+					// requires a note and reject does not.
 					<button
 						type="submit"
 						class="am-btn"

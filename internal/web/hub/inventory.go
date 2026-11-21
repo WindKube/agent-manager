@@ -12,8 +12,6 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The Machines screens' and the Affected machines panels' door to the api.
-
 // Machines reads GET /v1/machines.
 func (c *Client) Machines(ctx context.Context, q view.MachineQuery) (view.Machines, error) {
 	page := int64(q.Page)
@@ -45,8 +43,8 @@ func (c *Client) Machines(ctx context.Context, q view.MachineQuery) (view.Machin
 	return out, nil
 }
 
-// AffectedMachines counts the machines holding a package, per version, or
-// one version of it when version is given.
+// AffectedMachines counts machines holding a package per version, or one version
+// when given.
 func (c *Client) AffectedMachines(ctx context.Context, pkg, version string) (view.AffectedMachines, error) {
 	one := int64(1)
 	params := &apiclient.ListMachinesParams{Package: &pkg, PageSize: &one}

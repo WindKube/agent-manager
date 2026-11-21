@@ -9,9 +9,6 @@ import (
 	"agent-manager/internal/web/hub"
 )
 
-// TestRuntimeIsMappedFromTheApisAnswer asserts on the WIRE, like the rest of
-// this package: a mapping bug here must not be able to cancel out against
-// the same bug in the test.
 func TestRuntimeIsMappedFromTheApisAnswer(t *testing.T) {
 	client := clientAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
 		writeCatalog(w, `{
@@ -57,8 +54,7 @@ func TestRuntimeIsMappedFromTheApisAnswer(t *testing.T) {
 
 	require.Len(t, report.Retrying, 1)
 	require.EqualValues(t, 48310, report.Retrying[0].ID)
-	// The retrying job's When is the api's scheduledAt (the next attempt),
-	// never its finalizedAt — a job still retrying has none.
+	// A retrying job's When is scheduledAt; it has no finalizedAt.
 	require.Contains(t, report.Retrying[0].When, "2026-09-10 09:00")
 	require.Equal(t, "connection reset", report.Retrying[0].LatestError())
 
@@ -68,10 +64,8 @@ func TestRuntimeIsMappedFromTheApisAnswer(t *testing.T) {
 	require.Equal(t, 60, report.BucketMinutes)
 }
 
-// TestRuntimeRefusalIsDistinctFromAnUnreachableApi mirrors the other
-// governance reads: a 403 must map to ErrForbidden specifically, never to
-// the generic transport error a screen would render as "unavailable" —
-// signing in again does not acquire a role.
+// TestRuntimeRefusalIsDistinctFromAnUnreachableApi: a 403 must be ErrForbidden,
+// never the generic "unavailable" error.
 func TestRuntimeRefusalIsDistinctFromAnUnreachableApi(t *testing.T) {
 	client := clientAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusForbidden)

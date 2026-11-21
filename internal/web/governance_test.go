@@ -19,18 +19,6 @@ import (
 	"agent-manager/internal/web/hub"
 )
 
-// T071-T075: the two governance screens.
-//
-// What these tests are about is the difference between a screen that shows what
-// the hub knows and one that looks like it does. Three properties carry most of
-// that weight and each has a test below it cannot pass by accident:
-//
-//   - Every check that ran is on the page, not only the failures (001 FR-025).
-//   - The four states that are not a list of findings — signed out, refused,
-//     unreachable, genuinely empty — are four screens and not one (FR-122).
-//   - An action this viewer may not take is not offered (FR-126), and a post that
-//     arrives anyway records nothing.
-
 const govFindingID = "6f1c0a4e-9f4b-4f2a-9c1d-2f9b6a7e4d11"
 
 func govFinding() apiclient.FindingSummary {
@@ -43,7 +31,6 @@ func govFinding() apiclient.FindingSummary {
 	}
 }
 
-// govDetail is the bare detail of a summary: no checks, no evidence, no override.
 func govDetail(f apiclient.FindingSummary) apiclient.FindingDetail {
 	return apiclient.FindingDetail{
 		Id: f.Id, RuleId: f.RuleId, Detail: f.Detail, Title: f.Title,
@@ -53,7 +40,6 @@ func govDetail(f apiclient.FindingSummary) apiclient.FindingDetail {
 	}
 }
 
-// oneFinding makes the api answer exactly one finding, with the given detail.
 func oneFinding(api *fakeapi.API, f apiclient.FindingSummary, detail apiclient.FindingDetail) {
 	api.Data.Findings = []apiclient.FindingSummary{f}
 	api.Data.FindingDetails = map[string]apiclient.FindingDetail{f.Id.String(): detail}
@@ -74,12 +60,7 @@ func auditEntry(actor string, kind apiclient.AuditEntryKind, text, source string
 
 func ptrTo[T any](v T) *T { return &v }
 
-// TestTheCheckMatrixShowsEveryCheckThatRanAndNotOnlyTheFailures is 001 FR-025.
-//
-// The requirement exists so that the absence of a finding is distinguishable from
-// the absence of a check, which is a property only the PASSES carry: a pane
-// listing one failed check is indistinguishable from a pane where that was the
-// only check that ran.
+// Only the passes distinguish "no finding" from "no check ran".
 func TestTheCheckMatrixShowsEveryCheckThatRanAndNotOnlyTheFailures(t *testing.T) {
 	api, h := newServer(t)
 	detail := govDetail(govFinding())
@@ -95,21 +76,16 @@ func TestTheCheckMatrixShowsEveryCheckThatRanAndNotOnlyTheFailures(t *testing.T)
 	for _, label := range []string{"Manifest schema", "Network allowlist", "Shell command audit", "Secret exfiltration"} {
 		require.Containsf(t, body, label, "the matrix dropped %q, so a check that ran is invisible", label)
 	}
-	require.Contains(t, body, "am-chk-mark-ok", "no pass is rendered, which is the half FR-025 is about")
+	require.Contains(t, body, "am-chk-mark-ok", "no pass is rendered")
 	require.Contains(t, body, "am-chk-mark-dan")
 
-	// The warn count is a blind-spot counter: files the check could not read. Shown
-	// as a bare number beside a warning it reads as a number of problems, which is
-	// its opposite.
+	// The warn count is files the check could not read, not a number of problems.
 	require.Contains(t, body, "2 files this check could not read")
 	require.NotContains(t, body, "2 issues")
 }
 
-// TestACheckAndARuleIdExplainThemselvesOnHoverAndWithoutOne is the reason this
-// feature exists: a reader who moves the cursor to a check name or a rule id
-// gets a title tooltip, and a reader who cannot use a mouse gets the same
-// words through aria-describedby, which a screen reader announces whether or
-// not anything was ever hovered.
+// A title tooltip for mouse users, and the same words via aria-describedby for
+// screen readers.
 func TestACheckAndARuleIdExplainThemselvesOnHoverAndWithoutOne(t *testing.T) {
 	api, h := newServer(t)
 	finding := govFinding()
@@ -123,28 +99,20 @@ func TestACheckAndARuleIdExplainThemselvesOnHoverAndWithoutOne(t *testing.T) {
 	oneFinding(api, finding, pane)
 	body := get(t, h, "/scanner").Body.String()
 
-	// The list row's rule id: a mouse tooltip and the screen-reader pair.
 	require.Contains(t, body, `title="Why SH-NET-002 fires, for the list row."`)
 	require.Contains(t, body, "Why SH-NET-002 fires, for the list row.")
 
-	// The pane's rule id chip carries the DETAIL fetch's own explanation, not
-	// the list row's — the two come from different api calls.
+	// The pane uses the detail call's explanation, not the list row's.
 	require.Contains(t, body, `title="Why SH-NET-002 fires, for the pane."`)
 
-	// The check matrix's label.
 	require.Contains(t, body, `title="What the network allowlist check looks for."`)
 	require.Contains(t, body, "What the network allowlist check looks for.")
 
-	// Every hover pairs with an aria-describedby naming an id that actually
-	// exists on the page — a tooltip with nothing for a screen reader to read
-	// is the defect this test exists to catch.
 	for _, match := range regexp.MustCompile(`aria-describedby="([^"]+)"`).FindAllStringSubmatch(body, -1) {
 		require.Containsf(t, body, `id="`+match[1]+`"`, "aria-describedby names %s, which nothing on the page carries as an id", match[1])
 	}
 }
 
-// TestScanEvidenceIsEscapedWhereverItIsRendered is FR-127 on the one screen whose
-// whole subject is quoting a package somebody else wrote.
 func TestScanEvidenceIsEscapedWhereverItIsRendered(t *testing.T) {
 	const payload = `<img src=x onerror="alert(1)">`
 
@@ -177,9 +145,6 @@ func TestScanEvidenceIsEscapedWhereverItIsRendered(t *testing.T) {
 	}
 }
 
-// TestTheScannerTellsItsFourEmptyStatesApart is FR-122. Each of these is a
-// different question with a different answer, and a screen that renders any two of
-// them the same sends its reader somewhere useless.
 func TestTheScannerTellsItsFourEmptyStatesApart(t *testing.T) {
 	for _, state := range []struct {
 		name   string
@@ -217,9 +182,6 @@ func TestTheScannerTellsItsFourEmptyStatesApart(t *testing.T) {
 	}
 }
 
-// TestTheEmptyScannerSaysWhatWouldBeThereAndHowToGetIt is the other half of
-// FR-122: an empty state that only says "nothing here" tells a reader nothing they
-// did not already know.
 func TestTheEmptyScannerSaysWhatWouldBeThereAndHowToGetIt(t *testing.T) {
 	api, h := newServer(t)
 	api.Data.Findings = nil
@@ -234,7 +196,6 @@ func TestTheEmptyScannerSaysWhatWouldBeThereAndHowToGetIt(t *testing.T) {
 	require.Contains(t, audit, "state-changing action")
 }
 
-// TestAnActionAViewerMayNotTakeIsDisabledWithItsReason is FR-126.
 func TestAnActionAViewerMayNotTakeIsDisabledWithItsReason(t *testing.T) {
 	server := func(t *testing.T) (*fakeapi.API, http.Handler) {
 		api, h := newServer(t)
@@ -250,7 +211,6 @@ func TestAnActionAViewerMayNotTakeIsDisabledWithItsReason(t *testing.T) {
 		require.Contains(t, body, `id="review-not-permitted"`)
 		require.Contains(t, body, "scanner reviewer")
 		require.Contains(t, body, "disabled")
-		// And no form, so there is nothing to submit even by hand-editing the page.
 		require.NotContains(t, body, `class="am-review"`)
 	})
 
@@ -265,9 +225,8 @@ func TestAnActionAViewerMayNotTakeIsDisabledWithItsReason(t *testing.T) {
 	})
 }
 
-// TestADecisionFromAnIdentityWithoutTheRoleReachesNoApi is the other half of
-// FR-126: disabling a control is presentation, and a post arrives anyway from an
-// old page or a second tab.
+// Disabling a control is presentation; a post can still arrive from an old page
+// or a second tab.
 func TestADecisionFromAnIdentityWithoutTheRoleReachesNoApi(t *testing.T) {
 	api, h := newServer(t)
 	api.Data.As(apiclient.ViewerRoleReadOnly)
@@ -280,9 +239,7 @@ func TestADecisionFromAnIdentityWithoutTheRoleReachesNoApi(t *testing.T) {
 	require.Empty(t, api.Calls("rejectFinding"))
 }
 
-// TestAnApproveWithNoNoteNeverReachesTheApi mirrors the api's own validation. It
-// is a mirror and not the authority — the api still refuses a blank note — but a
-// round trip spent learning what this side already knows is a round trip wasted.
+// Mirrors the api's validation to save a round trip; the api remains the authority.
 func TestAnApproveWithNoNoteNeverReachesTheApi(t *testing.T) {
 	api, h := newServer(t)
 
@@ -301,8 +258,7 @@ func TestAnApproveWithNoNoteNeverReachesTheApi(t *testing.T) {
 	})
 }
 
-// TestAnAcceptSendsNoExpiryUnlessTheReviewerStatedOne. A lifetime this role
-// invented would be a policy decision taken by a form field nobody filled in.
+// A default lifetime would be a policy decision taken by a form field nobody filled in.
 func TestAnAcceptSendsNoExpiryUnlessTheReviewerStatedOne(t *testing.T) {
 	api, h := newServer(t)
 	accepted := func() []apiclient.FindingApproval {
@@ -333,9 +289,7 @@ func TestAnAcceptSendsNoExpiryUnlessTheReviewerStatedOne(t *testing.T) {
 	})
 }
 
-// TestApprovingNeverClaimsTheVersionBecameClean. An override is an accepted risk
-// with a name against it; the version stays flagged, and a screen that said
-// otherwise would be the dishonest surface this feature exists to delete.
+// An override is an accepted risk; the version stays flagged.
 func TestApprovingNeverClaimsTheVersionBecameClean(t *testing.T) {
 	api, h := newServer(t)
 	approved := govFinding()
@@ -354,9 +308,6 @@ func TestApprovingNeverClaimsTheVersionBecameClean(t *testing.T) {
 	require.NotContains(t, body, "Clean")
 }
 
-// TestAFindingWithNoRecordedEvidenceSaysSoRatherThanRenderingAnEmptyPanel. The
-// seeded findings are all in this state, and an empty panel there reads as a
-// rendering fault rather than as a fact about the scan.
 func TestAFindingWithNoRecordedEvidenceSaysSoRatherThanRenderingAnEmptyPanel(t *testing.T) {
 	api, h := newServer(t)
 	oneFinding(api, govFinding(), govDetail(govFinding()))
@@ -366,9 +317,7 @@ func TestAFindingWithNoRecordedEvidenceSaysSoRatherThanRenderingAnEmptyPanel(t *
 	require.Contains(t, body, `id="finding-no-checks"`)
 }
 
-// TestThePrimaryEvidenceIsFoundByItsRoleAndNotByItsPosition. The api orders
-// evidence by role and the hub promises nothing about position, so an index-based
-// reader would promote a supporting location to the headline the day that changes.
+// The hub promises nothing about evidence order, so position must not decide the headline.
 func TestThePrimaryEvidenceIsFoundByItsRoleAndNotByItsPosition(t *testing.T) {
 	api, h := newServer(t)
 	pane := govDetail(govFinding())
@@ -387,8 +336,7 @@ func TestThePrimaryEvidenceIsFoundByItsRoleAndNotByItsPosition(t *testing.T) {
 	require.Contains(t, body, `id="finding-evidence"`)
 }
 
-// TestAFindingIdThatNamesNothingIsItsOwnState, and it is the pane's state rather
-// than the screen's: the list beside it read perfectly well.
+// A missing finding is the pane's state, not the screen's: the list still renders.
 func TestAFindingIdThatNamesNothingIsItsOwnState(t *testing.T) {
 	api, h := newServer(t)
 	oneFinding(api, govFinding(), govDetail(govFinding()))
@@ -400,9 +348,7 @@ func TestAFindingIdThatNamesNothingIsItsOwnState(t *testing.T) {
 	require.Contains(t, body, "Script contacts a host", "the findings list should still have rendered")
 }
 
-// TestTheAuditScreenNeverAttributesASystemRowToAPerson. `fetcher` and `scanner`
-// are actors; a screen that let them read as usernames would put a machine's
-// action against somebody with that name.
+// System actors like `scanner` must not read as usernames.
 func TestTheAuditScreenNeverAttributesASystemRowToAPerson(t *testing.T) {
 	api, h := newServer(t)
 	system := auditEntry("scanner", apiclient.AuditEntryKindScan, "flagged x@1", "system")
@@ -418,10 +364,6 @@ func TestTheAuditScreenNeverAttributesASystemRowToAPerson(t *testing.T) {
 	require.Contains(t, body, "am-pill-ok")
 }
 
-// TestEveryAuditRowIsAKeyboardReachableLinkToItsOwnDetail. A row of <td>s (or
-// <div>s) with a click handler and no accessible name is not reachable from a
-// keyboard and announces nothing to a screen reader; a real <a> is both by
-// construction.
 func TestEveryAuditRowIsAKeyboardReachableLinkToItsOwnDetail(t *testing.T) {
 	api, h := newServer(t)
 	api.Data.Audit = []apiclient.AuditEntry{auditEntry("an-operator", apiclient.AuditEntryKindApprove, "override granted", "web")}
@@ -431,10 +373,7 @@ func TestEveryAuditRowIsAKeyboardReachableLinkToItsOwnDetail(t *testing.T) {
 		"the row is not a real, keyboard-focusable link to its own detail")
 }
 
-// TestClickingAnAuditRowOpensAPanelWithTheWholeUntruncatedMessage is the bug
-// report itself: the row's own am-audit-text cell clips this message with an
-// ellipsis, and nothing before this change rendered it in full anywhere on the
-// page. The panel must, and it must not be cut off inside it either.
+// The row clips its message with an ellipsis; the panel must show it in full.
 func TestClickingAnAuditRowOpensAPanelWithTheWholeUntruncatedMessage(t *testing.T) {
 	message := `failed to fetch community/skills@1.2.3 from git https://github.com/mattpocock/skills@v1.2.3 ` +
 		`(skills/engineering/code-review): archive member rejected: symlink (member "mattpocock-skills-835450e/AGENTS.md")`
@@ -446,17 +385,13 @@ func TestClickingAnAuditRowOpensAPanelWithTheWholeUntruncatedMessage(t *testing.
 
 	require.Contains(t, body, `class="am-audit-panel"`, "no detail panel was rendered for the selected row")
 	require.Contains(t, body, `class="am-audit-detail-message"`)
-	// The quote inside the message proves this is templ's own escaping and not
-	// a raw copy: an unescaped one would also make this a stored-XSS hole.
+	// The escaped quote proves templ escaping, not a raw (stored-XSS) copy.
 	require.Contains(t, body, "archive member rejected: symlink (member &#34;mattpocock-skills-835450e/AGENTS.md&#34;)")
 	require.Contains(t, body, "https://github.com/mattpocock/skills@v1.2.3")
-	// The id the row itself never shows (001 FR-050's own row identity).
+	// The id the row itself never shows.
 	require.Contains(t, body, auditID)
 }
 
-// TestAnAuditEntryNotOnThePageIsNamedMissingRatherThanRenderingNothing. A
-// stale link or one for a row a page turn left behind must say so; a panel
-// that silently renders empty reads as a bug rather than an honest state.
 func TestAnAuditEntryNotOnThePageIsNamedMissingRatherThanRenderingNothing(t *testing.T) {
 	api, h := newServer(t)
 	api.Data.Audit = []apiclient.AuditEntry{auditEntry("an-operator", apiclient.AuditEntryKindApprove, "override granted", "")}
@@ -465,9 +400,6 @@ func TestAnAuditEntryNotOnThePageIsNamedMissingRatherThanRenderingNothing(t *tes
 	require.Contains(t, body, `id="audit-entry-missing"`)
 }
 
-// TestTheAuditPanelSaysSoRatherThanLeavingAnEmptySourceCell extends the row's
-// own "not recorded" convention (SourceLabel) into the panel, where a bare dash
-// with no other cells around it reads as a rendering bug rather than a fact.
 func TestTheAuditPanelSaysSoRatherThanLeavingAnEmptySourceCell(t *testing.T) {
 	api, h := newServer(t)
 	api.Data.Audit = []apiclient.AuditEntry{auditEntry("an-operator", apiclient.AuditEntryKindApprove, "override granted", "")}
@@ -476,9 +408,8 @@ func TestTheAuditPanelSaysSoRatherThanLeavingAnEmptySourceCell(t *testing.T) {
 	require.Contains(t, body, "Not recorded")
 }
 
-// TestTheAuditExportStreamsThroughAndItsSentinelIsChecked is 001 FR-051 and the
-// hub's own warning about it: a streamed response cannot change its status once it
-// has started, so a truncated export arrives as a 200 whose last line is missing.
+// A streamed response cannot change its status once started, so a truncated
+// export arrives as a 200 missing its sentinel line and can only be logged.
 func TestTheAuditExportStreamsThroughAndItsSentinelIsChecked(t *testing.T) {
 	complete := "{\"id\":\"a1\"}\n{\"complete\":true,\"rows\":1}\n"
 
@@ -501,8 +432,6 @@ func TestTheAuditExportStreamsThroughAndItsSentinelIsChecked(t *testing.T) {
 
 		rec := get(t, h, "/audit/export")
 
-		// A 200 either way: the status went out with the first byte and cannot be
-		// taken back. The log line is the only place this can be said.
 		require.Equal(t, http.StatusOK, rec.Code)
 		require.Contains(t, logged.String(), "completeness sentinel")
 	})
@@ -516,8 +445,7 @@ func TestTheAuditExportStreamsThroughAndItsSentinelIsChecked(t *testing.T) {
 	})
 }
 
-// exportServer is newServer with its log captured, since a truncated export
-// can only be reported there.
+// exportServer is newServer with its log captured.
 func exportServer(t *testing.T, export string) (http.Handler, *bytes.Buffer) {
 	t.Helper()
 	api := fakeapi.New(t)
@@ -528,9 +456,6 @@ func exportServer(t *testing.T, export string) (http.Handler, *bytes.Buffer) {
 	return web.New(web.Deps{Hub: client, Log: zerolog.New(&logged)}, web.Options{}).Handler(), &logged
 }
 
-// TestTheSidebarCountsAreTheApisAndAreAbsentRatherThanZero is FR-121 and research
-// R5. The values this replaced were 10 / 4 / 4, compiled in, the same for every
-// viewer of every deployment.
 func TestTheSidebarCountsAreTheApisAndAreAbsentRatherThanZero(t *testing.T) {
 	t.Run("the counts on the page are the ones the api answered", func(t *testing.T) {
 		api, h := newServer(t)
@@ -556,8 +481,7 @@ func TestTheSidebarCountsAreTheApisAndAreAbsentRatherThanZero(t *testing.T) {
 	})
 
 	t.Run("counts that could not be read render no badges at all", func(t *testing.T) {
-		// Not three zeroes. "0 packages" beside a catalog full of them is the same
-		// class of claim as the compiled-in values these replaced.
+		// Not zeroes: "0 packages" beside a full catalog would be a false claim.
 		api, h := newServer(t)
 		api.Fail("getBadges", http.StatusServiceUnavailable)
 		body := get(t, h, "/catalog").Body.String()
@@ -565,8 +489,6 @@ func TestTheSidebarCountsAreTheApisAndAreAbsentRatherThanZero(t *testing.T) {
 	})
 }
 
-// TestNoRouteFromTheSidebarSaysItIsUnfinished is FR-120 for the two screens this
-// layer takes off the placeholder list.
 func TestNoRouteFromTheSidebarSaysItIsUnfinished(t *testing.T) {
 	_, h := newServer(t)
 
@@ -579,8 +501,6 @@ func TestNoRouteFromTheSidebarSaysItIsUnfinished(t *testing.T) {
 	}
 }
 
-// TestFilteringAndPagingKeepTheRestOfTheScreensState. A filter that dropped the
-// page or a page turn that dropped the filter is how a reviewer loses their place.
 func TestFilteringAndPagingKeepTheRestOfTheScreensState(t *testing.T) {
 	api, h := newServer(t)
 	oneFinding(api, govFinding(), govDetail(govFinding()))
@@ -591,9 +511,7 @@ func TestFilteringAndPagingKeepTheRestOfTheScreensState(t *testing.T) {
 	require.Contains(t, body, `<a class="am-chip am-chip-on" href="/scanner?state=open"`)
 }
 
-// TestTheAuditScreenHonoursASubjectFilter is the package page's History link
-// landing: only the package's own rows (its versions' included), a chip naming
-// the filter with a way out, and every link on the page keeping the filter.
+// The package page's History link lands here.
 func TestTheAuditScreenHonoursASubjectFilter(t *testing.T) {
 	_, h := newServer(t)
 	body := get(t, h, "/audit?subjectKind=package&subjectId=community/slack-digest").Body.String()
@@ -619,8 +537,6 @@ func TestTheUnfilteredAuditScreenOffersNoFilterChip(t *testing.T) {
 	require.Contains(t, body, "stored example/terraform-module-review@2.4.1")
 }
 
-// TestAnAuditEntryAboutAVersionLinksToItsPackage: the row names a version, the
-// panel opens the package page that version belongs to.
 func TestAnAuditEntryAboutAVersionLinksToItsPackage(t *testing.T) {
 	_, h := newServer(t)
 	body := get(t, h, "/audit?entry=a0000000-0000-4000-8000-000000000002").Body.String()

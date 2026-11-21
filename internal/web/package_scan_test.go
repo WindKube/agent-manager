@@ -13,16 +13,12 @@ import (
 	"agent-manager/internal/web/fakeapi"
 )
 
-// The package detail screen's security section: a collapsible panel showing
-// the latest version's scan result, its findings and any reviewer decision,
-// collapsed by default (owner request). It reuses the Scanner screen's own
-// renderers, so the tests here are about what THIS screen adds — the panel
-// itself, its default-collapsed toggle and its four states — not a repeat of
-// scanner escaping or check-matrix coverage.
+// The package detail security panel reuses the Scanner screen's renderers, so
+// these tests cover only what this screen adds: the collapsed-by-default panel
+// and its four states.
 
 const scanPackage = "example/adr-writer"
 
-// scanServer is a server whose api answers scanPackage's scan with scan.
 func scanServer(t *testing.T, scan apiclient.PackageScan) http.Handler {
 	t.Helper()
 	api, h := newServer(t)
@@ -53,23 +49,16 @@ func TestPackageScanPanelIsCollapsedByDefaultAndCostsNoRoundTrip(t *testing.T) {
 			apiclient.PackageScanFindingSeverityHigh, apiclient.PackageScanFindingStateOpen)))
 	body := get(t, h, "/packages/"+scanPackage).Body.String()
 
-	// Collapsed before the script runs: the same inline display:none idiom
-	// the catalog's own overlays use (import.templ, catalog.templ), not a
-	// state datastar has to reach first.
+	// Collapsed before the script runs, via inline display:none.
 	require.Contains(t, body, `id="scan-panel-body" style="display:none" data-show="$_scanOpen"`)
 	require.Contains(t, body, `data-signals="{_scanOpen: false}"`)
 	require.Contains(t, body, `data-on:click="$_scanOpen = !$_scanOpen"`)
 
-	// The finding is already in the document — expanding the section is a
-	// local signal flip, not a fetch. If this were an on-demand read the
-	// content would be absent until a click, which is exactly what the two
-	// lines above rule out.
+	// Already in the document, so expanding is a local signal flip, not a fetch.
 	require.Contains(t, body, "SH-NET-002", "the finding did not render at all, so this proves nothing")
 	require.Contains(t, body, "Undeclared network egress")
 
-	// No request is wired to the toggle: neither datastar action appears
-	// anywhere near it, so R7's budget (internal/web/web_test.go,
-	// import_test.go) gains no new counted round trip from this section.
+	// No request is wired to the toggle, so the round-trip budget is unchanged.
 	require.NotContains(t, body, "@get(")
 	require.NotContains(t, body, "@post(")
 }
@@ -136,9 +125,8 @@ func TestPackageScanTellsItsFourStatesApart(t *testing.T) {
 	}
 }
 
-// TestPackageScanIsEscapedWhereverItIsRendered is FR-055/FR-127 on the one
-// panel this screen adds that renders bundle-adjacent and reviewer-supplied
-// text a second time, outside the Scanner screen.
+// TestPackageScanIsEscapedWhereverItIsRendered covers the reviewer-supplied and
+// bundle-adjacent text this panel renders outside the Scanner screen.
 func TestPackageScanIsEscapedWhereverItIsRendered(t *testing.T) {
 	const payload = `<img src=x onerror="alert(1)">`
 

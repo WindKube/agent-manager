@@ -14,19 +14,11 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// Sign-in's half of this package (T038). As next door, the assertions are on the
-// WIRE — the headers the stub api receives and the raw JSON it answers with —
-// because the two roles only ever meet over HTTP.
+// Assertions are on the wire, because the two roles only ever meet over HTTP.
 
-// TestTheSecretTravelsOnTheHeaderTheEmittedDocumentDeclares closes the one seam
-// this package cannot close with a compiler.
-//
-// internal/archcheck forbids internal/web from importing internal/api, which is
-// the boundary that keeps this role free of a datastore credential — so the header
-// name exists as a constant here AND as a constant there, and nothing makes them
-// agree. The joint is the emitted document (constitution principle V): the api
-// declares the header on its security scheme, `task gen:client` writes the
-// document, and this reads it back. A rename on either side fails here.
+// TestTheSecretTravelsOnTheHeaderTheEmittedDocumentDeclares: archcheck keeps this
+// package from importing internal/api, so the header name is duplicated; the
+// emitted document is the joint, and a rename on either side fails here.
 func TestTheSecretTravelsOnTheHeaderTheEmittedDocumentDeclares(t *testing.T) {
 	raw, err := os.ReadFile("../../apiclient/openapi.json")
 	require.NoError(t, err, "the emitted document is missing — run `task gen:client`")
@@ -74,9 +66,7 @@ func TestTheMintSecretIsSentOnTheMintAndOnNoOtherCall(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, secret, seen["/v1/sessions"])
-	// The credential this role holds buys exactly one operation, and it is sent as
-	// a per-request editor rather than installed on the client so that this stays
-	// true when a fourth call is added.
+	// Sent per request, not installed on the client, so it stays true as calls are added.
 	require.Empty(t, seen["/v1/viewer"])
 	require.Empty(t, seen["/v1/packages"])
 }
@@ -119,9 +109,7 @@ func TestARefusedMintIsOneErrorWhateverTheApiSaidAndRepeatsNoSecret(t *testing.T
 			}, hub.WithSessionMintSecret(secret))
 
 			session, err := client.MintSession(t.Context(), "an.id.token")
-			// One sentinel for all four: contracts/auth.md gives every refused mint
-			// the same rendering, and a caller that could tell them apart is a caller
-			// that could tell a browser which one it was.
+			// One sentinel for all refused mints, so nothing can tell a browser which it was.
 			require.ErrorIs(t, err, hub.ErrMintRefused)
 			require.Empty(t, session.Token)
 			require.Contains(t, err.Error(), "the api answered "+strconv.Itoa(tc.status),
@@ -133,9 +121,7 @@ func TestARefusedMintIsOneErrorWhateverTheApiSaidAndRepeatsNoSecret(t *testing.T
 
 func TestAMintedSessionCarriesTheApisOwnExpiryRatherThanALocalSubtraction(t *testing.T) {
 	client := clientAgainst(t, func(w http.ResponseWriter, _ *http.Request) {
-		// An expiresAt from a clock 40 minutes behind this process's, which is what a
-		// skewed pair of containers looks like. The cookie's Max-Age must come from
-		// expiresIn regardless, or it either outlives the row or dies early.
+		// expiresAt from a clock 40 minutes behind: Max-Age must still come from expiresIn.
 		writeJSON(w, http.StatusOK,
 			`{"token":"a-session-token","expiresAt":"2026-08-31T11:20:00Z","expiresIn":43200}`)
 	}, hub.WithSessionMintSecret("the-shared-secret"))
@@ -163,8 +149,7 @@ func TestTheViewerIsMappedFromTheApisAnswerAndNothingElse(t *testing.T) {
 			},
 		},
 		{
-			// FR-117: the role is absent from the body, not empty in it, and HasRole
-			// is what a screen branches on.
+			// The role is absent from the body, not empty; HasRole is what screens branch on.
 			name: "an identity whose groups map to nothing",
 			body: `{"subject":"sub-new","displayName":"A Newcomer","email":"newcomer@example.dev",
 			        "hasRole":false,"groups":["contractors"]}`,
@@ -174,8 +159,7 @@ func TestTheViewerIsMappedFromTheApisAnswerAndNothingElse(t *testing.T) {
 			},
 		},
 		{
-			// A null groups array becomes an empty slice here rather than reaching a
-			// template as nil, for the same reason the api never emits one.
+			// A null groups array becomes an empty slice rather than reaching a template as nil.
 			name: "a body whose groups are null",
 			body: `{"subject":"sub-bare","displayName":"sub-bare","email":"","hasRole":false,"groups":null}`,
 			want: hub.Viewer{Subject: "sub-bare", DisplayName: "sub-bare", Groups: []string{}},
@@ -203,8 +187,7 @@ func TestA401IsTheSignedOutStateOnBothTheViewerAndSignOut(t *testing.T) {
 	_, err := client.Viewer(t.Context())
 	require.ErrorIs(t, err, view.ErrSignedOut)
 
-	// On sign-out this is the state the person asked for: the session was already
-	// gone. It is the one error a sign-out handler may swallow.
+	// The session was already gone: the one error a sign-out handler may swallow.
 	require.ErrorIs(t, client.SignOut(t.Context()), view.ErrSignedOut)
 }
 
@@ -214,8 +197,8 @@ func TestOnly204MeansTheSessionWasActuallyExpired(t *testing.T) {
 		wantErr bool
 	}{
 		{status: http.StatusNoContent, wantErr: false},
-		// Anything else and the row may still be live. Clearing the cookie without
-		// reporting that is a credential still valid to whoever else holds it.
+		// Otherwise the row may still be live, and a silently cleared cookie leaves a
+		// credential valid for whoever else holds it.
 		{status: http.StatusInternalServerError, wantErr: true},
 		{status: http.StatusBadGateway, wantErr: true},
 	} {

@@ -13,13 +13,9 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// maxPackageNoticeDetailLength bounds what a failed delete's reason carries
-// into a redirect's query string, mirroring org.go's maxOrgDetailLength.
+// maxPackageNoticeDetailLength bounds a failed delete's reason in the redirect query string.
 const maxPackageNoticeDetailLength = 300
 
-// The package detail screen (US3). It is a plain server render with no signals:
-// nothing on it filters, sorts or pages, so there is nothing for datastar to do
-// and no round trip to debounce.
 func (s *Server) packageDetail(c *gin.Context) {
 	namespace, name := c.Param("namespace"), c.Param("name")
 	detail, err := s.deps.Hub.Package(session(c), namespace, name)
@@ -30,15 +26,11 @@ func (s *Server) packageDetail(c *gin.Context) {
 		logFrom(c).Debug().Msg("package requested without a session")
 		detail = view.Package{SignedOut: true}
 	case errors.Is(err, view.ErrNotFound):
-		// A 404 with the screen rendered, not a bare status: the person followed a
-		// link, and "no such package, or not readable by you" is the answer. The
-		// two are one answer on purpose — see view.ErrNotFound.
+		// Missing and unreadable are one answer on purpose; see view.ErrNotFound.
 		detail = view.Package{Missing: true}
 		status = http.StatusNotFound
 	case err != nil:
-		// The same split the catalog makes: an unreachable api is a 502, because
-		// the person cannot act on it, and collapsing it into an empty page would
-		// render an outage as a package that happens to have nothing in it.
+		// A 502 rather than an empty page, so an outage doesn't look like an empty package.
 		logFrom(c).Error().Err(err).Str("package", namespace+"/"+name).Msg("load package")
 		c.Status(http.StatusBadGateway)
 		return
@@ -50,9 +42,7 @@ func (s *Server) packageDetail(c *gin.Context) {
 		s.loadScan(c, &detail, namespace, name)
 		detail.Affected = s.affectedMachines(c, detail.ID, "")
 		detail.DeleteAccess = view.PackageDeleteAccessFor(viewerFor(c))
-		// Two vocabularies land on the same banner: a delete's tokens and a
-		// visibility change's. Each returns nil for the other's, so asking in
-		// turn is what keeps them from having to know about each other.
+		// Delete and visibility notices share the banner; each returns nil for the other's tokens.
 		detail.Notice = view.PackageNoticeFrom(c.Query("notice"), packageNoticeDetailFromURL(c), c.Query("version"))
 		if detail.Notice == nil {
 			detail.Notice = packageNotice(c.Query("notice"))
@@ -74,9 +64,8 @@ func packageNoticeDetailFromURL(c *gin.Context) string {
 	return detail
 }
 
-// packageAccessGuard refuses a request from an identity the screen already
-// hides or disables the action for. Refused HERE, before any call to the
-// api, mirroring org.go's orgAccessGuard and for the same reason.
+// packageAccessGuard refuses, before any api call, an identity the screen
+// already hides the action from.
 func (s *Server) packageAccessGuard(c *gin.Context, namespace, name string) bool {
 	if view.PackageDeleteAccessFor(viewerFor(c)).Allowed {
 		return true
@@ -87,10 +76,8 @@ func (s *Server) packageAccessGuard(c *gin.Context, namespace, name string) bool
 	return false
 }
 
-// backToPackage is post-redirect-get's redirect half, carrying the outcome
-// and an optional detail or subject as tokens the screen looks its copy up
-// from, never as rendered prose this handler wrote — the same idiom
-// backToOrg follows.
+// backToPackage redirects with notice tokens the screen maps to its own copy,
+// never prose a forged link could inject.
 func (s *Server) backToPackage(c *gin.Context, namespace, name string, notice view.PackageNotice, detail, version string) {
 	values := url.Values{}
 	values.Set("notice", string(notice))
@@ -104,10 +91,7 @@ func (s *Server) backToPackage(c *gin.Context, namespace, name string, notice vi
 	c.Redirect(http.StatusSeeOther, view.PackageHref(namespace+"/"+name)+"?"+values.Encode())
 }
 
-// backToCatalogAfterDelete is deletePackage's own redirect: the package's
-// own detail page 404s the instant latest_version_id clears, so the
-// acknowledgement belongs on the catalog instead of on a page that just
-// stopped resolving.
+// backToCatalogAfterDelete lands on the catalog because the deleted package's page now 404s.
 func (s *Server) backToCatalogAfterDelete(c *gin.Context, id string) {
 	values := url.Values{}
 	values.Set("notice", "package-deleted")
@@ -116,9 +100,6 @@ func (s *Server) backToCatalogAfterDelete(c *gin.Context, id string) {
 	c.Redirect(http.StatusSeeOther, "/catalog?"+values.Encode())
 }
 
-// deleteVersion withdraws one version (US-catalog-delete). The archive
-// itself, and why it is one rather than a hard delete, is
-// commands.DeleteVersion's own comment.
 func (s *Server) deleteVersion(c *gin.Context) {
 	namespace, name, version := c.Param("namespace"), c.Param("name"), c.Param("version")
 	if !s.packageAccessGuard(c, namespace, name) {
@@ -131,7 +112,6 @@ func (s *Server) deleteVersion(c *gin.Context) {
 	s.backToPackage(c, namespace, name, view.PackageNoticeVersionDeleted, "", version)
 }
 
-// deletePackage withdraws every version of a package.
 func (s *Server) deletePackage(c *gin.Context) {
 	namespace, name := c.Param("namespace"), c.Param("name")
 	if !s.packageAccessGuard(c, namespace, name) {
@@ -144,8 +124,6 @@ func (s *Server) deletePackage(c *gin.Context) {
 	s.backToCatalogAfterDelete(c, namespace+"/"+name)
 }
 
-// packageDeleteFailed maps a delete's refusal onto the redirect's notice
-// token, following orgSaveFailed's own split.
 func (s *Server) packageDeleteFailed(c *gin.Context, namespace, name string, err error) {
 	switch {
 	case errors.Is(err, view.ErrSignedOut):
@@ -161,11 +139,8 @@ func (s *Server) packageDeleteFailed(c *gin.Context, namespace, name string, err
 	}
 }
 
-// loadProfileOptions fills in the add-to-profile control (US5) from the same
-// bulk profile list the Profiles screen reads — one request, not one per
-// profile — and marks which of them already hold this package by
-// cross-referencing Dependents rather than reading each profile's entries
-// again.
+// loadProfileOptions uses the bulk profile list and Dependents to mark which
+// profiles already hold this package, avoiding a request per profile.
 func (s *Server) loadProfileOptions(c *gin.Context, detail *view.Package) {
 	rows, err := s.deps.Hub.Profiles(session(c))
 	if err != nil {
@@ -183,12 +158,8 @@ func (s *Server) loadProfileOptions(c *gin.Context, detail *view.Package) {
 	detail.ProfileOptions = view.ProfileOptionsHeld(options, detail.Dependents)
 }
 
-// loadFiles fills in the files panel (US3/US5: read a skill's files before
-// using it). The list read and the content read are independent: a version
-// FR-029 refuses to serve answers the list with FilesRejected and never
-// attempts the content read that would follow, and a path the query names
-// that the list does not contain answers FileMissing rather than a raw 404
-// bubbling up as a page-load failure.
+// loadFiles fills in the files panel. A refused version stops at FilesRejected,
+// and an unknown path renders FileMissing rather than failing the page.
 func (s *Server) loadFiles(c *gin.Context, detail *view.Package, namespace, name string) {
 	list, err := s.deps.Hub.PackageFiles(session(c), namespace, name)
 	switch {
@@ -203,10 +174,8 @@ func (s *Server) loadFiles(c *gin.Context, detail *view.Package, namespace, name
 	detail.Files = list.Files
 	detail.FilesDefault = list.Default
 
-	// The panel is closed until the reader names a file: falling back to
-	// list.Default here is the exact bug the owner reported — the panel
-	// then opens on every load, and the close link (which navigates to
-	// this same clean URL) looks like it does nothing.
+	// Closed until a file is named: defaulting to list.Default would make the
+	// close link (this same clean URL) appear to do nothing.
 	path := strings.TrimSpace(c.Query("file"))
 	if path == "" {
 		return
@@ -222,10 +191,7 @@ func (s *Server) loadFiles(c *gin.Context, detail *view.Package, namespace, name
 	case errors.Is(err, hub.ErrFileNotRenderable):
 		detail.FileNotRenderable = true
 	case errors.Is(err, hub.ErrForbidden):
-		// The list above already succeeded against the same version, so
-		// this is only reachable on a genuine race with a fetch; the
-		// generic unavailable state says a retry might help, which a
-		// rejection never would.
+		// Only reachable on a race with a fetch, so offer a retry rather than a rejection.
 		detail.FilesUnavailable = true
 	case err != nil:
 		logFrom(c).Error().Err(err).Msg("load package file content")
@@ -235,8 +201,6 @@ func (s *Server) loadFiles(c *gin.Context, detail *view.Package, namespace, name
 	}
 }
 
-// setPackageVisibility is FR-126's one write on this screen. Post-redirect-get,
-// like the profile curation writes, so a reload cannot resubmit the change.
 func (s *Server) setPackageVisibility(c *gin.Context) {
 	id := strings.TrimSpace(c.PostForm("id"))
 	visibility := strings.TrimSpace(c.PostForm("visibility"))
@@ -254,8 +218,6 @@ func (s *Server) setPackageVisibility(c *gin.Context) {
 	s.backToPackageAfterVisibility(c, namespace, name, packageVisibilityChanged)
 }
 
-// setPackageTracking is the track-upstream control's write, post-redirect-get
-// like the visibility change.
 func (s *Server) setPackageTracking(c *gin.Context) {
 	namespace, name, ok := view.SplitPackageID(strings.TrimSpace(c.PostForm("id")))
 	if !ok {
@@ -285,8 +247,7 @@ func (s *Server) setPackageTracking(c *gin.Context) {
 	s.backToPackageAfterVisibility(c, namespace, name, packageTrackingChanged)
 }
 
-// setPackageSigner is the expected-signer form's write. Both fields blank
-// clears it; the api refuses half a signer or a pattern that does not compile.
+// setPackageSigner clears the signer when both fields are blank; the api refuses half a signer.
 func (s *Server) setPackageSigner(c *gin.Context) {
 	namespace, name, ok := view.SplitPackageID(strings.TrimSpace(c.PostForm("id")))
 	if !ok {
@@ -316,11 +277,8 @@ func (s *Server) setPackageSigner(c *gin.Context) {
 	s.backToPackageAfterVisibility(c, namespace, name, packageSignerChanged)
 }
 
-// packageVisibilityWriteFailed maps the write's error onto a redirect,
-// mirroring profileWriteFailed: a refusal the api understood
-// (hub.PackageRefusedError) still redirects, since — unlike a profile
-// curation refusal — this control never echoes anything a person typed
-// that a forged link could reproduce.
+// packageVisibilityWriteFailed redirects even on a refusal: unlike profile
+// curation, this control echoes nothing typed that a forged link could reproduce.
 func (s *Server) packageVisibilityWriteFailed(c *gin.Context, namespace, name string, err error) {
 	switch {
 	case errors.Is(err, view.ErrSignedOut):
@@ -383,8 +341,6 @@ func packageNotice(raw string) *view.Notice {
 	}
 }
 
-// backToPackageAfterVisibility is backToPackage for the visibility change's
-// own token vocabulary, which carries neither a detail nor a subject.
 func (s *Server) backToPackageAfterVisibility(c *gin.Context, namespace, name string, outcome packageOutcome) {
 	s.backToPackage(c, namespace, name, view.PackageNotice(outcome), "", "")
 }

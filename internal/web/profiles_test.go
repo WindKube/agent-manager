@@ -15,19 +15,10 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The two profile screens.
-//
-// The properties that matter here mirror the scanner's: the policy note the api
-// computed is rendered VERBATIM — two implementations of the gate is how the
-// screen and the CLI start disagreeing — an action a role may not take is
-// absent or disabled, and the three states that are not a list of profiles are
-// three screens.
-
 const profileSlug = "platform-engineer"
 
 var profileHref = "/profiles/" + profileSlug
 
-// profileServer is a server whose api answers profileSlug with detail.
 func profileServer(t *testing.T, detail apiclient.ProfileDetail) (*fakeapi.API, http.Handler) {
 	t.Helper()
 	api, h := newServer(t)
@@ -35,15 +26,12 @@ func profileServer(t *testing.T, detail apiclient.ProfileDetail) (*fakeapi.API, 
 	return api, h
 }
 
-// keepPackages narrows the catalog the api answers to ids, for the "Add
-// package" tests: they need to state exactly which rows the catalog holds.
 func keepPackages(api *fakeapi.API, ids ...string) {
 	api.Data.Packages = slices.DeleteFunc(api.Data.Packages, func(p apiclient.CatalogPackage) bool {
 		return !slices.Contains(ids, p.Id)
 	})
 }
 
-// sentEntries is the one whole entry set the web role resent.
 func sentEntries(t *testing.T, api *fakeapi.API) []apiclient.ProfileEntrySetting {
 	t.Helper()
 	calls := api.Calls("setProfileEntries")
@@ -91,8 +79,6 @@ func lockEntry(id, version string, resolution apiclient.LockfileEntryResolution)
 	return apiclient.LockfileEntry{Id: id, Version: version, Resolution: resolution}
 }
 
-// TestProfilesListShowsExactlyTheReadableSet asserts the list shows exactly
-// the readable set, and no others.
 func TestProfilesListShowsExactlyTheReadableSet(t *testing.T) {
 	api, h := newServer(t)
 	api.Data.Profiles = []apiclient.Profile{
@@ -116,8 +102,6 @@ func TestProfilesListEmptyStateNamesWhatWouldAppear(t *testing.T) {
 	require.Contains(t, body, `id="profiles-empty"`)
 }
 
-// TestProfilesThreeEmptyStatesAreDistinguishable: an empty hub, a role refusal,
-// no usable session, and an unreachable api must never render alike.
 func TestProfilesThreeEmptyStatesAreDistinguishable(t *testing.T) {
 	for _, state := range []struct {
 		name   string
@@ -151,8 +135,8 @@ func TestProfilesThreeEmptyStatesAreDistinguishable(t *testing.T) {
 	}
 }
 
-// TestProfileDetailRendersThePolicyNoteVerbatim asserts the screen never
-// recomputes the gate's effect — it renders what the api already decided.
+// Two implementations of the gate is how the screen and the CLI start
+// disagreeing, so the api's note is rendered as-is.
 func TestProfileDetailRendersThePolicyNoteVerbatim(t *testing.T) {
 	_, h := profileServer(t, baseProfileDetail())
 	body := get(t, h, profileHref).Body.String()
@@ -162,8 +146,6 @@ func TestProfileDetailRendersThePolicyNoteVerbatim(t *testing.T) {
 	require.Contains(t, body, "am-pill-warn")
 }
 
-// TestProfileDetailReportsASkippedEntryRatherThanOmittingIt asserts an
-// excluded package is reported with its reason rather than silently dropped.
 func TestProfileDetailReportsASkippedEntryRatherThanOmittingIt(t *testing.T) {
 	detail := baseProfileDetail()
 	detail.Entries = append(detail.Entries, apiclient.ProfileEntry{
@@ -181,8 +163,6 @@ func TestProfileDetailReportsASkippedEntryRatherThanOmittingIt(t *testing.T) {
 	require.Contains(t, body, "Awaiting approval from a scanner reviewer.")
 }
 
-// TestProfileDetailUnreadableAnswersAsMissing asserts an unreadable profile
-// and a nonexistent one read alike.
 func TestProfileDetailUnreadableAnswersAsMissing(t *testing.T) {
 	_, h := profileServer(t, baseProfileDetail())
 	rec := get(t, h, "/profiles/no-such-profile")
@@ -190,9 +170,7 @@ func TestProfileDetailUnreadableAnswersAsMissing(t *testing.T) {
 	require.Contains(t, rec.Body.String(), `id="profile-missing"`)
 }
 
-// TestProfileEntryPinRoundTrips asserts the web role's half of a pin toggle:
-// the FULL entry set is resent with only the targeted row changed, per
-// hub.SetProfileEntries's whole-set contract.
+// SetProfileEntries takes the whole set, so the untouched entry must be resent.
 func TestProfileEntryPinRoundTrips(t *testing.T) {
 	detail := baseProfileDetail()
 	detail.Entries = append(detail.Entries, skillEntry("example/adr-writer", "ADR Writer"))
@@ -239,9 +217,8 @@ func TestProfileEntryFloatRoundTrips(t *testing.T) {
 	require.Nil(t, sent[0].Version)
 }
 
-// TestProfileEntryRemoveRoundTrips asserts a remove posts through the
-// dedicated RemoveProfileEntry command, not through SetProfileEntries's
-// whole-set contract (which refuses a body that omits a held entry).
+// Remove uses its own command: SetProfileEntries refuses a set that omits a
+// held entry.
 func TestProfileEntryRemoveRoundTrips(t *testing.T) {
 	api, h := profileServer(t, baseProfileDetail())
 
@@ -260,8 +237,6 @@ func TestProfileEntryRemoveRoundTrips(t *testing.T) {
 	require.Empty(t, api.Calls("setProfileEntries"), "remove must not go through SetProfileEntries's whole-set contract")
 }
 
-// TestProfileEntryRemoveWithNoIDRefusesWithoutCallingTheApi asserts a
-// blank id is caught in the handler, not sent on to the api.
 func TestProfileEntryRemoveWithNoIDRefusesWithoutCallingTheApi(t *testing.T) {
 	api, h := profileServer(t, baseProfileDetail())
 
@@ -271,9 +246,6 @@ func TestProfileEntryRemoveWithNoIDRefusesWithoutCallingTheApi(t *testing.T) {
 	require.Empty(t, api.Calls("removeProfileEntry"))
 }
 
-// TestProfileDetailOffersOnlyPackagesNotAlreadyHeld asserts each kind's Add
-// control lists a catalog row of that kind exactly once it is not already an
-// entry, never lists one that already is, and never lists the other kind.
 func TestProfileDetailOffersOnlyPackagesNotAlreadyHeld(t *testing.T) {
 	api, h := profileServer(t, baseProfileDetail())
 	keepPackages(api, "community/postgres-migration-guard", "example/adr-writer", "example/platform-toolkit")
@@ -293,9 +265,8 @@ func TestProfileDetailOffersOnlyPackagesNotAlreadyHeld(t *testing.T) {
 	require.NotContains(t, pluginOptions, "Adr Writer", "a skill must not be offered in the plugin select")
 }
 
-// addOptions returns just one Add control's <select> markup, so a test can
-// assert about its options without a package's name elsewhere on the page
-// (its own entry row, say) producing a false pass.
+// addOptions returns one <select>'s markup so a name elsewhere on the page
+// cannot produce a false pass.
 func addOptions(t *testing.T, body, selectID string) string {
 	t.Helper()
 	start := strings.Index(body, `<select id="`+selectID+`"`)
@@ -305,9 +276,6 @@ func addOptions(t *testing.T, body, selectID string) string {
 	return body[start : start+end]
 }
 
-// TestProfileDetailAddControlIsAbsentWithoutCatalogOrRole asserts both Add
-// controls degrade to absent rather than to an empty, broken <select> — both
-// when the viewer may not curate and when the catalog cannot be read.
 func TestProfileDetailAddControlIsAbsentWithoutCatalogOrRole(t *testing.T) {
 	t.Run("no curate permission", func(t *testing.T) {
 		detail := baseProfileDetail()
@@ -330,9 +298,6 @@ func TestProfileDetailAddControlIsAbsentWithoutCatalogOrRole(t *testing.T) {
 	})
 }
 
-// TestProfileEntryAddAppendsANewEntryFloatingLatest is GAP 3: a profile
-// created in the UI could never receive a package, because nothing posted to
-// PUT /v1/profiles/{slug}/entries with an id the profile did not already hold.
 func TestProfileEntryAddAppendsANewEntryFloatingLatest(t *testing.T) {
 	api, h := profileServer(t, baseProfileDetail())
 
@@ -360,9 +325,7 @@ func TestProfileEntryAddAppendsANewEntryFloatingLatest(t *testing.T) {
 	require.NotNil(t, untouched, "the existing entry was dropped from the resend")
 }
 
-// TestProfileEntryAddOfAnIDAlreadyHeldFloatsRatherThanDuplicating covers the
-// defensive case: the select only ever offers ids the profile lacks, but a
-// stale page or a race could still submit one it already holds.
+// The select never offers a held id, but a stale page could still submit one.
 func TestProfileEntryAddOfAnIDAlreadyHeldFloatsRatherThanDuplicating(t *testing.T) {
 	api, h := profileServer(t, baseProfileDetail())
 
@@ -377,10 +340,6 @@ func TestProfileEntryAddOfAnIDAlreadyHeldFloatsRatherThanDuplicating(t *testing.
 	require.Equal(t, apiclient.ProfileEntrySettingModeLatest, sent[0].Mode)
 }
 
-// TestProfileWritesAreGatedByRole asserts a role that may not curate, share
-// or publish gets every control still rendered — visibly disabled, with a
-// reason — rather than hidden, and a request that arrives anyway is refused
-// and records nothing.
 func TestProfileWritesAreGatedByRole(t *testing.T) {
 	detail := baseProfileDetail()
 	detail.Permissions = apiclient.ProfilePermissions{}
@@ -399,8 +358,6 @@ func TestProfileWritesAreGatedByRole(t *testing.T) {
 	require.Contains(t, body, view.ProfileDeleteRoleReason,
 		"the disabled delete-profile control must say why, not just refuse silently")
 
-	// The sharing form is still offered, greyed out, rather than absent: a
-	// role that cannot share must still see the control exists.
 	require.Contains(t, body, `id="share-role"`)
 	require.Contains(t, body, `<fieldset class="am-fieldset-plain" disabled aria-disabled="true"`)
 
@@ -409,14 +366,12 @@ func TestProfileWritesAreGatedByRole(t *testing.T) {
 	})
 	require.Equal(t, http.StatusSeeOther, rec.Code)
 	require.Contains(t, rec.Header().Get("Location"), "entry-updated",
-		"the api is what enforces the role here (the fake always answers), so this "+
-			"exercises the screen's gating copy rather than a second enforcement")
+		"the api enforces the role; "+
+			"the fake always answers")
 
 	require.Empty(t, api.Calls("publishRevision"), "publish must never be invoked for a role that may not")
 }
 
-// TestProfilePublishRedirectsWithoutResubmission is post-redirect-get: a browser
-// reload after a publish must not publish a second revision.
 func TestProfilePublishRedirectsWithoutResubmission(t *testing.T) {
 	api, h := profileServer(t, baseProfileDetail())
 
@@ -433,9 +388,6 @@ func TestProfilePublishRedirectsWithoutResubmission(t *testing.T) {
 	require.Contains(t, notice, "Revision published")
 }
 
-// TestDeleteProfileRedirectsToTheListNotTheProfilesOwnPage asserts deletion
-// is the one write that cannot redirect back to the profile's own page —
-// there is no such page any more once it succeeds.
 func TestDeleteProfileRedirectsToTheListNotTheProfilesOwnPage(t *testing.T) {
 	api, h := profileServer(t, baseProfileDetail())
 
@@ -447,11 +399,7 @@ func TestDeleteProfileRedirectsToTheListNotTheProfilesOwnPage(t *testing.T) {
 	require.Equal(t, "/v1/profiles/"+profileSlug, deleted[0].Path)
 }
 
-// TestDeleteProfileWithPublishedRevisionsIsRefusedInline asserts the api's
-// refusal (a profile with published revisions a client may have synced
-// cannot be deleted) renders inline against a fresh read, exactly like every
-// other ProfileRefusedError, rather than as a redirect a stale link could
-// replay.
+// Rendered inline like every other refusal, not as a redirect a stale link could replay.
 func TestDeleteProfileWithPublishedRevisionsIsRefusedInline(t *testing.T) {
 	api, h := profileServer(t, baseProfileDetail())
 	api.Fail("deleteProfile", http.StatusConflict,
@@ -463,10 +411,6 @@ func TestDeleteProfileWithPublishedRevisionsIsRefusedInline(t *testing.T) {
 	require.Len(t, api.Calls("deleteProfile"), 1, "the api, not the web layer, is what refused this")
 }
 
-// TestDeleteProfileControlGatedByCanDelete asserts the delete control follows
-// view.Profile.CanDelete: disabled with the role reason when not owner,
-// disabled with the has-revisions reason when the profile still has one, and
-// enabled only when both clear.
 func TestDeleteProfileControlGatedByCanDelete(t *testing.T) {
 	t.Run("not owner", func(t *testing.T) {
 		detail := baseProfileDetail()
@@ -494,9 +438,6 @@ func TestDeleteProfileControlGatedByCanDelete(t *testing.T) {
 	})
 }
 
-// TestProfileEntryDataIsEscapedWhereverItIsRendered: a package name, a policy
-// note and a skip detail all quote content a package's manifest or the
-// resolver's own prose supplies, and none of it may reach the page raw.
 func TestProfileEntryDataIsEscapedWhereverItIsRendered(t *testing.T) {
 	const payload = `<img src=x onerror="alert(1)">`
 
@@ -516,8 +457,6 @@ func TestProfileEntryDataIsEscapedWhereverItIsRendered(t *testing.T) {
 		"so this test asserts nothing")
 }
 
-// TestProfileEntriesAreSplitIntoSkillsAndPlugins asserts "Packages" is broken
-// into a Skills section and a Plugins section, each listing only its own kind.
 func TestProfileEntriesAreSplitIntoSkillsAndPlugins(t *testing.T) {
 	detail := baseProfileDetail()
 	plugin := skillEntry("example/platform-toolkit", "Platform Toolkit")
@@ -538,25 +477,16 @@ func TestProfileEntriesAreSplitIntoSkillsAndPlugins(t *testing.T) {
 	require.Greaterf(t, toolkitAt, pluginsAt, "the plugin entry must be listed under Plugins")
 }
 
-// TestProfileEntriesEmptyKindSectionStillNamesItself asserts a profile that
-// holds only skills still shows the Plugins section, saying it holds none,
-// rather than omitting the section — "this profile holds no plugins" is a
-// fact worth reading.
 func TestProfileEntriesEmptyKindSectionStillNamesItself(t *testing.T) {
-	_, h := profileServer(t, baseProfileDetail()) // one skill, no plugin
+	_, h := profileServer(t, baseProfileDetail())
 	body := get(t, h, profileHref).Body.String()
 
 	require.Contains(t, body, `id="profile-entries-empty-plugin"`)
 	require.Contains(t, body, "This profile holds no plugins yet.")
 }
 
-// TestAddEntryFormsAreBehindTwoSeparateToggleButtons is the owner's requested
-// split: "Add package" became two buttons, "Add skill" and "Add plugin", each
-// opening its own popup rather than a single form offering every kind in one
-// select. Both signals are underscore-prefixed, which is what keeps datastar
-// from ever sending them (the same reason the catalog's own modal signals
-// are), and both backdrops are hidden before datastar has a chance to run,
-// exactly like the import modal.
+// Signals are underscore-prefixed so datastar never sends them, and backdrops
+// are hidden before datastar runs.
 func TestAddEntryFormsAreBehindTwoSeparateToggleButtons(t *testing.T) {
 	api, h := profileServer(t, baseProfileDetail())
 	keepPackages(api, "example/adr-writer", "example/platform-toolkit")
@@ -577,16 +507,11 @@ func TestAddEntryFormsAreBehindTwoSeparateToggleButtons(t *testing.T) {
 	require.GreaterOrEqual(t, tagEnd, 0, "the add-skill backdrop's opening tag is unclosed")
 	require.Contains(t, body[tagStart:tagStart+tagEnd], "display:none", "hidden until datastar says otherwise")
 
-	// Each select is scoped to its own kind: the skill option appears, the
-	// plugin form is a separate one, and vice versa is covered by
-	// TestProfileDetailOffersOnlyPackagesNotAlreadyHeld.
+	// Per-kind option scoping is covered by TestProfileDetailOffersOnlyPackagesNotAlreadyHeld.
 	require.Contains(t, body, `id="add-skill-id"`)
 	require.Contains(t, body, `id="add-plugin-id"`)
 }
 
-// TestAddEntryFormOffersVersionModeAtAddTime covers the owner's other
-// request: no post-hoc "Pin to 0.83" button — the curator picks floating
-// latest or an exact version at the moment of adding.
 func TestAddEntryFormOffersVersionModeAtAddTime(t *testing.T) {
 	api, h := profileServer(t, baseProfileDetail())
 	keepPackages(api, "example/adr-writer")
@@ -599,10 +524,6 @@ func TestAddEntryFormOffersVersionModeAtAddTime(t *testing.T) {
 	require.NotContains(t, body, "Pin to 0.", "there must be no post-hoc \"Pin to X\" button on the add control")
 }
 
-// TestDisabledProfileControlsAreShownGreyedOutNotHidden is 1d: a role that
-// may not curate, share or publish still sees every control the screen
-// offers — visibly disabled, with a title and the same reason in visible
-// text beneath it — rather than a control that silently disappears.
 func TestDisabledProfileControlsAreShownGreyedOutNotHidden(t *testing.T) {
 	detail := baseProfileDetail()
 	detail.Permissions = apiclient.ProfilePermissions{}
@@ -636,8 +557,7 @@ func TestDisabledProfileControlsAreShownGreyedOutNotHidden(t *testing.T) {
 	require.Contains(t, body, `<fieldset class="am-fieldset-plain" disabled aria-disabled="true" title="`+view.ShareDisabledReason+`">`)
 	require.Contains(t, body, `<fieldset class="am-fieldset-plain" disabled aria-disabled="true" title="`+view.PublishDisabledReason+`">`)
 
-	// Both, not either: the title is a weak affordance alone, so the same
-	// sentence also appears as visible text.
+	// A title alone is a weak affordance, so the reason is also visible text.
 	for _, reason := range []string{
 		view.CurateDisabledReason, view.ShareDisabledReason, view.PublishDisabledReason, view.ProfileDeleteRoleReason,
 	} {
@@ -645,9 +565,6 @@ func TestDisabledProfileControlsAreShownGreyedOutNotHidden(t *testing.T) {
 	}
 }
 
-// TestProfileRevisionDiffIsAbsentWithoutAQuery asserts the panel is purely
-// additive: a plain profile read carries no diff, and nothing on the page
-// hints one could appear except the per-revision "Show diff" link.
 func TestProfileRevisionDiffIsAbsentWithoutAQuery(t *testing.T) {
 	detail := baseProfileDetail()
 	detail.Revisions = []apiclient.ProfileRevision{{Revision: 5}, {Revision: 4}}
@@ -658,10 +575,6 @@ func TestProfileRevisionDiffIsAbsentWithoutAQuery(t *testing.T) {
 	require.Contains(t, body, view.RevisionDiffHref(profileSlug, 5))
 }
 
-// TestProfileRevisionDiffReportsAddedRemovedChangedAndGovernance covers the
-// diff's full report: a package added, one removed, one whose version and
-// pin mode both changed, a skip that stopped applying, and the gate, default
-// policy and targets all differing between the two revisions.
 func TestProfileRevisionDiffReportsAddedRemovedChangedAndGovernance(t *testing.T) {
 	detail := baseProfileDetail()
 	detail.HeadRevision = 5
@@ -710,9 +623,6 @@ func TestProfileRevisionDiffReportsAddedRemovedChangedAndGovernance(t *testing.T
 	require.Contains(t, body, "codex")
 }
 
-// TestProfileRevisionDiffFirstRevisionShowsWhatItIntroduced asserts revision
-// 1, which has no predecessor, says so plainly and shows what it introduced
-// rather than an empty diff or an error.
 func TestProfileRevisionDiffFirstRevisionShowsWhatItIntroduced(t *testing.T) {
 	detail := baseProfileDetail()
 	detail.Revisions = []apiclient.ProfileRevision{{Revision: 1}}
@@ -730,10 +640,6 @@ func TestProfileRevisionDiffFirstRevisionShowsWhatItIntroduced(t *testing.T) {
 	require.NotContains(t, body, `id="profile-diff-predecessor-unavailable"`)
 }
 
-// TestProfileRevisionDiffMissingRevisionSaysSoPlainly asserts a revision this
-// profile does not have, or that could not be read, answers honestly rather
-// than as an empty diff — the same answer a nonexistent one and an
-// unreadable one give.
 func TestProfileRevisionDiffMissingRevisionSaysSoPlainly(t *testing.T) {
 	_, h := profileServer(t, baseProfileDetail())
 	rec := get(t, h, view.RevisionDiffHref(profileSlug, 99))
@@ -742,9 +648,6 @@ func TestProfileRevisionDiffMissingRevisionSaysSoPlainly(t *testing.T) {
 	require.Contains(t, rec.Body.String(), `id="profile-diff-missing"`)
 }
 
-// TestProfileRevisionDiffPredecessorUnavailableSaysSoRatherThanEmptyDiff
-// asserts a revision that reads fine but whose predecessor cannot be read
-// reports that honestly instead of rendering a silently empty diff.
 func TestProfileRevisionDiffPredecessorUnavailableSaysSoRatherThanEmptyDiff(t *testing.T) {
 	detail := baseProfileDetail()
 	detail.HeadRevision = 5
@@ -759,8 +662,6 @@ func TestProfileRevisionDiffPredecessorUnavailableSaysSoRatherThanEmptyDiff(t *t
 	require.NotContains(t, body, `id="profile-diff-missing"`)
 }
 
-// TestProfileScreensRenderInBothThemes asserts both screens render correctly
-// in both themes.
 func TestProfileScreensRenderInBothThemes(t *testing.T) {
 	_, h := profileServer(t, baseProfileDetail())
 

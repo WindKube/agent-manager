@@ -1,16 +1,7 @@
 package web
 
-// T030 and T031: the two ways the browser round trip is attacked, and the two
-// tasks.md names as the reason /auth/login and /auth/callback cannot be trusted
-// without them.
-//
-// An INTERNAL test, and the reason is T031's expired case. A stale round trip
-// cannot be constructed from outside this package without reimplementing the
-// cookie's format in the test — which would pin the format rather than the
-// refusal, and would keep passing after a format change that broke every real
-// browser. From in here the cookie is sealed by the product's own sealRound with
-// an Issued in the past, so what is asserted is the server refusing its own
-// signature over a value that is simply too old.
+// An internal test so an expired round trip can be sealed with the product's own
+// sealRound, rather than reimplementing (and pinning) the cookie format here.
 
 import (
 	"context"
@@ -29,12 +20,8 @@ import (
 	"agent-manager/internal/web/hub"
 )
 
-// ---- the stand-in -------------------------------------------------------------
-
-// recordingProvider is an AuthProvider that remembers what was asked of it.
-//
-// The recording is the point rather than a convenience: "no code was exchanged"
-// is the property T031 asks for, and it is only a test if something counted.
+// recordingProvider is an AuthProvider that records calls, so "no code was
+// exchanged" can be asserted.
 type recordingProvider struct {
 	idToken string
 
@@ -67,8 +54,6 @@ func (p *recordingProvider) VerifyIDToken(_ context.Context, idToken string) err
 	return nil
 }
 
-// ---- the harness --------------------------------------------------------------
-
 type signInHarness struct {
 	server   *Server
 	handler  http.Handler
@@ -90,16 +75,14 @@ func newSignInHarness(t *testing.T) signInHarness {
 	provider := &recordingProvider{idToken: "an.id.token"}
 	api, client := fakeHub(t)
 	server := New(Deps{Hub: client, Auth: provider, Log: zerolog.Nop()}, Options{
-		// Fixed, so the test can seal a cookie this server will accept the
-		// signature of and refuse for its age alone.
+		// Fixed, so a test can seal a cookie refused for its age alone.
 		OIDCCookieKey: []byte("a-known-key-for-the-round-trip-cookie"),
 	})
 
 	return signInHarness{server: server, handler: server.Handler(), provider: provider, api: api}
 }
 
-// begin runs the outward leg and returns the round trip the browser is now
-// holding, opened, so a test can quote the state back the way a provider would.
+// begin runs the outward leg and returns the sealed cookie and its opened round.
 func (h signInHarness) begin(t *testing.T, rawReturn string) (string, oidcRound) {
 	t.Helper()
 
@@ -119,7 +102,6 @@ func (h signInHarness) begin(t *testing.T, rawReturn string) (string, oidcRound)
 	return sealed, round
 }
 
-// complete runs the return leg with whatever cookie and query a caller wants.
 func (h signInHarness) complete(t *testing.T, sealed string, query map[string]string) *httptest.ResponseRecorder {
 	t.Helper()
 
@@ -151,17 +133,9 @@ func cookieNamed(t *testing.T, rec *httptest.ResponseRecorder, name string) stri
 	return ""
 }
 
-// ---- T030: the return-target validator ----------------------------------------
-
-// TestTheReturnTargetIsALocalPathOrNothing is FR-113, asserted where it matters
-// rather than on the validator alone.
-//
-// The observable is the Location header of a COMPLETED sign-in: that is the hop a
-// browser actually follows, after a real sign-in, served by the real origin —
-// which is what would make an open redirect here the most credible phishing
-// surface this hub could have. The sealed cookie is checked too, because the
-// validator runs on the way in as well and a refusal that happened only on the
-// way out would leave an attacker's URL sitting in a cookie for 90 seconds.
+// TestTheReturnTargetIsALocalPathOrNothing checks the Location of a completed
+// sign-in, the hop a browser actually follows, and the sealed cookie, so an
+// attacker's URL is refused on the way in too.
 func TestTheReturnTargetIsALocalPathOrNothing(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -217,16 +191,9 @@ func TestTheReturnTargetIsALocalPathOrNothing(t *testing.T) {
 	}
 }
 
-// ---- T031: state handling -----------------------------------------------------
-
-// TestNoBrokenRoundTripReachesTheExchangeOrIssuesASession is T031. Each case is a
-// callback that must go no further than the state check, and "no further" is
-// asserted three ways: no code exchanged, no session minted, no session cookie.
-//
-// The `error` parameter is checked as part of it. Its text is the only thing on
-// this route that reaches the page, and it is read AFTER the state check on
-// purpose — reflecting it before the round trip proved to be this hub's would make
-// /auth/callback a way to publish copy on this origin under a sign-in heading.
+// TestNoBrokenRoundTripReachesTheExchangeOrIssuesASession: each callback must
+// stop at the state check. The `error` parameter is read only after that check,
+// or /auth/callback would publish arbitrary copy on this origin.
 func TestNoBrokenRoundTripReachesTheExchangeOrIssuesASession(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -242,8 +209,6 @@ func TestNoBrokenRoundTripReachesTheExchangeOrIssuesASession(t *testing.T) {
 		{
 			name: "a cookie this role did not sign",
 			mutate: func(_ *testing.T, _ signInHarness, sealed string, round oidcRound) (string, map[string]string) {
-				// The body kept, the signature broken: a forged round trip carrying a
-				// state that would otherwise match.
 				body, _, _ := strings.Cut(sealed, ".")
 				return body + ".YWJjZGVmZ2hpamtsbW5vcA", map[string]string{
 					"state": round.State, "code": "the-code",
@@ -266,9 +231,7 @@ func TestNoBrokenRoundTripReachesTheExchangeOrIssuesASession(t *testing.T) {
 			name: "a round trip left open too long",
 			mutate: func(t *testing.T, h signInHarness, _ string, round oidcRound) (string, map[string]string) {
 				t.Helper()
-				// This role's own signature over its own state, and refused anyway: the
-				// browser enforces Max-Age and the browser is the one party in this flow
-				// that cannot be relied on.
+				// Validly signed but refused: the browser's Max-Age cannot be relied on.
 				round.Issued = time.Now().Add(-2 * oidcCookieTTL).Unix()
 				stale, err := h.server.sealRound(round)
 				require.NoError(t, err)
@@ -294,8 +257,8 @@ func TestNoBrokenRoundTripReachesTheExchangeOrIssuesASession(t *testing.T) {
 
 			require.Equal(t, http.StatusOK, rec.Code, "a refusal renders the sign-in screen rather than redirecting")
 			require.Contains(t, rec.Body.String(), noticeStaleRound,
-				"every one of these is one outcome and one screen: telling them apart on the "+
-					"page would eventually mean telling them apart to whoever caused it")
+				"every one of these is one outcome and one screen; "+
+					"telling them apart would tell whoever caused it")
 
 			require.Empty(t, h.provider.exchanges, "a code was exchanged for a round trip that did not verify")
 			require.Empty(t, h.provider.verified)
@@ -305,9 +268,7 @@ func TestNoBrokenRoundTripReachesTheExchangeOrIssuesASession(t *testing.T) {
 	}
 }
 
-// TestProviderRefusalDetailIsEscapedOnTheSignInScreen is a real provider refusal,
-// against a round trip that verifies, so providerDetail's text actually reaches
-// the page rather than being short-circuited by an earlier notice.
+// Uses a round trip that verifies so the provider's detail actually reaches the page.
 func TestProviderRefusalDetailIsEscapedOnTheSignInScreen(t *testing.T) {
 	h := newSignInHarness(t)
 	sealed, round := h.begin(t, "%2Fscanner")
@@ -327,12 +288,8 @@ func TestProviderRefusalDetailIsEscapedOnTheSignInScreen(t *testing.T) {
 	require.Contains(t, body, "&lt;script&gt;")
 }
 
-// TestSignOutExpiresTheSessionServerSideAndClearsTheCookie is the quickstart's
-// third validation, at the layer this role owns: the api's own row expiring is
-// proven in internal/api/session_integration_test.go, and what is proven here is
-// that a POST to /auth/logout actually reaches the api with THIS browser's token
-// before it clears the cookie — a role that cleared the cookie without calling
-// out would leave the row live for anyone else still holding it.
+// Clearing the cookie without telling the api would leave the session live for
+// anyone else holding the token.
 func TestSignOutExpiresTheSessionServerSideAndClearsTheCookie(t *testing.T) {
 	api, client := fakeHub(t)
 	h := New(Deps{Hub: client, Log: zerolog.Nop()}, Options{}).Handler()
@@ -358,14 +315,8 @@ func TestSignOutExpiresTheSessionServerSideAndClearsTheCookie(t *testing.T) {
 	require.True(t, found, "logout must set the cookie header at all, to overwrite the browser's copy")
 }
 
-// TestTheRoundTripIsSingleUseBecauseTheCookieIsGoneAfterIt is the replay half of
-// T031, tested with a browser's actual semantics rather than a resend of the same
-// cookie.
-//
-// The callback deletes the round-trip cookie before it does anything else, so the
-// second visit — a refresh of the callback URL, a back button, a bookmarked
-// Location — arrives without it. That is what makes it single use, and it is why
-// the deletion happens before the state check rather than after the mint.
+// The callback deletes the round-trip cookie first, so a refresh or back button
+// arrives without it; that is what makes the round trip single use.
 func TestTheRoundTripIsSingleUseBecauseTheCookieIsGoneAfterIt(t *testing.T) {
 	h := newSignInHarness(t)
 	sealed, round := h.begin(t, "%2Fscanner")
@@ -384,7 +335,6 @@ func TestTheRoundTripIsSingleUseBecauseTheCookieIsGoneAfterIt(t *testing.T) {
 	require.Equal(t, "an.id.token", body.IdToken, "the raw ID token is what the api is asked to mint for")
 	require.Equal(t, h.api.Data.Session.Token, cookieNamed(t, first, sessionCookie))
 
-	// What the browser holds now: the cookie was deleted by that response.
 	deleted := false
 	for _, cookie := range first.Result().Cookies() {
 		if cookie.Name == oidcCookie && cookie.MaxAge < 0 {
@@ -400,10 +350,8 @@ func TestTheRoundTripIsSingleUseBecauseTheCookieIsGoneAfterIt(t *testing.T) {
 	require.Len(t, h.api.Calls("createSession"), 1, "the replayed callback minted a second session")
 }
 
-// TestTheOutwardLegSendsAFreshStateAndAChallengeItKeepsNoSecretFor guards the
-// pair the two tests above rest on: a state reused between attempts would make
-// every state check above vacuous, and a challenge that was the verifier would
-// make PKCE decorative.
+// A reused state would make the state checks vacuous, and a challenge equal to
+// the verifier would make PKCE decorative.
 func TestTheOutwardLegSendsAFreshStateAndAChallengeItKeepsNoSecretFor(t *testing.T) {
 	h := newSignInHarness(t)
 
@@ -423,8 +371,6 @@ func TestTheOutwardLegSendsAFreshStateAndAChallengeItKeepsNoSecretFor(t *testing
 	}
 }
 
-// A mint the api refuses renders the sign-in screen with no session cookie,
-// never a half-signed-in browser.
 func TestARefusedMintIssuesNoSession(t *testing.T) {
 	h := newSignInHarness(t)
 	h.api.Fail("createSession", http.StatusUnauthorized)

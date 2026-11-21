@@ -49,9 +49,8 @@ func TestTheRuntimeScreenTellsItsFourStatesApart(t *testing.T) {
 	}
 }
 
-// TestTheRuntimeScreenSeparatesDiscardedFromRetrying is the whole point of the
-// two lists: a job whose retries are exhausted must never render beside one
-// still retrying on its own, and each must say which it is.
+// TestTheRuntimeScreenSeparatesDiscardedFromRetrying: an exhausted job must never
+// render beside one still retrying.
 func TestTheRuntimeScreenSeparatesDiscardedFromRetrying(t *testing.T) {
 	api, h := newServer(t)
 	at := time.Date(2026, 9, 10, 8, 0, 0, 0, time.UTC)
@@ -79,9 +78,7 @@ func TestTheRuntimeScreenSeparatesDiscardedFromRetrying(t *testing.T) {
 	require.Contains(t, body, "2/5")
 }
 
-// TestRuntimeQueueCountsUseRiversOwnVocabulary is the whole reason River's
-// states are not collapsed: every one of the seven must be readable on the
-// page, distinct from every other.
+// TestRuntimeQueueCountsUseRiversOwnVocabulary: all seven River states stay distinct.
 func TestRuntimeQueueCountsUseRiversOwnVocabulary(t *testing.T) {
 	api, h := newServer(t)
 	api.Data.Runtime = apiclient.RuntimeReport{Queues: []apiclient.QueueSummary{{
@@ -95,9 +92,8 @@ func TestRuntimeQueueCountsUseRiversOwnVocabulary(t *testing.T) {
 	}
 }
 
-// TestRuntimeChartLabelsItsOwnUnits is the requirement that a bar chart with no
-// readable units is worse than a table: the bucket width and the axis clock
-// must be on the page, not just the bars.
+// TestRuntimeChartLabelsItsOwnUnits: a bar chart without readable units is worse
+// than a table.
 func TestRuntimeChartLabelsItsOwnUnits(t *testing.T) {
 	history := make([]apiclient.RunBucket, 24)
 	now := time.Now().UTC().Truncate(time.Hour)
@@ -110,15 +106,12 @@ func TestRuntimeChartLabelsItsOwnUnits(t *testing.T) {
 
 	require.Contains(t, body, "1 hour")
 	require.Contains(t, body, "UTC")
-	// The pair's bars stand side by side, so the axis names the tallest single
-	// bar — the last bucket's fetch 23, not its fetch 23 plus scan 1.
+	// The bars stand side by side, so the axis names the tallest single bar.
 	require.Contains(t, body, "tallest bar 23 jobs")
 }
 
-// TestRuntimeHeaderHasAPlainRefreshLink is the counterpart to the catalog's
-// refresh button: this screen has no fragment endpoint, so its refresh must
-// be an honest full-page navigation to /runtime rather than a datastar round
-// trip to a route that does not exist.
+// TestRuntimeHeaderHasAPlainRefreshLink: this screen has no fragment endpoint, so
+// refresh is a full-page navigation.
 func TestRuntimeHeaderHasAPlainRefreshLink(t *testing.T) {
 	_, h := newServer(t)
 	body := get(t, h, "/runtime").Body.String()

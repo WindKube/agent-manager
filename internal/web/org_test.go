@@ -52,10 +52,8 @@ func TestTheOrganizationScreenRendersTheProviderPolicyMappingsAndCategories(t *t
 	require.Contains(t, body, "infrastructure")
 }
 
-// TestTheOrganizationScreenNeverRendersTheClientSecret proves view.Organization
-// carries no field a secret value could ever reach, so the only two places
-// "secret" appears at all are the fixed button label and the fixed explanation
-// of why rotation is unavailable — never inside a form value.
+// TestTheOrganizationScreenNeverRendersTheClientSecret: "secret" may appear only
+// in fixed labels, never inside a form value.
 func TestTheOrganizationScreenNeverRendersTheClientSecret(t *testing.T) {
 	_, h := orgServer(t)
 	rec := get(t, h, "/org")
@@ -65,11 +63,8 @@ func TestTheOrganizationScreenNeverRendersTheClientSecret(t *testing.T) {
 	require.Contains(t, html.UnescapeString(body), view.SecretRotationReason)
 }
 
-// TestARoleThatMayNotAdministerTheOrganizationSeesADistinguishableRefusal
-// proves a non-admin role's read is refused by the api (requireOrgAdmin, mapped
-// to hub.ErrForbidden here the same way the two governance screens' own
-// refusal is), and that refusal is a screen a reader cannot mistake for an
-// empty organisation.
+// TestARoleThatMayNotAdministerTheOrganizationSeesADistinguishableRefusal: the
+// api's refusal must not read as an empty organisation.
 func TestARoleThatMayNotAdministerTheOrganizationSeesADistinguishableRefusal(t *testing.T) {
 	api, h := orgServer(t)
 	api.Data.As(apiclient.ViewerRoleReadOnly)
@@ -103,8 +98,6 @@ func TestTheOrganizationScreenTellsSignedOutRefusedAndUnavailableApart(t *testin
 	}
 }
 
-// TestTheOrganizationScreenEscapesAttackerSuppliedNames proves a group or
-// category name reaches the page only through templ's escaping.
 func TestTheOrganizationScreenEscapesAttackerSuppliedNames(t *testing.T) {
 	const payload = `<img src=x onerror="alert(1)">`
 
@@ -120,8 +113,8 @@ func TestTheOrganizationScreenEscapesAttackerSuppliedNames(t *testing.T) {
 	require.Contains(t, body, "&lt;img src=x onerror=")
 }
 
-// TestTheRotateSecretActionIsAlwaysDisabledAndExplainsWhy proves the screen
-// never offers a working rotation, because rotating is genuinely impossible.
+// TestTheRotateSecretActionIsAlwaysDisabledAndExplainsWhy: rotating is genuinely
+// impossible here, so the control never works.
 func TestTheRotateSecretActionIsAlwaysDisabledAndExplainsWhy(t *testing.T) {
 	_, h := orgServer(t)
 	body := html.UnescapeString(get(t, h, "/org").Body.String())
@@ -130,10 +123,8 @@ func TestTheRotateSecretActionIsAlwaysDisabledAndExplainsWhy(t *testing.T) {
 	require.Contains(t, body, `disabled`)
 }
 
-// TestDeleteActionsAreEnabledUnlessACategoryIsInUse proves a mapping's remove
-// action is always offered, and a category's delete is offered only while its
-// count is zero — the one case the screen can know is refused before
-// submitting.
+// TestDeleteActionsAreEnabledUnlessACategoryIsInUse: an in-use category is the one
+// refusal the screen can know about before submitting.
 func TestDeleteActionsAreEnabledUnlessACategoryIsInUse(t *testing.T) {
 	api, h := orgServer(t)
 	api.Data.Organization.Categories = append(api.Data.Organization.Categories, apiclient.OrganizationCategory{
@@ -146,8 +137,8 @@ func TestDeleteActionsAreEnabledUnlessACategoryIsInUse(t *testing.T) {
 	require.Contains(t, body, "still assigned to a package cannot be deleted")
 }
 
-// TestAnOrganizationChangeFromAnIdentityWithoutTheRoleReachesNoApi proves a
-// post that arrives anyway from an old page must not reach the api.
+// TestAnOrganizationChangeFromAnIdentityWithoutTheRoleReachesNoApi: a post from an
+// old page must not reach the api.
 func TestAnOrganizationChangeFromAnIdentityWithoutTheRoleReachesNoApi(t *testing.T) {
 	api, h := orgServer(t)
 	api.Data.As(apiclient.ViewerRoleReadOnly)
@@ -194,8 +185,6 @@ func TestCreatingAMappingReachesTheApi(t *testing.T) {
 	require.Equal(t, apiclient.CreateMappingRequestRoleScannerReviewer, mapping.Role)
 }
 
-// TestDeletingAMappingOrCategoryReachesTheApi proves the delete forms post
-// through to the hub, the same as every other mutation on this screen.
 func TestDeletingAMappingOrCategoryReachesTheApi(t *testing.T) {
 	api, h := orgServer(t)
 
@@ -214,9 +203,6 @@ func TestDeletingAMappingOrCategoryReachesTheApi(t *testing.T) {
 	require.Equal(t, "/v1/organization/categories/"+infrastructureID, calls[0].Path)
 }
 
-// TestDeletingACategoryStillInUseIsRefused proves the api's 409 for a
-// still-referenced category reaches the screen as a warning, not a silent
-// success.
 func TestDeletingACategoryStillInUseIsRefused(t *testing.T) {
 	api, h := orgServer(t)
 	api.Fail("deleteCategory", http.StatusConflict, "category is still assigned to at least one package")

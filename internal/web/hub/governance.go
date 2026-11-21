@@ -14,17 +14,11 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The two governance screens' door to the api, through the generated client
-// and nothing else.
-
-// ErrForbidden is the api refusing an action this identity's role does not
-// carry. A sentinel of its own, not folded into the generic error path: it
-// is a screen state rather than a failure, and its arrival also means the
-// screen offered something it should not have.
+// ErrForbidden is the api refusing an action this identity's role lacks. It is a
+// screen state, not a failure, and means the screen offered something it should not have.
 var ErrForbidden = errors.New("this identity may not take that action")
 
-// ScannerSummary reads GET /v1/scanner/summary. days of 0 takes the api's own
-// window rather than asserting one from this side.
+// ScannerSummary reads the scanner summary; days of 0 takes the api's window.
 func (c *Client) ScannerSummary(ctx context.Context, days int) (view.ScannerSummary, error) {
 	params := &apiclient.ScannerSummaryParams{}
 	if days > 0 {
@@ -51,8 +45,7 @@ func (c *Client) ScannerSummary(ctx context.Context, days int) (view.ScannerSumm
 		out.NearestExpiry = view.Until(*body.NearestOverrideExpiry, c.now())
 	}
 	if body.MedianScanSeconds != nil {
-		// nil stays empty ("nothing finished in the window"); a median that
-		// rounds to nothing is still a measurement and gets its unit.
+		// nil stays empty; a median that rounds to nothing is still a measurement.
 		out.MedianScan = view.Duration(time.Duration(*body.MedianScanSeconds * float64(time.Second)))
 		if out.MedianScan == "" {
 			out.MedianScan = "0ms"
@@ -61,15 +54,13 @@ func (c *Client) ScannerSummary(ctx context.Context, days int) (view.ScannerSumm
 	return out, nil
 }
 
-// FindingQuery is the findings list's filter, in the api's vocabulary. Empty
-// strings mean no filter, which is what the api's `all` is.
+// FindingQuery is the findings filter in the api's vocabulary; empty means `all`.
 type FindingQuery struct {
 	State    string
 	Severity string
 	Page     int
 }
 
-// Findings reads GET /v1/findings.
 func (c *Client) Findings(ctx context.Context, q FindingQuery) (view.FindingsPage, error) {
 	params := &apiclient.ListFindingsParams{}
 	if q.State != "" {
@@ -105,9 +96,8 @@ func (c *Client) Findings(ctx context.Context, q FindingQuery) (view.FindingsPag
 	return page, nil
 }
 
-// Finding reads GET /v1/findings/{id}. A 404 becomes view.ErrNotFound, and so
-// does an id that is not a uuid: the id reaches this method out of a URL a
-// person can edit, so "no such finding" is the honest answer to a malformed one.
+// Finding maps a 404, and an id that is not a uuid, to view.ErrNotFound: the id
+// comes from an editable URL.
 func (c *Client) Finding(ctx context.Context, id string) (view.FindingDetail, error) {
 	parsed, err := uuid.Parse(id)
 	if err != nil {
@@ -158,9 +148,7 @@ func (c *Client) Finding(ctx context.Context, id string) (view.FindingDetail, er
 	return out, nil
 }
 
-// AcceptFinding posts POST /v1/findings/{id}/accept. days of 0 lets the api
-// apply its own default: an override's lifetime is policy, and policy lives
-// on the side that owns the row.
+// AcceptFinding accepts a finding; days of 0 lets the api apply its policy default.
 func (c *Client) AcceptFinding(ctx context.Context, id, note string, days int) error {
 	parsed, err := uuid.Parse(id)
 	if err != nil {
@@ -183,8 +171,7 @@ func (c *Client) AcceptFinding(ctx context.Context, id, note string, days int) e
 	return nil
 }
 
-// RejectFinding posts POST /v1/findings/{id}/reject. There is no expiry to pass:
-// rejection is terminal.
+// RejectFinding rejects a finding. Rejection is terminal, so there is no expiry.
 func (c *Client) RejectFinding(ctx context.Context, id, note string) error {
 	parsed, err := uuid.Parse(id)
 	if err != nil {
@@ -207,7 +194,6 @@ func (c *Client) RejectFinding(ctx context.Context, id, note string) error {
 	return nil
 }
 
-// Audit reads GET /v1/audit.
 func (c *Client) Audit(ctx context.Context, page int, filter view.AuditFilter) (view.AuditPage, error) {
 	params := &apiclient.ListAuditParams{
 		SubjectId: optional(filter.SubjectID),
@@ -268,12 +254,9 @@ func auditRow(entry *apiclient.AuditEntry) view.AuditRow {
 	return row
 }
 
-// AuditExport is the streamed export, the ONE method here that does not
-// decode a body: it calls the raw client rather than ExportAuditWithResponse,
-// whose generated wrapper reads the entire body into memory first —
-// undoing the api's own streaming. The reader is the CALLER's to close, and
-// the caller must expect a stream that stops early: a truncated export
-// arrives as a short 200 whose last line is not the api's completeness sentinel.
+// AuditExport streams the export through the raw client, because the generated
+// WithResponse wrapper buffers the whole body. The caller closes the reader, and a
+// truncated export arrives as a short 200 without the api's completeness sentinel.
 func (c *Client) AuditExport(ctx context.Context, filter view.AuditFilter) (io.ReadCloser, string, error) {
 	params := &apiclient.ExportAuditParams{
 		SubjectId: optional(filter.SubjectID),
@@ -287,8 +270,7 @@ func (c *Client) AuditExport(ctx context.Context, filter view.AuditFilter) (io.R
 		return nil, "", fmt.Errorf("export the audit log: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		// Drained and closed rather than handed back: an error response is a
-		// problem document, not an export.
+		// An error response is a problem document, not an export.
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
 		_ = resp.Body.Close()
 		return nil, "", fmt.Errorf("export the audit log: %w", governanceError(resp, nil))
@@ -296,7 +278,7 @@ func (c *Client) AuditExport(ctx context.Context, filter view.AuditFilter) (io.R
 	return resp.Body, resp.Header.Get("Content-Type"), nil
 }
 
-// Badges reads GET /v1/badges — the shell's counts, one call per page render.
+// Badges reads the shell's counts, one call per page render.
 func (c *Client) Badges(ctx context.Context) (view.Badges, error) {
 	resp, err := c.api.GetBadgesWithResponse(ctx)
 	if err != nil {
@@ -347,8 +329,7 @@ func scanMeta(from apiclient.FindingScan) view.ScanMeta {
 	return out
 }
 
-// addEvidence finds the primary location by ROLE, never position: the api
-// promises nothing about slice order.
+// addEvidence finds the primary location by role: the api promises no order.
 func addEvidence(out *view.FindingDetail, item apiclient.FindingEvidence) {
 	evidence := view.Evidence{Path: item.Path, Line: int(derefInt(item.Line)), Quote: deref(item.Quote)}
 	if string(item.Role) == evidencePrimary && out.Primary == nil {
@@ -376,9 +357,8 @@ func findingOverride(from *apiclient.FindingOverride, now time.Time) *view.Overr
 	return out
 }
 
-// governanceError adds the 403 branch to statusError. The two refusals must
-// not collapse into one another: signing in again does not acquire a role,
-// so treating a 403 as a 401 sends a person round a loop that cannot end.
+// governanceError adds 403 to statusError. Treating a 403 as a 401 would loop a
+// person through sign-in, which never grants a role.
 func governanceError(resp *http.Response, body []byte) error {
 	if resp != nil && resp.StatusCode == http.StatusForbidden {
 		return ErrForbidden

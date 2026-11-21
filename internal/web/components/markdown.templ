@@ -6,20 +6,10 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// MarkdownBody renders a parsed markdown file (view.ParseMarkdown's result)
-// node by node. Every run of text reaches the page through templ's own
-// `{ expr }` escaping and every link's href through templ's automatic
-// scheme check (a plain string handed to href is sanitised via templ.URL,
-// which rejects anything but http/https/mailto/tel/ftp/ftps) — there is
-// never a pre-built HTML string here for a sanitiser to have missed
-// something in, which is also why this file has no need of the templ.Raw
-// archcheck bans under internal/web (TestWebNeverBypassesTemplEscaping).
-//
-// A raw HTML block or inline span in the source — the exact place a
-// `<script>`, an `<img onerror=...>` or an `<iframe>` would land — is never
-// walked into markup at all: markdownNode's switch has no case that reads
-// gmast.RawHTML or gmast.HTMLBlock content, so @markdownOmitted is the only
-// thing such a node can ever produce.
+// MarkdownBody renders a parsed markdown file node by node. Text goes through
+// templ's `{ expr }` escaping and hrefs through templ's URL scheme check; no HTML
+// string is ever built. Raw HTML nodes are never walked: markdownNode has no case
+// reading their content, so they only produce @markdownOmitted.
 templ MarkdownBody(doc view.MarkdownDoc) {
 	<div class="am-md">
 		if doc.Frontmatter != "" {
@@ -29,12 +19,8 @@ templ MarkdownBody(doc view.MarkdownDoc) {
 	</div>
 }
 
-// markdownFrontmatter shows a file's leading YAML block as the structured,
-// non-prose metadata it is, rather than the run-together paragraph
-// CommonMark would make of it. It is never parsed (view.splitFrontmatter
-// only pulls its lines out), so the text below reaches the page through the
-// same `{ expr }` escaping as every other node this file renders — there is
-// nothing here for a hostile key or value to break out of.
+// markdownFrontmatter shows leading YAML as a structured block rather than the
+// paragraph CommonMark would make of it. It is never parsed, only escaped.
 templ markdownFrontmatter(fm string) {
 	<div class="am-md-frontmatter">
 		<div class="am-md-frontmatter-label">Frontmatter</div>
@@ -87,11 +73,8 @@ templ markdownNode(n gmast.Node, source []byte) {
 		case gmast.KindImage:
 			@markdownImage(n.(*gmast.Image), source)
 		case gmast.KindRawHTML, gmast.KindHTMLBlock:
-			// The one case that matters most: dropped outright, never
-			// walked for text, so nothing inside — a script tag, an event
-			// handler attribute, a javascript: href — ever reaches the
-			// page. A placeholder still renders, so a file that had a raw
-			// HTML block does not read as an empty file (FR-055).
+			// Dropped outright, never walked for text. The placeholder keeps a file
+			// with a raw HTML block from reading as empty.
 			@markdownOmitted()
 		default:
 			@markdownChildren(n, source)
@@ -151,11 +134,8 @@ templ markdownEmphasis(e *gmast.Emphasis, source []byte) {
 	}
 }
 
-// markdownLink renders an `[text](destination)`. Destination is a plain Go
-// string handed to href, so templ's own JoinURLErrs/URL sanitiser runs on
-// it — a `javascript:` destination is replaced with an inert placeholder
-// URL before it ever reaches the response, with no sanitiser of this
-// file's own required to catch it.
+// markdownLink hands the destination to href as a plain string, so templ's URL
+// sanitiser replaces a `javascript:` destination with an inert placeholder.
 templ markdownLink(l *gmast.Link, source []byte) {
 	<a class="am-md-link" href={ string(l.Destination) } target="_blank" rel="noopener noreferrer">
 		@markdownChildren(l, source)
@@ -166,10 +146,8 @@ templ markdownAutoLink(a *gmast.AutoLink, source []byte) {
 	<a class="am-md-link" href={ string(a.URL(source)) } target="_blank" rel="noopener noreferrer">{ string(a.URL(source)) }</a>
 }
 
-// markdownImage renders as a link rather than an <img>: the alt text and
-// destination go through the exact same escaping and href sanitisation as
-// any other link, and this hub does not fetch or proxy image bytes on a
-// package's behalf.
+// markdownImage renders as a link: this hub does not fetch or proxy image bytes
+// on a package's behalf.
 templ markdownImage(img *gmast.Image, source []byte) {
 	<a class="am-md-link am-md-image" href={ string(img.Destination) } target="_blank" rel="noopener noreferrer">
 		image: { string(img.Text(source)) }

@@ -10,20 +10,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// A class name in the markup with no rule behind it costs nothing at build time
-// and nothing in any other test here: the element simply renders unstyled. That
-// is how am-notice-ok shipped, and how the identity-provider card's connection
-// banner came out as an unstyled box.
-//
-// This asserts that every am-* class written literally into a templ source has a
-// rule in the stylesheet the pages actually load.
+// A class with no rule behind it fails nowhere else: the element just renders
+// unstyled. Every am-* class in a templ source must have a rule in the built sheet.
 
-// unstyledHooks are am-* names deliberately carrying no rule. Each is a
-// selector for something other than CSS, and each states what.
+// unstyledHooks are am-* names deliberately carrying no rule.
 var unstyledHooks = map[string]string{
-	// The registration modal's overlay is positioned and painted inline, because
-	// it must be display:none before the script runs. The class is how
-	// import_test.go finds the element.
 	"am-import-backdrop": "test selector; the overlay is styled inline",
 }
 
@@ -61,9 +52,8 @@ func TestEveryClassInTheMarkupHasARuleInTheStylesheet(t *testing.T) {
 	}
 }
 
-// definedClasses reads the BUILT stylesheet rather than assets/input.css: what
-// the pages load is the built one, and a rule Tailwind dropped is exactly the
-// failure this test is for.
+// definedClasses reads the built stylesheet, not assets/input.css, because a rule
+// Tailwind dropped is exactly the failure this test is for.
 func definedClasses(t *testing.T) map[string]bool {
 	t.Helper()
 
@@ -78,11 +68,8 @@ func definedClasses(t *testing.T) map[string]bool {
 	return names
 }
 
-// am-gov-card is the frame only, so content that does not bring its own gutter
-// has to be wrapped. These are the cards where that was missing and the rows sat
-// flush against the border: the key layout and bucket settings on Storage, the
-// identity provider and policy cards on Organisation, and both cards on Connect
-// the CLI.
+// am-gov-card is the frame only, so content without its own gutter must be wrapped
+// in am-gov-body.
 func TestCardsWhoseContentNeedsAGutterHaveOne(t *testing.T) {
 	_, handler := newServer(t)
 
@@ -100,14 +87,8 @@ func TestCardsWhoseContentNeedsAGutterHaveOne(t *testing.T) {
 }
 
 // The main column has no padding, so a screen whose content is not inside a
-// wrapper that carries the page gutter renders flush against both window edges.
-// That is how Connect the CLI shipped: its form and cards were direct children
-// of am-main, so the lookup button sat against the right edge of the window.
-//
-// The sweep below did not catch the profile detail screen's own version of this
-// defect (its description ran edge to edge under an am-section with no gutter of
-// its own) because it never visited a DETAIL route — every path it swept was a
-// list screen. /profiles/<slug> and /packages/<id> are here for exactly that.
+// gutter-carrying wrapper runs to both window edges. Detail routes are included
+// because they lay out differently from list screens.
 func TestEveryScreenSitsInsideThePageGutter(t *testing.T) {
 	gutter := gutterClasses(t)
 	_, handler := newServer(t)
@@ -135,15 +116,9 @@ func TestEveryScreenSitsInsideThePageGutter(t *testing.T) {
 	}
 }
 
-// TestProfileDetailDescriptionSitsInsideTheGutter is the sharper version of the
-// sweep above, for this exact screen. The profile detail page's four am-card
-// panels each carried their OWN inset, which is why the loose "does anything on
-// the page carry a gutter class" check above would not have caught this: the
-// page had one already. What it lacked was a wrapper around its content as a
-// whole, so the description paragraph — an am-section with no margin of its own
-// — rendered flush against the window edge. This asserts the description is
-// nested inside am-screen-body rather than merely that am-screen-body exists
-// somewhere on the page.
+// TestProfileDetailDescriptionSitsInsideTheGutter checks nesting, not mere
+// presence: the page's am-card panels carry their own inset, so the sweep above
+// passes even when the description sits outside any gutter wrapper.
 func TestProfileDetailDescriptionSitsInsideTheGutter(t *testing.T) {
 	_, h := newServer(t)
 	body := get(t, h, "/profiles/platform-engineer").Body.String()
@@ -157,9 +132,8 @@ func TestProfileDetailDescriptionSitsInsideTheGutter(t *testing.T) {
 		"the description sits outside am-screen-body, so it renders edge to edge against the window")
 }
 
-// gutterClasses are the rules that inset a screen's content from the window by
-// the page's side margin. Read out of the stylesheet rather than listed here, so
-// a new wrapper counts the moment it carries the margin.
+// gutterClasses reads the gutter-carrying rules out of the stylesheet, so a new
+// wrapper counts the moment it carries the margin.
 func gutterClasses(t *testing.T) map[string]bool {
 	t.Helper()
 
@@ -178,8 +152,7 @@ func gutterClasses(t *testing.T) map[string]bool {
 	return names
 }
 
-// pageGutter is the side margin every screen is inset by. It is a literal here
-// because the point of the test is that screens agree on one value.
+// pageGutter is a literal because the point is that every screen agrees on one value.
 const pageGutter = "44px"
 
 var (
@@ -188,11 +161,8 @@ var (
 	minWidthPattern = regexp.MustCompile(`min-width\s*:\s*([^;}]+)`)
 )
 
-// The registration modal is 580px wide and lays its fields out in columns. A
-// control that declares a minimum width wider than its column cannot shrink into
-// it, so it paints over its neighbour and past the dialog's edge — which is what
-// am-search's 240px toolbar minimum did to the publisher, category and
-// visibility fields.
+// The registration modal lays fields out in narrow columns; a control with a
+// min-width wider than its column paints over its neighbour and past the dialog.
 func TestNoControlInTheRegistrationModalDeclaresAMinimumWidth(t *testing.T) {
 	minWidths := declaredMinWidths(t)
 
@@ -205,8 +175,6 @@ func TestNoControlInTheRegistrationModalDeclaresAMinimumWidth(t *testing.T) {
 	for _, control := range controls {
 		classes := strings.Fields(control[1])
 		t.Run(strings.Join(classes, " "), func(t *testing.T) {
-			// Every one of these is a single class deep, so the last declaration
-			// in the stylesheet is the one that applies.
 			effective, from := "0px", "no rule"
 			for _, name := range classes {
 				if declared, ok := minWidths[name]; ok {
@@ -250,20 +218,11 @@ func declaredMinWidths(t *testing.T) map[string]declaration {
 	return out
 }
 
-// controlClassPattern reads the class list off an input or a select in a templ
-// source. Both spellings appear: an attribute on its own line, and one inline in
-// a tag.
 var controlClassPattern = regexp.MustCompile(`(?s)<(?:input|select)\b[^>]*?class="([^"]*)"`)
 
-// TestRuntimeQueuePanelsHaveAClosingGutterBeforeRunHistory guards the reported
-// gap bug: the Run history card right after the queue panels is an .am-card,
-// which carries margin-top:0 by convention (the element before it is expected
-// to close the gap, the way .am-facets does before the catalog table). The
-// queue panels wrapper had padding-bottom:0 too, so the two touched directly.
-//
-// This reads assets/input.css, not the built static/app.css: the rule is
-// hand-authored inside the one @layer components block, not a Tailwind
-// utility, so its value does not depend on running the standalone binary.
+// TestRuntimeQueuePanelsHaveAClosingGutterBeforeRunHistory: an .am-card has
+// margin-top:0 by convention, so the element before it must close the gap. Reads
+// assets/input.css because the rule is hand-authored, not a Tailwind utility.
 func TestRuntimeQueuePanelsHaveAClosingGutterBeforeRunHistory(t *testing.T) {
 	sheet, err := os.ReadFile("../../assets/input.css")
 	require.NoError(t, err)
@@ -282,10 +241,7 @@ func TestRuntimeQueuePanelsHaveAClosingGutterBeforeRunHistory(t *testing.T) {
 			"card below it, which supplies no top margin of its own")
 }
 
-// paddingBottom applies the CSS shorthand rules for a padding or margin value
-// to find the bottom component: 1 value sets all four sides, 2 sets
-// top/bottom then left/right, 3 sets top, left/right, then bottom, and 4 sets
-// top, right, bottom, left in that order.
+// paddingBottom returns the bottom component of a CSS padding/margin shorthand.
 func paddingBottom(value string) string {
 	parts := strings.Fields(value)
 	switch len(parts) {

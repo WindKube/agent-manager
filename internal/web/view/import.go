@@ -2,11 +2,7 @@ package view
 
 import "io"
 
-// The registration modal's view model: a plain value with no behaviour.
-// Everything here arrives from the hub client.
-
-// ImportTab is which half of the modal is showing: an upload, or a URL
-// routed to the git or archive source by its shape.
+// ImportTab is which half of the modal is showing: an upload, or a URL routed to the git or archive source.
 type ImportTab string
 
 const (
@@ -14,7 +10,6 @@ const (
 	ImportURL    ImportTab = "url"
 )
 
-// ImportTabs is the design's tab row.
 var ImportTabs = []struct {
 	ID    ImportTab
 	Label string
@@ -23,22 +18,13 @@ var ImportTabs = []struct {
 	{ImportURL, "Fetch from URL"},
 }
 
-// MaxTagsFieldLength bounds the modal's one tags input: commands.MaxTagCount
-// tags of commands.MaxTagLength characters, plus a separator each. A typist
-// is stopped here before submitting; the api's per-tag checks are still what
-// decide.
+// MaxTagsFieldLength is commands.MaxTagCount tags of commands.MaxTagLength characters plus separators;
+// the api's per-tag checks still decide.
 const MaxTagsFieldLength = 20 * (40 + 1)
 
-// ImportVisibilityOptions is the whole package_visibility vocabulary the
-// modal offers, scoped to what THIS viewer's choice would actually mean.
-// Organisation and private always work: private is "visible only to the
-// owner", and the owner is always the registering identity, never a value
-// the form can name. Team is disabled when the viewer carries no
-// identity-provider groups, because team visibility is enforced by
-// overlapping the package owner's groups with a reader's groups
-// (queries.PackageReadable) — an owner with no groups could never be
-// matched by anyone, so the option would silently behave like private
-// while claiming to be something else.
+// ImportVisibilityOptions is the visibility vocabulary the modal offers. Team is disabled for a viewer with
+// no identity-provider groups: team matches the owner's groups against a reader's, so it would silently
+// behave like private.
 func ImportVisibilityOptions(viewerGroups []string) []ImportOption {
 	options := []ImportOption{
 		{Value: "organisation", Label: "Organisation"},
@@ -53,8 +39,7 @@ func ImportVisibilityOptions(viewerGroups []string) []ImportOption {
 	return options
 }
 
-// ImportOption is one entry of a select in the modal. Disabled and Reason
-// are FR-126's shape: shown, never hidden, disabled with why.
+// ImportOption is one entry of a select. A disabled option is still shown, with its Reason.
 type ImportOption struct {
 	Value    string
 	Label    string
@@ -64,13 +49,10 @@ type ImportOption struct {
 
 // Import is everything the modal renders.
 type Import struct {
-	// Categories is the admin-curated vocabulary. The modal only ever
-	// selects from it: a registration cannot add to it.
+	// Categories is the admin-curated vocabulary; a registration cannot add to it.
 	Categories []string
 
-	// Preview is the pre-submit report for an attached archive, when one has
-	// been validated. Nil is the modal's resting state, and the panel is
-	// absent rather than empty: a blank one would claim there was no tree at all.
+	// Preview is nil until an archive is validated, and the panel is then absent rather than empty.
 	Preview *ImportPreview
 }
 
@@ -81,11 +63,9 @@ type ImportPreview struct {
 	Name    string
 	Version string
 
-	// Entries is one row per top-level entry, in the order the panel shows them.
+	// Entries is one row per top-level entry.
 	Entries []ImportEntry
 
-	// Problems is why the tree was refused, each reported against the
-	// schema path that refused it.
 	Problems []ImportProblem
 }
 
@@ -97,8 +77,6 @@ type ImportEntry struct {
 	Mark string
 }
 
-// Glyph is the mark column: a tick for kept, an en dash for dropped, a
-// cross for the manifest that failed.
 func (e ImportEntry) Glyph() string {
 	switch {
 	case e.Mark == "invalid":
@@ -110,7 +88,6 @@ func (e ImportEntry) Glyph() string {
 	}
 }
 
-// Tone maps the mark onto the palette's semantic tokens.
 func (e ImportEntry) Tone() string {
 	switch {
 	case e.Mark == "invalid":
@@ -122,16 +99,13 @@ func (e ImportEntry) Tone() string {
 	}
 }
 
-// ImportProblem is one refusal, with the schema path that produced it.
 type ImportProblem struct {
 	Manifest   string
 	SchemaPath string
 	Message    string
 }
 
-// Where renders the location of a problem for the panel, built from the
-// manifest name and keyword location so a publisher can look the refusal up
-// in the published schema.
+// Where locates a problem by manifest and schema path, so a publisher can look it up in the schema.
 func (p ImportProblem) Where() string {
 	switch {
 	case p.Manifest != "" && p.SchemaPath != "":
@@ -143,11 +117,8 @@ func (p ImportProblem) Where() string {
 	}
 }
 
-// ---- what the modal submits --------------------------------------------------
-
-// Registration is the modal's form, on its way to POST /v1/packages. It
-// carries the archive as a reader rather than bytes: the cap is 25 MB, and
-// buffering the whole upload here would double the memory the api spends on it.
+// Registration is the modal's form for POST /v1/packages. The archive is a reader so the upload is not
+// buffered twice.
 type Registration struct {
 	Tab ImportTab
 
@@ -159,15 +130,12 @@ type Registration struct {
 	Name      string
 	Version   string
 
-	// Kind is provisional. Which manifest sits at the tree root is what decides
-	// it, so the fetcher overwrites this once it has the bytes; an empty value
-	// asks for that detection rather than declaring anything.
+	// Kind is provisional: the fetcher decides it from the root manifest, and "" asks it to detect.
 	Kind       string
 	Category   string
 	Visibility string
 
-	// Tags is one comma-separated field, forwarded to the api verbatim: it
-	// is the one that splits, dedupes and validates.
+	// Tags is forwarded verbatim; the api splits, dedupes and validates it.
 	Tags string
 
 	Archive *Archive
@@ -180,15 +148,12 @@ type Archive struct {
 	Content  io.Reader
 }
 
-// ImportResult is what came back. A refusal is a result, not an error: the
-// problem detail is shown to the person who submitted; an error is only for the log.
+// ImportResult is what came back. A refusal is a result shown to the submitter, not an error.
 type ImportResult struct {
 	Registered bool
-	// ID and Version identify what was accepted, for the confirmation line.
-	ID      string
-	Version string
+	ID         string
+	Version    string
 	// Message is the api's problem detail when the registration was refused.
 	Message string
-	// Preview is the pre-submit report, when the api produced one.
 	Preview *ImportPreview
 }

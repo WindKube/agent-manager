@@ -66,24 +66,17 @@ func TestAnUnknownBucketSettingRendersAsUnknownAndNotAsAGuessedDefault(t *testin
 	}
 	body := get(t, h, "/storage").Body.String()
 
-	// Versioning, object lock, encryption and retention are all unknown, and so is
-	// the region and the read-cache figure this zero-value report also carries —
-	// six in total. Write access is known and must not be among them.
+	// Six settings are unknown in this zero-value report; write access is known.
 	require.Equal(t, 6, strings.Count(body, "Unknown"))
 	require.Contains(t, body, "read-only; only the fetcher role can write")
 
-	// Scoped to the panel. "disabled" and "false" are the two guesses an unknown
-	// setting must not be rendered as, and the sidebar around this screen has
-	// legitimate uses for both words — a gated nav entry carries aria-disabled,
-	// and a datastar signal block is full of false.
+	// Scoped to the panel because the surrounding chrome legitimately says
+	// "disabled" (aria-disabled) and "false" (signal blocks).
 	settings := bucketSettingsPanel(t, body)
 	require.NotContains(t, settings, "disabled")
 	require.NotContains(t, settings, "false")
 }
 
-// bucketSettingsPanel is the "Bucket settings" card and nothing else, so an
-// assertion about a setting's rendering cannot be satisfied or broken by the
-// chrome around it.
 func bucketSettingsPanel(t *testing.T, body string) string {
 	t.Helper()
 

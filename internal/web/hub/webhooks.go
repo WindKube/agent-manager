@@ -13,8 +13,6 @@ import (
 	"agent-manager/internal/web/view"
 )
 
-// The Webhooks screen's door to the api.
-
 // ErrWebhookNotFound is a webhook id the api does not know.
 var ErrWebhookNotFound = errors.New("no such webhook")
 
@@ -39,8 +37,7 @@ func (c *Client) Webhooks(ctx context.Context) ([]view.Webhook, []string, error)
 	return out, resp.JSON200.EventTypes, nil
 }
 
-// CreateWebhook posts POST /v1/webhooks and returns the signing secret,
-// which nothing on this side stores.
+// CreateWebhook returns the signing secret, which nothing on this side stores.
 func (c *Client) CreateWebhook(ctx context.Context, name, url string, eventTypes, namespaces []string) (view.WebhookSecret, error) {
 	types := make([]apiclient.CreateWebhookRequestEventTypes, 0, len(eventTypes))
 	for _, t := range eventTypes {
@@ -74,8 +71,7 @@ func (c *Client) SetWebhookEnabled(ctx context.Context, id string, enabled bool)
 	return webhookError(resp.HTTPResponse, resp.Body)
 }
 
-// RotateWebhookSecret posts POST /v1/webhooks/{id}/secret; the old secret
-// stops signing at once.
+// RotateWebhookSecret replaces the secret; the old one stops signing at once.
 func (c *Client) RotateWebhookSecret(ctx context.Context, id string) (string, error) {
 	parsed, err := uuid.Parse(id)
 	if err != nil {
